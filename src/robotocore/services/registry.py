@@ -57,6 +57,8 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "support": ServiceInfo("support", ServiceStatus.MOTO_BACKED, "json", "Support"),
     "swf": ServiceInfo("swf", ServiceStatus.MOTO_BACKED, "json", "Simple Workflow"),
     "transcribe": ServiceInfo("transcribe", ServiceStatus.MOTO_BACKED, "json", "Transcribe"),
+    "es": ServiceInfo("es", ServiceStatus.MOTO_BACKED, "rest-json", "Elasticsearch Service"),
+    "opensearch": ServiceInfo("opensearch", ServiceStatus.MOTO_BACKED, "rest-json", "OpenSearch Service"),
 }
 
 
