@@ -1,4 +1,4 @@
-"""EventBridge in-memory models: event buses, rules, and targets."""
+"""EventBridge in-memory models: event buses, rules, targets, and archives."""
 
 import threading
 import time
@@ -13,6 +13,7 @@ class EventTarget:
     input: str | None = None
     input_path: str | None = None
     input_transformer: dict | None = None
+    dead_letter_config: dict | None = None
 
 
 @dataclass
@@ -27,6 +28,7 @@ class EventRule:
     schedule_expression: str | None = None
     targets: dict[str, EventTarget] = field(default_factory=dict)
     created: float = field(default_factory=time.time)
+    dead_letter_config: dict | None = None
 
     @property
     def arn(self) -> str:
@@ -40,6 +42,50 @@ class EventRule:
             # Schedule-based rules don't match events
             return self.schedule_expression is not None
         return _match_pattern(self.event_pattern, event)
+
+
+@dataclass
+class EventArchive:
+    name: str
+    source_arn: str
+    region: str
+    account_id: str
+    description: str = ""
+    event_pattern: dict | None = None
+    retention_days: int = 0  # 0 = indefinite
+    state: str = "ENABLED"
+    events: list[dict] = field(default_factory=list)
+    created: float = field(default_factory=time.time)
+    event_count: int = 0
+    size_bytes: int = 0
+
+    @property
+    def arn(self) -> str:
+        return (
+            f"arn:aws:events:{self.region}:{self.account_id}"
+            f":archive/{self.name}"
+        )
+
+
+@dataclass
+class EventReplay:
+    name: str
+    archive_arn: str
+    region: str
+    account_id: str
+    destination_arn: str
+    start_time: float
+    end_time: float
+    state: str = "COMPLETED"
+    events_replayed: int = 0
+    created: float = field(default_factory=time.time)
+
+    @property
+    def arn(self) -> str:
+        return (
+            f"arn:aws:events:{self.region}:{self.account_id}"
+            f":replay/{self.name}"
+        )
 
 
 @dataclass
@@ -59,6 +105,8 @@ class EventsStore:
 
     def __init__(self):
         self.buses: dict[str, EventBus] = {}
+        self.archives: dict[str, EventArchive] = {}
+        self.replays: dict[str, EventReplay] = {}
         self.mutex = threading.RLock()
         # Create default bus
         self.buses["default"] = EventBus(
@@ -167,6 +215,7 @@ class EventsStore:
                     input=t.get("Input"),
                     input_path=t.get("InputPath"),
                     input_transformer=t.get("InputTransformer"),
+                    dead_letter_config=t.get("DeadLetterConfig"),
                 )
                 rule.targets[target.target_id] = target
             return failed
@@ -195,6 +244,100 @@ class EventsStore:
         if not rule:
             return []
         return list(rule.targets.values())
+
+    # -- Archive operations --
+
+    def create_archive(
+        self,
+        name: str,
+        source_arn: str,
+        region: str,
+        account_id: str,
+        description: str = "",
+        event_pattern: dict | None = None,
+        retention_days: int = 0,
+    ) -> EventArchive:
+        with self.mutex:
+            archive = EventArchive(
+                name=name,
+                source_arn=source_arn,
+                region=region,
+                account_id=account_id,
+                description=description,
+                event_pattern=event_pattern,
+                retention_days=retention_days,
+            )
+            self.archives[name] = archive
+            return archive
+
+    def get_archive(self, name: str) -> EventArchive | None:
+        return self.archives.get(name)
+
+    def delete_archive(self, name: str) -> bool:
+        with self.mutex:
+            return self.archives.pop(name, None) is not None
+
+    def list_archives(
+        self, prefix: str | None = None
+    ) -> list[EventArchive]:
+        archives = list(self.archives.values())
+        if prefix:
+            archives = [
+                a for a in archives if a.name.startswith(prefix)
+            ]
+        return archives
+
+    def archive_event(self, event: dict, bus_name: str) -> None:
+        """Store event in matching archives."""
+        with self.mutex:
+            bus = self.buses.get(bus_name)
+            if not bus:
+                return
+            bus_arn = bus.arn
+            for archive in self.archives.values():
+                if archive.source_arn != bus_arn:
+                    continue
+                if archive.state != "ENABLED":
+                    continue
+                if archive.event_pattern:
+                    if not _match_pattern(
+                        archive.event_pattern, event
+                    ):
+                        continue
+                import json
+
+                event_json = json.dumps(event)
+                archive.events.append(event)
+                archive.event_count += 1
+                archive.size_bytes += len(event_json.encode())
+
+    # -- Replay operations --
+
+    def create_replay(
+        self,
+        name: str,
+        archive_arn: str,
+        region: str,
+        account_id: str,
+        destination_arn: str,
+        start_time: float,
+        end_time: float,
+    ) -> EventReplay:
+        with self.mutex:
+            replay = EventReplay(
+                name=name,
+                archive_arn=archive_arn,
+                region=region,
+                account_id=account_id,
+                destination_arn=destination_arn,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            self.replays[name] = replay
+            return replay
+
+    def get_replay(self, name: str) -> EventReplay | None:
+        return self.replays.get(name)
 
 
 def _match_pattern(pattern: dict, event: dict) -> bool:

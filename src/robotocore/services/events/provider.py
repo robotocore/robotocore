@@ -2,6 +2,9 @@
 
 Enterprise-grade: when PutEvents is called, matching rules invoke their targets
 (Lambda, SQS, SNS, Kinesis, Step Functions, etc.)
+
+Supports 17 target types, InputTransformer, dead-letter queues, and
+event archives with replay.
 """
 
 import json
@@ -218,6 +221,16 @@ def _list_targets_by_rule(store: EventsStore, params: dict, region: str, account
                 **({"RoleArn": t.role_arn} if t.role_arn else {}),
                 **({"Input": t.input} if t.input else {}),
                 **({"InputPath": t.input_path} if t.input_path else {}),
+                **(
+                    {"InputTransformer": t.input_transformer}
+                    if t.input_transformer
+                    else {}
+                ),
+                **(
+                    {"DeadLetterConfig": t.dead_letter_config}
+                    if t.dead_letter_config
+                    else {}
+                ),
             }
             for t in targets
         ]
@@ -255,10 +268,14 @@ def _put_events(store: EventsStore, params: dict, region: str, account_id: str) 
         bus = store.get_bus(bus_name)
 
         if bus:
+            # Archive the event
+            store.archive_event(event, bus_name)
             # Match against all rules in the bus
             for rule in bus.rules.values():
                 if rule.matches_event(event):
-                    _dispatch_to_targets(rule, event, region, account_id)
+                    _dispatch_to_targets(
+                        rule, event, region, account_id, store
+                    )
 
         results.append({"EventId": event["id"]})
 
@@ -308,16 +325,260 @@ def _list_tag_resource(store: EventsStore, params: dict, region: str, account_id
     return {"Tags": []}
 
 
+# --- Archive operations ---
+
+
+def _create_archive(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("ArchiveName", "")
+    source_arn = params.get("EventSourceArn", "")
+    description = params.get("Description", "")
+    event_pattern = params.get("EventPattern")
+    if isinstance(event_pattern, str):
+        event_pattern = json.loads(event_pattern)
+    retention = params.get("RetentionDays", 0)
+
+    if store.get_archive(name):
+        raise EventsError(
+            "ResourceAlreadyExistsException",
+            f"Archive {name} already exists",
+        )
+
+    archive = store.create_archive(
+        name,
+        source_arn,
+        region,
+        account_id,
+        description=description,
+        event_pattern=event_pattern,
+        retention_days=retention,
+    )
+    return {
+        "ArchiveArn": archive.arn,
+        "State": archive.state,
+        "CreationTime": archive.created,
+    }
+
+
+def _describe_archive(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("ArchiveName", "")
+    archive = store.get_archive(name)
+    if not archive:
+        raise EventsError(
+            "ResourceNotFoundException",
+            f"Archive {name} does not exist.",
+        )
+    result = {
+        "ArchiveArn": archive.arn,
+        "ArchiveName": archive.name,
+        "EventSourceArn": archive.source_arn,
+        "State": archive.state,
+        "RetentionDays": archive.retention_days,
+        "SizeBytes": archive.size_bytes,
+        "EventCount": archive.event_count,
+        "CreationTime": archive.created,
+        "Description": archive.description,
+    }
+    if archive.event_pattern:
+        result["EventPattern"] = json.dumps(archive.event_pattern)
+    return result
+
+
+def _list_archives(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    prefix = params.get("NamePrefix")
+    archives = store.list_archives(prefix)
+    return {
+        "Archives": [
+            {
+                "ArchiveName": a.name,
+                "ArchiveArn": a.arn,
+                "EventSourceArn": a.source_arn,
+                "State": a.state,
+                "RetentionDays": a.retention_days,
+                "SizeBytes": a.size_bytes,
+                "EventCount": a.event_count,
+                "CreationTime": a.created,
+            }
+            for a in archives
+        ]
+    }
+
+
+def _delete_archive(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("ArchiveName", "")
+    if not store.delete_archive(name):
+        raise EventsError(
+            "ResourceNotFoundException",
+            f"Archive {name} does not exist.",
+        )
+    return {}
+
+
+def _start_replay(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("ReplayName", "")
+    archive_arn = params.get("EventSourceArn", "")
+    destination = params.get("Destination", {})
+    destination_arn = destination.get("Arn", "")
+    start_time = params.get("EventStartTime", 0)
+    end_time = params.get("EventEndTime", time.time())
+
+    # Find the archive
+    archive_name = archive_arn.rsplit("/", 1)[-1]
+    archive = store.get_archive(archive_name)
+    if not archive:
+        raise EventsError(
+            "ResourceNotFoundException",
+            f"Archive {archive_arn} does not exist.",
+        )
+
+    replay = store.create_replay(
+        name,
+        archive_arn,
+        region,
+        account_id,
+        destination_arn=destination_arn,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+    # Replay matching events to the destination bus
+    bus_name = destination_arn.rsplit("/", 1)[-1] if "/" in destination_arn else "default"
+    replayed = 0
+    for evt in archive.events:
+        # Replay all archived events (simplified — no time filtering here
+        # because stored events may not have numeric timestamps)
+        bus = store.get_bus(bus_name)
+        if bus:
+            for rule in bus.rules.values():
+                if rule.matches_event(evt):
+                    _dispatch_to_targets(
+                        rule, evt, region, account_id, store
+                    )
+            replayed += 1
+
+    replay.events_replayed = replayed
+    replay.state = "COMPLETED"
+
+    return {
+        "ReplayArn": replay.arn,
+        "State": replay.state,
+        "StateReason": "Replay completed successfully",
+    }
+
+
+def _describe_replay(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("ReplayName", "")
+    replay = store.get_replay(name)
+    if not replay:
+        raise EventsError(
+            "ResourceNotFoundException",
+            f"Replay {name} does not exist.",
+        )
+    return {
+        "ReplayName": replay.name,
+        "ReplayArn": replay.arn,
+        "EventSourceArn": replay.archive_arn,
+        "State": replay.state,
+        "EventStartTime": replay.start_time,
+        "EventEndTime": replay.end_time,
+        "EventsReplayed": replay.events_replayed,
+    }
+
+
+# --- Input Transformer ---
+
+
+def _apply_input_transformer(
+    transformer: dict, event: dict
+) -> str:
+    """Apply an InputTransformer to an event.
+
+    The transformer has:
+      InputPathsMap: {"key": "$.detail.field"} — simple JSONPath
+      InputTemplate: "The <key> happened" — placeholder replacement
+    """
+    paths_map = transformer.get("InputPathsMap", {})
+    template = transformer.get("InputTemplate", "")
+
+    # Resolve each JSONPath
+    resolved: dict[str, str] = {}
+    for key, path in paths_map.items():
+        resolved[key] = _resolve_jsonpath(path, event)
+
+    # Replace <key> placeholders in template
+    result = template
+    for key, value in resolved.items():
+        result = result.replace(f"<{key}>", value)
+
+    return result
+
+
+def _resolve_jsonpath(path: str, event: dict) -> str:
+    """Resolve a simple JSONPath like $.detail.field against an event.
+
+    Supports:
+      $ — the whole event
+      $.field — top-level field
+      $.field.subfield — nested field
+    """
+    if path == "$":
+        return json.dumps(event)
+
+    # Strip leading "$."
+    if path.startswith("$."):
+        parts = path[2:].split(".")
+    else:
+        return json.dumps(event)
+
+    current = event
+    for part in parts:
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        else:
+            return ""
+
+    if isinstance(current, str):
+        return current
+    return json.dumps(current)
+
+
 # --- Target Dispatch (cross-service) ---
 
 
-def _dispatch_to_targets(rule, event: dict, region: str, account_id: str):
+def _dispatch_to_targets(
+    rule, event: dict, region: str, account_id: str,
+    store: EventsStore | None = None,
+):
     """Dispatch an event to all targets of a matching rule."""
     for target in rule.targets.values():
         try:
             _invoke_target(target, event, region, account_id)
-        except Exception:
-            logger.exception(f"Error invoking target {target.target_id} for rule {rule.name}")
+        except Exception as exc:
+            logger.exception(
+                "Error invoking target %s for rule %s",
+                target.target_id, rule.name,
+            )
+            # Dead-letter queue: send failed event to DLQ
+            dlq_config = (
+                target.dead_letter_config
+                or rule.dead_letter_config
+            )
+            if dlq_config:
+                _send_to_dlq(
+                    dlq_config, event, target, rule, exc,
+                    region, account_id,
+                )
 
 
 def _invoke_target(target, event: dict, region: str, account_id: str):
@@ -325,11 +586,15 @@ def _invoke_target(target, event: dict, region: str, account_id: str):
     arn = target.arn
 
     # Determine input to send
-    if target.input:
+    if target.input_transformer:
+        payload = _apply_input_transformer(
+            target.input_transformer, event
+        )
+    elif target.input:
         payload = target.input
     elif target.input_path:
-        # JSONPath extraction (simplified)
-        payload = json.dumps(event)
+        # Simple JSONPath extraction
+        payload = _resolve_jsonpath(target.input_path, event)
     else:
         payload = json.dumps(event)
 
@@ -339,30 +604,93 @@ def _invoke_target(target, event: dict, region: str, account_id: str):
         _invoke_sqs_target(arn, payload, region, account_id)
     elif ":sns:" in arn:
         _invoke_sns_target(arn, payload, region, account_id)
+    elif ":kinesis:" in arn:
+        _invoke_kinesis_target(arn, payload, region, account_id)
+    elif ":firehose:" in arn:
+        _invoke_firehose_target(arn, payload, region, account_id)
+    elif ":states:" in arn:
+        _invoke_stepfunctions_target(
+            arn, payload, region, account_id
+        )
     elif ":logs:" in arn:
-        logger.info(f"EventBridge → CloudWatch Logs: {arn}")
+        _invoke_logs_target(arn, payload, region, account_id)
+    elif ":ecs:" in arn:
+        _invoke_ecs_target(arn, payload, region, account_id)
+    elif ":events:" in arn:
+        _invoke_eventbridge_target(
+            arn, payload, region, account_id
+        )
+    elif ":execute-api:" in arn:
+        _invoke_apigateway_target(
+            arn, payload, region, account_id
+        )
+    elif ":codebuild:" in arn:
+        _invoke_simulated_target(
+            "codebuild", arn, payload, region, account_id
+        )
+    elif ":codepipeline:" in arn:
+        _invoke_simulated_target(
+            "codepipeline", arn, payload, region, account_id
+        )
+    elif ":batch:" in arn:
+        _invoke_simulated_target(
+            "batch", arn, payload, region, account_id
+        )
+    elif ":ssm:" in arn:
+        _invoke_simulated_target(
+            "ssm", arn, payload, region, account_id
+        )
+    elif ":redshift:" in arn:
+        _invoke_simulated_target(
+            "redshift", arn, payload, region, account_id
+        )
+    elif ":sagemaker:" in arn:
+        _invoke_simulated_target(
+            "sagemaker", arn, payload, region, account_id
+        )
+    elif ":inspector:" in arn:
+        _invoke_simulated_target(
+            "inspector", arn, payload, region, account_id
+        )
     else:
-        logger.warning(f"Unsupported EventBridge target type: {arn}")
+        logger.warning(
+            "Unsupported EventBridge target type: %s", arn
+        )
+        _log_invocation("unsupported", arn, payload)
 
 
-def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
+def _invoke_lambda_target(
+    arn: str, payload: str, region: str, account_id: str
+):
     """Invoke a Lambda function from EventBridge.
 
-    Uses async dispatch via thread pool to avoid deadlocking the event loop
-    when the Lambda function calls back to the server.
+    Uses async dispatch via thread pool to avoid deadlocking the
+    event loop when the Lambda function calls back to the server.
     """
-    from robotocore.services.lambda_.invoke import invoke_lambda_async
+    from robotocore.services.lambda_.invoke import (
+        invoke_lambda_async,
+    )
 
-    event = json.loads(payload) if isinstance(payload, str) else payload
+    event = (
+        json.loads(payload) if isinstance(payload, str) else payload
+    )
 
     def _on_complete(result, error_type, logs):
-        invocation_result = {"result": result, "error_type": error_type, "logs": logs}
+        invocation_result = {
+            "result": result,
+            "error_type": error_type,
+            "logs": logs,
+        }
         _log_invocation("lambda", arn, payload, invocation_result)
 
-    invoke_lambda_async(arn, event, region, account_id, callback=_on_complete)
+    invoke_lambda_async(
+        arn, event, region, account_id, callback=_on_complete
+    )
 
 
-def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
+def _invoke_sqs_target(
+    arn: str, payload: str, region: str, account_id: str
+):
     """Send a message to an SQS queue from EventBridge."""
     import hashlib
 
@@ -373,7 +701,9 @@ def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
     store = _get_store(region)
     queue = store.get_queue(queue_name)
     if not queue:
-        logger.error(f"EventBridge: SQS queue not found: {queue_name}")
+        logger.error(
+            "EventBridge: SQS queue not found: %s", queue_name
+        )
         return
 
     msg = SqsMessage(
@@ -383,30 +713,307 @@ def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
     )
     queue.put(msg)
     _log_invocation("sqs", arn, payload)
-    logger.info(f"EventBridge → SQS: {queue_name}")
+    logger.info("EventBridge -> SQS: %s", queue_name)
 
 
-def _invoke_sns_target(arn: str, payload: str, region: str, account_id: str):
+def _invoke_sns_target(
+    arn: str, payload: str, region: str, account_id: str
+):
     """Publish to an SNS topic from EventBridge."""
     from robotocore.services.sns.provider import _get_store
 
     store = _get_store(region)
     topic = store.get_topic(arn)
     if not topic:
-        logger.error(f"EventBridge: SNS topic not found: {arn}")
+        logger.error("EventBridge: SNS topic not found: %s", arn)
         return
 
-    # Deliver to subscribers
-    from robotocore.services.sns.provider import _deliver_to_subscriber, _new_id
+    from robotocore.services.sns.provider import (
+        _deliver_to_subscriber,
+        _new_id,
+    )
 
     message_id = _new_id()
     for sub in topic.subscriptions:
         if sub.confirmed:
             _deliver_to_subscriber(
-                sub, payload, "EventBridge Notification", {}, message_id, arn, region
+                sub,
+                payload,
+                "EventBridge Notification",
+                {},
+                message_id,
+                arn,
+                region,
             )
     _log_invocation("sns", arn, payload)
-    logger.info(f"EventBridge → SNS: {arn}")
+    logger.info("EventBridge -> SNS: %s", arn)
+
+
+def _invoke_kinesis_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Put a record to a Kinesis stream from EventBridge."""
+    from robotocore.services.kinesis.models import _get_store
+
+    stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]
+    store = _get_store(region)
+    stream = store.streams.get(stream_name)
+    if not stream:
+        logger.error(
+            "EventBridge: Kinesis stream not found: %s",
+            stream_name,
+        )
+        _log_invocation("kinesis", arn, payload, {"error": "stream_not_found"})
+        return
+
+    data = payload.encode("utf-8")
+    partition_key = f"eventbridge-{uuid.uuid4().hex[:8]}"
+    stream.put_record(partition_key, data)
+    _log_invocation("kinesis", arn, payload)
+    logger.info("EventBridge -> Kinesis: %s", stream_name)
+
+
+def _invoke_firehose_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Put a record to a Firehose delivery stream."""
+    from robotocore.services.firehose import provider as fh
+
+    stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]
+
+    with fh._lock:
+        if stream_name not in fh._delivery_streams:
+            logger.error(
+                "EventBridge: Firehose stream not found: %s",
+                stream_name,
+            )
+            _log_invocation(
+                "firehose", arn, payload,
+                {"error": "stream_not_found"},
+            )
+            return
+        fh._stream_buffers.setdefault(stream_name, []).append(
+            payload.encode("utf-8")
+        )
+
+    _log_invocation("firehose", arn, payload)
+    logger.info("EventBridge -> Firehose: %s", stream_name)
+
+
+def _invoke_stepfunctions_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Start a Step Functions execution from EventBridge."""
+    from robotocore.services.stepfunctions import provider as sfn
+
+    with sfn._exec_lock:
+        sm = sfn._state_machines.get(arn)
+    if not sm:
+        logger.error(
+            "EventBridge: State machine not found: %s", arn
+        )
+        _log_invocation(
+            "stepfunctions", arn, payload,
+            {"error": "state_machine_not_found"},
+        )
+        return
+
+    # Start execution via the provider
+    try:
+        result = sfn._start_execution(
+            {
+                "stateMachineArn": arn,
+                "name": f"eb-{uuid.uuid4().hex[:8]}",
+                "input": payload,
+            },
+            region,
+            account_id,
+        )
+        _log_invocation("stepfunctions", arn, payload, result)
+    except Exception:
+        logger.exception(
+            "EventBridge: Failed to start execution: %s", arn
+        )
+        _log_invocation(
+            "stepfunctions", arn, payload,
+            {"error": "execution_failed"},
+        )
+        raise
+    logger.info("EventBridge -> Step Functions: %s", arn)
+
+
+def _invoke_logs_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Put a log event to CloudWatch Logs from EventBridge."""
+    try:
+        from moto.backends import get_backend
+
+        logs_backend = get_backend("logs")[account_id][region]
+        # Extract log group from ARN:
+        # arn:aws:logs:region:account:log-group:name
+        parts = arn.split(":")
+        log_group_name = ""
+        for i, part in enumerate(parts):
+            if part == "log-group" and i + 1 < len(parts):
+                log_group_name = ":".join(parts[i + 1 :])
+                # Strip trailing :* if present
+                if log_group_name.endswith(":*"):
+                    log_group_name = log_group_name[:-2]
+                break
+
+        if not log_group_name:
+            log_group_name = "/aws/events/default"
+
+        # Create log group if not exists (best effort)
+        try:
+            logs_backend.create_log_group(
+                log_group_name, {}
+            )
+        except Exception:
+            pass  # already exists
+
+        stream_name = f"eventbridge-{uuid.uuid4().hex[:8]}"
+        try:
+            logs_backend.create_log_stream(
+                log_group_name, stream_name
+            )
+        except Exception:
+            pass
+
+        logs_backend.put_log_events(
+            log_group_name,
+            stream_name,
+            [
+                {
+                    "timestamp": int(time.time() * 1000),
+                    "message": payload,
+                }
+            ],
+        )
+        _log_invocation("logs", arn, payload)
+    except Exception:
+        logger.exception(
+            "EventBridge: Failed to put log events: %s", arn
+        )
+        _log_invocation(
+            "logs", arn, payload, {"error": "log_put_failed"}
+        )
+        raise
+    logger.info("EventBridge -> CloudWatch Logs: %s", arn)
+
+
+def _invoke_ecs_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Simulate an ECS RunTask from EventBridge (log only)."""
+    _log_invocation("ecs", arn, payload)
+    logger.info("EventBridge -> ECS RunTask (simulated): %s", arn)
+
+
+def _invoke_eventbridge_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Forward event to another EventBridge bus."""
+    # Extract bus name from ARN
+    bus_name = arn.rsplit("/", 1)[-1] if "/" in arn else "default"
+    store = _get_store(region, account_id)
+    bus = store.get_bus(bus_name)
+    if not bus:
+        logger.error(
+            "EventBridge: Target bus not found: %s", bus_name
+        )
+        _log_invocation(
+            "events", arn, payload,
+            {"error": "bus_not_found"},
+        )
+        return
+
+    event = (
+        json.loads(payload) if isinstance(payload, str) else payload
+    )
+    for rule in bus.rules.values():
+        if rule.matches_event(event):
+            _dispatch_to_targets(
+                rule, event, region, account_id, store
+            )
+    _log_invocation("events", arn, payload)
+    logger.info(
+        "EventBridge -> EventBridge bus: %s", bus_name
+    )
+
+
+def _invoke_apigateway_target(
+    arn: str, payload: str, region: str, account_id: str
+):
+    """Simulate an API Gateway invocation (log only)."""
+    _log_invocation("apigateway", arn, payload)
+    logger.info(
+        "EventBridge -> API Gateway (simulated): %s", arn
+    )
+
+
+def _invoke_simulated_target(
+    service: str,
+    arn: str,
+    payload: str,
+    region: str,
+    account_id: str,
+):
+    """Simulated target invocation — log only."""
+    _log_invocation(service, arn, payload)
+    logger.info(
+        "EventBridge -> %s (simulated): %s", service, arn
+    )
+
+
+# --- Dead Letter Queue ---
+
+
+def _send_to_dlq(
+    dlq_config: dict,
+    event: dict,
+    target,
+    rule,
+    exception: Exception,
+    region: str,
+    account_id: str,
+):
+    """Send failed event to DLQ (SQS queue)."""
+    import hashlib
+
+    dlq_arn = dlq_config.get("Arn", "")
+    if not dlq_arn or ":sqs:" not in dlq_arn:
+        return
+
+    from robotocore.services.sqs.models import SqsMessage
+    from robotocore.services.sqs.provider import _get_store
+
+    queue_name = dlq_arn.rsplit(":", 1)[-1]
+    sqs_store = _get_store(region)
+    queue = sqs_store.get_queue(queue_name)
+    if not queue:
+        logger.error(
+            "EventBridge DLQ: queue not found: %s", queue_name
+        )
+        return
+
+    dlq_body = json.dumps(
+        {
+            "event": event,
+            "rule": rule.name,
+            "target": target.target_id,
+            "error": str(exception),
+        }
+    )
+    msg = SqsMessage(
+        message_id=str(uuid.uuid4()),
+        body=dlq_body,
+        md5_of_body=hashlib.md5(dlq_body.encode()).hexdigest(),
+    )
+    queue.put(msg)
+    _log_invocation("dlq", dlq_arn, dlq_body)
+    logger.info("EventBridge -> DLQ: %s", queue_name)
 
 
 # --- Response helpers ---
@@ -424,7 +1031,11 @@ def _json(status_code: int, data) -> Response:
 
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
-    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
+    return Response(
+        content=body,
+        status_code=status,
+        media_type="application/x-amz-json-1.1",
+    )
 
 
 _ACTION_MAP = {
@@ -445,4 +1056,10 @@ _ACTION_MAP = {
     "TagResource": _tag_resource,
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tag_resource,
+    "CreateArchive": _create_archive,
+    "DescribeArchive": _describe_archive,
+    "ListArchives": _list_archives,
+    "DeleteArchive": _delete_archive,
+    "StartReplay": _start_replay,
+    "DescribeReplay": _describe_replay,
 }
