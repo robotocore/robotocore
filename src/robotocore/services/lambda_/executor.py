@@ -18,6 +18,46 @@ import zipfile
 from dataclasses import dataclass, field
 
 
+def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
+    """Extract layer zip bytes from a Moto LambdaFunction's layers."""
+    layer_zips = []
+    layers = getattr(fn, "layers", None) or []
+    if not layers:
+        return layer_zips
+
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
+        backend = get_backend("lambda")[acct][region]
+
+        for layer_ref in layers:
+            layer_arn = layer_ref if isinstance(layer_ref, str) else getattr(layer_ref, "arn", str(layer_ref))
+            try:
+                # Parse layer ARN: arn:aws:lambda:region:account:layer:name:version
+                parts = layer_arn.split(":")
+                if len(parts) >= 8:
+                    layer_name = parts[6]
+                    version = int(parts[7])
+                    layer_ver = backend.get_layer_version(layer_name, version)
+                    if layer_ver and hasattr(layer_ver, "code"):
+                        code = layer_ver.code
+                        if isinstance(code, dict) and "ZipFile" in code:
+                            zip_data = code["ZipFile"]
+                            if isinstance(zip_data, str):
+                                zip_data = base64.b64decode(zip_data)
+                            layer_zips.append(zip_data)
+                        elif hasattr(layer_ver, "code_bytes") and layer_ver.code_bytes:
+                            layer_zips.append(layer_ver.code_bytes)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return layer_zips
+
+
 @dataclass
 class LambdaContext:
     """Mock AWS Lambda context object."""
@@ -47,6 +87,7 @@ def execute_python_handler(
     env_vars: dict | None = None,
     region: str = "us-east-1",
     account_id: str = "123456789012",
+    layer_zips: list[bytes] | None = None,
 ) -> tuple[dict | str | None, str | None, str]:
     """Execute a Python Lambda handler in-process.
 
@@ -63,6 +104,15 @@ def execute_python_handler(
     # Extract zip to temp dir
     tmpdir = tempfile.mkdtemp(prefix="lambda_")
     try:
+        # Extract layers first (so function code can override layer files)
+        if layer_zips:
+            for layer_zip in layer_zips:
+                try:
+                    with zipfile.ZipFile(io.BytesIO(layer_zip)) as zf:
+                        zf.extractall(tmpdir)
+                except Exception:
+                    pass  # Skip invalid layer zips
+
         with zipfile.ZipFile(io.BytesIO(code_zip)) as zf:
             zf.extractall(tmpdir)
 
@@ -76,6 +126,10 @@ def execute_python_handler(
         os.environ["AWS_DEFAULT_REGION"] = region
         os.environ["AWS_ACCOUNT_ID"] = account_id
         sys.path.insert(0, tmpdir)
+        # AWS Lambda layers put Python code in python/ subdirectory
+        python_subdir = os.path.join(tmpdir, "python")
+        if os.path.isdir(python_subdir):
+            sys.path.insert(1, python_subdir)
 
         # Build context
         context = LambdaContext(

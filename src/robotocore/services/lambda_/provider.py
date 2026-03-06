@@ -330,8 +330,9 @@ async def _handle_layers(parts: list[str], method: str, body: bytes, request: Re
     backend = _get_moto_backend(account_id, region)
 
     if len(parts) == 1 and method == "GET":
-        layers = backend.list_layers()
-        return _json(200, {"Layers": [_layer_dict(l) for l in layers]})
+        # list_layers() returns dicts from Layer.to_dict() already
+        layers = list(backend.list_layers())
+        return _json(200, {"Layers": layers})
 
     if len(parts) >= 2:
         layer_name = parts[1]
@@ -341,7 +342,8 @@ async def _handle_layers(parts: list[str], method: str, body: bytes, request: Re
             if len(parts) == 3:
                 if method == "POST":
                     spec = json.loads(body) if body else {}
-                    layer_ver = backend.publish_layer_version(layer_name, spec)
+                    spec["LayerName"] = layer_name
+                    layer_ver = backend.publish_layer_version(spec)
                     return _json(201, _layer_version_dict(layer_ver))
                 elif method == "GET":
                     versions = backend.list_layer_versions(layer_name)

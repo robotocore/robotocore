@@ -284,3 +284,52 @@ class TestLambdaAdvanced:
         assert tags["env"] == "test"
         assert tags["project"] == "robotocore"
         lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaLayers:
+    def test_publish_layer_version(self, lam):
+        """Test creating a Lambda layer."""
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/helper.py", 'LAYER_VALUE = "from-layer"')
+        layer_bytes = layer_code.getvalue()
+
+        layer_name = f"test-layer-{uuid.uuid4().hex[:8]}"
+        response = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_bytes},
+            CompatibleRuntimes=["python3.12"],
+        )
+        assert response["Version"] == 1
+        assert layer_name in response["LayerVersionArn"]
+
+    def test_list_layers(self, lam):
+        """Test listing Lambda layers."""
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/util.py", "X = 1")
+
+        layer_name = f"list-layer-{uuid.uuid4().hex[:8]}"
+        lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_code.getvalue()},
+            CompatibleRuntimes=["python3.12"],
+        )
+        response = lam.list_layers()
+        layer_names = [l["LayerName"] for l in response["Layers"]]
+        assert layer_name in layer_names
+
+    def test_list_layer_versions(self, lam):
+        """Test listing versions of a layer."""
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/mod.py", "Y = 2")
+
+        layer_name = f"ver-layer-{uuid.uuid4().hex[:8]}"
+        lam.publish_layer_version(LayerName=layer_name, Content={"ZipFile": layer_code.getvalue()})
+        lam.publish_layer_version(LayerName=layer_name, Content={"ZipFile": layer_code.getvalue()})
+
+        response = lam.list_layer_versions(LayerName=layer_name)
+        versions = [v["Version"] for v in response["LayerVersions"]]
+        assert 1 in versions
+        assert 2 in versions
