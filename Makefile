@@ -1,12 +1,20 @@
-.PHONY: test unit-test compat-test lint format docker-build docker-run parity-report clean
+.PHONY: test test-all unit-test integration-test compat-test lint format docker-build docker-run parity-report clean
 
-# Run all tests (unit only, no server needed)
+# Run all tests (unit + integration, no server needed)
 test:
-	uv run pytest tests/unit/ -v
+	uv run pytest tests/unit/ tests/integration/ -v
 
 # Run unit tests
 unit-test:
 	uv run pytest tests/unit/ -v
+
+# Run integration tests
+integration-test:
+	uv run pytest tests/integration/ -v
+
+# Run all tests (unit + integration, no server needed)
+test-all:
+	uv run pytest tests/unit/ tests/integration/ -v
 
 # Run compatibility tests (requires running server on port 4566)
 compat-test:
