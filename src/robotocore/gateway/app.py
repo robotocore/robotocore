@@ -17,6 +17,7 @@ from robotocore.gateway.handlers import (
 from robotocore.gateway.router import route_to_service
 from robotocore.providers.moto_bridge import forward_to_moto
 from robotocore.services.cloudformation.provider import handle_cloudformation_request
+from robotocore.services.dynamodb.provider import handle_dynamodb_request
 from robotocore.services.dynamodbstreams.provider import handle_dynamodbstreams_request
 from robotocore.services.events.provider import handle_events_request
 from robotocore.services.firehose.provider import handle_firehose_request
@@ -31,6 +32,7 @@ from robotocore.services.stepfunctions.provider import handle_stepfunctions_requ
 # Services with native providers (bypass Moto)
 NATIVE_PROVIDERS = {
     "cloudformation": handle_cloudformation_request,
+    "dynamodb": handle_dynamodb_request,
     "dynamodbstreams": handle_dynamodbstreams_request,
     "events": handle_events_request,
     "firehose": handle_firehose_request,
@@ -60,6 +62,51 @@ _handler_chain = _build_handler_chain()
 
 async def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "running", "services": "all"})
+
+
+async def save_state(request: Request) -> JSONResponse:
+    """Save emulator state to disk (Cloud Pods-like feature)."""
+    from robotocore.state.manager import get_state_manager
+
+    body = await request.body()
+    params = {}
+    if body:
+        import json
+        params = json.loads(body)
+
+    manager = get_state_manager()
+    path = params.get("path") or manager.state_dir
+    if not path:
+        return JSONResponse({"error": "No state directory configured. Set ROBOTOCORE_STATE_DIR or pass 'path'."}, status_code=400)
+
+    saved_path = manager.save(path)
+    return JSONResponse({"status": "saved", "path": saved_path})
+
+
+async def load_state(request: Request) -> JSONResponse:
+    """Load emulator state from disk."""
+    from robotocore.state.manager import get_state_manager
+
+    body = await request.body()
+    params = {}
+    if body:
+        import json
+        params = json.loads(body)
+
+    manager = get_state_manager()
+    path = params.get("path") or manager.state_dir
+    if not path:
+        return JSONResponse({"error": "No state directory configured. Set ROBOTOCORE_STATE_DIR or pass 'path'."}, status_code=400)
+
+    success = manager.load(path)
+    return JSONResponse({"status": "loaded" if success else "no_state_found", "path": str(path)})
+
+
+async def reset_state(request: Request) -> JSONResponse:
+    """Reset all emulator state."""
+    from robotocore.state.manager import get_state_manager
+    get_state_manager().reset()
+    return JSONResponse({"status": "reset"})
 
 
 async def handle_aws_request(request: Request) -> Response:
@@ -97,17 +144,39 @@ async def handle_aws_request(request: Request) -> Response:
 # Health and management endpoints
 management_routes = [
     Route("/_robotocore/health", health, methods=["GET"]),
+    Route("/_robotocore/state/save", save_state, methods=["POST"]),
+    Route("/_robotocore/state/load", load_state, methods=["POST"]),
+    Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
 ]
 
 def _start_background_engines():
     """Start background engines for cross-service integrations."""
+    import os
     from robotocore.services.lambda_.event_source import get_engine
     get_engine().start()
+    from robotocore.services.cloudwatch.alarm_scheduler import get_alarm_scheduler
+    get_alarm_scheduler().start()
+
+    # Auto-load state if configured
+    if os.environ.get("ROBOTOCORE_STATE_DIR"):
+        from robotocore.state.manager import get_state_manager
+        get_state_manager().load()
+
+
+def _shutdown():
+    """Shutdown hook — auto-save state if configured."""
+    import os
+    if os.environ.get("ROBOTOCORE_PERSIST", "0") == "1":
+        from robotocore.state.manager import get_state_manager
+        manager = get_state_manager()
+        if manager.state_dir:
+            manager.save()
 
 
 app = Starlette(
     routes=management_routes,
     on_startup=[_start_background_engines],
+    on_shutdown=[_shutdown],
 )
 
 

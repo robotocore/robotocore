@@ -1,8 +1,9 @@
 """Enhanced S3 provider — wraps Moto's S3 and adds event notifications."""
 
-import json
 import re
+from urllib.parse import urlencode
 
+from starlette.datastructures import QueryParams
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -18,15 +19,125 @@ from robotocore.services.s3.notifications import (
 # Path style: /<bucket>/<key>
 _PATH_RE = re.compile(r"^/([^/]+)(?:/(.+))?$")
 
+# SigV4 presigned URL query parameters
+_SIGV4_PARAMS = {
+    "X-Amz-Algorithm",
+    "X-Amz-Credential",
+    "X-Amz-Date",
+    "X-Amz-Expires",
+    "X-Amz-SignedHeaders",
+    "X-Amz-Signature",
+    "X-Amz-Security-Token",
+}
+
+# SigV2 presigned URL query parameters
+_SIGV2_PARAMS = {
+    "AWSAccessKeyId",
+    "Signature",
+    "Expires",
+}
+
+# All signature-related parameters to strip
+_ALL_SIG_PARAMS = _SIGV4_PARAMS | _SIGV2_PARAMS
+
+
+def _is_presigned_url(query_params: QueryParams) -> bool:
+    """Check if the request is a presigned URL request."""
+    return (
+        "X-Amz-Signature" in query_params
+        or "Signature" in query_params
+    )
+
+
+def _strip_presigned_params(request: Request, body: bytes | None = None) -> Request:
+    """Return a modified request with presigned URL params stripped.
+
+    Converts X-Amz-Security-Token query param into a header (Moto expects it there)
+    and removes all signature-related query params so Moto sees a clean request.
+    """
+    scope = dict(request.scope)
+
+    # Collect non-signature query params
+    clean_params = []
+    security_token = None
+    for key, value in request.query_params.multi_items():
+        if key in _ALL_SIG_PARAMS:
+            if key == "X-Amz-Security-Token":
+                security_token = value
+            continue
+        clean_params.append((key, value))
+
+    # Rebuild query string
+    new_query_string = urlencode(clean_params).encode("utf-8") if clean_params else b""
+    scope["query_string"] = new_query_string
+
+    # If there was a security token, inject it as a header
+    if security_token:
+        headers = list(scope.get("headers", []))
+        headers.append((b"x-amz-security-token", security_token.encode("utf-8")))
+        scope["headers"] = headers
+
+    # Inject a fake Authorization header so Moto can extract region/credentials
+    if not request.headers.get("authorization"):
+        credential = request.query_params.get("X-Amz-Credential", "")
+        if credential:
+            # SigV4 presigned URL
+            signed_headers = request.query_params.get("X-Amz-SignedHeaders", "host")
+            auth_value = (
+                f"AWS4-HMAC-SHA256 Credential={credential}, "
+                f"SignedHeaders={signed_headers}, "
+                f"Signature=presigned-placeholder"
+            )
+        else:
+            # SigV2 presigned URL — inject a minimal SigV4 auth header
+            # so Moto can route to the right backend
+            access_key = request.query_params.get("AWSAccessKeyId", "testing")
+            auth_value = (
+                f"AWS4-HMAC-SHA256 Credential={access_key}/20260101/us-east-1/s3/aws4_request, "
+                f"SignedHeaders=host, "
+                f"Signature=presigned-placeholder"
+            )
+
+        headers = list(scope.get("headers", []))
+        headers.append((b"authorization", auth_value.encode("utf-8")))
+        scope["headers"] = headers
+
+    # Ensure Content-Type header exists for PUT/POST (some ASGI servers skip body without it)
+    method = scope.get("method", "GET").upper()
+    if method in ("PUT", "POST"):
+        has_ct = any(k == b"content-type" for k, v in scope.get("headers", []))
+        if not has_ct:
+            headers = list(scope.get("headers", []))
+            headers.append((b"content-type", b"application/octet-stream"))
+            scope["headers"] = headers
+
+    # If we have cached body bytes, set _body directly on the new Request
+    if body is not None:
+        new_req = Request(scope, request.receive)
+        new_req._body = body
+        return new_req
+
+    return Request(scope, request.receive)
+
 
 async def handle_s3_request(request: Request, region: str, account_id: str) -> Response:
     """Handle S3 request: delegate to Moto, then fire notifications on mutations."""
     path = request.url.path
     method = request.method.upper()
 
+    # Handle presigned URL requests by stripping signature params
+    if _is_presigned_url(request.query_params):
+        # Cache the body before creating a new Request, since receive() can only be called once
+        body = await request.body()
+        request = _strip_presigned_params(request, body)
+
     # Handle notification configuration API
     query = str(request.url.query)
-    if query == "notification" or query.startswith("notification=") or "notification" in query.split("&"):
+    if (
+        query == "notification"
+        or query.startswith("notification=")
+        or "notification" in query.split("&")
+    ):
         return await _handle_notification_config(request, method, path)
 
     # Forward to Moto for actual S3 operation

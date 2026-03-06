@@ -3,6 +3,8 @@
 import json
 import os
 import time
+from urllib.request import Request as URLRequest
+from urllib.request import urlopen
 
 import boto3
 import pytest
@@ -261,3 +263,71 @@ class TestS3EventNotifications:
         s3.delete_object(Bucket=bucket_name, Key="images/photo.jpg")
         s3.delete_bucket(Bucket=bucket_name)
         sqs.delete_queue(QueueUrl=q_url)
+
+
+class TestS3PresignedUrls:
+    def test_presigned_get_url(self, s3, bucket):
+        """Test generating and using a presigned GET URL."""
+        s3.put_object(Bucket=bucket, Key="presigned-get.txt", Body=b"hello presigned")
+
+        url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": "presigned-get.txt"},
+            ExpiresIn=3600,
+        )
+        # The URL should point at our local endpoint
+        assert ENDPOINT_URL.split("://")[1] in url
+
+        req = URLRequest(url, method="GET")
+        resp = urlopen(req)
+        assert resp.status == 200
+        assert resp.read() == b"hello presigned"
+
+    def test_presigned_put_url(self, s3, bucket):
+        """Test generating and using a presigned PUT URL."""
+        url = s3.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": bucket, "Key": "presigned-upload.txt"},
+            ExpiresIn=3600,
+        )
+
+        req = URLRequest(url, data=b"uploaded via presigned", method="PUT")
+        req.add_header("Content-Type", "application/octet-stream")
+        resp = urlopen(req)
+        assert resp.status == 200
+
+        obj = s3.get_object(Bucket=bucket, Key="presigned-upload.txt")
+        assert obj["Body"].read() == b"uploaded via presigned"
+
+    def test_presigned_head_url(self, s3, bucket):
+        """Test generating and using a presigned HEAD URL."""
+        s3.put_object(Bucket=bucket, Key="presigned-head.txt", Body=b"check me")
+
+        url = s3.generate_presigned_url(
+            "head_object",
+            Params={"Bucket": bucket, "Key": "presigned-head.txt"},
+            ExpiresIn=3600,
+        )
+
+        req = URLRequest(url, method="HEAD")
+        resp = urlopen(req)
+        assert resp.status == 200
+        assert resp.headers.get("Content-Length") == "8"
+
+    def test_presigned_delete_url(self, s3, bucket):
+        """Test generating and using a presigned DELETE URL."""
+        s3.put_object(Bucket=bucket, Key="presigned-delete.txt", Body=b"delete me")
+
+        url = s3.generate_presigned_url(
+            "delete_object",
+            Params={"Bucket": bucket, "Key": "presigned-delete.txt"},
+            ExpiresIn=3600,
+        )
+
+        req = URLRequest(url, method="DELETE")
+        resp = urlopen(req)
+        assert resp.status == 204
+
+        # Verify object is gone
+        response = s3.list_objects_v2(Bucket=bucket, Prefix="presigned-delete.txt")
+        assert response.get("Contents") is None or len(response["Contents"]) == 0

@@ -89,12 +89,27 @@ def route_to_service(request: Request) -> str | None:
         service = match.group(1)
         return SERVICE_NAME_ALIASES.get(service, service)
 
-    # 4. Check Host header
+    # 4. Check X-Amz-Credential query parameter (SigV4 presigned URLs)
+    credential = request.query_params.get("X-Amz-Credential", "")
+    if credential:
+        # Format: <access-key>/<date>/<region>/<service>/aws4_request
+        parts = credential.split("/")
+        if len(parts) >= 4:
+            service = parts[3]
+            return SERVICE_NAME_ALIASES.get(service, service)
+
+    # 4b. Check for SigV2 presigned URLs (AWSAccessKeyId + Signature)
+    if request.query_params.get("AWSAccessKeyId") and request.query_params.get("Signature"):
+        # SigV2 presigned URLs don't encode the service name.
+        # Infer from path — S3 is the only service that commonly uses SigV2 presigned URLs.
+        return "s3"
+
+    # 5. Check Host header
     host = request.headers.get("host", "")
     if ".s3." in host or host.startswith("s3.") or host.startswith("s3-"):
         return "s3"
 
-    # 5. Query string action parameter (used by EC2, SQS, SNS, etc.)
+    # 6. Query string action parameter (used by EC2, SQS, SNS, etc.)
     action = request.query_params.get("Action")
     if action:
         # These services use query protocol with Action parameter
