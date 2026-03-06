@@ -105,10 +105,58 @@ app = Starlette(
 )
 
 
+async def handle_execute_api(request: Request, rest_api_id: str, stage: str, proxy_path: str) -> Response:
+    """Handle API Gateway execute-api requests (invoke deployed APIs)."""
+    import re
+    from robotocore.services.apigateway.executor import execute_api_request
+
+    body = await request.body()
+    headers = dict(request.headers)
+    query_params = dict(request.query_params)
+
+    # Extract region/account from auth header
+    region = "us-east-1"
+    account_id = "123456789012"
+    auth = request.headers.get("authorization", "")
+    region_match = re.search(r"Credential=[^/]+/\d{8}/([^/]+)/", auth)
+    if region_match:
+        region = region_match.group(1)
+
+    status_code, resp_headers, resp_body = execute_api_request(
+        rest_api_id=rest_api_id,
+        stage=stage,
+        method=request.method,
+        path="/" + proxy_path if proxy_path else "/",
+        body=body,
+        headers=headers,
+        query_params=query_params,
+        region=region,
+        account_id=account_id,
+    )
+    return Response(
+        content=resp_body,
+        status_code=status_code,
+        headers=resp_headers,
+        media_type="application/json",
+    )
+
+
 class AWSRoutingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path.startswith("/_robotocore/"):
             return await call_next(request)
+
+        # Check for API Gateway execute-api path: /restapis/{id}/{stage}/_user_request_/{path}
+        import re
+        exec_match = re.match(r'^/restapis/([^/]+)/([^/]+)/_user_request_/?(.*)', request.url.path)
+        if exec_match:
+            return await handle_execute_api(
+                request,
+                rest_api_id=exec_match.group(1),
+                stage=exec_match.group(2),
+                proxy_path=exec_match.group(3),
+            )
+
         return await handle_aws_request(request)
 
 
