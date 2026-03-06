@@ -2,13 +2,27 @@
 
 This module exposes `notify_table_change()` which should be called when
 DynamoDB put_item/delete_item/update_item operations occur on tables
-with streaming enabled. For now it is a public interface that will be
-wired up when DynamoDB interceptors are added.
+with streaming enabled.
+
+It also exposes `get_store()` so the Lambda ESM engine can poll for records.
 """
 
 import logging
+import threading
+
+from robotocore.services.dynamodbstreams.models import DynamoDBStreamsStore
 
 logger = logging.getLogger(__name__)
+
+_stores: dict[str, DynamoDBStreamsStore] = {}
+_stores_lock = threading.Lock()
+
+
+def get_store(region: str = "us-east-1") -> DynamoDBStreamsStore:
+    with _stores_lock:
+        if region not in _stores:
+            _stores[region] = DynamoDBStreamsStore()
+        return _stores[region]
 
 
 def notify_table_change(
@@ -31,9 +45,6 @@ def notify_table_change(
         region: AWS region.
         account_id: AWS account ID.
     """
-    from robotocore.services.dynamodbstreams.models import DynamoDBStreamsStore
-
-    # Look up the stream ARN for this table from Moto's DynamoDB backend
     try:
         from moto.backends import get_backend
         from moto.core import DEFAULT_ACCOUNT_ID
@@ -48,15 +59,17 @@ def notify_table_change(
         stream_arn = f"{table.table_arn}/stream/{table.latest_stream_label}"
         view_type = table.stream_specification.get("StreamViewType", "NEW_AND_OLD_IMAGES")
 
-        # For now, log the change. The actual stream records are already
-        # captured by Moto's StreamShard.add() during DynamoDB operations.
-        # This hook provides an additional capture point for future use
-        # (e.g., Lambda event source mapping polling).
-        logger.debug(
-            "DynamoDB stream change: table=%s event=%s stream=%s",
-            table_name,
-            event_name,
-            stream_arn,
+        store = get_store(region)
+        store.record_change(
+            table_name=table_name,
+            event_name=event_name,
+            keys=keys,
+            new_image=new_image,
+            old_image=old_image,
+            region=region,
+            account_id=account_id,
+            stream_arn=stream_arn,
+            view_type=view_type,
         )
 
     except Exception:
