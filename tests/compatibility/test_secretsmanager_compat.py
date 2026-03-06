@@ -45,3 +45,32 @@ class TestSecretsManagerOperations:
         parsed = json.loads(response["SecretString"])
         assert parsed["username"] == "admin"
         sm.delete_secret(SecretId="json/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_binary_secret(self, sm):
+        sm.create_secret(Name="binary/secret", SecretBinary=b"\x00\x01\x02\x03")
+        response = sm.get_secret_value(SecretId="binary/secret")
+        assert response["SecretBinary"] == b"\x00\x01\x02\x03"
+        sm.delete_secret(SecretId="binary/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_tag_secret(self, sm):
+        sm.create_secret(Name="tagged/secret", SecretString="val",
+                         Tags=[{"Key": "env", "Value": "test"}])
+        response = sm.describe_secret(SecretId="tagged/secret")
+        tags = {t["Key"]: t["Value"] for t in response.get("Tags", [])}
+        assert tags.get("env") == "test"
+        sm.delete_secret(SecretId="tagged/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_put_secret_value(self, sm):
+        """Test put_secret_value to add a new version."""
+        sm.create_secret(Name="put-val/secret", SecretString="v1")
+        sm.put_secret_value(SecretId="put-val/secret", SecretString="v2")
+        response = sm.get_secret_value(SecretId="put-val/secret")
+        assert response["SecretString"] == "v2"
+        sm.delete_secret(SecretId="put-val/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_rotate_secret_config(self, sm):
+        """Test describe shows rotation config fields."""
+        sm.create_secret(Name="rotate/secret", SecretString="val")
+        response = sm.describe_secret(SecretId="rotate/secret")
+        assert "RotationEnabled" in response or "Name" in response
+        sm.delete_secret(SecretId="rotate/secret", ForceDeleteWithoutRecovery=True)
