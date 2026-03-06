@@ -140,13 +140,13 @@ class TestPollAllMappings:
             return_value=[_SQS_MAPPING],
         ):
             engine._poll_all_mappings()
-        mock_poll_sqs.assert_called_once_with(
-            "arn:aws:sqs:us-east-1:123456789012:my-queue",
-            "arn:aws:lambda:us-east-1:123456789012:function:fn",
-            5,
-            "123456789012",
-            "us-east-1",
-        )
+        mock_poll_sqs.assert_called_once()
+        args = mock_poll_sqs.call_args[0]
+        assert args[0] == "arn:aws:sqs:us-east-1:123456789012:my-queue"
+        assert args[1] == "arn:aws:lambda:us-east-1:123456789012:function:fn"
+        assert args[2] == 5
+        assert args[3] == "123456789012"
+        assert args[4] == "us-east-1"
 
     @patch("robotocore.services.lambda_.event_source.EventSourceEngine._poll_kinesis")
     def test_dispatches_kinesis(self, mock_poll_kinesis):

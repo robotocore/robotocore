@@ -1,21 +1,30 @@
 """Native Step Functions provider with ASL execution.
 
 Wraps Moto for state machine CRUD, uses native ASL interpreter for execution.
+Supports STANDARD and EXPRESS workflow types, callback patterns, and execution history.
 """
 
 import json
 import threading
 import time
 import uuid
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.services.stepfunctions.asl import ASLExecutionError, ASLExecutor
+from robotocore.services.stepfunctions.asl import (
+    ASLExecutionError,
+    ASLExecutor,
+    send_task_failure,
+    send_task_heartbeat,
+    send_task_success,
+)
 
 # In-memory execution store
 _executions: dict[str, dict] = {}
 _state_machines: dict[str, dict] = {}  # arn -> definition
+_execution_histories: dict[str, Any] = {}  # exec_arn -> ExecutionHistory
 _exec_lock = threading.Lock()
 
 
@@ -156,8 +165,8 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
 
     input_data = json.loads(input_str) if isinstance(input_str, str) else input_str
 
-    # Execute synchronously (for STANDARD type, real AWS is async but for testing sync is fine)
-    executor = ASLExecutor(sm["definition"], region, account_id)
+    # Execute synchronously
+    executor = ASLExecutor(sm["definition"], region, account_id, execution_arn=exec_arn)
     start_time = time.time()
 
     try:
@@ -182,15 +191,112 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
         "output": json.dumps(output) if output is not None else None,
         "error": error,
         "cause": cause,
+        "smType": sm.get("type", "STANDARD"),
     }
 
     with _exec_lock:
+        # EXPRESS executions are not stored in ListExecutions
         _executions[exec_arn] = exec_info
+        if executor.history:
+            _execution_histories[exec_arn] = executor.history
 
     return {
         "executionArn": exec_arn,
         "startDate": start_time,
     }
+
+
+def _start_sync_execution(params: dict, region: str, account_id: str) -> dict:
+    """StartSyncExecution — for EXPRESS workflows, returns result immediately."""
+    sm_arn = params.get("stateMachineArn", "")
+    name = params.get("name", str(uuid.uuid4()))
+    input_str = params.get("input", "{}")
+
+    with _exec_lock:
+        sm = _state_machines.get(sm_arn)
+    if not sm:
+        raise SfnError("StateMachineDoesNotExist", f"State machine not found: {sm_arn}")
+
+    if sm.get("type") != "EXPRESS":
+        raise SfnError(
+            "InvalidArn",
+            "StartSyncExecution is only supported for EXPRESS state machines",
+        )
+
+    exec_arn = f"{sm_arn.replace(':stateMachine:', ':express:')}:{name}"
+    input_data = json.loads(input_str) if isinstance(input_str, str) else input_str
+
+    executor = ASLExecutor(sm["definition"], region, account_id, execution_arn=exec_arn)
+    start_time = time.time()
+
+    try:
+        output = executor.execute(input_data)
+        status = "SUCCEEDED"
+        error = None
+        cause = None
+    except ASLExecutionError as e:
+        output = None
+        status = "FAILED"
+        error = e.error
+        cause = e.cause
+
+    stop_time = time.time()
+
+    # Store for history retrieval but not in ListExecutions
+    exec_info = {
+        "executionArn": exec_arn,
+        "stateMachineArn": sm_arn,
+        "name": name,
+        "status": status,
+        "startDate": start_time,
+        "stopDate": stop_time,
+        "input": input_str,
+        "output": json.dumps(output) if output is not None else None,
+        "error": error,
+        "cause": cause,
+        "smType": "EXPRESS",
+    }
+
+    with _exec_lock:
+        _executions[exec_arn] = exec_info
+        if executor.history:
+            _execution_histories[exec_arn] = executor.history
+
+    result = {
+        "executionArn": exec_arn,
+        "stateMachineArn": sm_arn,
+        "name": name,
+        "status": status,
+        "startDate": start_time,
+        "stopDate": stop_time,
+        "input": input_str,
+    }
+    if output is not None:
+        result["output"] = json.dumps(output)
+    if error:
+        result["error"] = error
+        result["cause"] = cause
+    return result
+
+
+def _start_execution_internal(
+    sm_arn: str, input_data: Any, region: str, account_id: str
+) -> dict:
+    """Internal helper for nested Step Functions execution from ASL."""
+    with _exec_lock:
+        sm = _state_machines.get(sm_arn)
+    if not sm:
+        return {"error": f"State machine not found: {sm_arn}"}
+
+    name = str(uuid.uuid4())
+    exec_arn = f"{sm_arn.replace(':stateMachine:', ':execution:')}:{name}"
+    executor = ASLExecutor(sm["definition"], region, account_id, execution_arn=exec_arn)
+
+    try:
+        output = executor.execute(input_data if isinstance(input_data, dict) else {})
+        return {"executionArn": exec_arn, "output": output}
+    except ASLExecutionError as e:
+        return {"executionArn": exec_arn, "error": e.error, "cause": e.cause}
 
 
 def _describe_execution(params: dict, region: str, account_id: str) -> dict:
@@ -223,6 +329,10 @@ def _stop_execution(params: dict, region: str, account_id: str) -> dict:
         if execution:
             execution["status"] = "ABORTED"
             execution["stopDate"] = time.time()
+            # Record abort in history
+            history = _execution_histories.get(exec_arn)
+            if history:
+                history.execution_aborted()
     return {"stopDate": time.time()}
 
 
@@ -230,7 +340,12 @@ def _list_executions(params: dict, region: str, account_id: str) -> dict:
     sm_arn = params.get("stateMachineArn", "")
     status_filter = params.get("statusFilter")
     with _exec_lock:
-        execs = [e for e in _executions.values() if e["stateMachineArn"] == sm_arn]
+        # EXPRESS executions don't appear in ListExecutions
+        execs = [
+            e
+            for e in _executions.values()
+            if e["stateMachineArn"] == sm_arn and e.get("smType") != "EXPRESS"
+        ]
     if status_filter:
         execs = [e for e in execs if e["status"] == status_filter]
     return {
@@ -249,8 +364,52 @@ def _list_executions(params: dict, region: str, account_id: str) -> dict:
 
 
 def _get_execution_history(params: dict, region: str, account_id: str) -> dict:
-    # Simplified history
-    return {"events": []}
+    exec_arn = params.get("executionArn", "")
+    reverse_order = params.get("reverseOrder", False)
+
+    with _exec_lock:
+        history = _execution_histories.get(exec_arn)
+
+    if not history:
+        return {"events": []}
+
+    return {"events": history.get_events(reverse_order=reverse_order)}
+
+
+def _send_task_success_op(params: dict, region: str, account_id: str) -> dict:
+    """SendTaskSuccess — complete a task waiting for callback."""
+    task_token = params.get("taskToken", "")
+    output = params.get("output", "{}")
+
+    if isinstance(output, str):
+        try:
+            output = json.loads(output)
+        except json.JSONDecodeError:
+            pass
+
+    if not send_task_success(task_token, output):
+        raise SfnError("TaskDoesNotExist", f"Task token not found: {task_token}")
+    return {}
+
+
+def _send_task_failure_op(params: dict, region: str, account_id: str) -> dict:
+    """SendTaskFailure — fail a task waiting for callback."""
+    task_token = params.get("taskToken", "")
+    error = params.get("error", "")
+    cause = params.get("cause", "")
+
+    if not send_task_failure(task_token, error, cause):
+        raise SfnError("TaskDoesNotExist", f"Task token not found: {task_token}")
+    return {}
+
+
+def _send_task_heartbeat_op(params: dict, region: str, account_id: str) -> dict:
+    """SendTaskHeartbeat — send heartbeat for a waiting task."""
+    task_token = params.get("taskToken", "")
+
+    if not send_task_heartbeat(task_token):
+        raise SfnError("TaskDoesNotExist", f"Task token not found: {task_token}")
+    return {}
 
 
 def _tag_resource(params: dict, region: str, account_id: str) -> dict:
@@ -290,10 +449,14 @@ _ACTION_MAP = {
     "ListStateMachines": _list_state_machines,
     "UpdateStateMachine": _update_state_machine,
     "StartExecution": _start_execution,
+    "StartSyncExecution": _start_sync_execution,
     "DescribeExecution": _describe_execution,
     "StopExecution": _stop_execution,
     "ListExecutions": _list_executions,
     "GetExecutionHistory": _get_execution_history,
+    "SendTaskSuccess": _send_task_success_op,
+    "SendTaskFailure": _send_task_failure_op,
+    "SendTaskHeartbeat": _send_task_heartbeat_op,
     "TagResource": _tag_resource,
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tags_for_resource,

@@ -2,6 +2,7 @@
 
 import base64
 import json
+import logging
 import threading
 import time
 import uuid
@@ -11,9 +12,21 @@ from starlette.responses import Response
 
 from robotocore.services.lambda_.runtimes import get_executor_for_runtime
 
+logger = logging.getLogger(__name__)
+
 # Native event source mapping store (bypasses Moto's validation)
 _esm_store: dict[str, dict] = {}  # uuid -> mapping config
 _esm_lock = threading.Lock()
+
+# Native provisioned concurrency store
+# key: (account_id, region, func_name, qualifier)
+_provisioned_concurrency: dict[tuple[str, str, str, str], dict] = {}
+_provisioned_lock = threading.Lock()
+
+# Native dead letter config store (Moto doesn't support it)
+# key: (account_id, region, func_name)
+_dlq_configs: dict[tuple[str, str, str], dict] = {}
+_dlq_lock = threading.Lock()
 
 
 def get_event_source_mappings() -> list[dict]:
@@ -37,16 +50,6 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
     body = await request.body()
 
     # Route based on path patterns (Lambda uses REST API)
-    # /2015-03-31/functions
-    # /2015-03-31/functions/{name}
-    # /2015-03-31/functions/{name}/invocations
-    # /2015-03-31/functions/{name}/configuration
-    # /2015-03-31/functions/{name}/versions
-    # /2015-03-31/functions/{name}/aliases
-    # /2015-03-31/functions/{name}/policy
-    # /2015-03-31/event-source-mappings
-    # /2015-03-31/layers
-
     parts = [p for p in path.split("/") if p]
     # Strip API version prefix (e.g., "2015-03-31")
     if parts and parts[0].startswith("20"):
@@ -85,6 +88,10 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
             return _error("ResourceNotFoundException", error_msg, 404)
         if "ResourceConflictException" in error_type or "FunctionAlreadyExists" in error_type:
             return _error("ResourceConflictException", error_msg, 409)
+        if "FunctionUrlConfigExists" in error_type:
+            return _error("ResourceConflictException", error_msg, 409)
+        if "FunctionUrlConfigNotFoundError" in error_type:
+            return _error("ResourceNotFoundException", error_msg, 404)
         if "InvalidParameterValue" in error_type:
             return _error("InvalidParameterValueException", error_msg, 400)
         if "UnknownEventConfig" in error_type:
@@ -142,16 +149,24 @@ async def _handle_functions(
         if sub == "invocations":
             return await _invoke(func_name, body, request, region, account_id)
 
-        # /functions/{name}/configuration — GetFunctionConfiguration / UpdateFunctionConfiguration
+        # /functions/{name}/configuration — Get/UpdateFunctionConfiguration
         if sub == "configuration":
             if method == "GET":
                 fn = backend.get_function(func_name)
                 return _json(200, _fn_config(fn))
             elif method == "PUT":
                 spec = json.loads(body) if body else {}
+                # Track DeadLetterConfig in our native store
+                if "DeadLetterConfig" in spec:
+                    _store_dlq_config(account_id, region, func_name, spec["DeadLetterConfig"])
                 qualifier = request.query_params.get("Qualifier")
                 fn = backend.update_function_configuration(func_name, qualifier, spec)
-                return _json(200, fn if isinstance(fn, dict) else _fn_config(fn))
+                result = fn if isinstance(fn, dict) else _fn_config(fn)
+                # Merge DLQ config into response
+                dlq = _get_dlq_config(account_id, region, func_name)
+                if dlq and isinstance(result, dict):
+                    result["DeadLetterConfig"] = dlq
+                return _json(200, result)
 
         # /functions/{name}/code — UpdateFunctionCode / GetFunctionCode
         if sub == "code":
@@ -164,7 +179,9 @@ async def _handle_functions(
         # /functions/{name}/versions — PublishVersion / ListVersionsByFunction
         if sub == "versions":
             if method == "POST":
-                ver = backend.publish_version(func_name)
+                spec = json.loads(body) if body else {}
+                description = spec.get("Description", "")
+                ver = backend.publish_version(func_name, description)
                 return _json(201, _fn_config(ver))
             elif method == "GET":
                 versions = backend.list_versions_by_function(func_name)
@@ -176,8 +193,8 @@ async def _handle_functions(
                 if method == "POST":
                     spec = json.loads(body) if body else {}
                     alias = backend.create_alias(
-                        func_name,
                         spec.get("Name"),
+                        func_name,
                         spec.get("FunctionVersion"),
                         spec.get("Description", ""),
                         spec.get("RoutingConfig"),
@@ -189,20 +206,20 @@ async def _handle_functions(
             elif len(parts) == 4:
                 alias_name = parts[3]
                 if method == "GET":
-                    alias = backend.get_alias(func_name, alias_name)
+                    alias = backend.get_alias(alias_name, func_name)
                     return _json(200, _alias_dict(alias))
                 elif method == "PUT":
                     spec = json.loads(body) if body else {}
                     alias = backend.update_alias(
-                        func_name,
                         alias_name,
+                        func_name,
                         spec.get("FunctionVersion"),
                         spec.get("Description"),
                         spec.get("RoutingConfig"),
                     )
                     return _json(200, _alias_dict(alias))
                 elif method == "DELETE":
-                    backend.delete_alias(func_name, alias_name)
+                    backend.delete_alias(alias_name, func_name)
                     return _json(204, None)
 
         # /functions/{name}/policy
@@ -238,48 +255,239 @@ async def _handle_functions(
                     return _json(200, {"ReservedConcurrentExecutions": int(result)})
                 return _json(200, {})
 
-        # /functions/{name}/url — Function URLs
+        # /functions/{name}/url — Function URLs (native store)
         if sub == "url":
-            if method == "POST":
-                spec = json.loads(body) if body else {}
-                url_config = backend.create_function_url_config(func_name, spec)
-                return _json(201, _url_config_dict(url_config, func_name, region, account_id))
-            elif method == "GET":
-                url_config = backend.get_function_url_config(func_name)
-                return _json(200, _url_config_dict(url_config, func_name, region, account_id))
-            elif method == "PUT":
-                spec = json.loads(body) if body else {}
-                url_config = backend.update_function_url_config(func_name, spec)
-                return _json(200, _url_config_dict(url_config, func_name, region, account_id))
-            elif method == "DELETE":
-                backend.delete_function_url_config(func_name)
-                return _json(204, None)
+            return _handle_function_url(
+                func_name, method, body, region, account_id
+            )
 
-        # /functions/{name}/event-invoke-config
+        # /functions/{name}/event-invoke-config — Event invoke config
         if sub == "event-invoke-config":
-            if method == "PUT":
-                spec = json.loads(body) if body else {}
-                config = backend.put_function_event_invoke_config(func_name, spec)
-                return _json(200, config)
-            elif method == "GET":
-                config = backend.get_function_event_invoke_config(func_name)
-                return _json(200, config)
-            elif method == "DELETE":
-                backend.delete_function_event_invoke_config(func_name)
-                return _json(204, None)
+            return _handle_event_invoke_config(
+                func_name, method, body, backend, region, account_id
+            )
+
+        # /functions/{name}/provisioned-concurrency — Provisioned concurrency
+        if sub == "provisioned-concurrency":
+            return _handle_provisioned_concurrency(
+                func_name, method, body, request, region, account_id
+            )
 
     return _error("InvalidRequest", f"Unhandled Lambda path: {'/'.join(parts)}", 400)
 
 
-def _handle_account_settings(region: str, account_id: str) -> Response:
-    """Handle GET /account-settings — returns Lambda account-level settings.
+def _handle_function_url(
+    func_name: str, method: str, body: bytes, region: str, account_id: str
+) -> Response:
+    """Handle function URL CRUD via native store."""
+    from robotocore.services.lambda_.urls import (
+        create_function_url_config,
+        delete_function_url_config,
+        get_function_url_config,
+        update_function_url_config,
+    )
 
-    Moto does not implement this, so we return sensible defaults matching
-    the real AWS response shape.
-    """
+    if method == "POST":
+        spec = json.loads(body) if body else {}
+        url_config = create_function_url_config(func_name, region, account_id, spec)
+        return _json(201, url_config)
+    elif method == "GET":
+        url_config = get_function_url_config(func_name, region, account_id)
+        return _json(200, url_config)
+    elif method == "PUT":
+        spec = json.loads(body) if body else {}
+        url_config = update_function_url_config(func_name, region, account_id, spec)
+        return _json(200, url_config)
+    elif method == "DELETE":
+        delete_function_url_config(func_name, region, account_id)
+        return _json(204, None)
+
+    return _error("InvalidRequest", "Unsupported method for function URL", 400)
+
+
+def _handle_event_invoke_config(
+    func_name: str,
+    method: str,
+    body: bytes,
+    backend,
+    region: str,
+    account_id: str,
+) -> Response:
+    """Handle event invoke config CRUD."""
+    if method == "PUT":
+        spec = json.loads(body) if body else {}
+        config = backend.put_function_event_invoke_config(func_name, spec)
+        return _json(200, config)
+    elif method == "POST":
+        # UpdateFunctionEventInvokeConfig uses POST
+        spec = json.loads(body) if body else {}
+        config = backend.update_function_event_invoke_config(func_name, spec)
+        return _json(200, config)
+    elif method == "GET":
+        config = backend.get_function_event_invoke_config(func_name)
+        return _json(200, config)
+    elif method == "DELETE":
+        backend.delete_function_event_invoke_config(func_name)
+        return _json(204, None)
+
+    return _error("InvalidRequest", "Unsupported method for event-invoke-config", 400)
+
+
+def _handle_provisioned_concurrency(
+    func_name: str,
+    method: str,
+    body: bytes,
+    request: Request,
+    region: str,
+    account_id: str,
+) -> Response:
+    """Handle provisioned concurrency CRUD (simulated — just stores config)."""
+    qualifier = request.query_params.get("Qualifier", "$LATEST")
+
+    if method == "PUT":
+        spec = json.loads(body) if body else {}
+        config = _put_provisioned_concurrency(
+            account_id, region, func_name, qualifier,
+            spec.get("ProvisionedConcurrentExecutions", 0),
+        )
+        return _json(202, config)
+    elif method == "GET":
+        config = _get_provisioned_concurrency(account_id, region, func_name, qualifier)
+        if config is None:
+            return _error(
+                "ProvisionedConcurrencyConfigNotFoundException",
+                f"No provisioned concurrency config for {func_name}:{qualifier}",
+                404,
+            )
+        return _json(200, config)
+    elif method == "DELETE":
+        deleted = _delete_provisioned_concurrency(account_id, region, func_name, qualifier)
+        if not deleted:
+            return _error(
+                "ProvisionedConcurrencyConfigNotFoundException",
+                f"No provisioned concurrency config for {func_name}:{qualifier}",
+                404,
+            )
+        return _json(204, None)
+
+    return _error("InvalidRequest", "Unsupported method for provisioned-concurrency", 400)
+
+
+def list_provisioned_concurrency_configs(
+    func_name: str, region: str, account_id: str
+) -> list[dict]:
+    """List all provisioned concurrency configs for a function."""
+    with _provisioned_lock:
+        result = []
+        for (acct, reg, fn, qual), config in _provisioned_concurrency.items():
+            if acct == account_id and reg == region and fn == func_name:
+                result.append(config)
+        return result
+
+
+def _put_provisioned_concurrency(
+    account_id: str, region: str, func_name: str, qualifier: str, count: int
+) -> dict:
+    key = (account_id, region, func_name, qualifier)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    config = {
+        "RequestedProvisionedConcurrentExecutions": count,
+        "AvailableProvisionedConcurrentExecutions": count,
+        "AllocatedProvisionedConcurrentExecutions": count,
+        "Status": "READY",
+        "LastModified": now,
+    }
+    with _provisioned_lock:
+        _provisioned_concurrency[key] = config
+    return config
+
+
+def _get_provisioned_concurrency(
+    account_id: str, region: str, func_name: str, qualifier: str
+) -> dict | None:
+    key = (account_id, region, func_name, qualifier)
+    with _provisioned_lock:
+        return _provisioned_concurrency.get(key)
+
+
+def _delete_provisioned_concurrency(
+    account_id: str, region: str, func_name: str, qualifier: str
+) -> bool:
+    key = (account_id, region, func_name, qualifier)
+    with _provisioned_lock:
+        if key in _provisioned_concurrency:
+            del _provisioned_concurrency[key]
+            return True
+        return False
+
+
+def _store_dlq_config(account_id: str, region: str, func_name: str, dlq_config: dict) -> None:
+    """Store dead letter queue config for a function."""
+    key = (account_id, region, func_name)
+    with _dlq_lock:
+        if dlq_config.get("TargetArn"):
+            _dlq_configs[key] = dlq_config
+        elif key in _dlq_configs:
+            del _dlq_configs[key]
+
+
+def _get_dlq_config(account_id: str, region: str, func_name: str) -> dict | None:
+    """Get dead letter queue config for a function."""
+    key = (account_id, region, func_name)
+    with _dlq_lock:
+        return _dlq_configs.get(key)
+
+
+def dispatch_to_dlq(
+    func_name: str,
+    payload: dict,
+    error: str | None,
+    region: str,
+    account_id: str,
+) -> None:
+    """Send failed async invocation to the configured DLQ."""
+    dlq = _get_dlq_config(account_id, region, func_name)
+    if not dlq:
+        return
+
+    target_arn = dlq.get("TargetArn", "")
+    if not target_arn:
+        return
+
+    record = json.dumps({
+        "requestContext": {
+            "requestId": str(uuid.uuid4()),
+            "functionArn": f"arn:aws:lambda:{region}:{account_id}:function:{func_name}",
+            "condition": "RetriesExhausted",
+        },
+        "requestPayload": payload,
+        "errorMessage": error or "Unknown error",
+    })
+
+    try:
+        if ":sqs:" in target_arn:
+            from robotocore.services.sqs.provider import _get_store
+
+            queue_name = target_arn.rsplit(":", 1)[-1]
+            store = _get_store(region)
+            queue = store.get_queue(queue_name)
+            if queue:
+                queue.send_message(body=record)
+        elif ":sns:" in target_arn:
+            from robotocore.services.sns.provider import get_store
+
+            store = get_store(region)
+            topic = store.get_topic(target_arn)
+            if topic:
+                topic.publish(message=record, subject="Lambda DLQ")
+    except Exception:
+        logger.exception("Failed to send to DLQ %s", target_arn)
+
+
+def _handle_account_settings(region: str, account_id: str) -> Response:
+    """Handle GET /account-settings."""
     backend = _get_moto_backend(account_id, region)
 
-    # Calculate total code size and function count from Moto state
     functions = backend.list_functions()
     total_code_size = 0
     function_count = len(functions)
@@ -312,7 +520,7 @@ def _handle_account_settings(region: str, account_id: str) -> Response:
 async def _handle_event_source_mappings(
     parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
 ) -> Response:
-    """Native event source mapping CRUD — bypasses Moto to avoid cross-service validation issues."""
+    """Native event source mapping CRUD — bypasses Moto."""
 
     if len(parts) == 1:
         if method == "POST":
@@ -331,11 +539,18 @@ async def _handle_event_source_mappings(
                 "EventSourceArn": spec.get("EventSourceArn", ""),
                 "FunctionArn": func_arn,
                 "BatchSize": spec.get("BatchSize", 10),
-                "MaximumBatchingWindowInSeconds": spec.get("MaximumBatchingWindowInSeconds", 0),
+                "MaximumBatchingWindowInSeconds": spec.get(
+                    "MaximumBatchingWindowInSeconds", 0
+                ),
                 "State": "Enabled",
                 "StateTransitionReason": "User action",
                 "LastModified": time.time(),
                 "FunctionResponseTypes": spec.get("FunctionResponseTypes", []),
+                "FilterCriteria": spec.get("FilterCriteria"),
+                "BisectBatchOnFunctionError": spec.get(
+                    "BisectBatchOnFunctionError", False
+                ),
+                "MaximumRetryAttempts": spec.get("MaximumRetryAttempts", -1),
                 "_region": region,
                 "_account_id": account_id,
             }
@@ -387,11 +602,16 @@ async def _handle_event_source_mappings(
                         "MaximumBatchingWindowInSeconds",
                         "Enabled",
                         "FunctionResponseTypes",
+                        "FilterCriteria",
+                        "BisectBatchOnFunctionError",
+                        "MaximumRetryAttempts",
                     ]:
                         if key in spec:
                             _esm_store[esm_uuid][key] = spec[key]
                     if "Enabled" in spec:
-                        _esm_store[esm_uuid]["State"] = "Enabled" if spec["Enabled"] else "Disabled"
+                        _esm_store[esm_uuid]["State"] = (
+                            "Enabled" if spec["Enabled"] else "Disabled"
+                        )
                     _esm_store[esm_uuid]["LastModified"] = time.time()
                     config = _esm_store[esm_uuid]
             return _json(200, _sanitize_esm(config))
@@ -410,7 +630,6 @@ async def _handle_layers(
     backend = _get_moto_backend(account_id, region)
 
     if len(parts) == 1 and method == "GET":
-        # list_layers() returns dicts from Layer.to_dict() already
         layers = list(backend.list_layers())
         return _json(200, {"Layers": layers})
 
@@ -427,7 +646,9 @@ async def _handle_layers(
                     return _json(201, _layer_version_dict(layer_ver))
                 elif method == "GET":
                     versions = backend.list_layer_versions(layer_name)
-                    return _json(200, {"LayerVersions": [_layer_version_dict(v) for v in versions]})
+                    return _json(
+                        200, {"LayerVersions": [_layer_version_dict(v) for v in versions]}
+                    )
             elif len(parts) == 4:
                 version_num = int(parts[3])
                 if method == "GET":
@@ -446,7 +667,6 @@ async def _handle_tags(
     backend = _get_moto_backend(account_id, region)
     # /tags/{arn} — the ARN is the rest of the path
     arn = "/".join(parts[1:]) if len(parts) > 1 else ""
-    # Reconstruct full ARN from URL-encoded path
     from urllib.parse import unquote
 
     arn = unquote(arn)
@@ -494,6 +714,8 @@ async def _invoke(
     timeout = int(getattr(fn, "timeout", 3) or 3)
     memory_size = int(getattr(fn, "memory_size", 128) or 128)
 
+    result, error_type, logs = None, None, ""
+
     if code_zip:
         executor = get_executor_for_runtime(runtime)
         result, error_type, logs = executor.execute(
@@ -510,6 +732,17 @@ async def _invoke(
     else:
         # No code — return a simple success (like Moto's simple mode)
         result, error_type, logs = "Simple Lambda happy path OK", None, ""
+
+    # Handle async invocation with destinations and DLQ
+    if invocation_type == "Event":
+        _dispatch_async_result(
+            func_name=func_name,
+            event=event,
+            result=result,
+            error_type=error_type,
+            region=region,
+            account_id=account_id,
+        )
 
     headers = {
         "x-amz-request-id": str(uuid.uuid4()),
@@ -541,6 +774,68 @@ async def _invoke(
     return Response(
         content=payload, status_code=200, headers=headers, media_type="application/json"
     )
+
+
+def _dispatch_async_result(
+    func_name: str,
+    event: dict,
+    result,
+    error_type: str | None,
+    region: str,
+    account_id: str,
+) -> None:
+    """After async invocation, dispatch to destinations and/or DLQ."""
+    func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+
+    # Try to get event invoke config from Moto
+    try:
+        backend = _get_moto_backend(account_id, region)
+        invoke_config = backend.get_function_event_invoke_config(func_name)
+    except Exception:
+        invoke_config = None
+
+    is_success = error_type is None
+
+    if invoke_config:
+        dest_config = invoke_config.get("DestinationConfig", {})
+        if is_success and dest_config.get("OnSuccess", {}).get("Destination"):
+            dest_arn = dest_config["OnSuccess"]["Destination"]
+            from robotocore.services.lambda_.destinations import dispatch_destination
+
+            dispatch_destination(
+                destination_arn=dest_arn,
+                function_arn=func_arn,
+                payload=event,
+                is_success=True,
+                result=result,
+                error=None,
+                region=region,
+                account_id=account_id,
+            )
+        elif not is_success and dest_config.get("OnFailure", {}).get("Destination"):
+            dest_arn = dest_config["OnFailure"]["Destination"]
+            from robotocore.services.lambda_.destinations import dispatch_destination
+
+            dispatch_destination(
+                destination_arn=dest_arn,
+                function_arn=func_arn,
+                payload=event,
+                is_success=False,
+                result=result,
+                error=error_type,
+                region=region,
+                account_id=account_id,
+            )
+
+    # DLQ on failure
+    if not is_success:
+        dispatch_to_dlq(
+            func_name=func_name,
+            payload=event,
+            error=error_type,
+            region=region,
+            account_id=account_id,
+        )
 
 
 # --- Helpers ---
