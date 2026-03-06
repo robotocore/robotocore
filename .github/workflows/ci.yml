@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --dev
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --dev
+      - run: uv run pytest tests/unit/ -v --tb=short
+
+  compatibility-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run compatibility tests
+        run: ENDPOINT_URL=http://localhost:4566 uv run pytest tests/compatibility/ -v --tb=short
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t robotocore:test .
+      - name: Run container
+        run: |
+          docker run -d -p 4566:4566 --name robotocore-test robotocore:test
+          sleep 5
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run compatibility tests against container
+        run: |
+          pip install boto3 pytest
+          ENDPOINT_URL=http://localhost:4566 pytest tests/compatibility/ -v --tb=short
+      - name: Check image size
+        run: |
+          SIZE=$(docker image inspect robotocore:test --format='{{.Size}}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Image size: ${SIZE_MB}MB"
+          if [ "$SIZE_MB" -gt 500 ]; then
+            echo "WARNING: Image exceeds 500MB target"
+          fi
+      - name: Stop container
+        if: always()
+        run: docker rm -f robotocore-test || true
+
+  parity-report:
+    runs-on: ubuntu-latest
+    needs: [compatibility-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --dev
+      - name: Generate parity report
+        run: uv run python scripts/generate_parity_report.py --output parity-report.json
+      - name: Upload parity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-report
+          path: parity-report.json
