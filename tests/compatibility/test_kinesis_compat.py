@@ -80,3 +80,68 @@ class TestKinesisOperations:
         for rec in response["Records"]:
             assert "ShardId" in rec
             assert "SequenceNumber" in rec
+
+    def test_get_shard_iterator_at_sequence_number(self, kinesis, stream):
+        """Get shard iterator using AT_SEQUENCE_NUMBER type."""
+        put_resp = kinesis.put_record(
+            StreamName=stream, Data=b"seq-test", PartitionKey="pk1",
+        )
+        shard_id = put_resp["ShardId"]
+        seq = put_resp["SequenceNumber"]
+        iterator = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=shard_id,
+            ShardIteratorType="AT_SEQUENCE_NUMBER",
+            StartingSequenceNumber=seq,
+        )["ShardIterator"]
+        assert iterator is not None
+        records = kinesis.get_records(ShardIterator=iterator)
+        assert len(records["Records"]) >= 1
+        assert records["Records"][0]["Data"] == b"seq-test"
+
+    def test_add_and_list_tags_for_stream(self, kinesis, stream):
+        """Add tags to a stream and list them."""
+        kinesis.add_tags_to_stream(
+            StreamName=stream,
+            Tags={"env": "test", "project": "robotocore"},
+        )
+        response = kinesis.list_tags_for_stream(StreamName=stream)
+        tag_map = {t["Key"]: t["Value"] for t in response["Tags"]}
+        assert tag_map["env"] == "test"
+        assert tag_map["project"] == "robotocore"
+
+    def test_remove_tags_from_stream(self, kinesis, stream):
+        """Add and then remove tags from a stream."""
+        kinesis.add_tags_to_stream(
+            StreamName=stream,
+            Tags={"temp": "value"},
+        )
+        kinesis.remove_tags_from_stream(
+            StreamName=stream,
+            TagKeys=["temp"],
+        )
+        response = kinesis.list_tags_for_stream(StreamName=stream)
+        tag_keys = [t["Key"] for t in response["Tags"]]
+        assert "temp" not in tag_keys
+
+    def test_increase_stream_retention_period(self, kinesis, stream):
+        """Increase retention period from default 24 to 48 hours."""
+        kinesis.increase_stream_retention_period(
+            StreamName=stream,
+            RetentionPeriodHours=48,
+        )
+        response = kinesis.describe_stream(StreamName=stream)
+        assert response["StreamDescription"]["RetentionPeriodHours"] == 48
+
+    def test_decrease_stream_retention_period(self, kinesis, stream):
+        """Increase then decrease retention period."""
+        kinesis.increase_stream_retention_period(
+            StreamName=stream,
+            RetentionPeriodHours=48,
+        )
+        kinesis.decrease_stream_retention_period(
+            StreamName=stream,
+            RetentionPeriodHours=24,
+        )
+        response = kinesis.describe_stream(StreamName=stream)
+        assert response["StreamDescription"]["RetentionPeriodHours"] == 24

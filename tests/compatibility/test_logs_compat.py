@@ -82,3 +82,59 @@ class TestLogsOperations:
         response = logs.describe_log_streams(logGroupName=log_group)
         names = [s["logStreamName"] for s in response["logStreams"]]
         assert "del-stream" not in names
+
+    def test_filter_log_events_multiple_streams(self, logs, log_group):
+        """FilterLogEvents across multiple streams in a log group."""
+        logs.create_log_stream(logGroupName=log_group, logStreamName="multi-a")
+        logs.create_log_stream(logGroupName=log_group, logStreamName="multi-b")
+        now = int(time.time() * 1000)
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName="multi-a",
+            logEvents=[{"timestamp": now, "message": "stream-a event"}],
+        )
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName="multi-b",
+            logEvents=[{"timestamp": now, "message": "stream-b event"}],
+        )
+        response = logs.filter_log_events(
+            logGroupName=log_group,
+            logStreamNames=["multi-a", "multi-b"],
+        )
+        messages = [e["message"] for e in response["events"]]
+        assert any("stream-a" in m for m in messages)
+        assert any("stream-b" in m for m in messages)
+
+    def test_describe_log_streams_prefix_filter(self, logs, log_group):
+        """Describe log streams filtered by prefix."""
+        logs.create_log_stream(logGroupName=log_group, logStreamName="prefix-alpha")
+        logs.create_log_stream(logGroupName=log_group, logStreamName="prefix-beta")
+        logs.create_log_stream(logGroupName=log_group, logStreamName="other-gamma")
+        response = logs.describe_log_streams(
+            logGroupName=log_group,
+            logStreamNamePrefix="prefix-",
+        )
+        names = [s["logStreamName"] for s in response["logStreams"]]
+        assert "prefix-alpha" in names
+        assert "prefix-beta" in names
+        assert "other-gamma" not in names
+
+    def test_put_retention_policy_update(self, logs, log_group):
+        """Put retention policy and then update it."""
+        logs.put_retention_policy(logGroupName=log_group, retentionInDays=14)
+        response = logs.describe_log_groups(logGroupNamePrefix=log_group)
+        group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
+        assert group["retentionInDays"] == 14
+        logs.put_retention_policy(logGroupName=log_group, retentionInDays=30)
+        response = logs.describe_log_groups(logGroupNamePrefix=log_group)
+        group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
+        assert group["retentionInDays"] == 30
+
+    def test_delete_retention_policy(self, logs, log_group):
+        """Setting and then deleting a retention policy."""
+        logs.put_retention_policy(logGroupName=log_group, retentionInDays=7)
+        logs.delete_retention_policy(logGroupName=log_group)
+        response = logs.describe_log_groups(logGroupNamePrefix=log_group)
+        group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
+        assert "retentionInDays" not in group

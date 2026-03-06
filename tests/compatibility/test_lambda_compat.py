@@ -286,6 +286,61 @@ class TestLambdaAdvanced:
         lam.delete_function(FunctionName=fname)
 
 
+class TestLambdaConcurrency:
+    def test_put_get_delete_function_concurrency(self, lam, role):
+        """Test setting, reading, and removing reserved concurrency."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"concurrency-func-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        # Put concurrency
+        response = lam.put_function_concurrency(
+            FunctionName=fname,
+            ReservedConcurrentExecutions=10,
+        )
+        assert response["ReservedConcurrentExecutions"] == 10
+
+        # Get concurrency
+        response = lam.get_function_concurrency(FunctionName=fname)
+        assert response["ReservedConcurrentExecutions"] == 10
+
+        # Delete concurrency
+        lam.delete_function_concurrency(FunctionName=fname)
+
+        # After deletion, get should return empty (no ReservedConcurrentExecutions key)
+        response = lam.get_function_concurrency(FunctionName=fname)
+        assert "ReservedConcurrentExecutions" not in response or response.get("ReservedConcurrentExecutions") is None
+
+        lam.delete_function(FunctionName=fname)
+
+    def test_get_account_settings(self, lam, role):
+        """Test retrieving Lambda account settings."""
+        response = lam.get_account_settings()
+
+        # Verify the response has the expected top-level keys
+        assert "AccountLimit" in response
+        assert "AccountUsage" in response
+
+        limits = response["AccountLimit"]
+        assert "TotalCodeSize" in limits
+        assert "CodeSizeUnzipped" in limits
+        assert "CodeSizeZipped" in limits
+        assert "ConcurrentExecutions" in limits
+        assert "UnreservedConcurrentExecutions" in limits
+        assert limits["ConcurrentExecutions"] >= 1
+
+        usage = response["AccountUsage"]
+        assert "TotalCodeSize" in usage
+        assert "FunctionCount" in usage
+        assert usage["FunctionCount"] >= 0
+
+
 class TestLambdaLayers:
     def test_publish_layer_version(self, lam):
         """Test creating a Lambda layer."""

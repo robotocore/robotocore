@@ -102,6 +102,56 @@ class TestStepFunctionsOperations:
         response = sfn.describe_execution(executionArn=exec_arn)
         assert response["stateMachineArn"] == state_machine
 
+    def test_list_state_machines_contains_expected(self, sfn, state_machine):
+        """List state machines includes name and creation date."""
+        response = sfn.list_state_machines()
+        machines = response["stateMachines"]
+        match = [m for m in machines if m["stateMachineArn"] == state_machine]
+        assert len(match) == 1
+        assert match[0]["name"] == "test-state-machine"
+        assert "creationDate" in match[0]
+
+    def test_describe_state_machine_definition(self, sfn, state_machine):
+        """Describe state machine returns full definition."""
+        response = sfn.describe_state_machine(stateMachineArn=state_machine)
+        assert response["status"] == "ACTIVE"
+        definition = json.loads(response["definition"])
+        assert "StartAt" in definition
+        assert "States" in definition
+        assert "PassState" in definition["States"]
+
+    def test_update_state_machine(self, sfn, state_machine):
+        """Update a state machine definition."""
+        new_definition = json.dumps({
+            "Comment": "Updated state machine",
+            "StartAt": "NewPass",
+            "States": {
+                "NewPass": {
+                    "Type": "Pass",
+                    "Result": {"updated": True},
+                    "End": True,
+                }
+            },
+        })
+        response = sfn.update_state_machine(
+            stateMachineArn=state_machine,
+            definition=new_definition,
+        )
+        assert "updateDate" in response
+        desc = sfn.describe_state_machine(stateMachineArn=state_machine)
+        updated_def = json.loads(desc["definition"])
+        assert "NewPass" in updated_def["States"]
+
+    def test_list_executions_status_filter(self, sfn, state_machine):
+        """List executions filtered by status."""
+        sfn.start_execution(stateMachineArn=state_machine)
+        response = sfn.list_executions(
+            stateMachineArn=state_machine,
+            statusFilter="SUCCEEDED",
+        )
+        for exc in response["executions"]:
+            assert exc["status"] == "SUCCEEDED"
+
 
 class TestASLExecution:
     """Test actual ASL state machine execution — Enterprise-grade feature."""

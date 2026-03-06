@@ -59,6 +59,8 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "transcribe": ServiceInfo("transcribe", ServiceStatus.MOTO_BACKED, "json", "Transcribe"),
     "es": ServiceInfo("es", ServiceStatus.MOTO_BACKED, "rest-json", "Elasticsearch Service"),
     "opensearch": ServiceInfo("opensearch", ServiceStatus.MOTO_BACKED, "rest-json", "OpenSearch Service"),
+    "cognito-idp": ServiceInfo("cognito-idp", ServiceStatus.MOTO_BACKED, "json", "Cognito Identity Provider"),
+    "ecr": ServiceInfo("ecr", ServiceStatus.MOTO_BACKED, "json", "Elastic Container Registry"),
 }
 
 

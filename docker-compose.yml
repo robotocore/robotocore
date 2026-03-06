@@ -10,6 +10,13 @@ services:
       - ROBOTOCORE_PORT=4566
       - ROBOTOCORE_DEBUG=0
       - MOTO_ALLOW_NONEXISTENT_REGION=true
+      # Uncomment to enable state persistence:
+      # - ROBOTOCORE_STATE_DIR=/data/state
+      # - ROBOTOCORE_PERSIST=1
+    volumes:
+      # Uncomment to persist state across container restarts:
+      # - robotocore-data:/data/state
+      - /dev/null:/dev/null  # placeholder
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_robotocore/health"]
       interval: 5s
@@ -28,3 +35,7 @@ services:
     environment:
       - SERVICES=acm,apigateway,cloudformation,cloudwatch,config,dynamodb,dynamodbstreams,ec2,es,events,firehose,iam,kinesis,kms,lambda,logs,opensearch,redshift,resource-groups,resourcegroupstaggingapi,route53,route53resolver,s3,s3control,scheduler,secretsmanager,ses,sns,sqs,ssm,stepfunctions,sts,support,swf,transcribe
       - DEBUG=0
+
+# Uncomment for state persistence:
+# volumes:
+#   robotocore-data:

@@ -95,6 +95,84 @@ class TestEventBridgeOperations:
         assert bus_name in names
         events.delete_event_bus(Name=bus_name)
 
+    def test_put_events_multiple_entries(self, events):
+        """Put multiple events in a single call."""
+        response = events.put_events(
+            Entries=[
+                {
+                    "Source": "test.multi",
+                    "DetailType": "Event1",
+                    "Detail": json.dumps({"index": 1}),
+                },
+                {
+                    "Source": "test.multi",
+                    "DetailType": "Event2",
+                    "Detail": json.dumps({"index": 2}),
+                },
+                {
+                    "Source": "test.multi",
+                    "DetailType": "Event3",
+                    "Detail": json.dumps({"index": 3}),
+                },
+            ]
+        )
+        assert response["FailedEntryCount"] == 0
+        assert len(response["Entries"]) == 3
+
+    def test_describe_event_bus_default(self, events):
+        """Describe the default event bus."""
+        response = events.describe_event_bus(Name="default")
+        assert response["Name"] == "default"
+        assert "Arn" in response
+
+    def test_describe_custom_event_bus(self, events):
+        """Create and describe a custom event bus."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"describe-bus-{suffix}"
+        events.create_event_bus(Name=bus_name)
+        response = events.describe_event_bus(Name=bus_name)
+        assert response["Name"] == bus_name
+        assert "Arn" in response
+        events.delete_event_bus(Name=bus_name)
+
+    def test_put_rule_with_tags(self, events):
+        """Create a rule with tags inline."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"tagged-rule-{suffix}"
+        resp = events.put_rule(
+            Name=rule_name,
+            ScheduleExpression="rate(1 hour)",
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        assert "RuleArn" in resp
+        desc = events.describe_rule(Name=rule_name)
+        assert desc["Name"] == rule_name
+        assert desc["ScheduleExpression"] == "rate(1 hour)"
+        events.delete_rule(Name=rule_name)
+
+    def test_list_targets_by_rule_multiple(self, events):
+        """Put multiple targets on a rule and list them."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"multi-target-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[
+                {"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:queue-a"},
+                {"Id": "t2", "Arn": "arn:aws:sqs:us-east-1:123456789012:queue-b"},
+            ],
+        )
+        response = events.list_targets_by_rule(Rule=rule_name)
+        ids = [t["Id"] for t in response["Targets"]]
+        assert "t1" in ids
+        assert "t2" in ids
+        assert len(response["Targets"]) == 2
+        events.remove_targets(Rule=rule_name, Ids=["t1", "t2"])
+        events.delete_rule(Name=rule_name)
+
 
 class TestEventBridgeSQSTarget:
     """Test EventBridge → SQS cross-service delivery."""

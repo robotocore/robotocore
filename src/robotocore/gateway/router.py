@@ -16,6 +16,7 @@ TARGET_PREFIX_MAP: dict[str, str] = {
     "AWSCognitoIdentityProviderService": "cognito-idp",
     "AWSCognitoIdentityService": "cognito-identity",
     "AWSStepFunctions": "stepfunctions",
+    "AmazonEC2ContainerRegistry": "ecr",
     "CloudWatchEvents": "events",
     "DynamoDB": "dynamodb",
     "DynamoDBStreams": "dynamodbstreams",

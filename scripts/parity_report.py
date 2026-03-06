@@ -63,6 +63,8 @@ def main():
             "lambda_event_source": "lambda",
             "apigateway_lambda": "apigateway",
             "cross_service": "_cross_service",
+            "cognito": "cognito-idp",
+            "state_persistence": "_state_persistence",
         }
 
         # Try to match to registry service
