@@ -1,0 +1,30 @@
+services:
+  robotocore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4566:4566"
+    environment:
+      - ROBOTOCORE_HOST=0.0.0.0
+      - ROBOTOCORE_PORT=4566
+      - ROBOTOCORE_DEBUG=0
+      - MOTO_ALLOW_NONEXISTENT_REGION=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_robotocore/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  # LocalStack profile for parity comparison
+  # Usage: docker compose --profile localstack up
+  localstack:
+    image: localstack/localstack:3.8
+    profiles:
+      - localstack
+    ports:
+      - "4567:4566"
+    environment:
+      - SERVICES=acm,apigateway,cloudformation,cloudwatch,config,dynamodb,dynamodbstreams,ec2,es,events,firehose,iam,kinesis,kms,lambda,logs,opensearch,redshift,resource-groups,resourcegroupstaggingapi,route53,route53resolver,s3,s3control,scheduler,secretsmanager,ses,sns,sqs,ssm,stepfunctions,sts,support,swf,transcribe
+      - DEBUG=0
