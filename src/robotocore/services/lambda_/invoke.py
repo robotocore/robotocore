@@ -57,7 +57,7 @@ def _invoke_lambda_sync(
     callback: callable = None,
 ) -> tuple[dict | str | None, str | None, str]:
     """Internal: execute a Lambda function synchronously (runs in thread pool)."""
-    from robotocore.services.lambda_.executor import execute_python_handler, get_layer_zips
+    from robotocore.services.lambda_.executor import get_layer_zips
 
     # Parse function name from ARN
     arn_parts = function_arn.split(":")
@@ -82,9 +82,6 @@ def _invoke_lambda_sync(
         return None, "ResourceNotFoundException", f"Function not found: {function_name}"
 
     runtime = getattr(fn, "run_time", "") or ""
-    if not runtime.startswith("python"):
-        logger.warning("Lambda invoke: non-Python runtime %s for %s", runtime, function_name)
-        return None, "InvalidRuntime", f"Non-Python runtime: {runtime}"
 
     # Get code zip
     code_zip = getattr(fn, "code_bytes", None)
@@ -103,7 +100,10 @@ def _invoke_lambda_sync(
     env_vars = getattr(fn, "environment_vars", {}) or {}
     layer_zips = get_layer_zips(fn, account_id, region)
 
-    result, error_type, logs = execute_python_handler(
+    from robotocore.services.lambda_.runtimes import get_executor_for_runtime
+
+    executor = get_executor_for_runtime(runtime)
+    result, error_type, logs = executor.execute(
         code_zip=code_zip,
         handler=handler,
         event=payload,

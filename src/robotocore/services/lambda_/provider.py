@@ -9,7 +9,7 @@ import uuid
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.services.lambda_.executor import execute_python_handler
+from robotocore.services.lambda_.runtimes import get_executor_for_runtime
 
 # Native event source mapping store (bypasses Moto's validation)
 _esm_store: dict[str, dict] = {}  # uuid -> mapping config
@@ -478,24 +478,25 @@ async def _invoke(
 
     event = json.loads(body) if body else {}
 
-    # Check if this is a Python runtime and we have code
     runtime = getattr(fn, "run_time", "") or ""
-    is_python = runtime.startswith("python")
     code_zip = None
 
-    if is_python and hasattr(fn, "code") and fn.code:
+    if hasattr(fn, "code") and fn.code:
         code_zip = fn.code.get("ZipFile")
         if isinstance(code_zip, str):
             code_zip = base64.b64decode(code_zip)
 
-    if is_python and code_zip:
-        # In-process execution
-        env_vars = getattr(fn, "environment_vars", {}) or {}
-        handler = getattr(fn, "handler", "lambda_function.handler")
-        timeout = int(getattr(fn, "timeout", 3) or 3)
-        memory_size = int(getattr(fn, "memory_size", 128) or 128)
+    if not code_zip:
+        code_zip = getattr(fn, "code_bytes", None)
 
-        result, error_type, logs = execute_python_handler(
+    env_vars = getattr(fn, "environment_vars", {}) or {}
+    handler = getattr(fn, "handler", "lambda_function.handler")
+    timeout = int(getattr(fn, "timeout", 3) or 3)
+    memory_size = int(getattr(fn, "memory_size", 128) or 128)
+
+    if code_zip:
+        executor = get_executor_for_runtime(runtime)
+        result, error_type, logs = executor.execute(
             code_zip=code_zip,
             handler=handler,
             event=event,
@@ -506,55 +507,40 @@ async def _invoke(
             region=region,
             account_id=account_id,
         )
-
-        headers = {
-            "x-amz-request-id": str(uuid.uuid4()),
-            "x-amz-executed-version": "$LATEST",
-        }
-
-        if error_type:
-            headers["x-amz-function-error"] = error_type
-
-        if log_type == "Tail" and logs:
-            # Return last 4KB of logs, base64 encoded
-            log_tail = logs[-4096:] if len(logs) > 4096 else logs
-            headers["x-amz-log-result"] = base64.b64encode(log_tail.encode()).decode()
-
-        if invocation_type == "Event":
-            return Response(content=b"", status_code=202, headers=headers)
-        elif invocation_type == "DryRun":
-            return Response(content=b"", status_code=204, headers=headers)
-
-        # RequestResponse
-        if result is None:
-            payload = b"null"
-        elif isinstance(result, (dict, list)):
-            payload = json.dumps(result).encode()
-        elif isinstance(result, str):
-            payload = json.dumps(result).encode()
-        else:
-            payload = str(result).encode()
-
-        return Response(
-            content=payload, status_code=200, headers=headers, media_type="application/json"
-        )
     else:
-        # Fallback: return a simple success response (like Moto's simple mode)
-        headers = {
-            "x-amz-request-id": str(uuid.uuid4()),
-            "x-amz-executed-version": "$LATEST",
-        }
-        if invocation_type == "Event":
-            return Response(content=b"", status_code=202, headers=headers)
-        elif invocation_type == "DryRun":
-            return Response(content=b"", status_code=204, headers=headers)
+        # No code — return a simple success (like Moto's simple mode)
+        result, error_type, logs = "Simple Lambda happy path OK", None, ""
 
-        payload = json.dumps("Simple Lambda happy path OK").encode()
-        if log_type == "Tail":
-            headers["x-amz-log-result"] = base64.b64encode(b"").decode()
-        return Response(
-            content=payload, status_code=200, headers=headers, media_type="application/json"
-        )
+    headers = {
+        "x-amz-request-id": str(uuid.uuid4()),
+        "x-amz-executed-version": "$LATEST",
+    }
+
+    if error_type:
+        headers["x-amz-function-error"] = error_type
+
+    if log_type == "Tail" and logs:
+        log_tail = logs[-4096:] if len(logs) > 4096 else logs
+        headers["x-amz-log-result"] = base64.b64encode(log_tail.encode()).decode()
+
+    if invocation_type == "Event":
+        return Response(content=b"", status_code=202, headers=headers)
+    elif invocation_type == "DryRun":
+        return Response(content=b"", status_code=204, headers=headers)
+
+    # RequestResponse
+    if result is None:
+        payload = b"null"
+    elif isinstance(result, (dict, list)):
+        payload = json.dumps(result).encode()
+    elif isinstance(result, str):
+        payload = json.dumps(result).encode()
+    else:
+        payload = str(result).encode()
+
+    return Response(
+        content=payload, status_code=200, headers=headers, media_type="application/json"
+    )
 
 
 # --- Helpers ---

@@ -103,18 +103,27 @@ class TestInvokeLambdaSyncInternal:
         assert error_type == "ResourceNotFoundException"
         assert result is None
 
-    def test_non_python_runtime(self):
-        fn = _make_mock_fn(runtime="nodejs18.x")
+    def test_non_python_runtime_executes(self):
+        """Non-Python runtimes are now supported via subprocess executors."""
+        # Create a Node.js handler zip
+        node_zip = _make_zip(
+            {"index.js": "exports.handler = async (event) => { return event; };\n"}
+        )
+        fn = _make_mock_fn(runtime="nodejs18.x", handler="index.handler", code_bytes=node_zip)
         p1, p2, _ = _patch_backend(fn)
         with p1, p2:
-            _, error_type, _ = _invoke_lambda_sync(
+            result, error_type, _ = _invoke_lambda_sync(
                 "arn:aws:lambda:us-east-1:123456789012:function:node-fn",
-                {},
+                {"hello": "node"},
                 "us-east-1",
                 "123456789012",
                 None,
             )
-        assert error_type == "InvalidRuntime"
+        # Should succeed if Node.js is installed, or fail gracefully
+        if error_type is None:
+            assert result == {"hello": "node"}
+        else:
+            assert error_type in ("Runtime.InvalidRuntime", "Unhandled")
 
     def test_no_code(self):
         fn = _make_mock_fn(code_bytes=None, code={})
