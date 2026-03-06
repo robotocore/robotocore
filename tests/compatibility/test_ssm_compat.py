@@ -45,3 +45,39 @@ class TestSSMParameterOperations:
         response = ssm.get_parameter(Name="/overwrite/p")
         assert response["Parameter"]["Value"] == "v2"
         ssm.delete_parameter(Name="/overwrite/p")
+
+    def test_string_list_parameter(self, ssm):
+        ssm.put_parameter(Name="/list/param", Value="a,b,c", Type="StringList")
+        response = ssm.get_parameter(Name="/list/param")
+        assert response["Parameter"]["Value"] == "a,b,c"
+        assert response["Parameter"]["Type"] == "StringList"
+        ssm.delete_parameter(Name="/list/param")
+
+    def test_get_multiple_parameters(self, ssm):
+        ssm.put_parameter(Name="/multi/a", Value="1", Type="String")
+        ssm.put_parameter(Name="/multi/b", Value="2", Type="String")
+        response = ssm.get_parameters(Names=["/multi/a", "/multi/b", "/multi/missing"])
+        found = {p["Name"]: p["Value"] for p in response["Parameters"]}
+        assert found["/multi/a"] == "1"
+        assert found["/multi/b"] == "2"
+        assert "/multi/missing" in response.get("InvalidParameters", [])
+        ssm.delete_parameter(Name="/multi/a")
+        ssm.delete_parameter(Name="/multi/b")
+
+    def test_parameter_with_tags(self, ssm):
+        ssm.put_parameter(Name="/tagged/param", Value="val", Type="String",
+                          Tags=[{"Key": "env", "Value": "prod"}])
+        response = ssm.list_tags_for_resource(
+            ResourceType="Parameter", ResourceId="/tagged/param")
+        tags = {t["Key"]: t["Value"] for t in response["TagList"]}
+        assert tags.get("env") == "prod"
+        ssm.delete_parameter(Name="/tagged/param")
+
+    def test_parameter_history(self, ssm):
+        ssm.put_parameter(Name="/hist/param", Value="v1", Type="String")
+        ssm.put_parameter(Name="/hist/param", Value="v2", Type="String", Overwrite=True)
+        response = ssm.get_parameter_history(Name="/hist/param")
+        versions = [p["Value"] for p in response["Parameters"]]
+        assert "v1" in versions
+        assert "v2" in versions
+        ssm.delete_parameter(Name="/hist/param")

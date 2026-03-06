@@ -45,3 +45,44 @@ class TestKMSOperations:
 
         response = kms.describe_key(KeyId=key_id)
         assert response["KeyMetadata"]["Description"] == "describe key"
+
+    def test_create_alias(self, kms):
+        key = kms.create_key(Description="alias key")
+        key_id = key["KeyMetadata"]["KeyId"]
+        kms.create_alias(AliasName="alias/test-alias", TargetKeyId=key_id)
+
+        aliases = kms.list_aliases()
+        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
+        assert "alias/test-alias" in alias_names
+        kms.delete_alias(AliasName="alias/test-alias")
+
+    def test_enable_disable_key(self, kms):
+        key = kms.create_key(Description="toggle key")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        kms.disable_key(KeyId=key_id)
+        desc = kms.describe_key(KeyId=key_id)
+        assert desc["KeyMetadata"]["Enabled"] is False
+
+        kms.enable_key(KeyId=key_id)
+        desc = kms.describe_key(KeyId=key_id)
+        assert desc["KeyMetadata"]["Enabled"] is True
+
+    def test_encrypt_with_alias(self, kms):
+        key = kms.create_key(Description="alias encrypt")
+        key_id = key["KeyMetadata"]["KeyId"]
+        kms.create_alias(AliasName="alias/enc-test", TargetKeyId=key_id)
+
+        encrypted = kms.encrypt(KeyId="alias/enc-test", Plaintext=b"test data")
+        decrypted = kms.decrypt(CiphertextBlob=encrypted["CiphertextBlob"])
+        assert decrypted["Plaintext"] == b"test data"
+        kms.delete_alias(AliasName="alias/enc-test")
+
+    def test_tag_key(self, kms):
+        key = kms.create_key(Description="tag key",
+                             Tags=[{"TagKey": "env", "TagValue": "test"}])
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        tags = kms.list_resource_tags(KeyId=key_id)
+        tag_map = {t["TagKey"]: t["TagValue"] for t in tags["Tags"]}
+        assert tag_map.get("env") == "test"
