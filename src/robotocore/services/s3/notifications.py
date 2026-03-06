@@ -1,6 +1,7 @@
-"""S3 event notification support — fires events to SQS/SNS on object mutations."""
+"""S3 event notification support — fires events to SQS/SNS/Lambda on object mutations."""
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -10,6 +11,39 @@ from robotocore.services.sns.provider import _get_store as get_sns_store
 from robotocore.services.sqs.models import SqsMessage
 from robotocore.services.sqs.provider import _get_store as get_sqs_store
 from robotocore.services.sqs.provider import _md5
+
+logger = logging.getLogger(__name__)
+
+# All S3 event types
+ALL_EVENT_TYPES = [
+    "s3:ObjectCreated:*",
+    "s3:ObjectCreated:Put",
+    "s3:ObjectCreated:Post",
+    "s3:ObjectCreated:Copy",
+    "s3:ObjectCreated:CompleteMultipartUpload",
+    "s3:ObjectRemoved:*",
+    "s3:ObjectRemoved:Delete",
+    "s3:ObjectRemoved:DeleteMarkerCreated",
+    "s3:ObjectRestore:*",
+    "s3:ObjectRestore:Post",
+    "s3:ObjectRestore:Completed",
+    "s3:ReducedRedundancyLostObject",
+    "s3:Replication:*",
+    "s3:Replication:OperationFailedReplication",
+    "s3:Replication:OperationNotTracked",
+    "s3:Replication:OperationMissedThreshold",
+    "s3:Replication:OperationReplicatedAfterThreshold",
+    "s3:ObjectTagging:*",
+    "s3:ObjectTagging:Put",
+    "s3:ObjectTagging:Delete",
+    "s3:ObjectAcl:Put",
+    "s3:LifecycleExpiration:*",
+    "s3:LifecycleExpiration:Delete",
+    "s3:LifecycleExpiration:DeleteMarkerCreated",
+    "s3:LifecycleTransition",
+    "s3:IntelligentTiering",
+    "s3:*",
+]
 
 
 @dataclass
@@ -46,10 +80,12 @@ def fire_event(
 ) -> None:
     """Fire S3 event notifications for a bucket mutation."""
     config = get_notification_config(bucket)
-    if not config.queue_configs and not config.topic_configs:
+    if not config.queue_configs and not config.topic_configs and not config.lambda_configs:
         return
 
-    record = _build_event_record(event_name, bucket, key, region, account_id, size, etag)
+    record = _build_event_record(
+        event_name, bucket, key, region, account_id, size, etag
+    )
     message = json.dumps({"Records": [record]})
 
     for qc in config.queue_configs:
@@ -59,6 +95,12 @@ def fire_event(
     for tc in config.topic_configs:
         if _event_matches(event_name, tc.get("Events", []), key, tc.get("Filter")):
             _deliver_to_sns(tc["TopicArn"], message, region)
+
+    for lc in config.lambda_configs:
+        if _event_matches(event_name, lc.get("Events", []), key, lc.get("Filter")):
+            _deliver_to_lambda(
+                lc["LambdaFunctionArn"], message, region, account_id
+            )
 
 
 def _event_matches(event_name: str, events: list[str], key: str, filter_rules: dict | None) -> bool:
@@ -145,3 +187,19 @@ def _deliver_to_sns(topic_arn: str, message: str, region: str) -> None:
             _deliver_to_subscriber(
                 sub, message, "S3 Notification", {}, str(uuid.uuid4()), topic_arn, region
             )
+
+
+def _deliver_to_lambda(
+    function_arn: str,
+    message: str,
+    region: str,
+    account_id: str,
+) -> None:
+    """Invoke a Lambda function as an S3 notification target."""
+    try:
+        from robotocore.services.lambda_.invoke import invoke_lambda_async
+
+        payload = json.loads(message)
+        invoke_lambda_async(function_arn, payload, region, account_id)
+    except Exception:
+        logger.exception("Failed to invoke Lambda %s for S3 notification", function_arn)
