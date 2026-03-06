@@ -23,6 +23,7 @@ class SqsMessage:
     md5_of_body: str
     attributes: dict = field(default_factory=dict)
     message_attributes: dict = field(default_factory=dict)
+    system_attributes: dict = field(default_factory=dict)
     created: float = field(default_factory=time.time)
     delay_seconds: int = 0
     receive_count: int = 0
@@ -69,6 +70,21 @@ class SqsMessage:
         return self.priority < other.priority
 
 
+@dataclass
+class MessageMoveTask:
+    """Represents a message move task (DLQ redrive)."""
+
+    task_handle: str
+    source_arn: str
+    destination_arn: str | None
+    max_number_of_messages_per_second: int
+    status: str = "RUNNING"  # RUNNING, COMPLETED, CANCELLING, CANCELLED, FAILED
+    approximate_number_of_messages_moved: int = 0
+    approximate_number_of_messages_to_move: int = 0
+    started_timestamp: float = field(default_factory=time.time)
+    failure_reason: str | None = None
+
+
 class StandardQueue:
     """Standard SQS queue with visibility timeout and long polling."""
 
@@ -79,6 +95,7 @@ class StandardQueue:
         self.created = time.time()
         self.attributes = attributes or {}
         self.mutex = threading.RLock()
+        self.tags: dict[str, str] = {}
 
         # Message storage
         self._visible: Queue = Queue()
@@ -124,6 +141,28 @@ class StandardQueue:
         if raw:
             return json.loads(raw) if isinstance(raw, str) else raw
         return None
+
+    @property
+    def redrive_allow_policy(self) -> dict | None:
+        raw = self.attributes.get("RedriveAllowPolicy")
+        if raw:
+            return json.loads(raw) if isinstance(raw, str) else raw
+        return None
+
+    def is_redrive_allowed(self, source_queue_arn: str) -> bool:
+        """Check if a given source queue is allowed to use this queue as DLQ."""
+        policy = self.redrive_allow_policy
+        if not policy:
+            return True  # No policy = allow all (default)
+        permission = policy.get("redrivePermission", "allowAll")
+        if permission == "allowAll":
+            return True
+        if permission == "denyAll":
+            return False
+        if permission == "byQueue":
+            allowed = policy.get("sourceQueueArns", [])
+            return source_queue_arn in allowed
+        return True
 
     def put(self, message: SqsMessage) -> None:
         with self.mutex:
@@ -243,6 +282,11 @@ class StandardQueue:
             self._all_messages.clear()
             self._receipts.clear()
 
+    def get_all_messages(self) -> list[SqsMessage]:
+        """Return all messages in queue (visible + inflight + delayed). For move tasks."""
+        with self.mutex:
+            return list(self._all_messages.values())
+
     def get_attributes(self) -> dict:
         with self.mutex:
             visible_count = self._visible.qsize()
@@ -264,6 +308,19 @@ class StandardQueue:
         }
         if "RedrivePolicy" in self.attributes:
             attrs["RedrivePolicy"] = self.attributes["RedrivePolicy"]
+        if "RedriveAllowPolicy" in self.attributes:
+            attrs["RedriveAllowPolicy"] = self.attributes["RedriveAllowPolicy"]
+        if "Policy" in self.attributes:
+            attrs["Policy"] = self.attributes["Policy"]
+        # SSE attributes (simulated)
+        if "SqsManagedSseEnabled" in self.attributes:
+            attrs["SqsManagedSseEnabled"] = self.attributes["SqsManagedSseEnabled"]
+        if "KmsMasterKeyId" in self.attributes:
+            attrs["KmsMasterKeyId"] = self.attributes["KmsMasterKeyId"]
+        if "KmsDataKeyReusePeriodSeconds" in self.attributes:
+            attrs["KmsDataKeyReusePeriodSeconds"] = self.attributes[
+                "KmsDataKeyReusePeriodSeconds"
+            ]
         if self.is_fifo:
             attrs["FifoQueue"] = "true"
             attrs["ContentBasedDeduplication"] = self.attributes.get(
@@ -286,6 +343,7 @@ class FifoQueue(StandardQueue):
         self._dedup_cache: dict[str, tuple[SqsMessage, float]] = {}
         self._message_groups: dict[str, list[SqsMessage]] = {}
         self._inflight_groups: set[str] = set()
+        self._queued_groups: set[str] = set()  # Groups currently in _group_queue
         self._group_queue: Queue = Queue()
         self._sequence_counter = 0
 
@@ -319,9 +377,10 @@ class FifoQueue(StandardQueue):
             heapq.heappush(self._message_groups[group_id], message)
             self._all_messages[message.message_id] = message
 
-            # Enqueue group if not already in-flight
-            if group_id not in self._inflight_groups:
+            # Enqueue group if not already in-flight or queued
+            if group_id not in self._inflight_groups and group_id not in self._queued_groups:
                 self._group_queue.put(group_id)
+                self._queued_groups.add(group_id)
 
         return message
 
@@ -351,6 +410,7 @@ class FifoQueue(StandardQueue):
                 break
 
             with self.mutex:
+                self._queued_groups.discard(group_id)
                 group_msgs = self._message_groups.get(group_id, [])
                 if not group_msgs:
                     continue
@@ -399,8 +459,9 @@ class FifoQueue(StandardQueue):
             )
             if not group_still_inflight:
                 self._inflight_groups.discard(group_id)
-                if group_msgs:
+                if group_msgs and group_id not in self._queued_groups:
                     self._group_queue.put(group_id)
+                    self._queued_groups.add(group_id)
             return True
 
     def requeue_inflight_messages(self) -> None:
@@ -419,7 +480,9 @@ class FifoQueue(StandardQueue):
                 )
                 if not group_still_inflight:
                     self._inflight_groups.discard(group_id)
-                    self._group_queue.put(group_id)
+                    if group_id not in self._queued_groups:
+                        self._group_queue.put(group_id)
+                        self._queued_groups.add(group_id)
 
     def _clean_dedup_cache(self) -> None:
         now = time.time()
@@ -434,6 +497,7 @@ class SqsStore:
     def __init__(self):
         self.queues: dict[str, StandardQueue] = {}
         self.mutex = threading.RLock()
+        self._move_tasks: dict[str, MessageMoveTask] = {}
 
     def create_queue(
         self, name: str, region: str, account_id: str, attributes: dict | None = None
@@ -478,3 +542,74 @@ class SqsStore:
         for queue in list(self.queues.values()):
             queue.requeue_inflight_messages()
             queue.enqueue_delayed_messages()
+
+    # --- Message Move Tasks ---
+
+    def start_message_move_task(
+        self,
+        source_arn: str,
+        destination_arn: str | None = None,
+        max_number_per_second: int = 500,
+    ) -> MessageMoveTask:
+        """Start moving messages from source (DLQ) to destination queue."""
+        source_queue = self.get_queue_by_arn(source_arn)
+        if not source_queue:
+            raise ValueError(f"Source queue not found: {source_arn}")
+
+        # If no destination, find the original queue that uses this as DLQ
+        if not destination_arn:
+            # Actually for DLQ redrive, the source IS the DLQ, and we need
+            # to find the original queue. We'll check all queues for one
+            # that has this DLQ as its target.
+            for q in self.queues.values():
+                rp = q.redrive_policy
+                if rp and rp.get("deadLetterTargetArn") == source_arn:
+                    destination_arn = q.arn
+                    break
+
+        dest_queue = self.get_queue_by_arn(destination_arn) if destination_arn else None
+
+        task_handle = _new_id()
+        messages = source_queue.get_all_messages()
+        task = MessageMoveTask(
+            task_handle=task_handle,
+            source_arn=source_arn,
+            destination_arn=destination_arn,
+            max_number_of_messages_per_second=max_number_per_second,
+            approximate_number_of_messages_to_move=len(messages),
+        )
+        self._move_tasks[task_handle] = task
+
+        # Actually move messages
+        if dest_queue:
+            for msg in messages:
+                if msg.deleted:
+                    continue
+                new_msg = SqsMessage(
+                    message_id=_new_id(),
+                    body=msg.body,
+                    md5_of_body=msg.md5_of_body,
+                    message_attributes=dict(msg.message_attributes),
+                )
+                dest_queue.put(new_msg)
+                msg.deleted = True
+                task.approximate_number_of_messages_moved += 1
+
+        # Purge source of moved messages
+        if dest_queue:
+            source_queue.purge()
+
+        task.status = "COMPLETED"
+        return task
+
+    def get_message_move_task(self, task_handle: str) -> MessageMoveTask | None:
+        return self._move_tasks.get(task_handle)
+
+    def list_message_move_tasks(self, source_arn: str) -> list[MessageMoveTask]:
+        return [t for t in self._move_tasks.values() if t.source_arn == source_arn]
+
+    def cancel_message_move_task(self, task_handle: str) -> MessageMoveTask | None:
+        task = self._move_tasks.get(task_handle)
+        if task and task.status == "RUNNING":
+            task.status = "CANCELLED"
+        return task
