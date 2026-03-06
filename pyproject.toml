@@ -1,20 +1,23 @@
 [project]
 name = "robotocore"
-version = "0.1.0"
-description = "Free, open-source AWS emulator with LocalStack parity, built on Moto"
+version = "1.0.0"
+description = "Free, open-source AWS emulator with full LocalStack parity, built on Moto"
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
     { name = "Jack Danger", email = "github@jackcanfield.com" },
 ]
-keywords = ["aws", "mock", "localstack", "moto", "testing", "emulator"]
+keywords = ["aws", "mock", "localstack", "moto", "testing", "emulator", "cloud"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Testing :: Mocking",
+    "Framework :: Pytest",
 ]
 
 dependencies = [
@@ -27,6 +30,7 @@ dependencies = [
     "boto3>=1.34",
     "xmltodict>=0.13",
     "jinja2>=3.1",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

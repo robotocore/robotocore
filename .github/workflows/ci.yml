@@ -17,8 +17,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --dev
-      - run: uv run ruff check src/ tests/
-      - run: uv run ruff format --check src/ tests/
+      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run ruff format --check src/ tests/ scripts/
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - run: uv run mypy src/robotocore/ --ignore-missing-imports
+        continue-on-error: true  # Non-blocking during transition
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -36,7 +49,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --dev
-      - run: uv run pytest tests/unit/ -v --tb=short
+      - run: uv run pytest tests/unit/ -v --tb=short -x
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -66,33 +79,81 @@ jobs:
           sleep 3
           curl -f http://localhost:4566/_robotocore/health
       - name: Run compatibility tests
-        run: ENDPOINT_URL=http://localhost:4566 uv run pytest tests/compatibility/ -v --tb=short
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/compatibility/ -v --tb=short
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - name: Python security scan (bandit)
+        run: |
+          uv pip install bandit
+          uv run bandit -r src/robotocore/ -ll -q || true
+      - name: Dependency audit
+        run: uv pip audit || true
 
   docker-build:
     runs-on: ubuntu-latest
+    needs: [lint, unit-tests, integration-tests, compatibility-tests]
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Build Docker image
         run: docker build -t robotocore:test .
-      - name: Run container
+      - name: Smoke test
         run: |
           docker run -d -p 4566:4566 --name robotocore-test robotocore:test
           sleep 5
+          # Health check
           curl -f http://localhost:4566/_robotocore/health
-      - name: Run compatibility tests against container
-        run: |
-          pip install boto3 pytest
-          ENDPOINT_URL=http://localhost:4566 pytest tests/compatibility/ -v --tb=short
+          # Basic S3 operations
+          pip install boto3
+          python -c "
+          import boto3
+          s3 = boto3.client('s3', endpoint_url='http://localhost:4566',
+              aws_access_key_id='test', aws_secret_access_key='test',
+              region_name='us-east-1')
+          s3.create_bucket(Bucket='test-bucket')
+          s3.put_object(Bucket='test-bucket', Key='test.txt', Body=b'hello')
+          obj = s3.get_object(Bucket='test-bucket', Key='test.txt')
+          assert obj['Body'].read() == b'hello'
+          print('S3 smoke test passed')
+          "
+          # Basic SQS
+          python -c "
+          import boto3
+          sqs = boto3.client('sqs', endpoint_url='http://localhost:4566',
+              aws_access_key_id='test', aws_secret_access_key='test',
+              region_name='us-east-1')
+          q = sqs.create_queue(QueueName='test-queue')
+          sqs.send_message(QueueUrl=q['QueueUrl'], MessageBody='hello')
+          msgs = sqs.receive_message(QueueUrl=q['QueueUrl'])
+          assert msgs['Messages'][0]['Body'] == 'hello'
+          print('SQS smoke test passed')
+          "
+          echo "All smoke tests passed"
       - name: Check image size
         run: |
           SIZE=$(docker image inspect robotocore:test --format='{{.Size}}')
           SIZE_MB=$((SIZE / 1024 / 1024))
           echo "Image size: ${SIZE_MB}MB"
           if [ "$SIZE_MB" -gt 500 ]; then
-            echo "WARNING: Image exceeds 500MB target"
+            echo "WARNING: Image exceeds 500MB target (${SIZE_MB}MB)"
           fi
+      - name: Container security scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: robotocore:test
+          format: table
+          exit-code: 0  # Non-blocking
+          severity: CRITICAL,HIGH
       - name: Stop container
         if: always()
         run: docker rm -f robotocore-test || true
@@ -109,7 +170,9 @@ jobs:
           python-version: "3.12"
       - run: uv sync --dev
       - name: Generate parity report
-        run: uv run python scripts/generate_parity_report.py --output parity-report.json
+        run: >
+          uv run python scripts/generate_parity_report.py
+          --output parity-report.json
       - name: Upload parity report
         uses: actions/upload-artifact@v4
         with:
