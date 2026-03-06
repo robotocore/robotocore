@@ -18,6 +18,7 @@ classifiers = [
 ]
 
 dependencies = [
+    # Requires getmoto/moto#9821 for DynamoDB Streams OldImage/NewImage fix
     "moto[all]>=5.0",
     "uvicorn>=0.30",
     "starlette>=0.38",
