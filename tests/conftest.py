@@ -1,7 +1,6 @@
 """Shared test fixtures for robotocore."""
 
 import pytest
-import httpx
 from starlette.testclient import TestClient
 
 from robotocore.gateway.app import app

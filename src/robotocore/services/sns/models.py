@@ -69,8 +69,11 @@ class SnsStore:
             if arn in self.topics:
                 return self.topics[arn]
             topic = SnsTopic(
-                arn=arn, name=name, region=region,
-                account_id=account_id, attributes=attributes or {},
+                arn=arn,
+                name=name,
+                region=region,
+                account_id=account_id,
+                attributes=attributes or {},
             )
             self.topics[arn] = topic
             return topic
@@ -91,7 +94,11 @@ class SnsStore:
         return list(self.topics.values())
 
     def subscribe(
-        self, topic_arn: str, protocol: str, endpoint: str, attributes: dict | None = None,
+        self,
+        topic_arn: str,
+        protocol: str,
+        endpoint: str,
+        attributes: dict | None = None,
     ) -> SnsSubscription | None:
         with self.mutex:
             topic = self.topics.get(topic_arn)
@@ -111,7 +118,11 @@ class SnsStore:
                 if "RawMessageDelivery" in attributes:
                     sub.raw_message_delivery = attributes["RawMessageDelivery"].lower() == "true"
                 if "FilterPolicy" in attributes:
-                    sub.filter_policy = json.loads(attributes["FilterPolicy"]) if isinstance(attributes["FilterPolicy"], str) else attributes["FilterPolicy"]
+                    sub.filter_policy = (
+                        json.loads(attributes["FilterPolicy"])
+                        if isinstance(attributes["FilterPolicy"], str)
+                        else attributes["FilterPolicy"]
+                    )
             topic.subscriptions.append(sub)
             self.subscriptions[sub_arn] = sub
             return sub
@@ -123,7 +134,9 @@ class SnsStore:
                 return False
             topic = self.topics.get(sub.topic_arn)
             if topic:
-                topic.subscriptions = [s for s in topic.subscriptions if s.subscription_arn != subscription_arn]
+                topic.subscriptions = [
+                    s for s in topic.subscriptions if s.subscription_arn != subscription_arn
+                ]
             return True
 
     def get_subscription(self, arn: str) -> SnsSubscription | None:

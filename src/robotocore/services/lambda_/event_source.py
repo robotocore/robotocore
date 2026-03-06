@@ -5,7 +5,6 @@ appear in Kinesis/DynamoDB Streams), the engine automatically invokes the mapped
 Lambda function with a batch of records.
 """
 
-import json
 import logging
 import threading
 import time
@@ -76,13 +75,19 @@ class EventSourceEngine:
                 if ":sqs:" in event_source_arn:
                     self._poll_sqs(event_source_arn, function_arn, batch_size, account_id, region)
                 elif ":kinesis:" in event_source_arn:
-                    self._poll_kinesis(event_source_arn, function_arn, batch_size, account_id, region)
+                    self._poll_kinesis(
+                        event_source_arn, function_arn, batch_size, account_id, region
+                    )
                 elif ":dynamodb:" in event_source_arn and "/stream/" in event_source_arn:
-                    self._poll_dynamodb_stream(event_source_arn, function_arn, batch_size, account_id, region)
+                    self._poll_dynamodb_stream(
+                        event_source_arn, function_arn, batch_size, account_id, region
+                    )
             except Exception:
                 logger.exception("Error polling event source mapping")
 
-    def _poll_sqs(self, queue_arn: str, function_arn: str, batch_size: int, account_id: str, region: str):
+    def _poll_sqs(
+        self, queue_arn: str, function_arn: str, batch_size: int, account_id: str, region: str
+    ):
         """Poll an SQS queue and invoke Lambda with received messages."""
         from robotocore.services.sqs.provider import _get_store
 
@@ -114,7 +119,9 @@ class EventSourceEngine:
                 "attributes": {
                     "ApproximateReceiveCount": str(msg.receive_count),
                     "SentTimestamp": str(int(msg.created * 1000)),
-                    "ApproximateFirstReceiveTimestamp": str(int((msg.first_received or time.time()) * 1000)),
+                    "ApproximateFirstReceiveTimestamp": str(
+                        int((msg.first_received or time.time()) * 1000)
+                    ),
                 },
                 "messageAttributes": _convert_message_attributes(msg.message_attributes),
                 "md5OfBody": msg.md5_of_body,
@@ -136,12 +143,16 @@ class EventSourceEngine:
                 queue.delete_message(receipt_handle)
         # If invocation failed, messages will become visible again after visibility timeout
 
-    def _poll_kinesis(self, stream_arn: str, function_arn: str, batch_size: int, account_id: str, region: str):
+    def _poll_kinesis(
+        self, stream_arn: str, function_arn: str, batch_size: int, account_id: str, region: str
+    ):
         """Poll a Kinesis stream and invoke Lambda with new records."""
         from robotocore.services.kinesis.models import _get_store
 
         store = _get_store(region)
-        stream_name = stream_arn.rsplit("/", 1)[-1] if "/" in stream_arn else stream_arn.rsplit(":", 1)[-1]
+        stream_name = (
+            stream_arn.rsplit("/", 1)[-1] if "/" in stream_arn else stream_arn.rsplit(":", 1)[-1]
+        )
 
         stream = store.get_stream(stream_name)
         if not stream:
@@ -167,24 +178,27 @@ class EventSourceEngine:
             records_to_send = records_to_send[:batch_size]
 
             import base64
+
             event_records = []
             for rec in records_to_send:
-                event_records.append({
-                    "kinesis": {
-                        "kinesisSchemaVersion": "1.0",
-                        "partitionKey": rec.partition_key,
-                        "sequenceNumber": str(rec.sequence_number),
-                        "data": base64.b64encode(rec.data).decode(),
-                        "approximateArrivalTimestamp": rec.timestamp,
-                    },
-                    "eventSource": "aws:kinesis",
-                    "eventVersion": "1.0",
-                    "eventID": f"{shard.shard_id}:{rec.sequence_number}",
-                    "eventName": "aws:kinesis:record",
-                    "invokeIdentityArn": function_arn,
-                    "awsRegion": region,
-                    "eventSourceARN": stream_arn,
-                })
+                event_records.append(
+                    {
+                        "kinesis": {
+                            "kinesisSchemaVersion": "1.0",
+                            "partitionKey": rec.partition_key,
+                            "sequenceNumber": str(rec.sequence_number),
+                            "data": base64.b64encode(rec.data).decode(),
+                            "approximateArrivalTimestamp": rec.timestamp,
+                        },
+                        "eventSource": "aws:kinesis",
+                        "eventVersion": "1.0",
+                        "eventID": f"{shard.shard_id}:{rec.sequence_number}",
+                        "eventName": "aws:kinesis:record",
+                        "invokeIdentityArn": function_arn,
+                        "awsRegion": region,
+                        "eventSourceARN": stream_arn,
+                    }
+                )
 
             event = {"Records": event_records}
             function_name = _extract_function_name(function_arn)
@@ -193,7 +207,9 @@ class EventSourceEngine:
             if success:
                 self._kinesis_positions[position_key] = records_to_send[-1].sequence_number
 
-    def _poll_dynamodb_stream(self, stream_arn: str, function_arn: str, batch_size: int, account_id: str, region: str):
+    def _poll_dynamodb_stream(
+        self, stream_arn: str, function_arn: str, batch_size: int, account_id: str, region: str
+    ):
         """Poll a DynamoDB Stream and invoke Lambda with new records.
 
         Reads from the hook-based record store populated by DynamoDB mutation hooks.
@@ -210,22 +226,24 @@ class EventSourceEngine:
 
         with store._lock:
             records = store._hook_records.get(stream_arn, [])
-            new_records = records[last_idx:last_idx + batch_size]
+            new_records = records[last_idx : last_idx + batch_size]
 
         if not new_records:
             return
 
         event_records = []
         for rec in new_records:
-            event_records.append({
-                "eventID": rec.event_id,
-                "eventName": rec.event_name,
-                "eventVersion": rec.event_version,
-                "eventSource": rec.event_source,
-                "awsRegion": region,
-                "dynamodb": rec.dynamodb,
-                "eventSourceARN": stream_arn,
-            })
+            event_records.append(
+                {
+                    "eventID": rec.event_id,
+                    "eventName": rec.event_name,
+                    "eventVersion": rec.event_version,
+                    "eventSource": rec.event_source,
+                    "awsRegion": region,
+                    "dynamodb": rec.dynamodb,
+                    "eventSourceARN": stream_arn,
+                }
+            )
 
         event = {"Records": event_records}
         function_name = _extract_function_name(function_arn)
@@ -236,9 +254,10 @@ class EventSourceEngine:
 
     def _invoke_lambda(self, function_name: str, event: dict, account_id: str, region: str) -> bool:
         """Invoke a Lambda function with the given event. Returns True on success."""
+        import base64
+
         from moto.backends import get_backend
         from moto.core import DEFAULT_ACCOUNT_ID
-        import base64
 
         try:
             acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID

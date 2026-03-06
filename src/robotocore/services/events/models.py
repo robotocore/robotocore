@@ -1,11 +1,7 @@
 """EventBridge in-memory models: event buses, rules, and targets."""
 
-import fnmatch
-import json
-import re
 import threading
 import time
-import uuid
 from dataclasses import dataclass, field
 
 
@@ -65,12 +61,16 @@ class EventsStore:
         self.buses: dict[str, EventBus] = {}
         self.mutex = threading.RLock()
         # Create default bus
-        self.buses["default"] = EventBus(name="default", region="us-east-1", account_id="123456789012")
+        self.buses["default"] = EventBus(
+            name="default", region="us-east-1", account_id="123456789012"
+        )
 
     def ensure_default_bus(self, region: str, account_id: str):
         with self.mutex:
             if "default" not in self.buses:
-                self.buses["default"] = EventBus(name="default", region=region, account_id=account_id)
+                self.buses["default"] = EventBus(
+                    name="default", region=region, account_id=account_id
+                )
             else:
                 self.buses["default"].region = region
                 self.buses["default"].account_id = account_id
@@ -93,9 +93,17 @@ class EventsStore:
     def list_buses(self) -> list[EventBus]:
         return list(self.buses.values())
 
-    def put_rule(self, name: str, bus_name: str, region: str, account_id: str,
-                 event_pattern: dict | None = None, schedule_expression: str | None = None,
-                 state: str = "ENABLED", description: str = "") -> EventRule:
+    def put_rule(
+        self,
+        name: str,
+        bus_name: str,
+        region: str,
+        account_id: str,
+        event_pattern: dict | None = None,
+        schedule_expression: str | None = None,
+        state: str = "ENABLED",
+        description: str = "",
+    ) -> EventRule:
         with self.mutex:
             bus = self.buses.get(bus_name)
             if not bus:
@@ -139,10 +147,16 @@ class EventsStore:
         with self.mutex:
             bus = self.buses.get(bus_name)
             if not bus:
-                return [{"TargetId": t.get("Id", ""), "ErrorCode": "ResourceNotFoundException"} for t in targets]
+                return [
+                    {"TargetId": t.get("Id", ""), "ErrorCode": "ResourceNotFoundException"}
+                    for t in targets
+                ]
             rule = bus.rules.get(rule_name)
             if not rule:
-                return [{"TargetId": t.get("Id", ""), "ErrorCode": "ResourceNotFoundException"} for t in targets]
+                return [
+                    {"TargetId": t.get("Id", ""), "ErrorCode": "ResourceNotFoundException"}
+                    for t in targets
+                ]
 
             failed = []
             for t in targets:

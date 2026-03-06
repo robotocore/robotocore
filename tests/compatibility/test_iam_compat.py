@@ -4,6 +4,7 @@ import json
 import uuid
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -16,21 +17,25 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-TRUST_POLICY = json.dumps({
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": {"Service": "lambda.amazonaws.com"},
-            "Action": "sts:AssumeRole",
-        }
-    ],
-})
+TRUST_POLICY = json.dumps(
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"Service": "lambda.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
+    }
+)
 
-SIMPLE_POLICY_DOC = json.dumps({
-    "Version": "2012-10-17",
-    "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
-})
+SIMPLE_POLICY_DOC = json.dumps(
+    {
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+    }
+)
 
 
 class TestIAMUserOperations:
@@ -55,10 +60,18 @@ class TestIAMUserOperations:
 
 class TestIAMRoleOperations:
     def test_create_role(self, iam):
-        trust = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-        })
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
         response = iam.create_role(RoleName="test-role", AssumeRolePolicyDocument=trust)
         assert response["Role"]["RoleName"] == "test-role"
         iam.delete_role(RoleName="test-role")
@@ -74,24 +87,36 @@ class TestIAMRoleOperations:
 
 class TestIAMPolicyOperations:
     def test_create_policy(self, iam):
-        policy_doc = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
-        })
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+            }
+        )
         response = iam.create_policy(PolicyName="test-policy", PolicyDocument=policy_doc)
         assert response["Policy"]["PolicyName"] == "test-policy"
         iam.delete_policy(PolicyArn=response["Policy"]["Arn"])
 
     def test_attach_role_policy(self, iam):
-        trust = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-        })
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
         iam.create_role(RoleName="attach-role", AssumeRolePolicyDocument=trust)
-        policy_doc = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
-        })
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+            }
+        )
         pol = iam.create_policy(PolicyName="attach-policy", PolicyDocument=policy_doc)
         arn = pol["Policy"]["Arn"]
         iam.attach_role_policy(RoleName="attach-role", PolicyArn=arn)
@@ -131,14 +156,16 @@ class TestIAMInstanceProfile:
         iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
         try:
             iam.add_role_to_instance_profile(
-                InstanceProfileName=profile_name, RoleName=role_name,
+                InstanceProfileName=profile_name,
+                RoleName=role_name,
             )
             resp = iam.get_instance_profile(InstanceProfileName=profile_name)
             roles = resp["InstanceProfile"]["Roles"]
             assert any(r["RoleName"] == role_name for r in roles)
         finally:
             iam.remove_role_from_instance_profile(
-                InstanceProfileName=profile_name, RoleName=role_name,
+                InstanceProfileName=profile_name,
+                RoleName=role_name,
             )
             iam.delete_instance_profile(InstanceProfileName=profile_name)
             iam.delete_role(RoleName=role_name)
@@ -192,12 +219,16 @@ class TestIAMPolicyVersions:
         pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
         arn = pol["Policy"]["Arn"]
         try:
-            new_doc = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
-            })
+            new_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+                }
+            )
             ver_resp = iam.create_policy_version(
-                PolicyArn=arn, PolicyDocument=new_doc, SetAsDefault=True,
+                PolicyArn=arn,
+                PolicyDocument=new_doc,
+                SetAsDefault=True,
             )
             assert ver_resp["PolicyVersion"]["VersionId"] == "v2"
             assert ver_resp["PolicyVersion"]["IsDefaultVersion"] is True

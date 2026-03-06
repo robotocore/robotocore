@@ -3,7 +3,6 @@
 import os
 
 import boto3
-import pytest
 from botocore.config import Config
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")

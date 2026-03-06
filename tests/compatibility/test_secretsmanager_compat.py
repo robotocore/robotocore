@@ -3,6 +3,7 @@
 import json
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -53,8 +54,9 @@ class TestSecretsManagerOperations:
         sm.delete_secret(SecretId="binary/secret", ForceDeleteWithoutRecovery=True)
 
     def test_tag_secret(self, sm):
-        sm.create_secret(Name="tagged/secret", SecretString="val",
-                         Tags=[{"Key": "env", "Value": "test"}])
+        sm.create_secret(
+            Name="tagged/secret", SecretString="val", Tags=[{"Key": "env", "Value": "test"}]
+        )
         response = sm.describe_secret(SecretId="tagged/secret")
         tags = {t["Key"]: t["Value"] for t in response.get("Tags", [])}
         assert tags.get("env") == "test"

@@ -4,7 +4,6 @@ import json
 import re
 import threading
 import time
-import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
@@ -76,7 +75,9 @@ def parse_template(template_str: str) -> dict:
     return yaml.safe_load(template_str)
 
 
-def resolve_intrinsics(value, resources: dict[str, CfnResource], parameters: dict, region: str, account_id: str):
+def resolve_intrinsics(
+    value, resources: dict[str, CfnResource], parameters: dict, region: str, account_id: str
+):
     """Resolve CloudFormation intrinsic functions recursively."""
     if isinstance(value, str):
         return value
@@ -118,14 +119,19 @@ def resolve_intrinsics(value, resources: dict[str, CfnResource], parameters: dic
 
     if "Fn::Join" in value:
         delimiter, values = value["Fn::Join"]
-        resolved = [str(resolve_intrinsics(v, resources, parameters, region, account_id)) for v in values]
+        resolved = [
+            str(resolve_intrinsics(v, resources, parameters, region, account_id)) for v in values
+        ]
         return delimiter.join(resolved)
 
     if "Fn::Sub" in value:
         sub_val = value["Fn::Sub"]
         if isinstance(sub_val, list):
             template_str, vars_map = sub_val
-            resolved_vars = {k: resolve_intrinsics(v, resources, parameters, region, account_id) for k, v in vars_map.items()}
+            resolved_vars = {
+                k: resolve_intrinsics(v, resources, parameters, region, account_id)
+                for k, v in vars_map.items()
+            }
         else:
             template_str = sub_val
             resolved_vars = {}
@@ -142,7 +148,7 @@ def resolve_intrinsics(value, resources: dict[str, CfnResource], parameters: dic
             ref_result = resolve_intrinsics({"Ref": var}, resources, parameters, region, account_id)
             return str(ref_result)
 
-        return re.sub(r'\$\{([^}]+)\}', replace_var, template_str)
+        return re.sub(r"\$\{([^}]+)\}", replace_var, template_str)
 
     if "Fn::Select" in value:
         index, options = value["Fn::Select"]
@@ -177,7 +183,10 @@ def resolve_intrinsics(value, resources: dict[str, CfnResource], parameters: dic
         return [f"{region}a", f"{region}b", f"{region}c"]
 
     # Recursively resolve all values in the dict
-    return {k: resolve_intrinsics(v, resources, parameters, region, account_id) for k, v in value.items()}
+    return {
+        k: resolve_intrinsics(v, resources, parameters, region, account_id)
+        for k, v in value.items()
+    }
 
 
 def build_dependency_order(template: dict) -> list[str]:
@@ -245,7 +254,7 @@ def _find_refs(value, resource_names, refs: set):
         if "Fn::Sub" in value:
             sub_val = value["Fn::Sub"]
             template_str = sub_val[0] if isinstance(sub_val, list) else sub_val
-            for m in re.finditer(r'\$\{([^.}]+)', template_str):
+            for m in re.finditer(r"\$\{([^.}]+)", template_str):
                 if m.group(1) in resource_names:
                     refs.add(m.group(1))
         for v in value.values():

@@ -72,6 +72,7 @@ async def handle_sqs_request(request: Request, region: str, account_id: str) -> 
     else:
         # Query protocol (legacy)
         from urllib.parse import parse_qs
+
         if "x-www-form-urlencoded" in content_type:
             parsed = parse_qs(body.decode(), keep_blank_values=True)
         else:
@@ -86,7 +87,14 @@ async def handle_sqs_request(request: Request, region: str, account_id: str) -> 
         return _error("InvalidAction", f"Unknown action: {action}", 400, use_json)
 
     try:
-        result = handler(store, params, region, account_id, request)
+        # ReceiveMessage may long-poll (block), so run in a thread to avoid
+        # blocking the event loop and deadlocking cross-service callbacks.
+        if action == "ReceiveMessage":
+            import asyncio
+
+            result = await asyncio.to_thread(handler, store, params, region, account_id, request)
+        else:
+            result = handler(store, params, region, account_id, request)
         if use_json:
             return _json_response(result)
         else:
@@ -124,7 +132,9 @@ def _resolve_queue(store: SqsStore, params: dict, request: Request) -> StandardQ
 # --- Actions (return dicts, serialized by caller) ---
 
 
-def _create_queue(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _create_queue(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     name = params.get("QueueName", "")
     attributes = params.get("Attributes", {})
     # Query protocol: Attribute.N.Name/Value
@@ -136,7 +146,9 @@ def _create_queue(store: SqsStore, params: dict, region: str, account_id: str, r
     return {"QueueUrl": queue.url}
 
 
-def _delete_queue(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _delete_queue(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     url = params.get("QueueUrl", "")
     queue = store.get_queue_by_url(url)
     if queue:
@@ -144,7 +156,9 @@ def _delete_queue(store: SqsStore, params: dict, region: str, account_id: str, r
     return {}
 
 
-def _get_queue_url(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _get_queue_url(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     name = params.get("QueueName", "")
     queue = store.get_queue(name)
     if not queue:
@@ -152,13 +166,17 @@ def _get_queue_url(store: SqsStore, params: dict, region: str, account_id: str, 
     return {"QueueUrl": queue.url}
 
 
-def _list_queues(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _list_queues(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     prefix = params.get("QueueNamePrefix")
     queues = store.list_queues(prefix)
     return {"QueueUrls": [q.url for q in queues]}
 
 
-def _send_message(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _send_message(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     body_text = params.get("MessageBody", "")
     message_id = _new_id()
@@ -188,7 +206,9 @@ def _send_message(store: SqsStore, params: dict, region: str, account_id: str, r
     return resp
 
 
-def _receive_message(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _receive_message(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     max_msgs = min(int(params.get("MaxNumberOfMessages", "1")), 10)
     vis_timeout = params.get("VisibilityTimeout")
@@ -198,7 +218,9 @@ def _receive_message(store: SqsStore, params: dict, region: str, account_id: str
     if wait_time is not None:
         wait_time = int(wait_time)
 
-    results = queue.receive(max_messages=max_msgs, visibility_timeout=vis_timeout, wait_time_seconds=wait_time)
+    results = queue.receive(
+        max_messages=max_msgs, visibility_timeout=vis_timeout, wait_time_seconds=wait_time
+    )
 
     # DLQ redrive
     valid = []
@@ -233,19 +255,25 @@ def _receive_message(store: SqsStore, params: dict, region: str, account_id: str
     return {"Messages": messages} if messages else {}
 
 
-def _delete_message(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _delete_message(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     receipt = params.get("ReceiptHandle", "")
     queue.delete_message(receipt)
     return {}
 
 
-def _get_queue_attributes(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _get_queue_attributes(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     return {"Attributes": queue.get_attributes()}
 
 
-def _set_queue_attributes(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _set_queue_attributes(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     attrs = params.get("Attributes", {})
     for key, value in params.items():
@@ -256,13 +284,17 @@ def _set_queue_attributes(store: SqsStore, params: dict, region: str, account_id
     return {}
 
 
-def _purge_queue(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _purge_queue(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     queue.purge()
     return {}
 
 
-def _change_message_visibility(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _change_message_visibility(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     receipt = params.get("ReceiptHandle", "")
     timeout = int(params.get("VisibilityTimeout", "30"))
@@ -270,20 +302,26 @@ def _change_message_visibility(store: SqsStore, params: dict, region: str, accou
     return {}
 
 
-def _send_message_batch(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _send_message_batch(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     successful = []
     entries = params.get("Entries", [])
     # Query protocol
     i = 1
     while f"SendMessageBatchRequestEntry.{i}.Id" in params:
-        entries.append({
-            "Id": params[f"SendMessageBatchRequestEntry.{i}.Id"],
-            "MessageBody": params.get(f"SendMessageBatchRequestEntry.{i}.MessageBody", ""),
-            "DelaySeconds": params.get(f"SendMessageBatchRequestEntry.{i}.DelaySeconds", "0"),
-            "MessageGroupId": params.get(f"SendMessageBatchRequestEntry.{i}.MessageGroupId"),
-            "MessageDeduplicationId": params.get(f"SendMessageBatchRequestEntry.{i}.MessageDeduplicationId"),
-        })
+        entries.append(
+            {
+                "Id": params[f"SendMessageBatchRequestEntry.{i}.Id"],
+                "MessageBody": params.get(f"SendMessageBatchRequestEntry.{i}.MessageBody", ""),
+                "DelaySeconds": params.get(f"SendMessageBatchRequestEntry.{i}.DelaySeconds", "0"),
+                "MessageGroupId": params.get(f"SendMessageBatchRequestEntry.{i}.MessageGroupId"),
+                "MessageDeduplicationId": params.get(
+                    f"SendMessageBatchRequestEntry.{i}.MessageDeduplicationId"
+                ),
+            }
+        )
         i += 1
 
     for entry in entries:
@@ -291,27 +329,37 @@ def _send_message_batch(store: SqsStore, params: dict, region: str, account_id: 
         body_text = entry.get("MessageBody", "")
         md5_body = _md5(body_text)
         msg = SqsMessage(
-            message_id=msg_id, body=body_text, md5_of_body=md5_body,
+            message_id=msg_id,
+            body=body_text,
+            md5_of_body=md5_body,
             delay_seconds=int(entry.get("DelaySeconds", "0") or "0"),
             message_group_id=entry.get("MessageGroupId"),
             message_deduplication_id=entry.get("MessageDeduplicationId"),
         )
         queue.put(msg)
-        successful.append({"Id": entry.get("Id", ""), "MessageId": msg_id, "MD5OfMessageBody": md5_body})
+        successful.append(
+            {"Id": entry.get("Id", ""), "MessageId": msg_id, "MD5OfMessageBody": md5_body}
+        )
 
     return {"Successful": successful, "Failed": []}
 
 
-def _delete_message_batch(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _delete_message_batch(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     queue = _resolve_queue(store, params, request)
     successful = []
     entries = params.get("Entries", [])
     i = 1
     while f"DeleteMessageBatchRequestEntry.{i}.Id" in params:
-        entries.append({
-            "Id": params[f"DeleteMessageBatchRequestEntry.{i}.Id"],
-            "ReceiptHandle": params.get(f"DeleteMessageBatchRequestEntry.{i}.ReceiptHandle", ""),
-        })
+        entries.append(
+            {
+                "Id": params[f"DeleteMessageBatchRequestEntry.{i}.Id"],
+                "ReceiptHandle": params.get(
+                    f"DeleteMessageBatchRequestEntry.{i}.ReceiptHandle", ""
+                ),
+            }
+        )
         i += 1
 
     for entry in entries:
@@ -321,15 +369,21 @@ def _delete_message_batch(store: SqsStore, params: dict, region: str, account_id
     return {"Successful": successful, "Failed": []}
 
 
-def _tag_queue(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _tag_queue(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     return {}
 
 
-def _untag_queue(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _untag_queue(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     return {}
 
 
-def _list_queue_tags(store: SqsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _list_queue_tags(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     return {"Tags": {}}
 
 
@@ -344,7 +398,9 @@ def _move_to_dlq(store: SqsStore, queue: StandardQueue, msg: SqsMessage) -> None
     dl_queue = store.get_queue_by_arn(dl_arn)
     if dl_queue:
         dl_msg = SqsMessage(
-            message_id=_new_id(), body=msg.body, md5_of_body=msg.md5_of_body,
+            message_id=_new_id(),
+            body=msg.body,
+            md5_of_body=msg.md5_of_body,
             message_attributes=msg.message_attributes,
         )
         dl_queue.put(dl_msg)
@@ -373,6 +429,7 @@ def _json_response(data: dict) -> Response:
 
 def _xml_response(action: str, data: dict) -> Response:
     """Build XML response from dict for legacy query protocol."""
+
     # Simple XML serialization for basic responses
     def dict_to_xml(d: dict, indent: int = 2) -> str:
         parts = []
@@ -380,11 +437,11 @@ def _xml_response(action: str, data: dict) -> Response:
             if isinstance(v, list):
                 for item in v:
                     if isinstance(item, dict):
-                        parts.append(f"<{k}>{dict_to_xml(item, indent+1)}</{k}>")
+                        parts.append(f"<{k}>{dict_to_xml(item, indent + 1)}</{k}>")
                     else:
                         parts.append(f"<{k}>{item}</{k}>")
             elif isinstance(v, dict):
-                parts.append(f"<{k}>{dict_to_xml(v, indent+1)}</{k}>")
+                parts.append(f"<{k}>{dict_to_xml(v, indent + 1)}</{k}>")
             else:
                 parts.append(f"<{k}>{v}</{k}>")
         return "".join(parts)
@@ -394,9 +451,9 @@ def _xml_response(action: str, data: dict) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<{action} xmlns="http://queue.amazonaws.com/doc/2012-11-05/">'
-        f'<{result_name}>{body_xml}</{result_name}>'
-        f'<ResponseMetadata><RequestId>{_new_id()}</RequestId></ResponseMetadata>'
-        f'</{action}>'
+        f"<{result_name}>{body_xml}</{result_name}>"
+        f"<ResponseMetadata><RequestId>{_new_id()}</RequestId></ResponseMetadata>"
+        f"</{action}>"
     )
     return Response(content=xml, status_code=200, media_type="text/xml")
 
@@ -408,9 +465,9 @@ def _error(code: str, message: str, status: int, use_json: bool) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://queue.amazonaws.com/doc/2012-11-05/">'
-        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'
-        f'<RequestId>{_new_id()}</RequestId>'
-        f'</ErrorResponse>'
+        f"<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>"
+        f"<RequestId>{_new_id()}</RequestId>"
+        f"</ErrorResponse>"
     )
     return Response(content=xml, status_code=status, media_type="text/xml")
 

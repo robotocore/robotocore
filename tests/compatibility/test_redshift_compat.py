@@ -1,6 +1,7 @@
 """Redshift compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -93,10 +94,7 @@ class TestRedshiftOperations:
             ParameterGroupFamily="redshift-1.0",
             Description="Test parameter group",
         )
-        assert (
-            response["ClusterParameterGroup"]["ParameterGroupName"]
-            == "test-param-group"
-        )
+        assert response["ClusterParameterGroup"]["ParameterGroupName"] == "test-param-group"
 
         # Verify it shows up in listing
         desc_response = redshift.describe_cluster_parameter_groups(
@@ -105,6 +103,4 @@ class TestRedshiftOperations:
         assert len(desc_response["ParameterGroups"]) == 1
 
         # Cleanup
-        redshift.delete_cluster_parameter_group(
-            ParameterGroupName="test-param-group"
-        )
+        redshift.delete_cluster_parameter_group(ParameterGroupName="test-param-group")

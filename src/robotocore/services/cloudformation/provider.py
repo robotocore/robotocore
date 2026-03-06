@@ -1,6 +1,5 @@
 """Native CloudFormation provider."""
 
-import json
 import threading
 import time
 import uuid
@@ -48,6 +47,7 @@ async def handle_cloudformation_request(request: Request, region: str, account_i
     content_type = request.headers.get("content-type", "")
 
     from urllib.parse import parse_qs
+
     if "x-www-form-urlencoded" in content_type:
         parsed = parse_qs(body.decode(), keep_blank_values=True)
     else:
@@ -97,10 +97,12 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
     tags = []
     i = 1
     while f"Tags.member.{i}.Key" in params:
-        tags.append({
-            "Key": params[f"Tags.member.{i}.Key"],
-            "Value": params.get(f"Tags.member.{i}.Value", ""),
-        })
+        tags.append(
+            {
+                "Key": params[f"Tags.member.{i}.Key"],
+                "Value": params.get(f"Tags.member.{i}.Value", ""),
+            }
+        )
         i += 1
 
     stack = CfnStack(
@@ -147,7 +149,9 @@ def _deploy_stack(stack: CfnStack, region: str, account_id: str) -> None:
         raw_props = res_def.get("Properties", {})
 
         # Resolve intrinsic functions in properties
-        resolved_props = resolve_intrinsics(raw_props, stack.resources, stack.parameters, region, account_id)
+        resolved_props = resolve_intrinsics(
+            raw_props, stack.resources, stack.parameters, region, account_id
+        )
 
         resource = CfnResource(
             logical_id=logical_id,
@@ -160,14 +164,18 @@ def _deploy_stack(stack: CfnStack, region: str, account_id: str) -> None:
 
     # Resolve outputs
     for out_name, out_def in template.get("Outputs", {}).items():
-        value = resolve_intrinsics(out_def.get("Value"), stack.resources, stack.parameters, region, account_id)
+        value = resolve_intrinsics(
+            out_def.get("Value"), stack.resources, stack.parameters, region, account_id
+        )
         stack.outputs[out_name] = {
             "OutputKey": out_name,
             "OutputValue": str(value),
             "Description": out_def.get("Description", ""),
         }
         if "Export" in out_def:
-            export_name = resolve_intrinsics(out_def["Export"].get("Name"), stack.resources, stack.parameters, region, account_id)
+            export_name = resolve_intrinsics(
+                out_def["Export"].get("Name"), stack.resources, stack.parameters, region, account_id
+            )
             stack.outputs[out_name]["ExportName"] = str(export_name)
 
 
@@ -223,12 +231,14 @@ def _list_stacks(store: CfnStore, params: dict, region: str, account_id: str) ->
     stacks = store.list_stacks()
     summaries = []
     for s in stacks:
-        summaries.append({
-            "StackId": s.stack_id,
-            "StackName": s.stack_name,
-            "StackStatus": s.status,
-            "CreationTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(s.created)),
-        })
+        summaries.append(
+            {
+                "StackId": s.stack_id,
+                "StackName": s.stack_name,
+                "StackStatus": s.status,
+                "CreationTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(s.created)),
+            }
+        )
     return {"StackSummaries": summaries}
 
 
@@ -240,13 +250,15 @@ def _describe_stack_resources(store: CfnStore, params: dict, region: str, accoun
 
     resources = []
     for lid, res in stack.resources.items():
-        resources.append({
-            "LogicalResourceId": lid,
-            "PhysicalResourceId": res.physical_id or "",
-            "ResourceType": res.resource_type,
-            "ResourceStatus": res.status,
-            "Timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stack.created)),
-        })
+        resources.append(
+            {
+                "LogicalResourceId": lid,
+                "PhysicalResourceId": res.physical_id or "",
+                "ResourceType": res.resource_type,
+                "ResourceStatus": res.status,
+                "Timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stack.created)),
+            }
+        )
     return {"StackResources": resources}
 
 
@@ -348,6 +360,7 @@ def _get_template(store: CfnStore, params: dict, region: str, account_id: str) -
 
 # --- XML Response ---
 
+
 def _xml_response(action: str, data: dict) -> Response:
     def dict_to_xml(d) -> str:
         if isinstance(d, str):
@@ -377,9 +390,9 @@ def _xml_response(action: str, data: dict) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<{action} xmlns="http://cloudformation.amazonaws.com/doc/2010-05-15/">'
-        f'<{result_name}>{body_xml}</{result_name}>'
-        f'<ResponseMetadata><RequestId>{_new_id()}</RequestId></ResponseMetadata>'
-        f'</{action}>'
+        f"<{result_name}>{body_xml}</{result_name}>"
+        f"<ResponseMetadata><RequestId>{_new_id()}</RequestId></ResponseMetadata>"
+        f"</{action}>"
     )
     return Response(content=xml, status_code=200, media_type="text/xml")
 
@@ -388,9 +401,9 @@ def _error(code: str, message: str, status: int) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://cloudformation.amazonaws.com/doc/2010-05-15/">'
-        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'
-        f'<RequestId>{_new_id()}</RequestId>'
-        f'</ErrorResponse>'
+        f"<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>"
+        f"<RequestId>{_new_id()}</RequestId>"
+        f"</ErrorResponse>"
     )
     return Response(content=xml, status_code=status, media_type="text/xml")
 

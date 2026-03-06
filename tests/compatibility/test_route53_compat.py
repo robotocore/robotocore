@@ -1,6 +1,7 @@
 """Route53 compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -40,9 +41,7 @@ class TestRoute53Operations:
         assert "example.com." in response["HostedZone"]["Name"]
 
     def test_change_resource_record_sets(self, route53):
-        zone = route53.create_hosted_zone(
-            Name="records.example.com", CallerReference="ref-records"
-        )
+        zone = route53.create_hosted_zone(Name="records.example.com", CallerReference="ref-records")
         zone_id = zone["HostedZone"]["Id"].split("/")[-1]
         route53.change_resource_record_sets(
             HostedZoneId=zone_id,
@@ -116,7 +115,8 @@ class TestRoute53Operations:
         )
         response = route53.list_resource_record_sets(HostedZoneId=hosted_zone)
         a_records = [
-            r for r in response["ResourceRecordSets"]
+            r
+            for r in response["ResourceRecordSets"]
             if r["Type"] == "A" and "a-record.example.com." in r["Name"]
         ]
         assert len(a_records) == 1
@@ -158,10 +158,7 @@ class TestRoute53Operations:
             },
         )
         response = route53.list_resource_record_sets(HostedZoneId=hosted_zone)
-        cnames = [
-            r for r in response["ResourceRecordSets"]
-            if r["Type"] == "CNAME"
-        ]
+        cnames = [r for r in response["ResourceRecordSets"] if r["Type"] == "CNAME"]
         assert len(cnames) >= 1
         assert any("alias.example.com." in c["Name"] for c in cnames)
         # Cleanup

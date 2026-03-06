@@ -5,6 +5,7 @@ import time
 import uuid
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -201,11 +202,15 @@ class TestEventBridgeSQSTarget:
         )
 
         # Put event
-        events.put_events(Entries=[{
-            "Source": "test.delivery",
-            "DetailType": "TestDelivery",
-            "Detail": json.dumps({"message": "hello-from-eventbridge"}),
-        }])
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.delivery",
+                    "DetailType": "TestDelivery",
+                    "Detail": json.dumps({"message": "hello-from-eventbridge"}),
+                }
+            ]
+        )
 
         # Check SQS for the message
         time.sleep(1)
@@ -243,11 +248,15 @@ class TestEventBridgeSQSTarget:
         )
 
         # Put event with DIFFERENT source
-        events.put_events(Entries=[{
-            "Source": "other.source",
-            "DetailType": "TestNoMatch",
-            "Detail": json.dumps({"key": "value"}),
-        }])
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "other.source",
+                    "DetailType": "TestNoMatch",
+                    "Detail": json.dumps({"key": "value"}),
+                }
+            ]
+        )
 
         time.sleep(1)
         msgs = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=1)

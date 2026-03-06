@@ -6,15 +6,16 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from robotocore.services.sqs.models import SqsMessage
-from robotocore.services.sqs.provider import _get_store as get_sqs_store, _md5
-from robotocore.services.sns.models import SnsSubscription
 from robotocore.services.sns.provider import _get_store as get_sns_store
+from robotocore.services.sqs.models import SqsMessage
+from robotocore.services.sqs.provider import _get_store as get_sqs_store
+from robotocore.services.sqs.provider import _md5
 
 
 @dataclass
 class NotificationConfig:
     """Parsed bucket notification configuration."""
+
     queue_configs: list[dict] = field(default_factory=list)
     topic_configs: list[dict] = field(default_factory=list)
     lambda_configs: list[dict] = field(default_factory=list)
@@ -82,8 +83,13 @@ def _event_matches(event_name: str, events: list[str], key: str, filter_rules: d
 
 
 def _build_event_record(
-    event_name: str, bucket: str, key: str,
-    region: str, account_id: str, size: int, etag: str,
+    event_name: str,
+    bucket: str,
+    key: str,
+    region: str,
+    account_id: str,
+    size: int,
+    etag: str,
 ) -> dict:
     return {
         "eventVersion": "2.1",
@@ -133,6 +139,9 @@ def _deliver_to_sns(topic_arn: str, message: str, region: str) -> None:
         return
     # Publish to all SQS subscribers of this topic
     from robotocore.services.sns.provider import _deliver_to_subscriber
+
     for sub in topic.subscriptions:
         if sub.confirmed:
-            _deliver_to_subscriber(sub, message, "S3 Notification", {}, str(uuid.uuid4()), topic_arn, region)
+            _deliver_to_subscriber(
+                sub, message, "S3 Notification", {}, str(uuid.uuid4()), topic_arn, region
+            )

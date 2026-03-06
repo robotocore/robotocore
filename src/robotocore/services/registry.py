@@ -25,41 +25,74 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "s3": ServiceInfo("s3", ServiceStatus.NATIVE, "rest-xml", "S3 with event notifications"),
     "sqs": ServiceInfo("sqs", ServiceStatus.NATIVE, "json", "SQS with full message lifecycle"),
     "sns": ServiceInfo("sns", ServiceStatus.NATIVE, "query", "SNS with cross-service delivery"),
-    "dynamodb": ServiceInfo("dynamodb", ServiceStatus.NATIVE, "json", "DynamoDB with stream mutation hooks"),
-    "dynamodbstreams": ServiceInfo("dynamodbstreams", ServiceStatus.NATIVE, "json", "DynamoDB Streams with native stream reading"),
+    "dynamodb": ServiceInfo(
+        "dynamodb", ServiceStatus.NATIVE, "json", "DynamoDB with stream mutation hooks"
+    ),
+    "dynamodbstreams": ServiceInfo(
+        "dynamodbstreams",
+        ServiceStatus.NATIVE,
+        "json",
+        "DynamoDB Streams with native stream reading",
+    ),
     "iam": ServiceInfo("iam", ServiceStatus.MOTO_BACKED, "query", "Identity and Access Management"),
     "sts": ServiceInfo("sts", ServiceStatus.MOTO_BACKED, "query", "Security Token Service"),
-    "cloudformation": ServiceInfo("cloudformation", ServiceStatus.NATIVE, "query", "CloudFormation engine"),
-    "cloudwatch": ServiceInfo("cloudwatch", ServiceStatus.NATIVE, "query", "CloudWatch Metrics with alarm evaluation"),
+    "cloudformation": ServiceInfo(
+        "cloudformation", ServiceStatus.NATIVE, "query", "CloudFormation engine"
+    ),
+    "cloudwatch": ServiceInfo(
+        "cloudwatch", ServiceStatus.NATIVE, "query", "CloudWatch Metrics with alarm evaluation"
+    ),
     "logs": ServiceInfo("logs", ServiceStatus.MOTO_BACKED, "json", "CloudWatch Logs"),
     "kms": ServiceInfo("kms", ServiceStatus.MOTO_BACKED, "json", "Key Management Service"),
-    "lambda": ServiceInfo("lambda", ServiceStatus.NATIVE, "rest-json", "Lambda with in-process Python execution"),
-    "events": ServiceInfo("events", ServiceStatus.NATIVE, "json", "EventBridge with cross-service target invocation"),
-    "kinesis": ServiceInfo("kinesis", ServiceStatus.NATIVE, "json", "Kinesis Streams with shard-based storage"),
+    "lambda": ServiceInfo(
+        "lambda", ServiceStatus.NATIVE, "rest-json", "Lambda with in-process Python execution"
+    ),
+    "events": ServiceInfo(
+        "events", ServiceStatus.NATIVE, "json", "EventBridge with cross-service target invocation"
+    ),
+    "kinesis": ServiceInfo(
+        "kinesis", ServiceStatus.NATIVE, "json", "Kinesis Streams with shard-based storage"
+    ),
     "firehose": ServiceInfo("firehose", ServiceStatus.NATIVE, "json", "Firehose with S3 delivery"),
-    "stepfunctions": ServiceInfo("stepfunctions", ServiceStatus.NATIVE, "json", "Step Functions with ASL execution"),
+    "stepfunctions": ServiceInfo(
+        "stepfunctions", ServiceStatus.NATIVE, "json", "Step Functions with ASL execution"
+    ),
     # Phase 2 - Integration (Moto-backed)
     "apigateway": ServiceInfo("apigateway", ServiceStatus.MOTO_BACKED, "rest-json", "API Gateway"),
-    "secretsmanager": ServiceInfo("secretsmanager", ServiceStatus.MOTO_BACKED, "json", "Secrets Manager"),
+    "secretsmanager": ServiceInfo(
+        "secretsmanager", ServiceStatus.MOTO_BACKED, "json", "Secrets Manager"
+    ),
     "ssm": ServiceInfo("ssm", ServiceStatus.MOTO_BACKED, "json", "Systems Manager"),
-    "scheduler": ServiceInfo("scheduler", ServiceStatus.NATIVE, "rest-json", "EventBridge Scheduler with schedule CRUD"),
+    "scheduler": ServiceInfo(
+        "scheduler", ServiceStatus.NATIVE, "rest-json", "EventBridge Scheduler with schedule CRUD"
+    ),
     "s3control": ServiceInfo("s3control", ServiceStatus.MOTO_BACKED, "rest-xml", "S3 Control"),
     # Phase 3 - Remaining (Moto-backed)
     "acm": ServiceInfo("acm", ServiceStatus.MOTO_BACKED, "json", "Certificate Manager"),
     "config": ServiceInfo("config", ServiceStatus.MOTO_BACKED, "json", "Config"),
     "ec2": ServiceInfo("ec2", ServiceStatus.MOTO_BACKED, "ec2", "Elastic Compute Cloud"),
     "redshift": ServiceInfo("redshift", ServiceStatus.MOTO_BACKED, "query", "Redshift"),
-    "resource-groups": ServiceInfo("resource-groups", ServiceStatus.MOTO_BACKED, "rest-json", "Resource Groups"),
-    "resourcegroupstaggingapi": ServiceInfo("resourcegroupstaggingapi", ServiceStatus.MOTO_BACKED, "json", "Resource Groups Tagging API"),
+    "resource-groups": ServiceInfo(
+        "resource-groups", ServiceStatus.MOTO_BACKED, "rest-json", "Resource Groups"
+    ),
+    "resourcegroupstaggingapi": ServiceInfo(
+        "resourcegroupstaggingapi", ServiceStatus.MOTO_BACKED, "json", "Resource Groups Tagging API"
+    ),
     "route53": ServiceInfo("route53", ServiceStatus.MOTO_BACKED, "rest-xml", "Route 53"),
-    "route53resolver": ServiceInfo("route53resolver", ServiceStatus.MOTO_BACKED, "json", "Route 53 Resolver"),
+    "route53resolver": ServiceInfo(
+        "route53resolver", ServiceStatus.MOTO_BACKED, "json", "Route 53 Resolver"
+    ),
     "ses": ServiceInfo("ses", ServiceStatus.MOTO_BACKED, "query", "Simple Email Service"),
     "support": ServiceInfo("support", ServiceStatus.MOTO_BACKED, "json", "Support"),
     "swf": ServiceInfo("swf", ServiceStatus.MOTO_BACKED, "json", "Simple Workflow"),
     "transcribe": ServiceInfo("transcribe", ServiceStatus.MOTO_BACKED, "json", "Transcribe"),
     "es": ServiceInfo("es", ServiceStatus.MOTO_BACKED, "rest-json", "Elasticsearch Service"),
-    "opensearch": ServiceInfo("opensearch", ServiceStatus.MOTO_BACKED, "rest-json", "OpenSearch Service"),
-    "cognito-idp": ServiceInfo("cognito-idp", ServiceStatus.MOTO_BACKED, "json", "Cognito Identity Provider"),
+    "opensearch": ServiceInfo(
+        "opensearch", ServiceStatus.MOTO_BACKED, "rest-json", "OpenSearch Service"
+    ),
+    "cognito-idp": ServiceInfo(
+        "cognito-idp", ServiceStatus.MOTO_BACKED, "json", "Cognito Identity Provider"
+    ),
     "ecr": ServiceInfo("ecr", ServiceStatus.MOTO_BACKED, "json", "Elastic Container Registry"),
 }
 

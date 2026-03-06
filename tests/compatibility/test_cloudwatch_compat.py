@@ -1,8 +1,9 @@
 """CloudWatch Metrics compatibility tests."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -20,7 +21,7 @@ class TestCloudWatchOperations:
                     "MetricName": "TestMetric",
                     "Value": 42.0,
                     "Unit": "Count",
-                    "Timestamp": datetime.now(timezone.utc),
+                    "Timestamp": datetime.now(UTC),
                 }
             ],
         )
@@ -68,7 +69,7 @@ class TestCloudWatchOperations:
         cw.delete_alarms(AlarmNames=["desc-alarm"])
 
     def test_get_metric_statistics(self, cw):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cw.put_metric_data(
             Namespace="StatsTest",
             MetricData=[
@@ -206,7 +207,7 @@ class TestCloudWatchOperations:
 
     def test_put_metric_data_with_dimensions(self, cw):
         """Put metric data with dimensions and verify listing."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cw.put_metric_data(
             Namespace="DimTest",
             MetricData=[
@@ -246,7 +247,7 @@ class TestCloudWatchOperations:
 
     def test_get_metric_statistics_with_period(self, cw):
         """Test get_metric_statistics with various period and statistic combos."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Put multiple data points
         cw.put_metric_data(
             Namespace="PeriodTest",

@@ -1,13 +1,12 @@
 """Native SNS provider with cross-service SQS, Lambda, and HTTP/HTTPS delivery."""
 
-import base64
 import hashlib
 import json
 import logging
 import threading
-import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -56,6 +55,7 @@ async def handle_sns_request(request: Request, region: str, account_id: str) -> 
         use_json = True
     else:
         from urllib.parse import parse_qs
+
         if "x-www-form-urlencoded" in content_type:
             parsed = parse_qs(body.decode(), keep_blank_values=True)
         else:
@@ -84,7 +84,9 @@ async def handle_sns_request(request: Request, region: str, account_id: str) -> 
 # --- Actions ---
 
 
-def _create_topic(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _create_topic(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     name = params.get("Name", "")
     attributes = params.get("Attributes", {})
     # Query protocol attributes
@@ -96,18 +98,24 @@ def _create_topic(store: SnsStore, params: dict, region: str, account_id: str, r
     return {"TopicArn": topic.arn}
 
 
-def _delete_topic(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _delete_topic(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("TopicArn", "")
     store.delete_topic(arn)
     return {}
 
 
-def _list_topics(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _list_topics(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     topics = store.list_topics()
     return {"Topics": [{"TopicArn": t.arn} for t in topics]}
 
 
-def _get_topic_attributes(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _get_topic_attributes(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("TopicArn", "")
     topic = store.get_topic(arn)
     if not topic:
@@ -122,12 +130,16 @@ def _get_topic_attributes(store: SnsStore, params: dict, region: str, account_id
     }
     if topic.is_fifo:
         attrs["FifoTopic"] = "true"
-        attrs["ContentBasedDeduplication"] = topic.attributes.get("ContentBasedDeduplication", "false")
+        attrs["ContentBasedDeduplication"] = topic.attributes.get(
+            "ContentBasedDeduplication", "false"
+        )
     attrs.update(topic.attributes)
     return {"Attributes": attrs}
 
 
-def _set_topic_attributes(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _set_topic_attributes(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("TopicArn", "")
     topic = store.get_topic(arn)
     if not topic:
@@ -139,7 +151,9 @@ def _set_topic_attributes(store: SnsStore, params: dict, region: str, account_id
     return {}
 
 
-def _subscribe(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _subscribe(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     topic_arn = params.get("TopicArn", "")
     protocol = params.get("Protocol", "")
     endpoint = params.get("Endpoint", "")
@@ -150,24 +164,32 @@ def _subscribe(store: SnsStore, params: dict, region: str, account_id: str, requ
     return {"SubscriptionArn": sub.subscription_arn}
 
 
-def _unsubscribe(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _unsubscribe(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("SubscriptionArn", "")
     store.unsubscribe(arn)
     return {}
 
 
-def _list_subscriptions(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _list_subscriptions(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     subs = store.list_subscriptions()
     return {"Subscriptions": [_sub_to_dict(s) for s in subs]}
 
 
-def _list_subscriptions_by_topic(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _list_subscriptions_by_topic(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     topic_arn = params.get("TopicArn", "")
     subs = store.list_subscriptions(topic_arn)
     return {"Subscriptions": [_sub_to_dict(s) for s in subs]}
 
 
-def _get_subscription_attributes(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _get_subscription_attributes(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("SubscriptionArn", "")
     sub = store.get_subscription(arn)
     if not sub:
@@ -185,7 +207,9 @@ def _get_subscription_attributes(store: SnsStore, params: dict, region: str, acc
     return {"Attributes": attrs}
 
 
-def _set_subscription_attributes(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _set_subscription_attributes(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("SubscriptionArn", "")
     sub = store.get_subscription(arn)
     if not sub:
@@ -229,13 +253,17 @@ def _publish(store: SnsStore, params: dict, region: str, account_id: str, reques
             continue
         if not sub.matches_filter(message_attributes):
             continue
-        _deliver_to_subscriber(sub, message, subject, message_attributes, message_id, topic_arn, region)
+        _deliver_to_subscriber(
+            sub, message, subject, message_attributes, message_id, topic_arn, region
+        )
 
     result = {"MessageId": message_id}
     return result
 
 
-def _publish_batch(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _publish_batch(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     topic_arn = params.get("TopicArn", "")
     topic = store.get_topic(topic_arn)
     if not topic:
@@ -254,14 +282,18 @@ def _publish_batch(store: SnsStore, params: dict, region: str, account_id: str, 
                 continue
             if not sub.matches_filter(message_attributes):
                 continue
-            _deliver_to_subscriber(sub, message, subject, message_attributes, msg_id, topic_arn, region)
+            _deliver_to_subscriber(
+                sub, message, subject, message_attributes, msg_id, topic_arn, region
+            )
 
         successful.append({"Id": entry.get("Id", ""), "MessageId": msg_id})
 
     return {"Successful": successful, "Failed": []}
 
 
-def _tag_resource(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _tag_resource(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("ResourceArn", "")
     topic = store.get_topic(arn)
     if topic:
@@ -271,7 +303,9 @@ def _tag_resource(store: SnsStore, params: dict, region: str, account_id: str, r
     return {}
 
 
-def _untag_resource(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _untag_resource(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("ResourceArn", "")
     topic = store.get_topic(arn)
     if topic:
@@ -281,7 +315,9 @@ def _untag_resource(store: SnsStore, params: dict, region: str, account_id: str,
     return {}
 
 
-def _list_tags_for_resource(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
+def _list_tags_for_resource(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
     arn = params.get("ResourceArn", "")
     topic = store.get_topic(arn)
     tags = []
@@ -294,8 +330,13 @@ def _list_tags_for_resource(store: SnsStore, params: dict, region: str, account_
 
 
 def _deliver_to_subscriber(
-    sub: SnsSubscription, message: str, subject: str | None,
-    message_attributes: dict, message_id: str, topic_arn: str, region: str,
+    sub: SnsSubscription,
+    message: str,
+    subject: str | None,
+    message_attributes: dict,
+    message_id: str,
+    topic_arn: str,
+    region: str,
 ) -> None:
     if sub.protocol == "sqs":
         _deliver_to_sqs(sub, message, subject, message_attributes, message_id, topic_arn, region)
@@ -307,8 +348,13 @@ def _deliver_to_subscriber(
 
 
 def _deliver_to_sqs(
-    sub: SnsSubscription, message: str, subject: str | None,
-    message_attributes: dict, message_id: str, topic_arn: str, region: str,
+    sub: SnsSubscription,
+    message: str,
+    subject: str | None,
+    message_attributes: dict,
+    message_id: str,
+    topic_arn: str,
+    region: str,
 ) -> None:
     sqs_store = get_sqs_store(region)
     # Endpoint is queue ARN — extract queue name
@@ -320,18 +366,20 @@ def _deliver_to_sqs(
     if sub.raw_message_delivery:
         body = message
     else:
-        body = json.dumps({
-            "Type": "Notification",
-            "MessageId": message_id,
-            "TopicArn": topic_arn,
-            "Subject": subject or "",
-            "Message": message,
-            "Timestamp": _iso_timestamp(),
-            "SignatureVersion": "1",
-            "Signature": "EXAMPLE",
-            "SigningCertURL": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService.pem",
-            "UnsubscribeURL": f"https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
-        })
+        body = json.dumps(
+            {
+                "Type": "Notification",
+                "MessageId": message_id,
+                "TopicArn": topic_arn,
+                "Subject": subject or "",
+                "Message": message,
+                "Timestamp": _iso_timestamp(),
+                "SignatureVersion": "1",
+                "Signature": "EXAMPLE",
+                "SigningCertURL": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService.pem",
+                "UnsubscribeURL": f"https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
+            }
+        )
 
     sqs_msg = SqsMessage(
         message_id=str(uuid.uuid4()),
@@ -342,48 +390,27 @@ def _deliver_to_sqs(
 
 
 def _deliver_to_lambda(
-    sub: SnsSubscription, message: str, subject: str | None,
-    message_attributes: dict, message_id: str, topic_arn: str, region: str,
+    sub: SnsSubscription,
+    message: str,
+    subject: str | None,
+    message_attributes: dict,
+    message_id: str,
+    topic_arn: str,
+    region: str,
 ) -> None:
-    """Deliver an SNS message to a Lambda function subscriber."""
-    from robotocore.services.lambda_.executor import execute_python_handler, get_layer_zips
+    """Deliver an SNS message to a Lambda function subscriber.
 
-    # Parse function name from ARN: arn:aws:lambda:region:account:function:name
+    Uses async dispatch via thread pool to avoid deadlocking the event loop
+    when the Lambda function calls back to the server.
+    """
+    from robotocore.services.lambda_.invoke import invoke_lambda_async
+
     endpoint = sub.endpoint
     try:
         arn_parts = endpoint.split(":")
-        func_name = arn_parts[6] if len(arn_parts) >= 7 else endpoint
         account_id = arn_parts[4] if len(arn_parts) >= 5 else "123456789012"
     except (IndexError, ValueError):
         logger.warning("SNS: Cannot parse Lambda ARN from endpoint: %s", endpoint)
-        return
-
-    # Get the Lambda function from Moto's backend
-    try:
-        from moto.backends import get_backend
-        from moto.core import DEFAULT_ACCOUNT_ID
-
-        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
-        backend = get_backend("lambda")[acct][region]
-        fn = backend.get_function(func_name)
-    except Exception as e:
-        logger.warning("SNS: Cannot find Lambda function %s: %s", func_name, e)
-        return
-
-    # Check if it's a Python runtime with code
-    runtime = getattr(fn, "run_time", "") or ""
-    if not runtime.startswith("python"):
-        logger.warning("SNS: Lambda function %s has non-Python runtime %s, skipping", func_name, runtime)
-        return
-
-    code_zip = None
-    if hasattr(fn, "code") and fn.code:
-        code_zip = fn.code.get("ZipFile")
-        if isinstance(code_zip, str):
-            code_zip = base64.b64decode(code_zip)
-
-    if not code_zip:
-        logger.warning("SNS: Lambda function %s has no code zip, skipping", func_name)
         return
 
     # Build SNS-to-Lambda event payload (matches AWS format)
@@ -396,82 +423,66 @@ def _deliver_to_lambda(
 
     timestamp = _iso_timestamp()
     event = {
-        "Records": [{
-            "EventSource": "aws:sns",
-            "EventVersion": "1.0",
-            "EventSubscriptionArn": sub.subscription_arn,
-            "Sns": {
-                "Type": "Notification",
-                "MessageId": message_id,
-                "TopicArn": topic_arn,
-                "Subject": subject or "",
-                "Message": message,
-                "Timestamp": timestamp,
-                "SignatureVersion": "1",
-                "Signature": "EXAMPLE",
-                "SigningCertUrl": f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem",
-                "UnsubscribeUrl": f"https://sns.{region}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
-                "MessageAttributes": sns_message_attributes,
-            },
-        }],
+        "Records": [
+            {
+                "EventSource": "aws:sns",
+                "EventVersion": "1.0",
+                "EventSubscriptionArn": sub.subscription_arn,
+                "Sns": {
+                    "Type": "Notification",
+                    "MessageId": message_id,
+                    "TopicArn": topic_arn,
+                    "Subject": subject or "",
+                    "Message": message,
+                    "Timestamp": timestamp,
+                    "SignatureVersion": "1",
+                    "Signature": "EXAMPLE",
+                    "SigningCertUrl": f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem",
+                    "UnsubscribeUrl": f"https://sns.{region}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
+                    "MessageAttributes": sns_message_attributes,
+                },
+            }
+        ],
     }
 
-    # Execute the Lambda function
-    handler = getattr(fn, "handler", "lambda_function.handler")
-    timeout = int(getattr(fn, "timeout", 3) or 3)
-    memory_size = int(getattr(fn, "memory_size", 128) or 128)
-    env_vars = getattr(fn, "environment_vars", {}) or {}
-    layer_zips = get_layer_zips(fn, account_id, region)
-
-    try:
-        result, error_type, logs = execute_python_handler(
-            code_zip=code_zip,
-            handler=handler,
-            event=event,
-            function_name=func_name,
-            timeout=timeout,
-            memory_size=memory_size,
-            env_vars=env_vars,
-            region=region,
-            account_id=account_id,
-            layer_zips=layer_zips if layer_zips else None,
-        )
-        if error_type:
-            logger.warning("SNS: Lambda %s returned error %s: %s", func_name, error_type, logs)
-        else:
-            logger.debug("SNS: Lambda %s invoked successfully", func_name)
-    except Exception as e:
-        logger.warning("SNS: Failed to invoke Lambda %s: %s", func_name, e)
+    invoke_lambda_async(endpoint, event, region, account_id)
 
 
 def _deliver_to_http(
-    sub: SnsSubscription, message: str, subject: str | None,
-    message_attributes: dict, message_id: str, topic_arn: str, region: str,
+    sub: SnsSubscription,
+    message: str,
+    subject: str | None,
+    message_attributes: dict,
+    message_id: str,
+    topic_arn: str,
+    region: str,
 ) -> None:
     """Deliver an SNS message to an HTTP/HTTPS endpoint."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     timestamp = _iso_timestamp()
-    payload = json.dumps({
-        "Type": "Notification",
-        "MessageId": message_id,
-        "TopicArn": topic_arn,
-        "Subject": subject or "",
-        "Message": message,
-        "Timestamp": timestamp,
-        "SignatureVersion": "1",
-        "Signature": "EXAMPLE",
-        "SigningCertURL": f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem",
-        "UnsubscribeURL": f"https://sns.{region}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
-        "MessageAttributes": {
-            name: {
-                "Type": val.get("DataType", "String"),
-                "Value": val.get("StringValue", val.get("Value", "")),
-            }
-            for name, val in message_attributes.items()
-        },
-    })
+    payload = json.dumps(
+        {
+            "Type": "Notification",
+            "MessageId": message_id,
+            "TopicArn": topic_arn,
+            "Subject": subject or "",
+            "Message": message,
+            "Timestamp": timestamp,
+            "SignatureVersion": "1",
+            "Signature": "EXAMPLE",
+            "SigningCertURL": f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem",
+            "UnsubscribeURL": f"https://sns.{region}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
+            "MessageAttributes": {
+                name: {
+                    "Type": val.get("DataType", "String"),
+                    "Value": val.get("StringValue", val.get("Value", "")),
+                }
+                for name, val in message_attributes.items()
+            },
+        }
+    )
 
     try:
         req = urllib.request.Request(
@@ -493,8 +504,9 @@ def _deliver_to_http(
 
 
 def _iso_timestamp() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    from datetime import datetime
+
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _sub_to_dict(sub: SnsSubscription) -> dict:
@@ -520,7 +532,7 @@ def _json_response(data: dict) -> Response:
 
 def _xml_response(action: str, data: dict) -> Response:
     # Fields that are maps and need entry/key/value serialization
-    _MAP_FIELDS = {"Attributes", "Tags"}
+    map_fields = {"Attributes", "Tags"}
 
     def dict_to_xml(d: dict) -> str:
         parts = []
@@ -533,7 +545,7 @@ def _xml_response(action: str, data: dict) -> Response:
                     else:
                         parts.append(f"<member>{item}</member>")
                 parts.append(f"</{k}>")
-            elif isinstance(v, dict) and k in _MAP_FIELDS:
+            elif isinstance(v, dict) and k in map_fields:
                 parts.append(f"<{k}>")
                 for mk, mv in v.items():
                     parts.append(f"<entry><key>{mk}</key><value>{mv}</value></entry>")
@@ -549,9 +561,9 @@ def _xml_response(action: str, data: dict) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<{action} xmlns="http://sns.amazonaws.com/doc/2010-03-31/">'
-        f'<{result_name}>{body_xml}</{result_name}>'
-        f'<ResponseMetadata><RequestId>{_new_id()}</RequestId></ResponseMetadata>'
-        f'</{action}>'
+        f"<{result_name}>{body_xml}</{result_name}>"
+        f"<ResponseMetadata><RequestId>{_new_id()}</RequestId></ResponseMetadata>"
+        f"</{action}>"
     )
     return Response(content=xml, status_code=200, media_type="text/xml")
 
@@ -563,9 +575,9 @@ def _error(code: str, message: str, status: int, use_json: bool) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/">'
-        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'
-        f'<RequestId>{_new_id()}</RequestId>'
-        f'</ErrorResponse>'
+        f"<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>"
+        f"<RequestId>{_new_id()}</RequestId>"
+        f"</ErrorResponse>"
     )
     return Response(content=xml, status_code=status, media_type="text/xml")
 

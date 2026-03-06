@@ -1,6 +1,7 @@
 """SES compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -47,9 +48,7 @@ class TestSESOperations:
 
     def test_get_identity_verification_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="verify-attrs@example.com")
-        response = ses.get_identity_verification_attributes(
-            Identities=["verify-attrs@example.com"]
-        )
+        response = ses.get_identity_verification_attributes(Identities=["verify-attrs@example.com"])
         attrs = response["VerificationAttributes"]
         assert "verify-attrs@example.com" in attrs
         assert attrs["verify-attrs@example.com"]["VerificationStatus"] == "Success"

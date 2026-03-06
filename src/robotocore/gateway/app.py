@@ -24,9 +24,9 @@ from robotocore.services.firehose.provider import handle_firehose_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.s3.provider import handle_s3_request
+from robotocore.services.scheduler.provider import handle_scheduler_request
 from robotocore.services.sns.provider import handle_sns_request
 from robotocore.services.sqs.provider import handle_sqs_request
-from robotocore.services.scheduler.provider import handle_scheduler_request
 from robotocore.services.stepfunctions.provider import handle_stepfunctions_request
 
 # Services with native providers (bypass Moto)
@@ -72,12 +72,16 @@ async def save_state(request: Request) -> JSONResponse:
     params = {}
     if body:
         import json
+
         params = json.loads(body)
 
     manager = get_state_manager()
     path = params.get("path") or manager.state_dir
     if not path:
-        return JSONResponse({"error": "No state directory configured. Set ROBOTOCORE_STATE_DIR or pass 'path'."}, status_code=400)
+        return JSONResponse(
+            {"error": "No state directory configured. Set ROBOTOCORE_STATE_DIR or pass 'path'."},
+            status_code=400,
+        )
 
     saved_path = manager.save(path)
     return JSONResponse({"status": "saved", "path": saved_path})
@@ -91,12 +95,16 @@ async def load_state(request: Request) -> JSONResponse:
     params = {}
     if body:
         import json
+
         params = json.loads(body)
 
     manager = get_state_manager()
     path = params.get("path") or manager.state_dir
     if not path:
-        return JSONResponse({"error": "No state directory configured. Set ROBOTOCORE_STATE_DIR or pass 'path'."}, status_code=400)
+        return JSONResponse(
+            {"error": "No state directory configured. Set ROBOTOCORE_STATE_DIR or pass 'path'."},
+            status_code=400,
+        )
 
     success = manager.load(path)
     return JSONResponse({"status": "loaded" if success else "no_state_found", "path": str(path)})
@@ -105,6 +113,7 @@ async def load_state(request: Request) -> JSONResponse:
 async def reset_state(request: Request) -> JSONResponse:
     """Reset all emulator state."""
     from robotocore.state.manager import get_state_manager
+
     get_state_manager().reset()
     return JSONResponse({"status": "reset"})
 
@@ -149,25 +158,32 @@ management_routes = [
     Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
 ]
 
+
 def _start_background_engines():
     """Start background engines for cross-service integrations."""
     import os
+
     from robotocore.services.lambda_.event_source import get_engine
+
     get_engine().start()
     from robotocore.services.cloudwatch.alarm_scheduler import get_alarm_scheduler
+
     get_alarm_scheduler().start()
 
     # Auto-load state if configured
     if os.environ.get("ROBOTOCORE_STATE_DIR"):
         from robotocore.state.manager import get_state_manager
+
         get_state_manager().load()
 
 
 def _shutdown():
     """Shutdown hook — auto-save state if configured."""
     import os
+
     if os.environ.get("ROBOTOCORE_PERSIST", "0") == "1":
         from robotocore.state.manager import get_state_manager
+
         manager = get_state_manager()
         if manager.state_dir:
             manager.save()
@@ -180,9 +196,12 @@ app = Starlette(
 )
 
 
-async def handle_execute_api(request: Request, rest_api_id: str, stage: str, proxy_path: str) -> Response:
+async def handle_execute_api(
+    request: Request, rest_api_id: str, stage: str, proxy_path: str
+) -> Response:
     """Handle API Gateway execute-api requests (invoke deployed APIs)."""
     import re
+
     from robotocore.services.apigateway.executor import execute_api_request
 
     body = await request.body()
@@ -223,7 +242,8 @@ class AWSRoutingMiddleware(BaseHTTPMiddleware):
 
         # Check for API Gateway execute-api path: /restapis/{id}/{stage}/_user_request_/{path}
         import re
-        exec_match = re.match(r'^/restapis/([^/]+)/([^/]+)/_user_request_/?(.*)', request.url.path)
+
+        exec_match = re.match(r"^/restapis/([^/]+)/([^/]+)/_user_request_/?(.*)", request.url.path)
         if exec_match:
             return await handle_execute_api(
                 request,

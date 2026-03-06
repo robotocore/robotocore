@@ -12,6 +12,7 @@ import uuid
 import zipfile
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -26,14 +27,18 @@ def _create_lambda_role():
     """Create an IAM role for Lambda and return (iam_client, role_name, role_arn)."""
     iam = make_client("iam")
     role_name = f"lambda-xsvc-role-{uuid.uuid4().hex[:8]}"
-    trust = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": "lambda.amazonaws.com"},
-            "Action": "sts:AssumeRole",
-        }],
-    })
+    trust = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
     resp = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
     return iam, role_name, resp["Role"]["Arn"]
 
@@ -54,9 +59,7 @@ class TestS3ToSNSToSQSNotification:
         # Create SQS queue
         q_resp = sqs.create_queue(QueueName=queue_name)
         queue_url = q_resp["QueueUrl"]
-        q_attrs = sqs.get_queue_attributes(
-            QueueUrl=queue_url, AttributeNames=["QueueArn"]
-        )
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
         queue_arn = q_attrs["Attributes"]["QueueArn"]
 
         # Create SNS topic
@@ -115,7 +118,6 @@ class TestS3ToSNSToSQSNotification:
         sqs.delete_queue(QueueUrl=queue_url)
 
 
-@pytest.mark.skip(reason="SNS→Lambda inline invocation deadlocks single-threaded server; needs async dispatch")
 class TestSNSToLambda:
     """SNS -> Lambda: Subscribe a Lambda function to an SNS topic, publish a message,
     and verify the Lambda was invoked with the correct SNS event format."""
@@ -135,12 +137,19 @@ class TestSNSToLambda:
         # Create a Lambda function that writes the received event to SQS
         # so we can verify it was invoked with the correct payload
         code = _make_lambda_zip(
-            'import json, boto3, os\n'
-            'def handler(event, ctx):\n'
-            '    sqs = boto3.client("sqs", endpoint_url=os.environ.get("SQS_ENDPOINT", "http://localhost:4566"),\n'
-            '                       region_name="us-east-1", aws_access_key_id="testing", aws_secret_access_key="testing")\n'
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client(\n"
+            '        "sqs",\n'
+            "        endpoint_url=os.environ.get(\n"
+            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            '        region_name="us-east-1",\n'
+            '        aws_access_key_id="testing",\n'
+            '        aws_secret_access_key="testing")\n'
             '    queue_url = os.environ["VERIFY_QUEUE_URL"]\n'
-            '    sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(event))\n'
+            "    sqs.send_message(\n"
+            "        QueueUrl=queue_url,\n"
+            "        MessageBody=json.dumps(event))\n"
             '    return {"statusCode": 200}\n'
         )
 
@@ -155,10 +164,12 @@ class TestSNSToLambda:
             Role=role_arn,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Environment={"Variables": {
-                "VERIFY_QUEUE_URL": queue_url,
-                "SQS_ENDPOINT": "http://localhost:4566",
-            }},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
         )
         func_arn = func_resp["FunctionArn"]
 
@@ -217,7 +228,7 @@ class TestSNSToLambda:
         func_name = f"sns-lam-list-fn-{suffix}"
 
         iam, role_name, role_arn = _create_lambda_role()
-        code = _make_lambda_zip('def handler(event, ctx): return {}')
+        code = _make_lambda_zip("def handler(event, ctx): return {}")
         func_resp = lam.create_function(
             FunctionName=func_name,
             Runtime="python3.12",
@@ -247,7 +258,6 @@ class TestSNSToLambda:
         iam.delete_role(RoleName=role_name)
 
 
-@pytest.mark.skip(reason="Cross-service Lambda invocation deadlocks single-threaded server; needs async dispatch")
 class TestEventBridgeToLambda:
     """EventBridge -> Lambda: Create a rule with Lambda target, put an event,
     verify the cross-service dispatch works.
@@ -257,17 +267,39 @@ class TestEventBridgeToLambda:
     """
 
     def test_eventbridge_invokes_lambda(self):
-        """EventBridge rule with Lambda target invokes the function."""
+        """EventBridge rule with Lambda target invokes the function.
+
+        Uses SQS as a verification channel: Lambda writes its received event to SQS.
+        """
         events = make_client("events")
         lam = make_client("lambda")
+        sqs = make_client("sqs")
         suffix = uuid.uuid4().hex[:8]
         func_name = f"eb-lambda-{suffix}"
         rule_name = f"eb-rule-{suffix}"
+        queue_name = f"eb-verify-{suffix}"
 
-        # Create Lambda role and function
         iam, role_name, role_arn = _create_lambda_role()
+
+        # Create verification SQS queue
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+
+        # Lambda writes its received event to SQS for verification
         code = _make_lambda_zip(
-            'def handler(event, ctx): return {"source": event.get("source", "unknown"), "detail": event.get("detail", {})}'
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client(\n"
+            '        "sqs",\n'
+            "        endpoint_url=os.environ.get(\n"
+            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            '        region_name="us-east-1",\n'
+            '        aws_access_key_id="testing",\n'
+            '        aws_secret_access_key="testing")\n'
+            "    sqs.send_message(\n"
+            '        QueueUrl=os.environ["VERIFY_QUEUE_URL"],\n'
+            "        MessageBody=json.dumps(event))\n"
+            '    return {"source": event.get("source", "unknown")}\n'
         )
         func_resp = lam.create_function(
             FunctionName=func_name,
@@ -275,76 +307,86 @@ class TestEventBridgeToLambda:
             Role=role_arn,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
         )
         func_arn = func_resp["FunctionArn"]
 
-        # Create EventBridge rule with event pattern
         events.put_rule(
             Name=rule_name,
             EventPattern=json.dumps({"source": ["test.eb.lambda"]}),
             State="ENABLED",
         )
-
-        # Add Lambda as target
         events.put_targets(
             Rule=rule_name,
             Targets=[{"Id": "lambda-target", "Arn": func_arn}],
         )
 
-        # Clear invocation log before putting events
-        from robotocore.services.events.provider import clear_invocation_log, get_invocation_log
-        clear_invocation_log()
-
-        # Put an event that matches the rule
         put_resp = events.put_events(
-            Entries=[{
-                "Source": "test.eb.lambda",
-                "DetailType": "TestEvent",
-                "Detail": json.dumps({"message": "from-eventbridge"}),
-            }]
+            Entries=[
+                {
+                    "Source": "test.eb.lambda",
+                    "DetailType": "TestEvent",
+                    "Detail": json.dumps({"message": "from-eventbridge"}),
+                }
+            ]
         )
         assert put_resp["FailedEntryCount"] == 0
 
-        # Allow brief time for dispatch
-        time.sleep(1)
+        # Check SQS for the event the Lambda received
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Expected Lambda to write its event to the verification queue"
 
-        # Verify Lambda was invoked via the invocation log
-        log = get_invocation_log()
-        lambda_invocations = [e for e in log if e["target_type"] == "lambda"]
-        assert len(lambda_invocations) >= 1, f"Expected Lambda invocation, got: {log}"
-
-        invocation = lambda_invocations[0]
-        assert func_arn in invocation["target_arn"]
-        # Verify the Lambda received the EventBridge event (not wrapped in Records)
-        payload = json.loads(invocation["payload"])
-        assert payload["source"] == "test.eb.lambda"
-        assert payload["detail-type"] == "TestEvent"
-        assert payload["detail"]["message"] == "from-eventbridge"
-
-        # Verify Lambda executed successfully and returned correct result
-        assert invocation["result"]["error_type"] is None
-        result = invocation["result"]["result"]
-        assert result["source"] == "test.eb.lambda"
-        assert result["detail"]["message"] == "from-eventbridge"
+        lambda_event = json.loads(msgs[0]["Body"])
+        assert lambda_event["source"] == "test.eb.lambda"
+        assert lambda_event["detail-type"] == "TestEvent"
+        assert lambda_event["detail"]["message"] == "from-eventbridge"
 
         # Clean up
         events.remove_targets(Rule=rule_name, Ids=["lambda-target"])
         events.delete_rule(Name=rule_name)
         lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
         iam.delete_role(RoleName=role_name)
 
     def test_eventbridge_lambda_receives_full_event(self):
         """Lambda target receives the full EventBridge event (not SNS-style Records wrapper)."""
         events = make_client("events")
         lam = make_client("lambda")
+        sqs = make_client("sqs")
         suffix = uuid.uuid4().hex[:8]
         func_name = f"eb-full-evt-{suffix}"
         rule_name = f"eb-full-rule-{suffix}"
+        queue_name = f"eb-full-verify-{suffix}"
 
         iam, role_name, role_arn = _create_lambda_role()
-        # Lambda that returns the keys it received
+
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+
+        # Lambda writes its event keys to SQS for verification
         code = _make_lambda_zip(
-            'def handler(event, ctx): return {"keys": sorted(event.keys()), "has_records": "Records" in event}'
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    result = {\n"
+            '        "keys": sorted(event.keys()),\n'
+            '        "has_records": "Records" in event}\n'
+            "    sqs = boto3.client(\n"
+            '        "sqs",\n'
+            "        endpoint_url=os.environ.get(\n"
+            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            '        region_name="us-east-1",\n'
+            '        aws_access_key_id="testing",\n'
+            '        aws_secret_access_key="testing")\n'
+            "    sqs.send_message(\n"
+            '        QueueUrl=os.environ["VERIFY_QUEUE_URL"],\n'
+            "        MessageBody=json.dumps(result))\n"
+            "    return result\n"
         )
         func_resp = lam.create_function(
             FunctionName=func_name,
@@ -352,6 +394,12 @@ class TestEventBridgeToLambda:
             Role=role_arn,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
         )
         func_arn = func_resp["FunctionArn"]
 
@@ -364,48 +412,86 @@ class TestEventBridgeToLambda:
             Targets=[{"Id": "lam-t", "Arn": func_arn}],
         )
 
-        from robotocore.services.events.provider import clear_invocation_log, get_invocation_log
-        clear_invocation_log()
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.eb.full",
+                    "DetailType": "FullEventTest",
+                    "Detail": json.dumps({"data": 42}),
+                }
+            ]
+        )
 
-        events.put_events(Entries=[{
-            "Source": "test.eb.full",
-            "DetailType": "FullEventTest",
-            "Detail": json.dumps({"data": 42}),
-        }])
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Expected Lambda to write its result to the verification queue"
 
-        time.sleep(1)
-        log = get_invocation_log()
-        lambda_invocations = [e for e in log if e["target_type"] == "lambda"]
-        assert len(lambda_invocations) >= 1
-
-        result = lambda_invocations[0]["result"]["result"]
+        result = json.loads(msgs[0]["Body"])
         # EventBridge events have standard keys, NOT a "Records" wrapper
         assert result["has_records"] is False
-        expected_keys = ["account", "detail", "detail-type", "id", "region", "resources", "source", "time", "version"]
+        expected_keys = [
+            "account",
+            "detail",
+            "detail-type",
+            "id",
+            "region",
+            "resources",
+            "source",
+            "time",
+            "version",
+        ]
         assert result["keys"] == expected_keys
 
         # Clean up
         events.remove_targets(Rule=rule_name, Ids=["lam-t"])
         events.delete_rule(Name=rule_name)
         lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
         iam.delete_role(RoleName=role_name)
 
     def test_eventbridge_non_matching_event_does_not_invoke_lambda(self):
         """Events that don't match the rule pattern should not invoke the Lambda."""
         events = make_client("events")
         lam = make_client("lambda")
+        sqs = make_client("sqs")
         suffix = uuid.uuid4().hex[:8]
         func_name = f"eb-nomatch-{suffix}"
         rule_name = f"eb-nomatch-rule-{suffix}"
+        queue_name = f"eb-nomatch-verify-{suffix}"
 
         iam, role_name, role_arn = _create_lambda_role()
-        code = _make_lambda_zip('def handler(event, ctx): return {"invoked": True}')
+
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+
+        # Lambda writes to SQS if invoked
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client(\n"
+            '        "sqs",\n'
+            "        endpoint_url=os.environ.get(\n"
+            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            '        region_name="us-east-1",\n'
+            '        aws_access_key_id="testing",\n'
+            '        aws_secret_access_key="testing")\n'
+            "    sqs.send_message(\n"
+            '        QueueUrl=os.environ["VERIFY_QUEUE_URL"],\n'
+            '        MessageBody="invoked")\n'
+            '    return {"invoked": True}\n'
+        )
         func_resp = lam.create_function(
             FunctionName=func_name,
             Runtime="python3.12",
             Role=role_arn,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
         )
         func_arn = func_resp["FunctionArn"]
 
@@ -418,25 +504,28 @@ class TestEventBridgeToLambda:
             Targets=[{"Id": "lam-t", "Arn": func_arn}],
         )
 
-        from robotocore.services.events.provider import clear_invocation_log, get_invocation_log
-        clear_invocation_log()
-
         # Put event with DIFFERENT source -- should NOT match
-        events.put_events(Entries=[{
-            "Source": "different.source",
-            "DetailType": "NoMatch",
-            "Detail": json.dumps({"x": 1}),
-        }])
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "different.source",
+                    "DetailType": "NoMatch",
+                    "Detail": json.dumps({"x": 1}),
+                }
+            ]
+        )
 
-        time.sleep(1)
-        log = get_invocation_log()
-        lambda_invocations = [e for e in log if e["target_type"] == "lambda"]
-        assert len(lambda_invocations) == 0, f"Lambda should NOT have been invoked: {log}"
+        # Brief wait, then verify queue is empty
+        time.sleep(2)
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=1)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) == 0, f"Lambda should NOT have been invoked, but got: {msgs}"
 
         # Clean up
         events.remove_targets(Rule=rule_name, Ids=["lam-t"])
         events.delete_rule(Name=rule_name)
         lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
         iam.delete_role(RoleName=role_name)
 
 
@@ -457,14 +546,18 @@ class TestStepFunctionsToLambda:
         lambda_role_name = f"sfn-lam-role-{suffix}"
 
         # SFN role
-        sfn_trust = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": {"Service": "states.amazonaws.com"},
-                "Action": "sts:AssumeRole",
-            }],
-        })
+        sfn_trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "states.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
         sfn_role = iam.create_role(
             RoleName=sfn_role_name,
             AssumeRolePolicyDocument=sfn_trust,
@@ -472,14 +565,18 @@ class TestStepFunctionsToLambda:
         sfn_role_arn = sfn_role["Role"]["Arn"]
 
         # Lambda role
-        lambda_trust = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": {"Service": "lambda.amazonaws.com"},
-                "Action": "sts:AssumeRole",
-            }],
-        })
+        lambda_trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
         iam.create_role(
             RoleName=lambda_role_name,
             AssumeRolePolicyDocument=lambda_trust,
@@ -488,7 +585,10 @@ class TestStepFunctionsToLambda:
 
         # Create Lambda function that returns a value
         code = _make_lambda_zip(
-            'def handler(event, ctx): return {"processed": True, "input_name": event.get("name", "unknown")}'
+            "def handler(event, ctx):\n"
+            "    return {\n"
+            '        "processed": True,\n'
+            '        "input_name": event.get("name", "unknown")}'
         )
         func_resp = lam.create_function(
             FunctionName=func_name,
@@ -501,17 +601,19 @@ class TestStepFunctionsToLambda:
 
         # Create state machine with Task state invoking Lambda
         sm_name = f"sfn-lam-sm-{suffix}"
-        definition = json.dumps({
-            "Comment": "State machine that invokes a Lambda function",
-            "StartAt": "InvokeLambda",
-            "States": {
-                "InvokeLambda": {
-                    "Type": "Task",
-                    "Resource": func_arn,
-                    "End": True,
-                }
-            },
-        })
+        definition = json.dumps(
+            {
+                "Comment": "State machine that invokes a Lambda function",
+                "StartAt": "InvokeLambda",
+                "States": {
+                    "InvokeLambda": {
+                        "Type": "Task",
+                        "Resource": func_arn,
+                        "End": True,
+                    }
+                },
+            }
+        )
 
         sm_resp = sfn.create_state_machine(
             name=sm_name,
@@ -545,7 +647,12 @@ class TestFirehoseToS3:
     """Firehose -> S3: Create a delivery stream pointing to S3, put records,
     verify data appears in S3."""
 
-    @pytest.mark.skip(reason="Firehose does not flush buffered records to S3 in Moto — cross-service delivery not yet implemented")
+    @pytest.mark.skip(
+        reason=(
+            "Firehose does not flush buffered records to S3 "
+            "in Moto — cross-service delivery not yet implemented"
+        )
+    )
     def test_firehose_delivers_to_s3(self):
         firehose = make_client("firehose")
         s3 = make_client("s3")
@@ -625,35 +732,37 @@ class TestCloudFormationMultiService:
         queue_name = f"xsvc-queue-{suffix}"
         topic_name = f"xsvc-topic-{suffix}"
 
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Description": "Cross-service integration test stack",
-            "Resources": {
-                "TestQueue": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {
-                        "QueueName": queue_name,
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Description": "Cross-service integration test stack",
+                "Resources": {
+                    "TestQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {
+                            "QueueName": queue_name,
+                        },
+                    },
+                    "TestTopic": {
+                        "Type": "AWS::SNS::Topic",
+                        "Properties": {
+                            "TopicName": topic_name,
+                        },
                     },
                 },
-                "TestTopic": {
-                    "Type": "AWS::SNS::Topic",
-                    "Properties": {
-                        "TopicName": topic_name,
+                "Outputs": {
+                    "QueueUrl": {
+                        "Value": {"Ref": "TestQueue"},
+                    },
+                    "QueueArn": {
+                        "Value": {"Fn::GetAtt": ["TestQueue", "Arn"]},
+                    },
+                    "TopicArn": {
+                        "Value": {"Ref": "TestTopic"},
                     },
                 },
-            },
-            "Outputs": {
-                "QueueUrl": {
-                    "Value": {"Ref": "TestQueue"},
-                },
-                "QueueArn": {
-                    "Value": {"Fn::GetAtt": ["TestQueue", "Arn"]},
-                },
-                "TopicArn": {
-                    "Value": {"Ref": "TestTopic"},
-                },
-            },
-        })
+            }
+        )
 
         # Create stack
         cfn.create_stack(StackName=stack_name, TemplateBody=template)

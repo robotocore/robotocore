@@ -4,19 +4,17 @@ import io
 import json
 import uuid
 import zipfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from robotocore.services.events.models import EventRule, EventTarget, EventBus, EventsStore
+from robotocore.services.events.models import EventRule, EventsStore, EventTarget
 from robotocore.services.events.provider import (
     _dispatch_to_targets,
     _invoke_lambda_target,
-    _invoke_sqs_target,
-    _invoke_sns_target,
     _invoke_target,
-    get_invocation_log,
     clear_invocation_log,
+    get_invocation_log,
 )
 
 
@@ -36,183 +34,71 @@ def _clear_log():
 
 
 class TestInvokeLambdaTarget:
-    """Test EventBridge -> Lambda target invocation."""
+    """Test EventBridge -> Lambda target invocation via invoke_lambda_async."""
 
     def test_invokes_python_lambda_with_event_payload(self):
-        """EventBridge should invoke Python Lambda with the full event as payload."""
-        code_zip = _make_lambda_zip(
-            'def handler(event, ctx): return {"source": event.get("source", "unknown")}'
-        )
+        """EventBridge should dispatch to invoke_lambda_async with the event as payload."""
+        event = {
+            "version": "0",
+            "id": str(uuid.uuid4()),
+            "source": "test.source",
+            "detail-type": "TestEvent",
+            "detail": {"message": "hello"},
+            "account": "123456789012",
+            "region": "us-east-1",
+        }
+        payload = json.dumps(event)
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:my-func"
 
-        mock_fn = MagicMock()
-        mock_fn.run_time = "python3.12"
-        mock_fn.code_bytes = code_zip
-        mock_fn.code = {"ZipFile": code_zip}
-        mock_fn.handler = "lambda_function.handler"
-        mock_fn.timeout = 3
-        mock_fn.memory_size = 128
-        mock_fn.environment_vars = {}
-        mock_fn.layers = []
-
-        mock_backend = MagicMock()
-        mock_backend.get_function.return_value = mock_fn
-
-        with patch("moto.backends.get_backend") as mock_get_backend:
-            mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
-
-            event = {
-                "version": "0",
-                "id": str(uuid.uuid4()),
-                "source": "test.source",
-                "detail-type": "TestEvent",
-                "detail": {"message": "hello"},
-                "account": "123456789012",
-                "region": "us-east-1",
-            }
-            payload = json.dumps(event)
-            arn = "arn:aws:lambda:us-east-1:123456789012:function:my-func"
-
+        with patch("robotocore.services.lambda_.invoke.invoke_lambda_async") as mock_invoke:
             _invoke_lambda_target(arn, payload, "us-east-1", "123456789012")
 
-            # Verify invocation was logged
+            mock_invoke.assert_called_once()
+            call_args = mock_invoke.call_args
+            assert call_args[0][0] == arn  # function ARN
+            invoked_event = call_args[0][1]  # event payload
+            assert invoked_event["source"] == "test.source"
+            assert invoked_event["detail"]["message"] == "hello"
+
+    def test_parses_json_string_payload(self):
+        """Should parse JSON string payload before dispatching."""
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:test-fn"
+        payload = json.dumps({"test": True, "source": "eb"})
+
+        with patch("robotocore.services.lambda_.invoke.invoke_lambda_async") as mock_invoke:
+            _invoke_lambda_target(arn, payload, "us-east-1", "123456789012")
+
+            invoked_event = mock_invoke.call_args[0][1]
+            assert invoked_event["test"] is True
+            assert invoked_event["source"] == "eb"
+
+    def test_passes_callback_for_invocation_log(self):
+        """Should pass a callback that logs to the invocation log."""
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:my-func"
+
+        with patch("robotocore.services.lambda_.invoke.invoke_lambda_async") as mock_invoke:
+            _invoke_lambda_target(arn, '{"test": true}', "us-east-1", "123456789012")
+
+            # Verify a callback was passed
+            call_kwargs = mock_invoke.call_args[1]
+            assert "callback" in call_kwargs
+            assert callable(call_kwargs["callback"])
+
+            # Simulate callback execution
+            call_kwargs["callback"]({"result": "ok"}, None, "logs")
             log = get_invocation_log()
             assert len(log) == 1
             assert log[0]["target_type"] == "lambda"
             assert log[0]["target_arn"] == arn
-            result = log[0]["result"]
-            assert result["error_type"] is None
-            assert result["result"]["source"] == "test.source"
-
-    def test_invokes_lambda_using_code_bytes(self):
-        """Should prefer code_bytes over code['ZipFile']."""
-        code_zip = _make_lambda_zip(
-            'def handler(event, ctx): return {"used": "code_bytes"}'
-        )
-
-        mock_fn = MagicMock()
-        mock_fn.run_time = "python3.12"
-        mock_fn.code_bytes = code_zip
-        mock_fn.code = {}  # No ZipFile in code dict
-        mock_fn.handler = "lambda_function.handler"
-        mock_fn.timeout = 3
-        mock_fn.memory_size = 128
-        mock_fn.environment_vars = {}
-        mock_fn.layers = []
-
-        mock_backend = MagicMock()
-        mock_backend.get_function.return_value = mock_fn
-
-        with patch("moto.backends.get_backend") as mock_get_backend:
-            mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
-
-            _invoke_lambda_target(
-                "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
-                json.dumps({"test": True}),
-                "us-east-1",
-                "123456789012",
-            )
-
-            log = get_invocation_log()
-            assert len(log) == 1
-            assert log[0]["result"]["result"]["used"] == "code_bytes"
 
     def test_handles_missing_function_gracefully(self):
-        """Should not raise when Lambda function doesn't exist."""
-        with patch("moto.backends.get_backend") as mock_get_backend:
-            mock_backend = MagicMock()
-            mock_backend.get_function.side_effect = Exception("Function not found")
-            mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
+        """Should not raise when Lambda function doesn't exist — error handled by invoke module."""
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:nonexistent"
 
+        with patch("robotocore.services.lambda_.invoke.invoke_lambda_async") as mock_invoke:
             # Should not raise
-            _invoke_lambda_target(
-                "arn:aws:lambda:us-east-1:123456789012:function:nonexistent",
-                json.dumps({"test": True}),
-                "us-east-1",
-                "123456789012",
-            )
-
-            # No invocation logged since function wasn't found
-            assert len(get_invocation_log()) == 0
-
-    def test_skips_non_python_runtime(self):
-        """Should skip non-Python Lambda functions."""
-        mock_fn = MagicMock()
-        mock_fn.run_time = "nodejs18.x"
-
-        mock_backend = MagicMock()
-        mock_backend.get_function.return_value = mock_fn
-
-        with patch("moto.backends.get_backend") as mock_get_backend:
-            mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
-
-            _invoke_lambda_target(
-                "arn:aws:lambda:us-east-1:123456789012:function:node-fn",
-                json.dumps({"test": True}),
-                "us-east-1",
-                "123456789012",
-            )
-
-            log = get_invocation_log()
-            assert len(log) == 1
-            assert log[0]["result"]["skipped"] is True
-
-    def test_parses_function_name_from_arn(self):
-        """Should correctly extract function name from various ARN formats."""
-        code_zip = _make_lambda_zip('def handler(event, ctx): return {"ok": True}')
-
-        mock_fn = MagicMock()
-        mock_fn.run_time = "python3.12"
-        mock_fn.code_bytes = code_zip
-        mock_fn.handler = "lambda_function.handler"
-        mock_fn.timeout = 3
-        mock_fn.memory_size = 128
-        mock_fn.environment_vars = {}
-        mock_fn.layers = []
-
-        mock_backend = MagicMock()
-        mock_backend.get_function.return_value = mock_fn
-
-        with patch("moto.backends.get_backend") as mock_get_backend:
-            mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
-
-            # Standard ARN
-            _invoke_lambda_target(
-                "arn:aws:lambda:us-east-1:123456789012:function:my-func",
-                json.dumps({}), "us-east-1", "123456789012",
-            )
-            mock_backend.get_function.assert_called_with("my-func")
-
-    def test_lambda_handler_error_is_logged(self):
-        """Lambda handler errors should be captured, not raised."""
-        code_zip = _make_lambda_zip(
-            'def handler(event, ctx): raise ValueError("boom")'
-        )
-
-        mock_fn = MagicMock()
-        mock_fn.run_time = "python3.12"
-        mock_fn.code_bytes = code_zip
-        mock_fn.handler = "lambda_function.handler"
-        mock_fn.timeout = 3
-        mock_fn.memory_size = 128
-        mock_fn.environment_vars = {}
-        mock_fn.layers = []
-
-        mock_backend = MagicMock()
-        mock_backend.get_function.return_value = mock_fn
-
-        with patch("moto.backends.get_backend") as mock_get_backend:
-            mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
-
-            _invoke_lambda_target(
-                "arn:aws:lambda:us-east-1:123456789012:function:err-fn",
-                json.dumps({"test": True}),
-                "us-east-1",
-                "123456789012",
-            )
-
-            log = get_invocation_log()
-            assert len(log) == 1
-            assert log[0]["result"]["error_type"] == "Handled"
+            _invoke_lambda_target(arn, '{"test": true}', "us-east-1", "123456789012")
+            mock_invoke.assert_called_once()
 
 
 class TestInvokeTarget:
@@ -245,7 +131,11 @@ class TestInvokeTarget:
     def test_uses_target_input_when_set(self):
         """When target.input is set, use it instead of the event."""
         custom_input = json.dumps({"custom": "payload"})
-        target = EventTarget(target_id="t1", arn="arn:aws:lambda:us-east-1:123456789012:function:f", input=custom_input)
+        target = EventTarget(
+            target_id="t1",
+            arn="arn:aws:lambda:us-east-1:123456789012:function:f",
+            input=custom_input,
+        )
         event = {"source": "test", "detail": {"original": True}}
 
         with patch("robotocore.services.events.provider._invoke_lambda_target") as mock:
@@ -259,12 +149,18 @@ class TestDispatchToTargets:
 
     def test_dispatches_to_all_targets(self):
         rule = EventRule(
-            name="test-rule", event_bus_name="default",
-            region="us-east-1", account_id="123456789012",
+            name="test-rule",
+            event_bus_name="default",
+            region="us-east-1",
+            account_id="123456789012",
             event_pattern={"source": ["test"]},
         )
-        rule.targets["t1"] = EventTarget(target_id="t1", arn="arn:aws:lambda:us-east-1:123456789012:function:f1")
-        rule.targets["t2"] = EventTarget(target_id="t2", arn="arn:aws:sqs:us-east-1:123456789012:q1")
+        rule.targets["t1"] = EventTarget(
+            target_id="t1", arn="arn:aws:lambda:us-east-1:123456789012:function:f1"
+        )
+        rule.targets["t2"] = EventTarget(
+            target_id="t2", arn="arn:aws:sqs:us-east-1:123456789012:q1"
+        )
 
         event = {"source": "test", "detail": {}}
 
@@ -275,11 +171,17 @@ class TestDispatchToTargets:
     def test_continues_on_target_error(self):
         """If one target fails, the other targets should still be invoked."""
         rule = EventRule(
-            name="test-rule", event_bus_name="default",
-            region="us-east-1", account_id="123456789012",
+            name="test-rule",
+            event_bus_name="default",
+            region="us-east-1",
+            account_id="123456789012",
         )
-        rule.targets["t1"] = EventTarget(target_id="t1", arn="arn:aws:lambda:us-east-1:123456789012:function:f1")
-        rule.targets["t2"] = EventTarget(target_id="t2", arn="arn:aws:sqs:us-east-1:123456789012:q1")
+        rule.targets["t1"] = EventTarget(
+            target_id="t1", arn="arn:aws:lambda:us-east-1:123456789012:function:f1"
+        )
+        rule.targets["t2"] = EventTarget(
+            target_id="t2", arn="arn:aws:sqs:us-east-1:123456789012:q1"
+        )
 
         event = {"source": "test", "detail": {}}
 
@@ -296,11 +198,23 @@ class TestEventMatchingAndDispatch:
         """Full flow: create store/bus/rule/target, put event, verify dispatch."""
         store = EventsStore()
         store.ensure_default_bus("us-east-1", "123456789012")
-        store.put_rule("test-rule", "default", "us-east-1", "123456789012",
-                       event_pattern={"source": ["myapp.orders"]})
-        store.put_targets("test-rule", "default", [
-            {"Id": "lambda-1", "Arn": "arn:aws:lambda:us-east-1:123456789012:function:process-order"},
-        ])
+        store.put_rule(
+            "test-rule",
+            "default",
+            "us-east-1",
+            "123456789012",
+            event_pattern={"source": ["myapp.orders"]},
+        )
+        store.put_targets(
+            "test-rule",
+            "default",
+            [
+                {
+                    "Id": "lambda-1",
+                    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:process-order",
+                },
+            ],
+        )
 
         # Simulate what _put_events does
         rule = store.get_rule("test-rule", "default")
@@ -326,11 +240,23 @@ class TestEventMatchingAndDispatch:
         """Events that don't match should not trigger dispatch."""
         store = EventsStore()
         store.ensure_default_bus("us-east-1", "123456789012")
-        store.put_rule("test-rule", "default", "us-east-1", "123456789012",
-                       event_pattern={"source": ["myapp.orders"]})
-        store.put_targets("test-rule", "default", [
-            {"Id": "lambda-1", "Arn": "arn:aws:lambda:us-east-1:123456789012:function:process-order"},
-        ])
+        store.put_rule(
+            "test-rule",
+            "default",
+            "us-east-1",
+            "123456789012",
+            event_pattern={"source": ["myapp.orders"]},
+        )
+        store.put_targets(
+            "test-rule",
+            "default",
+            [
+                {
+                    "Id": "lambda-1",
+                    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:process-order",
+                },
+            ],
+        )
 
         rule = store.get_rule("test-rule", "default")
         event = {

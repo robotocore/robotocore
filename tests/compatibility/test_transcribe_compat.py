@@ -1,6 +1,7 @@
 """Transcribe compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -55,9 +56,7 @@ class TestTranscribeOperations:
             LanguageCode="en-US",
             Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
         )
-        response = transcribe.delete_transcription_job(
-            TranscriptionJobName="delete-job"
-        )
+        response = transcribe.delete_transcription_job(TranscriptionJobName="delete-job")
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_vocabulary(self, transcribe):

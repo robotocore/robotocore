@@ -1,12 +1,13 @@
 """Lambda Event Source Mapping compatibility tests — SQS triggers Lambda."""
 
+import io
 import json
 import time
 import uuid
 import zipfile
-import io
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -35,10 +36,18 @@ def iam():
 @pytest.fixture
 def role(iam):
     name = f"esm-role-{uuid.uuid4().hex[:8]}"
-    trust = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-    })
+    trust = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
     iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)
     yield f"arn:aws:iam::123456789012:role/{name}"
     iam.delete_role(RoleName=name)
@@ -58,7 +67,9 @@ class TestEventSourceMappingCRUD:
         queue_arn = q_attrs["Attributes"]["QueueArn"]
 
         # Create function
-        code = _make_zip('def handler(event, ctx): return {"processed": len(event.get("Records", []))}')
+        code = _make_zip(
+            'def handler(event, ctx): return {"processed": len(event.get("Records", []))}'
+        )
         lam.create_function(
             FunctionName=func_name,
             Runtime="python3.12",
@@ -94,7 +105,7 @@ class TestEventSourceMappingCRUD:
         q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
         queue_arn = q_attrs["Attributes"]["QueueArn"]
 
-        code = _make_zip('def handler(e, c): pass')
+        code = _make_zip("def handler(e, c): pass")
         lam.create_function(
             FunctionName=func_name,
             Runtime="python3.12",
@@ -129,7 +140,7 @@ class TestEventSourceMappingCRUD:
         q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
         queue_arn = q_attrs["Attributes"]["QueueArn"]
 
-        code = _make_zip('def handler(e, c): pass')
+        code = _make_zip("def handler(e, c): pass")
         lam.create_function(
             FunctionName=func_name,
             Runtime="python3.12",
@@ -180,11 +191,11 @@ class TestSQSToLambdaTrigger:
         # Create Lambda that reads SQS records and puts results in another queue
         # The function uses boto3 to write to the result queue
         code = _make_zip(
-            'import json\n'
-            'import boto3\n'
-            'def handler(event, ctx):\n'
+            "import json\n"
+            "import boto3\n"
+            "def handler(event, ctx):\n"
             '    records = event.get("Records", [])\n'
-            '    # Write count to result queue via global marker\n'
+            "    # Write count to result queue via global marker\n"
             '    return {"processed": len(records), "bodies": [r["body"] for r in records]}\n'
         )
         func_name = f"trigger-func-{suffix}"

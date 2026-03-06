@@ -1,6 +1,7 @@
 """Kinesis compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -84,7 +85,9 @@ class TestKinesisOperations:
     def test_get_shard_iterator_at_sequence_number(self, kinesis, stream):
         """Get shard iterator using AT_SEQUENCE_NUMBER type."""
         put_resp = kinesis.put_record(
-            StreamName=stream, Data=b"seq-test", PartitionKey="pk1",
+            StreamName=stream,
+            Data=b"seq-test",
+            PartitionKey="pk1",
         )
         shard_id = put_resp["ShardId"]
         seq = put_resp["SequenceNumber"]

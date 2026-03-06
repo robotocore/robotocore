@@ -2,8 +2,6 @@
 
 import time
 
-import pytest
-
 from robotocore.services.sqs.models import (
     FifoQueue,
     SqsMessage,
@@ -15,6 +13,7 @@ from robotocore.services.sqs.models import (
 def _msg(body="hello", **kwargs):
     import hashlib
     import uuid
+
     return SqsMessage(
         message_id=str(uuid.uuid4()),
         body=body,
@@ -175,8 +174,12 @@ class TestFifoQueue:
         assert results == ["msg 0", "msg 1", "msg 2"]
 
     def test_content_based_dedup(self):
-        q = FifoQueue("test.fifo", "us-east-1", "123456789012",
-                       attributes={"ContentBasedDeduplication": "true"})
+        q = FifoQueue(
+            "test.fifo",
+            "us-east-1",
+            "123456789012",
+            attributes={"ContentBasedDeduplication": "true"},
+        )
         q.put(_msg("same body", message_group_id="g1"))
         q.put(_msg("same body", message_group_id="g1"))
         results = q.receive(max_messages=10)
@@ -196,8 +199,12 @@ class TestFifoQueue:
         assert msg.sequence_number is not None
 
     def test_different_groups_independent(self):
-        q = FifoQueue("test.fifo", "us-east-1", "123456789012",
-                       attributes={"ContentBasedDeduplication": "true"})
+        q = FifoQueue(
+            "test.fifo",
+            "us-east-1",
+            "123456789012",
+            attributes={"ContentBasedDeduplication": "true"},
+        )
         q.put(_msg("g1 msg", message_group_id="group1"))
         q.put(_msg("g2 msg", message_group_id="group2"))
         r1 = q.receive()

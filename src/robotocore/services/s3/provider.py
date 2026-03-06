@@ -43,10 +43,7 @@ _ALL_SIG_PARAMS = _SIGV4_PARAMS | _SIGV2_PARAMS
 
 def _is_presigned_url(query_params: QueryParams) -> bool:
     """Check if the request is a presigned URL request."""
-    return (
-        "X-Amz-Signature" in query_params
-        or "Signature" in query_params
-    )
+    return "X-Amz-Signature" in query_params or "Signature" in query_params
 
 
 def _strip_presigned_params(request: Request, body: bytes | None = None) -> Request:
@@ -163,18 +160,29 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                     if h.lower() == b"etag":
                         etag = v.decode().strip('"')
                 fire_event(
-                    "s3:ObjectCreated:Put", bucket, key,
-                    region, account_id, content_length, etag,
+                    "s3:ObjectCreated:Put",
+                    bucket,
+                    key,
+                    region,
+                    account_id,
+                    content_length,
+                    etag,
                 )
             elif method == "POST" and key:
                 fire_event(
-                    "s3:ObjectCreated:Post", bucket, key,
-                    region, account_id,
+                    "s3:ObjectCreated:Post",
+                    bucket,
+                    key,
+                    region,
+                    account_id,
                 )
             elif method == "DELETE" and key:
                 fire_event(
-                    "s3:ObjectRemoved:Delete", bucket, key,
-                    region, account_id,
+                    "s3:ObjectRemoved:Delete",
+                    bucket,
+                    key,
+                    region,
+                    account_id,
                 )
 
     return response
@@ -203,6 +211,7 @@ async def _handle_notification_config(request: Request, method: str, path: str) 
 def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
     """Parse S3 notification configuration XML."""
     import xml.etree.ElementTree as ET
+
     config = NotificationConfig()
 
     try:
@@ -271,7 +280,9 @@ def _notification_config_to_xml(config: NotificationConfig) -> str:
         if "Filter" in qc:
             parts.append("<Filter><S3Key>")
             for rule in qc["Filter"].get("Key", {}).get("FilterRules", []):
-                parts.append(f"<FilterRule><Name>{rule['Name']}</Name><Value>{rule['Value']}</Value></FilterRule>")
+                parts.append(
+                    f"<FilterRule><Name>{rule['Name']}</Name><Value>{rule['Value']}</Value></FilterRule>"
+                )
             parts.append("</S3Key></Filter>")
         parts.append("</QueueConfiguration>")
 

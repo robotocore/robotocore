@@ -1,9 +1,6 @@
 """Firehose compatibility tests."""
 
-import base64
-import json
 import os
-import time
 
 import boto3
 import pytest
@@ -73,9 +70,7 @@ class TestFirehoseOperations:
         s3.delete_bucket(Bucket="fh-create-test")
 
     def test_describe_delivery_stream(self, firehose, delivery_stream):
-        response = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        response = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)
         desc = response["DeliveryStreamDescription"]
         assert desc["DeliveryStreamName"] == delivery_stream
         assert desc["DeliveryStreamStatus"] == "ACTIVE"

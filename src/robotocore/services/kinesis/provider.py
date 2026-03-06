@@ -27,16 +27,20 @@ _iterators: dict[str, dict] = {}
 _iterator_lock = threading.Lock()
 
 
-def _encode_iterator(stream_name: str, shard_id: str, iterator_type: str, sequence: str, region: str) -> str:
+def _encode_iterator(
+    stream_name: str, shard_id: str, iterator_type: str, sequence: str, region: str
+) -> str:
     """Encode shard iterator as a base64 JSON blob."""
-    payload = json.dumps({
-        "stream": stream_name,
-        "shard": shard_id,
-        "type": iterator_type,
-        "seq": sequence,
-        "region": region,
-        "ts": time.time(),
-    })
+    payload = json.dumps(
+        {
+            "stream": stream_name,
+            "shard": shard_id,
+            "type": iterator_type,
+            "seq": sequence,
+            "region": region,
+            "ts": time.time(),
+        }
+    )
     return base64.b64encode(payload.encode()).decode()
 
 
@@ -91,7 +95,9 @@ def _create_stream(store: KinesisStore, params: dict, region: str, account_id: s
     try:
         store.create_stream(name, shard_count, region, account_id)
     except ValueError:
-        raise KinesisError("ResourceInUseException", f"Stream {name} under account {account_id} already exists.")
+        raise KinesisError(
+            "ResourceInUseException", f"Stream {name} under account {account_id} already exists."
+        )
 
     return {}
 
@@ -99,7 +105,9 @@ def _create_stream(store: KinesisStore, params: dict, region: str, account_id: s
 def _delete_stream(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
     if not store.delete_stream(name):
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
     return {}
 
 
@@ -107,20 +115,24 @@ def _describe_stream(store: KinesisStore, params: dict, region: str, account_id:
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     shards = []
     for shard in stream.shards:
-        shards.append({
-            "ShardId": shard.shard_id,
-            "HashKeyRange": {
-                "StartingHashKey": str(shard.hash_key_start),
-                "EndingHashKey": str(shard.hash_key_end),
-            },
-            "SequenceNumberRange": {
-                "StartingSequenceNumber": shard.starting_sequence_number,
-            },
-        })
+        shards.append(
+            {
+                "ShardId": shard.shard_id,
+                "HashKeyRange": {
+                    "StartingHashKey": str(shard.hash_key_start),
+                    "EndingHashKey": str(shard.hash_key_end),
+                },
+                "SequenceNumberRange": {
+                    "StartingSequenceNumber": shard.starting_sequence_number,
+                },
+            }
+        )
 
     return {
         "StreamDescription": {
@@ -158,7 +170,9 @@ def _put_record(store: KinesisStore, params: dict, region: str, account_id: str)
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     partition_key = params.get("PartitionKey", "")
     data_b64 = params.get("Data", "")
@@ -177,7 +191,9 @@ def _put_records(store: KinesisStore, params: dict, region: str, account_id: str
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     records_input = params.get("Records", [])
     result_records = []
@@ -190,10 +206,12 @@ def _put_records(store: KinesisStore, params: dict, region: str, account_id: str
 
         data = base64.b64decode(data_b64) if data_b64 else b""
         record = stream.put_record(partition_key, data, explicit_hash_key)
-        result_records.append({
-            "ShardId": record.shard_id,
-            "SequenceNumber": record.sequence_number,
-        })
+        result_records.append(
+            {
+                "ShardId": record.shard_id,
+                "SequenceNumber": record.sequence_number,
+            }
+        )
 
     return {
         "FailedRecordCount": failed_count,
@@ -205,7 +223,9 @@ def _get_shard_iterator(store: KinesisStore, params: dict, region: str, account_
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     shard_id = params.get("ShardId", "")
     iterator_type = params.get("ShardIteratorType", "TRIM_HORIZON")
@@ -218,7 +238,9 @@ def _get_shard_iterator(store: KinesisStore, params: dict, region: str, account_
             shard = s
             break
     if shard is None:
-        raise KinesisError("ResourceNotFoundException", f"Shard {shard_id} in stream {name} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Shard {shard_id} in stream {name} not found."
+        )
 
     # Determine the starting sequence based on iterator type
     if iterator_type == "TRIM_HORIZON":
@@ -230,7 +252,9 @@ def _get_shard_iterator(store: KinesisStore, params: dict, region: str, account_
     elif iterator_type == "AFTER_SEQUENCE_NUMBER":
         seq = f"{int(starting_seq) + 1:020d}"
     else:
-        raise KinesisError("InvalidArgumentException", f"Invalid ShardIteratorType: {iterator_type}")
+        raise KinesisError(
+            "InvalidArgumentException", f"Invalid ShardIteratorType: {iterator_type}"
+        )
 
     token = _encode_iterator(name, shard_id, iterator_type, seq, region)
     return {"ShardIterator": token}
@@ -267,12 +291,14 @@ def _get_records(store: KinesisStore, params: dict, region: str, account_id: str
 
     output_records = []
     for rec in records:
-        output_records.append({
-            "SequenceNumber": rec.sequence_number,
-            "ApproximateArrivalTimestamp": rec.timestamp,
-            "Data": base64.b64encode(rec.data).decode(),
-            "PartitionKey": rec.partition_key,
-        })
+        output_records.append(
+            {
+                "SequenceNumber": rec.sequence_number,
+                "ApproximateArrivalTimestamp": rec.timestamp,
+                "Data": base64.b64encode(rec.data).decode(),
+                "PartitionKey": rec.partition_key,
+            }
+        )
 
     return {
         "Records": output_records,
@@ -285,20 +311,24 @@ def _list_shards(store: KinesisStore, params: dict, region: str, account_id: str
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     shards = []
     for shard in stream.shards:
-        shards.append({
-            "ShardId": shard.shard_id,
-            "HashKeyRange": {
-                "StartingHashKey": str(shard.hash_key_start),
-                "EndingHashKey": str(shard.hash_key_end),
-            },
-            "SequenceNumberRange": {
-                "StartingSequenceNumber": shard.starting_sequence_number,
-            },
-        })
+        shards.append(
+            {
+                "ShardId": shard.shard_id,
+                "HashKeyRange": {
+                    "StartingHashKey": str(shard.hash_key_start),
+                    "EndingHashKey": str(shard.hash_key_end),
+                },
+                "SequenceNumberRange": {
+                    "StartingSequenceNumber": shard.starting_sequence_number,
+                },
+            }
+        )
 
     return {"Shards": shards}
 
@@ -307,7 +337,9 @@ def _increase_retention(store: KinesisStore, params: dict, region: str, account_
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     hours = params.get("RetentionPeriodHours", 48)
     if hours <= stream.retention_hours:
@@ -323,7 +355,9 @@ def _decrease_retention(store: KinesisStore, params: dict, region: str, account_
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     hours = params.get("RetentionPeriodHours", 24)
     if hours >= stream.retention_hours:
@@ -341,7 +375,9 @@ def _add_tags(store: KinesisStore, params: dict, region: str, account_id: str) -
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     tags = params.get("Tags", {})
     stream.tags.update(tags)
@@ -352,7 +388,9 @@ def _remove_tags(store: KinesisStore, params: dict, region: str, account_id: str
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     tag_keys = params.get("TagKeys", [])
     for key in tag_keys:
@@ -364,7 +402,9 @@ def _list_tags(store: KinesisStore, params: dict, region: str, account_id: str) 
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
-        raise KinesisError("ResourceNotFoundException", f"Stream {name} under account {account_id} not found.")
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
 
     tags = [{"Key": k, "Value": v} for k, v in stream.tags.items()]
     return {"Tags": tags, "HasMoreTags": False}

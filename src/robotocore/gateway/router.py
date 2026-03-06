@@ -48,9 +48,7 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 # Service name extracted from credential scope in Authorization header
-AUTH_SERVICE_RE = re.compile(
-    r"Credential=[^/]+/\d{8}/[^/]+/([^/]+)/aws4_request"
-)
+AUTH_SERVICE_RE = re.compile(r"Credential=[^/]+/\d{8}/[^/]+/([^/]+)/aws4_request")
 
 # AWS credential scope service names that differ from Moto backend names
 SERVICE_NAME_ALIASES: dict[str, str] = {

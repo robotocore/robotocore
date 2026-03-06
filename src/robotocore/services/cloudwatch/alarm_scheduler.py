@@ -11,10 +11,9 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from moto.backends import get_backend
-from moto.core import DEFAULT_ACCOUNT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +94,9 @@ class AlarmScheduler:
                     except Exception:
                         logger.exception(
                             "Error evaluating alarm %s in %s/%s",
-                            alarm.name, account_id, region_name,
+                            alarm.name,
+                            account_id,
+                            region_name,
                         )
 
     def _evaluate_alarm(self, backend, alarm, account_id: str, region_name: str) -> None:
@@ -117,9 +118,7 @@ class AlarmScheduler:
         datapoints_to_alarm = alarm.datapoints_to_alarm or evaluation_periods
 
         # Collect metric values for the evaluation window
-        metric_values = self._collect_metric_values(
-            backend, alarm, period, evaluation_periods
-        )
+        metric_values = self._collect_metric_values(backend, alarm, period, evaluation_periods)
 
         # Determine new state
         old_state = alarm.state_value
@@ -152,7 +151,7 @@ class AlarmScheduler:
         self, backend, alarm, period: int, evaluation_periods: int
     ) -> list[float | None]:
         """Collect metric data points from Moto's in-memory store for the evaluation window."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         values: list[float | None] = []
 
         namespace = alarm.namespace
@@ -243,7 +242,6 @@ class AlarmScheduler:
         comparison_op = COMPARISON_OPS[alarm.comparison_operator]
 
         # Count non-None values
-        non_null = [v for v in metric_values if v is not None]
         null_count = metric_values.count(None)
 
         # All datapoints missing
@@ -285,10 +283,7 @@ class AlarmScheduler:
                 f"the threshold ({alarm.threshold})."
             )
         elif new_state == "INSUFFICIENT_DATA":
-            return (
-                f"Insufficient Data: {alarm.evaluation_periods} period(s) with "
-                f"no datapoints."
-            )
+            return f"Insufficient Data: {alarm.evaluation_periods} period(s) with no datapoints."
         else:
             return (
                 f"Threshold Crossed: {len(non_null)} datapoint(s) were not "
@@ -328,7 +323,8 @@ class AlarmScheduler:
             except Exception:
                 logger.exception(
                     "Failed to publish alarm action to %s for alarm %s",
-                    action_arn, alarm.name,
+                    action_arn,
+                    alarm.name,
                 )
 
     @staticmethod
@@ -341,7 +337,7 @@ class AlarmScheduler:
         region_name: str,
     ) -> str:
         """Build a JSON alarm notification message matching the AWS format."""
-        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+0000")
+        now = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%f+0000")
         message = {
             "AlarmName": alarm.name,
             "AlarmDescription": alarm.description or "",
@@ -384,9 +380,7 @@ class AlarmScheduler:
         try:
             sns_backend = get_backend("sns")[sns_account][sns_region]
         except (KeyError, TypeError):
-            logger.warning(
-                "SNS backend not found for %s/%s", sns_account, sns_region
-            )
+            logger.warning("SNS backend not found for %s/%s", sns_account, sns_region)
             return
 
         sns_backend.publish(

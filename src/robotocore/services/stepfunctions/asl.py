@@ -28,7 +28,9 @@ class ASLExecutionError(Exception):
 class ASLExecutor:
     """Executes an ASL state machine definition."""
 
-    def __init__(self, definition: dict, region: str = "us-east-1", account_id: str = "123456789012"):
+    def __init__(
+        self, definition: dict, region: str = "us-east-1", account_id: str = "123456789012"
+    ):
         self.definition = definition
         self.region = region
         self.account_id = account_id
@@ -188,8 +190,6 @@ class ASLExecutor:
             items = [items]
 
         iterator = state_def.get("Iterator") or state_def.get("ItemProcessor", {})
-        max_concurrency = state_def.get("MaxConcurrency", 0)
-
         results = []
         for item in items:
             executor = ASLExecutor(iterator, self.region, self.account_id)
@@ -202,6 +202,7 @@ class ASLExecutor:
     def _invoke_lambda(self, resource: str, input_data: Any) -> Any:
         """Invoke a Lambda function."""
         import base64
+
         from robotocore.services.lambda_.executor import execute_python_handler
 
         # Extract function name from ARN
@@ -211,11 +212,14 @@ class ASLExecutor:
         try:
             from moto.backends import get_backend
             from moto.core import DEFAULT_ACCOUNT_ID
+
             acct = self.account_id if self.account_id != "123456789012" else DEFAULT_ACCOUNT_ID
             backend = get_backend("lambda")[acct][self.region]
             fn = backend.get_function(function_name)
-        except Exception as e:
-            raise ASLExecutionError("Lambda.ServiceException", f"Function not found: {function_name}")
+        except Exception:
+            raise ASLExecutionError(
+                "Lambda.ServiceException", f"Function not found: {function_name}"
+            )
 
         runtime = getattr(fn, "run_time", "") or ""
         if runtime.startswith("python") and hasattr(fn, "code") and fn.code:
@@ -240,6 +244,7 @@ class ASLExecutor:
     def _invoke_sqs_send(self, input_data: Any) -> dict:
         """Send message to SQS via Step Functions integration."""
         import hashlib
+
         from robotocore.services.sqs.models import SqsMessage
         from robotocore.services.sqs.provider import _get_store
 
@@ -268,7 +273,8 @@ class ASLExecutor:
         if isinstance(message, dict):
             message = json.dumps(message)
 
-        from robotocore.services.sns.provider import _get_store, _deliver_to_subscriber, _new_id
+        from robotocore.services.sns.provider import _deliver_to_subscriber, _get_store, _new_id
+
         store = _get_store(self.region)
         topic = store.get_topic(topic_arn)
         if not topic:
@@ -277,7 +283,9 @@ class ASLExecutor:
         message_id = _new_id()
         for sub in topic.subscriptions:
             if sub.confirmed:
-                _deliver_to_subscriber(sub, message, "Step Functions", {}, message_id, topic_arn, self.region)
+                _deliver_to_subscriber(
+                    sub, message, "Step Functions", {}, message_id, topic_arn, self.region
+                )
         return {"MessageId": message_id}
 
     def _invoke_dynamodb(self, resource: str, input_data: Any) -> Any:
@@ -289,7 +297,9 @@ class ASLExecutor:
         """Nested Step Functions execution."""
         return input_data
 
-    def _handle_error(self, state_def: dict, data: Any, error: str, cause: str) -> tuple[str | None, Any]:
+    def _handle_error(
+        self, state_def: dict, data: Any, error: str, cause: str
+    ) -> tuple[str | None, Any]:
         """Handle errors with Catch blocks."""
         catchers = state_def.get("Catch", [])
         for catch in catchers:
@@ -303,6 +313,7 @@ class ASLExecutor:
 
 
 # --- JSONPath utilities ---
+
 
 def _apply_path(data: Any, path: str | None) -> Any:
     """Apply a JSONPath-like path to data."""
@@ -326,7 +337,7 @@ def _resolve_path(data: Any, path: str) -> Any:
         if not part:
             continue
         # Handle array index
-        match = re.match(r'(\w+)\[(\d+)\]', part)
+        match = re.match(r"(\w+)\[(\d+)\]", part)
         if match:
             key, idx = match.group(1), int(match.group(2))
             if isinstance(current, dict) and key in current:
@@ -383,8 +394,7 @@ def _resolve_parameters(params: dict, input_data: Any) -> Any:
             result[key] = _resolve_parameters(value, input_data)
         elif isinstance(value, list):
             result[key] = [
-                _resolve_parameters(v, input_data) if isinstance(v, dict) else v
-                for v in value
+                _resolve_parameters(v, input_data) if isinstance(v, dict) else v for v in value
             ]
         else:
             result[key] = value
@@ -415,6 +425,7 @@ def _evaluate_choice_rule(rule: dict, data: Any) -> bool:
         return isinstance(value, str) and value < rule["StringLessThan"]
     if "StringMatches" in rule:
         import fnmatch
+
         return isinstance(value, str) and fnmatch.fnmatch(value, rule["StringMatches"])
     if "NumericEquals" in rule:
         return value == rule["NumericEquals"]

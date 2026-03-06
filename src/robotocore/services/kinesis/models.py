@@ -5,7 +5,6 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-
 # Maximum hash key value for shard range partitioning (2^128 - 1)
 MAX_HASH_KEY = (2**128) - 1
 
@@ -43,7 +42,9 @@ class Shard:
             self.records.append(record)
             return record
 
-    def get_records(self, start_sequence: str, limit: int = 10000) -> tuple[list[KinesisRecord], str | None]:
+    def get_records(
+        self, start_sequence: str, limit: int = 10000
+    ) -> tuple[list[KinesisRecord], str | None]:
         """Return records starting at or after start_sequence.
 
         Returns (records, next_sequence) where next_sequence is the sequence
@@ -68,7 +69,9 @@ class Shard:
             next_seq = f"{last_seq + 1:020d}"
             return batch, next_seq
 
-    def get_records_after(self, after_sequence: str, limit: int = 10000) -> tuple[list[KinesisRecord], str | None]:
+    def get_records_after(
+        self, after_sequence: str, limit: int = 10000
+    ) -> tuple[list[KinesisRecord], str | None]:
         """Return records strictly after after_sequence."""
         next_seq = f"{int(after_sequence) + 1:020d}"
         return self.get_records(next_seq, limit)
@@ -104,7 +107,9 @@ class KinesisStream:
         # Fallback to first shard
         return self.shards[0]
 
-    def put_record(self, partition_key: str, data: bytes, explicit_hash_key: str | None = None) -> KinesisRecord:
+    def put_record(
+        self, partition_key: str, data: bytes, explicit_hash_key: str | None = None
+    ) -> KinesisRecord:
         if explicit_hash_key is not None:
             hash_val = int(explicit_hash_key)
             for shard in self.shards:
@@ -118,7 +123,9 @@ class KinesisStore:
         self.streams: dict[str, KinesisStream] = {}
         self.lock = threading.Lock()
 
-    def create_stream(self, name: str, shard_count: int, region: str, account_id: str) -> KinesisStream:
+    def create_stream(
+        self, name: str, shard_count: int, region: str, account_id: str
+    ) -> KinesisStream:
         with self.lock:
             if name in self.streams:
                 raise ValueError(f"Stream {name} already exists")

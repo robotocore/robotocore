@@ -99,6 +99,7 @@ class TestHandlerChain:
         chain.request_handlers.append(lambda ctx: (_ for _ in ()).throw(ValueError("unhandled")))
 
         import pytest
+
         with pytest.raises(ValueError, match="unhandled"):
             chain.handle(_make_context())
 

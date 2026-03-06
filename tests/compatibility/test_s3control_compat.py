@@ -1,6 +1,7 @@
 """S3 Control compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 

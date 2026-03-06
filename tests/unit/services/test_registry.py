@@ -14,7 +14,12 @@ class TestServiceRegistry:
             assert svc in SERVICE_REGISTRY
 
     def test_all_have_valid_status(self):
-        valid = {ServiceStatus.MOTO_BACKED, ServiceStatus.NATIVE, ServiceStatus.EXTERNAL, ServiceStatus.PLANNED}
+        valid = {
+            ServiceStatus.MOTO_BACKED,
+            ServiceStatus.NATIVE,
+            ServiceStatus.EXTERNAL,
+            ServiceStatus.PLANNED,
+        }
         for info in SERVICE_REGISTRY.values():
             assert info.status in valid
 

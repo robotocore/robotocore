@@ -1,6 +1,7 @@
 """SSM Parameter Store compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -65,10 +66,10 @@ class TestSSMParameterOperations:
         ssm.delete_parameter(Name="/multi/b")
 
     def test_parameter_with_tags(self, ssm):
-        ssm.put_parameter(Name="/tagged/param", Value="val", Type="String",
-                          Tags=[{"Key": "env", "Value": "prod"}])
-        response = ssm.list_tags_for_resource(
-            ResourceType="Parameter", ResourceId="/tagged/param")
+        ssm.put_parameter(
+            Name="/tagged/param", Value="val", Type="String", Tags=[{"Key": "env", "Value": "prod"}]
+        )
+        response = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId="/tagged/param")
         tags = {t["Key"]: t["Value"] for t in response["TagList"]}
         assert tags.get("env") == "prod"
         ssm.delete_parameter(Name="/tagged/param")

@@ -76,179 +76,200 @@ def iam():
     )
 
 
-SIMPLE_SQS_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Simple SQS queue",
-    "Resources": {
-        "MyQueue": {
-            "Type": "AWS::SQS::Queue",
-            "Properties": {
-                "QueueName": "cfn-test-queue",
-            },
-        },
-    },
-    "Outputs": {
-        "QueueUrl": {
-            "Value": {"Ref": "MyQueue"},
-            "Description": "Queue URL",
-        },
-        "QueueArn": {
-            "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
-            "Description": "Queue ARN",
-        },
-    },
-})
-
-SQS_SNS_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "SQS + SNS with subscription",
-    "Resources": {
-        "MyTopic": {
-            "Type": "AWS::SNS::Topic",
-            "Properties": {
-                "TopicName": "cfn-test-topic",
-            },
-        },
-        "MyQueue": {
-            "Type": "AWS::SQS::Queue",
-            "Properties": {
-                "QueueName": "cfn-test-sub-queue",
-            },
-        },
-        "MySub": {
-            "Type": "AWS::SNS::Subscription",
-            "DependsOn": ["MyTopic", "MyQueue"],
-            "Properties": {
-                "TopicArn": {"Ref": "MyTopic"},
-                "Protocol": "sqs",
-                "Endpoint": {"Fn::GetAtt": ["MyQueue", "Arn"]},
-            },
-        },
-    },
-})
-
-PARAMETERIZED_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Parameters": {
-        "QueueName": {
-            "Type": "String",
-            "Default": "default-queue",
-        },
-    },
-    "Resources": {
-        "MyQueue": {
-            "Type": "AWS::SQS::Queue",
-            "Properties": {
-                "QueueName": {"Ref": "QueueName"},
-            },
-        },
-    },
-})
-
-DYNAMODB_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Resources": {
-        "MyTable": {
-            "Type": "AWS::DynamoDB::Table",
-            "Properties": {
-                "TableName": "cfn-test-table",
-                "AttributeDefinitions": [
-                    {"AttributeName": "pk", "AttributeType": "S"},
-                ],
-                "KeySchema": [
-                    {"AttributeName": "pk", "KeyType": "HASH"},
-                ],
-                "BillingMode": "PAY_PER_REQUEST",
-            },
-        },
-    },
-    "Outputs": {
-        "TableArn": {
-            "Value": {"Fn::GetAtt": ["MyTable", "Arn"]},
-        },
-        "TableName": {
-            "Value": {"Ref": "MyTable"},
-        },
-    },
-})
-
-IAM_ROLE_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Resources": {
-        "MyRole": {
-            "Type": "AWS::IAM::Role",
-            "Properties": {
-                "RoleName": "cfn-test-role",
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Principal": {"Service": "lambda.amazonaws.com"},
-                        "Action": "sts:AssumeRole",
-                    }],
+SIMPLE_SQS_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Simple SQS queue",
+        "Resources": {
+            "MyQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {
+                    "QueueName": "cfn-test-queue",
                 },
             },
         },
-    },
-    "Outputs": {
-        "RoleArn": {
-            "Value": {"Fn::GetAtt": ["MyRole", "Arn"]},
+        "Outputs": {
+            "QueueUrl": {
+                "Value": {"Ref": "MyQueue"},
+                "Description": "Queue URL",
+            },
+            "QueueArn": {
+                "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
+                "Description": "Queue ARN",
+            },
         },
-    },
-})
+    }
+)
 
-SSM_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Resources": {
-        "MyParam": {
-            "Type": "AWS::SSM::Parameter",
-            "Properties": {
-                "Name": "/cfn/test/param",
+SQS_SNS_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "SQS + SNS with subscription",
+        "Resources": {
+            "MyTopic": {
+                "Type": "AWS::SNS::Topic",
+                "Properties": {
+                    "TopicName": "cfn-test-topic",
+                },
+            },
+            "MyQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {
+                    "QueueName": "cfn-test-sub-queue",
+                },
+            },
+            "MySub": {
+                "Type": "AWS::SNS::Subscription",
+                "DependsOn": ["MyTopic", "MyQueue"],
+                "Properties": {
+                    "TopicArn": {"Ref": "MyTopic"},
+                    "Protocol": "sqs",
+                    "Endpoint": {"Fn::GetAtt": ["MyQueue", "Arn"]},
+                },
+            },
+        },
+    }
+)
+
+PARAMETERIZED_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Parameters": {
+            "QueueName": {
                 "Type": "String",
-                "Value": "cfn-param-value",
+                "Default": "default-queue",
             },
         },
-    },
-})
+        "Resources": {
+            "MyQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {
+                    "QueueName": {"Ref": "QueueName"},
+                },
+            },
+        },
+    }
+)
 
-MULTI_RESOURCE_TEMPLATE = json.dumps({
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Multi-resource stack with Fn::Sub",
-    "Resources": {
-        "MyQueue": {
-            "Type": "AWS::SQS::Queue",
-            "Properties": {
-                "QueueName": "cfn-multi-queue",
+DYNAMODB_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": {
+            "MyTable": {
+                "Type": "AWS::DynamoDB::Table",
+                "Properties": {
+                    "TableName": "cfn-test-table",
+                    "AttributeDefinitions": [
+                        {"AttributeName": "pk", "AttributeType": "S"},
+                    ],
+                    "KeySchema": [
+                        {"AttributeName": "pk", "KeyType": "HASH"},
+                    ],
+                    "BillingMode": "PAY_PER_REQUEST",
+                },
             },
         },
-        "MyBucket": {
-            "Type": "AWS::S3::Bucket",
-            "Properties": {
-                "BucketName": "cfn-multi-bucket",
+        "Outputs": {
+            "TableArn": {
+                "Value": {"Fn::GetAtt": ["MyTable", "Arn"]},
+            },
+            "TableName": {
+                "Value": {"Ref": "MyTable"},
             },
         },
-        "MyLogGroup": {
-            "Type": "AWS::Logs::LogGroup",
-            "Properties": {
-                "LogGroupName": "/cfn/multi/logs",
+    }
+)
+
+IAM_ROLE_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": {
+            "MyRole": {
+                "Type": "AWS::IAM::Role",
+                "Properties": {
+                    "RoleName": "cfn-test-role",
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    },
+                },
             },
         },
-    },
-    "Outputs": {
-        "QueueArn": {
-            "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
+        "Outputs": {
+            "RoleArn": {
+                "Value": {"Fn::GetAtt": ["MyRole", "Arn"]},
+            },
         },
-        "BucketArn": {
-            "Value": {"Fn::GetAtt": ["MyBucket", "Arn"]},
+    }
+)
+
+SSM_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": {
+            "MyParam": {
+                "Type": "AWS::SSM::Parameter",
+                "Properties": {
+                    "Name": "/cfn/test/param",
+                    "Type": "String",
+                    "Value": "cfn-param-value",
+                },
+            },
         },
-        "CombinedInfo": {
-            "Value": {"Fn::Join": ["|", [
-                {"Fn::GetAtt": ["MyQueue", "QueueName"]},
-                {"Ref": "MyBucket"},
-            ]]},
+    }
+)
+
+MULTI_RESOURCE_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Multi-resource stack with Fn::Sub",
+        "Resources": {
+            "MyQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {
+                    "QueueName": "cfn-multi-queue",
+                },
+            },
+            "MyBucket": {
+                "Type": "AWS::S3::Bucket",
+                "Properties": {
+                    "BucketName": "cfn-multi-bucket",
+                },
+            },
+            "MyLogGroup": {
+                "Type": "AWS::Logs::LogGroup",
+                "Properties": {
+                    "LogGroupName": "/cfn/multi/logs",
+                },
+            },
         },
-    },
-})
+        "Outputs": {
+            "QueueArn": {
+                "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
+            },
+            "BucketArn": {
+                "Value": {"Fn::GetAtt": ["MyBucket", "Arn"]},
+            },
+            "CombinedInfo": {
+                "Value": {
+                    "Fn::Join": [
+                        "|",
+                        [
+                            {"Fn::GetAtt": ["MyQueue", "QueueName"]},
+                            {"Ref": "MyBucket"},
+                        ],
+                    ]
+                },
+            },
+        },
+    }
+)
 
 
 class TestCloudFormationBasic:
@@ -340,7 +361,7 @@ class TestCloudFormationCrossService:
 
         # Verify SNS->SQS subscription works
         sns.publish(
-            TopicArn=f"arn:aws:sns:us-east-1:123456789012:cfn-test-topic",
+            TopicArn="arn:aws:sns:us-east-1:123456789012:cfn-test-topic",
             Message="cfn integration test",
         )
         time.sleep(0.5)
@@ -382,7 +403,9 @@ class TestCloudFormationResourceTypes:
         assert "cfn-test-table" in tables["TableNames"]
 
         # Verify outputs
-        outputs = {o["OutputKey"]: o["OutputValue"] for o in response["Stacks"][0].get("Outputs", [])}
+        outputs = {
+            o["OutputKey"]: o["OutputValue"] for o in response["Stacks"][0].get("Outputs", [])
+        }
         assert "cfn-test-table" in outputs.get("TableArn", "")
 
         cfn.delete_stack(StackName="test-ddb-stack")
@@ -399,7 +422,9 @@ class TestCloudFormationResourceTypes:
         role = iam.get_role(RoleName="cfn-test-role")
         assert role["Role"]["RoleName"] == "cfn-test-role"
 
-        outputs = {o["OutputKey"]: o["OutputValue"] for o in response["Stacks"][0].get("Outputs", [])}
+        outputs = {
+            o["OutputKey"]: o["OutputValue"] for o in response["Stacks"][0].get("Outputs", [])
+        }
         assert "cfn-test-role" in outputs.get("RoleArn", "")
 
         cfn.delete_stack(StackName="test-iam-stack")
@@ -443,17 +468,19 @@ class TestCloudFormationResourceTypes:
         cfn.delete_stack(StackName="test-multi-stack")
 
     def test_fn_sub_intrinsic(self, cfn, sqs):
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "MyQueue": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {
-                        "QueueName": {"Fn::Sub": "cfn-sub-${AWS::Region}-queue"},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {
+                            "QueueName": {"Fn::Sub": "cfn-sub-${AWS::Region}-queue"},
+                        },
                     },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName="test-sub-stack", TemplateBody=template)
         response = cfn.describe_stacks(StackName="test-sub-stack")
         assert response["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"

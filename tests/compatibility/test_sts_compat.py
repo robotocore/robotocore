@@ -1,6 +1,7 @@
 """STS compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -26,9 +27,14 @@ class TestSTSOperations:
 
     def test_assume_role(self, sts):
         import uuid
+
         role_name = f"test-sts-role-{uuid.uuid4().hex[:8]}"
         iam = make_client("iam")
-        trust_policy = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"*"},"Action":"sts:AssumeRole"}]}'
+        trust_policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"*"},'
+            '"Action":"sts:AssumeRole"}]}'
+        )
         role = iam.create_role(
             RoleName=role_name,
             AssumeRolePolicyDocument=trust_policy,
@@ -45,7 +51,11 @@ class TestSTSOperations:
     def test_assume_role_session_credentials(self, sts):
         """Verify assumed-role credentials contain all required fields."""
         iam = make_client("iam")
-        trust_policy = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"*"},"Action":"sts:AssumeRole"}]}'
+        trust_policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"*"},'
+            '"Action":"sts:AssumeRole"}]}'
+        )
         role = iam.create_role(
             RoleName="test-creds-role",
             AssumeRolePolicyDocument=trust_policy,

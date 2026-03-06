@@ -112,7 +112,6 @@ class StateManager:
         """Pickle all Moto backends."""
         try:
             from moto.backends import get_backend
-            from moto.core import DEFAULT_ACCOUNT_ID
 
             state = {}
             for service_name in self._list_moto_services():
@@ -181,11 +180,12 @@ class StateManager:
         """Reset all Moto backends."""
         try:
             import moto.core.models as moto_models
+
             if hasattr(moto_models, "base_decorator"):
                 moto_models.base_decorator.reset()
             else:
-                from moto.core import DEFAULT_ACCOUNT_ID
                 from moto.backends import get_backend
+
                 for service_name in self._list_moto_services():
                     try:
                         backend_dict = get_backend(service_name)
@@ -200,6 +200,7 @@ class StateManager:
     def _list_moto_services(self) -> list[str]:
         """List Moto services that have backends with data."""
         from robotocore.services.registry import SERVICE_REGISTRY
+
         return sorted(SERVICE_REGISTRY.keys())
 
 

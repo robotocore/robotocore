@@ -8,15 +8,14 @@ import os
 import re
 from functools import lru_cache
 
+import moto.backends as moto_backends
+from moto.core.base_backend import BackendDict
 from starlette.requests import Request
 from starlette.responses import Response
 from werkzeug.routing import Map, Rule
 from werkzeug.routing.converters import BaseConverter
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request as WerkzeugRequest
-
-import moto.backends as moto_backends
-from moto.core.base_backend import BackendDict
 
 os.environ.setdefault("MOTO_ALLOW_NONEXISTENT_REGION", "true")
 
@@ -127,10 +126,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             clean_headers = headers_dict
             response_body = None
         else:
-            clean_headers = {
-                k: v for k, v in headers_dict.items()
-                if k.lower() != "content-length"
-            }
+            clean_headers = {k: v for k, v in headers_dict.items() if k.lower() != "content-length"}
         return Response(
             content=response_body,
             status_code=status,

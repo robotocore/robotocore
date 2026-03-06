@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -17,7 +18,10 @@ def _uid():
 
 RESOURCE_QUERY = {
     "Type": "TAG_FILTERS_1_0",
-    "Query": '{"ResourceTypeFilters":["AWS::AllSupported"],"TagFilters":[{"Key":"env","Values":["test"]}]}',
+    "Query": (
+        '{"ResourceTypeFilters":["AWS::AllSupported"],'
+        '"TagFilters":[{"Key":"env","Values":["test"]}]}'
+    ),
 }
 
 

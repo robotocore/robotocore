@@ -7,7 +7,8 @@ import zipfile
 
 import pytest
 import requests
-from tests.compatibility.conftest import make_client, ENDPOINT_URL
+
+from tests.compatibility.conftest import ENDPOINT_URL, make_client
 
 
 def _make_zip(code: str) -> bytes:
@@ -35,10 +36,18 @@ def iam():
 @pytest.fixture
 def role(iam):
     name = f"apigw-role-{uuid.uuid4().hex[:8]}"
-    trust = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-    })
+    trust = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
     iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)
     yield f"arn:aws:iam::123456789012:role/{name}"
     iam.delete_role(RoleName=name)
@@ -89,14 +98,15 @@ class TestAPIGatewayLambdaProxy:
 
         # Create Lambda function
         code = _make_zip(
-            'import json\n'
-            'def handler(event, ctx):\n'
-            '    name = event.get("queryStringParameters", {}).get("name", "world") if event.get("queryStringParameters") else "world"\n'
-            '    return {\n'
+            "import json\n"
+            "def handler(event, ctx):\n"
+            '    qsp = event.get("queryStringParameters")\n'
+            '    name = qsp.get("name", "world") if qsp else "world"\n'
+            "    return {\n"
             '        "statusCode": 200,\n'
             '        "headers": {"Content-Type": "application/json"},\n'
             '        "body": json.dumps({"message": f"Hello, {name}!"})\n'
-            '    }\n'
+            "    }\n"
         )
         lam.create_function(
             FunctionName=func_name,
@@ -128,7 +138,11 @@ class TestAPIGatewayLambdaProxy:
             authorizationType="NONE",
         )
 
-        lambda_uri = f"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:{func_name}/invocations"
+        lambda_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path"
+            "/2015-03-31/functions/arn:aws:lambda:us-east-1"
+            f":123456789012:function:{func_name}/invocations"
+        )
         apigw.put_integration(
             restApiId=api_id,
             resourceId=resource["id"],
@@ -158,13 +172,13 @@ class TestAPIGatewayLambdaProxy:
         func_name = f"apigw-post-{suffix}"
 
         code = _make_zip(
-            'import json\n'
-            'def handler(event, ctx):\n'
+            "import json\n"
+            "def handler(event, ctx):\n"
             '    body = json.loads(event.get("body", "{}")) if event.get("body") else {}\n'
-            '    return {\n'
+            "    return {\n"
             '        "statusCode": 201,\n'
             '        "body": json.dumps({"received": body, "method": event["httpMethod"]})\n'
-            '    }\n'
+            "    }\n"
         )
         lam.create_function(
             FunctionName=func_name,
@@ -180,11 +194,23 @@ class TestAPIGatewayLambdaProxy:
         root_id = resources["items"][0]["id"]
 
         resource = apigw.create_resource(restApiId=api_id, parentId=root_id, pathPart="{proxy+}")
-        apigw.put_method(restApiId=api_id, resourceId=resource["id"], httpMethod="ANY", authorizationType="NONE")
+        apigw.put_method(
+            restApiId=api_id, resourceId=resource["id"], httpMethod="ANY", authorizationType="NONE"
+        )
 
-        lambda_uri = f"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:{func_name}/invocations"
-        apigw.put_integration(restApiId=api_id, resourceId=resource["id"], httpMethod="ANY",
-                              type="AWS_PROXY", integrationHttpMethod="POST", uri=lambda_uri)
+        lambda_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path"
+            "/2015-03-31/functions/arn:aws:lambda:us-east-1"
+            f":123456789012:function:{func_name}/invocations"
+        )
+        apigw.put_integration(
+            restApiId=api_id,
+            resourceId=resource["id"],
+            httpMethod="ANY",
+            type="AWS_PROXY",
+            integrationHttpMethod="POST",
+            uri=lambda_uri,
+        )
         apigw.create_deployment(restApiId=api_id, stageName="test")
 
         url = f"{ENDPOINT_URL}/restapis/{api_id}/test/_user_request_/items"
@@ -203,15 +229,15 @@ class TestAPIGatewayLambdaProxy:
         func_name = f"apigw-path-{suffix}"
 
         code = _make_zip(
-            'import json\n'
-            'def handler(event, ctx):\n'
+            "import json\n"
+            "def handler(event, ctx):\n"
             '    path_params = event.get("pathParameters") or {}\n'
             '    user_id = path_params.get("userId", "unknown")\n'
-            '    return {\n'
+            "    return {\n"
             '        "statusCode": 200,\n'
             '        "headers": {"Content-Type": "application/json"},\n'
             '        "body": json.dumps({"userId": user_id, "path": event.get("path", "")})\n'
-            '    }\n'
+            "    }\n"
         )
         lam.create_function(
             FunctionName=func_name,
@@ -227,9 +253,7 @@ class TestAPIGatewayLambdaProxy:
         root_id = resources["items"][0]["id"]
 
         # Build /users/{userId} resource hierarchy
-        users_resource = apigw.create_resource(
-            restApiId=api_id, parentId=root_id, pathPart="users"
-        )
+        users_resource = apigw.create_resource(restApiId=api_id, parentId=root_id, pathPart="users")
         user_id_resource = apigw.create_resource(
             restApiId=api_id, parentId=users_resource["id"], pathPart="{userId}"
         )
@@ -241,7 +265,11 @@ class TestAPIGatewayLambdaProxy:
             authorizationType="NONE",
         )
 
-        lambda_uri = f"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:{func_name}/invocations"
+        lambda_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path"
+            "/2015-03-31/functions/arn:aws:lambda:us-east-1"
+            f":123456789012:function:{func_name}/invocations"
+        )
         apigw.put_integration(
             restApiId=api_id,
             resourceId=user_id_resource["id"],
@@ -268,15 +296,15 @@ class TestAPIGatewayLambdaProxy:
         func_name = f"apigw-query-{suffix}"
 
         code = _make_zip(
-            'import json\n'
-            'def handler(event, ctx):\n'
+            "import json\n"
+            "def handler(event, ctx):\n"
             '    params = event.get("queryStringParameters") or {}\n'
             '    multi = event.get("multiValueQueryStringParameters") or {}\n'
-            '    return {\n'
+            "    return {\n"
             '        "statusCode": 200,\n'
             '        "headers": {"Content-Type": "application/json"},\n'
             '        "body": json.dumps({"params": params, "multi": multi})\n'
-            '    }\n'
+            "    }\n"
         )
         lam.create_function(
             FunctionName=func_name,
@@ -291,9 +319,7 @@ class TestAPIGatewayLambdaProxy:
         resources = apigw.get_resources(restApiId=api_id)
         root_id = resources["items"][0]["id"]
 
-        resource = apigw.create_resource(
-            restApiId=api_id, parentId=root_id, pathPart="{proxy+}"
-        )
+        resource = apigw.create_resource(restApiId=api_id, parentId=root_id, pathPart="{proxy+}")
         apigw.put_method(
             restApiId=api_id,
             resourceId=resource["id"],
@@ -301,7 +327,11 @@ class TestAPIGatewayLambdaProxy:
             authorizationType="NONE",
         )
 
-        lambda_uri = f"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:{func_name}/invocations"
+        lambda_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path"
+            "/2015-03-31/functions/arn:aws:lambda:us-east-1"
+            f":123456789012:function:{func_name}/invocations"
+        )
         apigw.put_integration(
             restApiId=api_id,
             resourceId=resource["id"],
@@ -313,7 +343,11 @@ class TestAPIGatewayLambdaProxy:
 
         apigw.create_deployment(restApiId=api_id, stageName="test")
 
-        url = f"{ENDPOINT_URL}/restapis/{api_id}/test/_user_request_/search?category=books&sort=price&sort=date"
+        url = (
+            f"{ENDPOINT_URL}/restapis/{api_id}/test"
+            "/_user_request_/search"
+            "?category=books&sort=price&sort=date"
+        )
         resp = requests.get(url)
         assert resp.status_code == 200
         body = resp.json()

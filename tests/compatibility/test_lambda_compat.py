@@ -1,11 +1,12 @@
 """Lambda compatibility tests — CRUD and invocation."""
 
+import io
 import json
 import uuid
 import zipfile
-import io
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -24,10 +25,18 @@ def lam():
 @pytest.fixture
 def role():
     iam = make_client("iam")
-    trust = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-    })
+    trust = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
     iam.create_role(RoleName="lambda-compat-role", AssumeRolePolicyDocument=trust)
     yield "arn:aws:iam::123456789012:role/lambda-compat-role"
     iam.delete_role(RoleName="lambda-compat-role")
@@ -219,7 +228,9 @@ class TestLambdaInvocation:
 class TestLambdaAdvanced:
     def test_environment_variables(self, lam, role):
         """Test function with environment variables."""
-        code = _make_zip('import os\ndef handler(e, c): return {"env_val": os.environ.get("MY_VAR", "missing")}')
+        code = _make_zip(
+            'import os\ndef handler(e, c): return {"env_val": os.environ.get("MY_VAR", "missing")}'
+        )
         fname = f"env-func-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
@@ -269,7 +280,7 @@ class TestLambdaAdvanced:
 
     def test_function_tags(self, lam, role):
         """Test function tagging."""
-        code = _make_zip('def handler(e, c): pass')
+        code = _make_zip("def handler(e, c): pass")
         fname = f"tag-func-{uuid.uuid4().hex[:8]}"
         response = lam.create_function(
             FunctionName=fname,
@@ -315,7 +326,10 @@ class TestLambdaConcurrency:
 
         # After deletion, get should return empty (no ReservedConcurrentExecutions key)
         response = lam.get_function_concurrency(FunctionName=fname)
-        assert "ReservedConcurrentExecutions" not in response or response.get("ReservedConcurrentExecutions") is None
+        assert (
+            "ReservedConcurrentExecutions" not in response
+            or response.get("ReservedConcurrentExecutions") is None
+        )
 
         lam.delete_function(FunctionName=fname)
 
@@ -371,7 +385,7 @@ class TestLambdaLayers:
             CompatibleRuntimes=["python3.12"],
         )
         response = lam.list_layers()
-        layer_names = [l["LayerName"] for l in response["Layers"]]
+        layer_names = [layer["LayerName"] for layer in response["Layers"]]
         assert layer_name in layer_names
 
     def test_list_layer_versions(self, lam):

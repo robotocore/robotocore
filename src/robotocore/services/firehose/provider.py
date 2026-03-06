@@ -1,7 +1,6 @@
 """Native Firehose provider with S3 delivery."""
 
 import base64
-import hashlib
 import json
 import threading
 import time
@@ -10,8 +9,6 @@ from collections.abc import Callable
 
 from starlette.requests import Request
 from starlette.responses import Response
-
-from robotocore.providers.moto_bridge import forward_to_moto
 
 _delivery_streams: dict[str, dict] = {}
 _stream_buffers: dict[str, list[bytes]] = {}
@@ -69,7 +66,11 @@ def _flush_buffer(stream_name: str) -> None:
 
     # Build the S3 key with timestamp-based partitioning
     now = time.gmtime()
-    key = f"{prefix}{now.tm_year}/{now.tm_mon:02d}/{now.tm_mday:02d}/{now.tm_hour:02d}/{stream_name}-{uuid.uuid4().hex[:8]}"
+    uid = uuid.uuid4().hex[:8]
+    key = (
+        f"{prefix}{now.tm_year}/{now.tm_mon:02d}/"
+        f"{now.tm_mday:02d}/{now.tm_hour:02d}/{stream_name}-{uid}"
+    )
 
     # Concatenate all records
     data = b"".join(records)
@@ -84,6 +85,7 @@ def _write_to_s3(bucket: str, key: str, data: bytes, region: str) -> None:
     try:
         from moto.backends import get_backend
         from moto.core import DEFAULT_ACCOUNT_ID
+
         s3_backend = get_backend("s3")[DEFAULT_ACCOUNT_ID]["global"]
         s3_backend.put_object(bucket, key, data)
     except Exception:
@@ -169,15 +171,17 @@ def _describe_delivery_stream(params: dict, region: str, account_id: str) -> dic
 
     destinations = []
     if stream.get("s3_config"):
-        destinations.append({
-            "DestinationId": "dest-1",
-            "ExtendedS3DestinationDescription": {
-                "BucketARN": stream["s3_config"].get("BucketARN", ""),
-                "Prefix": stream["s3_config"].get("Prefix", ""),
-                "RoleARN": stream["s3_config"].get("RoleARN", ""),
-                "BufferingHints": stream["s3_config"].get("BufferingHints", {}),
-            },
-        })
+        destinations.append(
+            {
+                "DestinationId": "dest-1",
+                "ExtendedS3DestinationDescription": {
+                    "BucketARN": stream["s3_config"].get("BucketARN", ""),
+                    "Prefix": stream["s3_config"].get("Prefix", ""),
+                    "RoleARN": stream["s3_config"].get("RoleARN", ""),
+                    "BufferingHints": stream["s3_config"].get("BufferingHints", {}),
+                },
+            }
+        )
 
     return {
         "DeliveryStreamDescription": {

@@ -113,10 +113,12 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
     protocol = context.protocol or "query"
 
     if protocol in ("json", "rest-json"):
-        body = json.dumps({
-            "__type": type(exc).__name__,
-            "message": str(exc),
-        })
+        body = json.dumps(
+            {
+                "__type": type(exc).__name__,
+                "message": str(exc),
+            }
+        )
         context.response = Response(
             content=body,
             status_code=500,

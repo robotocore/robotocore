@@ -95,8 +95,10 @@ class TestS3BasicOperations:
 
     def test_put_object_with_content_type(self, s3, bucket):
         s3.put_object(
-            Bucket=bucket, Key="page.html",
-            Body=b"<h1>hi</h1>", ContentType="text/html",
+            Bucket=bucket,
+            Key="page.html",
+            Body=b"<h1>hi</h1>",
+            ContentType="text/html",
         )
         response = s3.head_object(Bucket=bucket, Key="page.html")
         assert response["ContentType"] == "text/html"
@@ -127,17 +129,25 @@ class TestS3Multipart:
 
         # Upload parts
         part1 = s3.upload_part(
-            Bucket=bucket, Key="large.bin", UploadId=upload_id,
-            PartNumber=1, Body=b"a" * (5 * 1024 * 1024),
+            Bucket=bucket,
+            Key="large.bin",
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=b"a" * (5 * 1024 * 1024),
         )
         part2 = s3.upload_part(
-            Bucket=bucket, Key="large.bin", UploadId=upload_id,
-            PartNumber=2, Body=b"b" * 1024,
+            Bucket=bucket,
+            Key="large.bin",
+            UploadId=upload_id,
+            PartNumber=2,
+            Body=b"b" * 1024,
         )
 
         # Complete
         s3.complete_multipart_upload(
-            Bucket=bucket, Key="large.bin", UploadId=upload_id,
+            Bucket=bucket,
+            Key="large.bin",
+            UploadId=upload_id,
             MultipartUpload={
                 "Parts": [
                     {"PartNumber": 1, "ETag": part1["ETag"]},
@@ -154,7 +164,9 @@ class TestS3Multipart:
         response = s3.create_multipart_upload(Bucket=bucket, Key="abort.bin")
         upload_id = response["UploadId"]
         s3.abort_multipart_upload(
-            Bucket=bucket, Key="abort.bin", UploadId=upload_id,
+            Bucket=bucket,
+            Key="abort.bin",
+            UploadId=upload_id,
         )
 
 
@@ -163,17 +175,19 @@ class TestS3EventNotifications:
         bucket_name = "notif-test-s3"
         s3.create_bucket(Bucket=bucket_name)
         q_url = sqs.create_queue(QueueName="s3-event-test")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
 
         s3.put_bucket_notification_configuration(
             Bucket=bucket_name,
             NotificationConfiguration={
-                "QueueConfigurations": [{
-                    "QueueArn": q_arn,
-                    "Events": ["s3:ObjectCreated:*"],
-                }],
+                "QueueConfigurations": [
+                    {
+                        "QueueArn": q_arn,
+                        "Events": ["s3:ObjectCreated:*"],
+                    }
+                ],
             },
         )
 
@@ -197,17 +211,19 @@ class TestS3EventNotifications:
         bucket_name = "notif-delete-s3"
         s3.create_bucket(Bucket=bucket_name)
         q_url = sqs.create_queue(QueueName="s3-delete-event")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
 
         s3.put_bucket_notification_configuration(
             Bucket=bucket_name,
             NotificationConfiguration={
-                "QueueConfigurations": [{
-                    "QueueArn": q_arn,
-                    "Events": ["s3:ObjectRemoved:*"],
-                }],
+                "QueueConfigurations": [
+                    {
+                        "QueueArn": q_arn,
+                        "Events": ["s3:ObjectRemoved:*"],
+                    }
+                ],
             },
         )
 
@@ -228,22 +244,22 @@ class TestS3EventNotifications:
         bucket_name = "notif-prefix-s3"
         s3.create_bucket(Bucket=bucket_name)
         q_url = sqs.create_queue(QueueName="s3-prefix-event")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
 
         s3.put_bucket_notification_configuration(
             Bucket=bucket_name,
             NotificationConfiguration={
-                "QueueConfigurations": [{
-                    "QueueArn": q_arn,
-                    "Events": ["s3:ObjectCreated:*"],
-                    "Filter": {
-                        "Key": {
-                            "FilterRules": [{"Name": "prefix", "Value": "images/"}]
-                        }
-                    },
-                }],
+                "QueueConfigurations": [
+                    {
+                        "QueueArn": q_arn,
+                        "Events": ["s3:ObjectCreated:*"],
+                        "Filter": {
+                            "Key": {"FilterRules": [{"Name": "prefix", "Value": "images/"}]}
+                        },
+                    }
+                ],
             },
         )
 

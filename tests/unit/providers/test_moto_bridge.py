@@ -3,9 +3,9 @@
 import pytest
 
 from robotocore.providers.moto_bridge import (
+    _extract_region,
     _get_dispatcher,
     _get_moto_routing_table,
-    _extract_region,
 )
 
 
@@ -77,7 +77,9 @@ class TestForwardToMoto:
     @pytest.fixture
     def client(self):
         from starlette.testclient import TestClient
+
         from robotocore.gateway.app import app
+
         return TestClient(app)
 
     def _auth_header(self, service: str, region: str = "us-east-1") -> dict:

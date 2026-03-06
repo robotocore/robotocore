@@ -8,7 +8,6 @@ tables (with their StreamShard objects) are managed by Moto.
 import base64
 import json
 import logging
-import os
 import threading
 
 from starlette.requests import Request
@@ -100,9 +99,7 @@ def _describe_stream(params: dict, region: str, account_id: str) -> dict:
     """Describe a specific DynamoDB stream."""
     arn = params.get("StreamArn", "")
     if not arn:
-        raise StreamsError(
-            "ValidationException", "StreamArn is required"
-        )
+        raise StreamsError("ValidationException", "StreamArn is required")
 
     try:
         table = _get_table_from_stream_arn(arn, account_id, region)
@@ -229,7 +226,7 @@ def _get_records(params: dict, region: str, account_id: str) -> dict:
     except Exception:
         raise StreamsError(
             "ResourceNotFoundException",
-            f"Requested resource not found",
+            "Requested resource not found",
         )
 
     records = []

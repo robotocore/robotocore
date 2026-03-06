@@ -8,7 +8,6 @@ import json
 import re
 import threading
 import time
-import uuid
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -84,7 +83,9 @@ async def handle_scheduler_request(request: Request, region: str, account_id: st
         if m:
             group_name = m.group(1)
             if method == "POST":
-                return _json_response(_create_schedule_group(group_name, params, region, account_id))
+                return _json_response(
+                    _create_schedule_group(group_name, params, region, account_id)
+                )
             elif method == "GET":
                 return _json_response(_get_schedule_group(group_name, region))
             elif method == "DELETE":
@@ -156,7 +157,9 @@ def _update_schedule(name: str, params: dict, region: str, account_id: str) -> d
     with _lock:
         schedule = schedules.get(name)
         if not schedule:
-            raise SchedulerError("ResourceNotFoundException", f"Schedule {name} does not exist.", 404)
+            raise SchedulerError(
+                "ResourceNotFoundException", f"Schedule {name} does not exist.", 404
+            )
 
         if "ScheduleExpression" in params:
             schedule["ScheduleExpression"] = params["ScheduleExpression"]
@@ -177,7 +180,9 @@ def _delete_schedule(name: str, params: dict, region: str, account_id: str) -> d
     schedules = _get_schedules(region)
     with _lock:
         if name not in schedules:
-            raise SchedulerError("ResourceNotFoundException", f"Schedule {name} does not exist.", 404)
+            raise SchedulerError(
+                "ResourceNotFoundException", f"Schedule {name} does not exist.", 404
+            )
         del schedules[name]
     return {}
 
@@ -197,16 +202,18 @@ def _list_schedules(query_params, region: str, account_id: str) -> dict:
 
     summaries = []
     for s in items:
-        summaries.append({
-            "Name": s["Name"],
-            "Arn": s["Arn"],
-            "GroupName": s.get("GroupName", "default"),
-            "ScheduleExpression": s["ScheduleExpression"],
-            "State": s["State"],
-            "Target": {"Arn": s["Target"].get("Arn", "")},
-            "CreationDate": s["CreationDate"],
-            "LastModificationDate": s["LastModificationDate"],
-        })
+        summaries.append(
+            {
+                "Name": s["Name"],
+                "Arn": s["Arn"],
+                "GroupName": s.get("GroupName", "default"),
+                "ScheduleExpression": s["ScheduleExpression"],
+                "State": s["State"],
+                "Target": {"Arn": s["Target"].get("Arn", "")},
+                "CreationDate": s["CreationDate"],
+                "LastModificationDate": s["LastModificationDate"],
+            }
+        )
 
     return {"Schedules": summaries}
 
@@ -234,7 +241,9 @@ def _get_schedule_group(name: str, region: str) -> dict:
     with _lock:
         group = groups.get(name)
     if not group:
-        raise SchedulerError("ResourceNotFoundException", f"Schedule group {name} does not exist.", 404)
+        raise SchedulerError(
+            "ResourceNotFoundException", f"Schedule group {name} does not exist.", 404
+        )
     return dict(group)
 
 
@@ -242,9 +251,13 @@ def _delete_schedule_group(name: str, region: str) -> dict:
     groups = _get_groups(region)
     with _lock:
         if name not in groups:
-            raise SchedulerError("ResourceNotFoundException", f"Schedule group {name} does not exist.", 404)
+            raise SchedulerError(
+                "ResourceNotFoundException", f"Schedule group {name} does not exist.", 404
+            )
         if name == "default":
-            raise SchedulerError("ValidationException", "Cannot delete the default schedule group.", 400)
+            raise SchedulerError(
+                "ValidationException", "Cannot delete the default schedule group.", 400
+            )
         del groups[name]
     return {}
 

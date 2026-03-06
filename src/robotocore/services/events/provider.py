@@ -37,16 +37,20 @@ def clear_invocation_log() -> None:
         _invocation_log.clear()
 
 
-def _log_invocation(target_type: str, target_arn: str, payload: str, result: dict | None = None) -> None:
+def _log_invocation(
+    target_type: str, target_arn: str, payload: str, result: dict | None = None
+) -> None:
     """Record an invocation in the log."""
     with _invocation_log_lock:
-        _invocation_log.append({
-            "target_type": target_type,
-            "target_arn": target_arn,
-            "payload": payload,
-            "result": result,
-            "timestamp": time.time(),
-        })
+        _invocation_log.append(
+            {
+                "target_type": target_type,
+                "target_arn": target_arn,
+                "payload": payload,
+                "result": result,
+                "timestamp": time.time(),
+            }
+        )
 
 
 def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> EventsStore:
@@ -91,6 +95,7 @@ class EventsError(Exception):
 
 # --- Operations ---
 
+
 def _put_rule(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
     bus_name = params.get("EventBusName", "default")
@@ -101,10 +106,16 @@ def _put_rule(store: EventsStore, params: dict, region: str, account_id: str) ->
     state = params.get("State", "ENABLED")
     description = params.get("Description", "")
 
-    rule = store.put_rule(name, bus_name, region, account_id,
-                          event_pattern=event_pattern,
-                          schedule_expression=schedule,
-                          state=state, description=description)
+    rule = store.put_rule(
+        name,
+        bus_name,
+        region,
+        account_id,
+        event_pattern=event_pattern,
+        schedule_expression=schedule,
+        state=state,
+        description=description,
+    )
     return {"RuleArn": rule.arn}
 
 
@@ -282,9 +293,7 @@ def _describe_event_bus(store: EventsStore, params: dict, region: str, account_i
 
 def _list_event_buses(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     buses = store.list_buses()
-    return {
-        "EventBuses": [{"Name": b.name, "Arn": b.arn} for b in buses]
-    }
+    return {"EventBuses": [{"Name": b.name, "Arn": b.arn} for b in buses]}
 
 
 def _tag_resource(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
@@ -339,84 +348,24 @@ def _invoke_target(target, event: dict, region: str, account_id: str):
 def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
     """Invoke a Lambda function from EventBridge.
 
-    Retrieves the function from Moto's backend, extracts its code, and
-    executes the handler in-process for Python runtimes.  The event payload
-    is the full EventBridge event (no Records wrapper).
+    Uses async dispatch via thread pool to avoid deadlocking the event loop
+    when the Lambda function calls back to the server.
     """
-    from robotocore.services.lambda_.executor import execute_python_handler, get_layer_zips
-
-    # Parse function name from ARN — handles qualified ARNs like
-    # arn:aws:lambda:us-east-1:123456789012:function:my-func:qualifier
-    function_name = arn.split(":")[-1] if ":" in arn else arn
-    # If the last segment is a qualifier (alias/version), the function name
-    # is the segment before it.
-    arn_parts = arn.split(":")
-    if len(arn_parts) >= 7 and arn_parts[5] == "function":
-        function_name = arn_parts[6]
-
-    try:
-        from moto.backends import get_backend
-        from moto.core import DEFAULT_ACCOUNT_ID
-
-        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
-        backend = get_backend("lambda")[acct][region]
-        fn = backend.get_function(function_name)
-    except Exception:
-        logger.error(f"EventBridge: Lambda function not found: {function_name}")
-        return
-
-    runtime = getattr(fn, "run_time", "") or ""
-    if not runtime.startswith("python"):
-        logger.warning(f"EventBridge: Skipping non-Python Lambda {function_name} (runtime={runtime})")
-        _log_invocation("lambda", arn, payload, {"skipped": True, "reason": "non-python-runtime"})
-        return
-
-    # Prefer code_bytes (already base64-decoded zip) which Moto always sets.
-    code_zip = getattr(fn, "code_bytes", None)
-    if not code_zip:
-        # Fallback: try the code dict's ZipFile (base64-encoded)
-        import base64
-
-        raw = (fn.code or {}).get("ZipFile") if hasattr(fn, "code") else None
-        if raw:
-            code_zip = base64.b64decode(raw) if isinstance(raw, str) else raw
-
-    if not code_zip:
-        logger.error(f"EventBridge: No code found for Lambda {function_name}")
-        return
+    from robotocore.services.lambda_.invoke import invoke_lambda_async
 
     event = json.loads(payload) if isinstance(payload, str) else payload
-    handler = getattr(fn, "handler", "lambda_function.handler")
-    timeout = int(getattr(fn, "timeout", 3) or 3)
-    memory_size = int(getattr(fn, "memory_size", 128) or 128)
-    env_vars = getattr(fn, "environment_vars", {}) or {}
-    layer_zips = get_layer_zips(fn, account_id, region)
 
-    result, error_type, logs = execute_python_handler(
-        code_zip=code_zip,
-        handler=handler,
-        event=event,
-        function_name=function_name,
-        timeout=timeout,
-        memory_size=memory_size,
-        env_vars=env_vars,
-        region=region,
-        account_id=account_id,
-        layer_zips=layer_zips if layer_zips else None,
-    )
+    def _on_complete(result, error_type, logs):
+        invocation_result = {"result": result, "error_type": error_type, "logs": logs}
+        _log_invocation("lambda", arn, payload, invocation_result)
 
-    invocation_result = {"result": result, "error_type": error_type, "logs": logs}
-    _log_invocation("lambda", arn, payload, invocation_result)
-
-    if error_type:
-        logger.warning(f"EventBridge → Lambda {function_name}: error={error_type}")
-    else:
-        logger.info(f"EventBridge → Lambda {function_name}: success")
+    invoke_lambda_async(arn, event, region, account_id, callback=_on_complete)
 
 
 def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
     """Send a message to an SQS queue from EventBridge."""
     import hashlib
+
     from robotocore.services.sqs.models import SqsMessage
     from robotocore.services.sqs.provider import _get_store
 
@@ -449,15 +398,19 @@ def _invoke_sns_target(arn: str, payload: str, region: str, account_id: str):
 
     # Deliver to subscribers
     from robotocore.services.sns.provider import _deliver_to_subscriber, _new_id
+
     message_id = _new_id()
     for sub in topic.subscriptions:
         if sub.confirmed:
-            _deliver_to_subscriber(sub, payload, "EventBridge Notification", {}, message_id, arn, region)
+            _deliver_to_subscriber(
+                sub, payload, "EventBridge Notification", {}, message_id, arn, region
+            )
     _log_invocation("sns", arn, payload)
     logger.info(f"EventBridge → SNS: {arn}")
 
 
 # --- Response helpers ---
+
 
 def _json(status_code: int, data) -> Response:
     if data is None:

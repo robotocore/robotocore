@@ -7,7 +7,6 @@ For other runtimes, falls back to Moto's Docker-based execution.
 import base64
 import importlib.util
 import io
-import json
 import os
 import sys
 import tempfile
@@ -33,7 +32,11 @@ def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
         backend = get_backend("lambda")[acct][region]
 
         for layer_ref in layers:
-            layer_arn = layer_ref if isinstance(layer_ref, str) else getattr(layer_ref, "arn", str(layer_ref))
+            layer_arn = (
+                layer_ref
+                if isinstance(layer_ref, str)
+                else getattr(layer_ref, "arn", str(layer_ref))
+            )
             try:
                 # Parse layer ARN: arn:aws:lambda:region:account:layer:name:version
                 parts = layer_arn.split(":")
@@ -61,6 +64,7 @@ def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
 @dataclass
 class LambdaContext:
     """Mock AWS Lambda context object."""
+
     function_name: str
     function_version: str = "$LATEST"
     memory_limit_in_mb: int = 128
@@ -166,7 +170,11 @@ def execute_python_handler(
             spec.loader.exec_module(module)
             handler_func = getattr(module, func_name, None)
             if handler_func is None:
-                return None, "Runtime.HandlerNotFound", f"Handler function '{func_name}' not found in {module_path}"
+                return (
+                    None,
+                    "Runtime.HandlerNotFound",
+                    f"Handler function '{func_name}' not found in {module_path}",
+                )
 
             result = handler_func(event, context)
             return result, None, logs_output.getvalue()
@@ -189,4 +197,5 @@ def execute_python_handler(
         sys.path[:] = old_path
         # Clean up temp dir
         import shutil
+
         shutil.rmtree(tmpdir, ignore_errors=True)

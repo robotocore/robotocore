@@ -3,6 +3,7 @@
 import json
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -50,10 +51,18 @@ class TestConfigOperations:
     def test_put_configuration_recorder(self, config, iam):
         role = iam.create_role(
             RoleName="config-role",
-            AssumeRolePolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{"Effect": "Allow", "Principal": {"Service": "config.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-            }),
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "config.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
         )
         config.put_configuration_recorder(
             ConfigurationRecorder={

@@ -62,9 +62,7 @@ class TestSQSBasicOperations:
         sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
 
     def test_get_queue_attributes(self, sqs, queue_url):
-        response = sqs.get_queue_attributes(
-            QueueUrl=queue_url, AttributeNames=["All"]
-        )
+        response = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["All"])
         assert "Attributes" in response
 
     def test_list_queues(self, sqs, queue_url):
@@ -150,9 +148,7 @@ class TestSQSBatchOperations:
     def test_batch_receive_multiple(self, sqs, queue_url):
         for i in range(5):
             sqs.send_message(QueueUrl=queue_url, MessageBody=f"msg {i}")
-        response = sqs.receive_message(
-            QueueUrl=queue_url, MaxNumberOfMessages=5
-        )
+        response = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=5)
         assert len(response.get("Messages", [])) >= 1
 
 
@@ -205,9 +201,7 @@ class TestSQSVisibilityTimeout:
 
 class TestSQSFIFO:
     def test_fifo_queue_creation(self, sqs, fifo_queue_url):
-        attrs = sqs.get_queue_attributes(
-            QueueUrl=fifo_queue_url, AttributeNames=["All"]
-        )
+        attrs = sqs.get_queue_attributes(QueueUrl=fifo_queue_url, AttributeNames=["All"])
         assert attrs["Attributes"]["FifoQueue"] == "true"
 
     def test_fifo_message_ordering(self, sqs, fifo_queue_url):
@@ -241,9 +235,7 @@ class TestSQSFIFO:
             MessageBody="same content",
             MessageGroupId="group1",
         )
-        recv = sqs.receive_message(
-            QueueUrl=fifo_queue_url, MaxNumberOfMessages=10
-        )
+        recv = sqs.receive_message(QueueUrl=fifo_queue_url, MaxNumberOfMessages=10)
         # Should only get one message due to dedup
         assert len(recv.get("Messages", [])) == 1
 
@@ -253,9 +245,7 @@ class TestSQSFIFO:
             MessageBody="seq test",
             MessageGroupId="group1",
         )
-        recv = sqs.receive_message(
-            QueueUrl=fifo_queue_url, AttributeNames=["All"]
-        )
+        recv = sqs.receive_message(QueueUrl=fifo_queue_url, AttributeNames=["All"])
         assert "SequenceNumber" in recv["Messages"][0]["Attributes"]
 
     def test_fifo_message_group_id(self, sqs, fifo_queue_url):
@@ -264,9 +254,7 @@ class TestSQSFIFO:
             MessageBody="group test",
             MessageGroupId="mygroup",
         )
-        recv = sqs.receive_message(
-            QueueUrl=fifo_queue_url, AttributeNames=["All"]
-        )
+        recv = sqs.receive_message(QueueUrl=fifo_queue_url, AttributeNames=["All"])
         assert recv["Messages"][0]["Attributes"]["MessageGroupId"] == "mygroup"
 
 
@@ -274,19 +262,22 @@ class TestSQSDeadLetterQueue:
     def test_dlq_redrive(self, sqs):
         # Create DLQ
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
-        dlq_arn = sqs.get_queue_attributes(
-            QueueUrl=dlq_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
 
         # Create source queue with redrive policy
         import json
+
         source_url = sqs.create_queue(
             QueueName="test-dlq-source",
             Attributes={
-                "RedrivePolicy": json.dumps({
-                    "deadLetterTargetArn": dlq_arn,
-                    "maxReceiveCount": "2",
-                }),
+                "RedrivePolicy": json.dumps(
+                    {
+                        "deadLetterTargetArn": dlq_arn,
+                        "maxReceiveCount": "2",
+                    }
+                ),
                 "VisibilityTimeout": "1",
             },
         )["QueueUrl"]

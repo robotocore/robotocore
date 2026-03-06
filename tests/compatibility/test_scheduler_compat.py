@@ -1,8 +1,7 @@
 """EventBridge Scheduler compatibility tests."""
 
-import json
-
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 

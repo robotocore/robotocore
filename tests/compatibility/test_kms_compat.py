@@ -1,6 +1,7 @@
 """KMS compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -79,8 +80,7 @@ class TestKMSOperations:
         kms.delete_alias(AliasName="alias/enc-test")
 
     def test_tag_key(self, kms):
-        key = kms.create_key(Description="tag key",
-                             Tags=[{"TagKey": "env", "TagValue": "test"}])
+        key = kms.create_key(Description="tag key", Tags=[{"TagKey": "env", "TagValue": "test"}])
         key_id = key["KeyMetadata"]["KeyId"]
 
         tags = kms.list_resource_tags(KeyId=key_id)

@@ -10,6 +10,7 @@ def _moto_backend(service: str, account_id: str, region: str):
     """Get a Moto backend instance."""
     from moto.backends import get_backend
     from moto.core import DEFAULT_ACCOUNT_ID
+
     acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
     backend_dict = get_backend(service)
     return backend_dict[acct][region]
@@ -19,6 +20,7 @@ def _moto_global_backend(service: str, account_id: str):
     """Get a Moto backend instance for global services (IAM, S3)."""
     from moto.backends import get_backend
     from moto.core import DEFAULT_ACCOUNT_ID
+
     acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
     backend_dict = get_backend(service)
     return backend_dict[acct]["global"]
@@ -31,7 +33,9 @@ def create_resource(resource: CfnResource, region: str, account_id: str) -> None
         handler(resource, region, account_id)
     else:
         # Unknown resource type — assign a fake physical ID
-        resource.physical_id = f"{resource.resource_type.replace('::', '-').lower()}-{uuid.uuid4().hex[:8]}"
+        resource.physical_id = (
+            f"{resource.resource_type.replace('::', '-').lower()}-{uuid.uuid4().hex[:8]}"
+        )
         resource.status = "CREATE_COMPLETE"
 
 
@@ -44,8 +48,10 @@ def delete_resource(resource: CfnResource, region: str, account_id: str) -> None
 
 # --- SQS ---
 
+
 def _create_sqs_queue(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sqs.provider import _get_store
+
     store = _get_store(region)
     name = resource.properties.get("QueueName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     attrs = {}
@@ -68,6 +74,7 @@ def _create_sqs_queue(resource: CfnResource, region: str, account_id: str) -> No
 
 def _delete_sqs_queue(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sqs.provider import _get_store
+
     store = _get_store(region)
     if resource.physical_id:
         queue = store.get_queue_by_url(resource.physical_id)
@@ -77,8 +84,10 @@ def _delete_sqs_queue(resource: CfnResource, region: str, account_id: str) -> No
 
 # --- SNS ---
 
+
 def _create_sns_topic(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
+
     store = _get_store(region)
     name = resource.properties.get("TopicName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     topic = store.create_topic(name, region, account_id)
@@ -90,6 +99,7 @@ def _create_sns_topic(resource: CfnResource, region: str, account_id: str) -> No
 
 def _delete_sns_topic(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
+
     store = _get_store(region)
     if resource.physical_id:
         store.delete_topic(resource.physical_id)
@@ -97,6 +107,7 @@ def _delete_sns_topic(resource: CfnResource, region: str, account_id: str) -> No
 
 def _create_sns_subscription(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
+
     store = _get_store(region)
     topic_arn = resource.properties.get("TopicArn", "")
     protocol = resource.properties.get("Protocol", "")
@@ -110,6 +121,7 @@ def _create_sns_subscription(resource: CfnResource, region: str, account_id: str
 
 def _delete_sns_subscription(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
+
     store = _get_store(region)
     if resource.physical_id:
         store.unsubscribe(resource.physical_id)
@@ -117,9 +129,12 @@ def _delete_sns_subscription(resource: CfnResource, region: str, account_id: str
 
 # --- S3 ---
 
+
 def _create_s3_bucket(resource: CfnResource, region: str, account_id: str) -> None:
     s3 = _moto_global_backend("s3", account_id)
-    name = resource.properties.get("BucketName", f"cfn-{resource.logical_id.lower()}-{uuid.uuid4().hex[:8]}")
+    name = resource.properties.get(
+        "BucketName", f"cfn-{resource.logical_id.lower()}-{uuid.uuid4().hex[:8]}"
+    )
     s3.create_bucket(name, region)
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:s3:::{name}"
@@ -139,6 +154,7 @@ def _delete_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
 
 # --- IAM Role ---
 
+
 def _create_iam_role(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
     name = resource.properties.get("RoleName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
@@ -146,7 +162,15 @@ def _create_iam_role(resource: CfnResource, region: str, account_id: str) -> Non
     if isinstance(policy_doc, dict):
         policy_doc = json.dumps(policy_doc)
     path = resource.properties.get("Path", "/")
-    role = iam.create_role(name, policy_doc, path, permissions_boundary=None, description="", tags=[], max_session_duration=None)
+    role = iam.create_role(
+        name,
+        policy_doc,
+        path,
+        permissions_boundary=None,
+        description="",
+        tags=[],
+        max_session_duration=None,
+    )
     resource.physical_id = name
     resource.attributes["Arn"] = role.arn
     resource.attributes["RoleId"] = role.id
@@ -164,9 +188,12 @@ def _delete_iam_role(resource: CfnResource, region: str, account_id: str) -> Non
 
 # --- IAM Policy ---
 
+
 def _create_iam_policy(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
-    name = resource.properties.get("PolicyName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
+    name = resource.properties.get(
+        "PolicyName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"
+    )
     doc = resource.properties.get("PolicyDocument", {})
     if isinstance(doc, dict):
         doc = json.dumps(doc)
@@ -189,6 +216,7 @@ def _delete_iam_policy(resource: CfnResource, region: str, account_id: str) -> N
 
 # --- Logs ---
 
+
 def _create_log_group(resource: CfnResource, region: str, account_id: str) -> None:
     logs = _moto_backend("logs", account_id, region)
     name = resource.properties.get("LogGroupName", f"/cfn/{resource.logical_id}")
@@ -209,6 +237,7 @@ def _delete_log_group(resource: CfnResource, region: str, account_id: str) -> No
 
 # --- DynamoDB ---
 
+
 def _create_dynamodb_table(resource: CfnResource, region: str, account_id: str) -> None:
     ddb = _moto_backend("dynamodb", account_id, region)
     name = resource.properties.get("TableName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
@@ -221,12 +250,22 @@ def _create_dynamodb_table(resource: CfnResource, region: str, account_id: str) 
     streams = resource.properties.get("StreamSpecification")
     stream_spec = None
     if streams:
-        stream_spec = {"StreamEnabled": True, "StreamViewType": streams.get("StreamViewType", "NEW_AND_OLD_IMAGES")}
+        stream_spec = {
+            "StreamEnabled": True,
+            "StreamViewType": streams.get("StreamViewType", "NEW_AND_OLD_IMAGES"),
+        }
     ddb.create_table(
-        name, schema=key_schema, throughput=throughput,
-        attr=attr_defs, global_indexes=gsis or None, indexes=lsis or None,
-        streams=stream_spec, billing_mode=billing,
-        sse_specification=None, tags=[], deletion_protection_enabled=None,
+        name,
+        schema=key_schema,
+        throughput=throughput,
+        attr=attr_defs,
+        global_indexes=gsis or None,
+        indexes=lsis or None,
+        streams=stream_spec,
+        billing_mode=billing,
+        sse_specification=None,
+        tags=[],
+        deletion_protection_enabled=None,
         warm_throughput=None,
     )
     resource.physical_id = name
@@ -246,6 +285,7 @@ def _delete_dynamodb_table(resource: CfnResource, region: str, account_id: str) 
 
 # --- Events (EventBridge) ---
 
+
 def _create_events_rule(resource: CfnResource, region: str, account_id: str) -> None:
     events = _moto_backend("events", account_id, region)
     name = resource.properties.get("Name", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
@@ -257,8 +297,12 @@ def _create_events_rule(resource: CfnResource, region: str, account_id: str) -> 
     desc = resource.properties.get("Description", "")
     event_bus = resource.properties.get("EventBusName", "default")
     events.put_rule(
-        name, event_pattern=event_pattern, scheduled_expression=schedule or None,
-        state=state, description=desc, event_bus_arn=event_bus if event_bus != "default" else None,
+        name,
+        event_pattern=event_pattern,
+        scheduled_expression=schedule or None,
+        state=state,
+        description=desc,
+        event_bus_arn=event_bus if event_bus != "default" else None,
     )
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:events:{region}:{account_id}:rule/{name}"
@@ -275,6 +319,7 @@ def _delete_events_rule(resource: CfnResource, region: str, account_id: str) -> 
 
 
 # --- KMS ---
+
 
 def _create_kms_key(resource: CfnResource, region: str, account_id: str) -> None:
     kms = _moto_backend("kms", account_id, region)
@@ -302,6 +347,7 @@ def _delete_kms_key(resource: CfnResource, region: str, account_id: str) -> None
 
 # --- SSM Parameter ---
 
+
 def _create_ssm_parameter(resource: CfnResource, region: str, account_id: str) -> None:
     ssm = _moto_backend("ssm", account_id, region)
     name = resource.properties.get("Name", f"/cfn/{resource.logical_id}")
@@ -326,9 +372,12 @@ def _delete_ssm_parameter(resource: CfnResource, region: str, account_id: str) -
 
 # --- Lambda ---
 
+
 def _create_lambda_function(resource: CfnResource, region: str, account_id: str) -> None:
     lmbda = _moto_backend("lambda", account_id, region)
-    name = resource.properties.get("FunctionName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
+    name = resource.properties.get(
+        "FunctionName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"
+    )
     runtime = resource.properties.get("Runtime", "python3.12")
     role = resource.properties.get("Role", f"arn:aws:iam::{account_id}:role/cfn-role")
     handler = resource.properties.get("Handler", "index.handler")
@@ -342,6 +391,7 @@ def _create_lambda_function(resource: CfnResource, region: str, account_id: str)
         import base64
         import io
         import zipfile
+
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("index.py", zip_file)

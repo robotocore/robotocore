@@ -215,10 +215,7 @@ class StandardQueue:
     def requeue_inflight_messages(self) -> None:
         """Move expired inflight messages back to visible queue."""
         with self.mutex:
-            expired = [
-                msg for msg in self._inflight.values()
-                if msg.is_visible and not msg.deleted
-            ]
+            expired = [msg for msg in self._inflight.values() if msg.is_visible and not msg.deleted]
             for msg in expired:
                 self._inflight.pop(msg.message_id, None)
                 msg.visibility_deadline = None
@@ -228,8 +225,7 @@ class StandardQueue:
         """Move delayed messages that are ready to the visible queue."""
         with self.mutex:
             ready = [
-                msg for msg in self._delayed.values()
-                if not msg.is_delayed and not msg.deleted
+                msg for msg in self._delayed.values() if not msg.is_delayed and not msg.deleted
             ]
             for msg in ready:
                 self._delayed.pop(msg.message_id, None)
@@ -399,8 +395,7 @@ class FifoQueue(StandardQueue):
             group_msgs = self._message_groups.get(group_id, [])
             # Check if no more inflight messages for this group
             group_still_inflight = any(
-                m.message_group_id == message.message_group_id
-                for m in self._inflight.values()
+                m.message_group_id == message.message_group_id for m in self._inflight.values()
             )
             if not group_still_inflight:
                 self._inflight_groups.discard(group_id)
@@ -410,10 +405,7 @@ class FifoQueue(StandardQueue):
 
     def requeue_inflight_messages(self) -> None:
         with self.mutex:
-            expired = [
-                msg for msg in self._inflight.values()
-                if msg.is_visible and not msg.deleted
-            ]
+            expired = [msg for msg in self._inflight.values() if msg.is_visible and not msg.deleted]
             for msg in expired:
                 self._inflight.pop(msg.message_id, None)
                 msg.visibility_deadline = None
@@ -423,8 +415,7 @@ class FifoQueue(StandardQueue):
                 heapq.heappush(self._message_groups[group_id], msg)
                 # Make group available again
                 group_still_inflight = any(
-                    m.message_group_id == msg.message_group_id
-                    for m in self._inflight.values()
+                    m.message_group_id == msg.message_group_id for m in self._inflight.values()
                 )
                 if not group_still_inflight:
                     self._inflight_groups.discard(group_id)

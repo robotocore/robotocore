@@ -1,6 +1,7 @@
 """API Gateway compatibility tests."""
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -43,17 +44,13 @@ class TestAPIGatewayOperations:
     def test_create_resource(self, apigw, rest_api):
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        response = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="users"
-        )
+        response = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="users")
         assert response["pathPart"] == "users"
 
     def test_put_method(self, apigw, rest_api):
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        resource = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="items"
-        )
+        resource = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="items")
         response = apigw.put_method(
             restApiId=rest_api,
             resourceId=resource["id"],
@@ -125,9 +122,7 @@ class TestAPIGatewayOperations:
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
 
-        resource = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="mock"
-        )
+        resource = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="mock")
         apigw.put_method(
             restApiId=rest_api,
             resourceId=resource["id"],

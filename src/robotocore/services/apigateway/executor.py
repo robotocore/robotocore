@@ -74,9 +74,19 @@ def execute_api_request(
     integration_type = getattr(integration, "integration_type", "").upper()
 
     if integration_type == "AWS_PROXY":
-        return _invoke_lambda_proxy(integration, method, path, body, headers,
-                                    query_params, path_params, stage,
-                                    rest_api_id, region, account_id)
+        return _invoke_lambda_proxy(
+            integration,
+            method,
+            path,
+            body,
+            headers,
+            query_params,
+            path_params,
+            stage,
+            rest_api_id,
+            region,
+            account_id,
+        )
     elif integration_type == "MOCK":
         return _invoke_mock(integration, method_obj)
     elif integration_type == "AWS":
@@ -94,7 +104,6 @@ def _match_resource(rest_api, path: str) -> tuple:
     best_specificity = -1
 
     for resource in rest_api.resources.values():
-        resource_path = resource.path_part if hasattr(resource, 'path_part') else ""
         full_path = _get_full_path(rest_api, resource)
 
         match, params = _path_matches(full_path, path)
@@ -113,10 +122,10 @@ def _get_full_path(rest_api, resource) -> str:
     parts = []
     current = resource
     while current:
-        part = getattr(current, 'path_part', '') or getattr(current, 'resource_path', '')
+        part = getattr(current, "path_part", "") or getattr(current, "resource_path", "")
         if part:
             parts.insert(0, part)
-        parent_id = getattr(current, 'parent_id', None)
+        parent_id = getattr(current, "parent_id", None)
         if parent_id and parent_id in rest_api.resources:
             current = rest_api.resources[parent_id]
         else:
@@ -134,7 +143,6 @@ def _path_matches(pattern: str, path: str) -> tuple[bool, dict]:
         return True, {}
 
     # Convert API Gateway path pattern to regex
-    params = {}
     regex_parts = []
     for part in pattern.split("/"):
         if part.startswith("{") and part.endswith("+}"):
@@ -168,9 +176,19 @@ def _path_specificity(pattern: str) -> int:
     return score
 
 
-def _invoke_lambda_proxy(integration, method, path, body, headers,
-                         query_params, path_params, stage,
-                         rest_api_id, region, account_id) -> tuple[int, dict, str]:
+def _invoke_lambda_proxy(
+    integration,
+    method,
+    path,
+    body,
+    headers,
+    query_params,
+    path_params,
+    stage,
+    rest_api_id,
+    region,
+    account_id,
+) -> tuple[int, dict, str]:
     """Invoke Lambda with API Gateway proxy integration."""
     uri = getattr(integration, "uri", "") or ""
     function_name = _extract_lambda_function_from_uri(uri)
@@ -236,7 +254,6 @@ def _invoke_mock(integration, method_obj) -> tuple[int, dict, str]:
 
 def _invoke_aws_service(integration, body, headers, region, account_id) -> tuple[int, dict, str]:
     """Handle AWS service integration (non-proxy)."""
-    uri = getattr(integration, "uri", "") or ""
     # Future: support DynamoDB, SQS, SNS, etc. service integrations
     return 200, {}, json.dumps({"message": "AWS service integration executed"})
 
@@ -252,7 +269,7 @@ def _extract_lambda_function_from_uri(uri: str) -> str | None:
 
     URI format: arn:aws:apigateway:{region}:lambda:path/2015-03-31/functions/{arn}/invocations
     """
-    match = re.search(r'functions/([^/]+)/invocations', uri)
+    match = re.search(r"functions/([^/]+)/invocations", uri)
     if match:
         arn_or_name = match.group(1)
         # Extract function name from ARN
@@ -271,6 +288,7 @@ def _invoke_lambda(function_name: str, event: dict, region: str, account_id: str
     try:
         from moto.backends import get_backend
         from moto.core import DEFAULT_ACCOUNT_ID
+
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
         backend = get_backend("lambda")[acct][region]
         fn = backend.get_function(function_name)

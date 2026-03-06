@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -25,9 +26,15 @@ class TestRoute53ResolverOperations:
         # Create a VPC and subnets first
         vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
         vpc_id = vpc["Vpc"]["VpcId"]
-        subnet1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a")
-        subnet2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b")
-        sg = ec2.create_security_group(GroupName=f"resolver-sg-{_uid()}", Description="test", VpcId=vpc_id)
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sg = ec2.create_security_group(
+            GroupName=f"resolver-sg-{_uid()}", Description="test", VpcId=vpc_id
+        )
 
         response = resolver.create_resolver_endpoint(
             CreatorRequestId=_uid(),

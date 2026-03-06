@@ -61,7 +61,9 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
             return await _handle_functions(parts, method, body, request, region, account_id)
         # /event-source-mappings
         elif parts[0] == "event-source-mappings":
-            return await _handle_event_source_mappings(parts, method, body, request, region, account_id)
+            return await _handle_event_source_mappings(
+                parts, method, body, request, region, account_id
+            )
         # /layers
         elif parts[0] == "layers":
             return await _handle_layers(parts, method, body, request, region, account_id)
@@ -98,7 +100,9 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         return _error("ServiceException", error_msg, 500)
 
 
-async def _handle_functions(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
+async def _handle_functions(
+    parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
     backend = _get_moto_backend(account_id, region)
 
     # GET /functions — ListFunctions
@@ -172,8 +176,11 @@ async def _handle_functions(parts: list[str], method: str, body: bytes, request:
                 if method == "POST":
                     spec = json.loads(body) if body else {}
                     alias = backend.create_alias(
-                        func_name, spec.get("Name"), spec.get("FunctionVersion"),
-                        spec.get("Description", ""), spec.get("RoutingConfig")
+                        func_name,
+                        spec.get("Name"),
+                        spec.get("FunctionVersion"),
+                        spec.get("Description", ""),
+                        spec.get("RoutingConfig"),
                     )
                     return _json(201, _alias_dict(alias))
                 elif method == "GET":
@@ -187,8 +194,11 @@ async def _handle_functions(parts: list[str], method: str, body: bytes, request:
                 elif method == "PUT":
                     spec = json.loads(body) if body else {}
                     alias = backend.update_alias(
-                        func_name, alias_name, spec.get("FunctionVersion"),
-                        spec.get("Description"), spec.get("RoutingConfig")
+                        func_name,
+                        alias_name,
+                        spec.get("FunctionVersion"),
+                        spec.get("Description"),
+                        spec.get("RoutingConfig"),
                     )
                     return _json(200, _alias_dict(alias))
                 elif method == "DELETE":
@@ -216,7 +226,9 @@ async def _handle_functions(parts: list[str], method: str, body: bytes, request:
                 spec = json.loads(body) if body else {}
                 reserved = spec.get("ReservedConcurrentExecutions", 0)
                 result = backend.put_function_concurrency(func_name, reserved)
-                return _json(200, {"ReservedConcurrentExecutions": int(result) if result is not None else 0})
+                return _json(
+                    200, {"ReservedConcurrentExecutions": int(result) if result is not None else 0}
+                )
             elif method == "DELETE":
                 backend.delete_function_concurrency(func_name)
                 return _json(204, None)
@@ -279,22 +291,27 @@ def _handle_account_settings(region: str, account_id: str) -> Response:
         if fn.reserved_concurrency is not None:
             total_concurrency += int(fn.reserved_concurrency)
 
-    return _json(200, {
-        "AccountLimit": {
-            "TotalCodeSize": 80530636800,
-            "CodeSizeUnzipped": 262144000,
-            "CodeSizeZipped": 52428800,
-            "ConcurrentExecutions": 1000,
-            "UnreservedConcurrentExecutions": max(0, 1000 - total_concurrency),
+    return _json(
+        200,
+        {
+            "AccountLimit": {
+                "TotalCodeSize": 80530636800,
+                "CodeSizeUnzipped": 262144000,
+                "CodeSizeZipped": 52428800,
+                "ConcurrentExecutions": 1000,
+                "UnreservedConcurrentExecutions": max(0, 1000 - total_concurrency),
+            },
+            "AccountUsage": {
+                "TotalCodeSize": total_code_size,
+                "FunctionCount": function_count,
+            },
         },
-        "AccountUsage": {
-            "TotalCodeSize": total_code_size,
-            "FunctionCount": function_count,
-        },
-    })
+    )
 
 
-async def _handle_event_source_mappings(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
+async def _handle_event_source_mappings(
+    parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
     """Native event source mapping CRUD — bypasses Moto to avoid cross-service validation issues."""
 
     if len(parts) == 1:
@@ -328,6 +345,7 @@ async def _handle_event_source_mappings(parts: list[str], method: str, body: byt
 
             # Start engine if not already running
             from robotocore.services.lambda_.event_source import get_engine
+
             get_engine().start()
 
             return _json(202, _sanitize_esm(config))
@@ -353,7 +371,9 @@ async def _handle_event_source_mappings(parts: list[str], method: str, body: byt
             config = _esm_store.get(esm_uuid)
 
         if not config:
-            return _error("ResourceNotFoundException", f"Event source mapping not found: {esm_uuid}", 404)
+            return _error(
+                "ResourceNotFoundException", f"Event source mapping not found: {esm_uuid}", 404
+            )
 
         if method == "GET":
             return _json(200, _sanitize_esm(config))
@@ -362,7 +382,12 @@ async def _handle_event_source_mappings(parts: list[str], method: str, body: byt
             spec = json.loads(body) if body else {}
             with _esm_lock:
                 if esm_uuid in _esm_store:
-                    for key in ["BatchSize", "MaximumBatchingWindowInSeconds", "Enabled", "FunctionResponseTypes"]:
+                    for key in [
+                        "BatchSize",
+                        "MaximumBatchingWindowInSeconds",
+                        "Enabled",
+                        "FunctionResponseTypes",
+                    ]:
                         if key in spec:
                             _esm_store[esm_uuid][key] = spec[key]
                     if "Enabled" in spec:
@@ -379,7 +404,9 @@ async def _handle_event_source_mappings(parts: list[str], method: str, body: byt
     return _error("InvalidRequest", "Unhandled event-source-mappings path", 400)
 
 
-async def _handle_layers(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
+async def _handle_layers(
+    parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
     backend = _get_moto_backend(account_id, region)
 
     if len(parts) == 1 and method == "GET":
@@ -413,12 +440,15 @@ async def _handle_layers(parts: list[str], method: str, body: bytes, request: Re
     return _error("InvalidRequest", "Unhandled layers path", 400)
 
 
-async def _handle_tags(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
+async def _handle_tags(
+    parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
     backend = _get_moto_backend(account_id, region)
     # /tags/{arn} — the ARN is the rest of the path
     arn = "/".join(parts[1:]) if len(parts) > 1 else ""
     # Reconstruct full ARN from URL-encoded path
     from urllib.parse import unquote
+
     arn = unquote(arn)
 
     if method == "GET":
@@ -436,7 +466,9 @@ async def _handle_tags(parts: list[str], method: str, body: bytes, request: Requ
     return _error("InvalidRequest", "Unhandled tags path", 400)
 
 
-async def _invoke(func_name: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
+async def _invoke(
+    func_name: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
     """Invoke a Lambda function — uses in-process execution for Python runtimes."""
     backend = _get_moto_backend(account_id, region)
     fn = backend.get_function(func_name)
@@ -503,7 +535,9 @@ async def _invoke(func_name: str, body: bytes, request: Request, region: str, ac
         else:
             payload = str(result).encode()
 
-        return Response(content=payload, status_code=200, headers=headers, media_type="application/json")
+        return Response(
+            content=payload, status_code=200, headers=headers, media_type="application/json"
+        )
     else:
         # Fallback: return a simple success response (like Moto's simple mode)
         headers = {
@@ -518,10 +552,13 @@ async def _invoke(func_name: str, body: bytes, request: Request, region: str, ac
         payload = json.dumps("Simple Lambda happy path OK").encode()
         if log_type == "Tail":
             headers["x-amz-log-result"] = base64.b64encode(b"").decode()
-        return Response(content=payload, status_code=200, headers=headers, media_type="application/json")
+        return Response(
+            content=payload, status_code=200, headers=headers, media_type="application/json"
+        )
 
 
 # --- Helpers ---
+
 
 def _sanitize_esm(config: dict) -> dict:
     """Remove internal fields from event source mapping config."""

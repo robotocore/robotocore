@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from botocore.exceptions import ClientError
+
 from tests.compatibility.conftest import make_client
 
 
@@ -147,9 +148,7 @@ class TestBatchOperations:
             )
 
         response = dynamodb.batch_get_item(
-            RequestItems={
-                table: {"Keys": [{"pk": {"S": f"bg-{i}"}} for i in range(3)]}
-            }
+            RequestItems={table: {"Keys": [{"pk": {"S": f"bg-{i}"}} for i in range(3)]}}
         )
         items = response["Responses"][table]
         assert len(items) == 3

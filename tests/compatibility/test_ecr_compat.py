@@ -4,6 +4,7 @@ import json
 import uuid
 
 import pytest
+
 from tests.compatibility.conftest import make_client
 
 
@@ -115,20 +116,22 @@ class TestECRRepositoryOperations:
         repo_name = _unique("policy-repo")
         ecr.create_repository(repositoryName=repo_name)
         try:
-            policy = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "AllowPull",
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                        "Action": [
-                            "ecr:GetDownloadUrlForLayer",
-                            "ecr:BatchGetImage",
-                        ],
-                    }
-                ],
-            })
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowPull",
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": [
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecr:BatchGetImage",
+                            ],
+                        }
+                    ],
+                }
+            )
             response = ecr.set_repository_policy(
                 repositoryName=repo_name,
                 policyText=policy,

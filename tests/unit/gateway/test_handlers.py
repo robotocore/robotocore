@@ -74,9 +74,7 @@ class TestPopulateContextHandler:
         assert ctx.protocol == "ec2"
 
     def test_operation_from_x_amz_target(self):
-        ctx = _make_context(
-            headers={"x-amz-target": "DynamoDB_20120810.GetItem"}
-        )
+        ctx = _make_context(headers={"x-amz-target": "DynamoDB_20120810.GetItem"})
         populate_context_handler(ctx)
         assert ctx.operation == "GetItem"
 
