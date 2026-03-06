@@ -20,6 +20,34 @@ logger = logging.getLogger(__name__)
 _stores: dict[str, EventsStore] = {}
 _store_lock = threading.Lock()
 
+# Invocation log for cross-service target dispatch (useful for testing)
+_invocation_log: list[dict] = []
+_invocation_log_lock = threading.Lock()
+
+
+def get_invocation_log() -> list[dict]:
+    """Return a copy of the invocation log (for testing/debugging)."""
+    with _invocation_log_lock:
+        return list(_invocation_log)
+
+
+def clear_invocation_log() -> None:
+    """Clear the invocation log."""
+    with _invocation_log_lock:
+        _invocation_log.clear()
+
+
+def _log_invocation(target_type: str, target_arn: str, payload: str, result: dict | None = None) -> None:
+    """Record an invocation in the log."""
+    with _invocation_log_lock:
+        _invocation_log.append({
+            "target_type": target_type,
+            "target_arn": target_arn,
+            "payload": payload,
+            "result": result,
+            "timestamp": time.time(),
+        })
+
 
 def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> EventsStore:
     with _store_lock:
@@ -309,15 +337,27 @@ def _invoke_target(target, event: dict, region: str, account_id: str):
 
 
 def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
-    """Invoke a Lambda function from EventBridge."""
-    import base64
-    from robotocore.services.lambda_.executor import execute_python_handler
+    """Invoke a Lambda function from EventBridge.
 
+    Retrieves the function from Moto's backend, extracts its code, and
+    executes the handler in-process for Python runtimes.  The event payload
+    is the full EventBridge event (no Records wrapper).
+    """
+    from robotocore.services.lambda_.executor import execute_python_handler, get_layer_zips
+
+    # Parse function name from ARN — handles qualified ARNs like
+    # arn:aws:lambda:us-east-1:123456789012:function:my-func:qualifier
     function_name = arn.split(":")[-1] if ":" in arn else arn
+    # If the last segment is a qualifier (alias/version), the function name
+    # is the segment before it.
+    arn_parts = arn.split(":")
+    if len(arn_parts) >= 7 and arn_parts[5] == "function":
+        function_name = arn_parts[6]
 
     try:
         from moto.backends import get_backend
         from moto.core import DEFAULT_ACCOUNT_ID
+
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
         backend = get_backend("lambda")[acct][region]
         fn = backend.get_function(function_name)
@@ -326,20 +366,52 @@ def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
         return
 
     runtime = getattr(fn, "run_time", "") or ""
-    if runtime.startswith("python") and hasattr(fn, "code") and fn.code:
-        code_zip = fn.code.get("ZipFile")
-        if isinstance(code_zip, str):
-            code_zip = base64.b64decode(code_zip)
-        if code_zip:
-            event = json.loads(payload) if isinstance(payload, str) else payload
-            execute_python_handler(
-                code_zip=code_zip,
-                handler=getattr(fn, "handler", "lambda_function.handler"),
-                event=event,
-                function_name=function_name,
-                region=region,
-                account_id=account_id,
-            )
+    if not runtime.startswith("python"):
+        logger.warning(f"EventBridge: Skipping non-Python Lambda {function_name} (runtime={runtime})")
+        _log_invocation("lambda", arn, payload, {"skipped": True, "reason": "non-python-runtime"})
+        return
+
+    # Prefer code_bytes (already base64-decoded zip) which Moto always sets.
+    code_zip = getattr(fn, "code_bytes", None)
+    if not code_zip:
+        # Fallback: try the code dict's ZipFile (base64-encoded)
+        import base64
+
+        raw = (fn.code or {}).get("ZipFile") if hasattr(fn, "code") else None
+        if raw:
+            code_zip = base64.b64decode(raw) if isinstance(raw, str) else raw
+
+    if not code_zip:
+        logger.error(f"EventBridge: No code found for Lambda {function_name}")
+        return
+
+    event = json.loads(payload) if isinstance(payload, str) else payload
+    handler = getattr(fn, "handler", "lambda_function.handler")
+    timeout = int(getattr(fn, "timeout", 3) or 3)
+    memory_size = int(getattr(fn, "memory_size", 128) or 128)
+    env_vars = getattr(fn, "environment_vars", {}) or {}
+    layer_zips = get_layer_zips(fn, account_id, region)
+
+    result, error_type, logs = execute_python_handler(
+        code_zip=code_zip,
+        handler=handler,
+        event=event,
+        function_name=function_name,
+        timeout=timeout,
+        memory_size=memory_size,
+        env_vars=env_vars,
+        region=region,
+        account_id=account_id,
+        layer_zips=layer_zips if layer_zips else None,
+    )
+
+    invocation_result = {"result": result, "error_type": error_type, "logs": logs}
+    _log_invocation("lambda", arn, payload, invocation_result)
+
+    if error_type:
+        logger.warning(f"EventBridge → Lambda {function_name}: error={error_type}")
+    else:
+        logger.info(f"EventBridge → Lambda {function_name}: success")
 
 
 def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
@@ -361,6 +433,7 @@ def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
         md5_of_body=hashlib.md5(payload.encode()).hexdigest(),
     )
     queue.put(msg)
+    _log_invocation("sqs", arn, payload)
     logger.info(f"EventBridge → SQS: {queue_name}")
 
 
@@ -380,6 +453,7 @@ def _invoke_sns_target(arn: str, payload: str, region: str, account_id: str):
     for sub in topic.subscriptions:
         if sub.confirmed:
             _deliver_to_subscriber(sub, payload, "EventBridge Notification", {}, message_id, arn, region)
+    _log_invocation("sns", arn, payload)
     logger.info(f"EventBridge → SNS: {arn}")
 
 

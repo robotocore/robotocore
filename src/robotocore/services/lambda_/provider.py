@@ -68,19 +68,34 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         # /tags
         elif parts[0] == "tags":
             return await _handle_tags(parts, method, body, request, region, account_id)
+        # /account-settings
+        elif parts[0] == "account-settings":
+            return _handle_account_settings(region, account_id)
         else:
             return _error("InvalidRequest", f"Unknown path: {path}", 400)
 
     except Exception as e:
         error_type = type(e).__name__
+        error_msg = str(e)
+
         # Map Moto exceptions to AWS error codes
         if "ResourceNotFoundException" in error_type or "UnknownFunction" in error_type:
-            return _error("ResourceNotFoundException", str(e), 404)
+            return _error("ResourceNotFoundException", error_msg, 404)
         if "ResourceConflictException" in error_type or "FunctionAlreadyExists" in error_type:
-            return _error("ResourceConflictException", str(e), 409)
+            return _error("ResourceConflictException", error_msg, 409)
         if "InvalidParameterValue" in error_type:
-            return _error("InvalidParameterValueException", str(e), 400)
-        return _error("ServiceException", str(e), 500)
+            return _error("InvalidParameterValueException", error_msg, 400)
+        if "UnknownEventConfig" in error_type:
+            return _error("ResourceNotFoundException", error_msg, 404)
+        if "GenericResourcNotFound" in error_type:
+            return _error("ResourceNotFoundException", error_msg, 404)
+        if "ValidationException" in error_type:
+            return _error("ValidationException", error_msg, 400)
+        # Moto LambdaClientError has a 'code' attribute with HTTP status
+        if hasattr(e, "code"):
+            status = getattr(e, "code", 500)
+            return _error(error_type, error_msg, int(status))
+        return _error("ServiceException", error_msg, 500)
 
 
 async def _handle_functions(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
@@ -199,14 +214,17 @@ async def _handle_functions(parts: list[str], method: str, body: bytes, request:
         if sub == "concurrency":
             if method == "PUT":
                 spec = json.loads(body) if body else {}
-                result = backend.put_function_concurrency(func_name, spec.get("ReservedConcurrentExecutions", 0))
-                return _json(200, json.loads(result))
+                reserved = spec.get("ReservedConcurrentExecutions", 0)
+                result = backend.put_function_concurrency(func_name, reserved)
+                return _json(200, {"ReservedConcurrentExecutions": int(result) if result is not None else 0})
             elif method == "DELETE":
                 backend.delete_function_concurrency(func_name)
                 return _json(204, None)
             elif method == "GET":
                 result = backend.get_function_concurrency(func_name)
-                return _json(200, json.loads(result) if result else {})
+                if result is not None:
+                    return _json(200, {"ReservedConcurrentExecutions": int(result)})
+                return _json(200, {})
 
         # /functions/{name}/url — Function URLs
         if sub == "url":
@@ -239,6 +257,41 @@ async def _handle_functions(parts: list[str], method: str, body: bytes, request:
                 return _json(204, None)
 
     return _error("InvalidRequest", f"Unhandled Lambda path: {'/'.join(parts)}", 400)
+
+
+def _handle_account_settings(region: str, account_id: str) -> Response:
+    """Handle GET /account-settings — returns Lambda account-level settings.
+
+    Moto does not implement this, so we return sensible defaults matching
+    the real AWS response shape.
+    """
+    backend = _get_moto_backend(account_id, region)
+
+    # Calculate total code size and function count from Moto state
+    functions = backend.list_functions()
+    total_code_size = 0
+    function_count = len(functions)
+    total_concurrency = 0
+
+    for fn in functions:
+        code_size = getattr(fn, "code_size", 0) or 0
+        total_code_size += int(code_size)
+        if fn.reserved_concurrency is not None:
+            total_concurrency += int(fn.reserved_concurrency)
+
+    return _json(200, {
+        "AccountLimit": {
+            "TotalCodeSize": 80530636800,
+            "CodeSizeUnzipped": 262144000,
+            "CodeSizeZipped": 52428800,
+            "ConcurrentExecutions": 1000,
+            "UnreservedConcurrentExecutions": max(0, 1000 - total_concurrency),
+        },
+        "AccountUsage": {
+            "TotalCodeSize": total_code_size,
+            "FunctionCount": function_count,
+        },
+    })
 
 
 async def _handle_event_source_mappings(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
