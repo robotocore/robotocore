@@ -621,3 +621,250 @@ class TestGetAlarmScheduler:
             assert isinstance(s1, AlarmScheduler)
         finally:
             mod._scheduler = old
+
+
+# ---------------------------------------------------------------------------
+# _collect_metric_values (direct tests)
+# ---------------------------------------------------------------------------
+
+
+class TestCollectMetricValues:
+    def test_returns_values_for_matching_metric(self):
+        scheduler = AlarmScheduler()
+        now = datetime.now(tz=UTC)
+        alarm = _make_alarm(
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+            statistic="Average",
+            period=60,
+            evaluation_periods=2,
+        )
+        d1 = _make_metric_datum("AWS/EC2", "CPUUtilization", 80.0, now - timedelta(seconds=30))
+        d2 = _make_metric_datum("AWS/EC2", "CPUUtilization", 60.0, now - timedelta(seconds=90))
+        backend = MagicMock()
+        backend.metric_data = [d1, d2]
+        backend.aws_metric_data = []
+
+        values = scheduler._collect_metric_values(backend, alarm, 60, 2)
+        # Oldest first after reverse
+        assert len(values) == 2
+        assert values[0] == 60.0
+        assert values[1] == 80.0
+
+    def test_returns_none_for_missing_periods(self):
+        scheduler = AlarmScheduler()
+        alarm = _make_alarm(
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+            statistic="Average",
+            period=60,
+            evaluation_periods=3,
+        )
+        backend = MagicMock()
+        backend.metric_data = []
+        backend.aws_metric_data = []
+
+        values = scheduler._collect_metric_values(backend, alarm, 60, 3)
+        assert values == [None, None, None]
+
+    def test_filters_by_namespace(self):
+        scheduler = AlarmScheduler()
+        now = datetime.now(tz=UTC)
+        alarm = _make_alarm(
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+            statistic="Average",
+            period=60,
+            evaluation_periods=1,
+        )
+        wrong_ns = _make_metric_datum(
+            "AWS/Lambda", "CPUUtilization", 99.0, now - timedelta(seconds=30)
+        )
+        backend = MagicMock()
+        backend.metric_data = [wrong_ns]
+        backend.aws_metric_data = []
+
+        values = scheduler._collect_metric_values(backend, alarm, 60, 1)
+        assert values == [None]
+
+    def test_filters_by_dimensions(self):
+        scheduler = AlarmScheduler()
+        now = datetime.now(tz=UTC)
+        alarm = _make_alarm(
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+            statistic="Sum",
+            period=60,
+            evaluation_periods=1,
+            dimensions=[_make_dimension("InstanceId", "i-123")],
+        )
+        matching = _make_metric_datum(
+            "AWS/EC2",
+            "CPUUtilization",
+            50.0,
+            now - timedelta(seconds=30),
+            dimensions=[_make_dimension("InstanceId", "i-123")],
+        )
+        non_matching = _make_metric_datum(
+            "AWS/EC2",
+            "CPUUtilization",
+            99.0,
+            now - timedelta(seconds=30),
+            dimensions=[_make_dimension("InstanceId", "i-456")],
+        )
+        backend = MagicMock()
+        backend.metric_data = [matching, non_matching]
+        backend.aws_metric_data = []
+
+        values = scheduler._collect_metric_values(backend, alarm, 60, 1)
+        assert values == [50.0]
+
+    def test_uses_aws_metric_data_too(self):
+        scheduler = AlarmScheduler()
+        now = datetime.now(tz=UTC)
+        alarm = _make_alarm(
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+            statistic="Average",
+            period=60,
+            evaluation_periods=1,
+        )
+        d = _make_metric_datum("AWS/EC2", "CPUUtilization", 42.0, now - timedelta(seconds=30))
+        backend = MagicMock()
+        backend.metric_data = []
+        backend.aws_metric_data = [d]
+
+        values = scheduler._collect_metric_values(backend, alarm, 60, 1)
+        assert values == [42.0]
+
+
+# ---------------------------------------------------------------------------
+# _dispatch_actions — exception handling
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchActionsErrorHandling:
+    def test_publish_failure_does_not_propagate(self):
+        """If _publish_to_sns raises, _dispatch_actions logs but does not raise."""
+        scheduler = AlarmScheduler()
+        alarm = _make_alarm(
+            alarm_actions=[
+                "arn:aws:sns:us-east-1:123456789012:topic1",
+                "arn:aws:sns:us-east-1:123456789012:topic2",
+            ],
+        )
+        call_count = 0
+
+        def failing_publish(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("SNS unavailable")
+
+        with patch.object(scheduler, "_publish_to_sns", side_effect=failing_publish):
+            # Should not raise even though first publish fails
+            scheduler._dispatch_actions(alarm, "OK", "ALARM", "reason", "123456789012", "us-east-1")
+        # Both topics were attempted
+        assert call_count == 2
+
+    def test_unknown_state_dispatches_nothing(self):
+        scheduler = AlarmScheduler()
+        alarm = _make_alarm(alarm_actions=["arn:aws:sns:us-east-1:123:t"])
+        with patch.object(scheduler, "_publish_to_sns") as mock_pub:
+            scheduler._dispatch_actions(alarm, "OK", "UNKNOWN_STATE", "reason", "123", "us-east-1")
+        mock_pub.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _evaluate_alarm — determine_state returns None
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateAlarmIgnoreMissing:
+    def test_no_state_change_when_determine_state_returns_none(self):
+        scheduler = AlarmScheduler()
+        alarm = _make_alarm(
+            state_value="OK",
+            treat_missing_data="ignore",
+        )
+        backend = MagicMock()
+        backend.metric_data = []
+        backend.aws_metric_data = []
+
+        scheduler._evaluate_alarm(backend, alarm, "123456789012", "us-east-1")
+        backend.set_alarm_state.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _run_loop — single iteration test
+# ---------------------------------------------------------------------------
+
+
+class TestRunLoop:
+    def test_run_loop_calls_evaluate_and_stops(self):
+        scheduler = AlarmScheduler()
+        call_count = 0
+
+        def fake_evaluate():
+            nonlocal call_count
+            call_count += 1
+            scheduler._running = False  # stop after first iteration
+
+        with patch.object(scheduler, "_evaluate_all_alarms", side_effect=fake_evaluate):
+            with patch("robotocore.services.cloudwatch.alarm_scheduler.time.sleep"):
+                scheduler._running = True
+                scheduler._run_loop()
+
+        assert call_count == 1
+
+    def test_run_loop_continues_after_exception(self):
+        scheduler = AlarmScheduler()
+        call_count = 0
+
+        def exploding_evaluate():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("boom")
+            scheduler._running = False
+
+        with patch.object(scheduler, "_evaluate_all_alarms", side_effect=exploding_evaluate):
+            with patch("robotocore.services.cloudwatch.alarm_scheduler.time.sleep"):
+                scheduler._running = True
+                scheduler._run_loop()
+
+        assert call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _evaluate_all_alarms — error handling per alarm
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateAllAlarmsPerAlarmError:
+    def test_continues_evaluating_after_single_alarm_failure(self):
+        scheduler = AlarmScheduler()
+        alarm1 = _make_alarm(name="alarm1")
+        alarm2 = _make_alarm(name="alarm2")
+
+        mock_backend = MagicMock()
+        mock_backend.alarms = {"alarm1": alarm1, "alarm2": alarm2}
+
+        mock_cw_backends = {"111": {"us-east-1": mock_backend}}
+
+        eval_calls = []
+
+        def tracking_eval(backend, alarm, acct, region):
+            eval_calls.append(alarm.name)
+            if alarm.name == "alarm1":
+                raise RuntimeError("eval failed")
+
+        with patch(
+            "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
+            return_value=mock_cw_backends,
+        ):
+            with patch.object(scheduler, "_evaluate_alarm", side_effect=tracking_eval):
+                scheduler._evaluate_all_alarms()
+
+        assert "alarm1" in eval_calls
+        assert "alarm2" in eval_calls

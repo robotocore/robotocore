@@ -265,3 +265,96 @@ class TestDeliverToSns:
 
         # Should not raise
         _deliver_to_sns("arn:aws:sns:us-east-1:123:gone", '{"msg": "hi"}', "us-east-1")
+
+    @patch("robotocore.services.sns.provider._deliver_to_subscriber")
+    @patch("robotocore.services.s3.notifications.get_sns_store")
+    def test_deliver_to_existing_topic_with_subscribers(self, mock_get_store, mock_deliver_sub):
+        confirmed_sub = MagicMock()
+        confirmed_sub.confirmed = True
+        unconfirmed_sub = MagicMock()
+        unconfirmed_sub.confirmed = False
+
+        mock_topic = MagicMock()
+        mock_topic.subscriptions = [confirmed_sub, unconfirmed_sub]
+        mock_store = MagicMock()
+        mock_store.get_topic.return_value = mock_topic
+        mock_get_store.return_value = mock_store
+
+        _deliver_to_sns("arn:aws:sns:us-east-1:123:my-topic", '{"msg": "hi"}', "us-east-1")
+
+        # Only confirmed subscriber should get delivery
+        assert mock_deliver_sub.call_count == 1
+        call_args = mock_deliver_sub.call_args[0]
+        assert call_args[0] is confirmed_sub
+
+
+class TestFireEventMultipleTargets:
+    """Test fire_event with multiple and mixed notification targets."""
+
+    def setup_method(self):
+        _bucket_notifications.clear()
+
+    @patch("robotocore.services.s3.notifications._deliver_to_sns")
+    @patch("robotocore.services.s3.notifications._deliver_to_sqs")
+    def test_delivers_to_both_sqs_and_sns(self, mock_sqs, mock_sns):
+        cfg = NotificationConfig(
+            queue_configs=[
+                {
+                    "QueueArn": "arn:aws:sqs:us-east-1:123:q",
+                    "Events": ["s3:ObjectCreated:*"],
+                },
+            ],
+            topic_configs=[
+                {
+                    "TopicArn": "arn:aws:sns:us-east-1:123:t",
+                    "Events": ["s3:ObjectCreated:*"],
+                },
+            ],
+        )
+        set_notification_config("bucket", cfg)
+        fire_event("s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123")
+        mock_sqs.assert_called_once()
+        mock_sns.assert_called_once()
+
+    @patch("robotocore.services.s3.notifications._deliver_to_sqs")
+    def test_delivers_to_multiple_queues(self, mock_sqs):
+        cfg = NotificationConfig(
+            queue_configs=[
+                {
+                    "QueueArn": "arn:aws:sqs:us-east-1:123:q1",
+                    "Events": ["s3:ObjectCreated:*"],
+                },
+                {
+                    "QueueArn": "arn:aws:sqs:us-east-1:123:q2",
+                    "Events": ["s3:ObjectCreated:*"],
+                },
+            ],
+        )
+        set_notification_config("bucket", cfg)
+        fire_event("s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123")
+        assert mock_sqs.call_count == 2
+        arns = {call[0][0] for call in mock_sqs.call_args_list}
+        assert arns == {
+            "arn:aws:sqs:us-east-1:123:q1",
+            "arn:aws:sqs:us-east-1:123:q2",
+        }
+
+    @patch("robotocore.services.s3.notifications._deliver_to_sqs")
+    def test_only_matching_configs_fire(self, mock_sqs):
+        """One config matches, the other does not."""
+        cfg = NotificationConfig(
+            queue_configs=[
+                {
+                    "QueueArn": "arn:aws:sqs:us-east-1:123:q1",
+                    "Events": ["s3:ObjectCreated:*"],
+                },
+                {
+                    "QueueArn": "arn:aws:sqs:us-east-1:123:q2",
+                    "Events": ["s3:ObjectRemoved:*"],
+                },
+            ],
+        )
+        set_notification_config("bucket", cfg)
+        fire_event("s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123")
+        assert mock_sqs.call_count == 1
+        assert mock_sqs.call_args[0][0] == "arn:aws:sqs:us-east-1:123:q1"
