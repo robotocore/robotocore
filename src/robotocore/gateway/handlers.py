@@ -3,7 +3,6 @@
 import json
 import logging
 import re
-import time
 
 from starlette.responses import Response
 
@@ -31,11 +30,17 @@ def populate_context_handler(context: RequestContext) -> None:
     """Extract region, account_id, and protocol from the request."""
     headers = context.request.headers
 
-    # Region from Authorization header
+    # Region from Authorization header or X-Amz-Credential query param (presigned URLs)
     auth = headers.get("authorization", "")
     match = _REGION_RE.search(auth)
     if match:
         context.region = match.group(1)
+    else:
+        credential = context.request.query_params.get("X-Amz-Credential", "")
+        if credential:
+            parts = credential.split("/")
+            if len(parts) >= 3:
+                context.region = parts[2]
 
     # Protocol from botocore service specs
     if context.service_name:
