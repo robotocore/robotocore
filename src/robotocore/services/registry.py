@@ -32,7 +32,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "cloudwatch": ServiceInfo("cloudwatch", ServiceStatus.MOTO_BACKED, "query", "CloudWatch Metrics"),
     "logs": ServiceInfo("logs", ServiceStatus.MOTO_BACKED, "json", "CloudWatch Logs"),
     "kms": ServiceInfo("kms", ServiceStatus.MOTO_BACKED, "json", "Key Management Service"),
-    "lambda": ServiceInfo("lambda", ServiceStatus.MOTO_BACKED, "rest-json", "Lambda"),
+    "lambda": ServiceInfo("lambda", ServiceStatus.NATIVE, "rest-json", "Lambda with in-process Python execution"),
     "events": ServiceInfo("events", ServiceStatus.MOTO_BACKED, "json", "EventBridge"),
     "kinesis": ServiceInfo("kinesis", ServiceStatus.MOTO_BACKED, "json", "Kinesis Streams"),
     "firehose": ServiceInfo("firehose", ServiceStatus.NATIVE, "json", "Firehose with S3 delivery"),
