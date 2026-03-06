@@ -89,9 +89,15 @@ management_routes = [
     Route("/_robotocore/health", health, methods=["GET"]),
 ]
 
+def _start_background_engines():
+    """Start background engines for cross-service integrations."""
+    from robotocore.services.lambda_.event_source import get_engine
+    get_engine().start()
+
+
 app = Starlette(
     routes=management_routes,
-    on_startup=[],
+    on_startup=[_start_background_engines],
 )
 
 

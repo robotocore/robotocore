@@ -2,12 +2,24 @@
 
 import base64
 import json
+import threading
+import time
 import uuid
 
 from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.services.lambda_.executor import execute_python_handler
+
+# Native event source mapping store (bypasses Moto's validation)
+_esm_store: dict[str, dict] = {}  # uuid -> mapping config
+_esm_lock = threading.Lock()
+
+
+def get_event_source_mappings() -> list[dict]:
+    """Return all event source mappings (used by the event source engine)."""
+    with _esm_lock:
+        return list(_esm_store.values())
 
 
 def _get_moto_backend(account_id: str, region: str):
@@ -230,31 +242,86 @@ async def _handle_functions(parts: list[str], method: str, body: bytes, request:
 
 
 async def _handle_event_source_mappings(parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str) -> Response:
-    backend = _get_moto_backend(account_id, region)
+    """Native event source mapping CRUD — bypasses Moto to avoid cross-service validation issues."""
 
     if len(parts) == 1:
         if method == "POST":
             spec = json.loads(body) if body else {}
-            esm = backend.create_event_source_mapping(spec)
-            return _json(202, json.loads(esm.get_configuration()))
+            esm_uuid = str(uuid.uuid4())
+
+            # Resolve function ARN
+            func_name = spec.get("FunctionName", "")
+            if not func_name.startswith("arn:"):
+                func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+            else:
+                func_arn = func_name
+
+            config = {
+                "UUID": esm_uuid,
+                "EventSourceArn": spec.get("EventSourceArn", ""),
+                "FunctionArn": func_arn,
+                "BatchSize": spec.get("BatchSize", 10),
+                "MaximumBatchingWindowInSeconds": spec.get("MaximumBatchingWindowInSeconds", 0),
+                "State": "Enabled",
+                "StateTransitionReason": "User action",
+                "LastModified": time.time(),
+                "FunctionResponseTypes": spec.get("FunctionResponseTypes", []),
+                "_region": region,
+                "_account_id": account_id,
+            }
+
+            with _esm_lock:
+                _esm_store[esm_uuid] = config
+
+            # Start engine if not already running
+            from robotocore.services.lambda_.event_source import get_engine
+            get_engine().start()
+
+            return _json(202, _sanitize_esm(config))
+
         elif method == "GET":
-            esm_list = backend.list_event_source_mappings(
-                request.query_params.get("EventSourceArn"),
-                request.query_params.get("FunctionName"),
-            )
-            return _json(200, {"EventSourceMappings": [json.loads(e.get_configuration()) for e in esm_list]})
+            event_source_arn = request.query_params.get("EventSourceArn")
+            func_name = request.query_params.get("FunctionName")
+
+            with _esm_lock:
+                mappings = list(_esm_store.values())
+
+            if event_source_arn:
+                mappings = [m for m in mappings if m.get("EventSourceArn") == event_source_arn]
+            if func_name:
+                mappings = [m for m in mappings if func_name in m.get("FunctionArn", "")]
+
+            return _json(200, {"EventSourceMappings": [_sanitize_esm(m) for m in mappings]})
+
     elif len(parts) == 2:
         esm_uuid = parts[1]
+
+        with _esm_lock:
+            config = _esm_store.get(esm_uuid)
+
+        if not config:
+            return _error("ResourceNotFoundException", f"Event source mapping not found: {esm_uuid}", 404)
+
         if method == "GET":
-            esm = backend.get_event_source_mapping(esm_uuid)
-            return _json(200, json.loads(esm.get_configuration()))
+            return _json(200, _sanitize_esm(config))
+
         elif method == "PUT":
             spec = json.loads(body) if body else {}
-            esm = backend.update_event_source_mapping(esm_uuid, spec)
-            return _json(200, json.loads(esm.get_configuration()))
+            with _esm_lock:
+                if esm_uuid in _esm_store:
+                    for key in ["BatchSize", "MaximumBatchingWindowInSeconds", "Enabled", "FunctionResponseTypes"]:
+                        if key in spec:
+                            _esm_store[esm_uuid][key] = spec[key]
+                    if "Enabled" in spec:
+                        _esm_store[esm_uuid]["State"] = "Enabled" if spec["Enabled"] else "Disabled"
+                    _esm_store[esm_uuid]["LastModified"] = time.time()
+                    config = _esm_store[esm_uuid]
+            return _json(200, _sanitize_esm(config))
+
         elif method == "DELETE":
-            esm = backend.delete_event_source_mapping(esm_uuid)
-            return _json(200, json.loads(esm.get_configuration()))
+            with _esm_lock:
+                config = _esm_store.pop(esm_uuid, config)
+            return _json(200, _sanitize_esm(config))
 
     return _error("InvalidRequest", "Unhandled event-source-mappings path", 400)
 
@@ -400,6 +467,11 @@ async def _invoke(func_name: str, body: bytes, request: Request, region: str, ac
 
 
 # --- Helpers ---
+
+def _sanitize_esm(config: dict) -> dict:
+    """Remove internal fields from event source mapping config."""
+    return {k: v for k, v in config.items() if not k.startswith("_")}
+
 
 def _fn_config(fn) -> dict:
     """Extract function configuration as a dict."""
