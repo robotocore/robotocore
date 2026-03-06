@@ -75,7 +75,10 @@ class EventSourceEngine:
 
                 if ":sqs:" in event_source_arn:
                     self._poll_sqs(event_source_arn, function_arn, batch_size, account_id, region)
-                # Future: kinesis, dynamodb streams
+                elif ":kinesis:" in event_source_arn:
+                    self._poll_kinesis(event_source_arn, function_arn, batch_size, account_id, region)
+                elif ":dynamodb:" in event_source_arn and "/stream/" in event_source_arn:
+                    self._poll_dynamodb_stream(event_source_arn, function_arn, batch_size, account_id, region)
             except Exception:
                 logger.exception("Error polling event source mapping")
 
@@ -133,6 +136,104 @@ class EventSourceEngine:
                 queue.delete_message(receipt_handle)
         # If invocation failed, messages will become visible again after visibility timeout
 
+    def _poll_kinesis(self, stream_arn: str, function_arn: str, batch_size: int, account_id: str, region: str):
+        """Poll a Kinesis stream and invoke Lambda with new records."""
+        from robotocore.services.kinesis.models import _get_store
+
+        store = _get_store(region)
+        stream_name = stream_arn.rsplit("/", 1)[-1] if "/" in stream_arn else stream_arn.rsplit(":", 1)[-1]
+
+        stream = store.get_stream(stream_name)
+        if not stream:
+            return
+
+        # Track position per shard using a simple in-memory tracker
+        if not hasattr(self, "_kinesis_positions"):
+            self._kinesis_positions = {}
+
+        for shard in stream.shards:
+            position_key = f"{stream_arn}:{shard.shard_id}"
+            last_seq = self._kinesis_positions.get(position_key, "")
+
+            # Get records after our last position (string comparison on zero-padded seqs)
+            records_to_send = []
+            for record in shard.records:
+                if record.sequence_number > last_seq:
+                    records_to_send.append(record)
+
+            if not records_to_send:
+                continue
+
+            records_to_send = records_to_send[:batch_size]
+
+            import base64
+            event_records = []
+            for rec in records_to_send:
+                event_records.append({
+                    "kinesis": {
+                        "kinesisSchemaVersion": "1.0",
+                        "partitionKey": rec.partition_key,
+                        "sequenceNumber": str(rec.sequence_number),
+                        "data": base64.b64encode(rec.data).decode(),
+                        "approximateArrivalTimestamp": rec.timestamp,
+                    },
+                    "eventSource": "aws:kinesis",
+                    "eventVersion": "1.0",
+                    "eventID": f"{shard.shard_id}:{rec.sequence_number}",
+                    "eventName": "aws:kinesis:record",
+                    "invokeIdentityArn": function_arn,
+                    "awsRegion": region,
+                    "eventSourceARN": stream_arn,
+                })
+
+            event = {"Records": event_records}
+            function_name = _extract_function_name(function_arn)
+            success = self._invoke_lambda(function_name, event, account_id, region)
+
+            if success:
+                self._kinesis_positions[position_key] = records_to_send[-1].sequence_number
+
+    def _poll_dynamodb_stream(self, stream_arn: str, function_arn: str, batch_size: int, account_id: str, region: str):
+        """Poll a DynamoDB Stream and invoke Lambda with new records.
+
+        Reads from the hook-based record store populated by DynamoDB mutation hooks.
+        """
+        from robotocore.services.dynamodbstreams.hooks import get_store as get_ddb_streams_store
+
+        store = get_ddb_streams_store(region)
+
+        if not hasattr(self, "_dynamo_stream_positions"):
+            self._dynamo_stream_positions = {}
+
+        position_key = stream_arn
+        last_idx = self._dynamo_stream_positions.get(position_key, 0)
+
+        with store._lock:
+            records = store._hook_records.get(stream_arn, [])
+            new_records = records[last_idx:last_idx + batch_size]
+
+        if not new_records:
+            return
+
+        event_records = []
+        for rec in new_records:
+            event_records.append({
+                "eventID": rec.event_id,
+                "eventName": rec.event_name,
+                "eventVersion": rec.event_version,
+                "eventSource": rec.event_source,
+                "awsRegion": region,
+                "dynamodb": rec.dynamodb,
+                "eventSourceARN": stream_arn,
+            })
+
+        event = {"Records": event_records}
+        function_name = _extract_function_name(function_arn)
+        success = self._invoke_lambda(function_name, event, account_id, region)
+
+        if success:
+            self._dynamo_stream_positions[position_key] = last_idx + len(new_records)
+
     def _invoke_lambda(self, function_name: str, event: dict, account_id: str, region: str) -> bool:
         """Invoke a Lambda function with the given event. Returns True on success."""
         from moto.backends import get_backend
@@ -152,10 +253,13 @@ class EventSourceEngine:
         is_python = runtime.startswith("python")
         code_zip = None
 
-        if is_python and hasattr(fn, "code") and fn.code:
-            code_zip = fn.code.get("ZipFile")
-            if isinstance(code_zip, str):
-                code_zip = base64.b64decode(code_zip)
+        if is_python:
+            # Prefer code_bytes (already decoded) over code["ZipFile"]
+            code_zip = getattr(fn, "code_bytes", None)
+            if not code_zip and hasattr(fn, "code") and fn.code:
+                code_zip = fn.code.get("ZipFile")
+                if isinstance(code_zip, str):
+                    code_zip = base64.b64decode(code_zip)
 
         if is_python and code_zip:
             handler = getattr(fn, "handler", "lambda_function.handler")
