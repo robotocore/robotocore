@@ -1,7 +1,10 @@
 FROM python:3.12-slim AS base
 
-# Supports both ARM and x86
-# docker build -t robotocore .
+# Multi-arch support (ARM64 + AMD64)
+# docker buildx build --platform linux/arm64,linux/amd64 -t robotocore .
+
+# Security: create non-root user
+RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -24,11 +27,25 @@ RUN chmod +x /entrypoint.sh
 # Install the project itself
 RUN uv sync --no-dev
 
+# Create init hook directories
+RUN mkdir -p /etc/robotocore/init/boot.d \
+    /etc/robotocore/init/ready.d \
+    /etc/robotocore/init/shutdown.d \
+    /etc/robotocore/extensions \
+    /tmp/robotocore/state
+
+# Set ownership
+RUN chown -R robotocore:robotocore /app /tmp/robotocore /etc/robotocore
+
 EXPOSE 4566
 
 ENV ROBOTOCORE_HOST=0.0.0.0
 ENV ROBOTOCORE_PORT=4566
 ENV MOTO_ALLOW_NONEXISTENT_REGION=true
+ENV ROBOTOCORE_VERSION=1.0.0
+
+# Run as non-root user
+USER robotocore
 
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:4566/_robotocore/health || exit 1

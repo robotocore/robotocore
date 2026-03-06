@@ -6,21 +6,27 @@ Scans the LocalStack vendor directory to enumerate:
 - Cross-service integrations (imports between services)
 - Pro/Enterprise-only features
 - Handler decorators and API specs
+- Diff between Community and Enterprise per service
 
 Usage:
     uv run python scripts/analyze_localstack.py [--service SERVICE] [--output json|table]
+    uv run python scripts/analyze_localstack.py --enterprise-diff
+    uv run python scripts/analyze_localstack.py --cross-service
+    uv run python scripts/analyze_localstack.py --robotocore-gap
 """
 
 import ast
 import json
-import os
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 VENDOR_DIR = Path("services")
-PRO_DIR = Path("pro/core/services") if Path("pro").exists() else None
+PRO_DIRS = [
+    Path("pro/core/services"),
+    Path("localstack-ext/localstack_ext/services"),
+]
+ROBOTOCORE_DIR = Path("src/robotocore/services")
 
 
 def find_provider_files(base_dir: Path) -> dict[str, Path]:
@@ -29,9 +35,7 @@ def find_provider_files(base_dir: Path) -> dict[str, Path]:
     if not base_dir.exists():
         return providers
     for provider_file in base_dir.rglob("provider.py"):
-        # Service name is the parent directory
         service_name = provider_file.parent.name
-        # Skip if it's a nested subdir
         rel = provider_file.relative_to(base_dir)
         if len(rel.parts) == 2:  # service/provider.py
             providers[service_name] = provider_file
@@ -45,6 +49,8 @@ def extract_operations(filepath: Path) -> dict:
         "api_spec": None,
         "cross_service_imports": [],
         "has_pro_features": False,
+        "decorators": [],
+        "classes": [],
     }
 
     try:
@@ -57,9 +63,7 @@ def extract_operations(filepath: Path) -> dict:
     except SyntaxError:
         return result
 
-    # Find class definitions that inherit from provider base classes
     for node in ast.walk(tree):
-        # Find @handler decorators
         if isinstance(node, ast.FunctionDef):
             for decorator in node.decorator_list:
                 if isinstance(decorator, ast.Name) and decorator.id == "handler":
@@ -67,7 +71,6 @@ def extract_operations(filepath: Path) -> dict:
                 elif isinstance(decorator, ast.Call):
                     func = decorator.func
                     if isinstance(func, ast.Name) and func.id == "handler":
-                        # Extract operation name from first arg
                         if decorator.args:
                             arg = decorator.args[0]
                             if isinstance(arg, ast.Constant):
@@ -77,7 +80,14 @@ def extract_operations(filepath: Path) -> dict:
                         else:
                             result["operations"].append(node.name)
 
-        # Find `api` class variable for API spec
+        # Track class definitions (provider classes)
+        if isinstance(node, ast.ClassDef):
+            result["classes"].append(node.name)
+            # Extract methods
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and not item.name.startswith("_"):
+                    result["operations"].append(item.name)
+
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "api":
@@ -88,7 +98,6 @@ def extract_operations(filepath: Path) -> dict:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if node.module and "localstack.services." in node.module:
-                # Extract the service being imported from
                 parts = node.module.split(".")
                 try:
                     idx = parts.index("services")
@@ -105,6 +114,7 @@ def extract_operations(filepath: Path) -> dict:
         r"enterprise",
         r"@requires_pro",
         r"is_pro",
+        r"localstack_ext",
     ]
     for pattern in pro_patterns:
         if re.search(pattern, source, re.IGNORECASE):
@@ -114,52 +124,196 @@ def extract_operations(filepath: Path) -> dict:
     return result
 
 
-def find_handler_methods(filepath: Path) -> list[str]:
-    """Find all methods decorated with @handler in a file using regex (faster than AST for scanning)."""
-    try:
-        source = filepath.read_text()
-    except Exception:
-        return []
-
-    methods = []
-    # Match def method_name lines that follow @handler decorators
-    for match in re.finditer(r'def\s+(\w+)\s*\(', source):
-        methods.append(match.group(1))
-    return methods
-
-
 def analyze_service(service_name: str, provider_path: Path) -> dict:
     """Full analysis of a single service."""
     info = extract_operations(provider_path)
     info["name"] = service_name
     info["path"] = str(provider_path)
 
-    # Count lines
     try:
         info["lines"] = len(provider_path.read_text().splitlines())
     except Exception:
         info["lines"] = 0
 
-    # Check for models.py
     models_path = provider_path.parent / "models.py"
     info["has_models"] = models_path.exists()
 
     return info
 
 
+def find_enterprise_features() -> dict[str, dict]:
+    """Scan for Enterprise/Pro features per service."""
+    enterprise = {}
+
+    for pro_dir in PRO_DIRS:
+        if not pro_dir.exists():
+            continue
+        for provider_file in pro_dir.rglob("provider.py"):
+            service_name = provider_file.parent.name
+            info = extract_operations(provider_file)
+            info["path"] = str(provider_file)
+            try:
+                info["lines"] = len(provider_file.read_text().splitlines())
+            except Exception:
+                info["lines"] = 0
+            enterprise[service_name] = info
+
+    return enterprise
+
+
+def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]:
+    """Compare robotocore implementation against LocalStack Community + Enterprise."""
+    robotocore_providers = find_provider_files(ROBOTOCORE_DIR)
+    gaps = {}
+
+    all_services = set(community.keys()) | set(enterprise.keys())
+    for service in sorted(all_services):
+        community_ops = set(community.get(service, {}).get("operations", []))
+        enterprise_ops = set(enterprise.get(service, {}).get("operations", []))
+        all_ops = community_ops | enterprise_ops
+
+        robotocore_ops = set()
+        if service in robotocore_providers:
+            robotocore_info = extract_operations(robotocore_providers[service])
+            robotocore_ops = set(robotocore_info["operations"])
+
+        missing_ops = all_ops - robotocore_ops
+        if missing_ops or service not in robotocore_providers:
+            gaps[service] = {
+                "has_provider": service in robotocore_providers,
+                "community_ops": len(community_ops),
+                "enterprise_ops": len(enterprise_ops),
+                "robotocore_ops": len(robotocore_ops),
+                "missing_ops": sorted(missing_ops),
+                "enterprise_only": sorted(enterprise_ops - community_ops),
+                "coverage_pct": (
+                    round(len(robotocore_ops) / len(all_ops) * 100)
+                    if all_ops
+                    else 100
+                ),
+            }
+
+    return gaps
+
+
+def enterprise_diff(community: dict, enterprise: dict):
+    """Print per-service diff between Community and Enterprise."""
+    print("\nEnterprise vs Community Feature Diff")
+    print("=" * 80)
+
+    all_services = sorted(set(community.keys()) | set(enterprise.keys()))
+
+    enterprise_only_services = []
+    enhanced_services = []
+
+    for service in all_services:
+        com_ops = set(community.get(service, {}).get("operations", []))
+        ent_ops = set(enterprise.get(service, {}).get("operations", []))
+
+        if service not in community:
+            enterprise_only_services.append((service, ent_ops))
+        elif ent_ops - com_ops:
+            enhanced_services.append((service, com_ops, ent_ops))
+
+    if enterprise_only_services:
+        print(f"\n--- Enterprise-Only Services ({len(enterprise_only_services)}) ---")
+        for service, ops in enterprise_only_services:
+            print(f"\n  {service} ({len(ops)} operations):")
+            for op in sorted(ops)[:10]:
+                print(f"    + {op}")
+            if len(ops) > 10:
+                print(f"    ... and {len(ops) - 10} more")
+
+    if enhanced_services:
+        print(f"\n--- Enterprise-Enhanced Services ({len(enhanced_services)}) ---")
+        for service, com_ops, ent_ops in enhanced_services:
+            extra = ent_ops - com_ops
+            print(f"\n  {service}: +{len(extra)} enterprise operations (total: {len(ent_ops)})")
+            for op in sorted(extra)[:10]:
+                print(f"    + {op}")
+            if len(extra) > 10:
+                print(f"    ... and {len(extra) - 10} more")
+
+    print(f"\n{'='*80}")
+    print(f"Enterprise-only services: {len(enterprise_only_services)}")
+    print(f"Enterprise-enhanced services: {len(enhanced_services)}")
+    total_enterprise_ops = sum(
+        len(ent_ops - com_ops)
+        for _, com_ops, ent_ops in enhanced_services
+    ) + sum(len(ops) for _, ops in enterprise_only_services)
+    print(f"Total enterprise-only operations: {total_enterprise_ops}")
+
+
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Analyze LocalStack services")
     parser.add_argument("--service", help="Analyze a specific service")
     parser.add_argument("--output", choices=["json", "table"], default="table")
-    parser.add_argument("--cross-service", action="store_true", help="Show cross-service dependency graph")
+    parser.add_argument(
+        "--cross-service", action="store_true", help="Show cross-service dependency graph"
+    )
+    parser.add_argument(
+        "--enterprise-diff",
+        action="store_true",
+        help="Diff Enterprise vs Community features",
+    )
+    parser.add_argument(
+        "--robotocore-gap",
+        action="store_true",
+        help="Show what robotocore is missing vs LocalStack",
+    )
     args = parser.parse_args()
 
     providers = find_provider_files(VENDOR_DIR)
 
+    if args.enterprise_diff:
+        community = {}
+        for name, path in sorted(providers.items()):
+            community[name] = analyze_service(name, path)
+        enterprise = find_enterprise_features()
+        enterprise_diff(community, enterprise)
+        return
+
+    if args.robotocore_gap:
+        community = {}
+        for name, path in sorted(providers.items()):
+            community[name] = analyze_service(name, path)
+        enterprise = find_enterprise_features()
+        gaps = analyze_robotocore_gap(community, enterprise)
+
+        if args.output == "json":
+            print(json.dumps(gaps, indent=2))
+        else:
+            print("\nRobotocore Coverage Gaps")
+            print("=" * 90)
+            print(
+                f"{'Service':<25} {'Provider':>8} {'Community':>10} "
+                f"{'Enterprise':>11} {'Robotocore':>11} {'Coverage':>9}"
+            )
+            print("-" * 90)
+            for service, gap in sorted(gaps.items()):
+                prov = "YES" if gap["has_provider"] else "NO"
+                print(
+                    f"{service:<25} {prov:>8} {gap['community_ops']:>10} "
+                    f"{gap['enterprise_ops']:>11} {gap['robotocore_ops']:>11} "
+                    f"{gap['coverage_pct']:>8}%"
+                )
+                if gap["enterprise_only"]:
+                    for op in gap["enterprise_only"][:3]:
+                        print(f"  {'':25} [ENT] {op}")
+            print("-" * 90)
+            total_missing = sum(len(g["missing_ops"]) for g in gaps.values())
+            print(f"Total services with gaps: {len(gaps)}")
+            print(f"Total missing operations: {total_missing}")
+        return
+
     if args.service:
         if args.service not in providers:
-            print(f"Service '{args.service}' not found. Available: {sorted(providers.keys())}")
+            print(
+                f"Service '{args.service}' not found. "
+                f"Available: {sorted(providers.keys())}"
+            )
             sys.exit(1)
         info = analyze_service(args.service, providers[args.service])
         if args.output == "json":
@@ -170,42 +324,60 @@ def main():
             print(f"Path: {info['path']}")
             print(f"Lines: {info['lines']}")
             print(f"API Spec: {info['api_spec'] or 'N/A'}")
+            print(f"Classes: {', '.join(info['classes'])}")
             print(f"Operations ({len(info['operations'])}):")
             for op in sorted(info["operations"]):
                 print(f"  - {op}")
             if info["cross_service_imports"]:
-                print(f"Cross-service imports: {', '.join(info['cross_service_imports'])}")
+                print(
+                    f"Cross-service imports: "
+                    f"{', '.join(info['cross_service_imports'])}"
+                )
             print(f"Has Pro features: {info['has_pro_features']}")
         return
-
-    # Analyze all services
-    all_services = {}
-    for name, path in sorted(providers.items()):
-        all_services[name] = analyze_service(name, path)
 
     if args.cross_service:
         print("\nCross-Service Dependency Graph:")
         print("=" * 60)
+        all_services = {}
+        for name, path in sorted(providers.items()):
+            all_services[name] = analyze_service(name, path)
+
         for name, info in sorted(all_services.items()):
             if info["cross_service_imports"]:
                 deps = ", ".join(info["cross_service_imports"])
                 print(f"  {name} -> {deps}")
         return
 
+    # Default: analyze all services
+    all_services = {}
+    for name, path in sorted(providers.items()):
+        all_services[name] = analyze_service(name, path)
+
     if args.output == "json":
         print(json.dumps(all_services, indent=2))
     else:
         total_ops = 0
-        print(f"\n{'Service':<30} {'Ops':>5} {'Lines':>6} {'CrossSvc':>10} {'Pro':>5}")
-        print("-" * 65)
+        print(
+            f"\n{'Service':<30} {'Ops':>5} {'Lines':>6} "
+            f"{'CrossSvc':>10} {'Classes':>10} {'Pro':>5}"
+        )
+        print("-" * 75)
         for name, info in sorted(all_services.items()):
             ops = len(info["operations"])
             total_ops += ops
             cross = len(info["cross_service_imports"])
+            classes = len(info["classes"])
             pro = "YES" if info["has_pro_features"] else ""
-            print(f"{name:<30} {ops:>5} {info['lines']:>6} {cross:>10} {pro:>5}")
-        print("-" * 65)
-        print(f"{'TOTAL':<30} {total_ops:>5} {'':<6} {len(all_services):>10} services")
+            print(
+                f"{name:<30} {ops:>5} {info['lines']:>6} "
+                f"{cross:>10} {classes:>10} {pro:>5}"
+            )
+        print("-" * 75)
+        print(
+            f"{'TOTAL':<30} {total_ops:>5} {'':<6} "
+            f"{len(all_services):>10} services"
+        )
         print(f"\nTotal services found: {len(all_services)}")
         print(f"Total operations: {total_ops}")
 
