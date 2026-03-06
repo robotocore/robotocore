@@ -1,7 +1,9 @@
-"""Native SNS provider with cross-service SQS delivery."""
+"""Native SNS provider with cross-service SQS, Lambda, and HTTP/HTTPS delivery."""
 
+import base64
 import hashlib
 import json
+import logging
 import threading
 import time
 import uuid
@@ -13,6 +15,8 @@ from starlette.responses import Response
 from robotocore.services.sns.models import SnsStore, SnsSubscription
 from robotocore.services.sqs.models import SqsMessage
 from robotocore.services.sqs.provider import _get_store as get_sqs_store
+
+logger = logging.getLogger(__name__)
 
 _stores: dict[str, SnsStore] = {}
 _store_lock = threading.Lock()
@@ -295,7 +299,11 @@ def _deliver_to_subscriber(
 ) -> None:
     if sub.protocol == "sqs":
         _deliver_to_sqs(sub, message, subject, message_attributes, message_id, topic_arn, region)
-    # Other protocols (http, email, lambda, etc.) are no-ops for now
+    elif sub.protocol == "lambda":
+        _deliver_to_lambda(sub, message, subject, message_attributes, message_id, topic_arn, region)
+    elif sub.protocol in ("http", "https"):
+        _deliver_to_http(sub, message, subject, message_attributes, message_id, topic_arn, region)
+    # Other protocols (email, sms, etc.) are no-ops for now
 
 
 def _deliver_to_sqs(
@@ -331,6 +339,157 @@ def _deliver_to_sqs(
         md5_of_body=_md5(body),
     )
     queue.put(sqs_msg)
+
+
+def _deliver_to_lambda(
+    sub: SnsSubscription, message: str, subject: str | None,
+    message_attributes: dict, message_id: str, topic_arn: str, region: str,
+) -> None:
+    """Deliver an SNS message to a Lambda function subscriber."""
+    from robotocore.services.lambda_.executor import execute_python_handler, get_layer_zips
+
+    # Parse function name from ARN: arn:aws:lambda:region:account:function:name
+    endpoint = sub.endpoint
+    try:
+        arn_parts = endpoint.split(":")
+        func_name = arn_parts[6] if len(arn_parts) >= 7 else endpoint
+        account_id = arn_parts[4] if len(arn_parts) >= 5 else "123456789012"
+    except (IndexError, ValueError):
+        logger.warning("SNS: Cannot parse Lambda ARN from endpoint: %s", endpoint)
+        return
+
+    # Get the Lambda function from Moto's backend
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
+        backend = get_backend("lambda")[acct][region]
+        fn = backend.get_function(func_name)
+    except Exception as e:
+        logger.warning("SNS: Cannot find Lambda function %s: %s", func_name, e)
+        return
+
+    # Check if it's a Python runtime with code
+    runtime = getattr(fn, "run_time", "") or ""
+    if not runtime.startswith("python"):
+        logger.warning("SNS: Lambda function %s has non-Python runtime %s, skipping", func_name, runtime)
+        return
+
+    code_zip = None
+    if hasattr(fn, "code") and fn.code:
+        code_zip = fn.code.get("ZipFile")
+        if isinstance(code_zip, str):
+            code_zip = base64.b64decode(code_zip)
+
+    if not code_zip:
+        logger.warning("SNS: Lambda function %s has no code zip, skipping", func_name)
+        return
+
+    # Build SNS-to-Lambda event payload (matches AWS format)
+    sns_message_attributes = {}
+    for attr_name, attr_val in message_attributes.items():
+        sns_message_attributes[attr_name] = {
+            "Type": attr_val.get("DataType", "String"),
+            "Value": attr_val.get("StringValue", attr_val.get("Value", "")),
+        }
+
+    timestamp = _iso_timestamp()
+    event = {
+        "Records": [{
+            "EventSource": "aws:sns",
+            "EventVersion": "1.0",
+            "EventSubscriptionArn": sub.subscription_arn,
+            "Sns": {
+                "Type": "Notification",
+                "MessageId": message_id,
+                "TopicArn": topic_arn,
+                "Subject": subject or "",
+                "Message": message,
+                "Timestamp": timestamp,
+                "SignatureVersion": "1",
+                "Signature": "EXAMPLE",
+                "SigningCertUrl": f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem",
+                "UnsubscribeUrl": f"https://sns.{region}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
+                "MessageAttributes": sns_message_attributes,
+            },
+        }],
+    }
+
+    # Execute the Lambda function
+    handler = getattr(fn, "handler", "lambda_function.handler")
+    timeout = int(getattr(fn, "timeout", 3) or 3)
+    memory_size = int(getattr(fn, "memory_size", 128) or 128)
+    env_vars = getattr(fn, "environment_vars", {}) or {}
+    layer_zips = get_layer_zips(fn, account_id, region)
+
+    try:
+        result, error_type, logs = execute_python_handler(
+            code_zip=code_zip,
+            handler=handler,
+            event=event,
+            function_name=func_name,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+            layer_zips=layer_zips if layer_zips else None,
+        )
+        if error_type:
+            logger.warning("SNS: Lambda %s returned error %s: %s", func_name, error_type, logs)
+        else:
+            logger.debug("SNS: Lambda %s invoked successfully", func_name)
+    except Exception as e:
+        logger.warning("SNS: Failed to invoke Lambda %s: %s", func_name, e)
+
+
+def _deliver_to_http(
+    sub: SnsSubscription, message: str, subject: str | None,
+    message_attributes: dict, message_id: str, topic_arn: str, region: str,
+) -> None:
+    """Deliver an SNS message to an HTTP/HTTPS endpoint."""
+    import urllib.request
+    import urllib.error
+
+    timestamp = _iso_timestamp()
+    payload = json.dumps({
+        "Type": "Notification",
+        "MessageId": message_id,
+        "TopicArn": topic_arn,
+        "Subject": subject or "",
+        "Message": message,
+        "Timestamp": timestamp,
+        "SignatureVersion": "1",
+        "Signature": "EXAMPLE",
+        "SigningCertURL": f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem",
+        "UnsubscribeURL": f"https://sns.{region}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={sub.subscription_arn}",
+        "MessageAttributes": {
+            name: {
+                "Type": val.get("DataType", "String"),
+                "Value": val.get("StringValue", val.get("Value", "")),
+            }
+            for name, val in message_attributes.items()
+        },
+    })
+
+    try:
+        req = urllib.request.Request(
+            sub.endpoint,
+            data=payload.encode("utf-8"),
+            headers={
+                "Content-Type": "text/plain; charset=UTF-8",
+                "x-amz-sns-message-type": "Notification",
+                "x-amz-sns-message-id": message_id,
+                "x-amz-sns-topic-arn": topic_arn,
+                "x-amz-sns-subscription-arn": sub.subscription_arn,
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+        logger.debug("SNS: Delivered to HTTP endpoint %s", sub.endpoint)
+    except Exception as e:
+        logger.warning("SNS: Failed to deliver to HTTP endpoint %s: %s", sub.endpoint, e)
 
 
 def _iso_timestamp() -> str:
