@@ -18,6 +18,7 @@ from robotocore.gateway.router import route_to_service
 from robotocore.providers.moto_bridge import forward_to_moto
 from robotocore.services.cloudformation.provider import handle_cloudformation_request
 from robotocore.services.firehose.provider import handle_firehose_request
+from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.s3.provider import handle_s3_request
 from robotocore.services.sns.provider import handle_sns_request
 from robotocore.services.sqs.provider import handle_sqs_request
@@ -26,6 +27,7 @@ from robotocore.services.sqs.provider import handle_sqs_request
 NATIVE_PROVIDERS = {
     "cloudformation": handle_cloudformation_request,
     "firehose": handle_firehose_request,
+    "lambda": handle_lambda_request,
     "s3": handle_s3_request,
     "sqs": handle_sqs_request,
     "sns": handle_sns_request,
