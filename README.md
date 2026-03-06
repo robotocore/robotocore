@@ -118,6 +118,10 @@ uv run python scripts/parity_report.py
 └──────────────────────────────────────────────┘
 ```
 
+## Author
+
+Brought to you by [Jack Danger](https://github.com/jackdanger), one of the maintainers of [Moto](https://github.com/getmoto/moto).
+
 ## License
 
 MIT — free forever.
