@@ -203,3 +203,21 @@ When using Claude Code agents on this project:
 - Run tests after every change
 - Keep compatibility tests as the north star — if it works the same as LocalStack, it's correct
 - Prefer extending Moto over reimplementing from scratch
+
+### Parallel work with git worktrees
+- Use `isolation: "worktree"` when multiple agents need to edit files simultaneously — each gets its own repo copy, no conflicts
+- Do NOT use worktrees for read-only research (Explore agents) — wasteful
+- Fan out by file/module: give each agent a non-overlapping set of files
+- After agents complete, review their worktree branches and merge/cherry-pick results
+
+### Build CLI tools first
+- Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
+- Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
+- Run `uv run python scripts/<tool>.py` to analyze, then spawn agents to act on the results
+- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `coverage_gaps.py`, `analyze_localstack.py`
+
+### Subagent patterns
+- **Research first**: Use Explore agents (parallel, no worktree) to understand the problem, then code agents to implement
+- **Build tool → fan out**: Create a script, then spawn parallel agents each running it on different targets
+- **Verify always**: Every code agent prompt must include "run tests after changes"
+- **Be specific**: Tell agents exactly which files to edit, what to change, and what NOT to change
