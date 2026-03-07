@@ -70,6 +70,34 @@ class TestSecretsManagerOperations:
         assert response["SecretString"] == "v2"
         sm.delete_secret(SecretId="put-val/secret", ForceDeleteWithoutRecovery=True)
 
+    def test_put_secret_value_with_staging(self, sm):
+        """Test put_secret_value with a new value and verify it becomes current."""
+        sm.create_secret(Name="staging/secret", SecretString="initial")
+        sm.put_secret_value(SecretId="staging/secret", SecretString="staged-value")
+        response = sm.get_secret_value(SecretId="staging/secret")
+        assert response["SecretString"] == "staged-value"
+        sm.delete_secret(SecretId="staging/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_tag_and_untag_secret(self, sm):
+        """Test tagging and untagging a secret."""
+        sm.create_secret(Name="tagging/secret", SecretString="val")
+        sm.tag_resource(
+            SecretId="tagging/secret",
+            Tags=[{"Key": "team", "Value": "platform"}, {"Key": "env", "Value": "dev"}],
+        )
+        response = sm.describe_secret(SecretId="tagging/secret")
+        tags = {t["Key"]: t["Value"] for t in response.get("Tags", [])}
+        assert tags["team"] == "platform"
+        assert tags["env"] == "dev"
+
+        sm.untag_resource(SecretId="tagging/secret", TagKeys=["team"])
+        response = sm.describe_secret(SecretId="tagging/secret")
+        tags = {t["Key"]: t["Value"] for t in response.get("Tags", [])}
+        assert "team" not in tags
+        assert tags["env"] == "dev"
+
+        sm.delete_secret(SecretId="tagging/secret", ForceDeleteWithoutRecovery=True)
+
     def test_rotate_secret_config(self, sm):
         """Test describe shows rotation config fields."""
         sm.create_secret(Name="rotate/secret", SecretString="val")

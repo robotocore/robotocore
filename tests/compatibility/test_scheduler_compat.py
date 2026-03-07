@@ -278,6 +278,79 @@ class TestSchedulerOperations:
         assert got["EndDate"] is not None
         scheduler.delete_schedule(Name="dated-schedule")
 
+    def test_update_schedule_expression_and_verify(self, scheduler):
+        """Create a schedule with rate(1 hour), update to rate(30 minutes), verify all fields."""
+        target = {
+            "Arn": "arn:aws:sqs:us-east-1:123456789012:queue",
+            "RoleArn": "arn:aws:iam::123456789012:role/role",
+        }
+        flexible = {"Mode": "OFF"}
+        scheduler.create_schedule(
+            Name="update-verify-schedule",
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow=flexible,
+            Target=target,
+        )
+        try:
+            scheduler.update_schedule(
+                Name="update-verify-schedule",
+                ScheduleExpression="rate(30 minutes)",
+                FlexibleTimeWindow=flexible,
+                Target=target,
+            )
+            got = scheduler.get_schedule(Name="update-verify-schedule")
+            assert got["ScheduleExpression"] == "rate(30 minutes)"
+            assert got["FlexibleTimeWindow"]["Mode"] == "OFF"
+            assert got["Target"]["Arn"] == target["Arn"]
+            assert got["Target"]["RoleArn"] == target["RoleArn"]
+        finally:
+            scheduler.delete_schedule(Name="update-verify-schedule")
+
+    def test_schedule_start_and_end_date_are_returned(self, scheduler):
+        """Create schedule with StartDate and EndDate, verify they are returned."""
+        from datetime import datetime, timezone
+
+        start = datetime(2030, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2030, 12, 15, 12, 0, 0, tzinfo=timezone.utc)
+        scheduler.create_schedule(
+            Name="dated-verify-schedule",
+            ScheduleExpression="rate(1 day)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            StartDate=start,
+            EndDate=end,
+            Target={
+                "Arn": "arn:aws:sqs:us-east-1:123456789012:queue",
+                "RoleArn": "arn:aws:iam::123456789012:role/role",
+            },
+        )
+        try:
+            got = scheduler.get_schedule(Name="dated-verify-schedule")
+            assert got["StartDate"].year == 2030
+            assert got["EndDate"].year == 2030
+        finally:
+            scheduler.delete_schedule(Name="dated-verify-schedule")
+
+    def test_create_schedule_in_named_group(self, scheduler):
+        """Create a schedule group, create a schedule in that group, verify via get."""
+        scheduler.create_schedule_group(Name="named-group")
+        try:
+            scheduler.create_schedule(
+                Name="grouped-sched",
+                GroupName="named-group",
+                ScheduleExpression="rate(1 hour)",
+                FlexibleTimeWindow={"Mode": "OFF"},
+                Target={
+                    "Arn": "arn:aws:sqs:us-east-1:123456789012:queue",
+                    "RoleArn": "arn:aws:iam::123456789012:role/role",
+                },
+            )
+            got = scheduler.get_schedule(Name="grouped-sched", GroupName="named-group")
+            assert got["Name"] == "grouped-sched"
+            assert got["GroupName"] == "named-group"
+            scheduler.delete_schedule(Name="grouped-sched", GroupName="named-group")
+        finally:
+            scheduler.delete_schedule_group(Name="named-group")
+
     def test_schedule_group_tags(self, scheduler):
         """Create a schedule group with tags and list them."""
         scheduler.create_schedule_group(

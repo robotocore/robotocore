@@ -113,6 +113,82 @@ class TestDynamoDBOperations:
         response = dynamodb.scan(TableName=table)
         assert response["Count"] >= 2
 
+    def test_batch_write_and_batch_get_item(self, dynamodb):
+        """batch_write_item to put 3 items, batch_get_item to retrieve them."""
+        tname = f"test-bwbg-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=tname,
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            dynamodb.batch_write_item(
+                RequestItems={
+                    tname: [
+                        {"PutRequest": {"Item": {"id": {"S": "bw-1"}, "v": {"S": "a"}}}},
+                        {"PutRequest": {"Item": {"id": {"S": "bw-2"}, "v": {"S": "b"}}}},
+                        {"PutRequest": {"Item": {"id": {"S": "bw-3"}, "v": {"S": "c"}}}},
+                    ]
+                }
+            )
+            response = dynamodb.batch_get_item(
+                RequestItems={
+                    tname: {
+                        "Keys": [
+                            {"id": {"S": "bw-1"}},
+                            {"id": {"S": "bw-2"}},
+                            {"id": {"S": "bw-3"}},
+                        ]
+                    }
+                }
+            )
+            items = response["Responses"][tname]
+            assert len(items) == 3
+            ids = sorted(item["id"]["S"] for item in items)
+            assert ids == ["bw-1", "bw-2", "bw-3"]
+        finally:
+            dynamodb.delete_table(TableName=tname)
+
+    def test_describe_time_to_live(self, dynamodb):
+        """describe_time_to_live returns TimeToLiveDescription."""
+        tname = f"test-dttl-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=tname,
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            response = dynamodb.describe_time_to_live(TableName=tname)
+            assert "TimeToLiveDescription" in response
+        finally:
+            dynamodb.delete_table(TableName=tname)
+
+    def test_update_time_to_live(self, dynamodb):
+        """Enable TTL and verify via describe."""
+        tname = f"test-uttl-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=tname,
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            dynamodb.update_time_to_live(
+                TableName=tname,
+                TimeToLiveSpecification={
+                    "Enabled": True,
+                    "AttributeName": "ttl",
+                },
+            )
+            response = dynamodb.describe_time_to_live(TableName=tname)
+            ttl = response["TimeToLiveDescription"]
+            assert ttl["TimeToLiveStatus"] in ("ENABLED", "ENABLING")
+            assert ttl["AttributeName"] == "ttl"
+        finally:
+            dynamodb.delete_table(TableName=tname)
+
     def test_update_item(self, dynamodb, table):
         dynamodb.put_item(TableName=table, Item={"pk": {"S": "upd"}, "cnt": {"N": "0"}})
         dynamodb.update_item(
@@ -430,6 +506,39 @@ class TestTransactions:
         # Verify delete
         r3 = dynamodb.get_item(TableName=table, Key={"pk": {"S": "txn-delete-me"}})
         assert "Item" not in r3
+
+    def test_transact_write_items_two_puts(self, dynamodb):
+        """transact_write_items with 2 Put actions, verify both items exist."""
+        tname = f"test-txn-puts-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=tname,
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            dynamodb.transact_write_items(
+                TransactItems=[
+                    {
+                        "Put": {
+                            "TableName": tname,
+                            "Item": {"id": {"S": "txn-a"}, "val": {"S": "alpha"}},
+                        }
+                    },
+                    {
+                        "Put": {
+                            "TableName": tname,
+                            "Item": {"id": {"S": "txn-b"}, "val": {"S": "beta"}},
+                        }
+                    },
+                ]
+            )
+            r1 = dynamodb.get_item(TableName=tname, Key={"id": {"S": "txn-a"}})
+            assert r1["Item"]["val"]["S"] == "alpha"
+            r2 = dynamodb.get_item(TableName=tname, Key={"id": {"S": "txn-b"}})
+            assert r2["Item"]["val"]["S"] == "beta"
+        finally:
+            dynamodb.delete_table(TableName=tname)
 
     def test_transact_write_items_condition_failure(self, dynamodb, table):
         """transact_write_items fails entirely when a condition check fails."""

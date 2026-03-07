@@ -79,6 +79,29 @@ class TestKMSOperations:
         assert decrypted["Plaintext"] == b"test data"
         kms.delete_alias(AliasName="alias/enc-test")
 
+    def test_get_key_rotation_status(self, kms):
+        key = kms.create_key(Description="rotation status key")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        response = kms.get_key_rotation_status(KeyId=key_id)
+        assert response["KeyRotationEnabled"] is False
+
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_key_enable_disable(self, kms):
+        key = kms.create_key(Description="enable disable key")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        kms.disable_key(KeyId=key_id)
+        desc = kms.describe_key(KeyId=key_id)
+        assert desc["KeyMetadata"]["Enabled"] is False
+
+        kms.enable_key(KeyId=key_id)
+        desc = kms.describe_key(KeyId=key_id)
+        assert desc["KeyMetadata"]["Enabled"] is True
+
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
     def test_tag_key(self, kms):
         key = kms.create_key(Description="tag key", Tags=[{"TagKey": "env", "TagValue": "test"}])
         key_id = key["KeyMetadata"]["KeyId"]

@@ -93,6 +93,48 @@ class TestSNSSubscriptions:
         assert sub_arn not in sub_arns
 
 
+class TestSNSAttributeOperations:
+    def test_set_and_get_topic_attributes(self, sns):
+        arn = sns.create_topic(Name="attr-topic")["TopicArn"]
+        sns.set_topic_attributes(
+            TopicArn=arn,
+            AttributeName="DisplayName",
+            AttributeValue="My Test Display",
+        )
+        attrs = sns.get_topic_attributes(TopicArn=arn)["Attributes"]
+        assert attrs["DisplayName"] == "My Test Display"
+        sns.delete_topic(TopicArn=arn)
+
+    def test_set_and_get_subscription_attributes(self, sns):
+        arn = sns.create_topic(Name="sub-attr-topic")["TopicArn"]
+        sub_arn = sns.subscribe(
+            TopicArn=arn,
+            Protocol="sqs",
+            Endpoint="arn:aws:sqs:us-east-1:123456789012:test",
+        )["SubscriptionArn"]
+        sns.set_subscription_attributes(
+            SubscriptionArn=sub_arn,
+            AttributeName="RawMessageDelivery",
+            AttributeValue="true",
+        )
+        attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
+        assert attrs["RawMessageDelivery"] == "true"
+        sns.unsubscribe(SubscriptionArn=sub_arn)
+        sns.delete_topic(TopicArn=arn)
+
+    def test_list_subscriptions_by_topic_filtered(self, sns):
+        arn = sns.create_topic(Name="list-sub-topic")["TopicArn"]
+        sns.subscribe(
+            TopicArn=arn,
+            Protocol="sqs",
+            Endpoint="arn:aws:sqs:us-east-1:123456789012:test",
+        )
+        subs = sns.list_subscriptions_by_topic(TopicArn=arn)
+        sub_endpoints = [s["Endpoint"] for s in subs["Subscriptions"]]
+        assert "arn:aws:sqs:us-east-1:123456789012:test" in sub_endpoints
+        sns.delete_topic(TopicArn=arn)
+
+
 class TestSNSToSQSDelivery:
     def test_publish_delivers_to_sqs(self, sns, sqs):
         # Create SQS queue

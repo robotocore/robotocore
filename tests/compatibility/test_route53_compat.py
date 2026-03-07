@@ -1,5 +1,7 @@
 """Route53 compatibility tests."""
 
+import uuid
+
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -575,3 +577,138 @@ class TestRoute53ZoneQueries:
                 ]
             },
         )
+
+
+class TestRoute53Extended:
+    def test_get_hosted_zone_details(self, route53):
+        """CreateHostedZone with HostedZoneConfig, then GetHostedZone to verify details."""
+        caller_ref = uuid.uuid4().hex[:8]
+        response = route53.create_hosted_zone(
+            Name="details.example.com",
+            CallerReference=caller_ref,
+            HostedZoneConfig={
+                "Comment": "Zone with details",
+                "PrivateZone": False,
+            },
+        )
+        zone_id = response["HostedZone"]["Id"].split("/")[-1]
+        try:
+            got = route53.get_hosted_zone(Id=zone_id)
+            assert "details.example.com." in got["HostedZone"]["Name"]
+            assert "Config" in got["HostedZone"]
+            assert got["HostedZone"]["Config"]["Comment"] == "Zone with details"
+            assert got["HostedZone"]["Config"]["PrivateZone"] is False
+            assert "DelegationSet" in got
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_get_hosted_zone_count(self, route53):
+        """GetHostedZoneCount returns HostedZoneCount as an int."""
+        response = route53.get_hosted_zone_count()
+        assert "HostedZoneCount" in response
+        assert isinstance(response["HostedZoneCount"], int)
+
+    def test_list_health_checks(self, route53):
+        """Create a health check, list health checks, verify ID present, then clean up."""
+        caller_ref = uuid.uuid4().hex[:8]
+        create_resp = route53.create_health_check(
+            CallerReference=caller_ref,
+            HealthCheckConfig={
+                "Type": "HTTP",
+                "FullyQualifiedDomainName": "healthcheck.example.com",
+                "Port": 80,
+                "ResourcePath": "/",
+            },
+        )
+        hc_id = create_resp["HealthCheck"]["Id"]
+        try:
+            list_resp = route53.list_health_checks()
+            hc_ids = [hc["Id"] for hc in list_resp["HealthChecks"]]
+            assert hc_id in hc_ids
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+    def test_create_mx_record(self, route53, hosted_zone):
+        """Create an MX record via ChangeResourceRecordSets, list and verify, then clean up."""
+        route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone,
+            ChangeBatch={
+                "Changes": [
+                    {
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": "mx.example.com",
+                            "Type": "MX",
+                            "TTL": 300,
+                            "ResourceRecords": [{"Value": "10 mail.example.com"}],
+                        },
+                    }
+                ]
+            },
+        )
+        try:
+            response = route53.list_resource_record_sets(HostedZoneId=hosted_zone)
+            mx_records = [r for r in response["ResourceRecordSets"] if r["Type"] == "MX"]
+            assert len(mx_records) >= 1
+            values = [rr["Value"] for rec in mx_records for rr in rec["ResourceRecords"]]
+            assert "10 mail.example.com" in values
+        finally:
+            route53.change_resource_record_sets(
+                HostedZoneId=hosted_zone,
+                ChangeBatch={
+                    "Changes": [
+                        {
+                            "Action": "DELETE",
+                            "ResourceRecordSet": {
+                                "Name": "mx.example.com",
+                                "Type": "MX",
+                                "TTL": 300,
+                                "ResourceRecords": [{"Value": "10 mail.example.com"}],
+                            },
+                        }
+                    ]
+                },
+            )
+
+    def test_create_txt_record(self, route53, hosted_zone):
+        """Create a TXT record with quoted value, list and verify, then clean up."""
+        txt_value = '"v=spf1 include:example.com ~all"'
+        route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone,
+            ChangeBatch={
+                "Changes": [
+                    {
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": "txt.example.com",
+                            "Type": "TXT",
+                            "TTL": 300,
+                            "ResourceRecords": [{"Value": txt_value}],
+                        },
+                    }
+                ]
+            },
+        )
+        try:
+            response = route53.list_resource_record_sets(HostedZoneId=hosted_zone)
+            txt_records = [r for r in response["ResourceRecordSets"] if r["Type"] == "TXT"]
+            assert len(txt_records) >= 1
+            values = [rr["Value"] for rec in txt_records for rr in rec["ResourceRecords"]]
+            assert txt_value in values
+        finally:
+            route53.change_resource_record_sets(
+                HostedZoneId=hosted_zone,
+                ChangeBatch={
+                    "Changes": [
+                        {
+                            "Action": "DELETE",
+                            "ResourceRecordSet": {
+                                "Name": "txt.example.com",
+                                "Type": "TXT",
+                                "TTL": 300,
+                                "ResourceRecords": [{"Value": txt_value}],
+                            },
+                        }
+                    ]
+                },
+            )

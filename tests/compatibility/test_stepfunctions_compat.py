@@ -176,6 +176,60 @@ class TestStepFunctionsOperations:
         for exc in response["executions"]:
             assert exc["status"] == "SUCCEEDED"
 
+    def test_list_executions_contains_started(self, sfn):
+        """Create state machine, start execution, verify it appears in list_executions."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"test-list-exec-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps(
+            {"Comment": "test", "StartAt": "Pass", "States": {"Pass": {"Type": "Pass", "End": True}}}
+        )
+        sm = sfn.create_state_machine(name=sm_name, definition=definition, roleArn=role_arn)
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            exec_arn = exec_resp["executionArn"]
+            response = sfn.list_executions(stateMachineArn=sm_arn)
+            exec_arns = [e["executionArn"] for e in response["executions"]]
+            assert exec_arn in exec_arns
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_describe_execution_details(self, sfn):
+        """Create state machine, start execution, describe and verify fields."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"test-desc-exec-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps(
+            {"Comment": "test", "StartAt": "Pass", "States": {"Pass": {"Type": "Pass", "End": True}}}
+        )
+        sm = sfn.create_state_machine(name=sm_name, definition=definition, roleArn=role_arn)
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            exec_arn = exec_resp["executionArn"]
+            response = sfn.describe_execution(executionArn=exec_arn)
+            assert response["stateMachineArn"] == sm_arn
+            assert response["status"] in ("RUNNING", "SUCCEEDED")
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_stop_execution(self, sfn):
+        """Create state machine with Wait state, start, stop, verify ABORTED."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"test-stop-exec-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps(
+            {"Comment": "test", "StartAt": "Wait", "States": {"Wait": {"Type": "Wait", "Seconds": 300, "End": True}}}
+        )
+        sm = sfn.create_state_machine(name=sm_name, definition=definition, roleArn=role_arn)
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            exec_arn = exec_resp["executionArn"]
+            sfn.stop_execution(executionArn=exec_arn)
+            response = sfn.describe_execution(executionArn=exec_arn)
+            assert response["status"] == "ABORTED"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
 
 class TestStepFunctionsExecutionHistory:
     def test_get_execution_history(self, sfn, state_machine):
