@@ -16,9 +16,13 @@ from robotocore.services.firehose.provider import (
     _error,
     _flush_buffer,
     _list_delivery_streams,
+    _list_tags_for_delivery_stream,
     _put_record,
     _put_record_batch,
     _stream_buffers,
+    _stream_tags,
+    _tag_delivery_stream,
+    _untag_delivery_stream,
     _write_to_s3,
     handle_firehose_request,
 )
@@ -66,9 +70,11 @@ def _clear_streams():
     """Reset global state between tests."""
     _delivery_streams.clear()
     _stream_buffers.clear()
+    _stream_tags.clear()
     yield
     _delivery_streams.clear()
     _stream_buffers.clear()
+    _stream_tags.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +324,103 @@ class TestWriteToS3:
     def test_exception_is_silenced(self):
         with patch("moto.backends.get_backend", side_effect=Exception("fail")):
             _write_to_s3("bucket", "key", b"data", "us-east-1")
+
+
+# ---------------------------------------------------------------------------
+# _tag_delivery_stream / _untag_delivery_stream / _list_tags_for_delivery_stream
+# ---------------------------------------------------------------------------
+
+
+class TestTagDeliveryStream:
+    def test_tag_stream(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _tag_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "Tags": [{"Key": "env", "Value": "dev"}],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        assert result["Tags"] == [{"Key": "env", "Value": "dev"}]
+
+    def test_tag_overwrites_existing_key(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _tag_delivery_stream(
+            {"DeliveryStreamName": "s1", "Tags": [{"Key": "env", "Value": "dev"}]},
+            "us-east-1",
+            "123456789012",
+        )
+        _tag_delivery_stream(
+            {"DeliveryStreamName": "s1", "Tags": [{"Key": "env", "Value": "prod"}]},
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        assert len(result["Tags"]) == 1
+        assert result["Tags"][0]["Value"] == "prod"
+
+    def test_tag_nonexistent_stream_raises(self):
+        with pytest.raises(FirehoseError) as exc:
+            _tag_delivery_stream(
+                {"DeliveryStreamName": "nope", "Tags": []}, "us-east-1", "123456789012"
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+
+class TestUntagDeliveryStream:
+    def test_untag_stream(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _tag_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "Tags": [
+                    {"Key": "env", "Value": "dev"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        _untag_delivery_stream(
+            {"DeliveryStreamName": "s1", "TagKeys": ["env"]},
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        keys = [t["Key"] for t in result["Tags"]]
+        assert "env" not in keys
+        assert "team" in keys
+
+    def test_untag_nonexistent_stream_raises(self):
+        with pytest.raises(FirehoseError) as exc:
+            _untag_delivery_stream(
+                {"DeliveryStreamName": "nope", "TagKeys": ["x"]}, "us-east-1", "123456789012"
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+
+class TestListTagsForDeliveryStream:
+    def test_empty_tags(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        assert result["Tags"] == []
+        assert result["HasMoreTags"] is False
+
+    def test_not_found_raises(self):
+        with pytest.raises(FirehoseError):
+            _list_tags_for_delivery_stream(
+                {"DeliveryStreamName": "nope"}, "us-east-1", "123456789012"
+            )
 
 
 # ---------------------------------------------------------------------------

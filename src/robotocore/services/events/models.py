@@ -107,6 +107,7 @@ class EventsStore:
         self.buses: dict[str, EventBus] = {}
         self.archives: dict[str, EventArchive] = {}
         self.replays: dict[str, EventReplay] = {}
+        self.tags: dict[str, list[dict]] = {}  # ARN -> [{Key, Value}, ...]
         self.mutex = threading.RLock()
         # Create default bus
         self.buses["default"] = EventBus(
@@ -338,6 +339,26 @@ class EventsStore:
 
     def get_replay(self, name: str) -> EventReplay | None:
         return self.replays.get(name)
+
+    # -- Tag operations --
+
+    def tag_resource(self, resource_arn: str, tags: list[dict]) -> None:
+        """Add or overwrite tags on a resource."""
+        with self.mutex:
+            existing = {t["Key"]: t for t in self.tags.get(resource_arn, [])}
+            for tag in tags:
+                existing[tag["Key"]] = tag
+            self.tags[resource_arn] = list(existing.values())
+
+    def untag_resource(self, resource_arn: str, tag_keys: list[str]) -> None:
+        """Remove tags by key from a resource."""
+        with self.mutex:
+            current = self.tags.get(resource_arn, [])
+            self.tags[resource_arn] = [t for t in current if t["Key"] not in tag_keys]
+
+    def list_tags_for_resource(self, resource_arn: str) -> list[dict]:
+        """Return tags for a resource ARN."""
+        return list(self.tags.get(resource_arn, []))
 
 
 def _match_pattern(pattern: dict, event: dict) -> bool:

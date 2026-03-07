@@ -519,7 +519,6 @@ class TestASLExecution:
 
 
 class TestStepFunctionsTags:
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_tag_and_list_tags(self):
         """Tag a state machine and list tags."""
         sfn = make_client("stepfunctions")
