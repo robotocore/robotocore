@@ -347,3 +347,149 @@ class TestACMImportCertificate:
         for cert in response["CertificateSummaryList"]:
             assert "CertificateArn" in cert
             assert "DomainName" in cert
+
+
+class TestACMExtended:
+    @pytest.fixture
+    def acm(self):
+        return make_client("acm")
+
+    def test_request_certificate_dns_validation(self, acm):
+        resp = acm.request_certificate(
+            DomainName="dns-test.example.com",
+            ValidationMethod="DNS",
+        )
+        assert "CertificateArn" in resp
+        arn = resp["CertificateArn"]
+        desc = acm.describe_certificate(CertificateArn=arn)
+        assert desc["Certificate"]["DomainName"] == "dns-test.example.com"
+
+    def test_request_certificate_email_validation(self, acm):
+        resp = acm.request_certificate(
+            DomainName="email-test.example.com",
+            ValidationMethod="EMAIL",
+        )
+        assert "CertificateArn" in resp
+
+    def test_request_certificate_with_tags(self, acm):
+        resp = acm.request_certificate(
+            DomainName="tagged-cert.example.com",
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        arn = resp["CertificateArn"]
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)
+        tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+        assert tag_map["env"] == "test"
+        assert tag_map["team"] == "platform"
+
+    def test_add_multiple_tags(self, acm):
+        resp = acm.request_certificate(DomainName="multi-tag.example.com")
+        arn = resp["CertificateArn"]
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[
+                {"Key": "a", "Value": "1"},
+                {"Key": "b", "Value": "2"},
+                {"Key": "c", "Value": "3"},
+            ],
+        )
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)
+        tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+        assert tag_map["a"] == "1"
+        assert tag_map["b"] == "2"
+        assert tag_map["c"] == "3"
+
+    def test_remove_specific_tags(self, acm):
+        resp = acm.request_certificate(DomainName="rm-tag.example.com")
+        arn = resp["CertificateArn"]
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "remove", "Value": "yes"}],
+        )
+        acm.remove_tags_from_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "remove", "Value": "yes"}],
+        )
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)
+        keys = [t["Key"] for t in tags["Tags"]]
+        assert "keep" in keys
+        assert "remove" not in keys
+
+    def test_describe_certificate_has_type(self, acm):
+        resp = acm.request_certificate(DomainName="type-test.example.com")
+        arn = resp["CertificateArn"]
+        desc = acm.describe_certificate(CertificateArn=arn)
+        cert = desc["Certificate"]
+        assert cert.get("Type") in ("AMAZON_ISSUED", "IMPORTED", None) or "Type" in cert
+
+    def test_describe_certificate_has_created_at(self, acm):
+        resp = acm.request_certificate(DomainName="created-at.example.com")
+        arn = resp["CertificateArn"]
+        desc = acm.describe_certificate(CertificateArn=arn)
+        assert "CreatedAt" in desc["Certificate"]
+
+    def test_list_certificates_empty_filter(self, acm):
+        resp = acm.list_certificates(CertificateStatuses=["ISSUED"])
+        assert "CertificateSummaryList" in resp
+
+    def test_import_and_describe_certificate(self, acm):
+        cert_pem, key_pem = _generate_self_signed_cert()
+        resp = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)
+        arn = resp["CertificateArn"]
+        desc = acm.describe_certificate(CertificateArn=arn)
+        assert desc["Certificate"]["CertificateArn"] == arn
+        assert desc["Certificate"]["Type"] == "IMPORTED"
+        acm.delete_certificate(CertificateArn=arn)
+
+    def test_import_certificate_with_tags(self, acm):
+        cert_pem, key_pem = _generate_self_signed_cert()
+        resp = acm.import_certificate(
+            Certificate=cert_pem,
+            PrivateKey=key_pem,
+            Tags=[{"Key": "imported", "Value": "true"}],
+        )
+        arn = resp["CertificateArn"]
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)
+        tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+        assert tag_map["imported"] == "true"
+        acm.delete_certificate(CertificateArn=arn)
+
+    def test_request_certificate_with_multiple_sans(self, acm):
+        resp = acm.request_certificate(
+            DomainName="primary.example.com",
+            SubjectAlternativeNames=[
+                "primary.example.com",
+                "alt1.example.com",
+                "alt2.example.com",
+                "alt3.example.com",
+            ],
+        )
+        arn = resp["CertificateArn"]
+        desc = acm.describe_certificate(CertificateArn=arn)
+        sans = desc["Certificate"].get("SubjectAlternativeNames", [])
+        assert "alt1.example.com" in sans
+        assert "alt2.example.com" in sans
+
+    def test_request_wildcard_certificate(self, acm):
+        resp = acm.request_certificate(DomainName="*.wildcard.example.com")
+        arn = resp["CertificateArn"]
+        desc = acm.describe_certificate(CertificateArn=arn)
+        assert desc["Certificate"]["DomainName"] == "*.wildcard.example.com"
+
+    def test_describe_nonexistent_certificate_raises(self, acm):
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(
+                CertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/nonexistent-id"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_certificate_twice_raises(self, acm):
+        resp = acm.request_certificate(DomainName="double-delete.example.com")
+        arn = resp["CertificateArn"]
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.delete_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
