@@ -176,7 +176,7 @@ All LocalStack Community services are implemented. 38 have native providers with
 
 **Native providers** (38): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
 
-**Test coverage**: 4815 tests (2524 unit + 2249 compat + 42 integration), 0 failures, 0 xfails. 83 services have compat tests; ~75 Moto-backed services still need compat test coverage.
+**Test coverage**: 5127 tests (2520 unit + 2565 compat + 42 integration), 0 failures, 0 xfails. 122 services have compat tests; ~36 Moto-backed services still need compat test coverage.
 
 ## Adding a New Moto-Backed Service (Checklist)
 
