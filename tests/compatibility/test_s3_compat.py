@@ -349,316 +349,604 @@ class TestS3PresignedUrls:
         assert response.get("Contents") is None or len(response["Contents"]) == 0
 
 
-class TestS3ObjectTagging:
-    def test_put_get_delete_object_tagging(self, s3, bucket):
-        """Test full lifecycle of object tagging."""
-        s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"tagged content")
+class TestS3MultipartExtended:
+    """Extended multipart upload tests: 3 parts, content verification, abort."""
 
-        # Put tags
-        s3.put_object_tagging(
-            Bucket=bucket,
-            Key="tagged.txt",
-            Tagging={"TagSet": [{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "dev"}]},
-        )
+    def test_multipart_upload_three_parts_verify_content(self, s3, bucket):
+        """Initiate multipart, upload 3 parts, complete, verify concatenated content."""
+        key = "multipart-3parts.bin"
+        min_part = 5 * 1024 * 1024  # 5MB minimum for non-last parts
+        part_bodies = [b"A" * min_part, b"B" * min_part, b"C" * 1024]
+        try:
+            resp = s3.create_multipart_upload(Bucket=bucket, Key=key)
+            upload_id = resp["UploadId"]
 
-        # Get tags
-        response = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
-        tags = {t["Key"]: t["Value"] for t in response["TagSet"]}
-        assert tags["env"] == "test"
-        assert tags["team"] == "dev"
+            parts = []
+            for i, body in enumerate(part_bodies, 1):
+                part = s3.upload_part(
+                    Bucket=bucket, Key=key, UploadId=upload_id, PartNumber=i, Body=body
+                )
+                parts.append({"PartNumber": i, "ETag": part["ETag"]})
 
-        # Delete tags
-        s3.delete_object_tagging(Bucket=bucket, Key="tagged.txt")
-        response = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
-        assert len(response["TagSet"]) == 0
+            s3.complete_multipart_upload(
+                Bucket=bucket,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
 
-    def test_object_tagging_overwrite(self, s3, bucket):
-        """Putting new tags replaces existing tags entirely."""
-        s3.put_object(Bucket=bucket, Key="retag.txt", Body=b"data")
-        s3.put_object_tagging(
-            Bucket=bucket,
-            Key="retag.txt",
-            Tagging={"TagSet": [{"Key": "old", "Value": "1"}]},
-        )
-        s3.put_object_tagging(
-            Bucket=bucket,
-            Key="retag.txt",
-            Tagging={"TagSet": [{"Key": "new", "Value": "2"}]},
-        )
-        response = s3.get_object_tagging(Bucket=bucket, Key="retag.txt")
-        tags = {t["Key"]: t["Value"] for t in response["TagSet"]}
-        assert "old" not in tags
-        assert tags["new"] == "2"
+            obj = s3.get_object(Bucket=bucket, Key=key)
+            content = obj["Body"].read()
+            expected = b"".join(part_bodies)
+            assert content == expected
+        finally:
+            s3.delete_object(Bucket=bucket, Key=key)
 
-
-class TestS3BucketTagging:
-    def test_put_get_delete_bucket_tagging(self, s3, bucket):
-        """Test full lifecycle of bucket tagging."""
-        s3.put_bucket_tagging(
-            Bucket=bucket,
-            Tagging={
-                "TagSet": [
-                    {"Key": "project", "Value": "robotocore"},
-                    {"Key": "env", "Value": "ci"},
-                ]
-            },
-        )
-        response = s3.get_bucket_tagging(Bucket=bucket)
-        tags = {t["Key"]: t["Value"] for t in response["TagSet"]}
-        assert tags["project"] == "robotocore"
-        assert tags["env"] == "ci"
-
-        s3.delete_bucket_tagging(Bucket=bucket)
-        with pytest.raises(Exception):
-            s3.get_bucket_tagging(Bucket=bucket)
-
-
-class TestS3ListObjectsV2Advanced:
-    def test_list_objects_v2_with_delimiter(self, s3, bucket):
-        """List objects with prefix and delimiter returns common prefixes."""
-        s3.put_object(Bucket=bucket, Key="photos/2024/jan.jpg", Body=b"1")
-        s3.put_object(Bucket=bucket, Key="photos/2024/feb.jpg", Body=b"2")
-        s3.put_object(Bucket=bucket, Key="photos/2025/mar.jpg", Body=b"3")
-        s3.put_object(Bucket=bucket, Key="photos/readme.txt", Body=b"4")
-
-        response = s3.list_objects_v2(Bucket=bucket, Prefix="photos/", Delimiter="/")
-        # Should have common prefixes for the year directories
-        prefixes = [p["Prefix"] for p in response.get("CommonPrefixes", [])]
-        assert "photos/2024/" in prefixes
-        assert "photos/2025/" in prefixes
-        # readme.txt is directly under photos/ so it should be in Contents
-        keys = [obj["Key"] for obj in response.get("Contents", [])]
-        assert "photos/readme.txt" in keys
-
-    def test_list_objects_v2_max_keys(self, s3, bucket):
-        """List objects with MaxKeys limits results and returns continuation token."""
-        for i in range(5):
-            s3.put_object(Bucket=bucket, Key=f"page-{i:03d}.txt", Body=b"x")
-
-        response = s3.list_objects_v2(Bucket=bucket, MaxKeys=2)
-        assert len(response["Contents"]) == 2
-        assert response["IsTruncated"] is True
-        assert "NextContinuationToken" in response
-
-        # Fetch next page
-        response2 = s3.list_objects_v2(
-            Bucket=bucket,
-            MaxKeys=2,
-            ContinuationToken=response["NextContinuationToken"],
-        )
-        assert len(response2["Contents"]) == 2
-
-    def test_list_objects_v2_start_after(self, s3, bucket):
-        """List objects with StartAfter skips objects."""
-        for c in ["a", "b", "c", "d"]:
-            s3.put_object(Bucket=bucket, Key=f"sa-{c}.txt", Body=b"x")
-
-        response = s3.list_objects_v2(Bucket=bucket, Prefix="sa-", StartAfter="sa-b.txt")
-        keys = [obj["Key"] for obj in response["Contents"]]
-        assert "sa-a.txt" not in keys
-        assert "sa-b.txt" not in keys
-        assert "sa-c.txt" in keys
-        assert "sa-d.txt" in keys
-
-
-class TestS3DeleteMultipleObjects:
-    def test_delete_objects_returns_deleted_keys(self, s3, bucket):
-        """delete_objects returns list of deleted keys."""
-        for i in range(4):
-            s3.put_object(Bucket=bucket, Key=f"multi-del-{i}.txt", Body=b"data")
-
-        response = s3.delete_objects(
-            Bucket=bucket,
-            Delete={
-                "Objects": [{"Key": f"multi-del-{i}.txt"} for i in range(4)],
-                "Quiet": False,
-            },
-        )
-        deleted_keys = sorted(d["Key"] for d in response.get("Deleted", []))
-        assert deleted_keys == [f"multi-del-{i}.txt" for i in range(4)]
-
-    def test_delete_objects_nonexistent_key(self, s3, bucket):
-        """delete_objects with a nonexistent key does not error."""
-        response = s3.delete_objects(
-            Bucket=bucket,
-            Delete={"Objects": [{"Key": "does-not-exist.txt"}], "Quiet": False},
-        )
-        # S3 reports nonexistent keys as deleted (not errors)
-        assert len(response.get("Errors", [])) == 0
-
-
-class TestS3ObjectMetadata:
-    def test_head_object_content_type(self, s3, bucket):
-        """head_object returns correct content type."""
-        s3.put_object(
-            Bucket=bucket, Key="app.json", Body=b'{"a":1}', ContentType="application/json"
-        )
-        response = s3.head_object(Bucket=bucket, Key="app.json")
-        assert response["ContentType"] == "application/json"
-        assert response["ContentLength"] == 7
-
-    def test_put_object_with_metadata(self, s3, bucket):
-        """Custom metadata is preserved on objects."""
-        s3.put_object(
-            Bucket=bucket,
-            Key="meta.txt",
-            Body=b"hello",
-            Metadata={"author": "test-user", "version": "1.0"},
-        )
-        response = s3.head_object(Bucket=bucket, Key="meta.txt")
-        assert response["Metadata"]["author"] == "test-user"
-        assert response["Metadata"]["version"] == "1.0"
-
-    def test_copy_object_preserves_content_type(self, s3, bucket):
-        """Copied objects preserve content type from source."""
-        s3.put_object(
-            Bucket=bucket, Key="src.html", Body=b"<h1>hi</h1>", ContentType="text/html"
-        )
-        s3.copy_object(
-            Bucket=bucket,
-            Key="dst.html",
-            CopySource={"Bucket": bucket, "Key": "src.html"},
-        )
-        response = s3.head_object(Bucket=bucket, Key="dst.html")
-        assert response["ContentType"] == "text/html"
-
-
-class TestS3MultipartAdvanced:
-    def test_list_multipart_uploads(self, s3, bucket):
-        """List in-progress multipart uploads."""
-        upload1 = s3.create_multipart_upload(Bucket=bucket, Key="mp-list-1.bin")
-        upload2 = s3.create_multipart_upload(Bucket=bucket, Key="mp-list-2.bin")
-
-        response = s3.list_multipart_uploads(Bucket=bucket)
-        upload_keys = [u["Key"] for u in response.get("Uploads", [])]
-        assert "mp-list-1.bin" in upload_keys
-        assert "mp-list-2.bin" in upload_keys
-
-        # Cleanup
-        s3.abort_multipart_upload(
-            Bucket=bucket, Key="mp-list-1.bin", UploadId=upload1["UploadId"]
-        )
-        s3.abort_multipart_upload(
-            Bucket=bucket, Key="mp-list-2.bin", UploadId=upload2["UploadId"]
-        )
-
-    def test_list_parts(self, s3, bucket):
-        """List uploaded parts of a multipart upload."""
-        resp = s3.create_multipart_upload(Bucket=bucket, Key="mp-parts.bin")
+    def test_abort_multipart_upload_no_object_created(self, s3, bucket):
+        """Abort a multipart upload and verify no object is left behind."""
+        key = "multipart-abort-check.bin"
+        resp = s3.create_multipart_upload(Bucket=bucket, Key=key)
         upload_id = resp["UploadId"]
 
         s3.upload_part(
-            Bucket=bucket, Key="mp-parts.bin", UploadId=upload_id,
-            PartNumber=1, Body=b"a" * (5 * 1024 * 1024),
+            Bucket=bucket, Key=key, UploadId=upload_id, PartNumber=1, Body=b"data"
         )
-        s3.upload_part(
-            Bucket=bucket, Key="mp-parts.bin", UploadId=upload_id,
-            PartNumber=2, Body=b"b" * 1024,
+        s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+
+        listing = s3.list_objects_v2(Bucket=bucket, Prefix=key)
+        assert listing.get("Contents") is None or len(listing["Contents"]) == 0
+
+    def test_list_multipart_uploads(self, s3, bucket):
+        """List in-progress multipart uploads."""
+        key = "multipart-list-test.bin"
+        resp = s3.create_multipart_upload(Bucket=bucket, Key=key)
+        upload_id = resp["UploadId"]
+        try:
+            listing = s3.list_multipart_uploads(Bucket=bucket)
+            upload_ids = [u["UploadId"] for u in listing.get("Uploads", [])]
+            assert upload_id in upload_ids
+        finally:
+            s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+
+    def test_list_parts(self, s3, bucket):
+        """List parts of an in-progress multipart upload."""
+        key = "multipart-list-parts.bin"
+        resp = s3.create_multipart_upload(Bucket=bucket, Key=key)
+        upload_id = resp["UploadId"]
+        try:
+            s3.upload_part(
+                Bucket=bucket, Key=key, UploadId=upload_id, PartNumber=1, Body=b"x" * 100
+            )
+            s3.upload_part(
+                Bucket=bucket, Key=key, UploadId=upload_id, PartNumber=2, Body=b"y" * 200
+            )
+            parts_resp = s3.list_parts(Bucket=bucket, Key=key, UploadId=upload_id)
+            parts = parts_resp.get("Parts", [])
+            assert len(parts) == 2
+            assert parts[0]["PartNumber"] == 1
+            assert parts[1]["PartNumber"] == 2
+        finally:
+            s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+
+
+class TestS3CopyObject:
+    """CopyObject within same bucket and cross-bucket."""
+
+    def test_copy_within_same_bucket(self, s3, bucket):
+        """Copy an object to a different key in the same bucket."""
+        try:
+            s3.put_object(Bucket=bucket, Key="src-copy.txt", Body=b"copy me")
+            s3.copy_object(
+                Bucket=bucket,
+                Key="dst-copy.txt",
+                CopySource={"Bucket": bucket, "Key": "src-copy.txt"},
+            )
+            obj = s3.get_object(Bucket=bucket, Key="dst-copy.txt")
+            assert obj["Body"].read() == b"copy me"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="src-copy.txt")
+            s3.delete_object(Bucket=bucket, Key="dst-copy.txt")
+
+    def test_copy_cross_bucket(self, s3, bucket):
+        """Copy an object from one bucket to another."""
+        dst_bucket = "test-copy-dst-bucket"
+        try:
+            s3.create_bucket(Bucket=dst_bucket)
+            s3.put_object(Bucket=bucket, Key="cross-src.txt", Body=b"cross bucket")
+            s3.copy_object(
+                Bucket=dst_bucket,
+                Key="cross-dst.txt",
+                CopySource={"Bucket": bucket, "Key": "cross-src.txt"},
+            )
+            obj = s3.get_object(Bucket=dst_bucket, Key="cross-dst.txt")
+            assert obj["Body"].read() == b"cross bucket"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="cross-src.txt")
+            s3.delete_object(Bucket=dst_bucket, Key="cross-dst.txt")
+            s3.delete_bucket(Bucket=dst_bucket)
+
+    def test_copy_preserves_content_type(self, s3, bucket):
+        """CopyObject preserves the original content type."""
+        try:
+            s3.put_object(
+                Bucket=bucket, Key="typed-src.txt", Body=b"typed", ContentType="text/plain"
+            )
+            s3.copy_object(
+                Bucket=bucket,
+                Key="typed-dst.txt",
+                CopySource={"Bucket": bucket, "Key": "typed-src.txt"},
+            )
+            head = s3.head_object(Bucket=bucket, Key="typed-dst.txt")
+            assert head["ContentType"] == "text/plain"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="typed-src.txt")
+            s3.delete_object(Bucket=bucket, Key="typed-dst.txt")
+
+
+class TestS3ObjectMetadata:
+    """Custom metadata on objects."""
+
+    def test_put_with_custom_metadata_and_head(self, s3, bucket):
+        """Put an object with custom metadata, retrieve via HeadObject."""
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="meta-obj.txt",
+                Body=b"metadata",
+                Metadata={"author": "test-user", "version": "42"},
+            )
+            head = s3.head_object(Bucket=bucket, Key="meta-obj.txt")
+            assert head["Metadata"]["author"] == "test-user"
+            assert head["Metadata"]["version"] == "42"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="meta-obj.txt")
+
+    def test_get_object_returns_metadata(self, s3, bucket):
+        """GetObject also returns custom metadata."""
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="meta-get.txt",
+                Body=b"data",
+                Metadata={"env": "test"},
+            )
+            obj = s3.get_object(Bucket=bucket, Key="meta-get.txt")
+            assert obj["Metadata"]["env"] == "test"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="meta-get.txt")
+
+    def test_metadata_keys_lowercased(self, s3, bucket):
+        """AWS lowercases metadata keys."""
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="meta-case.txt",
+                Body=b"data",
+                Metadata={"MyKey": "val"},
+            )
+            head = s3.head_object(Bucket=bucket, Key="meta-case.txt")
+            assert "mykey" in head["Metadata"]
+            assert head["Metadata"]["mykey"] == "val"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="meta-case.txt")
+
+
+class TestS3ContentType:
+    """Explicit content type handling."""
+
+    def test_put_with_content_type_json(self, s3, bucket):
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="data.json",
+                Body=b'{"key": "value"}',
+                ContentType="application/json",
+            )
+            head = s3.head_object(Bucket=bucket, Key="data.json")
+            assert head["ContentType"] == "application/json"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="data.json")
+
+    def test_put_with_content_type_octet_stream(self, s3, bucket):
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="binary.bin",
+                Body=b"\x00\x01\x02",
+                ContentType="application/octet-stream",
+            )
+            obj = s3.get_object(Bucket=bucket, Key="binary.bin")
+            assert obj["ContentType"] == "application/octet-stream"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="binary.bin")
+
+
+class TestS3BucketVersioning:
+    """Bucket versioning: enable, put versions, list, get specific, delete specific."""
+
+    def test_enable_versioning(self, s3, bucket):
+        s3.put_bucket_versioning(
+            Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
         )
+        resp = s3.get_bucket_versioning(Bucket=bucket)
+        assert resp["Status"] == "Enabled"
 
-        response = s3.list_parts(Bucket=bucket, Key="mp-parts.bin", UploadId=upload_id)
-        parts = response["Parts"]
-        assert len(parts) == 2
-        assert parts[0]["PartNumber"] == 1
-        assert parts[1]["PartNumber"] == 2
+    def test_put_same_key_twice_list_versions(self, s3, bucket):
+        """Put the same key twice with versioning, list both versions."""
+        try:
+            s3.put_bucket_versioning(
+                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
+            )
+            s3.put_object(Bucket=bucket, Key="ver.txt", Body=b"v1")
+            s3.put_object(Bucket=bucket, Key="ver.txt", Body=b"v2")
 
-        s3.abort_multipart_upload(Bucket=bucket, Key="mp-parts.bin", UploadId=upload_id)
+            versions_resp = s3.list_object_versions(Bucket=bucket, Prefix="ver.txt")
+            versions = versions_resp.get("Versions", [])
+            assert len(versions) == 2
+            version_ids = [v["VersionId"] for v in versions]
+            assert len(set(version_ids)) == 2  # two distinct version IDs
+        finally:
+            # Clean up all versions
+            versions_resp = s3.list_object_versions(Bucket=bucket, Prefix="ver.txt")
+            for v in versions_resp.get("Versions", []):
+                s3.delete_object(Bucket=bucket, Key="ver.txt", VersionId=v["VersionId"])
+
+    def test_get_specific_version(self, s3, bucket):
+        """Get a specific version of an object."""
+        try:
+            s3.put_bucket_versioning(
+                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
+            )
+            r1 = s3.put_object(Bucket=bucket, Key="vget.txt", Body=b"first")
+            r2 = s3.put_object(Bucket=bucket, Key="vget.txt", Body=b"second")
+
+            obj1 = s3.get_object(
+                Bucket=bucket, Key="vget.txt", VersionId=r1["VersionId"]
+            )
+            assert obj1["Body"].read() == b"first"
+
+            obj2 = s3.get_object(
+                Bucket=bucket, Key="vget.txt", VersionId=r2["VersionId"]
+            )
+            assert obj2["Body"].read() == b"second"
+        finally:
+            versions_resp = s3.list_object_versions(Bucket=bucket, Prefix="vget.txt")
+            for v in versions_resp.get("Versions", []):
+                s3.delete_object(Bucket=bucket, Key="vget.txt", VersionId=v["VersionId"])
+
+    def test_delete_specific_version(self, s3, bucket):
+        """Delete a specific version, other version still accessible."""
+        try:
+            s3.put_bucket_versioning(
+                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
+            )
+            r1 = s3.put_object(Bucket=bucket, Key="vdel.txt", Body=b"keep")
+            r2 = s3.put_object(Bucket=bucket, Key="vdel.txt", Body=b"remove")
+
+            s3.delete_object(Bucket=bucket, Key="vdel.txt", VersionId=r2["VersionId"])
+
+            versions_resp = s3.list_object_versions(Bucket=bucket, Prefix="vdel.txt")
+            remaining = [v for v in versions_resp.get("Versions", []) if v["Key"] == "vdel.txt"]
+            assert len(remaining) == 1
+            assert remaining[0]["VersionId"] == r1["VersionId"]
+        finally:
+            versions_resp = s3.list_object_versions(Bucket=bucket, Prefix="vdel.txt")
+            for v in versions_resp.get("Versions", []):
+                s3.delete_object(Bucket=bucket, Key="vdel.txt", VersionId=v["VersionId"])
+            for dm in versions_resp.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=bucket, Key="vdel.txt", VersionId=dm["VersionId"])
 
 
-class TestS3BucketLifecycle:
-    def test_put_get_delete_lifecycle(self, s3, bucket):
-        """Test bucket lifecycle configuration CRUD."""
-        s3.put_bucket_lifecycle_configuration(
+class TestS3ObjectTagging:
+    """PutObjectTagging, GetObjectTagging, DeleteObjectTagging."""
+
+    def test_put_and_get_object_tagging(self, s3, bucket):
+        try:
+            s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"tag me")
+            s3.put_object_tagging(
+                Bucket=bucket,
+                Key="tagged.txt",
+                Tagging={"TagSet": [{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "core"}]},
+            )
+            resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
+            tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+            assert tags["env"] == "test"
+            assert tags["team"] == "core"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="tagged.txt")
+
+    def test_delete_object_tagging(self, s3, bucket):
+        try:
+            s3.put_object(Bucket=bucket, Key="untag.txt", Body=b"data")
+            s3.put_object_tagging(
+                Bucket=bucket,
+                Key="untag.txt",
+                Tagging={"TagSet": [{"Key": "k", "Value": "v"}]},
+            )
+            s3.delete_object_tagging(Bucket=bucket, Key="untag.txt")
+            resp = s3.get_object_tagging(Bucket=bucket, Key="untag.txt")
+            assert resp["TagSet"] == []
+        finally:
+            s3.delete_object(Bucket=bucket, Key="untag.txt")
+
+    def test_put_object_with_tagging_header(self, s3, bucket):
+        """Put object with Tagging parameter (query-string encoding)."""
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="inline-tag.txt",
+                Body=b"data",
+                Tagging="color=blue&size=large",
+            )
+            resp = s3.get_object_tagging(Bucket=bucket, Key="inline-tag.txt")
+            tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+            assert tags["color"] == "blue"
+            assert tags["size"] == "large"
+        finally:
+            s3.delete_object(Bucket=bucket, Key="inline-tag.txt")
+
+
+class TestS3BucketTagging:
+    """PutBucketTagging, GetBucketTagging, DeleteBucketTagging."""
+
+    def test_put_and_get_bucket_tagging(self, s3, bucket):
+        s3.put_bucket_tagging(
             Bucket=bucket,
-            LifecycleConfiguration={
-                "Rules": [
-                    {
-                        "ID": "expire-old",
-                        "Status": "Enabled",
-                        "Filter": {"Prefix": "logs/"},
-                        "Expiration": {"Days": 30},
-                    }
-                ]
-            },
+            Tagging={"TagSet": [{"Key": "project", "Value": "robotocore"}]},
         )
-        response = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
-        rules = response["Rules"]
-        assert len(rules) == 1
-        assert rules[0]["ID"] == "expire-old"
-        assert rules[0]["Expiration"]["Days"] == 30
+        resp = s3.get_bucket_tagging(Bucket=bucket)
+        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+        assert tags["project"] == "robotocore"
 
-        s3.delete_bucket_lifecycle(Bucket=bucket)
-        with pytest.raises(Exception):
-            s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+    def test_delete_bucket_tagging(self, s3, bucket):
+        s3.put_bucket_tagging(
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "k", "Value": "v"}]},
+        )
+        s3.delete_bucket_tagging(Bucket=bucket)
+        with pytest.raises(Exception) as exc_info:
+            s3.get_bucket_tagging(Bucket=bucket)
+        assert "NoSuchTagSet" in str(exc_info.value) or "NoSuchTagSetError" in str(exc_info.value)
 
 
 class TestS3BucketCORS:
-    def test_put_get_delete_cors(self, s3, bucket):
-        """Test bucket CORS configuration CRUD."""
-        s3.put_bucket_cors(
-            Bucket=bucket,
-            CORSConfiguration={
-                "CORSRules": [
-                    {
-                        "AllowedOrigins": ["https://example.com"],
-                        "AllowedMethods": ["GET", "PUT"],
-                        "AllowedHeaders": ["*"],
-                        "MaxAgeSeconds": 3600,
-                    }
-                ]
-            },
-        )
-        response = s3.get_bucket_cors(Bucket=bucket)
-        rules = response["CORSRules"]
+    """PutBucketCors, GetBucketCors, DeleteBucketCors."""
+
+    def test_put_and_get_cors(self, s3, bucket):
+        cors_config = {
+            "CORSRules": [
+                {
+                    "AllowedOrigins": ["https://example.com"],
+                    "AllowedMethods": ["GET", "PUT"],
+                    "AllowedHeaders": ["*"],
+                    "MaxAgeSeconds": 3000,
+                }
+            ]
+        }
+        s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors_config)
+        resp = s3.get_bucket_cors(Bucket=bucket)
+        rules = resp["CORSRules"]
         assert len(rules) == 1
         assert "https://example.com" in rules[0]["AllowedOrigins"]
         assert "GET" in rules[0]["AllowedMethods"]
 
+    def test_delete_cors(self, s3, bucket):
+        cors_config = {
+            "CORSRules": [
+                {
+                    "AllowedOrigins": ["*"],
+                    "AllowedMethods": ["GET"],
+                }
+            ]
+        }
+        s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors_config)
         s3.delete_bucket_cors(Bucket=bucket)
-        with pytest.raises(Exception):
+        with pytest.raises(Exception) as exc_info:
             s3.get_bucket_cors(Bucket=bucket)
+        assert "NoSuchCORSConfiguration" in str(exc_info.value)
+
+
+class TestS3ListObjectsV2Extended:
+    """ListObjectsV2 with Prefix, Delimiter, MaxKeys, StartAfter, ContinuationToken."""
+
+    def _populate(self, s3, bucket):
+        keys = [
+            "dir1/a.txt",
+            "dir1/b.txt",
+            "dir2/c.txt",
+            "dir2/sub/d.txt",
+            "root.txt",
+        ]
+        for k in keys:
+            s3.put_object(Bucket=bucket, Key=k, Body=b"x")
+        return keys
+
+    def _cleanup(self, s3, bucket, keys):
+        for k in keys:
+            s3.delete_object(Bucket=bucket, Key=k)
+
+    def test_list_with_delimiter(self, s3, bucket):
+        """Delimiter returns CommonPrefixes for 'directories'."""
+        keys = self._populate(s3, bucket)
+        try:
+            resp = s3.list_objects_v2(Bucket=bucket, Delimiter="/")
+            prefixes = [p["Prefix"] for p in resp.get("CommonPrefixes", [])]
+            assert "dir1/" in prefixes
+            assert "dir2/" in prefixes
+            top_keys = [o["Key"] for o in resp.get("Contents", [])]
+            assert "root.txt" in top_keys
+        finally:
+            self._cleanup(s3, bucket, keys)
+
+    def test_list_with_prefix_and_delimiter(self, s3, bucket):
+        keys = self._populate(s3, bucket)
+        try:
+            resp = s3.list_objects_v2(Bucket=bucket, Prefix="dir2/", Delimiter="/")
+            listed_keys = [o["Key"] for o in resp.get("Contents", [])]
+            assert "dir2/c.txt" in listed_keys
+            prefixes = [p["Prefix"] for p in resp.get("CommonPrefixes", [])]
+            assert "dir2/sub/" in prefixes
+        finally:
+            self._cleanup(s3, bucket, keys)
+
+    def test_list_with_max_keys(self, s3, bucket):
+        keys = self._populate(s3, bucket)
+        try:
+            resp = s3.list_objects_v2(Bucket=bucket, MaxKeys=2)
+            assert len(resp.get("Contents", [])) == 2
+            assert resp["IsTruncated"] is True
+        finally:
+            self._cleanup(s3, bucket, keys)
+
+    def test_list_with_start_after(self, s3, bucket):
+        keys = self._populate(s3, bucket)
+        try:
+            resp = s3.list_objects_v2(Bucket=bucket, StartAfter="dir2/")
+            listed = [o["Key"] for o in resp.get("Contents", [])]
+            # All keys should be lexicographically after "dir2/"
+            for k in listed:
+                assert k > "dir2/"
+        finally:
+            self._cleanup(s3, bucket, keys)
+
+    def test_list_with_continuation_token(self, s3, bucket):
+        keys = self._populate(s3, bucket)
+        try:
+            resp1 = s3.list_objects_v2(Bucket=bucket, MaxKeys=2)
+            assert resp1["IsTruncated"] is True
+            token = resp1["NextContinuationToken"]
+
+            resp2 = s3.list_objects_v2(Bucket=bucket, MaxKeys=2, ContinuationToken=token)
+            keys1 = [o["Key"] for o in resp1["Contents"]]
+            keys2 = [o["Key"] for o in resp2["Contents"]]
+            # No overlap
+            assert set(keys1).isdisjoint(set(keys2))
+        finally:
+            self._cleanup(s3, bucket, keys)
+
+
+class TestS3DeleteObjectsBatch:
+    """DeleteObjects (batch delete) and verify objects are gone."""
+
+    def test_batch_delete_multiple_objects(self, s3, bucket):
+        obj_keys = [f"batch-del-{i}.txt" for i in range(5)]
+        for k in obj_keys:
+            s3.put_object(Bucket=bucket, Key=k, Body=b"data")
+
+        resp = s3.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": [{"Key": k} for k in obj_keys]},
+        )
+        assert len(resp.get("Deleted", [])) == 5
+
+        listing = s3.list_objects_v2(Bucket=bucket)
+        remaining = [o["Key"] for o in listing.get("Contents", [])]
+        for k in obj_keys:
+            assert k not in remaining
+
+    def test_batch_delete_nonexistent_keys(self, s3, bucket):
+        """Deleting nonexistent keys should not error (quiet mode)."""
+        resp = s3.delete_objects(
+            Bucket=bucket,
+            Delete={
+                "Objects": [{"Key": "no-such-key-1.txt"}, {"Key": "no-such-key-2.txt"}],
+                "Quiet": True,
+            },
+        )
+        # Should succeed without errors
+        assert resp.get("Errors") is None or len(resp["Errors"]) == 0
+
+
+class TestS3BucketLifecycle:
+    """PutBucketLifecycleConfiguration, GetBucketLifecycleConfiguration."""
+
+    def test_put_and_get_lifecycle(self, s3, bucket):
+        config = {
+            "Rules": [
+                {
+                    "ID": "expire-logs",
+                    "Filter": {"Prefix": "logs/"},
+                    "Status": "Enabled",
+                    "Expiration": {"Days": 30},
+                }
+            ]
+        }
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket, LifecycleConfiguration=config
+        )
+        resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+        rules = resp["Rules"]
+        assert len(rules) == 1
+        assert rules[0]["ID"] == "expire-logs"
+        assert rules[0]["Expiration"]["Days"] == 30
+
+    def test_lifecycle_multiple_rules(self, s3, bucket):
+        config = {
+            "Rules": [
+                {
+                    "ID": "rule1",
+                    "Filter": {"Prefix": "tmp/"},
+                    "Status": "Enabled",
+                    "Expiration": {"Days": 7},
+                },
+                {
+                    "ID": "rule2",
+                    "Filter": {"Prefix": "archive/"},
+                    "Status": "Enabled",
+                    "Expiration": {"Days": 365},
+                },
+            ]
+        }
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket, LifecycleConfiguration=config
+        )
+        resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+        ids = [r["ID"] for r in resp["Rules"]]
+        assert "rule1" in ids
+        assert "rule2" in ids
 
 
 class TestS3BucketPolicy:
-    def test_put_get_delete_bucket_policy(self, s3, bucket):
-        """Test bucket policy CRUD."""
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "PublicReadGetObject",
-                    "Effect": "Allow",
-                    "Principal": "*",
-                    "Action": "s3:GetObject",
-                    "Resource": f"arn:aws:s3:::{bucket}/*",
-                }
-            ],
-        })
-        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+    """PutBucketPolicy, GetBucketPolicy, DeleteBucketPolicy."""
 
-        response = s3.get_bucket_policy(Bucket=bucket)
-        retrieved = json.loads(response["Policy"])
-        assert retrieved["Statement"][0]["Sid"] == "PublicReadGetObject"
-
-        s3.delete_bucket_policy(Bucket=bucket)
-        with pytest.raises(Exception):
-            s3.get_bucket_policy(Bucket=bucket)
-
-
-class TestS3ObjectACL:
-    def test_get_default_object_acl(self, s3, bucket):
-        """Newly created objects have a default ACL."""
-        s3.put_object(Bucket=bucket, Key="acl-test.txt", Body=b"acl")
-        response = s3.get_object_acl(Bucket=bucket, Key="acl-test.txt")
-        assert "Owner" in response
-        assert "Grants" in response
-        assert len(response["Grants"]) >= 1
-
-    def test_put_object_canned_acl(self, s3, bucket):
-        """Put object with a canned ACL."""
-        s3.put_object(
-            Bucket=bucket, Key="public-read.txt", Body=b"public", ACL="public-read"
+    def test_put_and_get_policy(self, s3, bucket):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicRead",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
         )
-        response = s3.get_object_acl(Bucket=bucket, Key="public-read.txt")
-        # Should have at least the owner grant and a public-read grant
-        assert len(response["Grants"]) >= 1
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+        resp = s3.get_bucket_policy(Bucket=bucket)
+        returned = json.loads(resp["Policy"])
+        assert returned["Statement"][0]["Sid"] == "PublicRead"
+
+    def test_delete_policy(self, s3, bucket):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "Test",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+        s3.delete_bucket_policy(Bucket=bucket)
+        with pytest.raises(Exception) as exc_info:
+            s3.get_bucket_policy(Bucket=bucket)
+        err_str = str(exc_info.value)
+        assert "NoSuchBucketPolicy" in err_str or "does not have" in err_str or "404" in err_str

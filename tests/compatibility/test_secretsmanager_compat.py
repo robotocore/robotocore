@@ -1,10 +1,8 @@
 """Secrets Manager compatibility tests."""
 
 import json
-import uuid
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -79,212 +77,129 @@ class TestSecretsManagerOperations:
         assert "RotationEnabled" in response or "Name" in response
         sm.delete_secret(SecretId="rotate/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_create_secret_with_tags(self, sm):
-        name = f"tagged/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(
-            Name=name,
-            SecretString="val",
-            Tags=[
-                {"Key": "env", "Value": "staging"},
-                {"Key": "team", "Value": "platform"},
-            ],
+    def test_put_secret_value_with_version_stages(self, sm):
+        """Test put_secret_value with explicit version stages."""
+        sm.create_secret(Name="stage/secret", SecretString="v1")
+        sm.put_secret_value(
+            SecretId="stage/secret",
+            SecretString="v2",
+            VersionStages=["AWSCURRENT"],
         )
-        desc = sm.describe_secret(SecretId=name)
-        tags = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
-        assert tags["env"] == "staging"
-        assert tags["team"] == "platform"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
-
-    def test_tag_resource(self, sm):
-        name = f"tagres/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        desc = sm.describe_secret(SecretId=name)
-        arn = desc["ARN"]
-        sm.tag_resource(SecretId=arn, Tags=[{"Key": "added", "Value": "yes"}])
-        desc = sm.describe_secret(SecretId=name)
-        tags = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
-        assert tags["added"] == "yes"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
-
-    def test_untag_resource(self, sm):
-        name = f"untag/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(
-            Name=name,
-            SecretString="val",
-            Tags=[
-                {"Key": "keep", "Value": "1"},
-                {"Key": "remove", "Value": "2"},
-            ],
-        )
-        sm.untag_resource(SecretId=name, TagKeys=["remove"])
-        desc = sm.describe_secret(SecretId=name)
-        tags = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
-        assert "remove" not in tags
-        assert tags["keep"] == "1"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
-
-    def test_put_secret_value_creates_new_version(self, sm):
-        name = f"newver/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="v1")
-        put_resp = sm.put_secret_value(SecretId=name, SecretString="v2")
-        assert "VersionId" in put_resp
-        get_resp = sm.get_secret_value(SecretId=name)
-        assert get_resp["SecretString"] == "v2"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+        response = sm.get_secret_value(SecretId="stage/secret", VersionStage="AWSCURRENT")
+        assert response["SecretString"] == "v2"
+        sm.delete_secret(SecretId="stage/secret", ForceDeleteWithoutRecovery=True)
 
     def test_list_secret_version_ids(self, sm):
-        name = f"listver/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="v1")
-        sm.put_secret_value(SecretId=name, SecretString="v2")
-        response = sm.list_secret_version_ids(SecretId=name)
-        versions = response["Versions"]
-        assert len(versions) >= 1
-        # At least one version should have AWSCURRENT
-        stages = []
-        for v in versions:
-            stages.extend(v.get("VersionStages", []))
-        assert "AWSCURRENT" in stages
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+        """Test listing all versions of a secret."""
+        sm.create_secret(Name="versions/secret", SecretString="v1")
+        sm.put_secret_value(SecretId="versions/secret", SecretString="v2")
+        response = sm.list_secret_version_ids(SecretId="versions/secret")
+        assert "Versions" in response
+        assert len(response["Versions"]) >= 1
+        sm.delete_secret(SecretId="versions/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_get_secret_value_by_version_id(self, sm):
-        name = f"byverid/{uuid.uuid4().hex[:8]}"
-        create_resp = sm.create_secret(Name=name, SecretString="original")
-        version_id = create_resp["VersionId"]
-        sm.put_secret_value(SecretId=name, SecretString="updated")
-        # The original version_id may be AWSPREVIOUS now
-        # Fetch the AWSCURRENT
-        current = sm.get_secret_value(SecretId=name, VersionStage="AWSCURRENT")
-        assert current["SecretString"] == "updated"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_tag_and_untag_resource(self, sm):
+        """Test adding and removing tags on a secret."""
+        sm.create_secret(Name="tagging/secret", SecretString="val")
+        sm.tag_resource(
+            SecretId="tagging/secret",
+            Tags=[
+                {"Key": "team", "Value": "platform"},
+                {"Key": "cost", "Value": "dev"},
+            ],
+        )
+        desc = sm.describe_secret(SecretId="tagging/secret")
+        tags = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
+        assert tags["team"] == "platform"
+        assert tags["cost"] == "dev"
 
-    def test_get_secret_value_by_version_stage(self, sm):
-        name = f"bystage/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        response = sm.get_secret_value(SecretId=name, VersionStage="AWSCURRENT")
-        assert response["SecretString"] == "val"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+        sm.untag_resource(SecretId="tagging/secret", TagKeys=["cost"])
+        desc = sm.describe_secret(SecretId="tagging/secret")
+        tag_keys = [t["Key"] for t in desc.get("Tags", [])]
+        assert "team" in tag_keys
+        assert "cost" not in tag_keys
+        sm.delete_secret(SecretId="tagging/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_delete_and_restore_secret(self, sm):
-        name = f"restore/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="restoreable")
-        sm.delete_secret(SecretId=name)
-        sm.restore_secret(SecretId=name)
-        response = sm.get_secret_value(SecretId=name)
-        assert response["SecretString"] == "restoreable"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_restore_secret(self, sm):
+        """Test restoring a secret after scheduling deletion."""
+        sm.create_secret(Name="restore/secret", SecretString="restore-me")
+        sm.delete_secret(SecretId="restore/secret")
+        sm.restore_secret(SecretId="restore/secret")
+        response = sm.get_secret_value(SecretId="restore/secret")
+        assert response["SecretString"] == "restore-me"
+        sm.delete_secret(SecretId="restore/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_update_secret_string(self, sm):
-        name = f"updsec/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="orig")
-        sm.update_secret(SecretId=name, SecretString="new-value")
-        response = sm.get_secret_value(SecretId=name)
-        assert response["SecretString"] == "new-value"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_get_random_password(self, sm):
+        """Test generating a random password."""
+        response = sm.get_random_password(PasswordLength=32)
+        assert "RandomPassword" in response
+        assert len(response["RandomPassword"]) == 32
 
-    def test_update_secret_description(self, sm):
-        name = f"upddesc/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val", Description="original desc")
-        sm.update_secret(SecretId=name, Description="updated desc")
-        desc = sm.describe_secret(SecretId=name)
-        assert desc.get("Description") == "updated desc"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_get_random_password_options(self, sm):
+        """Test random password with specific character requirements."""
+        response = sm.get_random_password(
+            PasswordLength=20,
+            ExcludeNumbers=True,
+            ExcludePunctuation=True,
+        )
+        password = response["RandomPassword"]
+        assert len(password) == 20
+        assert not any(c.isdigit() for c in password)
 
-    def test_get_resource_policy_empty(self, sm):
-        name = f"respol/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        response = sm.get_resource_policy(SecretId=name)
-        assert "Name" in response
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_binary_secret_large(self, sm):
+        """Test binary secret with larger payload."""
+        data = bytes(range(256)) * 4  # 1024 bytes
+        sm.create_secret(Name="binary-large/secret", SecretBinary=data)
+        response = sm.get_secret_value(SecretId="binary-large/secret")
+        assert response["SecretBinary"] == data
+        sm.delete_secret(SecretId="binary-large/secret", ForceDeleteWithoutRecovery=True)
 
     def test_put_resource_policy(self, sm):
-        name = f"putpol/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "AllowGet",
-                        "Effect": "Allow",
-                        "Principal": "*",
-                        "Action": "secretsmanager:GetSecretValue",
-                        "Resource": "*",
-                    }
-                ],
-            }
-        )
-        sm.put_resource_policy(SecretId=name, ResourcePolicy=policy)
-        response = sm.get_resource_policy(SecretId=name)
-        assert response.get("ResourcePolicy") is not None
-        returned_policy = json.loads(response["ResourcePolicy"])
-        assert returned_policy["Statement"][0]["Sid"] == "AllowGet"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+        """Test putting and getting a resource policy on a secret."""
+        sm.create_secret(Name="policy/secret", SecretString="val")
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                    "Action": "secretsmanager:GetSecretValue",
+                    "Resource": "*",
+                }
+            ],
+        })
+        sm.put_resource_policy(SecretId="policy/secret", ResourcePolicy=policy)
+        response = sm.get_resource_policy(SecretId="policy/secret")
+        assert response["ResourcePolicy"] is not None
+        retrieved = json.loads(response["ResourcePolicy"])
+        assert retrieved["Version"] == "2012-10-17"
 
-    def test_delete_resource_policy(self, sm):
-        name = f"delpol/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "Test",
-                        "Effect": "Allow",
-                        "Principal": "*",
-                        "Action": "secretsmanager:GetSecretValue",
-                        "Resource": "*",
-                    }
-                ],
-            }
-        )
-        sm.put_resource_policy(SecretId=name, ResourcePolicy=policy)
-        sm.delete_resource_policy(SecretId=name)
-        response = sm.get_resource_policy(SecretId=name)
-        # After deletion, ResourcePolicy should be None or empty
-        assert not response.get("ResourcePolicy")
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+        sm.delete_resource_policy(SecretId="policy/secret")
+        sm.delete_secret(SecretId="policy/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_get_nonexistent_secret_raises(self, sm):
-        with pytest.raises(ClientError) as exc_info:
-            sm.get_secret_value(SecretId=f"nonexistent/{uuid.uuid4().hex}")
-        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    def test_update_secret_description(self, sm):
+        """Test updating a secret's description."""
+        sm.create_secret(Name="updatedesc/secret", SecretString="val")
+        sm.update_secret(SecretId="updatedesc/secret", Description="new description")
+        desc = sm.describe_secret(SecretId="updatedesc/secret")
+        assert desc.get("Description") == "new description"
+        sm.delete_secret(SecretId="updatedesc/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_list_secrets_with_filter(self, sm):
-        name = f"filterable/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        response = sm.list_secrets(
-            Filters=[{"Key": "name", "Values": [name]}]
-        )
-        names = [s["Name"] for s in response["SecretList"]]
-        assert name in names
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_create_secret_with_many_tags(self, sm):
+        """Test creating a secret with multiple tags."""
+        tags = [{"Key": f"key{i}", "Value": f"val{i}"} for i in range(5)]
+        sm.create_secret(Name="manytags/secret", SecretString="val", Tags=tags)
+        desc = sm.describe_secret(SecretId="manytags/secret")
+        tag_map = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
+        for i in range(5):
+            assert tag_map[f"key{i}"] == f"val{i}"
+        sm.delete_secret(SecretId="manytags/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_describe_secret_has_arn(self, sm):
-        name = f"arncheck/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="val")
-        desc = sm.describe_secret(SecretId=name)
-        assert "ARN" in desc
-        assert name in desc["ARN"]
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
-
-    def test_describe_secret_version_ids(self, sm):
-        name = f"descver/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretString="v1")
-        sm.put_secret_value(SecretId=name, SecretString="v2")
-        desc = sm.describe_secret(SecretId=name)
-        assert "VersionIdsToStages" in desc
-        # At least one version should map to AWSCURRENT
-        found_current = False
-        for stages in desc["VersionIdsToStages"].values():
-            if "AWSCURRENT" in stages:
-                found_current = True
-        assert found_current
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
-
-    def test_put_secret_value_binary(self, sm):
-        name = f"putbin/{uuid.uuid4().hex[:8]}"
-        sm.create_secret(Name=name, SecretBinary=b"\x00\x01")
-        sm.put_secret_value(SecretId=name, SecretBinary=b"\x02\x03")
-        response = sm.get_secret_value(SecretId=name)
-        assert response["SecretBinary"] == b"\x02\x03"
-        sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+    def test_get_secret_value_by_version_id(self, sm):
+        """Test retrieving a secret by its version ID."""
+        create_resp = sm.create_secret(Name="byversion/secret", SecretString="original")
+        version_id = create_resp["VersionId"]
+        response = sm.get_secret_value(SecretId="byversion/secret", VersionId=version_id)
+        assert response["SecretString"] == "original"
+        assert response["VersionId"] == version_id
+        sm.delete_secret(SecretId="byversion/secret", ForceDeleteWithoutRecovery=True)

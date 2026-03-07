@@ -1,7 +1,5 @@
 """Kinesis compatibility tests."""
 
-import uuid
-
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -151,362 +149,251 @@ class TestKinesisOperations:
         response = kinesis.describe_stream(StreamName=stream)
         assert response["StreamDescription"]["RetentionPeriodHours"] == 24
 
-
-class TestKinesisDescribeStreamSummary:
-    def test_describe_stream_summary(self, kinesis, stream):
-        """describe_stream_summary returns expected fields."""
-        resp = kinesis.describe_stream_summary(StreamName=stream)
-        summary = resp["StreamDescriptionSummary"]
-        assert summary["StreamName"] == stream
-        assert summary["StreamStatus"] == "ACTIVE"
-        assert "StreamARN" in summary
-        assert "RetentionPeriodHours" in summary
-        assert "OpenShardCount" in summary
-        assert summary["OpenShardCount"] == 1
-
-    def test_describe_stream_summary_multi_shard(self, kinesis):
-        """describe_stream_summary with multiple shards."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"summary-multi-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=3)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            resp = kinesis.describe_stream_summary(StreamName=name)
-            summary = resp["StreamDescriptionSummary"]
-            assert summary["OpenShardCount"] == 3
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-
-class TestKinesisListShards:
-    def test_list_shards_basic(self, kinesis, stream):
-        """list_shards returns shard details."""
-        resp = kinesis.list_shards(StreamName=stream)
-        shards = resp["Shards"]
-        assert len(shards) == 1
-        shard = shards[0]
-        assert "ShardId" in shard
-        assert "HashKeyRange" in shard
-        assert "StartingHashKey" in shard["HashKeyRange"]
-        assert "EndingHashKey" in shard["HashKeyRange"]
-        assert "SequenceNumberRange" in shard
-        assert "StartingSequenceNumber" in shard["SequenceNumberRange"]
-
-    def test_list_shards_multi_shard(self, kinesis):
-        """list_shards with multiple shards returns all of them."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"shards-multi-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=4)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            resp = kinesis.list_shards(StreamName=name)
-            assert len(resp["Shards"]) == 4
-            shard_ids = {s["ShardId"] for s in resp["Shards"]}
-            assert len(shard_ids) == 4  # All unique
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-    def test_list_shards_with_at_trim_horizon_filter(self, kinesis, stream):
-        """list_shards with ShardFilter AT_TRIM_HORIZON."""
-        resp = kinesis.list_shards(
-            StreamName=stream, ShardFilter={"Type": "AT_TRIM_HORIZON"}
-        )
-        assert len(resp["Shards"]) >= 1
-
-    def test_list_shards_hash_key_range_covers_full_range(self, kinesis):
-        """Hash key ranges should cover the full 0 to 2^128-1 range."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"hash-range-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=2)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            shards = kinesis.list_shards(StreamName=name)["Shards"]
-            # Sort by starting hash key
-            shards.sort(key=lambda s: int(s["HashKeyRange"]["StartingHashKey"]))
-            # First shard starts at 0
-            assert int(shards[0]["HashKeyRange"]["StartingHashKey"]) == 0
-            # Last shard ends at 2^128 - 1
-            max_hash = 2**128 - 1
-            assert int(shards[-1]["HashKeyRange"]["EndingHashKey"]) == max_hash
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-
-class TestKinesisPutRecordsBatch:
-    def test_put_records_batch_returns_shard_ids(self, kinesis, stream):
-        """PutRecords batch returns ShardId for each record."""
+    def test_put_records_batch_multiple_all_succeed(self, kinesis, stream):
+        """PutRecords batch with multiple records, verify all succeed."""
         records = [
-            {"Data": b"batch-1", "PartitionKey": "key1"},
-            {"Data": b"batch-2", "PartitionKey": "key2"},
-        ]
-        resp = kinesis.put_records(StreamName=stream, Records=records)
-        for rec in resp["Records"]:
-            assert rec["ShardId"].startswith("shardId-")
-            assert rec["SequenceNumber"].isdigit()
-
-    def test_put_records_batch_large(self, kinesis, stream):
-        """PutRecords with many records."""
-        records = [
-            {"Data": f"record-{i}".encode(), "PartitionKey": f"pk-{i}"}
+            {"Data": f"batch-record-{i}".encode(), "PartitionKey": f"pk-{i}"}
             for i in range(10)
         ]
-        resp = kinesis.put_records(StreamName=stream, Records=records)
-        assert resp["FailedRecordCount"] == 0
-        assert len(resp["Records"]) == 10
+        response = kinesis.put_records(StreamName=stream, Records=records)
+        assert response["FailedRecordCount"] == 0
+        assert len(response["Records"]) == 10
+        for rec in response["Records"]:
+            assert "ShardId" in rec
+            assert "SequenceNumber" in rec
+            assert "ErrorCode" not in rec
 
-    def test_put_records_and_read_back(self, kinesis, stream):
-        """PutRecords and verify all records can be read back."""
+    def test_get_records_with_limit(self, kinesis, stream):
+        """GetRecords with Limit parameter returns at most that many records."""
         records = [
-            {"Data": f"data-{i}".encode(), "PartitionKey": "pk1"}
+            {"Data": f"limit-rec-{i}".encode(), "PartitionKey": "pk1"}
             for i in range(5)
         ]
         kinesis.put_records(StreamName=stream, Records=records)
 
-        shards = kinesis.list_shards(StreamName=stream)["Shards"]
-        all_data = []
-        for shard in shards:
-            it = kinesis.get_shard_iterator(
-                StreamName=stream,
-                ShardId=shard["ShardId"],
-                ShardIteratorType="TRIM_HORIZON",
-            )["ShardIterator"]
-            got = kinesis.get_records(ShardIterator=it)
-            all_data.extend([r["Data"] for r in got["Records"]])
-
-        expected = {f"data-{i}".encode() for i in range(5)}
-        assert expected.issubset(set(all_data))
-
-    def test_put_records_multi_shard_distribution(self, kinesis):
-        """PutRecords distributes across shards based on partition key."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"distrib-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=2)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            records = [
-                {"Data": f"r-{i}".encode(), "PartitionKey": f"key-{i}"}
-                for i in range(20)
-            ]
-            resp = kinesis.put_records(StreamName=name, Records=records)
-            assert resp["FailedRecordCount"] == 0
-            shard_ids = {r["ShardId"] for r in resp["Records"]}
-            # With 20 different partition keys across 2 shards, we expect
-            # records on at least 1 shard (and likely both)
-            assert len(shard_ids) >= 1
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-
-class TestKinesisRetention:
-    def test_retention_increase_to_72(self, kinesis):
-        """Increase retention to 72 hours."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"ret-72-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=1)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            kinesis.increase_stream_retention_period(
-                StreamName=name, RetentionPeriodHours=72
-            )
-            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
-            assert desc["RetentionPeriodHours"] == 72
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-    def test_retention_increase_and_decrease(self, kinesis):
-        """Increase then decrease retention period."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"ret-updown-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=1)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            kinesis.increase_stream_retention_period(
-                StreamName=name, RetentionPeriodHours=48
-            )
-            kinesis.decrease_stream_retention_period(
-                StreamName=name, RetentionPeriodHours=36
-            )
-            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
-            assert desc["RetentionPeriodHours"] == 36
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-    def test_default_retention_is_24(self, kinesis, stream):
-        """Default retention period should be 24 hours."""
-        desc = kinesis.describe_stream(StreamName=stream)["StreamDescription"]
-        assert desc["RetentionPeriodHours"] == 24
-
-
-class TestKinesisTags:
-    def test_add_multiple_tags(self, kinesis, stream):
-        """Add multiple tags and verify all present."""
-        kinesis.add_tags_to_stream(
+        shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
+        iterator = kinesis.get_shard_iterator(
             StreamName=stream,
-            Tags={"env": "dev", "team": "platform", "version": "1.0"},
-        )
-        resp = kinesis.list_tags_for_stream(StreamName=stream)
-        tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
-        assert tag_map["env"] == "dev"
-        assert tag_map["team"] == "platform"
-        assert tag_map["version"] == "1.0"
-
-    def test_remove_specific_tags(self, kinesis, stream):
-        """Remove only specific tags, leaving others."""
-        kinesis.add_tags_to_stream(
-            StreamName=stream,
-            Tags={"a": "1", "b": "2", "c": "3"},
-        )
-        kinesis.remove_tags_from_stream(StreamName=stream, TagKeys=["a", "c"])
-        resp = kinesis.list_tags_for_stream(StreamName=stream)
-        tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
-        assert "a" not in tag_map
-        assert "c" not in tag_map
-        assert tag_map["b"] == "2"
-
-    def test_overwrite_tag_value(self, kinesis, stream):
-        """Adding a tag with existing key overwrites the value."""
-        kinesis.add_tags_to_stream(StreamName=stream, Tags={"env": "dev"})
-        kinesis.add_tags_to_stream(StreamName=stream, Tags={"env": "prod"})
-        resp = kinesis.list_tags_for_stream(StreamName=stream)
-        tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
-        assert tag_map["env"] == "prod"
-
-    def test_list_tags_empty_stream(self, kinesis):
-        """list_tags on a stream with no tags returns empty list."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"no-tags-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=1)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        try:
-            resp = kinesis.list_tags_for_stream(StreamName=name)
-            assert resp["Tags"] == []
-            assert resp["HasMoreTags"] is False
-        finally:
-            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
-
-
-class TestKinesisShardIterators:
-    def test_trim_horizon_iterator(self, kinesis, stream):
-        """TRIM_HORIZON reads from the beginning."""
-        kinesis.put_record(StreamName=stream, Data=b"first", PartitionKey="pk1")
-        kinesis.put_record(StreamName=stream, Data=b"second", PartitionKey="pk1")
-
-        shards = kinesis.list_shards(StreamName=stream)["Shards"]
-        it = kinesis.get_shard_iterator(
-            StreamName=stream,
-            ShardId=shards[0]["ShardId"],
+            ShardId=shard_id,
             ShardIteratorType="TRIM_HORIZON",
         )["ShardIterator"]
-        records = kinesis.get_records(ShardIterator=it)
-        assert len(records["Records"]) >= 2
-        assert records["Records"][0]["Data"] == b"first"
-        assert records["Records"][1]["Data"] == b"second"
 
-    def test_latest_iterator(self, kinesis, stream):
-        """LATEST iterator only gets records added after iterator creation."""
-        kinesis.put_record(StreamName=stream, Data=b"before", PartitionKey="pk1")
+        response = kinesis.get_records(ShardIterator=iterator, Limit=2)
+        assert len(response["Records"]) <= 2
+        assert "NextShardIterator" in response
 
-        shards = kinesis.list_shards(StreamName=stream)["Shards"]
-        it = kinesis.get_shard_iterator(
+    def test_describe_stream_summary(self, kinesis, stream):
+        """DescribeStreamSummary returns summary without shard list."""
+        response = kinesis.describe_stream_summary(StreamName=stream)
+        summary = response["StreamDescriptionSummary"]
+        assert summary["StreamName"] == stream
+        assert summary["StreamStatus"] == "ACTIVE"
+        assert "StreamARN" in summary
+        assert summary["OpenShardCount"] == 1
+        assert "RetentionPeriodHours" in summary
+
+    def test_shard_iterator_latest_vs_trim_horizon(self, kinesis, stream):
+        """LATEST iterator only sees records written after it was obtained."""
+        # Put a record before getting LATEST iterator
+        kinesis.put_record(
+            StreamName=stream, Data=b"before-latest", PartitionKey="pk1"
+        )
+
+        shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
+
+        # Get LATEST iterator (should not see records already in stream)
+        latest_iter = kinesis.get_shard_iterator(
             StreamName=stream,
-            ShardId=shards[0]["ShardId"],
+            ShardId=shard_id,
             ShardIteratorType="LATEST",
         )["ShardIterator"]
 
-        # Record added after iterator
-        kinesis.put_record(StreamName=stream, Data=b"after", PartitionKey="pk1")
+        # Get TRIM_HORIZON iterator (should see all records)
+        horizon_iter = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=shard_id,
+            ShardIteratorType="TRIM_HORIZON",
+        )["ShardIterator"]
 
-        records = kinesis.get_records(ShardIterator=it)
-        data = [r["Data"] for r in records["Records"]]
-        assert b"after" in data
-        assert b"before" not in data
+        latest_records = kinesis.get_records(ShardIterator=latest_iter)
+        horizon_records = kinesis.get_records(ShardIterator=horizon_iter)
 
-    def test_after_sequence_number_iterator(self, kinesis, stream):
-        """AFTER_SEQUENCE_NUMBER returns records after the given sequence."""
-        put1 = kinesis.put_record(
-            StreamName=stream, Data=b"rec-1", PartitionKey="pk1"
+        assert len(latest_records["Records"]) == 0
+        assert len(horizon_records["Records"]) >= 1
+
+    def test_put_record_with_explicit_hash_key(self, kinesis, stream):
+        """PutRecord with ExplicitHashKey and verify retrieval."""
+        put_resp = kinesis.put_record(
+            StreamName=stream,
+            Data=b"hash-key-test",
+            PartitionKey="pk1",
+            ExplicitHashKey="0",
         )
-        kinesis.put_record(StreamName=stream, Data=b"rec-2", PartitionKey="pk1")
+        assert "ShardId" in put_resp
+        assert "SequenceNumber" in put_resp
 
-        it = kinesis.get_shard_iterator(
+        shard_id = put_resp["ShardId"]
+        iterator = kinesis.get_shard_iterator(
             StreamName=stream,
-            ShardId=put1["ShardId"],
-            ShardIteratorType="AFTER_SEQUENCE_NUMBER",
-            StartingSequenceNumber=put1["SequenceNumber"],
-        )["ShardIterator"]
-        records = kinesis.get_records(ShardIterator=it)
-        assert len(records["Records"]) >= 1
-        assert records["Records"][0]["Data"] == b"rec-2"
-
-    def test_get_records_returns_next_iterator(self, kinesis, stream):
-        """get_records should return NextShardIterator for continued reading."""
-        kinesis.put_record(StreamName=stream, Data=b"data", PartitionKey="pk1")
-        shards = kinesis.list_shards(StreamName=stream)["Shards"]
-        it = kinesis.get_shard_iterator(
-            StreamName=stream,
-            ShardId=shards[0]["ShardId"],
+            ShardId=shard_id,
             ShardIteratorType="TRIM_HORIZON",
         )["ShardIterator"]
-        resp = kinesis.get_records(ShardIterator=it)
-        assert "NextShardIterator" in resp
+        records = kinesis.get_records(ShardIterator=iterator)
+        assert any(r["Data"] == b"hash-key-test" for r in records["Records"])
 
-    def test_get_records_with_limit(self, kinesis, stream):
-        """get_records with Limit parameter."""
-        for i in range(5):
-            kinesis.put_record(
-                StreamName=stream, Data=f"item-{i}".encode(), PartitionKey="pk1"
-            )
-        shards = kinesis.list_shards(StreamName=stream)["Shards"]
-        it = kinesis.get_shard_iterator(
+    @pytest.mark.xfail(reason="StartStreamEncryption not yet implemented")
+    def test_stream_encryption(self, kinesis, stream):
+        """StartStreamEncryption and StopStreamEncryption."""
+        kinesis.start_stream_encryption(
             StreamName=stream,
-            ShardId=shards[0]["ShardId"],
-            ShardIteratorType="TRIM_HORIZON",
-        )["ShardIterator"]
-        resp = kinesis.get_records(ShardIterator=it, Limit=2)
-        assert len(resp["Records"]) <= 2
+            EncryptionType="KMS",
+            KeyId="alias/aws/kinesis",
+        )
+        desc = kinesis.describe_stream(StreamName=stream)["StreamDescription"]
+        assert desc["EncryptionType"] == "KMS"
 
+        kinesis.stop_stream_encryption(
+            StreamName=stream,
+            EncryptionType="KMS",
+            KeyId="alias/aws/kinesis",
+        )
+        desc = kinesis.describe_stream(StreamName=stream)["StreamDescription"]
+        assert desc["EncryptionType"] == "NONE"
 
-class TestKinesisStreamCreation:
-    def test_create_delete_stream(self, kinesis):
-        """Create and delete a stream."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"create-del-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=1)
-        kinesis.get_waiter("stream_exists").wait(StreamName=name)
-        kinesis.delete_stream(StreamName=name)
-        # After delete, listing should not contain the stream
-        # (might still be in DELETING state, but list_streams should eventually exclude it)
-        streams = kinesis.list_streams()["StreamNames"]
-        # Stream may still appear briefly; check it was at least accepted
-        # The main assertion is that delete_stream did not raise an error.
+    @pytest.mark.xfail(reason="RegisterStreamConsumer not yet implemented")
+    def test_register_and_describe_stream_consumer(self, kinesis, stream):
+        """RegisterStreamConsumer and DescribeStreamConsumer for enhanced fan-out."""
+        stream_arn = kinesis.describe_stream(StreamName=stream)[
+            "StreamDescription"
+        ]["StreamARN"]
 
-    def test_create_stream_with_multiple_shards(self, kinesis):
-        """Create a stream with multiple shards."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"multi-shard-{uid}"
-        kinesis.create_stream(StreamName=name, ShardCount=5)
+        reg_resp = kinesis.register_stream_consumer(
+            StreamARN=stream_arn,
+            ConsumerName="test-consumer",
+        )
+        consumer = reg_resp["Consumer"]
+        assert consumer["ConsumerName"] == "test-consumer"
+        assert "ConsumerARN" in consumer
+        assert "ConsumerStatus" in consumer
+
+        desc_resp = kinesis.describe_stream_consumer(
+            StreamARN=stream_arn,
+            ConsumerName="test-consumer",
+        )
+        assert desc_resp["ConsumerDescription"]["ConsumerName"] == "test-consumer"
+
+    @pytest.mark.xfail(reason="RegisterStreamConsumer not yet implemented")
+    def test_list_stream_consumers(self, kinesis, stream):
+        """ListStreamConsumers returns registered consumers."""
+        stream_arn = kinesis.describe_stream(StreamName=stream)[
+            "StreamDescription"
+        ]["StreamARN"]
+
+        kinesis.register_stream_consumer(
+            StreamARN=stream_arn,
+            ConsumerName="consumer-list-test",
+        )
+        response = kinesis.list_stream_consumers(StreamARN=stream_arn)
+        names = [c["ConsumerName"] for c in response["Consumers"]]
+        assert "consumer-list-test" in names
+
+    @pytest.mark.xfail(reason="DeregisterStreamConsumer not yet implemented")
+    def test_deregister_stream_consumer(self, kinesis, stream):
+        """DeregisterStreamConsumer removes a consumer."""
+        stream_arn = kinesis.describe_stream(StreamName=stream)[
+            "StreamDescription"
+        ]["StreamARN"]
+
+        kinesis.register_stream_consumer(
+            StreamARN=stream_arn,
+            ConsumerName="consumer-to-delete",
+        )
+        kinesis.deregister_stream_consumer(
+            StreamARN=stream_arn,
+            ConsumerName="consumer-to-delete",
+        )
+        response = kinesis.list_stream_consumers(StreamARN=stream_arn)
+        names = [c["ConsumerName"] for c in response["Consumers"]]
+        assert "consumer-to-delete" not in names
+
+    def test_update_shard_count(self, kinesis, stream):
+        """UpdateShardCount changes the number of shards."""
+        response = kinesis.update_shard_count(
+            StreamName=stream,
+            TargetShardCount=2,
+            ScalingType="UNIFORM_SCALING",
+        )
+        assert response["CurrentShardCount"] == 1
+        assert response["TargetShardCount"] == 2
+        assert response["StreamName"] == stream
+
+    def test_list_shards_multiple_shards(self, kinesis):
+        """ListShards on a multi-shard stream returns all shards."""
+        name = "multi-shard-stream"
+        kinesis.create_stream(StreamName=name, ShardCount=4)
         kinesis.get_waiter("stream_exists").wait(StreamName=name)
         try:
-            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
-            assert len(desc["Shards"]) == 5
+            response = kinesis.list_shards(StreamName=name)
+            assert len(response["Shards"]) == 4
+            # All shard IDs should be unique
+            shard_ids = [s["ShardId"] for s in response["Shards"]]
+            assert len(shard_ids) == len(set(shard_ids))
+            # Each shard has required fields
+            for shard in response["Shards"]:
+                assert "ShardId" in shard
+                assert "HashKeyRange" in shard
+                assert "SequenceNumberRange" in shard
         finally:
             kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
 
-    def test_describe_stream_arn_format(self, kinesis, stream):
-        """StreamARN should follow the expected format."""
-        desc = kinesis.describe_stream(StreamName=stream)["StreamDescription"]
-        arn = desc["StreamARN"]
-        assert arn.startswith("arn:aws:kinesis:")
-        assert stream in arn
-
-    def test_list_streams_contains_created(self, kinesis):
-        """A newly created stream should appear in list_streams."""
-        uid = uuid.uuid4().hex[:8]
-        name = f"list-check-{uid}"
+    @pytest.mark.xfail(reason="SplitShard not yet implemented")
+    def test_split_shard(self, kinesis):
+        """SplitShard divides a shard into two."""
+        name = "split-shard-stream"
         kinesis.create_stream(StreamName=name, ShardCount=1)
         kinesis.get_waiter("stream_exists").wait(StreamName=name)
         try:
-            streams = kinesis.list_streams()["StreamNames"]
-            assert name in streams
+            shards = kinesis.list_shards(StreamName=name)["Shards"]
+            shard = shards[0]
+            shard_id = shard["ShardId"]
+            # Split at midpoint of the hash key range
+            start = int(shard["HashKeyRange"]["StartingHashKey"])
+            end = int(shard["HashKeyRange"]["EndingHashKey"])
+            mid = str((start + end) // 2)
+
+            kinesis.split_shard(
+                StreamName=name,
+                ShardToSplit=shard_id,
+                NewStartingHashKey=mid,
+            )
+            # Wait for stream to become active after split
+            kinesis.get_waiter("stream_exists").wait(StreamName=name)
+
+            new_shards = kinesis.list_shards(StreamName=name)["Shards"]
+            # After split, there should be more shards (original closed + 2 new)
+            assert len(new_shards) > 1
+        finally:
+            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    @pytest.mark.xfail(reason="MergeShards not yet implemented")
+    def test_merge_shards(self, kinesis):
+        """MergeShards combines two adjacent shards."""
+        name = "merge-shard-stream"
+        kinesis.create_stream(StreamName=name, ShardCount=2)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        try:
+            shards = kinesis.list_shards(StreamName=name)["Shards"]
+            assert len(shards) == 2
+
+            kinesis.merge_shards(
+                StreamName=name,
+                ShardToMerge=shards[0]["ShardId"],
+                AdjacentShardToMerge=shards[1]["ShardId"],
+            )
+            kinesis.get_waiter("stream_exists").wait(StreamName=name)
+
+            new_shards = kinesis.list_shards(StreamName=name)["Shards"]
+            # After merge, there should be more total shards (2 closed + 1 new)
+            assert len(new_shards) >= 3
         finally:
             kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)

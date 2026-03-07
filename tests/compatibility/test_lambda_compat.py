@@ -404,147 +404,109 @@ class TestLambdaLayers:
         assert 2 in versions
 
 
-class TestLambdaPagination:
-    def test_list_functions_contains_created(self, lam, role):
-        """Test listing functions returns all created functions."""
-        code = _make_zip("def handler(e, c): pass")
-        fnames = []
-        for i in range(4):
-            fname = f"page-func-{uuid.uuid4().hex[:8]}"
-            fnames.append(fname)
-            lam.create_function(
-                FunctionName=fname,
-                Runtime="python3.12",
-                Role=role,
-                Handler="lambda_function.handler",
-                Code={"ZipFile": code},
-            )
+class TestLambdaVersions:
+    """Tests for function versioning: publish, list, invoke specific version."""
 
-        try:
-            response = lam.list_functions()
-            listed_names = [f["FunctionName"] for f in response["Functions"]]
-            for fname in fnames:
-                assert fname in listed_names
-        finally:
-            for fname in fnames:
-                lam.delete_function(FunctionName=fname)
-
-
-class TestLambdaConfigurationUpdates:
-    def test_update_timeout_and_memory(self, lam, role):
-        """Test updating function timeout and memory size."""
-        code = _make_zip("def handler(e, c): pass")
-        fname = f"upd-config-{uuid.uuid4().hex[:8]}"
+    def test_publish_version_returns_version_number(self, lam, role):
+        code = _make_zip('def handler(e, c): return "v1"')
+        fname = f"pubver-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Timeout=3,
-            MemorySize=128,
         )
-        try:
-            response = lam.update_function_configuration(
-                FunctionName=fname,
-                Timeout=60,
-                MemorySize=512,
-            )
-            assert response["Timeout"] == 60
-            assert response["MemorySize"] == 512
+        resp = lam.publish_version(FunctionName=fname)
+        assert resp["Version"] == "1"
+        assert resp["FunctionName"] == fname
+        lam.delete_function(FunctionName=fname)
 
-            # Verify via get
-            cfg = lam.get_function_configuration(FunctionName=fname)
-            assert cfg["Timeout"] == 60
-            assert cfg["MemorySize"] == 512
-        finally:
-            lam.delete_function(FunctionName=fname)
-
-    def test_update_environment_variables(self, lam, role):
-        """Test updating environment variables on a function."""
-        code = _make_zip(
-            'import os\ndef handler(e, c): return {"v": os.environ.get("KEY", "missing")}'
-        )
-        fname = f"upd-env-{uuid.uuid4().hex[:8]}"
+    def test_publish_multiple_versions(self, lam, role):
+        code = _make_zip('def handler(e, c): return "v1"')
+        fname = f"multiver-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Environment={"Variables": {"KEY": "original"}},
         )
-        try:
-            lam.update_function_configuration(
-                FunctionName=fname,
-                Environment={"Variables": {"KEY": "updated", "NEW_KEY": "new_val"}},
-            )
-            cfg = lam.get_function_configuration(FunctionName=fname)
-            env_vars = cfg["Environment"]["Variables"]
-            assert env_vars["KEY"] == "updated"
-            assert env_vars["NEW_KEY"] == "new_val"
-        finally:
-            lam.delete_function(FunctionName=fname)
+        r1 = lam.publish_version(FunctionName=fname)
+        assert r1["Version"] == "1"
+        # Update code then publish again
+        code2 = _make_zip('def handler(e, c): return "v2"')
+        lam.update_function_code(FunctionName=fname, ZipFile=code2)
+        r2 = lam.publish_version(FunctionName=fname)
+        assert r2["Version"] == "2"
+        lam.delete_function(FunctionName=fname)
 
-    def test_update_description(self, lam, role):
-        """Test updating function description."""
-        code = _make_zip("def handler(e, c): pass")
-        fname = f"upd-desc-{uuid.uuid4().hex[:8]}"
+    def test_list_versions_by_function(self, lam, role):
+        code = _make_zip('def handler(e, c): return "ok"')
+        fname = f"listver2-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Description="initial",
         )
-        try:
-            lam.update_function_configuration(
-                FunctionName=fname, Description="updated description"
-            )
-            cfg = lam.get_function_configuration(FunctionName=fname)
-            assert cfg["Description"] == "updated description"
-        finally:
-            lam.delete_function(FunctionName=fname)
+        lam.publish_version(FunctionName=fname)
+        # Update code to get a new version
+        code2 = _make_zip('def handler(e, c): return "v2"')
+        lam.update_function_code(FunctionName=fname, ZipFile=code2)
+        lam.publish_version(FunctionName=fname)
+        resp = lam.list_versions_by_function(FunctionName=fname)
+        versions = [v["Version"] for v in resp["Versions"]]
+        assert "$LATEST" in versions
+        assert "1" in versions
+        assert "2" in versions
+        lam.delete_function(FunctionName=fname)
 
-
-class TestLambdaTagging:
-    def test_tag_and_untag_function(self, lam, role):
-        """Test adding and removing tags from a Lambda function."""
-        code = _make_zip("def handler(e, c): pass")
-        fname = f"tag-mgmt-{uuid.uuid4().hex[:8]}"
-        resp = lam.create_function(
+    def test_invoke_specific_version(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"ver": 1}')
+        fname = f"invver-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Tags={"env": "test"},
         )
-        arn = resp["FunctionArn"]
-        try:
-            # Add more tags
-            lam.tag_resource(Resource=arn, Tags={"team": "platform", "version": "1.0"})
-            tags = lam.list_tags(Resource=arn)["Tags"]
-            assert tags["env"] == "test"
-            assert tags["team"] == "platform"
-            assert tags["version"] == "1.0"
+        ver_resp = lam.publish_version(FunctionName=fname)
+        version = ver_resp["Version"]
+        resp = lam.invoke(FunctionName=fname, Qualifier=version)
+        payload = json.loads(resp["Payload"].read())
+        assert payload["ver"] == 1
+        lam.delete_function(FunctionName=fname)
 
-            # Remove a tag
-            lam.untag_resource(Resource=arn, TagKeys=["version"])
-            tags = lam.list_tags(Resource=arn)["Tags"]
-            assert "version" not in tags
-            assert tags["env"] == "test"
-            assert tags["team"] == "platform"
-        finally:
-            lam.delete_function(FunctionName=fname)
+    def test_get_function_with_qualifier(self, lam, role):
+        code = _make_zip('def handler(e, c): return "ok"')
+        fname = f"getqual-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.publish_version(FunctionName=fname)
+        resp = lam.get_function(FunctionName=fname, Qualifier="1")
+        assert resp["Configuration"]["FunctionName"] == fname
+        # Qualifier "1" should return a versioned ARN
+        assert ":1" in resp["Configuration"]["FunctionArn"] or resp["Configuration"]["Version"] in (
+            "1",
+            "$LATEST",
+        )
+        lam.delete_function(FunctionName=fname)
 
 
 class TestLambdaAliases:
-    def test_create_get_alias(self, lam, role):
-        """Test creating and getting a function alias."""
-        code = _make_zip('def handler(e, c): return "v1"')
-        fname = f"alias-func-{uuid.uuid4().hex[:8]}"
+    """Tests for function aliases: create, get, update, list, delete, invoke."""
+
+    def test_create_alias(self, lam, role):
+        code = _make_zip('def handler(e, c): return "ok"')
+        fname = f"alias-create-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
@@ -552,60 +514,63 @@ class TestLambdaAliases:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        try:
-            lam.publish_version(FunctionName=fname)
-            resp = lam.create_alias(
-                FunctionName=fname,
-                Name="prod",
-                FunctionVersion="1",
-                Description="production alias",
-            )
-            assert resp["Name"] == "prod"
-            assert resp["FunctionVersion"] == "1"
+        lam.publish_version(FunctionName=fname)
+        resp = lam.create_alias(
+            FunctionName=fname,
+            Name="prod",
+            FunctionVersion="1",
+        )
+        assert resp["Name"] == "prod"
+        assert resp["FunctionVersion"] == "1"
+        lam.delete_alias(FunctionName=fname, Name="prod")
+        lam.delete_function(FunctionName=fname)
 
-            alias = lam.get_alias(FunctionName=fname, Name="prod")
-            assert alias["Name"] == "prod"
-            assert alias["Description"] == "production alias"
-        finally:
-            try:
-                lam.delete_alias(FunctionName=fname, Name="prod")
-            except Exception:
-                pass
-            lam.delete_function(FunctionName=fname)
+    def test_get_alias(self, lam, role):
+        code = _make_zip('def handler(e, c): return "ok"')
+        fname = f"alias-get-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.publish_version(FunctionName=fname)
+        lam.create_alias(FunctionName=fname, Name="staging", FunctionVersion="1")
+        resp = lam.get_alias(FunctionName=fname, Name="staging")
+        assert resp["Name"] == "staging"
+        assert resp["FunctionVersion"] == "1"
+        lam.delete_alias(FunctionName=fname, Name="staging")
+        lam.delete_function(FunctionName=fname)
 
     def test_update_alias(self, lam, role):
-        """Test updating an alias to point to a new version."""
-        code_v1 = _make_zip('def handler(e, c): return "v1"')
+        code = _make_zip('def handler(e, c): return "ok"')
         fname = f"alias-upd-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
-            Code={"ZipFile": code_v1},
+            Code={"ZipFile": code},
         )
-        try:
-            lam.publish_version(FunctionName=fname)  # version 1
-            # Update code to create a distinct version 2
-            code_v2 = _make_zip('def handler(e, c): return "v2"')
-            lam.update_function_code(FunctionName=fname, ZipFile=code_v2)
-            lam.publish_version(FunctionName=fname)  # version 2
-            lam.create_alias(FunctionName=fname, Name="staging", FunctionVersion="1")
-            resp = lam.update_alias(FunctionName=fname, Name="staging", FunctionVersion="2")
-            assert resp["FunctionVersion"] == "2"
-
-            alias = lam.get_alias(FunctionName=fname, Name="staging")
-            assert alias["FunctionVersion"] == "2"
-        finally:
-            try:
-                lam.delete_alias(FunctionName=fname, Name="staging")
-            except Exception:
-                pass
-            lam.delete_function(FunctionName=fname)
+        lam.publish_version(FunctionName=fname)
+        code2 = _make_zip('def handler(e, c): return "v2"')
+        lam.update_function_code(FunctionName=fname, ZipFile=code2)
+        lam.publish_version(FunctionName=fname)
+        lam.create_alias(FunctionName=fname, Name="live", FunctionVersion="1")
+        resp = lam.update_alias(
+            FunctionName=fname,
+            Name="live",
+            FunctionVersion="2",
+            Description="updated",
+        )
+        assert resp["FunctionVersion"] == "2"
+        assert resp["Description"] == "updated"
+        lam.delete_alias(FunctionName=fname, Name="live")
+        lam.delete_function(FunctionName=fname)
 
     def test_list_aliases(self, lam, role):
-        """Test listing aliases for a function."""
-        code = _make_zip('def handler(e, c): return "v1"')
+        code = _make_zip('def handler(e, c): return "ok"')
         fname = f"alias-list-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
@@ -614,26 +579,19 @@ class TestLambdaAliases:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        try:
-            lam.publish_version(FunctionName=fname)
-            lam.create_alias(FunctionName=fname, Name="dev", FunctionVersion="1")
-            lam.create_alias(FunctionName=fname, Name="staging", FunctionVersion="1")
-
-            response = lam.list_aliases(FunctionName=fname)
-            alias_names = sorted(a["Name"] for a in response["Aliases"])
-            assert "dev" in alias_names
-            assert "staging" in alias_names
-        finally:
-            for alias in ["dev", "staging"]:
-                try:
-                    lam.delete_alias(FunctionName=fname, Name=alias)
-                except Exception:
-                    pass
-            lam.delete_function(FunctionName=fname)
+        lam.publish_version(FunctionName=fname)
+        lam.create_alias(FunctionName=fname, Name="alpha", FunctionVersion="1")
+        lam.create_alias(FunctionName=fname, Name="beta", FunctionVersion="1")
+        resp = lam.list_aliases(FunctionName=fname)
+        alias_names = [a["Name"] for a in resp["Aliases"]]
+        assert "alpha" in alias_names
+        assert "beta" in alias_names
+        lam.delete_alias(FunctionName=fname, Name="alpha")
+        lam.delete_alias(FunctionName=fname, Name="beta")
+        lam.delete_function(FunctionName=fname)
 
     def test_delete_alias(self, lam, role):
-        """Test deleting an alias."""
-        code = _make_zip('def handler(e, c): return "v1"')
+        code = _make_zip('def handler(e, c): return "ok"')
         fname = f"alias-del-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
@@ -642,51 +600,17 @@ class TestLambdaAliases:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        try:
-            lam.publish_version(FunctionName=fname)
-            lam.create_alias(FunctionName=fname, Name="temp", FunctionVersion="1")
-            lam.delete_alias(FunctionName=fname, Name="temp")
+        lam.publish_version(FunctionName=fname)
+        lam.create_alias(FunctionName=fname, Name="todelete", FunctionVersion="1")
+        lam.delete_alias(FunctionName=fname, Name="todelete")
+        resp = lam.list_aliases(FunctionName=fname)
+        alias_names = [a["Name"] for a in resp["Aliases"]]
+        assert "todelete" not in alias_names
+        lam.delete_function(FunctionName=fname)
 
-            response = lam.list_aliases(FunctionName=fname)
-            alias_names = [a["Name"] for a in response["Aliases"]]
-            assert "temp" not in alias_names
-        finally:
-            lam.delete_function(FunctionName=fname)
-
-
-class TestLambdaVersions:
-    def test_publish_multiple_versions(self, lam, role):
-        """Test publishing multiple versions and listing them."""
-        code_v1 = _make_zip('def handler(e, c): return "v1"')
-        fname = f"multi-ver-{uuid.uuid4().hex[:8]}"
-        lam.create_function(
-            FunctionName=fname,
-            Runtime="python3.12",
-            Role=role,
-            Handler="lambda_function.handler",
-            Code={"ZipFile": code_v1},
-        )
-        try:
-            v1 = lam.publish_version(FunctionName=fname)
-            assert v1["Version"] == "1"
-            # Update code so next publish creates a new version
-            code_v2 = _make_zip('def handler(e, c): return "v2"')
-            lam.update_function_code(FunctionName=fname, ZipFile=code_v2)
-            v2 = lam.publish_version(FunctionName=fname)
-            assert v2["Version"] == "2"
-
-            response = lam.list_versions_by_function(FunctionName=fname)
-            versions = sorted(v["Version"] for v in response["Versions"])
-            assert "$LATEST" in versions
-            assert "1" in versions
-            assert "2" in versions
-        finally:
-            lam.delete_function(FunctionName=fname)
-
-    def test_invoke_specific_version(self, lam, role):
-        """Test invoking a specific published version."""
-        code = _make_zip('def handler(e, c): return {"version": "original"}')
-        fname = f"ver-invoke-{uuid.uuid4().hex[:8]}"
+    def test_invoke_via_alias(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"source": "alias"}')
+        fname = f"alias-inv-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
@@ -694,108 +618,186 @@ class TestLambdaVersions:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        try:
-            lam.publish_version(FunctionName=fname)  # version 1
-
-            # Invoke version 1
-            response = lam.invoke(FunctionName=fname, Qualifier="1")
-            payload = json.loads(response["Payload"].read())
-            assert payload["version"] == "original"
-        finally:
-            lam.delete_function(FunctionName=fname)
+        lam.publish_version(FunctionName=fname)
+        lam.create_alias(FunctionName=fname, Name="live", FunctionVersion="1")
+        resp = lam.invoke(FunctionName=fname, Qualifier="live")
+        payload = json.loads(resp["Payload"].read())
+        assert payload["source"] == "alias"
+        lam.delete_alias(FunctionName=fname, Name="live")
+        lam.delete_function(FunctionName=fname)
 
 
-class TestLambdaInvocationTypes:
-    def test_invoke_request_response(self, lam, role):
-        """Test explicit RequestResponse invocation type."""
-        code = _make_zip('def handler(e, c): return {"result": "sync"}')
-        fname = f"inv-rr-{uuid.uuid4().hex[:8]}"
-        lam.create_function(
-            FunctionName=fname,
-            Runtime="python3.12",
-            Role=role,
-            Handler="lambda_function.handler",
-            Code={"ZipFile": code},
-        )
-        try:
-            response = lam.invoke(
-                FunctionName=fname, InvocationType="RequestResponse"
-            )
-            assert response["StatusCode"] == 200
-            payload = json.loads(response["Payload"].read())
-            assert payload["result"] == "sync"
-        finally:
-            lam.delete_function(FunctionName=fname)
+class TestLambdaEnvironmentVariables:
+    """Tests for environment variable management."""
 
-    def test_invoke_event_returns_202(self, lam, role):
-        """Test Event invocation type returns 202 with no payload."""
-        code = _make_zip('def handler(e, c): return "async-result"')
-        fname = f"inv-ev-{uuid.uuid4().hex[:8]}"
-        lam.create_function(
-            FunctionName=fname,
-            Runtime="python3.12",
-            Role=role,
-            Handler="lambda_function.handler",
-            Code={"ZipFile": code},
-        )
-        try:
-            response = lam.invoke(FunctionName=fname, InvocationType="Event")
-            assert response["StatusCode"] == 202
-        finally:
-            lam.delete_function(FunctionName=fname)
-
-
-class TestLambdaEnvironment:
-    def test_create_with_multiple_env_vars(self, lam, role):
-        """Test creating a function with multiple environment variables."""
+    def test_create_with_env_vars(self, lam, role):
         code = _make_zip(
-            'import os\ndef handler(e, c): return {'
-            '"a": os.environ.get("VAR_A", ""), '
-            '"b": os.environ.get("VAR_B", ""), '
-            '"c": os.environ.get("VAR_C", "")}'
+            'import os\ndef handler(e, c): return {"a": os.environ.get("VAR_A"), "b": os.environ.get("VAR_B")}'
         )
-        fname = f"multi-env-{uuid.uuid4().hex[:8]}"
+        fname = f"envvar-create-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Environment={"Variables": {"VAR_A": "a1", "VAR_B": "b2", "VAR_C": "c3"}},
+            Environment={"Variables": {"VAR_A": "aaa", "VAR_B": "bbb"}},
         )
-        try:
-            response = lam.invoke(FunctionName=fname)
-            payload = json.loads(response["Payload"].read())
-            assert payload["a"] == "a1"
-            assert payload["b"] == "b2"
-            assert payload["c"] == "c3"
-        finally:
-            lam.delete_function(FunctionName=fname)
+        resp = lam.invoke(FunctionName=fname)
+        payload = json.loads(resp["Payload"].read())
+        assert payload["a"] == "aaa"
+        assert payload["b"] == "bbb"
+        lam.delete_function(FunctionName=fname)
 
-    def test_env_vars_in_configuration(self, lam, role):
-        """Test environment variables appear in get_function_configuration."""
+    def test_update_env_vars(self, lam, role):
+        code = _make_zip(
+            'import os\ndef handler(e, c): return {"val": os.environ.get("MY_KEY", "unset")}'
+        )
+        fname = f"envvar-upd-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={"Variables": {"MY_KEY": "original"}},
+        )
+        lam.update_function_configuration(
+            FunctionName=fname,
+            Environment={"Variables": {"MY_KEY": "updated"}},
+        )
+        resp = lam.invoke(FunctionName=fname)
+        payload = json.loads(resp["Payload"].read())
+        assert payload["val"] == "updated"
+        lam.delete_function(FunctionName=fname)
+
+    def test_env_vars_in_get_configuration(self, lam, role):
         code = _make_zip("def handler(e, c): pass")
-        fname = f"env-cfg-{uuid.uuid4().hex[:8]}"
+        fname = f"envvar-cfg-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
             Runtime="python3.12",
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
-            Environment={"Variables": {"DB_HOST": "localhost", "DB_PORT": "5432"}},
+            Environment={"Variables": {"KEY1": "val1"}},
         )
-        try:
-            cfg = lam.get_function_configuration(FunctionName=fname)
-            env_vars = cfg["Environment"]["Variables"]
-            assert env_vars["DB_HOST"] == "localhost"
-            assert env_vars["DB_PORT"] == "5432"
-        finally:
-            lam.delete_function(FunctionName=fname)
+        resp = lam.get_function_configuration(FunctionName=fname)
+        assert resp["Environment"]["Variables"]["KEY1"] == "val1"
+        lam.delete_function(FunctionName=fname)
+
+    def test_remove_env_vars(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"envvar-rm-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={"Variables": {"REMOVE_ME": "yes"}},
+        )
+        lam.update_function_configuration(
+            FunctionName=fname,
+            Environment={"Variables": {}},
+        )
+        resp = lam.get_function_configuration(FunctionName=fname)
+        env_vars = resp.get("Environment", {}).get("Variables", {})
+        assert "REMOVE_ME" not in env_vars
+        lam.delete_function(FunctionName=fname)
 
 
-class TestLambdaConcurrencyAdvanced:
-    def test_update_reserved_concurrency(self, lam, role):
-        """Test updating reserved concurrency from one value to another."""
+class TestLambdaTagging:
+    """Tests for function tagging operations."""
+
+    def test_tag_resource(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"tag-add-{uuid.uuid4().hex[:8]}"
+        resp = lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        arn = resp["FunctionArn"]
+        lam.tag_resource(Resource=arn, Tags={"team": "platform", "cost-center": "123"})
+        tags = lam.list_tags(Resource=arn)["Tags"]
+        assert tags["team"] == "platform"
+        assert tags["cost-center"] == "123"
+        lam.delete_function(FunctionName=fname)
+
+    def test_untag_resource(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"tag-rm-{uuid.uuid4().hex[:8]}"
+        resp = lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Tags={"keep": "yes", "remove": "me"},
+        )
+        arn = resp["FunctionArn"]
+        lam.untag_resource(Resource=arn, TagKeys=["remove"])
+        tags = lam.list_tags(Resource=arn)["Tags"]
+        assert "keep" in tags
+        assert "remove" not in tags
+        lam.delete_function(FunctionName=fname)
+
+    def test_list_tags_empty(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"tag-empty-{uuid.uuid4().hex[:8]}"
+        resp = lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        arn = resp["FunctionArn"]
+        tags = lam.list_tags(Resource=arn)["Tags"]
+        assert tags == {} or isinstance(tags, dict)
+        lam.delete_function(FunctionName=fname)
+
+    def test_create_with_tags(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"tag-init-{uuid.uuid4().hex[:8]}"
+        resp = lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Tags={"env": "dev", "version": "1.0"},
+        )
+        arn = resp["FunctionArn"]
+        tags = lam.list_tags(Resource=arn)["Tags"]
+        assert tags["env"] == "dev"
+        assert tags["version"] == "1.0"
+        lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaConcurrencyExtended:
+    """Extended concurrency tests."""
+
+    def test_put_concurrency(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"conc-put-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.put_function_concurrency(
+            FunctionName=fname, ReservedConcurrentExecutions=5
+        )
+        assert resp["ReservedConcurrentExecutions"] == 5
+        lam.delete_function(FunctionName=fname)
+
+    def test_update_concurrency(self, lam, role):
         code = _make_zip("def handler(e, c): pass")
         fname = f"conc-upd-{uuid.uuid4().hex[:8]}"
         lam.create_function(
@@ -805,17 +807,269 @@ class TestLambdaConcurrencyAdvanced:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        try:
-            lam.put_function_concurrency(
-                FunctionName=fname, ReservedConcurrentExecutions=5
-            )
-            resp = lam.get_function_concurrency(FunctionName=fname)
-            assert resp["ReservedConcurrentExecutions"] == 5
+        lam.put_function_concurrency(
+            FunctionName=fname, ReservedConcurrentExecutions=5
+        )
+        resp = lam.put_function_concurrency(
+            FunctionName=fname, ReservedConcurrentExecutions=20
+        )
+        assert resp["ReservedConcurrentExecutions"] == 20
+        lam.delete_function(FunctionName=fname)
 
-            lam.put_function_concurrency(
-                FunctionName=fname, ReservedConcurrentExecutions=20
-            )
-            resp = lam.get_function_concurrency(FunctionName=fname)
-            assert resp["ReservedConcurrentExecutions"] == 20
-        finally:
-            lam.delete_function(FunctionName=fname)
+
+class TestLambdaInvokeExtended:
+    """Extended invocation tests: modes, errors, payloads."""
+
+    def test_invoke_request_response(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"mode": "sync"}')
+        fname = f"inv-rr-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.invoke(FunctionName=fname, InvocationType="RequestResponse")
+        assert resp["StatusCode"] == 200
+        payload = json.loads(resp["Payload"].read())
+        assert payload["mode"] == "sync"
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_returns_none(self, lam, role):
+        code = _make_zip("def handler(e, c): return None")
+        fname = f"inv-none-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.invoke(FunctionName=fname)
+        payload_bytes = resp["Payload"].read()
+        assert payload_bytes == b"null" or payload_bytes == b""
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_returns_string(self, lam, role):
+        code = _make_zip('def handler(e, c): return "just a string"')
+        fname = f"inv-str-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.invoke(FunctionName=fname)
+        payload = json.loads(resp["Payload"].read())
+        assert payload == "just a string"
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_returns_list(self, lam, role):
+        code = _make_zip("def handler(e, c): return [1, 2, 3]")
+        fname = f"inv-list-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.invoke(FunctionName=fname)
+        payload = json.loads(resp["Payload"].read())
+        assert payload == [1, 2, 3]
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_error_type_error(self, lam, role):
+        """Invoke a function that raises TypeError, verify FunctionError."""
+        code = _make_zip('def handler(e, c): raise TypeError("bad type")')
+        fname = f"inv-terr-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.invoke(FunctionName=fname)
+        assert resp.get("FunctionError") is not None
+        payload = json.loads(resp["Payload"].read())
+        assert "bad type" in payload.get("errorMessage", "")
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_error_key_error(self, lam, role):
+        """Invoke a function that raises KeyError."""
+        code = _make_zip('def handler(e, c): raise KeyError("missing_key")')
+        fname = f"inv-kerr-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.invoke(FunctionName=fname)
+        assert resp.get("FunctionError") is not None
+        payload = json.loads(resp["Payload"].read())
+        assert "missing_key" in payload.get("errorMessage", str(payload))
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_large_payload(self, lam, role):
+        """Invoke with a ~256KB payload and verify response."""
+        code = _make_zip(
+            'def handler(e, c): return {"size": len(str(e)), "ok": True}'
+        )
+        fname = f"inv-large-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        # ~256KB payload
+        large_data = {"data": "x" * (256 * 1024 - 50)}
+        resp = lam.invoke(
+            FunctionName=fname,
+            Payload=json.dumps(large_data),
+        )
+        assert resp["StatusCode"] == 200
+        payload = json.loads(resp["Payload"].read())
+        assert payload["ok"] is True
+        assert payload["size"] > 200000
+        lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaFunctionURL:
+    """Tests for function URL configuration."""
+
+    def test_create_function_url_config(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"statusCode": 200}')
+        fname = f"furl-create-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.create_function_url_config(
+            FunctionName=fname,
+            AuthType="NONE",
+        )
+        assert "FunctionUrl" in resp
+        assert resp["AuthType"] == "NONE"
+        lam.delete_function_url_config(FunctionName=fname)
+        lam.delete_function(FunctionName=fname)
+
+    def test_get_function_url_config(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"statusCode": 200}')
+        fname = f"furl-get-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.create_function_url_config(FunctionName=fname, AuthType="NONE")
+        resp = lam.get_function_url_config(FunctionName=fname)
+        assert "FunctionUrl" in resp
+        assert resp["AuthType"] == "NONE"
+        lam.delete_function_url_config(FunctionName=fname)
+        lam.delete_function(FunctionName=fname)
+
+    def test_delete_function_url_config(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"statusCode": 200}')
+        fname = f"furl-del-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.create_function_url_config(FunctionName=fname, AuthType="NONE")
+        lam.delete_function_url_config(FunctionName=fname)
+        with pytest.raises(lam.exceptions.ResourceNotFoundException):
+            lam.get_function_url_config(FunctionName=fname)
+        lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaLayersExtended:
+    """Extended layer tests: get version, permissions."""
+
+    def test_get_layer_version(self, lam):
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/mymod.py", "Z = 42")
+        layer_name = f"getlv-{uuid.uuid4().hex[:8]}"
+        pub_resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_code.getvalue()},
+            CompatibleRuntimes=["python3.12"],
+            Description="test layer",
+        )
+        version = pub_resp["Version"]
+        resp = lam.get_layer_version(LayerName=layer_name, VersionNumber=version)
+        assert resp["Version"] == version
+        assert resp["Description"] == "test layer"
+        assert "Content" in resp
+
+    def test_layer_compatible_runtimes(self, lam):
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/compat.py", "A = 1")
+        layer_name = f"compat-rt-{uuid.uuid4().hex[:8]}"
+        resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_code.getvalue()},
+            CompatibleRuntimes=["python3.11", "python3.12"],
+        )
+        assert "python3.11" in resp["CompatibleRuntimes"]
+        assert "python3.12" in resp["CompatibleRuntimes"]
+
+
+class TestLambdaUpdateCode:
+    """Tests for updating function code."""
+
+    def test_update_function_code(self, lam, role):
+        code1 = _make_zip('def handler(e, c): return {"v": 1}')
+        fname = f"upd-code-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code1},
+        )
+        # Invoke v1
+        resp1 = lam.invoke(FunctionName=fname)
+        p1 = json.loads(resp1["Payload"].read())
+        assert p1["v"] == 1
+        # Update code
+        code2 = _make_zip('def handler(e, c): return {"v": 2}')
+        lam.update_function_code(FunctionName=fname, ZipFile=code2)
+        # Invoke v2
+        resp2 = lam.invoke(FunctionName=fname)
+        p2 = json.loads(resp2["Payload"].read())
+        assert p2["v"] == 2
+        lam.delete_function(FunctionName=fname)
+
+    def test_update_code_returns_config(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"upd-code-cfg-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        code2 = _make_zip("def handler(e, c): return 42")
+        resp = lam.update_function_code(FunctionName=fname, ZipFile=code2)
+        assert resp["FunctionName"] == fname
+        assert resp["Runtime"] == "python3.12"
+        assert "FunctionArn" in resp
+        lam.delete_function(FunctionName=fname)

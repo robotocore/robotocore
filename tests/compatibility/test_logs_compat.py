@@ -1,16 +1,15 @@
 """CloudWatch Logs compatibility tests."""
 
 import time
-import uuid
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
 
-def _unique(prefix: str) -> str:
-    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+def _log_group_arn(group_name: str) -> str:
+    """Build a log group ARN for tagging operations."""
+    return f"arn:aws:logs:us-east-1:000000000000:log-group:{group_name}"
 
 
 @pytest.fixture
@@ -146,205 +145,406 @@ class TestLogsOperations:
         group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
         assert "retentionInDays" not in group
 
+    def test_multiple_streams_put_events_each(self, logs, log_group):
+        """Create multiple streams and put events to each independently."""
+        import uuid
 
-class TestLogsTagging:
-    def test_tag_log_group(self, logs):
-        name = f"/test/tag-{uuid.uuid4().hex[:8]}"
-        logs.create_log_group(logGroupName=name)
-        try:
-            # Get the ARN
-            described = logs.describe_log_groups(logGroupNamePrefix=name)
-            arn = described["logGroups"][0]["arn"]
-            logs.tag_resource(resourceArn=arn, tags={"env": "test", "team": "core"})
-            resp = logs.list_tags_for_resource(resourceArn=arn)
-            assert resp["tags"]["env"] == "test"
-            assert resp["tags"]["team"] == "core"
-        finally:
-            logs.delete_log_group(logGroupName=name)
+        suffix = uuid.uuid4().hex[:8]
+        streams = [f"ms-{suffix}-{i}" for i in range(3)]
+        for s in streams:
+            logs.create_log_stream(logGroupName=log_group, logStreamName=s)
 
-    def test_untag_log_group(self, logs):
-        name = f"/test/untag-{uuid.uuid4().hex[:8]}"
-        logs.create_log_group(logGroupName=name)
-        try:
-            described = logs.describe_log_groups(logGroupNamePrefix=name)
-            arn = described["logGroups"][0]["arn"]
-            logs.tag_resource(resourceArn=arn, tags={"remove-me": "yes", "keep": "yes"})
-            logs.untag_resource(resourceArn=arn, tagKeys=["remove-me"])
-            resp = logs.list_tags_for_resource(resourceArn=arn)
-            assert "remove-me" not in resp["tags"]
-            assert resp["tags"]["keep"] == "yes"
-        finally:
-            logs.delete_log_group(logGroupName=name)
-
-    def test_list_tags_for_resource(self, logs):
-        name = f"/test/listtags-{uuid.uuid4().hex[:8]}"
-        logs.create_log_group(logGroupName=name)
-        try:
-            described = logs.describe_log_groups(logGroupNamePrefix=name)
-            arn = described["logGroups"][0]["arn"]
-            logs.tag_resource(resourceArn=arn, tags={"initial": "value"})
-            resp = logs.list_tags_for_resource(resourceArn=arn)
-            assert resp["tags"]["initial"] == "value"
-        finally:
-            logs.delete_log_group(logGroupName=name)
-
-
-class TestLogsStreamEvents:
-    def test_create_stream_put_and_get_events(self, logs, log_group):
-        stream_name = _unique("events-stream")
-        logs.create_log_stream(logGroupName=log_group, logStreamName=stream_name)
         now = int(time.time() * 1000)
-        logs.put_log_events(
-            logGroupName=log_group,
-            logStreamName=stream_name,
-            logEvents=[
-                {"timestamp": now, "message": "first event"},
-                {"timestamp": now + 1, "message": "second event"},
-            ],
-        )
-        response = logs.get_log_events(
-            logGroupName=log_group,
-            logStreamName=stream_name,
-        )
-        messages = [e["message"] for e in response["events"]]
-        assert "first event" in messages
-        assert "second event" in messages
-
-    def test_get_log_events_forward_and_backward(self, logs, log_group):
-        stream_name = _unique("dir-stream")
-        logs.create_log_stream(logGroupName=log_group, logStreamName=stream_name)
-        now = int(time.time() * 1000)
-        logs.put_log_events(
-            logGroupName=log_group,
-            logStreamName=stream_name,
-            logEvents=[
-                {"timestamp": now, "message": "msg-a"},
-                {"timestamp": now + 1, "message": "msg-b"},
-                {"timestamp": now + 2, "message": "msg-c"},
-            ],
-        )
-        forward = logs.get_log_events(
-            logGroupName=log_group,
-            logStreamName=stream_name,
-            startFromHead=True,
-        )
-        assert len(forward["events"]) >= 3
-
-    def test_describe_log_streams_with_prefix(self, logs, log_group):
-        logs.create_log_stream(logGroupName=log_group, logStreamName="app-alpha")
-        logs.create_log_stream(logGroupName=log_group, logStreamName="app-beta")
-        logs.create_log_stream(logGroupName=log_group, logStreamName="web-gamma")
-        response = logs.describe_log_streams(
-            logGroupName=log_group,
-            logStreamNamePrefix="app-",
-        )
-        names = [s["logStreamName"] for s in response["logStreams"]]
-        assert "app-alpha" in names
-        assert "app-beta" in names
-        assert "web-gamma" not in names
-
-
-class TestLogsMetricFilter:
-    def test_put_and_describe_metric_filter(self, logs, log_group):
-        filter_name = _unique("mf")
-        logs.put_metric_filter(
-            logGroupName=log_group,
-            filterName=filter_name,
-            filterPattern="ERROR",
-            metricTransformations=[
-                {
-                    "metricName": "ErrorCount",
-                    "metricNamespace": "TestNamespace",
-                    "metricValue": "1",
-                }
-            ],
-        )
-        try:
-            response = logs.describe_metric_filters(logGroupName=log_group)
-            filter_names = [f["filterName"] for f in response["metricFilters"]]
-            assert filter_name in filter_names
-            mf = [f for f in response["metricFilters"] if f["filterName"] == filter_name][0]
-            assert mf["filterPattern"] == "ERROR"
-            assert mf["metricTransformations"][0]["metricName"] == "ErrorCount"
-        finally:
-            logs.delete_metric_filter(logGroupName=log_group, filterName=filter_name)
-
-    def test_delete_metric_filter(self, logs, log_group):
-        filter_name = _unique("del-mf")
-        logs.put_metric_filter(
-            logGroupName=log_group,
-            filterName=filter_name,
-            filterPattern="WARN",
-            metricTransformations=[
-                {
-                    "metricName": "WarnCount",
-                    "metricNamespace": "TestNS",
-                    "metricValue": "1",
-                }
-            ],
-        )
-        logs.delete_metric_filter(logGroupName=log_group, filterName=filter_name)
-        response = logs.describe_metric_filters(logGroupName=log_group)
-        filter_names = [f["filterName"] for f in response["metricFilters"]]
-        assert filter_name not in filter_names
-
-
-class TestLogsSubscriptionFilter:
-    def test_create_and_delete_subscription_filter(self, logs, log_group):
-        filter_name = _unique("sub-filter")
-        # Use a fake Lambda ARN as the destination
-        dest_arn = "arn:aws:lambda:us-east-1:123456789012:function:fake-processor"
-        logs.put_subscription_filter(
-            logGroupName=log_group,
-            filterName=filter_name,
-            filterPattern="",
-            destinationArn=dest_arn,
-        )
-        try:
-            response = logs.describe_subscription_filters(logGroupName=log_group)
-            filter_names = [f["filterName"] for f in response["subscriptionFilters"]]
-            assert filter_name in filter_names
-            sf = [
-                f for f in response["subscriptionFilters"] if f["filterName"] == filter_name
-            ][0]
-            assert sf["destinationArn"] == dest_arn
-        finally:
-            logs.delete_subscription_filter(
-                logGroupName=log_group, filterName=filter_name
+        for i, s in enumerate(streams):
+            logs.put_log_events(
+                logGroupName=log_group,
+                logStreamName=s,
+                logEvents=[{"timestamp": now + i, "message": f"event from {s}"}],
             )
 
-    def test_subscription_filter_gone_after_delete(self, logs, log_group):
-        filter_name = _unique("sub-del")
-        dest_arn = "arn:aws:lambda:us-east-1:123456789012:function:fake-fn"
+        for s in streams:
+            response = logs.get_log_events(logGroupName=log_group, logStreamName=s)
+            messages = [e["message"] for e in response["events"]]
+            assert f"event from {s}" in messages
+
+    def test_filter_log_events_across_streams(self, logs, log_group):
+        """FilterLogEvents across multiple streams without specifying stream names."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        s1 = f"filt-across-{suffix}-a"
+        s2 = f"filt-across-{suffix}-b"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=s1)
+        logs.create_log_stream(logGroupName=log_group, logStreamName=s2)
+
+        now = int(time.time() * 1000)
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=s1,
+            logEvents=[{"timestamp": now, "message": f"MARKER-{suffix}-alpha"}],
+        )
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=s2,
+            logEvents=[{"timestamp": now + 1, "message": f"MARKER-{suffix}-beta"}],
+        )
+
+        response = logs.filter_log_events(logGroupName=log_group, filterPattern=f"MARKER-{suffix}")
+        messages = [e["message"] for e in response["events"]]
+        assert any("alpha" in m for m in messages)
+        assert any("beta" in m for m in messages)
+
+    def test_filter_log_events_with_pattern(self, logs, log_group):
+        """FilterLogEvents with a specific filterPattern."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        stream = f"pattern-{suffix}"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+
+        now = int(time.time() * 1000)
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=[
+                {"timestamp": now, "message": f"ERROR-{suffix} something failed"},
+                {"timestamp": now + 1, "message": f"INFO-{suffix} all good"},
+                {"timestamp": now + 2, "message": f"ERROR-{suffix} another failure"},
+            ],
+        )
+
+        response = logs.filter_log_events(
+            logGroupName=log_group,
+            logStreamNames=[stream],
+            filterPattern=f"ERROR-{suffix}",
+        )
+        messages = [e["message"] for e in response["events"]]
+        assert len(messages) >= 2
+        assert all(f"ERROR-{suffix}" in m for m in messages)
+
+    def test_get_log_events_pagination(self, logs, log_group):
+        """GetLogEvents with pagination using nextToken."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        stream = f"paginate-{suffix}"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+
+        now = int(time.time() * 1000)
+        events = [
+            {"timestamp": now + i, "message": f"msg-{suffix}-{i}"} for i in range(10)
+        ]
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=events,
+        )
+
+        # Get with a limit
+        response = logs.get_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            limit=3,
+        )
+        assert len(response["events"]) <= 3
+        assert "nextForwardToken" in response
+        assert "nextBackwardToken" in response
+
+        # Use the forward token to get more
+        next_response = logs.get_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            nextToken=response["nextForwardToken"],
+            limit=3,
+        )
+        assert "events" in next_response
+
+    def test_put_and_delete_retention_policy(self, logs):
+        """Full lifecycle: create group, set retention, delete retention, delete group."""
+        import uuid
+
+        group = f"/test/retention-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+
+        logs.put_retention_policy(logGroupName=group, retentionInDays=14)
+        response = logs.describe_log_groups(logGroupNamePrefix=group)
+        g = [x for x in response["logGroups"] if x["logGroupName"] == group][0]
+        assert g["retentionInDays"] == 14
+
+        logs.delete_retention_policy(logGroupName=group)
+        response = logs.describe_log_groups(logGroupNamePrefix=group)
+        g = [x for x in response["logGroups"] if x["logGroupName"] == group][0]
+        assert "retentionInDays" not in g
+
+        logs.delete_log_group(logGroupName=group)
+
+    def test_describe_log_streams_order_by(self, logs, log_group):
+        """DescribeLogStreams with orderBy and limit."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        stream_names = [f"order-{suffix}-{c}" for c in ["c", "a", "b"]]
+        for s in stream_names:
+            logs.create_log_stream(logGroupName=log_group, logStreamName=s)
+
+        response = logs.describe_log_streams(
+            logGroupName=log_group,
+            logStreamNamePrefix=f"order-{suffix}",
+            orderBy="LogStreamName",
+        )
+        names = [s["logStreamName"] for s in response["logStreams"]]
+        # Should be alphabetically sorted
+        assert names == sorted(names)
+
+        # Test with limit
+        response = logs.describe_log_streams(
+            logGroupName=log_group,
+            logStreamNamePrefix=f"order-{suffix}",
+            orderBy="LogStreamName",
+            limit=2,
+        )
+        assert len(response["logStreams"]) == 2
+
+    def test_log_group_tags(self, logs):
+        """Tag, untag, and list tags on a log group."""
+        import uuid
+
+        group = f"/test/tags-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group, tags={"env": "test", "team": "infra"})
+
+        # Get the actual ARN from describe
+        desc = logs.describe_log_groups(logGroupNamePrefix=group)
+        group_arn = [
+            g["arn"] for g in desc["logGroups"] if g["logGroupName"] == group
+        ][0]
+        # Strip trailing ":*" if present (AWS sometimes includes it)
+        if group_arn.endswith(":*"):
+            group_arn = group_arn[:-2]
+
+        response = logs.list_tags_for_resource(resourceArn=group_arn)
+        assert response["tags"]["env"] == "test"
+        assert response["tags"]["team"] == "infra"
+
+        logs.tag_resource(
+            resourceArn=group_arn,
+            tags={"version": "2"},
+        )
+        response = logs.list_tags_for_resource(resourceArn=group_arn)
+        assert response["tags"]["version"] == "2"
+
+        logs.untag_resource(
+            resourceArn=group_arn,
+            tagKeys=["team"],
+        )
+        response = logs.list_tags_for_resource(resourceArn=group_arn)
+        assert "team" not in response["tags"]
+
+        logs.delete_log_group(logGroupName=group)
+
+    def test_put_describe_delete_metric_filter(self, logs, log_group):
+        """PutMetricFilter, DescribeMetricFilters, DeleteMetricFilter."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        filter_name = f"mf-{suffix}"
+        logs.put_metric_filter(
+            logGroupName=log_group,
+            filterName=filter_name,
+            filterPattern="ERROR",
+            metricTransformations=[
+                {
+                    "metricName": f"ErrorCount-{suffix}",
+                    "metricNamespace": "TestFilters",
+                    "metricValue": "1",
+                }
+            ],
+        )
+
+        response = logs.describe_metric_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["metricFilters"]]
+        assert filter_name in names
+
+        logs.delete_metric_filter(logGroupName=log_group, filterName=filter_name)
+        response = logs.describe_metric_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["metricFilters"]]
+        assert filter_name not in names
+
+    def test_put_describe_delete_subscription_filter(self, logs, log_group):
+        """PutSubscriptionFilter, DescribeSubscriptionFilters, DeleteSubscriptionFilter."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        filter_name = f"sf-{suffix}"
+
+        # Create a lambda function ARN (doesn't need to exist for the filter)
+        dest_arn = f"arn:aws:lambda:us-east-1:000000000000:function:dummy-{suffix}"
+
         logs.put_subscription_filter(
             logGroupName=log_group,
             filterName=filter_name,
             filterPattern="ERROR",
             destinationArn=dest_arn,
         )
-        logs.delete_subscription_filter(
-            logGroupName=log_group, filterName=filter_name
-        )
+
         response = logs.describe_subscription_filters(logGroupName=log_group)
-        filter_names = [f["filterName"] for f in response["subscriptionFilters"]]
-        assert filter_name not in filter_names
+        names = [f["filterName"] for f in response["subscriptionFilters"]]
+        assert filter_name in names
 
+        logs.delete_subscription_filter(logGroupName=log_group, filterName=filter_name)
+        response = logs.describe_subscription_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["subscriptionFilters"]]
+        assert filter_name not in names
 
-class TestLogsExportTasks:
-    def test_describe_export_tasks_empty(self, logs):
-        response = logs.describe_export_tasks()
-        assert "exportTasks" in response
+    def test_multiple_log_groups_describe_prefix_limit(self, logs):
+        """Create multiple log groups, describe with prefix and limit."""
+        import uuid
 
+        suffix = uuid.uuid4().hex[:8]
+        prefix = f"/test/multi-{suffix}"
+        groups = [f"{prefix}-{i}" for i in range(5)]
+        for g in groups:
+            logs.create_log_group(logGroupName=g)
 
-class TestLogsLogGroupWithTags:
-    def test_create_log_group_with_tags(self, logs):
-        name = f"/test/tagged-{uuid.uuid4().hex[:8]}"
-        logs.create_log_group(logGroupName=name, tags={"app": "myapp", "stage": "dev"})
-        try:
-            described = logs.describe_log_groups(logGroupNamePrefix=name)
-            arn = described["logGroups"][0]["arn"]
-            resp = logs.list_tags_for_resource(resourceArn=arn)
-            assert resp["tags"]["app"] == "myapp"
-            assert resp["tags"]["stage"] == "dev"
-        finally:
-            logs.delete_log_group(logGroupName=name)
+        # Describe with prefix
+        response = logs.describe_log_groups(logGroupNamePrefix=prefix)
+        names = [g["logGroupName"] for g in response["logGroups"]]
+        for g in groups:
+            assert g in names
+
+        # Describe with prefix and limit
+        response = logs.describe_log_groups(logGroupNamePrefix=prefix, limit=2)
+        assert len(response["logGroups"]) == 2
+
+        for g in groups:
+            logs.delete_log_group(logGroupName=g)
+
+    def test_get_log_events_start_end_time(self, logs, log_group):
+        """GetLogEvents filtered by startTime and endTime."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        stream = f"time-range-{suffix}"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+
+        base = int(time.time() * 1000)
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=[
+                {"timestamp": base, "message": f"early-{suffix}"},
+                {"timestamp": base + 60000, "message": f"mid-{suffix}"},
+                {"timestamp": base + 120000, "message": f"late-{suffix}"},
+            ],
+        )
+
+        # Query a time range that should only include early and mid
+        response = logs.get_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            startTime=base,
+            endTime=base + 90000,
+        )
+        messages = [e["message"] for e in response["events"]]
+        assert f"early-{suffix}" in messages
+        assert f"mid-{suffix}" in messages
+        assert f"late-{suffix}" not in messages
+
+    def test_filter_log_events_with_limit(self, logs, log_group):
+        """FilterLogEvents with limit parameter."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        stream = f"filt-limit-{suffix}"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+
+        now = int(time.time() * 1000)
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=[
+                {"timestamp": now + i, "message": f"MATCH-{suffix}-{i}"} for i in range(10)
+            ],
+        )
+
+        response = logs.filter_log_events(
+            logGroupName=log_group,
+            logStreamNames=[stream],
+            filterPattern=f"MATCH-{suffix}",
+            limit=3,
+        )
+        assert len(response["events"]) <= 3
+
+    def test_describe_log_groups_no_prefix(self, logs):
+        """DescribeLogGroups without prefix returns all groups."""
+        import uuid
+
+        group = f"/test/noprefix-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+
+        response = logs.describe_log_groups()
+        names = [g["logGroupName"] for g in response["logGroups"]]
+        assert group in names
+
+        logs.delete_log_group(logGroupName=group)
+
+    def test_put_log_events_multiple_batches(self, logs, log_group):
+        """Put events in multiple batches and verify all appear."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        stream = f"batches-{suffix}"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+
+        now = int(time.time() * 1000)
+        # First batch
+        resp1 = logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=[{"timestamp": now, "message": f"batch1-{suffix}"}],
+        )
+        assert resp1["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Second batch
+        resp2 = logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=[{"timestamp": now + 1000, "message": f"batch2-{suffix}"}],
+        )
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        response = logs.get_log_events(logGroupName=log_group, logStreamName=stream)
+        messages = [e["message"] for e in response["events"]]
+        assert f"batch1-{suffix}" in messages
+        assert f"batch2-{suffix}" in messages
+
+    def test_describe_metric_filters_with_filter_name_prefix(self, logs, log_group):
+        """DescribeMetricFilters with filterNamePrefix."""
+        import uuid
+
+        suffix = uuid.uuid4().hex[:8]
+        prefix = f"mfp-{suffix}"
+        names = [f"{prefix}-a", f"{prefix}-b"]
+        for name in names:
+            logs.put_metric_filter(
+                logGroupName=log_group,
+                filterName=name,
+                filterPattern="ERROR",
+                metricTransformations=[
+                    {
+                        "metricName": f"Err-{name}",
+                        "metricNamespace": "TestFilters",
+                        "metricValue": "1",
+                    }
+                ],
+            )
+
+        response = logs.describe_metric_filters(
+            logGroupName=log_group,
+            filterNamePrefix=prefix,
+        )
+        returned = [f["filterName"] for f in response["metricFilters"]]
+        for name in names:
+            assert name in returned
+
+        for name in names:
+            logs.delete_metric_filter(logGroupName=log_group, filterName=name)

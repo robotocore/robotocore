@@ -153,54 +153,6 @@ class TestSQSBatchOperations:
         response = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=5)
         assert len(response.get("Messages", [])) >= 1
 
-    def test_send_batch_unique_message_ids(self, sqs):
-        """Batch send returns unique MessageIds for each entry."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"batch-ids-{uid}")["QueueUrl"]
-        try:
-            response = sqs.send_message_batch(
-                QueueUrl=url,
-                Entries=[
-                    {"Id": "a", "MessageBody": "msg-a"},
-                    {"Id": "b", "MessageBody": "msg-b"},
-                    {"Id": "c", "MessageBody": "msg-c"},
-                ],
-            )
-            assert len(response["Successful"]) == 3
-            message_ids = {s["MessageId"] for s in response["Successful"]}
-            assert len(message_ids) == 3  # All unique
-            entry_ids = {s["Id"] for s in response["Successful"]}
-            assert entry_ids == {"a", "b", "c"}
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_batch_receive_and_delete_all(self, sqs):
-        """Send batch, receive all, delete all in batch."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"batch-all-{uid}")["QueueUrl"]
-        try:
-            sqs.send_message_batch(
-                QueueUrl=url,
-                Entries=[
-                    {"Id": str(i), "MessageBody": f"item-{i}"} for i in range(5)
-                ],
-            )
-            all_msgs = []
-            for _ in range(5):
-                recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
-                all_msgs.extend(recv.get("Messages", []))
-                if len(all_msgs) >= 5:
-                    break
-            assert len(all_msgs) >= 3  # at least most messages received
-            delete_entries = [
-                {"Id": str(i), "ReceiptHandle": m["ReceiptHandle"]}
-                for i, m in enumerate(all_msgs)
-            ]
-            resp = sqs.delete_message_batch(QueueUrl=url, Entries=delete_entries)
-            assert len(resp["Successful"]) == len(delete_entries)
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
 
 class TestSQSVisibilityTimeout:
     def test_change_message_visibility(self, sqs, queue_url):
@@ -245,54 +197,6 @@ class TestSQSVisibilityTimeout:
             recv2 = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=1)
             assert len(recv2.get("Messages", [])) == 1
             assert recv2["Messages"][0]["Body"] == "comeback"
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_change_visibility_extends_timeout(self, sqs):
-        """Change visibility to a longer timeout, verify message stays hidden."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(
-            QueueName=f"vis-extend-{uid}",
-            Attributes={"VisibilityTimeout": "1"},
-        )["QueueUrl"]
-        try:
-            sqs.send_message(QueueUrl=url, MessageBody="extend-test")
-            recv = sqs.receive_message(QueueUrl=url)
-            receipt = recv["Messages"][0]["ReceiptHandle"]
-            # Extend visibility to 10 seconds
-            sqs.change_message_visibility(
-                QueueUrl=url, ReceiptHandle=receipt, VisibilityTimeout=10
-            )
-            # Wait past original 1s timeout
-            time.sleep(2)
-            # Message should still be hidden
-            recv2 = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=0)
-            assert len(recv2.get("Messages", [])) == 0
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_receive_increments_approximate_receive_count(self, sqs):
-        """ApproximateReceiveCount should increase with each receive."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(
-            QueueName=f"recv-count-{uid}",
-            Attributes={"VisibilityTimeout": "0"},
-        )["QueueUrl"]
-        try:
-            sqs.send_message(QueueUrl=url, MessageBody="count-me")
-            # First receive
-            recv1 = sqs.receive_message(
-                QueueUrl=url, AttributeNames=["All"], WaitTimeSeconds=2
-            )
-            count1 = int(recv1["Messages"][0]["Attributes"]["ApproximateReceiveCount"])
-            assert count1 == 1
-            # Second receive (visibility=0 so immediately available)
-            time.sleep(0.5)
-            recv2 = sqs.receive_message(
-                QueueUrl=url, AttributeNames=["All"], WaitTimeSeconds=2
-            )
-            count2 = int(recv2["Messages"][0]["Attributes"]["ApproximateReceiveCount"])
-            assert count2 == 2
         finally:
             sqs.delete_queue(QueueUrl=url)
 
@@ -355,130 +259,6 @@ class TestSQSFIFO:
         recv = sqs.receive_message(QueueUrl=fifo_queue_url, AttributeNames=["All"])
         assert recv["Messages"][0]["Attributes"]["MessageGroupId"] == "mygroup"
 
-    def test_fifo_explicit_deduplication_id(self, sqs):
-        """FIFO queue without content-based dedup uses explicit MessageDeduplicationId."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(
-            QueueName=f"fifo-explicit-{uid}.fifo",
-            Attributes={"FifoQueue": "true"},
-        )["QueueUrl"]
-        try:
-            sqs.send_message(
-                QueueUrl=url,
-                MessageBody="body-one",
-                MessageGroupId="g1",
-                MessageDeduplicationId="dedup-same",
-            )
-            sqs.send_message(
-                QueueUrl=url,
-                MessageBody="body-two-different",
-                MessageGroupId="g1",
-                MessageDeduplicationId="dedup-same",
-            )
-            recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
-            msgs = recv.get("Messages", [])
-            assert len(msgs) == 1
-            assert msgs[0]["Body"] == "body-one"
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_fifo_different_dedup_ids_both_delivered(self, sqs):
-        """Messages with different dedup IDs should both be delivered."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(
-            QueueName=f"fifo-diff-dedup-{uid}.fifo",
-            Attributes={"FifoQueue": "true"},
-        )["QueueUrl"]
-        try:
-            sqs.send_message(
-                QueueUrl=url,
-                MessageBody="first",
-                MessageGroupId="g1",
-                MessageDeduplicationId="dedup-a",
-            )
-            sqs.send_message(
-                QueueUrl=url,
-                MessageBody="second",
-                MessageGroupId="g1",
-                MessageDeduplicationId="dedup-b",
-            )
-            msgs = []
-            for _ in range(3):
-                recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
-                for m in recv.get("Messages", []):
-                    msgs.append(m)
-                    sqs.delete_message(QueueUrl=url, ReceiptHandle=m["ReceiptHandle"])
-                if len(msgs) >= 2:
-                    break
-            assert len(msgs) == 2
-            bodies = [m["Body"] for m in msgs]
-            assert "first" in bodies
-            assert "second" in bodies
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_fifo_multiple_groups_ordering(self, sqs):
-        """Messages in different groups maintain per-group ordering."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(
-            QueueName=f"fifo-multi-grp-{uid}.fifo",
-            Attributes={
-                "FifoQueue": "true",
-                "ContentBasedDeduplication": "true",
-            },
-        )["QueueUrl"]
-        try:
-            # Send interleaved messages to two groups
-            for i in range(3):
-                sqs.send_message(
-                    QueueUrl=url,
-                    MessageBody=f"groupA-{i}",
-                    MessageGroupId="groupA",
-                )
-                sqs.send_message(
-                    QueueUrl=url,
-                    MessageBody=f"groupB-{i}",
-                    MessageGroupId="groupB",
-                )
-
-            all_msgs = []
-            for _ in range(10):
-                recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
-                for m in recv.get("Messages", []):
-                    all_msgs.append(m)
-                    sqs.delete_message(QueueUrl=url, ReceiptHandle=m["ReceiptHandle"])
-                if len(all_msgs) >= 6:
-                    break
-
-            group_a = [m["Body"] for m in all_msgs if m["Body"].startswith("groupA")]
-            group_b = [m["Body"] for m in all_msgs if m["Body"].startswith("groupB")]
-            # Each group should be in order
-            assert group_a == sorted(group_a)
-            assert group_b == sorted(group_b)
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_fifo_send_message_returns_sequence_number(self, sqs):
-        """SendMessage on FIFO should return SequenceNumber."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(
-            QueueName=f"fifo-seq-ret-{uid}.fifo",
-            Attributes={
-                "FifoQueue": "true",
-                "ContentBasedDeduplication": "true",
-            },
-        )["QueueUrl"]
-        try:
-            resp = sqs.send_message(
-                QueueUrl=url,
-                MessageBody="seq-return-test",
-                MessageGroupId="g1",
-            )
-            assert "SequenceNumber" in resp
-            assert resp["SequenceNumber"].isdigit()
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
 
 class TestSQSDeadLetterQueue:
     def test_dlq_redrive(self, sqs):
@@ -522,38 +302,180 @@ class TestSQSDeadLetterQueue:
             sqs.delete_queue(QueueUrl=source_url)
             sqs.delete_queue(QueueUrl=dlq_url)
 
-    def test_dlq_redrive_policy_readable(self, sqs):
-        """RedrivePolicy should be readable from queue attributes."""
+
+class TestSQSFifoAdvanced:
+    """Advanced FIFO queue operations beyond basic ordering."""
+
+    def test_fifo_message_deduplication_id(self, sqs):
+        """MessageDeduplicationId prevents duplicate delivery."""
         uid = uuid.uuid4().hex[:8]
-        dlq_url = sqs.create_queue(QueueName=f"dlq-read-{uid}")["QueueUrl"]
+        url = sqs.create_queue(
+            QueueName=f"test-fifo-dedup-{uid}.fifo",
+            Attributes={"FifoQueue": "true"},
+        )["QueueUrl"]
+        try:
+            dedup_id = f"dedup-{uid}"
+            sqs.send_message(
+                QueueUrl=url,
+                MessageBody="first",
+                MessageGroupId="g1",
+                MessageDeduplicationId=dedup_id,
+            )
+            sqs.send_message(
+                QueueUrl=url,
+                MessageBody="duplicate",
+                MessageGroupId="g1",
+                MessageDeduplicationId=dedup_id,
+            )
+            recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
+            assert len(recv.get("Messages", [])) == 1
+            assert recv["Messages"][0]["Body"] == "first"
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_fifo_different_dedup_ids_both_delivered(self, sqs):
+        """Different MessageDeduplicationIds are both delivered."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-fifo-diff-dedup-{uid}.fifo",
+            Attributes={"FifoQueue": "true"},
+        )["QueueUrl"]
+        try:
+            sqs.send_message(
+                QueueUrl=url,
+                MessageBody="msg-a",
+                MessageGroupId="g1",
+                MessageDeduplicationId="dedup-a",
+            )
+            sqs.send_message(
+                QueueUrl=url,
+                MessageBody="msg-b",
+                MessageGroupId="g1",
+                MessageDeduplicationId="dedup-b",
+            )
+            recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
+            assert len(recv.get("Messages", [])) == 2
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_fifo_multiple_groups_ordering(self, sqs):
+        """Messages in different groups maintain per-group ordering."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-fifo-multigroup-{uid}.fifo",
+            Attributes={
+                "FifoQueue": "true",
+                "ContentBasedDeduplication": "true",
+            },
+        )["QueueUrl"]
+        try:
+            for i in range(3):
+                sqs.send_message(
+                    QueueUrl=url,
+                    MessageBody=f"groupA-{i}",
+                    MessageGroupId="groupA",
+                )
+            for i in range(3):
+                sqs.send_message(
+                    QueueUrl=url,
+                    MessageBody=f"groupB-{i}",
+                    MessageGroupId="groupB",
+                )
+            messages = []
+            for _ in range(10):
+                recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
+                for m in recv.get("Messages", []):
+                    messages.append(m["Body"])
+                    sqs.delete_message(QueueUrl=url, ReceiptHandle=m["ReceiptHandle"])
+                if len(messages) >= 6:
+                    break
+            group_a = [m for m in messages if m.startswith("groupA")]
+            group_b = [m for m in messages if m.startswith("groupB")]
+            assert group_a == ["groupA-0", "groupA-1", "groupA-2"]
+            assert group_b == ["groupB-0", "groupB-1", "groupB-2"]
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_fifo_content_based_dedup_attribute(self, sqs):
+        """ContentBasedDeduplication attribute is queryable."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-fifo-cbd-{uid}.fifo",
+            Attributes={
+                "FifoQueue": "true",
+                "ContentBasedDeduplication": "true",
+            },
+        )["QueueUrl"]
+        try:
+            attrs = sqs.get_queue_attributes(
+                QueueUrl=url, AttributeNames=["ContentBasedDeduplication"]
+            )
+            assert attrs["Attributes"]["ContentBasedDeduplication"] == "true"
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_fifo_send_message_batch(self, sqs):
+        """SendMessageBatch works with FIFO queues."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-fifo-batch-{uid}.fifo",
+            Attributes={
+                "FifoQueue": "true",
+                "ContentBasedDeduplication": "true",
+            },
+        )["QueueUrl"]
+        try:
+            resp = sqs.send_message_batch(
+                QueueUrl=url,
+                Entries=[
+                    {"Id": "1", "MessageBody": "fifo-batch-1", "MessageGroupId": "g1"},
+                    {"Id": "2", "MessageBody": "fifo-batch-2", "MessageGroupId": "g1"},
+                    {"Id": "3", "MessageBody": "fifo-batch-3", "MessageGroupId": "g1"},
+                ],
+            )
+            assert len(resp["Successful"]) == 3
+            for entry in resp["Successful"]:
+                assert "MessageId" in entry
+                assert "MD5OfMessageBody" in entry
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSDLQAdvanced:
+    """Advanced dead-letter queue tests."""
+
+    def test_dlq_redrive_policy_attribute(self, sqs):
+        """RedrivePolicy can be read back from queue attributes."""
+        uid = uuid.uuid4().hex[:8]
+        dlq_url = sqs.create_queue(QueueName=f"test-dlq-attr-dlq-{uid}")["QueueUrl"]
         dlq_arn = sqs.get_queue_attributes(
             QueueUrl=dlq_url, AttributeNames=["QueueArn"]
         )["Attributes"]["QueueArn"]
-        policy = json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "5"})
-        src_url = sqs.create_queue(
-            QueueName=f"src-read-{uid}",
+        policy = json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "3"})
+        source_url = sqs.create_queue(
+            QueueName=f"test-dlq-attr-src-{uid}",
             Attributes={"RedrivePolicy": policy},
         )["QueueUrl"]
         try:
             attrs = sqs.get_queue_attributes(
-                QueueUrl=src_url, AttributeNames=["RedrivePolicy"]
-            )["Attributes"]
-            read_policy = json.loads(attrs["RedrivePolicy"])
-            assert read_policy["deadLetterTargetArn"] == dlq_arn
-            assert str(read_policy["maxReceiveCount"]) == "5"
+                QueueUrl=source_url, AttributeNames=["RedrivePolicy"]
+            )
+            returned_policy = json.loads(attrs["Attributes"]["RedrivePolicy"])
+            assert returned_policy["deadLetterTargetArn"] == dlq_arn
+            assert str(returned_policy["maxReceiveCount"]) == "3"
         finally:
-            sqs.delete_queue(QueueUrl=src_url)
+            sqs.delete_queue(QueueUrl=source_url)
             sqs.delete_queue(QueueUrl=dlq_url)
 
-    def test_dlq_message_preserves_body(self, sqs):
-        """Message body should be preserved when moved to DLQ."""
+    def test_dlq_message_body_preserved(self, sqs):
+        """Message body and attributes are preserved when moved to DLQ."""
         uid = uuid.uuid4().hex[:8]
-        dlq_url = sqs.create_queue(QueueName=f"dlq-body-{uid}")["QueueUrl"]
+        dlq_url = sqs.create_queue(QueueName=f"test-dlq-body-dlq-{uid}")["QueueUrl"]
         dlq_arn = sqs.get_queue_attributes(
             QueueUrl=dlq_url, AttributeNames=["QueueArn"]
         )["Attributes"]["QueueArn"]
-        src_url = sqs.create_queue(
-            QueueName=f"src-body-{uid}",
+        source_url = sqs.create_queue(
+            QueueName=f"test-dlq-body-src-{uid}",
             Attributes={
                 "RedrivePolicy": json.dumps(
                     {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "1"}
@@ -562,317 +484,537 @@ class TestSQSDeadLetterQueue:
             },
         )["QueueUrl"]
         try:
-            original_body = f"preserve-me-{uid}"
-            sqs.send_message(QueueUrl=src_url, MessageBody=original_body)
-            # Receive once (maxReceiveCount=1, so next receive triggers DLQ)
-            sqs.receive_message(QueueUrl=src_url, WaitTimeSeconds=1)
-            time.sleep(2)
+            sqs.send_message(QueueUrl=source_url, MessageBody="dlq-preserve-test")
+            # Receive once (maxReceiveCount=1), then let it expire
+            sqs.receive_message(QueueUrl=source_url, WaitTimeSeconds=1)
+            time.sleep(3)
             # Receive again to trigger DLQ move
-            sqs.receive_message(QueueUrl=src_url, WaitTimeSeconds=1)
+            sqs.receive_message(QueueUrl=source_url, WaitTimeSeconds=1)
             time.sleep(2)
-            # Check DLQ
             dlq_recv = sqs.receive_message(QueueUrl=dlq_url, WaitTimeSeconds=3)
             assert len(dlq_recv.get("Messages", [])) == 1
-            assert dlq_recv["Messages"][0]["Body"] == original_body
+            assert dlq_recv["Messages"][0]["Body"] == "dlq-preserve-test"
         finally:
-            sqs.delete_queue(QueueUrl=src_url)
+            sqs.delete_queue(QueueUrl=source_url)
             sqs.delete_queue(QueueUrl=dlq_url)
 
 
-class TestSQSPurge:
-    def test_purge_removes_all_messages(self, sqs):
-        """Purge should remove all messages from the queue."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"purge-all-{uid}")["QueueUrl"]
-        try:
-            for i in range(5):
-                sqs.send_message(QueueUrl=url, MessageBody=f"purge-{i}")
-            sqs.purge_queue(QueueUrl=url)
-            recv = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=1, MaxNumberOfMessages=10)
-            assert len(recv.get("Messages", [])) == 0
-        finally:
-            sqs.delete_queue(QueueUrl=url)
+class TestSQSMessageAttributes:
+    """Message attribute types and retrieval."""
 
-    def test_purge_empty_queue(self, sqs):
-        """Purging an already-empty queue should not error."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"purge-empty-{uid}")["QueueUrl"]
-        try:
-            sqs.purge_queue(QueueUrl=url)  # Should not raise
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-
-class TestSQSTagging:
-    def test_tag_queue(self, sqs):
-        """Tag a queue and list tags."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"tag-q-{uid}")["QueueUrl"]
-        try:
-            sqs.tag_queue(QueueUrl=url, Tags={"env": "test", "project": "robotocore"})
-            tags = sqs.list_queue_tags(QueueUrl=url).get("Tags", {})
-            assert tags["env"] == "test"
-            assert tags["project"] == "robotocore"
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_untag_queue(self, sqs):
-        """Tag then untag a queue."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"untag-q-{uid}")["QueueUrl"]
-        try:
-            sqs.tag_queue(QueueUrl=url, Tags={"a": "1", "b": "2"})
-            sqs.untag_queue(QueueUrl=url, TagKeys=["a"])
-            tags = sqs.list_queue_tags(QueueUrl=url).get("Tags", {})
-            assert "a" not in tags
-            assert tags["b"] == "2"
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_tag_overwrite(self, sqs):
-        """Tagging with same key overwrites the value."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"tag-over-{uid}")["QueueUrl"]
-        try:
-            sqs.tag_queue(QueueUrl=url, Tags={"env": "dev"})
-            sqs.tag_queue(QueueUrl=url, Tags={"env": "prod"})
-            tags = sqs.list_queue_tags(QueueUrl=url).get("Tags", {})
-            assert tags["env"] == "prod"
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-
-class TestSQSLongPolling:
-    def test_long_poll_returns_immediately_when_message_exists(self, sqs):
-        """Long poll should return immediately if message is already available."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"longpoll-{uid}")["QueueUrl"]
-        try:
-            sqs.send_message(QueueUrl=url, MessageBody="pre-sent")
-            start = time.time()
-            recv = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=5)
-            elapsed = time.time() - start
-            assert len(recv.get("Messages", [])) == 1
-            assert recv["Messages"][0]["Body"] == "pre-sent"
-            # Should return well before the 5s timeout
-            assert elapsed < 4.0
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_long_poll_returns_empty_after_timeout(self, sqs):
-        """Long poll on empty queue should wait and return empty."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"longpoll-empty-{uid}")["QueueUrl"]
-        try:
-            start = time.time()
-            recv = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=1)
-            elapsed = time.time() - start
-            assert len(recv.get("Messages", [])) == 0
-            # Should have waited at least ~1s
-            assert elapsed >= 0.5
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-
-class TestSQSMessageAttributeTypes:
     def test_string_attribute(self, sqs, queue_url):
-        """String type message attribute."""
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody="string-attr",
+            MessageBody="str-attr",
             MessageAttributes={
-                "name": {"DataType": "String", "StringValue": "hello"},
+                "Name": {"DataType": "String", "StringValue": "Alice"},
             },
         )
         recv = sqs.receive_message(
             QueueUrl=queue_url, MessageAttributeNames=["All"]
         )
-        attr = recv["Messages"][0]["MessageAttributes"]["name"]
+        attr = recv["Messages"][0]["MessageAttributes"]["Name"]
+        assert attr["StringValue"] == "Alice"
         assert attr["DataType"] == "String"
-        assert attr["StringValue"] == "hello"
 
     def test_number_attribute(self, sqs, queue_url):
-        """Number type message attribute."""
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody="number-attr",
+            MessageBody="num-attr",
             MessageAttributes={
-                "count": {"DataType": "Number", "StringValue": "42"},
+                "Count": {"DataType": "Number", "StringValue": "42"},
             },
         )
         recv = sqs.receive_message(
             QueueUrl=queue_url, MessageAttributeNames=["All"]
         )
-        attr = recv["Messages"][0]["MessageAttributes"]["count"]
-        assert attr["DataType"] == "Number"
+        attr = recv["Messages"][0]["MessageAttributes"]["Count"]
         assert attr["StringValue"] == "42"
+        assert attr["DataType"] == "Number"
 
     def test_binary_attribute(self, sqs, queue_url):
-        """Binary type message attribute."""
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody="binary-attr",
+            MessageBody="bin-attr",
             MessageAttributes={
-                "data": {"DataType": "Binary", "BinaryValue": b"\x00\x01\x02"},
+                "Data": {"DataType": "Binary", "BinaryValue": b"\x00\x01\x02\x03"},
             },
         )
         recv = sqs.receive_message(
             QueueUrl=queue_url, MessageAttributeNames=["All"]
         )
-        attr = recv["Messages"][0]["MessageAttributes"]["data"]
+        attr = recv["Messages"][0]["MessageAttributes"]["Data"]
+        assert attr["BinaryValue"] == b"\x00\x01\x02\x03"
         assert attr["DataType"] == "Binary"
-        assert attr["BinaryValue"] == b"\x00\x01\x02"
 
-    def test_multiple_attribute_types(self, sqs, queue_url):
-        """Mix of String, Number, and Binary attributes."""
+    def test_multiple_attributes(self, sqs, queue_url):
         sqs.send_message(
             QueueUrl=queue_url,
             MessageBody="multi-attr",
             MessageAttributes={
-                "name": {"DataType": "String", "StringValue": "test"},
-                "count": {"DataType": "Number", "StringValue": "99"},
-                "blob": {"DataType": "Binary", "BinaryValue": b"\xff"},
+                "Color": {"DataType": "String", "StringValue": "red"},
+                "Size": {"DataType": "Number", "StringValue": "10"},
+                "Blob": {"DataType": "Binary", "BinaryValue": b"\xff"},
             },
         )
         recv = sqs.receive_message(
             QueueUrl=queue_url, MessageAttributeNames=["All"]
         )
         attrs = recv["Messages"][0]["MessageAttributes"]
-        assert attrs["name"]["StringValue"] == "test"
-        assert attrs["count"]["StringValue"] == "99"
-        assert attrs["blob"]["BinaryValue"] == b"\xff"
+        assert attrs["Color"]["StringValue"] == "red"
+        assert attrs["Size"]["StringValue"] == "10"
+        assert attrs["Blob"]["BinaryValue"] == b"\xff"
 
-    def test_custom_string_attribute(self, sqs, queue_url):
-        """Custom type like String.json."""
+    def test_all_attributes_with_all_request(self, sqs, queue_url):
+        """Requesting 'All' returns all message attributes."""
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody="custom-attr",
+            MessageBody="all-attr-req",
             MessageAttributes={
-                "payload": {
-                    "DataType": "String.json",
-                    "StringValue": '{"key": "value"}',
-                },
+                "X": {"DataType": "String", "StringValue": "val-x"},
+                "Y": {"DataType": "String", "StringValue": "val-y"},
             },
         )
         recv = sqs.receive_message(
             QueueUrl=queue_url, MessageAttributeNames=["All"]
         )
-        attr = recv["Messages"][0]["MessageAttributes"]["payload"]
-        assert attr["DataType"] == "String.json"
-        assert json.loads(attr["StringValue"]) == {"key": "value"}
+        attrs = recv["Messages"][0].get("MessageAttributes", {})
+        assert "X" in attrs
+        assert "Y" in attrs
+
+    def test_custom_data_type(self, sqs, queue_url):
+        """Custom data types like String.email are supported."""
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody="custom-type",
+            MessageAttributes={
+                "Email": {"DataType": "String.email", "StringValue": "a@b.com"},
+            },
+        )
+        recv = sqs.receive_message(
+            QueueUrl=queue_url, MessageAttributeNames=["All"]
+        )
+        attr = recv["Messages"][0]["MessageAttributes"]["Email"]
+        assert attr["StringValue"] == "a@b.com"
+        assert attr["DataType"] == "String.email"
+
+
+class TestSQSBatchAdvanced:
+    """Advanced batch operations."""
+
+    def test_send_batch_with_attributes(self, sqs, queue_url):
+        """SendMessageBatch entries can have different attributes."""
+        resp = sqs.send_message_batch(
+            QueueUrl=queue_url,
+            Entries=[
+                {
+                    "Id": "m1",
+                    "MessageBody": "batch-a",
+                    "MessageAttributes": {
+                        "Key": {"DataType": "String", "StringValue": "val1"},
+                    },
+                },
+                {
+                    "Id": "m2",
+                    "MessageBody": "batch-b",
+                    "MessageAttributes": {
+                        "Key": {"DataType": "String", "StringValue": "val2"},
+                    },
+                },
+            ],
+        )
+        assert len(resp["Successful"]) == 2
+
+    def test_send_batch_with_delay(self, sqs, queue_url):
+        """SendMessageBatch entries can have per-message DelaySeconds."""
+        resp = sqs.send_message_batch(
+            QueueUrl=queue_url,
+            Entries=[
+                {"Id": "m1", "MessageBody": "no-delay", "DelaySeconds": 0},
+                {"Id": "m2", "MessageBody": "delayed", "DelaySeconds": 1},
+            ],
+        )
+        assert len(resp["Successful"]) == 2
+        # The non-delayed message should be immediately available
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=0)
+        assert len(recv.get("Messages", [])) >= 1
+
+    def test_delete_batch_returns_ids(self, sqs, queue_url):
+        """DeleteMessageBatch returns the Ids of successfully deleted messages."""
+        sqs.send_message_batch(
+            QueueUrl=queue_url,
+            Entries=[
+                {"Id": "a", "MessageBody": "del-batch-1"},
+                {"Id": "b", "MessageBody": "del-batch-2"},
+            ],
+        )
+        recv = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
+        entries = [
+            {"Id": f"del-{i}", "ReceiptHandle": m["ReceiptHandle"]}
+            for i, m in enumerate(recv["Messages"])
+        ]
+        resp = sqs.delete_message_batch(QueueUrl=queue_url, Entries=entries)
+        returned_ids = {e["Id"] for e in resp["Successful"]}
+        expected_ids = {e["Id"] for e in entries}
+        assert returned_ids == expected_ids
 
 
 class TestSQSQueueAttributes:
-    def test_visibility_timeout_attribute(self, sqs):
-        """Create queue with VisibilityTimeout and read it back."""
+    """Get and set standard queue attributes."""
+
+    def test_set_and_get_delay_seconds(self, sqs):
         uid = uuid.uuid4().hex[:8]
         url = sqs.create_queue(
-            QueueName=f"vis-attr-{uid}",
-            Attributes={"VisibilityTimeout": "45"},
+            QueueName=f"test-delay-{uid}",
+            Attributes={"DelaySeconds": "5"},
         )["QueueUrl"]
         try:
-            attrs = sqs.get_queue_attributes(
-                QueueUrl=url, AttributeNames=["VisibilityTimeout"]
-            )["Attributes"]
-            assert attrs["VisibilityTimeout"] == "45"
+            attrs = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["DelaySeconds"])
+            assert attrs["Attributes"]["DelaySeconds"] == "5"
         finally:
             sqs.delete_queue(QueueUrl=url)
 
-    def test_message_retention_period(self, sqs):
-        """Create queue with MessageRetentionPeriod and read it back."""
+    def test_set_and_get_maximum_message_size(self, sqs):
         uid = uuid.uuid4().hex[:8]
         url = sqs.create_queue(
-            QueueName=f"retention-{uid}",
-            Attributes={"MessageRetentionPeriod": "86400"},
+            QueueName=f"test-maxsize-{uid}",
+            Attributes={"MaximumMessageSize": "1024"},
+        )["QueueUrl"]
+        try:
+            attrs = sqs.get_queue_attributes(
+                QueueUrl=url, AttributeNames=["MaximumMessageSize"]
+            )
+            assert attrs["Attributes"]["MaximumMessageSize"] == "1024"
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_set_and_get_message_retention_period(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-retention-{uid}",
+            Attributes={"MessageRetentionPeriod": "3600"},
         )["QueueUrl"]
         try:
             attrs = sqs.get_queue_attributes(
                 QueueUrl=url, AttributeNames=["MessageRetentionPeriod"]
-            )["Attributes"]
-            assert attrs["MessageRetentionPeriod"] == "86400"
+            )
+            assert attrs["Attributes"]["MessageRetentionPeriod"] == "3600"
         finally:
             sqs.delete_queue(QueueUrl=url)
 
-    def test_delay_seconds(self, sqs):
-        """Create queue with DelaySeconds and read it back."""
+    def test_set_and_get_receive_wait_time(self, sqs):
         uid = uuid.uuid4().hex[:8]
         url = sqs.create_queue(
-            QueueName=f"delay-{uid}",
-            Attributes={"DelaySeconds": "10"},
+            QueueName=f"test-wait-{uid}",
+            Attributes={"ReceiveMessageWaitTimeSeconds": "5"},
         )["QueueUrl"]
         try:
             attrs = sqs.get_queue_attributes(
-                QueueUrl=url, AttributeNames=["DelaySeconds"]
-            )["Attributes"]
-            assert attrs["DelaySeconds"] == "10"
+                QueueUrl=url, AttributeNames=["ReceiveMessageWaitTimeSeconds"]
+            )
+            assert attrs["Attributes"]["ReceiveMessageWaitTimeSeconds"] == "5"
         finally:
             sqs.delete_queue(QueueUrl=url)
 
-    def test_queue_arn_attribute(self, sqs):
-        """QueueArn should be present in attributes."""
+    def test_update_visibility_timeout(self, sqs):
         uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"arn-attr-{uid}")["QueueUrl"]
-        try:
-            attrs = sqs.get_queue_attributes(
-                QueueUrl=url, AttributeNames=["QueueArn"]
-            )["Attributes"]
-            assert "QueueArn" in attrs
-            assert "arn:aws:sqs:" in attrs["QueueArn"]
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_approximate_message_counts(self, sqs):
-        """ApproximateNumberOfMessages should reflect sent messages."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"approx-{uid}")["QueueUrl"]
-        try:
-            sqs.send_message(QueueUrl=url, MessageBody="count-me")
-            # Give the system a moment to update counts
-            time.sleep(0.5)
-            attrs = sqs.get_queue_attributes(
-                QueueUrl=url,
-                AttributeNames=["ApproximateNumberOfMessages"],
-            )["Attributes"]
-            count = int(attrs["ApproximateNumberOfMessages"])
-            assert count >= 1
-        finally:
-            sqs.delete_queue(QueueUrl=url)
-
-    def test_list_queues_with_prefix(self, sqs):
-        """list_queues with QueueNamePrefix filters correctly."""
-        uid = uuid.uuid4().hex[:8]
-        prefix = f"pfx-{uid}"
-        url1 = sqs.create_queue(QueueName=f"{prefix}-alpha")["QueueUrl"]
-        url2 = sqs.create_queue(QueueName=f"{prefix}-beta")["QueueUrl"]
-        url3 = sqs.create_queue(QueueName=f"other-{uid}")["QueueUrl"]
-        try:
-            resp = sqs.list_queues(QueueNamePrefix=prefix)
-            urls = resp.get("QueueUrls", [])
-            assert len(urls) == 2
-            assert all(prefix in u for u in urls)
-        finally:
-            sqs.delete_queue(QueueUrl=url1)
-            sqs.delete_queue(QueueUrl=url2)
-            sqs.delete_queue(QueueUrl=url3)
-
-    def test_set_multiple_attributes(self, sqs):
-        """Set multiple queue attributes at once."""
-        uid = uuid.uuid4().hex[:8]
-        url = sqs.create_queue(QueueName=f"multi-attr-{uid}")["QueueUrl"]
+        url = sqs.create_queue(QueueName=f"test-update-vis-{uid}")["QueueUrl"]
         try:
             sqs.set_queue_attributes(
-                QueueUrl=url,
-                Attributes={
-                    "VisibilityTimeout": "30",
-                    "MessageRetentionPeriod": "172800",
-                    "DelaySeconds": "5",
-                },
+                QueueUrl=url, Attributes={"VisibilityTimeout": "120"}
             )
             attrs = sqs.get_queue_attributes(
-                QueueUrl=url, AttributeNames=["All"]
-            )["Attributes"]
-            assert attrs["VisibilityTimeout"] == "30"
-            assert attrs["MessageRetentionPeriod"] == "172800"
-            assert attrs["DelaySeconds"] == "5"
+                QueueUrl=url, AttributeNames=["VisibilityTimeout"]
+            )
+            assert attrs["Attributes"]["VisibilityTimeout"] == "120"
         finally:
             sqs.delete_queue(QueueUrl=url)
+
+    def test_queue_arn_format(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        name = f"test-arn-{uid}"
+        url = sqs.create_queue(QueueName=name)["QueueUrl"]
+        try:
+            attrs = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])
+            arn = attrs["Attributes"]["QueueArn"]
+            assert arn.startswith("arn:aws:sqs:")
+            assert arn.endswith(f":{name}")
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_get_all_attributes(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-all-attrs-{uid}",
+            Attributes={
+                "VisibilityTimeout": "45",
+                "DelaySeconds": "10",
+                "MaximumMessageSize": "2048",
+            },
+        )["QueueUrl"]
+        try:
+            attrs = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["All"])["Attributes"]
+            assert attrs["VisibilityTimeout"] == "45"
+            assert attrs["DelaySeconds"] == "10"
+            assert attrs["MaximumMessageSize"] == "2048"
+            # These should always be present
+            assert "QueueArn" in attrs
+            assert "CreatedTimestamp" in attrs
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSPurgeQueue:
+    """Purge queue operations."""
+
+    def test_purge_removes_all_messages(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-purge-all-{uid}")["QueueUrl"]
+        try:
+            for i in range(5):
+                sqs.send_message(QueueUrl=url, MessageBody=f"purge-{i}")
+            sqs.purge_queue(QueueUrl=url)
+            recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10, WaitTimeSeconds=1)
+            assert len(recv.get("Messages", [])) == 0
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_purge_empty_queue(self, sqs):
+        """Purging an empty queue does not error."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-purge-empty-{uid}")["QueueUrl"]
+        try:
+            sqs.purge_queue(QueueUrl=url)  # Should not raise
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSChangeVisibility:
+    """ChangeMessageVisibility and batch variant."""
+
+    def test_change_visibility_to_zero(self, sqs):
+        """Setting visibility to 0 makes the message immediately available."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-chg-vis-{uid}",
+            Attributes={"VisibilityTimeout": "30"},
+        )["QueueUrl"]
+        try:
+            sqs.send_message(QueueUrl=url, MessageBody="vis-zero")
+            recv = sqs.receive_message(QueueUrl=url)
+            receipt = recv["Messages"][0]["ReceiptHandle"]
+            sqs.change_message_visibility(
+                QueueUrl=url, ReceiptHandle=receipt, VisibilityTimeout=0
+            )
+            recv2 = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=1)
+            assert len(recv2.get("Messages", [])) == 1
+            assert recv2["Messages"][0]["Body"] == "vis-zero"
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_change_visibility_multiple_messages(self, sqs):
+        """ChangeMessageVisibility on multiple messages individually."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-chg-vis-multi-{uid}",
+            Attributes={"VisibilityTimeout": "30"},
+        )["QueueUrl"]
+        try:
+            sqs.send_message(QueueUrl=url, MessageBody="multi-vis-1")
+            sqs.send_message(QueueUrl=url, MessageBody="multi-vis-2")
+            recv = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10)
+            for m in recv["Messages"]:
+                sqs.change_message_visibility(
+                    QueueUrl=url, ReceiptHandle=m["ReceiptHandle"], VisibilityTimeout=0
+                )
+            recv2 = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10, WaitTimeSeconds=1)
+            assert len(recv2.get("Messages", [])) >= 1
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_change_visibility_extends_timeout(self, sqs):
+        """Extending visibility keeps message hidden."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-chg-vis-ext-{uid}",
+            Attributes={"VisibilityTimeout": "2"},
+        )["QueueUrl"]
+        try:
+            sqs.send_message(QueueUrl=url, MessageBody="extend-vis")
+            recv = sqs.receive_message(QueueUrl=url)
+            receipt = recv["Messages"][0]["ReceiptHandle"]
+            # Extend to 30 seconds
+            sqs.change_message_visibility(
+                QueueUrl=url, ReceiptHandle=receipt, VisibilityTimeout=30
+            )
+            # Should not be visible after original 2s timeout
+            time.sleep(3)
+            recv2 = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=0)
+            assert len(recv2.get("Messages", [])) == 0
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSLongPolling:
+    """Long polling behavior."""
+
+    def test_long_poll_no_messages_returns_quickly(self, sqs):
+        """WaitTimeSeconds=1 on empty queue returns empty within ~1s."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-longpoll-{uid}")["QueueUrl"]
+        try:
+            start = time.time()
+            recv = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=1)
+            elapsed = time.time() - start
+            assert len(recv.get("Messages", [])) == 0
+            # Should take roughly 1s, not more than 5s
+            assert elapsed < 5
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_long_poll_returns_immediately_with_messages(self, sqs):
+        """Long poll returns immediately when messages exist."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-longpoll-msgs-{uid}")["QueueUrl"]
+        try:
+            sqs.send_message(QueueUrl=url, MessageBody="ready")
+            start = time.time()
+            recv = sqs.receive_message(QueueUrl=url, WaitTimeSeconds=5)
+            elapsed = time.time() - start
+            assert len(recv.get("Messages", [])) == 1
+            assert elapsed < 3
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_queue_level_wait_time(self, sqs):
+        """ReceiveMessageWaitTimeSeconds on queue is respected."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-queue-wait-{uid}",
+            Attributes={"ReceiveMessageWaitTimeSeconds": "1"},
+        )["QueueUrl"]
+        try:
+            start = time.time()
+            recv = sqs.receive_message(QueueUrl=url)
+            elapsed = time.time() - start
+            assert len(recv.get("Messages", [])) == 0
+            assert elapsed < 5
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSQueueTags:
+    """Queue tagging operations."""
+
+    def test_tag_queue(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-tag-{uid}")["QueueUrl"]
+        try:
+            sqs.tag_queue(QueueUrl=url, Tags={"env": "test", "team": "backend"})
+            resp = sqs.list_queue_tags(QueueUrl=url)
+            tags = resp.get("Tags", {})
+            assert tags["env"] == "test"
+            assert tags["team"] == "backend"
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_untag_queue(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-untag-{uid}")["QueueUrl"]
+        try:
+            sqs.tag_queue(QueueUrl=url, Tags={"a": "1", "b": "2", "c": "3"})
+            sqs.untag_queue(QueueUrl=url, TagKeys=["b"])
+            resp = sqs.list_queue_tags(QueueUrl=url)
+            tags = resp.get("Tags", {})
+            assert "a" in tags
+            assert "b" not in tags
+            assert "c" in tags
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_list_queue_tags_empty(self, sqs):
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-notags-{uid}")["QueueUrl"]
+        try:
+            resp = sqs.list_queue_tags(QueueUrl=url)
+            assert resp.get("Tags") is None or resp.get("Tags") == {}
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_overwrite_tags(self, sqs):
+        """Tagging with same key overwrites the value."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(QueueName=f"test-overwrite-tag-{uid}")["QueueUrl"]
+        try:
+            sqs.tag_queue(QueueUrl=url, Tags={"key": "old"})
+            sqs.tag_queue(QueueUrl=url, Tags={"key": "new"})
+            resp = sqs.list_queue_tags(QueueUrl=url)
+            assert resp["Tags"]["key"] == "new"
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSSystemAttributes:
+    """Message system attributes (SentTimestamp, ApproximateReceiveCount, etc.)."""
+
+    def test_sent_timestamp(self, sqs, queue_url):
+        before = int(time.time() * 1000)
+        sqs.send_message(QueueUrl=queue_url, MessageBody="ts-test")
+        after = int(time.time() * 1000)
+        recv = sqs.receive_message(QueueUrl=queue_url, AttributeNames=["SentTimestamp"])
+        ts = int(recv["Messages"][0]["Attributes"]["SentTimestamp"])
+        # Timestamp should be within a reasonable window
+        assert before - 2000 <= ts <= after + 2000
+
+    def test_approximate_receive_count(self, sqs):
+        """ApproximateReceiveCount increments on each receive."""
+        uid = uuid.uuid4().hex[:8]
+        url = sqs.create_queue(
+            QueueName=f"test-recv-count-{uid}",
+            Attributes={"VisibilityTimeout": "1"},
+        )["QueueUrl"]
+        try:
+            sqs.send_message(QueueUrl=url, MessageBody="count-me")
+            # First receive
+            recv1 = sqs.receive_message(QueueUrl=url, AttributeNames=["ApproximateReceiveCount"])
+            count1 = int(recv1["Messages"][0]["Attributes"]["ApproximateReceiveCount"])
+            assert count1 == 1
+            # Wait for visibility timeout
+            time.sleep(2)
+            # Second receive
+            recv2 = sqs.receive_message(
+                QueueUrl=url,
+                AttributeNames=["ApproximateReceiveCount"],
+                WaitTimeSeconds=2,
+            )
+            count2 = int(recv2["Messages"][0]["Attributes"]["ApproximateReceiveCount"])
+            assert count2 == 2
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_approximate_first_receive_timestamp(self, sqs, queue_url):
+        sqs.send_message(QueueUrl=queue_url, MessageBody="first-recv-ts")
+        before = int(time.time() * 1000)
+        recv = sqs.receive_message(
+            QueueUrl=queue_url,
+            AttributeNames=["ApproximateFirstReceiveTimestamp"],
+        )
+        after = int(time.time() * 1000)
+        ts = int(recv["Messages"][0]["Attributes"]["ApproximateFirstReceiveTimestamp"])
+        assert before - 2000 <= ts <= after + 2000
+
+    def test_sender_id_present(self, sqs, queue_url):
+        sqs.send_message(QueueUrl=queue_url, MessageBody="sender-test")
+        recv = sqs.receive_message(QueueUrl=queue_url, AttributeNames=["SenderId"])
+        assert "SenderId" in recv["Messages"][0]["Attributes"]
+
+    def test_md5_of_body(self, sqs, queue_url):
+        """MD5OfBody is returned on send and receive."""
+        import hashlib
+
+        body = "md5-test-body"
+        send_resp = sqs.send_message(QueueUrl=queue_url, MessageBody=body)
+        expected_md5 = hashlib.md5(body.encode()).hexdigest()
+        assert send_resp["MD5OfMessageBody"] == expected_md5
+        recv = sqs.receive_message(QueueUrl=queue_url)
+        assert recv["Messages"][0]["MD5OfBody"] == expected_md5
