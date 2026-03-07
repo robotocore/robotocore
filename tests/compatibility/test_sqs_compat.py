@@ -299,3 +299,81 @@ class TestSQSDeadLetterQueue:
         finally:
             sqs.delete_queue(QueueUrl=source_url)
             sqs.delete_queue(QueueUrl=dlq_url)
+
+
+class TestSQSTags:
+    def test_tag_queue(self, sqs, queue_url):
+        """Tag a queue and list tags."""
+        sqs.tag_queue(QueueUrl=queue_url, Tags={"env": "test", "team": "core"})
+        response = sqs.list_queue_tags(QueueUrl=queue_url)
+        assert response["Tags"]["env"] == "test"
+        assert response["Tags"]["team"] == "core"
+
+    def test_untag_queue(self, sqs, queue_url):
+        """Untag a queue."""
+        sqs.tag_queue(QueueUrl=queue_url, Tags={"k1": "v1", "k2": "v2"})
+        sqs.untag_queue(QueueUrl=queue_url, TagKeys=["k1"])
+        response = sqs.list_queue_tags(QueueUrl=queue_url)
+        assert "k1" not in response.get("Tags", {})
+        assert response["Tags"]["k2"] == "v2"
+
+
+class TestSQSPurge:
+    def test_purge_queue(self, sqs, queue_url):
+        """Purge all messages from a queue."""
+        sqs.send_message(QueueUrl=queue_url, MessageBody="msg1")
+        sqs.send_message(QueueUrl=queue_url, MessageBody="msg2")
+        sqs.send_message(QueueUrl=queue_url, MessageBody="msg3")
+
+        sqs.purge_queue(QueueUrl=queue_url)
+
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=1)
+        assert len(recv.get("Messages", [])) == 0
+
+
+class TestSQSChangeMessageVisibility:
+    def test_change_visibility_timeout(self, sqs, queue_url):
+        """Change visibility timeout of a received message."""
+        sqs.send_message(QueueUrl=queue_url, MessageBody="visibility test")
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=2)
+        handle = recv["Messages"][0]["ReceiptHandle"]
+
+        sqs.change_message_visibility(
+            QueueUrl=queue_url,
+            ReceiptHandle=handle,
+            VisibilityTimeout=0,
+        )
+
+        # Message should be immediately visible again
+        recv2 = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=2)
+        assert len(recv2.get("Messages", [])) == 1
+
+
+class TestSQSListQueues:
+    def test_list_queues_with_prefix(self, sqs):
+        """List queues filtered by prefix."""
+        urls = []
+        for name in ["prefix-alpha", "prefix-beta", "other-gamma"]:
+            url = sqs.create_queue(QueueName=name)["QueueUrl"]
+            urls.append(url)
+
+        try:
+            response = sqs.list_queues(QueueNamePrefix="prefix-")
+            listed = response.get("QueueUrls", [])
+            assert any("prefix-alpha" in u for u in listed)
+            assert any("prefix-beta" in u for u in listed)
+            assert not any("other-gamma" in u for u in listed)
+        finally:
+            for url in urls:
+                sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSGetQueueUrl:
+    def test_get_queue_url(self, sqs):
+        """Get queue URL by name."""
+        url = sqs.create_queue(QueueName="url-lookup-queue")["QueueUrl"]
+        try:
+            response = sqs.get_queue_url(QueueName="url-lookup-queue")
+            assert response["QueueUrl"] == url
+        finally:
+            sqs.delete_queue(QueueUrl=url)
