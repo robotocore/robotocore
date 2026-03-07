@@ -204,3 +204,96 @@ class TestCognitoUserOperations:
         response = cognito.list_user_pools(MaxResults=60)
         pool_ids = [p["Id"] for p in response["UserPools"]]
         assert pool_id not in pool_ids
+
+    def test_admin_delete_user(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("del-user-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("deluser")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="TempPass1!"
+            )
+            cognito.admin_delete_user(UserPoolId=pool_id, Username=username)
+            users = cognito.list_users(UserPoolId=pool_id)["Users"]
+            assert username not in [u["Username"] for u in users]
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_create_user_with_attributes(self, cognito):
+        pool = cognito.create_user_pool(
+            PoolName=_unique("attr-pool"),
+            Schema=[{"Name": "email", "AttributeDataType": "String", "Mutable": True}],
+        )["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("attruser")
+            response = cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                UserAttributes=[{"Name": "email", "Value": "test@example.com"}],
+            )
+            attrs = {a["Name"]: a["Value"] for a in response["User"]["Attributes"]}
+            assert attrs.get("email") == "test@example.com"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_list_groups(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("listgrp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_group(GroupName="group-a", UserPoolId=pool_id)
+            cognito.create_group(GroupName="group-b", UserPoolId=pool_id)
+            response = cognito.list_groups(UserPoolId=pool_id)
+            names = [g["GroupName"] for g in response["Groups"]]
+            assert "group-a" in names
+            assert "group-b" in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_add_user_to_group(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("addgrp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("grpuser")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="TempPass1!"
+            )
+            cognito.create_group(GroupName="my-group", UserPoolId=pool_id)
+            cognito.admin_add_user_to_group(
+                UserPoolId=pool_id, Username=username, GroupName="my-group"
+            )
+            response = cognito.admin_list_groups_for_user(
+                UserPoolId=pool_id, Username=username
+            )
+            groups = [g["GroupName"] for g in response["Groups"]]
+            assert "my-group" in groups
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_list_user_pool_clients(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("listcli-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_user_pool_client(UserPoolId=pool_id, ClientName="client-a")
+            cognito.create_user_pool_client(UserPoolId=pool_id, ClientName="client-b")
+            response = cognito.list_user_pool_clients(UserPoolId=pool_id, MaxResults=10)
+            names = [c["ClientName"] for c in response["UserPoolClients"]]
+            assert "client-a" in names
+            assert "client-b" in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_describe_user_pool_client(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("desccli-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client = cognito.create_user_pool_client(
+                UserPoolId=pool_id, ClientName="desc-client"
+            )["UserPoolClient"]
+            response = cognito.describe_user_pool_client(
+                UserPoolId=pool_id, ClientId=client["ClientId"]
+            )
+            assert response["UserPoolClient"]["ClientName"] == "desc-client"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)

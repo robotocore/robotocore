@@ -139,3 +139,10 @@ class TestDataSources:
         resp = appsync.list_data_sources(apiId=api)
         names = [d["name"] for d in resp["dataSources"]]
         assert name not in names
+
+    def test_get_data_source(self, appsync, api):
+        name = _unique("ds-get")
+        appsync.create_data_source(apiId=api, name=name, type="NONE")
+        resp = appsync.get_data_source(apiId=api, name=name)
+        assert resp["dataSource"]["name"] == name
+        assert resp["dataSource"]["type"] == "NONE"

@@ -192,3 +192,53 @@ class TestServices:
             assert found
         finally:
             ecs.delete_service(cluster=cluster, service=svc_name, force=True)
+
+    def test_update_service(self, ecs, cluster, task_def):
+        svc_name = _unique("upd-svc")
+        ecs.create_service(
+            cluster=cluster, serviceName=svc_name, taskDefinition=task_def, desiredCount=0
+        )
+        try:
+            resp = ecs.update_service(cluster=cluster, service=svc_name, desiredCount=2)
+            assert resp["service"]["desiredCount"] == 2
+        finally:
+            ecs.delete_service(cluster=cluster, service=svc_name, force=True)
+
+    def test_tag_resource(self, ecs):
+        cluster_name = _unique("tag-cluster")
+        create = ecs.create_cluster(clusterName=cluster_name)
+        arn = create["cluster"]["clusterArn"]
+        try:
+            ecs.tag_resource(
+                resourceArn=arn,
+                tags=[{"key": "env", "value": "test"}, {"key": "team", "value": "dev"}],
+            )
+            resp = ecs.list_tags_for_resource(resourceArn=arn)
+            tag_map = {t["key"]: t["value"] for t in resp["tags"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "dev"
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_untag_resource(self, ecs):
+        cluster_name = _unique("untag-cluster")
+        create = ecs.create_cluster(clusterName=cluster_name)
+        arn = create["cluster"]["clusterArn"]
+        try:
+            ecs.tag_resource(resourceArn=arn, tags=[{"key": "temp", "value": "yes"}])
+            ecs.untag_resource(resourceArn=arn, tagKeys=["temp"])
+            resp = ecs.list_tags_for_resource(resourceArn=arn)
+            keys = [t["key"] for t in resp["tags"]]
+            assert "temp" not in keys
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_describe_task_definition(self, ecs, task_def):
+        resp = ecs.describe_task_definition(taskDefinition=task_def)
+        td = resp["taskDefinition"]
+        assert len(td["containerDefinitions"]) > 0
+        assert "taskDefinitionArn" in td
+
+    def test_list_task_definitions(self, ecs, task_def):
+        resp = ecs.list_task_definitions()
+        assert len(resp["taskDefinitionArns"]) >= 1
