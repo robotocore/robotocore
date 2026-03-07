@@ -1,0 +1,231 @@
+"""Native X-Ray provider.
+
+Implements sampling rules, groups, encryption config, and tagging
+that Moto's X-Ray backend does not support. Falls back to Moto for
+trace/telemetry operations.
+"""
+
+import json
+import uuid
+from typing import Any
+
+from starlette.requests import Request
+from starlette.responses import Response
+
+from robotocore.providers.moto_bridge import forward_to_moto
+
+# In-memory stores (per-account not needed for local dev)
+_sampling_rules: dict[str, dict[str, Any]] = {}
+_groups: dict[str, dict[str, Any]] = {}
+_encryption_config: dict[str, Any] = {"Type": "NONE", "Status": "ACTIVE"}
+_tags: dict[str, list[dict[str, str]]] = {}  # ARN -> tags
+
+
+def _json_response(data: dict, status_code: int = 200) -> Response:
+    return Response(
+        content=json.dumps(data),
+        status_code=status_code,
+        media_type="application/x-amz-json-1.1",
+    )
+
+
+async def handle_xray_request(
+    request: Request, region: str, account_id: str
+) -> Response:
+    """Handle X-Ray requests, intercepting operations Moto doesn't implement."""
+    path = request.url.path.rstrip("/")
+
+    handler = _PATH_MAP.get(path)
+    if handler:
+        body = await request.body()
+        params = json.loads(body) if body else {}
+        result = handler(params, region, account_id)
+        return _json_response(result)
+
+    return await forward_to_moto(request, "xray")
+
+
+def _create_sampling_rule(params: dict, region: str, account_id: str) -> dict:
+    rule = params.get("SamplingRule", {})
+    rule_name = rule.get("RuleName", f"rule-{uuid.uuid4().hex[:8]}")
+    rule_arn = f"arn:aws:xray:{region}:{account_id}:sampling-rule/{rule_name}"
+
+    tags = params.get("Tags", [])
+
+    record = {
+        "SamplingRule": {
+            "RuleName": rule_name,
+            "RuleARN": rule_arn,
+            "ResourceARN": rule.get("ResourceARN", "*"),
+            "Priority": rule.get("Priority", 1000),
+            "FixedRate": rule.get("FixedRate", 0.05),
+            "ReservoirSize": rule.get("ReservoirSize", 1),
+            "ServiceName": rule.get("ServiceName", "*"),
+            "ServiceType": rule.get("ServiceType", "*"),
+            "Host": rule.get("Host", "*"),
+            "HTTPMethod": rule.get("HTTPMethod", "*"),
+            "URLPath": rule.get("URLPath", "*"),
+            "Version": rule.get("Version", 1),
+            "Attributes": rule.get("Attributes", {}),
+        },
+        "CreatedAt": 0.0,
+        "ModifiedAt": 0.0,
+    }
+    _sampling_rules[rule_name] = record
+
+    if tags:
+        _tags[rule_arn] = list(tags)
+
+    return {"SamplingRuleRecord": record}
+
+
+def _get_sampling_rules(params: dict, region: str, account_id: str) -> dict:
+    # Always include the default rule
+    records = list(_sampling_rules.values())
+    return {"SamplingRuleRecords": records, "NextToken": None}
+
+
+def _delete_sampling_rule(params: dict, region: str, account_id: str) -> dict:
+    rule_name = params.get("RuleName", "")
+    rule_arn = params.get("RuleARN", "")
+
+    record = None
+    if rule_name and rule_name in _sampling_rules:
+        record = _sampling_rules.pop(rule_name)
+    elif rule_arn:
+        for name, rec in list(_sampling_rules.items()):
+            if rec["SamplingRule"].get("RuleARN") == rule_arn:
+                record = _sampling_rules.pop(name)
+                break
+
+    if record is None:
+        return {"SamplingRuleRecord": {}}
+
+    return {"SamplingRuleRecord": record}
+
+
+def _get_sampling_statistic_summaries(params: dict, region: str, account_id: str) -> dict:
+    return {"SamplingStatisticSummaries": [], "NextToken": None}
+
+
+def _create_group(params: dict, region: str, account_id: str) -> dict:
+    group_name = params.get("GroupName", f"group-{uuid.uuid4().hex[:8]}")
+    group_arn = f"arn:aws:xray:{region}:{account_id}:group/{group_name}"
+    filter_expr = params.get("FilterExpression", "")
+    tags = params.get("Tags", [])
+
+    group = {
+        "GroupName": group_name,
+        "GroupARN": group_arn,
+        "FilterExpression": filter_expr,
+        "InsightsConfiguration": params.get("InsightsConfiguration", {
+            "InsightsEnabled": False,
+            "NotificationsEnabled": False,
+        }),
+    }
+    _groups[group_name] = group
+
+    if tags:
+        _tags[group_arn] = list(tags)
+
+    return {"Group": group}
+
+
+def _get_group(params: dict, region: str, account_id: str) -> dict:
+    group_name = params.get("GroupName", "")
+    group_arn = params.get("GroupARN", "")
+
+    if group_name and group_name in _groups:
+        return {"Group": _groups[group_name]}
+    if group_arn:
+        for g in _groups.values():
+            if g["GroupARN"] == group_arn:
+                return {"Group": g}
+
+    return {"Group": {}}
+
+
+def _get_groups(params: dict, region: str, account_id: str) -> dict:
+    groups = list(_groups.values())
+    return {"Groups": groups, "NextToken": None}
+
+
+def _delete_group(params: dict, region: str, account_id: str) -> dict:
+    group_name = params.get("GroupName", "")
+    group_arn = params.get("GroupARN", "")
+
+    if group_name and group_name in _groups:
+        deleted = _groups.pop(group_name)
+        _tags.pop(deleted["GroupARN"], None)
+    elif group_arn:
+        for name, g in list(_groups.items()):
+            if g["GroupARN"] == group_arn:
+                _groups.pop(name)
+                _tags.pop(group_arn, None)
+                break
+
+    return {}
+
+
+def _get_encryption_config(params: dict, region: str, account_id: str) -> dict:
+    return {"EncryptionConfig": dict(_encryption_config)}
+
+
+def _put_encryption_config(params: dict, region: str, account_id: str) -> dict:
+    enc_type = params.get("Type", "NONE")
+    key_id = params.get("KeyId", "")
+    _encryption_config["Type"] = enc_type
+    _encryption_config["Status"] = "ACTIVE"
+    if key_id:
+        _encryption_config["KeyId"] = key_id
+    elif "KeyId" in _encryption_config and enc_type == "NONE":
+        _encryption_config.pop("KeyId", None)
+    return {"EncryptionConfig": dict(_encryption_config)}
+
+
+def _tag_resource(params: dict, region: str, account_id: str) -> dict:
+    arn = params.get("ResourceARN", "")
+    new_tags = params.get("Tags", [])
+    existing = _tags.get(arn, [])
+
+    # Merge: update existing keys, add new ones
+    existing_keys = {t["Key"]: i for i, t in enumerate(existing)}
+    for tag in new_tags:
+        if tag["Key"] in existing_keys:
+            existing[existing_keys[tag["Key"]]] = tag
+        else:
+            existing.append(tag)
+
+    _tags[arn] = existing
+    return {}
+
+
+def _untag_resource(params: dict, region: str, account_id: str) -> dict:
+    arn = params.get("ResourceARN", "")
+    keys_to_remove = set(params.get("TagKeys", []))
+    existing = _tags.get(arn, [])
+    _tags[arn] = [t for t in existing if t["Key"] not in keys_to_remove]
+    return {}
+
+
+def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
+    arn = params.get("ResourceARN", "")
+    tags = _tags.get(arn, [])
+    return {"Tags": tags, "NextToken": None}
+
+
+_PATH_MAP = {
+    "/CreateSamplingRule": _create_sampling_rule,
+    "/GetSamplingRules": _get_sampling_rules,
+    "/DeleteSamplingRule": _delete_sampling_rule,
+    "/SamplingStatisticSummaries": _get_sampling_statistic_summaries,
+    "/CreateGroup": _create_group,
+    "/GetGroup": _get_group,
+    "/Groups": _get_groups,
+    "/DeleteGroup": _delete_group,
+    "/EncryptionConfig": _get_encryption_config,
+    "/PutEncryptionConfig": _put_encryption_config,
+    "/TagResource": _tag_resource,
+    "/UntagResource": _untag_resource,
+    "/ListTagsForResource": _list_tags_for_resource,
+}

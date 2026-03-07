@@ -46,6 +46,7 @@ from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
 from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
+from robotocore.services.rekognition.provider import handle_rekognition_request
 from robotocore.services.resource_groups.provider import handle_resource_groups_request
 from robotocore.services.route53.provider import handle_route53_request
 from robotocore.services.s3.provider import handle_s3_request
@@ -60,6 +61,7 @@ from robotocore.services.stepfunctions.provider import handle_stepfunctions_requ
 from robotocore.services.sts.provider import handle_sts_request
 from robotocore.services.support.provider import handle_support_request
 from robotocore.services.tagging.provider import handle_tagging_request
+from robotocore.services.xray.provider import handle_xray_request
 
 # Services with native providers (bypass Moto)
 NATIVE_PROVIDERS = {
@@ -95,10 +97,12 @@ NATIVE_PROVIDERS = {
     "es": handle_es_request,
     "iam": handle_iam_request,
     "opensearch": handle_opensearch_request,
+    "rekognition": handle_rekognition_request,
     "resource-groups": handle_resource_groups_request,
     "route53": handle_route53_request,
     "ssm": handle_ssm_request,
     "support": handle_support_request,
+    "xray": handle_xray_request,
 }
 
 # Default account ID (matches LocalStack)
