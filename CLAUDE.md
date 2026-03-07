@@ -171,13 +171,13 @@ make status                            # Check if server is running
   - `localstack-core/localstack/aws/handlers/` — Handler chain
   - `localstack-core/localstack/services/` — Service providers
 
-## Service Coverage (158 services registered)
+## Service Coverage (147 services registered)
 
-All LocalStack Community services are implemented. 38 have native providers with enhanced fidelity; 120 are Moto-backed.
+All LocalStack Community services are implemented. 38 have native providers with enhanced fidelity; 109 are Moto-backed. 11 broken services were deregistered (Moto ops all return 500).
 
 **Native providers** (38): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
 
-**Test coverage**: 5127 tests (2520 unit + 2565 compat + 42 integration), 0 failures, 0 xfails. 122 services have compat tests; ~36 Moto-backed services still need compat test coverage.
+**Test coverage**: 5237+ tests (2520 unit + 2675 compat + 42 integration), 0 failures, 0 xfails. **147/147 registered services have compat tests (100% coverage).**
 
 ## Adding a New Moto-Backed Service (Checklist)
 
