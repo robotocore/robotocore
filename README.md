@@ -526,6 +526,5 @@ MIT — free forever.
 ---
 
 <p align="center">
-  Built by <a href="https://github.com/jackdanger">Jack Danger</a>,
-  a maintainer of <a href="https://github.com/getmoto/moto">Moto</a>.
+  Built by <a href="https://jackdanger.com">Jack Danger</a> of <a href="https://github.com/getmoto/moto">Moto</a> and <a href="https://launchdarkly.com">LaunchDarkly</a>.
 </p>
