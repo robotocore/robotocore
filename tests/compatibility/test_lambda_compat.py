@@ -1526,7 +1526,6 @@ class TestLambdaTaggingExtended:
 
 
 class TestLambdaAccountSettings:
-    @pytest.mark.xfail(reason="InvokeAsync is deprecated and may not be supported")
     def test_invoke_async_deprecated(self, lam, role):
         """InvokeAsync (deprecated API) should still work."""
         code = _make_zip('def handler(e, c): return "ok"')

@@ -29,7 +29,27 @@ async def handle_sts_request(
     if action == "GetAccessKeyInfo":
         return _get_access_key_info(params, account_id)
 
+    if action == "DecodeAuthorizationMessage":
+        return _decode_authorization_message(params)
+
     return await forward_to_moto(request, "sts")
+
+
+def _decode_authorization_message(params: dict) -> Response:
+    """DecodeAuthorizationMessage — return the message as-is (mock decode)."""
+    encoded = params.get("EncodedMessage", "")
+    xml = (
+        '<DecodeAuthorizationMessageResponse '
+        'xmlns="https://sts.amazonaws.com/doc/2011-06-15/">'
+        "<DecodeAuthorizationMessageResult>"
+        f"<DecodedMessage>{encoded}</DecodedMessage>"
+        "</DecodeAuthorizationMessageResult>"
+        "<ResponseMetadata>"
+        "<RequestId>12345678-1234-1234-1234-123456789012</RequestId>"
+        "</ResponseMetadata>"
+        "</DecodeAuthorizationMessageResponse>"
+    )
+    return Response(content=xml, status_code=200, media_type="text/xml")
 
 
 def _get_access_key_info(params: dict, account_id: str) -> Response:

@@ -548,7 +548,6 @@ class TestSESExtendedOperations:
         )
         assert "NotificationAttributes" in resp
 
-    @pytest.mark.xfail(reason="SetIdentityDkimEnabled may not be supported")
     def test_set_identity_dkim_enabled(self, ses):
         ses.verify_email_identity(EmailAddress="dkim@example.com")
         ses.set_identity_dkim_enabled(

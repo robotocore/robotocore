@@ -266,7 +266,7 @@ def _delete_stack_action(store: CfnStore, params: dict, region: str, account_id:
             pass
 
     stack.status = "DELETE_COMPLETE"
-    store.delete_stack(stack.stack_id)
+    # Keep stack in store for list_stacks DELETE_COMPLETE queries
     return {}
 
 
@@ -278,7 +278,8 @@ def _describe_stacks(store: CfnStore, params: dict, region: str, account_id: str
             raise CfnError("ValidationError", f"Stack with id {name} does not exist")
         stacks = [stack]
     else:
-        stacks = store.list_stacks()
+        # Exclude DELETE_COMPLETE stacks from describe_stacks (matches AWS behavior)
+        stacks = [s for s in store.list_stacks() if s.status != "DELETE_COMPLETE"]
 
     members = []
     for s in stacks:
@@ -294,6 +295,17 @@ def _describe_stacks(store: CfnStore, params: dict, region: str, account_id: str
             member["StackStatusReason"] = s.status_reason
         if s.outputs:
             member["Outputs"] = list(s.outputs.values())
+        if s.parameters:
+            # Filter out pseudo-parameters and internal keys
+            _pseudo = {"AWS::Region", "AWS::AccountId", "AWS::StackName",
+                       "AWS::StackId", "AWS::URLSuffix", "AWS::NoValue",
+                       "AWS::NotificationARNs", "AWS::Partition",
+                       "__conditions__", "__imports__"}
+            member["Parameters"] = [
+                {"ParameterKey": k, "ParameterValue": v}
+                for k, v in s.parameters.items()
+                if k not in _pseudo
+            ]
         if s.tags:
             member["Tags"] = s.tags
         members.append(member)
@@ -303,6 +315,14 @@ def _describe_stacks(store: CfnStore, params: dict, region: str, account_id: str
 
 def _list_stacks(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     stacks = store.list_stacks()
+    # Parse StackStatusFilter from query protocol
+    status_filter = set()
+    i = 1
+    while f"StackStatusFilter.member.{i}" in params:
+        status_filter.add(params[f"StackStatusFilter.member.{i}"])
+        i += 1
+    if status_filter:
+        stacks = [s for s in stacks if s.status in status_filter]
     summaries = []
     for s in stacks:
         summaries.append(
@@ -400,7 +420,7 @@ def _validate_template(store: CfnStore, params: dict, region: str, account_id: s
     except Exception as e:
         raise CfnError("ValidationError", f"Template format error: {e}")
 
-    result: dict = {}
+    result: dict = {"Parameters": []}
     template_params = template.get("Parameters", {})
     if template_params:
         members = []

@@ -50,6 +50,7 @@ _cors_store: dict[str, list[dict]] = {}
 _lifecycle_store: dict[str, list[dict]] = {}
 _object_lock_store: dict[str, dict] = {}
 _object_legal_hold_store: dict[str, dict[str, str]] = {}
+_logging_store: dict[str, dict] = {}
 _store_lock = threading.Lock()
 
 S3_NS = "http://s3.amazonaws.com/doc/2006-03-01/"
@@ -546,6 +547,7 @@ _S3_SUBRESOURCES = {
     "notification",
     "cors",
     "lifecycle",
+    "logging",
     "versioning",
     "object-lock",
     "legal-hold",
@@ -604,6 +606,10 @@ async def handle_s3_request(
     # Legal hold
     if sub == "legal-hold":
         return await _handle_legal_hold(request, method, path)
+
+    # Logging config — intercept to skip Moto's strict permission checks
+    if sub == "logging":
+        return await _handle_logging_config(request, method, path)
 
     # Multipart: ?uploads and ?uploadId= are forwarded to Moto directly
     # Versioning: ?versioning and ?versionId= are forwarded to Moto directly
@@ -839,6 +845,62 @@ async def _handle_legal_hold(
         body = await request.body()
         status = _parse_legal_hold_xml(body.decode())
         set_object_legal_hold(bucket, key, status)
+        return Response(status_code=200)
+
+    return Response(status_code=405)
+
+
+async def _handle_logging_config(
+    request: Request, method: str, path: str
+) -> Response:
+    """Handle ?logging sub-resource — skip Moto's strict permission checks."""
+    match = _PATH_RE.match(path)
+    if not match:
+        return Response(status_code=400, content="Bad request")
+    bucket = match.group(1)
+
+    if method == "GET":
+        with _store_lock:
+            config = _logging_store.get(bucket)
+        if config:
+            xml = (
+                f'<?xml version="1.0" encoding="UTF-8"?>'
+                f"<BucketLoggingStatus xmlns=\"{S3_NS}\">"
+                f"<LoggingEnabled>"
+                f"<TargetBucket>{config['TargetBucket']}</TargetBucket>"
+                f"<TargetPrefix>{config.get('TargetPrefix', '')}</TargetPrefix>"
+                f"</LoggingEnabled>"
+                f"</BucketLoggingStatus>"
+            )
+        else:
+            xml = (
+                f'<?xml version="1.0" encoding="UTF-8"?>'
+                f"<BucketLoggingStatus xmlns=\"{S3_NS}\"/>"
+            )
+        return Response(content=xml, status_code=200, media_type="application/xml")
+    elif method == "PUT":
+        body = await request.body()
+        body_str = body.decode() if body else ""
+        if body_str and "<LoggingEnabled>" in body_str:
+            root = ET.fromstring(body_str)
+            ns = {"s3": S3_NS}
+            le = root.find("s3:LoggingEnabled", ns) or root.find("LoggingEnabled")
+            if le is not None:
+                tb = le.findtext("{%s}TargetBucket" % S3_NS) or le.findtext(
+                    "TargetBucket"
+                )
+                tp = le.findtext("{%s}TargetPrefix" % S3_NS) or le.findtext(
+                    "TargetPrefix"
+                ) or ""
+                with _store_lock:
+                    _logging_store[bucket] = {
+                        "TargetBucket": tb or "",
+                        "TargetPrefix": tp,
+                    }
+        else:
+            # Empty body or no LoggingEnabled means disable logging
+            with _store_lock:
+                _logging_store.pop(bucket, None)
         return Response(status_code=200)
 
     return Response(status_code=405)

@@ -228,10 +228,16 @@ def _error_response(code: str, message: str, status: int) -> Response:
 # Action dispatch map
 # ---------------------------------------------------------------------------
 
+def _set_identity_dkim_enabled(params: dict, region: str, account_id: str) -> dict:
+    """SetIdentityDkimEnabled — acknowledge the request (no-op in mock)."""
+    return {}
+
+
 _ACTION_MAP = {
     "ListIdentities": _list_identities,
     "GetAccountSendingEnabled": _get_account_sending_enabled,
     "DeleteReceiptRule": _delete_receipt_rule,
     "CreateReceiptRule": _create_receipt_rule,
     "SetIdentityNotificationTopic": _set_identity_notification_topic,
+    "SetIdentityDkimEnabled": _set_identity_dkim_enabled,
 }

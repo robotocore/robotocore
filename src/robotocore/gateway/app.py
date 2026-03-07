@@ -42,6 +42,7 @@ from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
 from robotocore.services.s3.provider import handle_s3_request
 from robotocore.services.scheduler.provider import handle_scheduler_request
+from robotocore.services.secretsmanager.provider import handle_secretsmanager_request
 from robotocore.services.ses.provider import handle_ses_request
 from robotocore.services.ses.sesv2_provider import handle_sesv2_request
 from robotocore.services.sns.provider import handle_sns_request
@@ -70,6 +71,7 @@ NATIVE_PROVIDERS = {
     "logs": handle_logs_request,
     "s3": handle_s3_request,
     "scheduler": handle_scheduler_request,
+    "secretsmanager": handle_secretsmanager_request,
     "ses": handle_ses_request,
     "sesv2": handle_sesv2_request,
     "sqs": handle_sqs_request,

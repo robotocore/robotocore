@@ -66,7 +66,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "API Gateway V2 (HTTP APIs + WebSocket)",
     ),
     "secretsmanager": ServiceInfo(
-        "secretsmanager", ServiceStatus.MOTO_BACKED, "json", "Secrets Manager"
+        "secretsmanager", ServiceStatus.NATIVE, "json", "Secrets Manager"
     ),
     "ssm": ServiceInfo("ssm", ServiceStatus.MOTO_BACKED, "json", "Systems Manager"),
     "scheduler": ServiceInfo(

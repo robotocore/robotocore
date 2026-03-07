@@ -1887,7 +1887,6 @@ class TestDynamoDBExtendedOperations:
         except ClientError:
             raise
 
-    @pytest.mark.xfail(reason="Global tables v1 may not be fully supported")
     def test_create_and_describe_global_table(self, dynamodb):
         """CreateGlobalTable, DescribeGlobalTable, ListGlobalTables."""
         table_name = f"global-tbl-{uuid.uuid4().hex[:8]}"
@@ -2051,7 +2050,6 @@ class TestDynamoDBExtendedOperations:
             )
         assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
 
-    @pytest.mark.xfail(reason="DescribeTableReplicaAutoScaling may not be supported")
     def test_describe_table_replica_auto_scaling(self, dynamodb, table):
         """DescribeTableReplicaAutoScaling returns auto scaling info."""
         response = dynamodb.describe_table_replica_auto_scaling(TableName=table)

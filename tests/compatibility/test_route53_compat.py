@@ -1048,14 +1048,14 @@ class TestRoute53Extended:
         try:
             resp = route53.create_query_logging_config(
                 HostedZoneId=hosted_zone,
-                CloudWatchLogsLogGroupArn=f"arn:aws:logs:us-east-1:000000000000:log-group:{log_group}",
+                CloudWatchLogsLogGroupArn=f"arn:aws:logs:us-east-1:123456789012:log-group:{log_group}",
             )
             assert "QueryLoggingConfig" in resp
         finally:
             logs.delete_log_group(logGroupName=log_group)
 
 
-class TestRoute53Extended:
+class TestRoute53ExtendedV2:
     @pytest.fixture
     def route53(self):
         return make_client("route53")

@@ -643,7 +643,6 @@ class TestAPIGatewayOperations:
         except Exception:
             raise
 
-    @pytest.mark.xfail(reason="TagResource on REST APIs may not be routed correctly")
     def test_tag_untag_rest_api(self, apigw):
         """TagResource / UntagResource on REST APIs."""
         api = apigw.create_rest_api(name="tag-test-api")
@@ -665,7 +664,6 @@ class TestAPIGatewayOperations:
         finally:
             apigw.delete_rest_api(restApiId=api_id)
 
-    @pytest.mark.xfail(reason="FlushStageAuthorizersCache/FlushStageCache may not be supported")
     def test_flush_stage_cache(self, apigw, rest_api):
         """FlushStageAuthorizersCache / FlushStageCache."""
         resources = apigw.get_resources(restApiId=rest_api)
@@ -933,7 +931,6 @@ class TestAPIGatewayExtended:
 
         apigw.delete_stage(restApiId=rest_api, stageName=stage_name)
 
-    @pytest.mark.xfail(reason="TagResource on API Gateway may not be supported")
     def test_tag_rest_api(self, apigw, rest_api):
         import uuid
         apigw.tag_resource(
