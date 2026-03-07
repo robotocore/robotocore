@@ -433,3 +433,222 @@ class TestConfigCompliance:
         )
         assert "ConfigRulesEvaluationStatus" in response
         config.delete_config_rule(ConfigRuleName="eval-status-rule")
+
+
+class TestConfigExtended:
+    @pytest.mark.xfail(reason="CUSTOM_LAMBDA requires valid Lambda function ARN")
+    def test_put_config_rule_custom_lambda(self, config):
+        name = "custom-lambda-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "CUSTOM_LAMBDA",
+                    "SourceIdentifier": "arn:aws:lambda:us-east-1:123456789012:function:my-rule",
+                    "SourceDetails": [
+                        {
+                            "EventSource": "aws.config",
+                            "MessageType": "ConfigurationItemChangeNotification",
+                        }
+                    ],
+                },
+            }
+        )
+        resp = config.describe_config_rules(ConfigRuleNames=[name])
+        assert resp["ConfigRules"][0]["ConfigRuleName"] == name
+        assert resp["ConfigRules"][0]["Source"]["Owner"] == "CUSTOM_LAMBDA"
+        config.delete_config_rule(ConfigRuleName=name)
+
+    def test_put_config_rule_maximum_frequency(self, config):
+        name = "freq-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+                "MaximumExecutionFrequency": "Six_Hours",
+            }
+        )
+        resp = config.describe_config_rules(ConfigRuleNames=[name])
+        assert resp["ConfigRules"][0]["MaximumExecutionFrequency"] == "Six_Hours"
+        config.delete_config_rule(ConfigRuleName=name)
+
+    def test_put_config_rule_with_description(self, config):
+        name = "desc-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Description": "A test description",
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        resp = config.describe_config_rules(ConfigRuleNames=[name])
+        assert resp["ConfigRules"][0].get("Description") == "A test description"
+        config.delete_config_rule(ConfigRuleName=name)
+
+    def test_describe_config_rules_all(self, config):
+        names = ["all-rule-1", "all-rule-2"]
+        for n in names:
+            config.put_config_rule(
+                ConfigRule={
+                    "ConfigRuleName": n,
+                    "Source": {
+                        "Owner": "AWS",
+                        "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                    },
+                }
+            )
+        try:
+            resp = config.describe_config_rules()
+            found = [r["ConfigRuleName"] for r in resp["ConfigRules"]]
+            for n in names:
+                assert n in found
+        finally:
+            for n in names:
+                config.delete_config_rule(ConfigRuleName=n)
+
+    def test_config_rule_has_arn(self, config):
+        name = "arn-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        resp = config.describe_config_rules(ConfigRuleNames=[name])
+        assert "ConfigRuleArn" in resp["ConfigRules"][0]
+        assert "config-rule" in resp["ConfigRules"][0]["ConfigRuleArn"]
+        config.delete_config_rule(ConfigRuleName=name)
+
+    def test_config_rule_has_id(self, config):
+        name = "id-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        resp = config.describe_config_rules(ConfigRuleNames=[name])
+        assert "ConfigRuleId" in resp["ConfigRules"][0]
+        config.delete_config_rule(ConfigRuleName=name)
+
+    def test_put_aggregation_authorization(self, config):
+        resp = config.put_aggregation_authorization(
+            AuthorizedAccountId="123456789012",
+            AuthorizedAwsRegion="us-east-1",
+        )
+        assert "AggregationAuthorization" in resp
+        config.delete_aggregation_authorization(
+            AuthorizedAccountId="123456789012",
+            AuthorizedAwsRegion="us-east-1",
+        )
+
+    def test_describe_aggregation_authorizations(self, config):
+        config.put_aggregation_authorization(
+            AuthorizedAccountId="123456789012",
+            AuthorizedAwsRegion="us-west-2",
+        )
+        try:
+            resp = config.describe_aggregation_authorizations()
+            assert "AggregationAuthorizations" in resp
+            accounts = [a["AuthorizedAccountId"] for a in resp["AggregationAuthorizations"]]
+            assert "123456789012" in accounts
+        finally:
+            config.delete_aggregation_authorization(
+                AuthorizedAccountId="123456789012",
+                AuthorizedAwsRegion="us-west-2",
+            )
+
+    def test_put_configuration_aggregator(self, config):
+        name = "test-aggregator"
+        resp = config.put_configuration_aggregator(
+            ConfigurationAggregatorName=name,
+            AccountAggregationSources=[
+                {
+                    "AccountIds": ["123456789012"],
+                    "AllAwsRegions": True,
+                }
+            ],
+        )
+        assert "ConfigurationAggregator" in resp
+        config.delete_configuration_aggregator(ConfigurationAggregatorName=name)
+
+    def test_describe_configuration_aggregators(self, config):
+        name = "desc-agg"
+        config.put_configuration_aggregator(
+            ConfigurationAggregatorName=name,
+            AccountAggregationSources=[
+                {"AccountIds": ["123456789012"], "AllAwsRegions": True}
+            ],
+        )
+        try:
+            resp = config.describe_configuration_aggregators(
+                ConfigurationAggregatorNames=[name]
+            )
+            assert len(resp["ConfigurationAggregators"]) == 1
+            assert resp["ConfigurationAggregators"][0]["ConfigurationAggregatorName"] == name
+        finally:
+            config.delete_configuration_aggregator(ConfigurationAggregatorName=name)
+
+    def test_put_retention_configuration(self, config):
+        resp = config.put_retention_configuration(RetentionPeriodInDays=365)
+        assert "RetentionConfiguration" in resp
+
+    @pytest.mark.xfail(reason="describe_compliance_by_resource not implemented")
+    def test_describe_compliance_by_resource(self, config):
+        resp = config.describe_compliance_by_resource(ResourceType="AWS::S3::Bucket")
+        assert "ComplianceByResources" in resp
+
+    @pytest.mark.xfail(reason="get_compliance_details_by_config_rule not implemented")
+    def test_get_compliance_details_by_config_rule(self, config):
+        name = "comp-detail-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        try:
+            resp = config.get_compliance_details_by_config_rule(ConfigRuleName=name)
+            assert "EvaluationResults" in resp
+        finally:
+            config.delete_config_rule(ConfigRuleName=name)
+
+    def test_tag_and_untag_resource(self, config):
+        name = "tag-rule"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        resp = config.describe_config_rules(ConfigRuleNames=[name])
+        arn = resp["ConfigRules"][0]["ConfigRuleArn"]
+        try:
+            config.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "test"}])
+            tags = config.list_tags_for_resource(ResourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags.get("Tags", [])}
+            assert tag_map.get("env") == "test"
+            config.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            tags2 = config.list_tags_for_resource(ResourceArn=arn)
+            tag_map2 = {t["Key"]: t["Value"] for t in tags2.get("Tags", [])}
+            assert "env" not in tag_map2
+        finally:
+            config.delete_config_rule(ConfigRuleName=name)

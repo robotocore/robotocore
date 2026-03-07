@@ -1586,3 +1586,166 @@ class TestLambdaMultiRuntime:
             assert resp["Runtime"] == "nodejs20.x"
         finally:
             lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaExtendedOperations:
+    """Extended Lambda operations for higher coverage."""
+
+    @pytest.fixture
+    def lam(self):
+        return make_client("lambda")
+
+    @pytest.fixture
+    def role(self):
+        iam = make_client("iam")
+        role_name = f"lambda-ext-role-{uuid.uuid4().hex[:8]}"
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }],
+            }),
+        )
+        yield f"arn:aws:iam::123456789012:role/{role_name}"
+        iam.delete_role(RoleName=role_name)
+
+    def test_invoke_with_log_type_tail(self, lam, role):
+        code = _make_zip('def handler(e, c): print("hello"); return "ok"')
+        fname = f"tail-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.invoke(FunctionName=fname, LogType="Tail")
+            assert resp["StatusCode"] == 200
+            # LogResult should be present when Tail is requested
+            if "LogResult" in resp:
+                import base64
+                logs = base64.b64decode(resp["LogResult"]).decode()
+                assert isinstance(logs, str)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_invoke_async_event(self, lam, role):
+        code = _make_zip('def handler(e, c): return "async"')
+        fname = f"async-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.invoke(
+                FunctionName=fname, InvocationType="Event",
+                Payload=json.dumps({"test": True}),
+            )
+            assert resp["StatusCode"] == 202
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_invoke_dry_run(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"dryrun-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.invoke(FunctionName=fname, InvocationType="DryRun")
+            assert resp["StatusCode"] == 204
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_get_function_returns_code_and_config(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"getfunc-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.get_function(FunctionName=fname)
+            assert "Configuration" in resp
+            assert "Code" in resp
+            assert resp["Configuration"]["FunctionName"] == fname
+            assert "Location" in resp["Code"]
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_list_functions(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"listfn-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.list_functions()
+            names = [f["FunctionName"] for f in resp["Functions"]]
+            assert fname in names
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_create_function_with_env_vars(self, lam, role):
+        code = _make_zip(
+            'import os\ndef handler(e, c): return {"MY_VAR": os.environ.get("MY_VAR", "")}'
+        )
+        fname = f"envvar-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+            Environment={"Variables": {"MY_VAR": "hello"}},
+        )
+        try:
+            cfg = lam.get_function_configuration(FunctionName=fname)
+            assert cfg["Environment"]["Variables"]["MY_VAR"] == "hello"
+
+            resp = lam.invoke(FunctionName=fname)
+            payload = json.loads(resp["Payload"].read())
+            assert payload["MY_VAR"] == "hello"
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_update_function_configuration_env_vars(self, lam, role):
+        code = _make_zip(
+            'import os\ndef handler(e, c): return {"X": os.environ.get("X", "")}'
+        )
+        fname = f"updenv-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+            Environment={"Variables": {"X": "old"}},
+        )
+        try:
+            lam.update_function_configuration(
+                FunctionName=fname,
+                Environment={"Variables": {"X": "new"}},
+            )
+            resp = lam.invoke(FunctionName=fname)
+            payload = json.loads(resp["Payload"].read())
+            assert payload["X"] == "new"
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_invoke_returns_function_error(self, lam, role):
+        code = _make_zip('def handler(e, c): raise ValueError("boom")')
+        fname = f"err-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname, Runtime="python3.12", Role=role,
+            Handler="lambda_function.handler", Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.invoke(FunctionName=fname)
+            assert "FunctionError" in resp
+            assert resp["FunctionError"] in ("Handled", "Unhandled")
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_get_account_settings(self, lam):
+        resp = lam.get_account_settings()
+        assert "AccountLimit" in resp
+        assert "AccountUsage" in resp

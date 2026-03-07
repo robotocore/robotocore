@@ -363,3 +363,157 @@ class TestSecretsManagerOperations:
         finally:
             sm.delete_secret(SecretId="replicate-test/secret", ForceDeleteWithoutRecovery=True)
 
+
+class TestSecretsManagerExtended:
+    """Extended Secrets Manager operations for higher coverage."""
+
+    @pytest.fixture
+    def sm(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("secretsmanager")
+
+    def test_create_secret_with_tags(self, sm):
+        import uuid
+        name = f"tagged-secret-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(
+                Name=name,
+                SecretString="tagged-value",
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "dev"},
+                ],
+            )
+            desc = sm.describe_secret(SecretId=name)
+            tags = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
+            assert tags["env"] == "test"
+            assert tags["team"] == "dev"
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_tag_untag_secret(self, sm):
+        import uuid
+        name = f"tag-untag-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="val")
+            sm.tag_resource(
+                SecretId=name,
+                Tags=[{"Key": "k1", "Value": "v1"}, {"Key": "k2", "Value": "v2"}],
+            )
+            desc = sm.describe_secret(SecretId=name)
+            tags = {t["Key"]: t["Value"] for t in desc.get("Tags", [])}
+            assert tags["k1"] == "v1"
+
+            sm.untag_resource(SecretId=name, TagKeys=["k2"])
+            desc2 = sm.describe_secret(SecretId=name)
+            keys = [t["Key"] for t in desc2.get("Tags", [])]
+            assert "k1" in keys
+            assert "k2" not in keys
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_update_secret_string(self, sm):
+        import uuid
+        name = f"update-str-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="original")
+            sm.update_secret(SecretId=name, SecretString="updated")
+            resp = sm.get_secret_value(SecretId=name)
+            assert resp["SecretString"] == "updated"
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_update_secret_description(self, sm):
+        import uuid
+        name = f"update-desc-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="val", Description="original desc")
+            sm.update_secret(SecretId=name, Description="updated desc")
+            desc = sm.describe_secret(SecretId=name)
+            assert desc.get("Description") == "updated desc"
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_put_secret_value_new_version(self, sm):
+        import uuid
+        name = f"put-val-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="v1")
+            sm.put_secret_value(
+                SecretId=name,
+                SecretString="v2",
+                VersionStages=["AWSCURRENT"],
+            )
+            resp = sm.get_secret_value(SecretId=name)
+            assert resp["SecretString"] == "v2"
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_list_secret_version_ids(self, sm):
+        import uuid
+        name = f"versions-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="v1")
+            sm.put_secret_value(SecretId=name, SecretString="v2")
+            resp = sm.list_secret_version_ids(SecretId=name)
+            assert "Versions" in resp
+            assert len(resp["Versions"]) >= 1
+            # At least one version should be AWSCURRENT
+            current = [v for v in resp["Versions"] if "AWSCURRENT" in v.get("VersionStages", [])]
+            assert len(current) >= 1
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_restore_secret(self, sm):
+        import uuid
+        name = f"restore-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="val")
+            sm.delete_secret(SecretId=name, RecoveryWindowInDays=7)
+            sm.restore_secret(SecretId=name)
+            desc = sm.describe_secret(SecretId=name)
+            assert desc.get("DeletedDate") is None
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_get_random_password(self, sm):
+        resp = sm.get_random_password(PasswordLength=32)
+        assert len(resp["RandomPassword"]) == 32
+
+    def test_get_random_password_options(self, sm):
+        resp = sm.get_random_password(
+            PasswordLength=20,
+            ExcludeNumbers=True,
+            ExcludePunctuation=True,
+        )
+        pw = resp["RandomPassword"]
+        assert len(pw) == 20
+        assert not any(c.isdigit() for c in pw)
+
+    def test_create_secret_binary(self, sm):
+        import uuid
+        name = f"binary-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretBinary=b"\x00\x01\x02\x03")
+            resp = sm.get_secret_value(SecretId=name)
+            assert resp["SecretBinary"] == b"\x00\x01\x02\x03"
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_list_secrets_filter(self, sm):
+        import uuid
+        prefix = f"filter-{uuid.uuid4().hex[:8]}"
+        names = [f"{prefix}/a", f"{prefix}/b"]
+        try:
+            for n in names:
+                sm.create_secret(Name=n, SecretString="val")
+            resp = sm.list_secrets(
+                Filters=[{"Key": "name", "Values": [prefix]}]
+            )
+            found = [s["Name"] for s in resp["SecretList"]]
+            for n in names:
+                assert n in found
+        finally:
+            for n in names:
+                sm.delete_secret(SecretId=n, ForceDeleteWithoutRecovery=True)
+

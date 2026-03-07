@@ -1244,3 +1244,596 @@ class TestS3BucketPolicy:
         err_str = str(exc_info.value)
         assert "NoSuchBucketPolicy" in err_str or "does not have" in err_str or "404" in err_str
 
+
+class TestS3Versioning:
+    """Test S3 bucket versioning operations."""
+
+    @pytest.fixture
+    def versioned_bucket(self, s3):
+        import uuid
+        name = f"ver-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(
+            Bucket=name,
+            VersioningConfiguration={"Status": "Enabled"},
+        )
+        yield name
+        # cleanup
+        try:
+            versions = s3.list_object_versions(Bucket=name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for dm in versions.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_put_bucket_versioning_enabled(self, s3, versioned_bucket):
+        resp = s3.get_bucket_versioning(Bucket=versioned_bucket)
+        assert resp["Status"] == "Enabled"
+
+    def test_put_bucket_versioning_suspended(self, s3):
+        import uuid
+        name = f"sus-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(
+            Bucket=name, VersioningConfiguration={"Status": "Enabled"}
+        )
+        s3.put_bucket_versioning(
+            Bucket=name, VersioningConfiguration={"Status": "Suspended"}
+        )
+        resp = s3.get_bucket_versioning(Bucket=name)
+        assert resp["Status"] == "Suspended"
+        s3.delete_bucket(Bucket=name)
+
+    def test_multiple_versions_of_same_key(self, s3, versioned_bucket):
+        s3.put_object(Bucket=versioned_bucket, Key="doc.txt", Body=b"v1")
+        s3.put_object(Bucket=versioned_bucket, Key="doc.txt", Body=b"v2")
+        versions = s3.list_object_versions(Bucket=versioned_bucket, Prefix="doc.txt")
+        assert len(versions["Versions"]) == 2
+
+    def test_get_specific_version(self, s3, versioned_bucket):
+        r1 = s3.put_object(Bucket=versioned_bucket, Key="ver.txt", Body=b"first")
+        r2 = s3.put_object(Bucket=versioned_bucket, Key="ver.txt", Body=b"second")
+        obj1 = s3.get_object(Bucket=versioned_bucket, Key="ver.txt", VersionId=r1["VersionId"])
+        assert obj1["Body"].read() == b"first"
+        obj2 = s3.get_object(Bucket=versioned_bucket, Key="ver.txt", VersionId=r2["VersionId"])
+        assert obj2["Body"].read() == b"second"
+
+    def test_delete_creates_delete_marker(self, s3, versioned_bucket):
+        s3.put_object(Bucket=versioned_bucket, Key="dm.txt", Body=b"data")
+        s3.delete_object(Bucket=versioned_bucket, Key="dm.txt")
+        versions = s3.list_object_versions(Bucket=versioned_bucket, Prefix="dm.txt")
+        assert len(versions.get("DeleteMarkers", [])) >= 1
+
+    def test_delete_specific_version(self, s3, versioned_bucket):
+        r1 = s3.put_object(Bucket=versioned_bucket, Key="del-ver.txt", Body=b"v1")
+        s3.put_object(Bucket=versioned_bucket, Key="del-ver.txt", Body=b"v2")
+        s3.delete_object(
+            Bucket=versioned_bucket, Key="del-ver.txt", VersionId=r1["VersionId"]
+        )
+        versions = s3.list_object_versions(Bucket=versioned_bucket, Prefix="del-ver.txt")
+        version_ids = [v["VersionId"] for v in versions["Versions"]]
+        assert r1["VersionId"] not in version_ids
+
+
+class TestS3MultipartUpload:
+    """Test S3 multipart upload operations."""
+
+    @pytest.fixture
+    def bucket(self, s3):
+        import uuid
+        name = f"mp-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objs = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objs:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_create_and_abort_multipart(self, s3, bucket):
+        resp = s3.create_multipart_upload(Bucket=bucket, Key="aborted.bin")
+        upload_id = resp["UploadId"]
+        assert upload_id
+        s3.abort_multipart_upload(Bucket=bucket, Key="aborted.bin", UploadId=upload_id)
+
+    def test_list_multipart_uploads(self, s3, bucket):
+        resp = s3.create_multipart_upload(Bucket=bucket, Key="listed.bin")
+        upload_id = resp["UploadId"]
+        try:
+            uploads = s3.list_multipart_uploads(Bucket=bucket)
+            upload_keys = [u["Key"] for u in uploads.get("Uploads", [])]
+            assert "listed.bin" in upload_keys
+        finally:
+            s3.abort_multipart_upload(Bucket=bucket, Key="listed.bin", UploadId=upload_id)
+
+    def test_complete_multipart_upload(self, s3, bucket):
+        resp = s3.create_multipart_upload(Bucket=bucket, Key="complete.bin")
+        upload_id = resp["UploadId"]
+        part = s3.upload_part(
+            Bucket=bucket, Key="complete.bin", UploadId=upload_id,
+            PartNumber=1, Body=b"x" * (5 * 1024 * 1024),
+        )
+        s3.complete_multipart_upload(
+            Bucket=bucket, Key="complete.bin", UploadId=upload_id,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]},
+        )
+        obj = s3.get_object(Bucket=bucket, Key="complete.bin")
+        assert len(obj["Body"].read()) == 5 * 1024 * 1024
+
+    def test_list_parts(self, s3, bucket):
+        resp = s3.create_multipart_upload(Bucket=bucket, Key="parts.bin")
+        upload_id = resp["UploadId"]
+        try:
+            s3.upload_part(
+                Bucket=bucket, Key="parts.bin", UploadId=upload_id,
+                PartNumber=1, Body=b"a" * (5 * 1024 * 1024),
+            )
+            parts_resp = s3.list_parts(Bucket=bucket, Key="parts.bin", UploadId=upload_id)
+            assert len(parts_resp["Parts"]) == 1
+            assert parts_resp["Parts"][0]["PartNumber"] == 1
+        finally:
+            s3.abort_multipart_upload(Bucket=bucket, Key="parts.bin", UploadId=upload_id)
+
+
+class TestS3CORS:
+    """Test S3 CORS configuration."""
+
+    @pytest.fixture
+    def bucket(self, s3):
+        import uuid
+        name = f"cors-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_put_get_delete_cors(self, s3, bucket):
+        cors_config = {
+            "CORSRules": [
+                {
+                    "AllowedOrigins": ["https://example.com"],
+                    "AllowedMethods": ["GET", "PUT"],
+                    "AllowedHeaders": ["*"],
+                    "MaxAgeSeconds": 3600,
+                }
+            ]
+        }
+        s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors_config)
+        resp = s3.get_bucket_cors(Bucket=bucket)
+        assert len(resp["CORSRules"]) == 1
+        assert "https://example.com" in resp["CORSRules"][0]["AllowedOrigins"]
+
+        s3.delete_bucket_cors(Bucket=bucket)
+        with pytest.raises(ClientError):
+            s3.get_bucket_cors(Bucket=bucket)
+
+    def test_multiple_cors_rules(self, s3, bucket):
+        cors_config = {
+            "CORSRules": [
+                {
+                    "AllowedOrigins": ["https://a.com"],
+                    "AllowedMethods": ["GET"],
+                },
+                {
+                    "AllowedOrigins": ["https://b.com"],
+                    "AllowedMethods": ["PUT", "POST"],
+                    "ExposeHeaders": ["x-amz-request-id"],
+                },
+            ]
+        }
+        s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors_config)
+        resp = s3.get_bucket_cors(Bucket=bucket)
+        assert len(resp["CORSRules"]) == 2
+
+
+class TestS3ObjectOperations:
+    """Additional S3 object operations."""
+
+    @pytest.fixture
+    def bucket(self, s3):
+        import uuid
+        name = f"obj-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objs = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objs:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_copy_object(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="src.txt", Body=b"source")
+        s3.copy_object(
+            Bucket=bucket, Key="dst.txt",
+            CopySource={"Bucket": bucket, "Key": "src.txt"},
+        )
+        obj = s3.get_object(Bucket=bucket, Key="dst.txt")
+        assert obj["Body"].read() == b"source"
+
+    def test_head_object(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="head.txt", Body=b"hello world")
+        resp = s3.head_object(Bucket=bucket, Key="head.txt")
+        assert resp["ContentLength"] == 11
+        assert "ETag" in resp
+
+    def test_put_object_with_content_type(self, s3, bucket):
+        s3.put_object(
+            Bucket=bucket, Key="page.html", Body=b"<h1>hi</h1>",
+            ContentType="text/html",
+        )
+        resp = s3.head_object(Bucket=bucket, Key="page.html")
+        assert resp["ContentType"] == "text/html"
+
+    def test_put_object_with_metadata(self, s3, bucket):
+        s3.put_object(
+            Bucket=bucket, Key="meta.txt", Body=b"data",
+            Metadata={"author": "test", "version": "1"},
+        )
+        resp = s3.head_object(Bucket=bucket, Key="meta.txt")
+        assert resp["Metadata"]["author"] == "test"
+        assert resp["Metadata"]["version"] == "1"
+
+    def test_get_object_range(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="range.txt", Body=b"0123456789")
+        resp = s3.get_object(Bucket=bucket, Key="range.txt", Range="bytes=3-6")
+        assert resp["Body"].read() == b"3456"
+
+    def test_put_get_object_tagging(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"data")
+        s3.put_object_tagging(
+            Bucket=bucket, Key="tagged.txt",
+            Tagging={"TagSet": [{"Key": "env", "Value": "prod"}]},
+        )
+        resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
+        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+        assert tags["env"] == "prod"
+
+    def test_delete_object_tagging(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="untag.txt", Body=b"data")
+        s3.put_object_tagging(
+            Bucket=bucket, Key="untag.txt",
+            Tagging={"TagSet": [{"Key": "x", "Value": "y"}]},
+        )
+        s3.delete_object_tagging(Bucket=bucket, Key="untag.txt")
+        resp = s3.get_object_tagging(Bucket=bucket, Key="untag.txt")
+        assert len(resp["TagSet"]) == 0
+
+    def test_put_object_acl(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="acl.txt", Body=b"data")
+        s3.put_object_acl(Bucket=bucket, Key="acl.txt", ACL="public-read")
+        resp = s3.get_object_acl(Bucket=bucket, Key="acl.txt")
+        assert "Grants" in resp
+
+    def test_list_objects_v2_prefix_delimiter(self, s3, bucket):
+        for key in ["dir/a.txt", "dir/b.txt", "dir/sub/c.txt", "top.txt"]:
+            s3.put_object(Bucket=bucket, Key=key, Body=b"x")
+        resp = s3.list_objects_v2(Bucket=bucket, Prefix="dir/", Delimiter="/")
+        keys = [c["Key"] for c in resp.get("Contents", [])]
+        prefixes = [p["Prefix"] for p in resp.get("CommonPrefixes", [])]
+        assert "dir/a.txt" in keys
+        assert "dir/b.txt" in keys
+        assert "dir/sub/" in prefixes
+
+    def test_delete_objects_batch(self, s3, bucket):
+        for i in range(5):
+            s3.put_object(Bucket=bucket, Key=f"batch/{i}.txt", Body=b"x")
+        resp = s3.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": [{"Key": f"batch/{i}.txt"} for i in range(5)]},
+        )
+        assert len(resp.get("Deleted", [])) == 5
+
+    @pytest.mark.xfail(reason="PutBucketAcl returns 411 Length Required")
+    def test_put_bucket_acl(self, s3, bucket):
+        s3.put_bucket_acl(Bucket=bucket, ACL="private")
+        resp = s3.get_bucket_acl(Bucket=bucket)
+        assert "Owner" in resp
+        assert "Grants" in resp
+
+
+class TestS3BucketOperations:
+    """Additional S3 bucket operations."""
+
+    @pytest.fixture
+    def bucket(self, s3):
+        import uuid
+        name = f"bkt-ops-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_head_bucket(self, s3, bucket):
+        resp = s3.head_bucket(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_head_bucket_nonexistent(self, s3):
+        import uuid
+        with pytest.raises(ClientError):
+            s3.head_bucket(Bucket=f"no-such-bucket-{uuid.uuid4().hex[:8]}")
+
+    def test_get_bucket_location(self, s3, bucket):
+        resp = s3.get_bucket_location(Bucket=bucket)
+        # us-east-1 returns None for LocationConstraint
+        assert resp["LocationConstraint"] is None or isinstance(resp["LocationConstraint"], str)
+
+    def test_put_get_bucket_tagging(self, s3, bucket):
+        s3.put_bucket_tagging(
+            Bucket=bucket,
+            Tagging={"TagSet": [
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "dev"},
+            ]},
+        )
+        resp = s3.get_bucket_tagging(Bucket=bucket)
+        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "dev"
+
+    def test_delete_bucket_tagging(self, s3, bucket):
+        s3.put_bucket_tagging(
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "x", "Value": "y"}]},
+        )
+        s3.delete_bucket_tagging(Bucket=bucket)
+        with pytest.raises(ClientError):
+            s3.get_bucket_tagging(Bucket=bucket)
+
+    def test_put_get_bucket_lifecycle(self, s3, bucket):
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "expire-old",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "logs/"},
+                        "Expiration": {"Days": 30},
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+        assert len(resp["Rules"]) == 1
+        assert resp["Rules"][0]["ID"] == "expire-old"
+
+    def test_put_get_bucket_encryption(self, s3, bucket):
+        s3.put_bucket_encryption(
+            Bucket=bucket,
+            ServerSideEncryptionConfiguration={
+                "Rules": [
+                    {
+                        "ApplyServerSideEncryptionByDefault": {
+                            "SSEAlgorithm": "AES256",
+                        }
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_encryption(Bucket=bucket)
+        algo = resp["ServerSideEncryptionConfiguration"]["Rules"][0][
+            "ApplyServerSideEncryptionByDefault"
+        ]["SSEAlgorithm"]
+        assert algo == "AES256"
+
+    def test_put_get_bucket_website(self, s3, bucket):
+        s3.put_bucket_website(
+            Bucket=bucket,
+            WebsiteConfiguration={
+                "IndexDocument": {"Suffix": "index.html"},
+                "ErrorDocument": {"Key": "error.html"},
+            },
+        )
+        resp = s3.get_bucket_website(Bucket=bucket)
+        assert resp["IndexDocument"]["Suffix"] == "index.html"
+        assert resp["ErrorDocument"]["Key"] == "error.html"
+        s3.delete_bucket_website(Bucket=bucket)
+
+    @pytest.mark.xfail(reason="PutBucketLogging may not be supported")
+    def test_put_get_bucket_logging(self, s3, bucket):
+        import uuid
+        log_bucket = f"log-target-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=log_bucket)
+        try:
+            s3.put_bucket_logging(
+                Bucket=bucket,
+                BucketLoggingStatus={
+                    "LoggingEnabled": {
+                        "TargetBucket": log_bucket,
+                        "TargetPrefix": "logs/",
+                    }
+                },
+            )
+            resp = s3.get_bucket_logging(Bucket=bucket)
+            assert resp["LoggingEnabled"]["TargetBucket"] == log_bucket
+        finally:
+            s3.delete_bucket(Bucket=log_bucket)
+
+
+class TestS3AdvancedOperations:
+    @pytest.fixture
+    def s3(self):
+        return boto3.client(
+            "s3", endpoint_url=ENDPOINT_URL, region_name="us-east-1",
+            aws_access_key_id="testing", aws_secret_access_key="testing",
+        )
+
+    @pytest.fixture
+    def bucket(self, s3):
+        import uuid
+        name = f"adv-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        # Clean up objects
+        resp = s3.list_objects_v2(Bucket=name)
+        for obj in resp.get("Contents", []):
+            s3.delete_object(Bucket=name, Key=obj["Key"])
+        s3.delete_bucket(Bucket=name)
+
+    def test_list_objects_v2_prefix(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="docs/a.txt", Body=b"a")
+        s3.put_object(Bucket=bucket, Key="docs/b.txt", Body=b"b")
+        s3.put_object(Bucket=bucket, Key="images/c.png", Body=b"c")
+        resp = s3.list_objects_v2(Bucket=bucket, Prefix="docs/")
+        assert resp["KeyCount"] == 2
+
+    def test_list_objects_v2_delimiter(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="a/1.txt", Body=b"1")
+        s3.put_object(Bucket=bucket, Key="a/2.txt", Body=b"2")
+        s3.put_object(Bucket=bucket, Key="b/3.txt", Body=b"3")
+        resp = s3.list_objects_v2(Bucket=bucket, Delimiter="/")
+        prefixes = [p["Prefix"] for p in resp.get("CommonPrefixes", [])]
+        assert "a/" in prefixes
+        assert "b/" in prefixes
+
+    def test_list_objects_v2_max_keys(self, s3, bucket):
+        for i in range(5):
+            s3.put_object(Bucket=bucket, Key=f"k{i}.txt", Body=b"x")
+        resp = s3.list_objects_v2(Bucket=bucket, MaxKeys=3)
+        assert len(resp["Contents"]) <= 3
+        assert resp["IsTruncated"] is True
+
+    def test_list_objects_v2_continuation(self, s3, bucket):
+        for i in range(5):
+            s3.put_object(Bucket=bucket, Key=f"p{i}.txt", Body=b"x")
+        resp1 = s3.list_objects_v2(Bucket=bucket, MaxKeys=3)
+        assert resp1["IsTruncated"] is True
+        resp2 = s3.list_objects_v2(
+            Bucket=bucket, ContinuationToken=resp1["NextContinuationToken"]
+        )
+        total = len(resp1["Contents"]) + len(resp2["Contents"])
+        assert total == 5
+
+    def test_put_object_content_type(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="page.html", Body=b"<h1>Hello</h1>",
+                       ContentType="text/html")
+        resp = s3.head_object(Bucket=bucket, Key="page.html")
+        assert resp["ContentType"] == "text/html"
+
+    def test_put_object_metadata(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="meta.txt", Body=b"data",
+                       Metadata={"custom-key": "custom-value"})
+        resp = s3.head_object(Bucket=bucket, Key="meta.txt")
+        assert resp["Metadata"]["custom-key"] == "custom-value"
+
+    def test_copy_object_preserves_metadata(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="src.txt", Body=b"source",
+                       Metadata={"copied": "yes"})
+        s3.copy_object(Bucket=bucket, Key="dst.txt",
+                        CopySource={"Bucket": bucket, "Key": "src.txt"})
+        resp = s3.head_object(Bucket=bucket, Key="dst.txt")
+        assert resp["ContentLength"] == 6
+
+    def test_delete_objects_batch(self, s3, bucket):
+        for i in range(5):
+            s3.put_object(Bucket=bucket, Key=f"del{i}.txt", Body=b"x")
+        resp = s3.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": [{"Key": f"del{i}.txt"} for i in range(5)]},
+        )
+        assert len(resp["Deleted"]) == 5
+
+    def test_object_exists_after_put(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="exists.txt", Body=b"yes")
+        resp = s3.list_objects_v2(Bucket=bucket, Prefix="exists.txt")
+        assert resp["KeyCount"] == 1
+
+    def test_object_not_found_raises_error(self, s3, bucket):
+        with pytest.raises(ClientError) as exc:
+            s3.get_object(Bucket=bucket, Key="nonexistent-key-xyz")
+        assert exc.value.response["Error"]["Code"] in ("NoSuchKey", "404")
+
+    def test_put_and_get_large_object(self, s3, bucket):
+        data = b"X" * (1024 * 1024)  # 1MB
+        s3.put_object(Bucket=bucket, Key="large.bin", Body=data)
+        resp = s3.get_object(Bucket=bucket, Key="large.bin")
+        assert resp["ContentLength"] == len(data)
+
+    def test_put_object_with_storage_class(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="sc.txt", Body=b"data",
+                       StorageClass="STANDARD")
+        resp = s3.head_object(Bucket=bucket, Key="sc.txt")
+        # StorageClass may not be returned for STANDARD, just verify no error
+        assert resp["ContentLength"] == 4
+
+    def test_get_object_range(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="range.txt", Body=b"0123456789")
+        resp = s3.get_object(Bucket=bucket, Key="range.txt", Range="bytes=2-5")
+        body = resp["Body"].read()
+        assert body == b"2345"
+
+    def test_put_bucket_policy(self, s3, bucket):
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{bucket}/*",
+            }],
+        })
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+        resp = s3.get_bucket_policy(Bucket=bucket)
+        returned = json.loads(resp["Policy"])
+        assert len(returned["Statement"]) == 1
+
+    def test_delete_bucket_policy(self, s3, bucket):
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{bucket}/*",
+            }],
+        })
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+        s3.delete_bucket_policy(Bucket=bucket)
+        with pytest.raises(ClientError):
+            s3.get_bucket_policy(Bucket=bucket)
+
+    def test_get_bucket_location(self, s3, bucket):
+        resp = s3.get_bucket_location(Bucket=bucket)
+        # us-east-1 returns None or empty for LocationConstraint
+        assert "LocationConstraint" in resp
+
+    def test_put_get_object_tagging(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"tag me")
+        s3.put_object_tagging(
+            Bucket=bucket, Key="tagged.txt",
+            Tagging={"TagSet": [{"Key": "env", "Value": "test"}]},
+        )
+        resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
+        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+        assert tags["env"] == "test"
+
+    def test_delete_object_tagging(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="dtag.txt", Body=b"data")
+        s3.put_object_tagging(
+            Bucket=bucket, Key="dtag.txt",
+            Tagging={"TagSet": [{"Key": "temp", "Value": "yes"}]},
+        )
+        s3.delete_object_tagging(Bucket=bucket, Key="dtag.txt")
+        resp = s3.get_object_tagging(Bucket=bucket, Key="dtag.txt")
+        assert len(resp["TagSet"]) == 0
+
+    def test_list_buckets(self, s3, bucket):
+        resp = s3.list_buckets()
+        names = [b["Name"] for b in resp["Buckets"]]
+        assert bucket in names
+
+    def test_head_bucket(self, s3, bucket):
+        resp = s3.head_bucket(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+

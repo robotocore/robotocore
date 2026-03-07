@@ -233,3 +233,324 @@ class TestServices:
         finally:
             ecs.delete_cluster(cluster=cluster_name)
 
+
+class TestECSExtended:
+    """Extended ECS operations for higher coverage."""
+
+    @pytest.fixture
+    def ecs(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("ecs")
+
+    def test_list_clusters(self, ecs):
+        name = _unique("list-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.list_clusters()
+            assert any(name in arn for arn in resp["clusterArns"])
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_describe_clusters(self, ecs):
+        name = _unique("desc-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.describe_clusters(clusters=[name])
+            assert len(resp["clusters"]) == 1
+            assert resp["clusters"][0]["clusterName"] == name
+            assert resp["clusters"][0]["status"] == "ACTIVE"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_create_cluster_with_tags(self, ecs):
+        name = _unique("tagged-cluster")
+        resp = ecs.create_cluster(
+            clusterName=name,
+            tags=[{"key": "env", "value": "staging"}],
+        )
+        try:
+            tags = {t["key"]: t["value"] for t in resp["cluster"].get("tags", [])}
+            assert tags.get("env") == "staging"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_register_deregister_task_definition(self, ecs):
+        import uuid
+        family = f"task-fam-{uuid.uuid4().hex[:8]}"
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[
+                {
+                    "name": "web",
+                    "image": "nginx:latest",
+                    "memory": 256,
+                    "cpu": 128,
+                }
+            ],
+        )
+        td_arn = resp["taskDefinition"]["taskDefinitionArn"]
+        assert resp["taskDefinition"]["family"] == family
+
+        desc = ecs.describe_task_definition(taskDefinition=td_arn)
+        assert desc["taskDefinition"]["family"] == family
+        containers = desc["taskDefinition"]["containerDefinitions"]
+        assert len(containers) == 1
+        assert containers[0]["name"] == "web"
+
+        ecs.deregister_task_definition(taskDefinition=td_arn)
+
+    def test_list_task_definitions(self, ecs):
+        import uuid
+        family = f"list-td-{uuid.uuid4().hex[:8]}"
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[
+                {"name": "app", "image": "alpine", "memory": 64}
+            ],
+        )
+        resp = ecs.list_task_definitions(familyPrefix=family)
+        assert len(resp["taskDefinitionArns"]) >= 1
+        assert any(family in arn for arn in resp["taskDefinitionArns"])
+
+    def test_list_task_definition_families(self, ecs):
+        resp = ecs.list_task_definition_families()
+        assert "families" in resp
+
+    def test_create_cluster_with_settings(self, ecs):
+        name = _unique("settings-cluster")
+        resp = ecs.create_cluster(
+            clusterName=name,
+            settings=[{"name": "containerInsights", "value": "enabled"}],
+        )
+        try:
+            settings = {s["name"]: s["value"] for s in resp["cluster"].get("settings", [])}
+            assert settings.get("containerInsights") == "enabled"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    @pytest.mark.xfail(reason="PutClusterCapacityProviders may not be supported")
+    def test_put_cluster_capacity_providers(self, ecs):
+        name = _unique("cap-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            ecs.put_cluster_capacity_providers(
+                cluster=name,
+                capacityProviders=["FARGATE"],
+                defaultCapacityProviderStrategy=[
+                    {"capacityProvider": "FARGATE", "weight": 1}
+                ],
+            )
+            desc = ecs.describe_clusters(clusters=[name], include=["SETTINGS"])
+            cluster = desc["clusters"][0]
+            assert "FARGATE" in cluster.get("capacityProviders", [])
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+
+class TestECSExtended:
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_cluster_has_arn(self, ecs):
+        name = _unique("arn-cluster")
+        resp = ecs.create_cluster(clusterName=name)
+        try:
+            assert "clusterArn" in resp["cluster"]
+            assert name in resp["cluster"]["clusterArn"]
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_cluster_status_active(self, ecs):
+        name = _unique("status-cluster")
+        resp = ecs.create_cluster(clusterName=name)
+        try:
+            assert resp["cluster"]["status"] == "ACTIVE"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_cluster_registered_count_zero(self, ecs):
+        name = _unique("count-cluster")
+        resp = ecs.create_cluster(clusterName=name)
+        try:
+            assert resp["cluster"]["registeredContainerInstancesCount"] == 0
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_delete_cluster_returns_inactive(self, ecs):
+        name = _unique("del-cluster")
+        ecs.create_cluster(clusterName=name)
+        resp = ecs.delete_cluster(cluster=name)
+        assert resp["cluster"]["status"] == "INACTIVE"
+
+    def test_describe_nonexistent_cluster(self, ecs):
+        resp = ecs.describe_clusters(clusters=[_unique("nonexist")])
+        assert len(resp.get("failures", [])) >= 1
+
+    def test_task_definition_has_arn(self, ecs):
+        family = _unique("td-arn")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{
+                "name": "app",
+                "image": "nginx",
+                "memory": 128,
+            }],
+        )
+        assert "taskDefinitionArn" in resp["taskDefinition"]
+        assert family in resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_task_definition_status_active(self, ecs):
+        family = _unique("td-status")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{
+                "name": "app",
+                "image": "nginx",
+                "memory": 128,
+            }],
+        )
+        assert resp["taskDefinition"]["status"] == "ACTIVE"
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_deregister_task_definition(self, ecs):
+        family = _unique("td-dereg")
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{
+                "name": "app",
+                "image": "nginx",
+                "memory": 128,
+            }],
+        )
+        resp = ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+        assert resp["taskDefinition"]["status"] == "INACTIVE"
+
+    def test_task_definition_with_cpu_and_memory(self, ecs):
+        family = _unique("td-res")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{
+                "name": "app",
+                "image": "nginx",
+                "cpu": 256,
+                "memory": 512,
+            }],
+        )
+        try:
+            containers = resp["taskDefinition"]["containerDefinitions"]
+            assert containers[0]["cpu"] == 256
+            assert containers[0]["memory"] == 512
+        finally:
+            ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_task_definition_with_port_mappings(self, ecs):
+        family = _unique("td-ports")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{
+                "name": "web",
+                "image": "nginx",
+                "memory": 128,
+                "portMappings": [
+                    {"containerPort": 80, "hostPort": 80, "protocol": "tcp"},
+                    {"containerPort": 443, "hostPort": 443, "protocol": "tcp"},
+                ],
+            }],
+        )
+        try:
+            ports = resp["taskDefinition"]["containerDefinitions"][0]["portMappings"]
+            container_ports = [p["containerPort"] for p in ports]
+            assert 80 in container_ports
+            assert 443 in container_ports
+        finally:
+            ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_task_definition_with_environment(self, ecs):
+        family = _unique("td-env")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{
+                "name": "app",
+                "image": "busybox",
+                "memory": 128,
+                "environment": [
+                    {"name": "APP_ENV", "value": "test"},
+                    {"name": "DEBUG", "value": "true"},
+                ],
+            }],
+        )
+        try:
+            env = resp["taskDefinition"]["containerDefinitions"][0]["environment"]
+            env_map = {e["name"]: e["value"] for e in env}
+            assert env_map["APP_ENV"] == "test"
+            assert env_map["DEBUG"] == "true"
+        finally:
+            ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_task_definition_with_multiple_containers(self, ecs):
+        family = _unique("td-multi")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[
+                {"name": "web", "image": "nginx", "memory": 128},
+                {"name": "sidecar", "image": "busybox", "memory": 64},
+            ],
+        )
+        try:
+            containers = resp["taskDefinition"]["containerDefinitions"]
+            names = [c["name"] for c in containers]
+            assert "web" in names
+            assert "sidecar" in names
+        finally:
+            ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_task_definition_revision_increments(self, ecs):
+        family = _unique("td-rev")
+        r1 = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx:1.0", "memory": 128}],
+        )
+        r2 = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx:2.0", "memory": 128}],
+        )
+        assert r1["taskDefinition"]["revision"] == 1
+        assert r2["taskDefinition"]["revision"] == 2
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+        ecs.deregister_task_definition(taskDefinition=f"{family}:2")
+
+    def test_list_tags_for_cluster(self, ecs):
+        name = _unique("tag-cluster")
+        resp = ecs.create_cluster(
+            clusterName=name,
+            tags=[{"key": "env", "value": "test"}],
+        )
+        arn = resp["cluster"]["clusterArn"]
+        try:
+            tags = ecs.list_tags_for_resource(resourceArn=arn)
+            tag_map = {t["key"]: t["value"] for t in tags["tags"]}
+            assert tag_map["env"] == "test"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_tag_and_untag_cluster(self, ecs):
+        name = _unique("tagop-cluster")
+        resp = ecs.create_cluster(clusterName=name)
+        arn = resp["cluster"]["clusterArn"]
+        try:
+            ecs.tag_resource(
+                resourceArn=arn,
+                tags=[{"key": "team", "value": "platform"}],
+            )
+            tags = ecs.list_tags_for_resource(resourceArn=arn)
+            tag_map = {t["key"]: t["value"] for t in tags["tags"]}
+            assert tag_map["team"] == "platform"
+            ecs.untag_resource(resourceArn=arn, tagKeys=["team"])
+            tags2 = ecs.list_tags_for_resource(resourceArn=arn)
+            keys = [t["key"] for t in tags2["tags"]]
+            assert "team" not in keys
+        finally:
+            ecs.delete_cluster(cluster=name)
+

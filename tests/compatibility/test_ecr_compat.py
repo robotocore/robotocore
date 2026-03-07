@@ -298,3 +298,124 @@ class TestECRDeleteLifecyclePolicy:
             assert "LifecyclePolicyNotFoundException" in str(exc_info.value)
         finally:
             ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECRExtendedOperations:
+    def test_create_repository_with_tags(self, ecr):
+        repo_name = _unique("tagged-repo")
+        response = ecr.create_repository(
+            repositoryName=repo_name,
+            tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        try:
+            assert response["repository"]["repositoryName"] == repo_name
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+    def test_list_tags_for_resource(self, ecr):
+        repo_name = _unique("listtag-repo")
+        resp = ecr.create_repository(repositoryName=repo_name)
+        arn = resp["repository"]["repositoryArn"]
+        try:
+            ecr.tag_resource(
+                resourceArn=arn,
+                tags=[{"Key": "color", "Value": "blue"}],
+            )
+            tags_resp = ecr.list_tags_for_resource(resourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["tags"]}
+            assert tag_map["color"] == "blue"
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+    def test_untag_resource(self, ecr):
+        repo_name = _unique("untag-repo")
+        resp = ecr.create_repository(repositoryName=repo_name)
+        arn = resp["repository"]["repositoryArn"]
+        try:
+            ecr.tag_resource(
+                resourceArn=arn,
+                tags=[{"Key": "temp", "Value": "yes"}, {"Key": "keep", "Value": "yes"}],
+            )
+            ecr.untag_resource(resourceArn=arn, tagKeys=["temp"])
+            tags_resp = ecr.list_tags_for_resource(resourceArn=arn)
+            keys = [t["Key"] for t in tags_resp["tags"]]
+            assert "temp" not in keys
+            assert "keep" in keys
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+    def test_create_repository_image_tag_immutable(self, ecr):
+        repo_name = _unique("immut-repo")
+        resp = ecr.create_repository(
+            repositoryName=repo_name,
+            imageTagMutability="IMMUTABLE",
+        )
+        try:
+            assert resp["repository"]["imageTagMutability"] == "IMMUTABLE"
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+    def test_create_repository_scan_on_push(self, ecr):
+        repo_name = _unique("scanpush-repo")
+        resp = ecr.create_repository(
+            repositoryName=repo_name,
+            imageScanningConfiguration={"scanOnPush": True},
+        )
+        try:
+            assert resp["repository"]["imageScanningConfiguration"]["scanOnPush"] is True
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+    @pytest.mark.xfail(reason="maxResults pagination may not be enforced")
+    def test_describe_repositories_pagination(self, ecr):
+        repos = []
+        for i in range(3):
+            name = _unique(f"page-repo-{i}")
+            ecr.create_repository(repositoryName=name)
+            repos.append(name)
+        try:
+            resp = ecr.describe_repositories(maxResults=2)
+            assert len(resp["repositories"]) <= 2
+        finally:
+            for name in repos:
+                ecr.delete_repository(repositoryName=name)
+
+    def test_get_authorization_token(self, ecr):
+        resp = ecr.get_authorization_token()
+        assert "authorizationData" in resp
+        assert len(resp["authorizationData"]) >= 1
+        auth = resp["authorizationData"][0]
+        assert "authorizationToken" in auth
+        assert "proxyEndpoint" in auth
+
+    def test_describe_registry(self, ecr):
+        resp = ecr.describe_registry()
+        assert "registryId" in resp
+
+    @pytest.mark.xfail(reason="BatchCheckLayerAvailability not implemented")
+    def test_batch_check_layer_availability(self, ecr):
+        repo_name = _unique("layer-repo")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            resp = ecr.batch_check_layer_availability(
+                repositoryName=repo_name,
+                layerDigests=["sha256:0000000000000000000000000000000000000000000000000000000000000000"],
+            )
+            assert "layers" in resp or "failures" in resp
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+    def test_batch_get_image_nonexistent(self, ecr):
+        repo_name = _unique("batchget-repo")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            resp = ecr.batch_get_image(
+                repositoryName=repo_name,
+                imageIds=[{"imageTag": "nonexistent"}],
+            )
+            assert "failures" in resp
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)

@@ -510,3 +510,138 @@ class TestSESv2Operations:
             assert "MessageId" in response
         finally:
             ses.delete_template(TemplateName=template_name)
+
+
+class TestSESExtendedOperations:
+    """Extended SES operations for higher coverage."""
+
+    @pytest.fixture
+    def ses(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("ses")
+
+    def test_get_send_quota(self, ses):
+        resp = ses.get_send_quota()
+        assert "Max24HourSend" in resp
+        assert "MaxSendRate" in resp
+        assert "SentLast24Hours" in resp
+
+    def test_get_send_statistics(self, ses):
+        resp = ses.get_send_statistics()
+        assert "SendDataPoints" in resp
+
+    def test_get_account_sending_enabled(self, ses):
+        resp = ses.get_account_sending_enabled()
+        assert "Enabled" in resp
+
+    def test_set_identity_notification_topic(self, ses):
+        ses.verify_email_identity(EmailAddress="notif@example.com")
+        ses.set_identity_notification_topic(
+            Identity="notif@example.com",
+            NotificationType="Bounce",
+        )
+
+    def test_get_identity_notification_attributes(self, ses):
+        ses.verify_email_identity(EmailAddress="notif-attrs@example.com")
+        resp = ses.get_identity_notification_attributes(
+            Identities=["notif-attrs@example.com"]
+        )
+        assert "NotificationAttributes" in resp
+
+    @pytest.mark.xfail(reason="SetIdentityDkimEnabled may not be supported")
+    def test_set_identity_dkim_enabled(self, ses):
+        ses.verify_email_identity(EmailAddress="dkim@example.com")
+        ses.set_identity_dkim_enabled(
+            Identity="dkim@example.com", DkimEnabled=True
+        )
+
+    def test_get_identity_dkim_attributes(self, ses):
+        ses.verify_email_identity(EmailAddress="dkim-attrs@example.com")
+        resp = ses.get_identity_dkim_attributes(
+            Identities=["dkim-attrs@example.com"]
+        )
+        assert "DkimAttributes" in resp
+
+    def test_set_identity_feedback_forwarding_enabled(self, ses):
+        ses.verify_email_identity(EmailAddress="feedback@example.com")
+        ses.set_identity_feedback_forwarding_enabled(
+            Identity="feedback@example.com", ForwardingEnabled=True
+        )
+
+    def test_get_identity_mail_from_domain_attributes(self, ses):
+        ses.verify_email_identity(EmailAddress="mailfrom@example.com")
+        resp = ses.get_identity_mail_from_domain_attributes(
+            Identities=["mailfrom@example.com"]
+        )
+        assert "MailFromDomainAttributes" in resp
+
+    def test_send_raw_email(self, ses):
+        ses.verify_email_identity(EmailAddress="raw-sender@example.com")
+        raw_msg = (
+            "From: raw-sender@example.com\r\n"
+            "To: recipient@example.com\r\n"
+            "Subject: Raw Test\r\n"
+            "\r\n"
+            "Raw email body\r\n"
+        )
+        resp = ses.send_raw_email(
+            RawMessage={"Data": raw_msg},
+        )
+        assert "MessageId" in resp
+
+    def test_create_receipt_rule_set(self, ses):
+        import uuid
+        name = f"rule-set-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=name)
+        resp = ses.list_receipt_rule_sets()
+        names = [r["Name"] for r in resp["RuleSets"]]
+        assert name in names
+        ses.delete_receipt_rule_set(RuleSetName=name)
+
+    def test_update_template(self, ses):
+        import uuid
+        tname = f"upd-tmpl-{uuid.uuid4().hex[:8]}"
+        ses.create_template(
+            Template={
+                "TemplateName": tname,
+                "SubjectPart": "V1",
+                "TextPart": "Version 1",
+            }
+        )
+        try:
+            ses.update_template(
+                Template={
+                    "TemplateName": tname,
+                    "SubjectPart": "V2",
+                    "TextPart": "Version 2",
+                }
+            )
+            resp = ses.get_template(TemplateName=tname)
+            assert resp["Template"]["SubjectPart"] == "V2"
+        finally:
+            ses.delete_template(TemplateName=tname)
+
+    def test_send_email_with_cc_bcc(self, ses):
+        ses.verify_email_identity(EmailAddress="cc-sender@example.com")
+        resp = ses.send_email(
+            Source="cc-sender@example.com",
+            Destination={
+                "ToAddresses": ["to@example.com"],
+                "CcAddresses": ["cc@example.com"],
+                "BccAddresses": ["bcc@example.com"],
+            },
+            Message={
+                "Subject": {"Data": "CC/BCC Test"},
+                "Body": {"Text": {"Data": "Testing CC and BCC"}},
+            },
+        )
+        assert "MessageId" in resp
+
+    def test_verify_domain_identity(self, ses):
+        resp = ses.verify_domain_identity(Domain="example.com")
+        assert "VerificationToken" in resp
+
+    def test_list_verified_email_addresses(self, ses):
+        ses.verify_email_identity(EmailAddress="listed@example.com")
+        resp = ses.list_verified_email_addresses()
+        assert "VerifiedEmailAddresses" in resp

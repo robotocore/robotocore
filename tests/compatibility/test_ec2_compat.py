@@ -944,3 +944,184 @@ class TestEC2PlacementGroups:
             assert described["PlacementGroups"][0]["Strategy"] == "cluster"
         finally:
             ec2.delete_placement_group(GroupName=pg_name)
+
+
+class TestEC2ExtendedOperations:
+    """Extended EC2 operations for higher coverage."""
+
+    @pytest.fixture
+    def ec2(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("ec2")
+
+    def test_describe_availability_zones(self, ec2):
+        resp = ec2.describe_availability_zones()
+        assert "AvailabilityZones" in resp
+        assert len(resp["AvailabilityZones"]) >= 1
+        az = resp["AvailabilityZones"][0]
+        assert "ZoneName" in az
+        assert "State" in az
+        assert "RegionName" in az
+
+    def test_describe_regions(self, ec2):
+        resp = ec2.describe_regions()
+        assert "Regions" in resp
+        assert len(resp["Regions"]) >= 1
+        names = [r["RegionName"] for r in resp["Regions"]]
+        assert "us-east-1" in names
+
+    def test_describe_account_attributes(self, ec2):
+        resp = ec2.describe_account_attributes()
+        assert "AccountAttributes" in resp
+        names = [a["AttributeName"] for a in resp["AccountAttributes"]]
+        assert "default-vpc" in names or "supported-platforms" in names or len(names) >= 1
+
+    def test_allocate_describe_release_address(self, ec2):
+        alloc = ec2.allocate_address(Domain="vpc")
+        alloc_id = alloc["AllocationId"]
+        try:
+            assert alloc_id.startswith("eipalloc-")
+            assert "PublicIp" in alloc
+
+            described = ec2.describe_addresses(AllocationIds=[alloc_id])
+            assert len(described["Addresses"]) == 1
+            assert described["Addresses"][0]["AllocationId"] == alloc_id
+        finally:
+            ec2.release_address(AllocationId=alloc_id)
+
+    def test_create_describe_delete_key_pair(self, ec2):
+        kp_name = _unique("kp")
+        resp = ec2.create_key_pair(KeyName=kp_name)
+        try:
+            assert resp["KeyName"] == kp_name
+            assert "KeyMaterial" in resp
+            assert "KeyFingerprint" in resp
+
+            described = ec2.describe_key_pairs(KeyNames=[kp_name])
+            assert len(described["KeyPairs"]) == 1
+        finally:
+            ec2.delete_key_pair(KeyName=kp_name)
+
+    def test_describe_vpcs(self, ec2):
+        resp = ec2.describe_vpcs()
+        assert "Vpcs" in resp
+        # Should have at least the default VPC
+        assert len(resp["Vpcs"]) >= 1
+
+    def test_describe_subnets(self, ec2):
+        resp = ec2.describe_subnets()
+        assert "Subnets" in resp
+
+    def test_describe_security_groups(self, ec2):
+        resp = ec2.describe_security_groups()
+        assert "SecurityGroups" in resp
+        # Should have at least the default SG
+        assert len(resp["SecurityGroups"]) >= 1
+
+    def test_create_security_group_with_rules(self, ec2):
+        vpc_resp = ec2.create_vpc(CidrBlock="10.100.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        sg_name = _unique("sg")
+        try:
+            sg = ec2.create_security_group(
+                GroupName=sg_name,
+                Description="Test SG with rules",
+                VpcId=vpc_id,
+            )
+            sg_id = sg["GroupId"]
+
+            ec2.authorize_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "HTTPS"}],
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    },
+                ],
+            )
+
+            described = ec2.describe_security_groups(GroupIds=[sg_id])
+            ingress = described["SecurityGroups"][0]["IpPermissions"]
+            ports = {p["FromPort"] for p in ingress if "FromPort" in p}
+            assert 443 in ports
+            assert 80 in ports
+
+            ec2.revoke_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    },
+                ],
+            )
+            described = ec2.describe_security_groups(GroupIds=[sg_id])
+            ingress = described["SecurityGroups"][0]["IpPermissions"]
+            ports = {p["FromPort"] for p in ingress if "FromPort" in p}
+            assert 80 not in ports
+
+            ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_create_vpc_with_tags(self, ec2):
+        vpc = ec2.create_vpc(
+            CidrBlock="10.101.0.0/16",
+            TagSpecifications=[
+                {
+                    "ResourceType": "vpc",
+                    "Tags": [{"Key": "Name", "Value": "test-vpc"}],
+                }
+            ],
+        )
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            tags = {t["Key"]: t["Value"] for t in vpc["Vpc"].get("Tags", [])}
+            assert tags.get("Name") == "test-vpc"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_images(self, ec2):
+        resp = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        assert "Images" in resp
+
+    def test_describe_instances_filter(self, ec2):
+        resp = ec2.describe_instances(
+            Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+        )
+        assert "Reservations" in resp
+
+    def test_create_and_describe_dhcp_options(self, ec2):
+        resp = ec2.create_dhcp_options(
+            DhcpConfigurations=[
+                {"Key": "domain-name", "Values": ["example.internal"]},
+                {"Key": "domain-name-servers", "Values": ["10.0.0.2"]},
+            ]
+        )
+        dhcp_id = resp["DhcpOptions"]["DhcpOptionsId"]
+        try:
+            described = ec2.describe_dhcp_options(DhcpOptionsIds=[dhcp_id])
+            assert len(described["DhcpOptions"]) == 1
+        finally:
+            ec2.delete_dhcp_options(DhcpOptionsId=dhcp_id)
+
+    def test_describe_vpc_peering_connections(self, ec2):
+        resp = ec2.describe_vpc_peering_connections()
+        assert "VpcPeeringConnections" in resp
+
+    def test_describe_network_acls(self, ec2):
+        resp = ec2.describe_network_acls()
+        assert "NetworkAcls" in resp
+        assert len(resp["NetworkAcls"]) >= 1
