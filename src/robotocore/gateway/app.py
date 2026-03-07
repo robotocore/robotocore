@@ -23,6 +23,7 @@ from robotocore.observability.hooks import run_init_hooks
 from robotocore.observability.metrics import request_counter
 from robotocore.observability.tracing import TracingMiddleware
 from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.services.apigateway.provider import handle_apigateway_request
 from robotocore.services.apigatewayv2.provider import handle_apigatewayv2_request
 from robotocore.services.appsync.provider import handle_appsync_request
 from robotocore.services.batch.provider import handle_batch_request
@@ -30,6 +31,7 @@ from robotocore.services.cloudformation.provider import handle_cloudformation_re
 from robotocore.services.cloudwatch.logs_provider import handle_logs_request
 from robotocore.services.cloudwatch.provider import handle_cloudwatch_request
 from robotocore.services.cognito.provider import handle_cognito_request
+from robotocore.services.config.provider import handle_config_request
 from robotocore.services.dynamodb.provider import handle_dynamodb_request
 from robotocore.services.dynamodbstreams.provider import handle_dynamodbstreams_request
 from robotocore.services.ecs.provider import handle_ecs_request
@@ -40,17 +42,21 @@ from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
 from robotocore.services.s3.provider import handle_s3_request
 from robotocore.services.scheduler.provider import handle_scheduler_request
+from robotocore.services.ses.provider import handle_ses_request
 from robotocore.services.sns.provider import handle_sns_request
 from robotocore.services.sqs.provider import handle_sqs_request
 from robotocore.services.stepfunctions.provider import handle_stepfunctions_request
+from robotocore.services.sts.provider import handle_sts_request
 
 # Services with native providers (bypass Moto)
 NATIVE_PROVIDERS = {
+    "apigateway": handle_apigateway_request,
     "apigatewayv2": handle_apigatewayv2_request,
     "appsync": handle_appsync_request,
     "batch": handle_batch_request,
     "cloudformation": handle_cloudformation_request,
     "cloudwatch": handle_cloudwatch_request,
+    "config": handle_config_request,
     "cognito-idp": handle_cognito_request,
     "dynamodb": handle_dynamodb_request,
     "dynamodbstreams": handle_dynamodbstreams_request,
@@ -62,9 +68,11 @@ NATIVE_PROVIDERS = {
     "logs": handle_logs_request,
     "s3": handle_s3_request,
     "scheduler": handle_scheduler_request,
+    "ses": handle_ses_request,
     "sqs": handle_sqs_request,
     "sns": handle_sns_request,
     "stepfunctions": handle_stepfunctions_request,
+    "sts": handle_sts_request,
 }
 
 # Default account ID (matches LocalStack)

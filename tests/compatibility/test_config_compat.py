@@ -121,7 +121,6 @@ class TestConfigRuleDetails:
         assert rule["Scope"]["ComplianceResourceTypes"] == ["AWS::S3::Bucket"]
         config.delete_config_rule(ConfigRuleName="scoped-rule")
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_put_config_rule_with_input_parameters(self, config):
         config.put_config_rule(
             ConfigRule={
@@ -164,7 +163,6 @@ class TestConfigRuleDetails:
         assert response["ConfigRules"][0]["Description"] == "updated"
         config.delete_config_rule(ConfigRuleName="update-rule")
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_describe_nonexistent_rule(self, config):
         with pytest.raises(ClientError) as exc:
             config.describe_config_rules(ConfigRuleNames=["nonexistent-rule-xyz"])
@@ -377,7 +375,6 @@ class TestDeliveryChannel:
 class TestConfigCompliance:
     """Test compliance-related operations."""
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_describe_compliance_by_config_rule(self, config):
         config.put_config_rule(
             ConfigRule={
@@ -397,7 +394,6 @@ class TestConfigCompliance:
             assert rule["ConfigRuleName"] == "compliance-rule"
         config.delete_config_rule(ConfigRuleName="compliance-rule")
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_put_evaluations(self, config):
         config.put_config_rule(
             ConfigRule={
@@ -422,7 +418,6 @@ class TestConfigCompliance:
         assert "FailedEvaluations" in response
         config.delete_config_rule(ConfigRuleName="eval-rule")
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_describe_config_rule_evaluation_status(self, config):
         config.put_config_rule(
             ConfigRule={

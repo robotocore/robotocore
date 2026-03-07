@@ -486,7 +486,6 @@ class TestAPIGatewayModels:
         assert "ModelA" in names
         assert "ModelB" in names
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_delete_model(self, apigw, rest_api):
         """Delete a model."""
         import json

@@ -35,7 +35,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "DynamoDB Streams with native stream reading",
     ),
     "iam": ServiceInfo("iam", ServiceStatus.MOTO_BACKED, "query", "Identity and Access Management"),
-    "sts": ServiceInfo("sts", ServiceStatus.MOTO_BACKED, "query", "Security Token Service"),
+    "sts": ServiceInfo("sts", ServiceStatus.NATIVE, "query", "Security Token Service"),
     "cloudformation": ServiceInfo(
         "cloudformation", ServiceStatus.NATIVE, "query", "CloudFormation engine"
     ),
@@ -58,7 +58,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "stepfunctions", ServiceStatus.NATIVE, "json", "Step Functions with ASL execution"
     ),
     # Phase 2 - Integration (Moto-backed)
-    "apigateway": ServiceInfo("apigateway", ServiceStatus.MOTO_BACKED, "rest-json", "API Gateway"),
+    "apigateway": ServiceInfo("apigateway", ServiceStatus.NATIVE, "rest-json", "API Gateway"),
     "apigatewayv2": ServiceInfo(
         "apigatewayv2",
         ServiceStatus.NATIVE,
@@ -75,7 +75,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "s3control": ServiceInfo("s3control", ServiceStatus.MOTO_BACKED, "rest-xml", "S3 Control"),
     # Phase 3 - Remaining (Moto-backed)
     "acm": ServiceInfo("acm", ServiceStatus.MOTO_BACKED, "json", "Certificate Manager"),
-    "config": ServiceInfo("config", ServiceStatus.MOTO_BACKED, "json", "Config"),
+    "config": ServiceInfo("config", ServiceStatus.NATIVE, "json", "Config"),
     "ec2": ServiceInfo("ec2", ServiceStatus.MOTO_BACKED, "ec2", "Elastic Compute Cloud"),
     "redshift": ServiceInfo("redshift", ServiceStatus.MOTO_BACKED, "query", "Redshift"),
     "resource-groups": ServiceInfo(
@@ -88,7 +88,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "route53resolver": ServiceInfo(
         "route53resolver", ServiceStatus.MOTO_BACKED, "json", "Route 53 Resolver"
     ),
-    "ses": ServiceInfo("ses", ServiceStatus.MOTO_BACKED, "query", "Simple Email Service"),
+    "ses": ServiceInfo("ses", ServiceStatus.NATIVE, "query", "Simple Email Service"),
     "support": ServiceInfo("support", ServiceStatus.MOTO_BACKED, "json", "Support"),
     "swf": ServiceInfo("swf", ServiceStatus.MOTO_BACKED, "json", "Simple Workflow"),
     "transcribe": ServiceInfo("transcribe", ServiceStatus.MOTO_BACKED, "json", "Transcribe"),
