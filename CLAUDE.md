@@ -242,7 +242,7 @@ When we discover a Moto bug or missing feature that SHOULD be fixed in Moto (not
 ### Commit cadence & prompt logging (IMPORTANT)
 - **Commit as you go** — don't accumulate a massive diff. Commit after each logical phase of work (e.g., "registered 100 services", "added chaos module", "extended smoke tests").
 - **Never stop to summarize** — if the plan has more steps, keep executing. A summary is only appropriate when the plan is fully complete.
-- **Prompt log**: Every commit includes a prompt log entry in `prompts/`. Follow the format in `~/www/jackdanger.com/static/promptlog.md`. One file per session phase, named `prompts/{timestamp}-{slug}.md` with YAML frontmatter. Include both human prompts and assistant reasoning for non-obvious decisions.
+- **Prompt log**: Every commit includes a prompt log entry in `prompts/`. Follow the format in `prompts/PROMPTLOG.md` (the spec lives in this repo). One file per session phase, named `prompts/{timestamp}-{slug}.md` with YAML frontmatter. Include both human prompts and assistant reasoning for non-obvious decisions.
 
 ### Test expansion rules (IMPORTANT — learned from experience)
 - **Never write tests for unverified operations**. Before writing compat tests for a service, verify what actually works by running the operations against the live server. Use `scripts/probe_service.py` as a starting point.

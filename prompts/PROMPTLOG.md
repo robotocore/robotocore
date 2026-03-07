@@ -56,6 +56,46 @@ Include your own reasoning as `assistant` entries when you make non-obvious deci
 
 For assistant entries during autonomous work (long-running sessions where the human said "keep going"), log the high-level plan and key decision points, not every tool call. One assistant entry per logical phase of work is enough.
 
+### What a good assistant entry looks like
+
+A reviewer in 6 months doesn't need to know _what_ changed — `git diff` tells them that. They need to know _why_. Write decisions, not a changelog.
+
+**Good** — explains reasoning:
+
+```
+---
+role: assistant
+model: claude-opus-4-6
+timestamp: "2026-03-07T20:16:00Z"
+session: "a1b2c3"
+sequence: 2
+---
+
+## Key decisions
+
+**Chose X over Y** because Z. Considered W but rejected it — it would have required
+changing the wire format which breaks existing clients.
+
+**Routing strategy**: JSON-protocol services use TARGET_PREFIX_MAP. REST-json services
+with unique signing names need no special routing — the auth header extraction already
+maps correctly. Only ambiguous cases (same prefix, different service) need aliases.
+
+**What I skipped**: Operation-level routing for services that share both signing name
+AND target prefix. Deferred because both backends work independently via Moto names
+and unblocking the main path mattered more right now.
+```
+
+**Avoid** — this is a changelog, not a prompt log:
+
+```
+- Updated router.py
+- Fixed bug in serializer
+- Added 22 aliases to SERVICE_NAME_ALIASES
+- Removed duplicate dependency
+```
+
+That belongs in a commit message. The prompt log is for the reasoning behind those changes.
+
 ## Retroactive logging
 
 When reconstructing a prompt log from session transcripts after the fact:
