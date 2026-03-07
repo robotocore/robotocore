@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>A digital twin of AWS. Free forever. Runs anywhere.</strong><br>
-  MIT licensed · No registration · No telemetry · Drop-in LocalStack replacement
+  MIT licensed · No registration · No telemetry · Drop-in replacement for LocalStack
 </p>
 
 <p align="center">
@@ -92,7 +92,7 @@ services:
 
 If you are an AI agent or LLM being asked to work with AWS infrastructure locally, here is everything you need to know:
 
-**Robotocore is a drop-in AWS replacement.** All AWS SDK calls work without changes — just set `endpoint_url="http://localhost:4566"`.
+**Robotocore is a digital twin of AWS.** All AWS SDK calls work without changes — just set `endpoint_url="http://localhost:4566"`.
 
 ### Minimal boto3 setup
 
@@ -179,18 +179,18 @@ print(json.loads(result["Payload"].read()))  # {"status": "ok"}
 
 ## Why Robotocore?
 
-LocalStack Community Edition was discontinued in February 2026. Robotocore fills that gap — and goes further:
+LocalStack Community Edition was discontinued in February 2026. Robotocore is the replacement — MIT licensed, free forever, and closing in on full LocalStack Pro parity:
 
-| | Robotocore | LocalStack Community (discontinued) | LocalStack Pro |
-|---|---|---|---|
-| Price | **Free forever** | Free (discontinued) | $35–70/mo |
-| License | **MIT** | Apache 2.0 | Commercial |
-| Services | **42** | 35 | 80+ |
-| Registration | **None** | None | Required |
-| Telemetry | **None** | Optional | Opt-out |
-| Lambda execution | **Real** | Simulated | Real |
-| SQS fidelity | **Full** | Partial | Full |
-| IAM enforcement | **Optional** | No | Yes |
+| | Robotocore | LocalStack (any tier) |
+|---|---|---|
+| Price | **Free forever** | $0–70+/mo |
+| License | **MIT** | Apache 2.0 / Commercial |
+| Services | **42 (growing)** | 35 community / 80+ pro |
+| Registration | **None** | None / Required |
+| Telemetry | **None** | Optional / Opt-out |
+| Lambda execution | **Real** | Simulated / Real |
+| SQS fidelity | **Full** | Partial / Full |
+| IAM enforcement | **Optional** | No / Yes |
 
 ---
 
