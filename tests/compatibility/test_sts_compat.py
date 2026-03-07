@@ -1,5 +1,8 @@
 """STS compatibility tests."""
 
+import json
+import uuid
+
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -193,6 +196,57 @@ class TestSTSOperations:
     def test_get_session_token_with_duration(self, sts):
         """GetSessionToken with DurationSeconds."""
         response = sts.get_session_token(DurationSeconds=900)
+        creds = response["Credentials"]
+        assert "AccessKeyId" in creds
+        assert "SecretAccessKey" in creds
+        assert "SessionToken" in creds
+        assert "Expiration" in creds
+
+    def test_caller_identity_account_format(self, sts):
+        """GetCallerIdentity returns 12-digit account ID."""
+        response = sts.get_caller_identity()
+        assert len(response["Account"]) == 12
+        assert response["Account"].isdigit()
+
+    def test_caller_identity_arn_format(self, sts):
+        """GetCallerIdentity ARN starts with arn:aws."""
+        response = sts.get_caller_identity()
+        assert response["Arn"].startswith("arn:aws:")
+
+    def test_assume_role_assumed_role_user_fields(self, sts):
+        """AssumedRoleUser has Arn and AssumedRoleId."""
+        iam = make_client("iam")
+        role_name = f"aru-role-{uuid.uuid4().hex[:8]}"
+        trust = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Principal": {"AWS": "*"},
+                           "Action": "sts:AssumeRole"}],
+        })
+        role = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+        try:
+            resp = sts.assume_role(
+                RoleArn=role["Role"]["Arn"], RoleSessionName="aru-session"
+            )
+            aru = resp["AssumedRoleUser"]
+            assert "Arn" in aru
+            assert "AssumedRoleId" in aru
+            assert "aru-session" in aru["Arn"]
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_get_federation_token_with_policy(self, sts):
+        """GetFederationToken with an inline Policy."""
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+        })
+        response = sts.get_federation_token(Name="poluser", Policy=policy)
+        assert "Credentials" in response
+        assert "FederatedUser" in response
+
+    def test_get_federation_token_credentials_fields(self, sts):
+        """GetFederationToken credentials have all required fields."""
+        response = sts.get_federation_token(Name="fielduser")
         creds = response["Credentials"]
         assert "AccessKeyId" in creds
         assert "SecretAccessKey" in creds
