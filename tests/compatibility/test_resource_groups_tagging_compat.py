@@ -61,3 +61,25 @@ class TestResourceGroupsTaggingOperations:
         # Cleanup
         queue_url = sqs.get_queue_url(QueueName="tag-resources-queue")["QueueUrl"]
         sqs.delete_queue(QueueUrl=queue_url)
+
+    def test_untag_resources(self, tagging, sqs):
+        sqs.create_queue(QueueName="untag-test-queue", tags={"rmtag": "yes", "keep": "yes"})
+        attrs = sqs.get_queue_attributes(
+            QueueUrl=sqs.get_queue_url(QueueName="untag-test-queue")["QueueUrl"],
+            AttributeNames=["QueueArn"],
+        )
+        arn = attrs["Attributes"]["QueueArn"]
+        response = tagging.untag_resources(ResourceARNList=[arn], TagKeys=["rmtag"])
+        assert "FailedResourcesMap" in response
+        queue_url = sqs.get_queue_url(QueueName="untag-test-queue")["QueueUrl"]
+        sqs.delete_queue(QueueUrl=queue_url)
+
+    def test_get_resources_with_resource_type_filter(self, tagging, sqs):
+        sqs.create_queue(QueueName="type-filter-queue", tags={"env": "type-test"})
+        response = tagging.get_resources(
+            ResourceTypeFilters=["sqs:queue"],
+            TagFilters=[{"Key": "env", "Values": ["type-test"]}],
+        )
+        assert "ResourceTagMappingList" in response
+        queue_url = sqs.get_queue_url(QueueName="type-filter-queue")["QueueUrl"]
+        sqs.delete_queue(QueueUrl=queue_url)

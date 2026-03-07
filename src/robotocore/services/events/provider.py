@@ -314,15 +314,23 @@ def _list_event_buses(store: EventsStore, params: dict, region: str, account_id:
 
 
 def _tag_resource(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    resource_arn = params.get("ResourceARN", "")
+    tags = params.get("Tags", [])
+    store.tag_resource(resource_arn, tags)
     return {}
 
 
 def _untag_resource(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    resource_arn = params.get("ResourceARN", "")
+    tag_keys = params.get("TagKeys", [])
+    store.untag_resource(resource_arn, tag_keys)
     return {}
 
 
 def _list_tag_resource(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
-    return {"Tags": []}
+    resource_arn = params.get("ResourceARN", "")
+    tags = store.list_tags_for_resource(resource_arn)
+    return {"Tags": tags}
 
 
 # --- Archive operations ---

@@ -40,6 +40,7 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/2021-01-01/"), "opensearch"),
     (re.compile(r"^/2021-\d{2}-\d{2}/functions/"), "lambda"),
     (re.compile(r"^/restapis"), "apigateway"),
+    (re.compile(r"^/v2/email/"), "sesv2"),
     (re.compile(r"^/v2/"), "apigatewayv2"),
     (re.compile(r"^/v20180820/"), "s3control"),
     (re.compile(r"^/2013-04-01/"), "route53"),

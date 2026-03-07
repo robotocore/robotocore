@@ -26,6 +26,12 @@ from robotocore.services.cloudwatch.insights import (
 
 logger = logging.getLogger(__name__)
 
+# Valid retention values per AWS API docs
+_VALID_RETENTION_DAYS = {
+    1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
+    1096, 1827, 2192, 2557, 2922, 3288, 3653,
+}
+
 
 class LogsError(Exception):
     def __init__(self, code: str, message: str, status: int = 400):
@@ -61,6 +67,29 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
         except Exception as e:
             return _error_response("InternalError", str(e), 500)
 
+    # PutRetentionPolicy: validate, then forward to Moto
+    if action == "PutRetentionPolicy":
+        retention_in_days = params.get("retentionInDays")
+        if retention_in_days not in _VALID_RETENTION_DAYS:
+            return _error_response(
+                "InvalidParameterException",
+                "1 validation error detected: Value at 'retentionInDays' failed to satisfy "
+                "constraint: Member must satisfy enum value set: "
+                "[1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, "
+                "1827, 2192, 2557, 2922, 3288, 3653]",
+                400,
+            )
+        return await forward_to_moto(request, "logs")
+
+    # FilterLogEvents: handle logStreamNamePrefix natively
+    if action == "FilterLogEvents":
+        log_stream_name_prefix = params.get("logStreamNamePrefix")
+        if log_stream_name_prefix:
+            return await _filter_log_events_with_prefix(
+                request, params, region, account_id, log_stream_name_prefix
+            )
+        return await forward_to_moto(request, "logs")
+
     # PutLogEvents: forward to Moto, then process filters
     if action == "PutLogEvents":
         response = await forward_to_moto(request, "logs")
@@ -76,8 +105,180 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
                 logger.debug("Failed to process log filters", exc_info=True)
         return response
 
+    # ListTagsForResource: normalize ARN (strip trailing :*) before forwarding
+    if action == "ListTagsForResource":
+        resource_arn = params.get("resourceArn", "")
+        if resource_arn.endswith(":*"):
+            resource_arn = resource_arn[:-2]
+        try:
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
+
+            acct = account_id or DEFAULT_ACCOUNT_ID
+            logs_backend = get_backend("logs")[acct][region]
+            tags = logs_backend.list_tags_for_resource(resource_arn)
+            return _json_response(200, {"tags": tags})
+        except Exception:
+            return await forward_to_moto(request, "logs")
+
+    # TagResource: normalize ARN (strip trailing :*) before forwarding
+    if action == "TagResource":
+        resource_arn = params.get("resourceArn", "")
+        if resource_arn.endswith(":*"):
+            resource_arn = resource_arn[:-2]
+        tags = params.get("tags", {})
+        try:
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
+
+            acct = account_id or DEFAULT_ACCOUNT_ID
+            logs_backend = get_backend("logs")[acct][region]
+            logs_backend.tag_resource(resource_arn, tags)
+            return _json_response(200, {})
+        except Exception:
+            return await forward_to_moto(request, "logs")
+
+    # UntagResource: normalize ARN (strip trailing :*) before forwarding
+    if action == "UntagResource":
+        resource_arn = params.get("resourceArn", "")
+        if resource_arn.endswith(":*"):
+            resource_arn = resource_arn[:-2]
+        tag_keys = params.get("tagKeys", [])
+        try:
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
+
+            acct = account_id or DEFAULT_ACCOUNT_ID
+            logs_backend = get_backend("logs")[acct][region]
+            logs_backend.untag_resource(resource_arn, tag_keys)
+            return _json_response(200, {})
+        except Exception:
+            return await forward_to_moto(request, "logs")
+
     # Fall back to Moto for everything else
     return await forward_to_moto(request, "logs")
+
+
+# ---------------------------------------------------------------------------
+# FilterLogEvents with logStreamNamePrefix
+# ---------------------------------------------------------------------------
+
+
+async def _filter_log_events_with_prefix(
+    request: Request,
+    params: dict,
+    region: str,
+    account_id: str,
+    prefix: str,
+) -> Response:
+    """Handle FilterLogEvents with logStreamNamePrefix by resolving streams first."""
+    log_group_name = params.get("logGroupName", "")
+
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id or DEFAULT_ACCOUNT_ID
+        logs_backend = get_backend("logs")[acct][region]
+        if log_group_name not in logs_backend.groups:
+            return _error_response(
+                "ResourceNotFoundException",
+                "The specified log group does not exist.",
+                400,
+            )
+        log_group = logs_backend.groups[log_group_name]
+        matching_streams = [
+            name for name in log_group.streams if name.startswith(prefix)
+        ]
+    except Exception as e:
+        return _error_response("InternalError", str(e), 500)
+
+    # Call Moto's filter_log_events with resolved stream names
+    start_time = params.get("startTime")
+    end_time = params.get("endTime")
+    limit = params.get("limit")
+    next_token = params.get("nextToken")
+    filter_pattern = params.get("filterPattern", "")
+    interleaved = params.get("interleaved", False)
+
+    try:
+        events, next_token_out, searched_streams = logs_backend.filter_log_events(
+            log_group_name,
+            matching_streams,
+            start_time,
+            end_time,
+            limit,
+            next_token,
+            filter_pattern,
+            interleaved,
+        )
+        return _json_response(200, {
+            "events": events,
+            "nextToken": next_token_out,
+            "searchedLogStreams": searched_streams,
+        })
+    except Exception as e:
+        return _error_response("InternalError", str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# KMS key operations
+# ---------------------------------------------------------------------------
+
+
+def _associate_kms_key(params: dict, region: str, account_id: str) -> dict:
+    log_group_name = params.get("logGroupName", "")
+    kms_key_id = params.get("kmsKeyId", "")
+
+    if not log_group_name:
+        raise LogsError("InvalidParameterException", "logGroupName is required")
+    if not kms_key_id:
+        raise LogsError("InvalidParameterException", "kmsKeyId is required")
+
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id or DEFAULT_ACCOUNT_ID
+        logs_backend = get_backend("logs")[acct][region]
+        if log_group_name not in logs_backend.groups:
+            raise LogsError(
+                "ResourceNotFoundException",
+                "The specified log group does not exist.",
+            )
+        logs_backend.groups[log_group_name].kms_key_id = kms_key_id
+    except LogsError:
+        raise
+    except Exception as e:
+        raise LogsError("InternalError", str(e), 500) from e
+
+    return {}
+
+
+def _disassociate_kms_key(params: dict, region: str, account_id: str) -> dict:
+    log_group_name = params.get("logGroupName", "")
+
+    if not log_group_name:
+        raise LogsError("InvalidParameterException", "logGroupName is required")
+
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id or DEFAULT_ACCOUNT_ID
+        logs_backend = get_backend("logs")[acct][region]
+        if log_group_name not in logs_backend.groups:
+            raise LogsError(
+                "ResourceNotFoundException",
+                "The specified log group does not exist.",
+            )
+        logs_backend.groups[log_group_name].kms_key_id = None
+    except LogsError:
+        raise
+    except Exception as e:
+        raise LogsError("InternalError", str(e), 500) from e
+
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -278,4 +479,6 @@ _ACTION_MAP: dict[str, Callable] = {
     "PutSubscriptionFilter": _put_subscription_filter,
     "DeleteSubscriptionFilter": _delete_subscription_filter,
     "DescribeSubscriptionFilters": _describe_subscription_filters,
+    "AssociateKmsKey": _associate_kms_key,
+    "DisassociateKmsKey": _disassociate_kms_key,
 }

@@ -330,7 +330,28 @@ def _publish_batch(
     if not topic:
         raise SnsError("NotFound", f"Topic {topic_arn} not found", 404)
 
-    entries = params.get("PublishBatchRequestEntries", [])
+    # Parse entries from query params: PublishBatchRequestEntries.member.N.Field
+    entries = []
+    i = 1
+    while f"PublishBatchRequestEntries.member.{i}.Id" in params:
+        entry = {
+            "Id": params[f"PublishBatchRequestEntries.member.{i}.Id"],
+            "Message": params.get(f"PublishBatchRequestEntries.member.{i}.Message", ""),
+        }
+        subject = params.get(f"PublishBatchRequestEntries.member.{i}.Subject")
+        if subject:
+            entry["Subject"] = subject
+        group_id = params.get(f"PublishBatchRequestEntries.member.{i}.MessageGroupId")
+        if group_id:
+            entry["MessageGroupId"] = group_id
+        dedup_id = params.get(
+            f"PublishBatchRequestEntries.member.{i}.MessageDeduplicationId"
+        )
+        if dedup_id:
+            entry["MessageDeduplicationId"] = dedup_id
+        i += 1
+        entries.append(entry)
+
     successful = []
     for entry in entries:
         msg_id = _new_id()
@@ -536,27 +557,38 @@ def _deliver_to_sqs(
     if sub.raw_message_delivery:
         body = message
     else:
-        body = json.dumps(
-            {
-                "Type": "Notification",
-                "MessageId": message_id,
-                "TopicArn": topic_arn,
-                "Subject": subject or "",
-                "Message": message,
-                "Timestamp": _iso_timestamp(),
-                "SignatureVersion": "1",
-                "Signature": "EXAMPLE",
-                "SigningCertURL": (
-                    "https://sns.us-east-1.amazonaws.com/"
-                    "SimpleNotificationService.pem"
-                ),
-                "UnsubscribeURL": (
-                    f"https://sns.us-east-1.amazonaws.com/"
-                    f"?Action=Unsubscribe"
-                    f"&SubscriptionArn={sub.subscription_arn}"
-                ),
-            }
-        )
+        # Build SNS notification JSON matching AWS format
+        notification: dict = {
+            "Type": "Notification",
+            "MessageId": message_id,
+            "TopicArn": topic_arn,
+            "Subject": subject or "",
+            "Message": message,
+            "Timestamp": _iso_timestamp(),
+            "SignatureVersion": "1",
+            "Signature": "EXAMPLE",
+            "SigningCertURL": (
+                "https://sns.us-east-1.amazonaws.com/"
+                "SimpleNotificationService.pem"
+            ),
+            "UnsubscribeURL": (
+                f"https://sns.us-east-1.amazonaws.com/"
+                f"?Action=Unsubscribe"
+                f"&SubscriptionArn={sub.subscription_arn}"
+            ),
+        }
+        # Include MessageAttributes in the notification JSON (matches real AWS)
+        if message_attributes:
+            sns_attrs = {}
+            for attr_name, attr_val in message_attributes.items():
+                sns_attrs[attr_name] = {
+                    "Type": attr_val.get("DataType", "String"),
+                    "Value": attr_val.get(
+                        "StringValue", attr_val.get("Value", "")
+                    ),
+                }
+            notification["MessageAttributes"] = sns_attrs
+        body = json.dumps(notification)
 
     sqs_msg = SqsMessage(
         message_id=str(uuid.uuid4()),

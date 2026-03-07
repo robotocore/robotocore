@@ -145,7 +145,13 @@ def _create_delivery_stream(params: dict, region: str, account_id: str) -> dict:
             "region": region,
             "account_id": account_id,
             "created": time.time(),
+            "version_id": 1,
+            "tags": {},
         }
+        # Store initial tags if provided
+        initial_tags = params.get("Tags", [])
+        for tag in initial_tags:
+            stream["tags"][tag["Key"]] = tag.get("Value", "")
         _delivery_streams[name] = stream
         _stream_buffers[name] = []
 
@@ -183,17 +189,22 @@ def _describe_delivery_stream(params: dict, region: str, account_id: str) -> dic
             }
         )
 
-    return {
-        "DeliveryStreamDescription": {
-            "DeliveryStreamName": name,
-            "DeliveryStreamARN": stream["arn"],
-            "DeliveryStreamStatus": stream["status"],
-            "DeliveryStreamType": stream["type"],
-            "Destinations": destinations,
-            "HasMoreDestinations": False,
-            "CreateTimestamp": stream["created"],
-        }
+    desc = {
+        "DeliveryStreamName": name,
+        "DeliveryStreamARN": stream["arn"],
+        "DeliveryStreamStatus": stream["status"],
+        "DeliveryStreamType": stream["type"],
+        "VersionId": str(stream.get("version_id", 1)),
+        "Destinations": destinations,
+        "HasMoreDestinations": False,
+        "CreateTimestamp": stream["created"],
     }
+
+    encryption = stream.get("encryption")
+    if encryption:
+        desc["DeliveryStreamEncryptionConfiguration"] = encryption
+
+    return {"DeliveryStreamDescription": desc}
 
 
 def _list_delivery_streams(params: dict, region: str, account_id: str) -> dict:
@@ -262,6 +273,109 @@ def _put_record_batch(params: dict, region: str, account_id: str) -> dict:
     }
 
 
+def _update_destination(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    destination_id = params.get("DestinationId", "")
+
+    with _lock:
+        stream = _delivery_streams.get(name)
+        if not stream:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+
+        if not destination_id:
+            raise FirehoseError("ValidationException", "DestinationId is required")
+
+        # Merge updates into existing s3_config
+        s3_update = (
+            params.get("ExtendedS3DestinationUpdate")
+            or params.get("S3DestinationUpdate")
+            or {}
+        )
+        if s3_update:
+            s3_config = stream.get("s3_config", {})
+            for key, value in s3_update.items():
+                if isinstance(value, dict) and isinstance(s3_config.get(key), dict):
+                    s3_config[key].update(value)
+                else:
+                    s3_config[key] = value
+            stream["s3_config"] = s3_config
+
+        stream["version_id"] = stream.get("version_id", 1) + 1
+
+    return {}
+
+
+def _start_delivery_stream_encryption(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+
+    with _lock:
+        stream = _delivery_streams.get(name)
+        if not stream:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+
+        encryption_config = (
+            params.get("DeliveryStreamEncryptionConfigurationInput")
+            or params.get("DeliveryStreamEncryptionInput")
+            or {}
+        )
+        stream["encryption"] = {
+            "KeyType": encryption_config.get("KeyType", "AWS_OWNED_CMK"),
+            "KeyARN": encryption_config.get("KeyARN"),
+            "Status": "ENABLED",
+        }
+
+    return {}
+
+
+def _stop_delivery_stream_encryption(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+
+    with _lock:
+        stream = _delivery_streams.get(name)
+        if not stream:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+
+        stream["encryption"] = {
+            "Status": "DISABLED",
+        }
+
+    return {}
+
+
+def _tag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    tags = params.get("Tags", [])
+    with _lock:
+        stream = _delivery_streams.get(name)
+        if not stream:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+        for tag in tags:
+            stream["tags"][tag["Key"]] = tag.get("Value", "")
+    return {}
+
+
+def _untag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    tag_keys = params.get("TagKeys", [])
+    with _lock:
+        stream = _delivery_streams.get(name)
+        if not stream:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+        for key in tag_keys:
+            stream["tags"].pop(key, None)
+    return {}
+
+
+def _list_tags_for_delivery_stream(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    with _lock:
+        stream = _delivery_streams.get(name)
+        if not stream:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+        tags = [{"Key": k, "Value": v} for k, v in stream["tags"].items()]
+    return {"Tags": tags, "HasMoreTags": False}
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
@@ -274,4 +388,10 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListDeliveryStreams": _list_delivery_streams,
     "PutRecord": _put_record,
     "PutRecordBatch": _put_record_batch,
+    "UpdateDestination": _update_destination,
+    "StartDeliveryStreamEncryption": _start_delivery_stream_encryption,
+    "StopDeliveryStreamEncryption": _stop_delivery_stream_encryption,
+    "TagDeliveryStream": _tag_delivery_stream,
+    "UntagDeliveryStream": _untag_delivery_stream,
+    "ListTagsForDeliveryStream": _list_tags_for_delivery_stream,
 }

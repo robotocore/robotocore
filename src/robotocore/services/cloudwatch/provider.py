@@ -686,24 +686,46 @@ async def handle_cloudwatch_request(
     """
     body = await request.body()
     content_type = request.headers.get("content-type", "")
+    amz_target = request.headers.get("x-amz-target", "")
+    use_json_protocol = "x-amz-json" in content_type and amz_target
 
-    # Parse query parameters
-    if "x-www-form-urlencoded" in content_type:
-        parsed = parse_qs(body.decode(), keep_blank_values=True)
+    if use_json_protocol:
+        # Modern boto3 sends JSON with X-Amz-Target header
+        # e.g. "GraniteServiceVersion20100801.DisableAlarmActions"
+        action = amz_target.rsplit(".", 1)[-1] if "." in amz_target else amz_target
+        params = json.loads(body.decode()) if body else {}
+        params["Action"] = action
     else:
-        parsed = parse_qs(str(request.url.query), keep_blank_values=True)
-
-    params = _flatten_query_params(parsed)
-    action = params.get("Action", "")
+        # Traditional query protocol
+        if "x-www-form-urlencoded" in content_type:
+            parsed = parse_qs(body.decode(), keep_blank_values=True)
+        else:
+            parsed = parse_qs(str(request.url.query), keep_blank_values=True)
+        params = _flatten_query_params(parsed)
+        action = params.get("Action", "")
 
     handler = _ACTION_MAP.get(action)
     if handler is not None:
         try:
             result = handler(params, region, account_id)
+            if use_json_protocol:
+                return Response(
+                    content=json.dumps(result),
+                    status_code=200,
+                    media_type="application/x-amz-json-1.0",
+                )
             return _xml_response(action + "Response", result)
         except CloudWatchError as e:
+            if use_json_protocol:
+                err_body = json.dumps({"__type": e.code, "message": e.message})
+                return Response(content=err_body, status_code=e.status,
+                                media_type="application/x-amz-json-1.0")
             return _error_response(e.code, e.message, e.status)
         except Exception as e:
+            if use_json_protocol:
+                err_body = json.dumps({"__type": "InternalError", "message": str(e)})
+                return Response(content=err_body, status_code=500,
+                                media_type="application/x-amz-json-1.0")
             return _error_response("InternalError", str(e), 500)
 
     # Fall back to Moto for everything else
@@ -820,6 +842,39 @@ def _handle_get_metric_data(params: dict, region: str, account_id: str) -> dict:
     return get_metric_data(params, region, account_id)
 
 
+def _handle_enable_alarm_actions(params: dict, region: str, account_id: str) -> dict:
+    """Enable actions for the specified alarms."""
+    alarm_names = params.get("AlarmNames", [])
+    if isinstance(alarm_names, str):
+        alarm_names = [alarm_names]
+    from moto.backends import get_backend
+
+    backend = get_backend("cloudwatch")[account_id][region]
+    for name in alarm_names:
+        if name in backend.alarms:
+            backend.alarms[name].actions_enabled = True
+    return {}
+
+
+def _handle_disable_alarm_actions(params: dict, region: str, account_id: str) -> dict:
+    """Disable actions for the specified alarms."""
+    alarm_names = params.get("AlarmNames", [])
+    if isinstance(alarm_names, str):
+        alarm_names = [alarm_names]
+    from moto.backends import get_backend
+
+    backend = get_backend("cloudwatch")[account_id][region]
+    for name in alarm_names:
+        if name in backend.alarms:
+            backend.alarms[name].actions_enabled = False
+    return {}
+
+
+def _handle_describe_alarm_history(params: dict, region: str, account_id: str) -> dict:
+    """Return alarm history (stub — returns empty list)."""
+    return {"AlarmHistoryItems": []}
+
+
 # ---------------------------------------------------------------------------
 # Response helpers
 # ---------------------------------------------------------------------------
@@ -827,10 +882,11 @@ def _handle_get_metric_data(params: dict, region: str, account_id: str) -> dict:
 
 def _xml_response(wrapper: str, data: dict) -> Response:
     """Build a simple XML response for query protocol."""
+    result_name = wrapper.replace("Response", "Result")
     xml = f'<{wrapper} xmlns="http://monitoring.amazonaws.com/doc/2010-08-01/">'
-    xml += f"<{wrapper}Result>"
+    xml += f"<{result_name}>"
     xml += _dict_to_xml(data)
-    xml += f"</{wrapper}Result>"
+    xml += f"</{result_name}>"
     xml += "<ResponseMetadata><RequestId>00000000-0000-0000-0000-000000000000</RequestId>"
     xml += "</ResponseMetadata>"
     xml += f"</{wrapper}>"
@@ -884,4 +940,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListDashboards": _handle_list_dashboards,
     "DeleteDashboards": _handle_delete_dashboards,
     "GetMetricData": _handle_get_metric_data,
+    "EnableAlarmActions": _handle_enable_alarm_actions,
+    "DisableAlarmActions": _handle_disable_alarm_actions,
+    "DescribeAlarmHistory": _handle_describe_alarm_history,
 }

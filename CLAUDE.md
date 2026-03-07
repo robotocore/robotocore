@@ -220,3 +220,10 @@ When using Claude Code agents on this project:
 - **Build tool → fan out**: Create a script, then spawn parallel agents each running it on different targets
 - **Verify always**: Every code agent prompt must include "run tests after changes"
 - **Be specific**: Tell agents exactly which files to edit, what to change, and what NOT to change
+
+### Test expansion rules (IMPORTANT — learned from experience)
+- **Never write tests for unverified operations**. Before writing compat tests for a service, verify what actually works by running the operations against the live server. Use `scripts/probe_service.py` as a starting point.
+- **No speculative xfails**. If an operation doesn't work, fix the server first, then write the test. An xfail is a TODO you'll forget about.
+- **Agent prompts for test writing MUST include**: "Run each test against the running server (port 4566) before including it. If it fails because the operation isn't implemented, do NOT include that test — skip it entirely."
+- **Fix-then-test > test-then-xfail**. The correct order is: (1) discover gap, (2) implement fix, (3) write test that proves fix works. Never: (1) write test, (2) discover it fails, (3) mark xfail.
+- **Probe script**: `uv run python scripts/probe_service.py --service <name>` reports which operations work. Give agents this output as their allowlist.

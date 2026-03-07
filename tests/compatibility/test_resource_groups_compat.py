@@ -84,3 +84,19 @@ class TestResourceGroupsOperations:
         )
         response = resource_groups.delete_group(GroupName=name)
         assert response["Group"]["Name"] == name
+
+    def test_update_group_query(self, resource_groups):
+        name = f"query-group-{_uid()}"
+        resource_groups.create_group(
+            Name=name, Description="Query update", ResourceQuery=RESOURCE_QUERY
+        )
+        new_query = {
+            "Type": "TAG_FILTERS_1_0",
+            "Query": (
+                '{"ResourceTypeFilters":["AWS::EC2::Instance"],'
+                '"TagFilters":[{"Key":"env","Values":["prod"]}]}'
+            ),
+        }
+        response = resource_groups.update_group_query(GroupName=name, ResourceQuery=new_query)
+        assert response["GroupQuery"]["ResourceQuery"]["Type"] == "TAG_FILTERS_1_0"
+        resource_groups.delete_group(GroupName=name)

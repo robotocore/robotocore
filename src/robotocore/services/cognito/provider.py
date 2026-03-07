@@ -286,6 +286,36 @@ def _delete_user_pool_client(
     return {}
 
 
+def _update_user_pool_client(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    client_id = params.get("ClientId", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        client = store.clients.get(pool_id, {}).get(client_id)
+        if not client:
+            raise CognitoError(
+                "ResourceNotFoundException", f"Client {client_id} does not exist.", 404
+            )
+        # Update mutable fields
+        updatable = [
+            "ClientName", "ExplicitAuthFlows", "AllowedOAuthFlows",
+            "AllowedOAuthScopes", "CallbackURLs", "LogoutURLs",
+            "DefaultRedirectURI", "ReadAttributes", "WriteAttributes",
+            "SupportedIdentityProviders", "AllowedOAuthFlowsUserPoolClient",
+            "TokenValidityUnits", "AccessTokenValidity", "IdTokenValidity",
+            "RefreshTokenValidity",
+        ]
+        for key in updatable:
+            if key in params:
+                client[key] = params[key]
+        client["LastModifiedDate"] = time.time()
+
+    return {"UserPoolClient": client}
+
+
 def _list_user_pool_clients(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -578,6 +608,42 @@ def _admin_create_user(
     }
 
 
+def _admin_disable_user(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError(
+                "UserNotFoundException", f"User {username} does not exist.", 404
+            )
+        user["Enabled"] = False
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _admin_enable_user(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError(
+                "UserNotFoundException", f"User {username} does not exist.", 404
+            )
+        user["Enabled"] = True
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
 def _admin_delete_user(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -754,6 +820,22 @@ def _create_group(
             "LastModifiedDate": time.time(),
         }
         groups[group_name] = group
+    return {"Group": group}
+
+
+def _get_group(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    group_name = params.get("GroupName", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        group = store.groups.get(pool_id, {}).get(group_name)
+    if not group:
+        raise CognitoError(
+            "ResourceNotFoundException", f"Group {group_name} does not exist.", 404
+        )
     return {"Group": group}
 
 
@@ -1014,6 +1096,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListUserPools": _list_user_pools,
     "CreateUserPoolClient": _create_user_pool_client,
     "DescribeUserPoolClient": _describe_user_pool_client,
+    "UpdateUserPoolClient": _update_user_pool_client,
     "DeleteUserPoolClient": _delete_user_pool_client,
     "ListUserPoolClients": _list_user_pool_clients,
     "SignUp": _sign_up,
@@ -1024,6 +1107,8 @@ _ACTION_MAP: dict[str, Callable] = {
     "GetUser": _get_user,
     "AdminGetUser": _admin_get_user,
     "AdminCreateUser": _admin_create_user,
+    "AdminDisableUser": _admin_disable_user,
+    "AdminEnableUser": _admin_enable_user,
     "AdminDeleteUser": _admin_delete_user,
     "ForgotPassword": _forgot_password,
     "ConfirmForgotPassword": _confirm_forgot_password,
@@ -1031,6 +1116,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "AdminSetUserPassword": _admin_set_user_password,
     "ListUsers": _list_users,
     "CreateGroup": _create_group,
+    "GetGroup": _get_group,
     "DeleteGroup": _delete_group,
     "ListGroups": _list_groups,
     "AdminAddUserToGroup": _admin_add_user_to_group,

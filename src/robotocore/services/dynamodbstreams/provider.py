@@ -6,6 +6,7 @@ tables (with their StreamShard objects) are managed by Moto.
 """
 
 import base64
+import copy
 import json
 import logging
 import threading
@@ -231,7 +232,18 @@ def _get_records(params: dict, region: str, account_id: str) -> dict:
 
     records = []
     if table.stream_shard and table.stream_shard.id == shard_id:
-        records = table.stream_shard.get(seq, limit)
+        raw_records = table.stream_shard.get(seq, limit)
+        # Deep copy to avoid mutating Moto's internal state, and clean up
+        # empty OldImage/NewImage to match AWS behavior (INSERT has no OldImage,
+        # REMOVE has no NewImage).
+        for r in raw_records:
+            rec = copy.deepcopy(r)
+            ddb = rec.get("dynamodb", {})
+            if "OldImage" in ddb and not ddb["OldImage"]:
+                del ddb["OldImage"]
+            if "NewImage" in ddb and not ddb["NewImage"]:
+                del ddb["NewImage"]
+            records.append(rec)
 
     # Calculate next sequence number
     if records:
