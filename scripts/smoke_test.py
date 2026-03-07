@@ -318,6 +318,78 @@ def test_firehose():
     s3.delete_bucket(Bucket=bucket)
 
 
+# ---- RDS ----
+def test_rds():
+    rds = client("rds")
+    result = rds.describe_db_instances()
+    assert result["DBInstances"] == []
+
+
+# ---- ELBv2 ----
+def test_elbv2():
+    elb = client("elbv2")
+    result = elb.describe_load_balancers()
+    assert result["LoadBalancers"] == []
+
+
+# ---- CloudFront ----
+def test_cloudfront():
+    cf = client("cloudfront")
+    result = cf.list_distributions()
+    items = result["DistributionList"].get("Items", [])
+    assert items == [] or items is None
+
+
+# ---- Auto Scaling ----
+def test_autoscaling():
+    asg = client("autoscaling")
+    result = asg.describe_auto_scaling_groups()
+    assert result["AutoScalingGroups"] == []
+
+
+# ---- EKS ----
+def test_eks():
+    eks = client("eks")
+    result = eks.list_clusters()
+    assert result["clusters"] == []
+
+
+# ---- Glue ----
+def test_glue():
+    glue = client("glue")
+    result = glue.get_databases()
+    assert result["DatabaseList"] == []
+
+
+# ---- Organizations ----
+def test_organizations():
+    org = client("organizations")
+    org.create_organization(FeatureSet="ALL")
+    result = org.list_accounts()
+    assert len(result["Accounts"]) >= 1
+
+
+# ---- CloudTrail ----
+def test_cloudtrail():
+    ct = client("cloudtrail")
+    result = ct.describe_trails()
+    assert isinstance(result["trailList"], list)
+
+
+# ---- WAFv2 ----
+def test_wafv2():
+    waf = client("wafv2")
+    result = waf.list_web_acls(Scope="REGIONAL")
+    assert result["WebACLs"] == []
+
+
+# ---- EFS ----
+def test_efs():
+    efs = client("efs")
+    result = efs.describe_file_systems()
+    assert result["FileSystems"] == []
+
+
 def main():
     print(f"\nRobotocore Smoke Test — {ENDPOINT_URL}\n")
     print("=" * 50)
@@ -343,6 +415,16 @@ def main():
         ("ECS", test_ecs),
         ("Scheduler", test_scheduler),
         ("Firehose", test_firehose),
+        ("RDS", test_rds),
+        ("ELBv2", test_elbv2),
+        ("CloudFront", test_cloudfront),
+        ("Auto Scaling", test_autoscaling),
+        ("EKS", test_eks),
+        ("Glue", test_glue),
+        ("Organizations", test_organizations),
+        ("CloudTrail", test_cloudtrail),
+        ("WAFv2", test_wafv2),
+        ("EFS", test_efs),
     ]
 
     for name, fn in tests:
