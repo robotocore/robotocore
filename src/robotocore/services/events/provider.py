@@ -1037,6 +1037,116 @@ def _json(status_code: int, data) -> Response:
     )
 
 
+# --- Connections ---
+
+_connections: dict[str, dict] = {}
+
+
+def _create_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    auth_type = params.get("AuthorizationType", "")
+    auth_params = params.get("AuthParameters", {})
+    conn_arn = f"arn:aws:events:{region}:{account_id}:connection/{name}"
+    conn = {
+        "Name": name,
+        "ConnectionArn": conn_arn,
+        "ConnectionState": "AUTHORIZED",
+        "AuthorizationType": auth_type,
+        "AuthParameters": auth_params,
+        "CreationTime": time.time(),
+        "LastModifiedTime": time.time(),
+    }
+    _connections[name] = conn
+    return {"ConnectionArn": conn_arn, "ConnectionState": "AUTHORIZED", "CreationTime": conn["CreationTime"]}
+
+
+def _describe_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    conn = _connections.get(name)
+    if not conn:
+        raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 404)
+    return conn
+
+
+def _delete_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    conn = _connections.pop(name, None)
+    if not conn:
+        raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 404)
+    return {"ConnectionArn": conn["ConnectionArn"], "ConnectionState": "DELETING"}
+
+
+# --- API Destinations ---
+
+_api_destinations: dict[str, dict] = {}
+
+
+def _create_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    conn_arn = params.get("ConnectionArn", "")
+    endpoint = params.get("InvocationEndpoint", "")
+    method = params.get("HttpMethod", "POST")
+    rate_limit = params.get("InvocationRateLimitPerSecond", 300)
+    dest_arn = f"arn:aws:events:{region}:{account_id}:api-destination/{name}"
+    dest = {
+        "Name": name,
+        "ApiDestinationArn": dest_arn,
+        "ApiDestinationState": "ACTIVE",
+        "ConnectionArn": conn_arn,
+        "InvocationEndpoint": endpoint,
+        "HttpMethod": method,
+        "InvocationRateLimitPerSecond": rate_limit,
+        "CreationTime": time.time(),
+        "LastModifiedTime": time.time(),
+    }
+    _api_destinations[name] = dest
+    return {"ApiDestinationArn": dest_arn, "ApiDestinationState": "ACTIVE", "CreationTime": dest["CreationTime"]}
+
+
+def _describe_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    dest = _api_destinations.get(name)
+    if not dest:
+        raise EventsError("ResourceNotFoundException", f"ApiDestination {name} not found", 404)
+    return dest
+
+
+def _delete_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    _api_destinations.pop(name, None)
+    return {}
+
+
+# --- Partner Events ---
+
+
+def _put_partner_events(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    entries = params.get("Entries", [])
+    return {"FailedEntryCount": 0, "Entries": [{"EventId": str(uuid.uuid4())} for _ in entries]}
+
+
+# --- UpdateArchive ---
+
+
+def _update_archive(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("ArchiveName", "")
+    with store.mutex:
+        archive = store.archives.get(name)
+        if not archive:
+            raise EventsError("ResourceNotFoundException", f"Archive {name} not found", 404)
+        if "Description" in params:
+            archive.description = params["Description"]
+        if "EventPattern" in params:
+            pattern = params["EventPattern"]
+            if isinstance(pattern, str):
+                archive.event_pattern = json.loads(pattern)
+            else:
+                archive.event_pattern = pattern
+        if "RetentionDays" in params:
+            archive.retention_days = params["RetentionDays"]
+    return {"ArchiveArn": archive.arn, "State": archive.state}
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(
@@ -1070,4 +1180,12 @@ _ACTION_MAP = {
     "DeleteArchive": _delete_archive,
     "StartReplay": _start_replay,
     "DescribeReplay": _describe_replay,
+    "PutPartnerEvents": _put_partner_events,
+    "CreateConnection": _create_connection,
+    "DescribeConnection": _describe_connection,
+    "DeleteConnection": _delete_connection,
+    "CreateApiDestination": _create_api_destination,
+    "DescribeApiDestination": _describe_api_destination,
+    "DeleteApiDestination": _delete_api_destination,
+    "UpdateArchive": _update_archive,
 }

@@ -94,6 +94,14 @@ def _create_topic(
     name = params.get("Name", "")
     attributes = params.get("Attributes", {})
     tags = params.get("Tags", [])
+    # Query protocol tags: Tags.member.N.Key / Tags.member.N.Value
+    i = 1
+    while f"Tags.member.{i}.Key" in params:
+        tags.append({
+            "Key": params[f"Tags.member.{i}.Key"],
+            "Value": params.get(f"Tags.member.{i}.Value", ""),
+        })
+        i += 1
     # Query protocol attributes
     for key, value in params.items():
         if key.startswith("Attributes.entry.") and key.endswith(".key"):
@@ -176,6 +184,11 @@ def _subscribe(
     protocol = params.get("Protocol", "")
     endpoint = params.get("Endpoint", "")
     attributes = params.get("Attributes", {})
+    # Query protocol attributes: Attributes.entry.N.key / Attributes.entry.N.value
+    for key, value in params.items():
+        if key.startswith("Attributes.entry.") and key.endswith(".key"):
+            idx = key.split(".")[2]
+            attributes[value] = params.get(f"Attributes.entry.{idx}.value", "")
     sub = store.subscribe(topic_arn, protocol, endpoint, attributes)
     if not sub:
         raise SnsError("NotFound", f"Topic {topic_arn} not found", 404)

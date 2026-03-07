@@ -357,7 +357,6 @@ class TestCognitoExtended:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="UpdateUserPool may not be supported")
     def test_update_user_pool(self, cognito):
         pool = cognito.create_user_pool(PoolName=_unique("upd-pool"))["UserPool"]
         pool_id = pool["Id"]
@@ -390,7 +389,6 @@ class TestCognitoExtended:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="AdminUpdateUserAttributes may not be supported")
     def test_admin_update_user_attributes(self, cognito):
         pool = cognito.create_user_pool(
             PoolName=_unique("attr-pool"),
@@ -506,7 +504,6 @@ class TestCognitoExtendedV2:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="EmailConfiguration not returned in create_user_pool response")
     def test_create_user_pool_with_email_config(self, cognito):
         pool_name = _unique("email-pool")
         response = cognito.create_user_pool(
@@ -539,7 +536,6 @@ class TestCognitoExtendedV2:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="UpdateUserPool action not implemented")
     def test_update_user_pool(self, cognito):
         pool = cognito.create_user_pool(PoolName=_unique("upd-pool"))["UserPool"]
         pool_id = pool["Id"]
@@ -752,7 +748,6 @@ class TestCognitoExtendedV2:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="UpdateGroup action not implemented")
     def test_update_group(self, cognito):
         pool = cognito.create_user_pool(PoolName=_unique("updgrp-pool"))["UserPool"]
         pool_id = pool["Id"]
@@ -797,7 +792,6 @@ class TestCognitoExtendedV2:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="AddCustomAttributes action not implemented")
     def test_add_custom_attributes(self, cognito):
         pool = cognito.create_user_pool(PoolName=_unique("custattr-pool"))["UserPool"]
         pool_id = pool["Id"]
@@ -833,7 +827,6 @@ class TestCognitoExtendedV2:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="SetUserPoolMfaConfig action not implemented")
     def test_set_user_pool_mfa_config(self, cognito):
         pool = cognito.create_user_pool(PoolName=_unique("mfacfg-pool"))["UserPool"]
         pool_id = pool["Id"]
@@ -860,7 +853,6 @@ class TestCognitoExtendedV2:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-    @pytest.mark.xfail(reason="ListUsersInGroup action not implemented")
     def test_list_users_in_group(self, cognito):
         pool = cognito.create_user_pool(PoolName=_unique("usringrp-pool"))["UserPool"]
         pool_id = pool["Id"]

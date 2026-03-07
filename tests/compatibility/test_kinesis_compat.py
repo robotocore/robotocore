@@ -681,7 +681,6 @@ class TestKinesisExtended:
                 except ClientError:
                     pass
 
-    @pytest.mark.xfail(reason="Moto ListStreams does not respect Limit for HasMoreStreams")
     def test_list_streams_has_more_streams(self, kinesis):
         """ListStreams HasMoreStreams field is correct with pagination."""
         names = [f"hasmore-{uuid.uuid4().hex[:8]}" for _ in range(3)]
@@ -792,7 +791,6 @@ class TestKinesisExtended:
         assert response["FailedRecordCount"] == 0
         assert len(response["Records"]) == 2
 
-    @pytest.mark.xfail(reason="Moto ListShards does not support MaxResults pagination")
     def test_list_shards_with_max_results(self, kinesis):
         """ListShards with MaxResults for pagination."""
         name = f"shardpage-{uuid.uuid4().hex[:8]}"
@@ -809,7 +807,6 @@ class TestKinesisExtended:
             except ClientError:
                 pass
 
-    @pytest.mark.xfail(reason="Moto ListShards does not support MaxResults/NextToken pagination")
     def test_list_shards_pagination_next_token(self, kinesis):
         """ListShards pagination using NextToken."""
         name = f"shardnext-{uuid.uuid4().hex[:8]}"
@@ -895,7 +892,6 @@ class TestKinesisExtended:
         assert "HasMoreTags" in response
         assert isinstance(response["HasMoreTags"], bool)
 
-    @pytest.mark.xfail(reason="Moto DescribeStreamConsumer by ARN alone not supported")
     def test_describe_stream_consumer_by_arn(self, kinesis, stream):
         """DescribeStreamConsumer using ConsumerARN."""
         stream_arn = kinesis.describe_stream(StreamName=stream)[
@@ -918,7 +914,6 @@ class TestKinesisExtended:
             except ClientError:
                 pass
 
-    @pytest.mark.xfail(reason="Moto does not raise ResourceInUseException for duplicate consumer")
     def test_register_duplicate_consumer_error(self, kinesis, stream):
         """Registering a consumer with the same name raises ResourceInUseException."""
         stream_arn = kinesis.describe_stream(StreamName=stream)[
@@ -955,7 +950,6 @@ class TestKinesisExtended:
         assert "OpenShardCount" in summary
         assert summary["OpenShardCount"] >= 1
 
-    @pytest.mark.xfail(reason="Moto PutRecord does not return EncryptionType")
     def test_put_record_returns_encryption_type(self, kinesis, stream):
         """PutRecord response includes EncryptionType field."""
         resp = kinesis.put_record(
@@ -964,7 +958,6 @@ class TestKinesisExtended:
         assert "EncryptionType" in resp
         assert resp["EncryptionType"] in ("NONE", "KMS")
 
-    @pytest.mark.xfail(reason="Moto PutRecords does not return EncryptionType")
     def test_put_records_returns_encryption_type(self, kinesis, stream):
         """PutRecords response includes EncryptionType field."""
         records = [{"Data": b"enc-batch", "PartitionKey": "pk1"}]
@@ -999,7 +992,6 @@ class TestKinesisExtended:
             except ClientError:
                 pass
 
-    @pytest.mark.xfail(reason="Moto DescribeStream does not respect Limit for shard pagination")
     def test_describe_stream_with_limit(self, kinesis):
         """DescribeStream with Limit returns partial shard list and HasMoreShards=True."""
         name = f"desclimit-{uuid.uuid4().hex[:8]}"

@@ -113,15 +113,17 @@ def _delete_stream(store: KinesisStore, params: dict, region: str, account_id: s
 
 def _describe_stream(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
+    limit = params.get("Limit")
+    exclusive_start = params.get("ExclusiveStartShardId")
     stream = store.get_stream(name)
     if not stream:
         raise KinesisError(
             "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
         )
 
-    shards = []
+    all_shards = []
     for shard in stream.shards:
-        shards.append(
+        all_shards.append(
             {
                 "ShardId": shard.shard_id,
                 "HashKeyRange": {
@@ -134,14 +136,29 @@ def _describe_stream(store: KinesisStore, params: dict, region: str, account_id:
             }
         )
 
+    # Apply ExclusiveStartShardId
+    if exclusive_start:
+        start_idx = 0
+        for i, s in enumerate(all_shards):
+            if s["ShardId"] == exclusive_start:
+                start_idx = i + 1
+                break
+        all_shards = all_shards[start_idx:]
+
+    # Apply Limit
+    has_more = False
+    if limit and len(all_shards) > limit:
+        all_shards = all_shards[:limit]
+        has_more = True
+
     return {
         "StreamDescription": {
             "StreamName": stream.name,
             "StreamARN": stream.arn,
             "StreamStatus": stream.status,
             "StreamModeDetails": {"StreamMode": "PROVISIONED"},
-            "Shards": shards,
-            "HasMoreShards": False,
+            "Shards": all_shards,
+            "HasMoreShards": has_more,
             "RetentionPeriodHours": stream.retention_hours,
             "EnhancedMonitoring": [{"ShardLevelMetrics": []}],
             "EncryptionType": stream.encryption_type,
@@ -161,10 +178,11 @@ def _list_streams(store: KinesisStore, params: dict, region: str, account_id: st
             names = names[idx:]
         except ValueError:
             pass
+    has_more = len(names) > limit
     names = names[:limit]
     return {
         "StreamNames": names,
-        "HasMoreStreams": False,
+        "HasMoreStreams": has_more,
     }
 
 
@@ -186,6 +204,7 @@ def _put_record(store: KinesisStore, params: dict, region: str, account_id: str)
     return {
         "ShardId": record.shard_id,
         "SequenceNumber": record.sequence_number,
+        "EncryptionType": "NONE",
     }
 
 
@@ -217,6 +236,7 @@ def _put_records(store: KinesisStore, params: dict, region: str, account_id: str
 
     return {
         "FailedRecordCount": failed_count,
+        "EncryptionType": "NONE",
         "Records": result_records,
     }
 
@@ -311,15 +331,26 @@ def _get_records(store: KinesisStore, params: dict, region: str, account_id: str
 
 def _list_shards(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
+    next_token = params.get("NextToken")
+    max_results = params.get("MaxResults", 10000)
+
+    # Support NextToken-based pagination (token encodes stream name + start index)
+    start_idx = 0
+    if next_token:
+        parts = next_token.split(":", 1)
+        if len(parts) == 2:
+            name = parts[0]
+            start_idx = int(parts[1])
+
     stream = store.get_stream(name)
     if not stream:
         raise KinesisError(
             "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
         )
 
-    shards = []
+    all_shards = []
     for shard in stream.shards:
-        shards.append(
+        all_shards.append(
             {
                 "ShardId": shard.shard_id,
                 "HashKeyRange": {
@@ -332,7 +363,12 @@ def _list_shards(store: KinesisStore, params: dict, region: str, account_id: str
             }
         )
 
-    return {"Shards": shards}
+    # Apply pagination
+    paged = all_shards[start_idx : start_idx + max_results]
+    result: dict = {"Shards": paged}
+    if start_idx + max_results < len(all_shards):
+        result["NextToken"] = f"{name}:{start_idx + max_results}"
+    return result
 
 
 def _increase_retention(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
@@ -527,6 +563,13 @@ def _register_stream_consumer(store: KinesisStore, params: dict, region: str, ac
     if not stream:
         raise KinesisError("ResourceNotFoundException", f"Stream not found: {stream_arn}")
 
+    # Check for duplicate consumer name
+    if consumer_name in stream.consumers:
+        raise KinesisError(
+            "ResourceInUseException",
+            f"Consumer {consumer_name} already exists on stream {stream_arn}",
+        )
+
     import time as _time
     consumer_arn = f"{stream_arn}/consumer/{consumer_name}:{int(_time.time())}"
     consumer = {
@@ -542,6 +585,17 @@ def _register_stream_consumer(store: KinesisStore, params: dict, region: str, ac
 def _describe_stream_consumer(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     stream_arn = params.get("StreamARN", "")
     consumer_name = params.get("ConsumerName", "")
+    consumer_arn = params.get("ConsumerARN", "")
+
+    # Lookup by ARN (can find without StreamARN/ConsumerName)
+    if consumer_arn:
+        for s in store.streams.values():
+            for c in s.consumers.values():
+                if c["ConsumerARN"] == consumer_arn:
+                    return {"ConsumerDescription": c}
+        raise KinesisError("ResourceNotFoundException", f"Consumer {consumer_arn} not found")
+
+    # Lookup by StreamARN + ConsumerName
     for s in store.streams.values():
         if s.arn == stream_arn and consumer_name in s.consumers:
             return {"ConsumerDescription": s.consumers[consumer_name]}

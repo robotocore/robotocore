@@ -177,15 +177,19 @@ def _describe_delivery_stream(params: dict, region: str, account_id: str) -> dic
 
     destinations = []
     if stream.get("s3_config"):
+        s3_desc = {
+            "BucketARN": stream["s3_config"].get("BucketARN", ""),
+            "Prefix": stream["s3_config"].get("Prefix", ""),
+            "RoleARN": stream["s3_config"].get("RoleARN", ""),
+            "BufferingHints": stream["s3_config"].get("BufferingHints", {}),
+            "CompressionFormat": stream["s3_config"].get("CompressionFormat", "UNCOMPRESSED"),
+        }
+        if "ErrorOutputPrefix" in stream["s3_config"]:
+            s3_desc["ErrorOutputPrefix"] = stream["s3_config"]["ErrorOutputPrefix"]
         destinations.append(
             {
                 "DestinationId": "dest-1",
-                "ExtendedS3DestinationDescription": {
-                    "BucketARN": stream["s3_config"].get("BucketARN", ""),
-                    "Prefix": stream["s3_config"].get("Prefix", ""),
-                    "RoleARN": stream["s3_config"].get("RoleARN", ""),
-                    "BufferingHints": stream["s3_config"].get("BufferingHints", {}),
-                },
+                "ExtendedS3DestinationDescription": s3_desc,
             }
         )
 
@@ -277,6 +281,8 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
     destination_id = params.get("DestinationId", "")
 
+    current_version = params.get("CurrentDeliveryStreamVersionId")
+
     with _lock:
         stream = _delivery_streams.get(name)
         if not stream:
@@ -284,6 +290,15 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
 
         if not destination_id:
             raise FirehoseError("ValidationException", "DestinationId is required")
+
+        # Validate version ID if provided
+        if current_version is not None:
+            expected = str(stream.get("version_id", 1))
+            if current_version != expected:
+                raise FirehoseError(
+                    "InvalidArgumentException",
+                    f"Version mismatch: expected {expected}, got {current_version}",
+                )
 
         # Merge updates into existing s3_config
         s3_update = (
@@ -368,12 +383,26 @@ def _untag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
 
 def _list_tags_for_delivery_stream(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
+    limit = params.get("Limit", 50)
+    exclusive_start = params.get("ExclusiveStartTagKey")
     with _lock:
         stream = _delivery_streams.get(name)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
-        tags = [{"Key": k, "Value": v} for k, v in stream["tags"].items()]
-    return {"Tags": tags, "HasMoreTags": False}
+        all_tags = [{"Key": k, "Value": v} for k, v in sorted(stream["tags"].items())]
+
+    # Apply ExclusiveStartTagKey filter
+    if exclusive_start:
+        start_idx = 0
+        for i, tag in enumerate(all_tags):
+            if tag["Key"] == exclusive_start:
+                start_idx = i + 1
+                break
+        all_tags = all_tags[start_idx:]
+
+    has_more = len(all_tags) > limit
+    tags = all_tags[:limit]
+    return {"Tags": tags, "HasMoreTags": has_more}
 
 
 def _error(code: str, message: str, status: int) -> Response:

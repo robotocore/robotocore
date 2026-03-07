@@ -52,27 +52,15 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            robotocore/robotocore:${{ steps.version.outputs.VERSION }}
-            robotocore/robotocore:latest
+            jackdanger/robotocore:${{ steps.version.outputs.VERSION }}
+            jackdanger/robotocore:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
             ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      # PyPI
-      - uses: astral-sh/setup-uv@v4
-        with:
-          python-version: "3.12"
-      - name: Build Python package
-        run: uv build
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
 
       # GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           generate_release_notes: true
-          files: dist/*

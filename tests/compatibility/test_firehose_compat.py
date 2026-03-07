@@ -545,7 +545,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not return CompressionFormat in ExtendedS3DestinationDescription")
     def test_create_with_snappy_compression(self):
         """CreateDeliveryStream with SNAPPY compression."""
         bucket = self._unique_name("snappy-bkt")
@@ -562,7 +561,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not return CompressionFormat in ExtendedS3DestinationDescription")
     def test_create_with_zip_compression(self):
         """CreateDeliveryStream with ZIP compression."""
         bucket = self._unique_name("zip-bkt")
@@ -579,7 +577,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not return CompressionFormat in ExtendedS3DestinationDescription")
     def test_create_with_uncompressed(self):
         """CreateDeliveryStream with UNCOMPRESSED explicitly set."""
         bucket = self._unique_name("uncomp-bkt")
@@ -596,7 +593,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not persist ErrorOutputPrefix in ExtendedS3DestinationDescription")
     def test_create_with_prefix_and_error_prefix(self):
         """CreateDeliveryStream with Prefix and ErrorOutputPrefix."""
         bucket = self._unique_name("pfx-bkt")
@@ -703,7 +699,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not return CompressionFormat in ExtendedS3DestinationDescription")
     def test_update_destination_changes_compression(self):
         """UpdateDestination can change compression format."""
         bucket = self._unique_name("updcomp-bkt")
@@ -734,7 +729,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not validate CurrentDeliveryStreamVersionId")
     def test_update_destination_wrong_version_raises(self):
         """UpdateDestination with wrong version ID raises error."""
         bucket = self._unique_name("updver-bkt")
@@ -853,7 +847,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not respect Limit parameter in ListTagsForDeliveryStream")
     def test_list_tags_with_limit(self):
         """ListTagsForDeliveryStream respects Limit parameter."""
         bucket = self._unique_name("taglim-bkt")
@@ -874,7 +867,6 @@ class TestFirehoseExtended:
             self._cleanup_stream(name)
             self._cleanup_bucket(bucket)
 
-    @pytest.mark.xfail(reason="Moto does not respect ExclusiveStartTagKey in ListTagsForDeliveryStream")
     def test_list_tags_pagination_with_exclusive_start(self):
         """ListTagsForDeliveryStream paginates with ExclusiveStartTagKey."""
         bucket = self._unique_name("tagpag-bkt")

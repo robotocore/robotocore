@@ -4,6 +4,7 @@ import json
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -896,7 +897,6 @@ class TestSNSExtendedOperations:
         assert len(resp.get("Successful", [])) == 3
         assert resp.get("Failed", []) == []
 
-    @pytest.mark.xfail(reason="CreateTopic with Tags may not be supported")
     def test_create_topic_with_tags(self, sns):
         import uuid
         name = f"tagged-topic-{uuid.uuid4().hex[:8]}"
@@ -947,7 +947,6 @@ class TestSNSExtendedOperations:
         finally:
             sqs.delete_queue(QueueUrl=q_url)
 
-    @pytest.mark.xfail(reason="ConfirmSubscription error handling may differ")
     def test_confirm_subscription_invalid_token(self, sns, topic_arn):
         """ConfirmSubscription with invalid token should raise error."""
         with pytest.raises(ClientError):
@@ -987,7 +986,6 @@ class TestSNSExtendedOperations:
         finally:
             sns.delete_topic(TopicArn=arn)
 
-    @pytest.mark.xfail(reason="Subscribe with FilterPolicy attribute may not be supported")
     def test_subscribe_with_filter_policy(self, sns, topic_arn):
         from tests.compatibility.conftest import make_client
         sqs = make_client("sqs")

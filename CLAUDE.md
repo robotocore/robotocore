@@ -221,6 +221,15 @@ When using Claude Code agents on this project:
 - **Verify always**: Every code agent prompt must include "run tests after changes"
 - **Be specific**: Tell agents exactly which files to edit, what to change, and what NOT to change
 
+### Contributing fixes upstream to Moto
+When we discover a Moto bug or missing feature that SHOULD be fixed in Moto (not worked around in a native provider):
+1. Create a git worktree in `vendor/moto/` with a new branch: `git worktree add ../moto-fix-<name> -b fix/<name>`
+2. Implement the fix in the Moto worktree
+3. Write a test for it in Moto's test suite
+4. Open a PR against `getmoto/moto` from the worktree branch
+5. In the meantime, use a native provider intercept in robotocore as the workaround
+6. Track the PR in the commit message so we know when to remove the workaround
+
 ### Test expansion rules (IMPORTANT — learned from experience)
 - **Never write tests for unverified operations**. Before writing compat tests for a service, verify what actually works by running the operations against the live server. Use `scripts/probe_service.py` as a starting point.
 - **No speculative xfails**. If an operation doesn't work, fix the server first, then write the test. An xfail is a TODO you'll forget about.

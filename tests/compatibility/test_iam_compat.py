@@ -1169,17 +1169,34 @@ class TestIAMOpenIDConnectProvider:
 
 
 class TestIAMSAMLProvider:
-    @pytest.mark.xfail(reason="SAML provider may not be fully supported")
     def test_create_get_delete_saml_provider(self, iam):
         """CreateSAMLProvider / GetSAMLProvider / DeleteSAMLProvider."""
-        saml_metadata = """<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
-            entityID="https://idp.example.com">
-            <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-                <SingleSignOnService
-                    Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
-                    Location="https://idp.example.com/sso"/>
-            </IDPSSODescriptor>
-        </EntityDescriptor>"""
+        saml_metadata = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
+            ' entityID="https://idp.example.com/metadata">'
+            '<IDPSSODescriptor'
+            ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+            '<KeyDescriptor use="signing">'
+            '<KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">'
+            "<X509Data><X509Certificate>"
+            "MIIDpDCCAoygAwIBAgIGAXpJOXwHMA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEG"
+            "A1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEU"
+            "MBIGA1UECwwLU1NPUHJvdmlkZXIxEzARBgNVBAMMCmRldi04NDMyNTMxHDAaBgkqhkiG9w0BCQEW"
+            "DWluZm9Ab2t0YS5jb20wHhcNMjEwNjIyMTgxNjQzWhcNMzEwNjIyMTgxNzQzWjCBkjELMAkGA1UE"
+            "BhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xDTALBgNV"
+            "BAoMBE9rdGExFDASBgNVBAsMC1NTT1Byb3ZpZGVyMRMwEQYDVQQDDApkZXYtODQzMjUzMRwwGgYJ"
+            "KoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA"
+            "</X509Certificate></X509Data>"
+            "</KeyInfo></KeyDescriptor>"
+            '<SingleSignOnService'
+            ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
+            ' Location="https://idp.example.com/sso"/>'
+            '<SingleSignOnService'
+            ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
+            ' Location="https://idp.example.com/sso"/>'
+            "</IDPSSODescriptor></EntityDescriptor>"
+        )
         name = _unique("saml-prov")
         resp = iam.create_saml_provider(
             SAMLMetadataDocument=saml_metadata,

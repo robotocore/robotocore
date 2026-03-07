@@ -157,6 +157,14 @@ def _create_user_pool(
         "Schema": params.get("Schema", []),
         "MfaConfiguration": params.get("MfaConfiguration", "OFF"),
     }
+    if "EmailConfiguration" in params:
+        pool["EmailConfiguration"] = params["EmailConfiguration"]
+    if "SmsConfiguration" in params:
+        pool["SmsConfiguration"] = params["SmsConfiguration"]
+    if "AdminCreateUserConfig" in params:
+        pool["AdminCreateUserConfig"] = params["AdminCreateUserConfig"]
+    if "UsernameAttributes" in params:
+        pool["UsernameAttributes"] = params["UsernameAttributes"]
 
     with store.lock:
         store.pools[pool_id] = pool
@@ -178,7 +186,11 @@ def _describe_user_pool(
         raise CognitoError(
             "ResourceNotFoundException", f"User pool {pool_id} does not exist.", 404
         )
-    return {"UserPool": pool}
+    # AWS returns Schema as SchemaAttributes in describe
+    result = dict(pool)
+    if "Schema" in result:
+        result["SchemaAttributes"] = result.pop("Schema")
+    return {"UserPool": result}
 
 
 def _delete_user_pool(
@@ -1078,6 +1090,129 @@ def _json_response(data: dict) -> Response:
     )
 
 
+def _update_user_pool(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    with store.lock:
+        pool = store.pools.get(pool_id)
+        if not pool:
+            raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} not found")
+        # Update mutable fields
+        for key in (
+            "Policies", "LambdaConfig", "AutoVerifiedAttributes", "MfaConfiguration",
+            "EmailConfiguration", "SmsConfiguration", "AdminCreateUserConfig",
+        ):
+            if key in params:
+                pool[key] = params[key]
+        pool["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _admin_update_user_attributes(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    user_attributes = params.get("UserAttributes", [])
+    with store.lock:
+        users = store.users.get(pool_id, {})
+        user = users.get(username)
+        if not user:
+            raise CognitoError("UserNotFoundException", f"User {username} not found")
+        # Merge attributes
+        existing = {a["Name"]: a["Value"] for a in user.get("Attributes", [])}
+        for attr in user_attributes:
+            existing[attr["Name"]] = attr["Value"]
+        user["Attributes"] = [{"Name": k, "Value": v} for k, v in existing.items()]
+        user["UserLastModifiedDate"] = time.time()
+    return {}
+
+
+def _update_group(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    group_name = params.get("GroupName", "")
+    with store.lock:
+        groups = store.groups.get(pool_id, {})
+        group = groups.get(group_name)
+        if not group:
+            raise CognitoError("ResourceNotFoundException", f"Group {group_name} not found")
+        if "Description" in params:
+            group["Description"] = params["Description"]
+        if "RoleArn" in params:
+            group["RoleArn"] = params["RoleArn"]
+        if "Precedence" in params:
+            group["Precedence"] = params["Precedence"]
+        group["LastModifiedDate"] = time.time()
+    return {"Group": group}
+
+
+def _add_custom_attributes(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    custom_attrs = params.get("CustomAttributes", [])
+    with store.lock:
+        pool = store.pools.get(pool_id)
+        if not pool:
+            raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} not found")
+        schema = pool.get("Schema", [])
+        for attr in custom_attrs:
+            name = attr.get("Name", "")
+            if not name.startswith("custom:"):
+                name = f"custom:{name}"
+            schema.append({
+                "Name": name,
+                "AttributeDataType": attr.get("AttributeDataType", "String"),
+                "Mutable": attr.get("Mutable", True),
+                "Required": False,
+            })
+        pool["Schema"] = schema
+    return {}
+
+
+def _set_user_pool_mfa_config(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    with store.lock:
+        pool = store.pools.get(pool_id)
+        if not pool:
+            raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} not found")
+        mfa_config = params.get("MfaConfiguration", "OFF")
+        pool["MfaConfiguration"] = mfa_config
+        result: dict = {"MfaConfiguration": mfa_config}
+        if "SmsMfaConfiguration" in params:
+            pool["SmsMfaConfiguration"] = params["SmsMfaConfiguration"]
+            result["SmsMfaConfiguration"] = params["SmsMfaConfiguration"]
+        if "SoftwareTokenMfaConfiguration" in params:
+            pool["SoftwareTokenMfaConfiguration"] = params["SoftwareTokenMfaConfiguration"]
+            result["SoftwareTokenMfaConfiguration"] = params["SoftwareTokenMfaConfiguration"]
+    return result
+
+
+def _list_users_in_group(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    group_name = params.get("GroupName", "")
+    with store.lock:
+        groups = store.groups.get(pool_id, {})
+        if group_name not in groups:
+            raise CognitoError("ResourceNotFoundException", f"Group {group_name} not found")
+        user_groups = store.user_groups.get(pool_id, {})
+        users_store = store.users.get(pool_id, {})
+        result = []
+        for username, user_group_set in user_groups.items():
+            if group_name in user_group_set:
+                user = users_store.get(username)
+                if user:
+                    result.append(user)
+    return {"Users": result}
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(
@@ -1122,4 +1257,10 @@ _ACTION_MAP: dict[str, Callable] = {
     "AdminAddUserToGroup": _admin_add_user_to_group,
     "AdminRemoveUserFromGroup": _admin_remove_user_from_group,
     "AdminListGroupsForUser": _admin_list_groups_for_user,
+    "UpdateUserPool": _update_user_pool,
+    "AdminUpdateUserAttributes": _admin_update_user_attributes,
+    "UpdateGroup": _update_group,
+    "AddCustomAttributes": _add_custom_attributes,
+    "SetUserPoolMfaConfig": _set_user_pool_mfa_config,
+    "ListUsersInGroup": _list_users_in_group,
 }

@@ -819,7 +819,6 @@ class TestEventBridgeListRulesFilter:
 
 
 class TestEventBridgePartnerEvents:
-    @pytest.mark.xfail(reason="PutPartnerEventsSource may not be supported")
     def test_put_partner_events_source(self, events):
         """PutPartnerEventsSource is not commonly supported in emulators."""
         events.put_partner_events(
@@ -863,7 +862,6 @@ class TestEventBridgeRuleTagging:
 
 
 class TestEventBridgeConnections:
-    @pytest.mark.xfail(reason="CreateConnection may not be supported")
     def test_create_describe_connection(self, events):
         """Test CreateConnection and DescribeConnection."""
         suffix = uuid.uuid4().hex[:8]
@@ -891,7 +889,6 @@ class TestEventBridgeConnections:
 
 
 class TestEventBridgeApiDestinations:
-    @pytest.mark.xfail(reason="CreateApiDestination may not be supported")
     def test_create_describe_api_destination(self, events):
         """Test CreateApiDestination and DescribeApiDestination."""
         suffix = uuid.uuid4().hex[:8]
@@ -1131,7 +1128,6 @@ class TestEventBridgeExtended:
         finally:
             events.delete_rule(Name=rule_name)
 
-    @pytest.mark.xfail(reason="UpdateArchive may not be supported")
     def test_update_archive(self, events):
         suffix = uuid.uuid4().hex[:8]
         archive_name = f"upd-archive-{suffix}"
