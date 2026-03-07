@@ -1,35 +1,44 @@
-.PHONY: test test-all unit-test integration-test compat-test lint format docker-build docker-run parity-report clean
+.PHONY: test test-all unit-test integration-test compat-test lint format docker-build docker-run parity-report clean start stop status smoke
 
-# Run all tests (unit + integration, no server needed)
-test:
-	uv run pytest tests/unit/ tests/integration/ -v
+N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
+DEV := uv run python scripts/dev.py
 
-# Run unit tests
+# Default: parallel unit tests (fast, no server needed)
+test: unit-test
+
+# Unit tests — parallel across $(N) cores
 unit-test:
-	uv run pytest tests/unit/ -v
+	uv run pytest tests/unit/ -n$(N) -q --tb=short
 
-# Run integration tests
-integration-test:
-	uv run pytest tests/integration/ -v
-
-# Run all tests (unit + integration, no server needed)
-test-all:
-	uv run pytest tests/unit/ tests/integration/ -v
-
-# Run compatibility tests (requires running server on port 4566)
+# Compat tests — auto-starts/stops server, parallel
 compat-test:
-	ENDPOINT_URL=http://localhost:4566 uv run pytest tests/compatibility/ -v
+	$(DEV) test-compat
 
-# Start server and run compatibility tests
-compat-test-full:
-	@echo "Starting robotocore..."
-	@ROBOTOCORE_PORT=4566 uv run python -m robotocore.main & \
-	SERVER_PID=$$!; \
-	sleep 2; \
-	ENDPOINT_URL=http://localhost:4566 uv run pytest tests/compatibility/ -v; \
-	EXIT_CODE=$$?; \
-	kill $$SERVER_PID 2>/dev/null; \
-	exit $$EXIT_CODE
+# Compat tests — assumes server already running, parallel by file
+compat-test-hot:
+	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
+
+# Integration tests
+integration-test:
+	$(DEV) test-integration
+
+# All tests: unit (parallel) + server + compat + integration
+test-all:
+	$(DEV) test-all
+
+# Server lifecycle
+start:
+	$(DEV) server-start
+
+stop:
+	$(DEV) server-stop
+
+status:
+	$(DEV) server-status
+
+# Smoke test (requires running server)
+smoke:
+	uv run python scripts/smoke_test.py
 
 # Lint and format check
 lint:
@@ -53,17 +62,14 @@ docker-run: docker-build
 docker-compare:
 	docker compose --profile localstack up
 
-# Generate parity report (requires running server)
+# Generate parity report (auto-manages server)
 parity-report:
-	@echo "Starting robotocore..."
-	@ROBOTOCORE_PORT=4566 uv run python -m robotocore.main & \
-	SERVER_PID=$$!; \
-	sleep 2; \
-	ENDPOINT_URL=http://localhost:4566 uv run python scripts/generate_parity_report.py --output parity-report.json; \
-	kill $$SERVER_PID 2>/dev/null
+	$(DEV) server-start
+	ENDPOINT_URL=http://localhost:4566 uv run python scripts/generate_parity_report.py --output parity-report.json
+	$(DEV) server-stop
 
 # Clean build artifacts
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .mypy_cache .ruff_cache dist build *.egg-info parity-report.json
+	rm -rf .mypy_cache .ruff_cache dist build *.egg-info parity-report.json .robotocore.pid .robotocore.log
