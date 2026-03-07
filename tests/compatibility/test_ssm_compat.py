@@ -511,3 +511,185 @@ class TestSSMMaintenanceWindow:
             assert window_id in ids
         finally:
             ssm.delete_maintenance_window(WindowId=window_id)
+
+
+class TestSSMExtendedOperations:
+    """Extended SSM operations for higher coverage."""
+
+    @pytest.fixture
+    def ssm(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("ssm")
+
+    def test_put_parameter_secure_string(self, ssm):
+        import uuid
+        name = f"/test/secure-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(Name=name, Value="secret-value", Type="SecureString")
+            resp = ssm.get_parameter(Name=name, WithDecryption=True)
+            assert resp["Parameter"]["Value"] == "secret-value"
+            assert resp["Parameter"]["Type"] == "SecureString"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_put_parameter_string_list(self, ssm):
+        import uuid
+        name = f"/test/slist-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(Name=name, Value="a,b,c", Type="StringList")
+            resp = ssm.get_parameter(Name=name)
+            assert resp["Parameter"]["Value"] == "a,b,c"
+            assert resp["Parameter"]["Type"] == "StringList"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameters_by_path(self, ssm):
+        import uuid
+        prefix = f"/test/path-{uuid.uuid4().hex[:8]}"
+        names = [f"{prefix}/a", f"{prefix}/b", f"{prefix}/sub/c"]
+        try:
+            for n in names:
+                ssm.put_parameter(Name=n, Value=f"val-{n}", Type="String")
+
+            resp = ssm.get_parameters_by_path(Path=prefix, Recursive=True)
+            param_names = [p["Name"] for p in resp["Parameters"]]
+            assert f"{prefix}/a" in param_names
+            assert f"{prefix}/b" in param_names
+            assert f"{prefix}/sub/c" in param_names
+
+            # Non-recursive should only get direct children
+            resp2 = ssm.get_parameters_by_path(Path=prefix, Recursive=False)
+            param_names2 = [p["Name"] for p in resp2["Parameters"]]
+            assert f"{prefix}/a" in param_names2
+            assert f"{prefix}/sub/c" not in param_names2
+        finally:
+            ssm.delete_parameters(Names=names)
+
+    def test_get_parameters_multiple(self, ssm):
+        import uuid
+        prefix = f"/test/multi-{uuid.uuid4().hex[:8]}"
+        names = [f"{prefix}/x", f"{prefix}/y"]
+        try:
+            for n in names:
+                ssm.put_parameter(Name=n, Value=f"v-{n}", Type="String")
+            resp = ssm.get_parameters(Names=names)
+            found = {p["Name"] for p in resp["Parameters"]}
+            assert set(names) == found
+            assert len(resp.get("InvalidParameters", [])) == 0
+        finally:
+            ssm.delete_parameters(Names=names)
+
+    def test_get_parameters_with_invalid(self, ssm):
+        import uuid
+        name = f"/test/valid-{uuid.uuid4().hex[:8]}"
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name, "/nonexistent/param"])
+            found = [p["Name"] for p in resp["Parameters"]]
+            assert name in found
+            assert "/nonexistent/param" in resp["InvalidParameters"]
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_describe_parameters_filters(self, ssm):
+        import uuid
+        name = f"/test/desc-{uuid.uuid4().hex[:8]}"
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Values": [name]}]
+            )
+            names = [p["Name"] for p in resp["Parameters"]]
+            assert name in names
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_put_parameter_with_tags(self, ssm):
+        import uuid
+        name = f"/test/tagged-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(
+                Name=name, Value="val", Type="String",
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "dev"},
+                ],
+            )
+            resp = ssm.list_tags_for_resource(
+                ResourceType="Parameter", ResourceId=name
+            )
+            tags = {t["Key"]: t["Value"] for t in resp["TagList"]}
+            assert tags["env"] == "test"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_add_remove_tags_from_parameter(self, ssm):
+        import uuid
+        name = f"/test/tag-ops-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String")
+            ssm.add_tags_to_resource(
+                ResourceType="Parameter",
+                ResourceId=name,
+                Tags=[{"Key": "k1", "Value": "v1"}, {"Key": "k2", "Value": "v2"}],
+            )
+            ssm.remove_tags_from_resource(
+                ResourceType="Parameter", ResourceId=name, TagKeys=["k2"]
+            )
+            resp = ssm.list_tags_for_resource(
+                ResourceType="Parameter", ResourceId=name
+            )
+            keys = [t["Key"] for t in resp["TagList"]]
+            assert "k1" in keys
+            assert "k2" not in keys
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_put_parameter_overwrite(self, ssm):
+        import uuid
+        name = f"/test/overwrite-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(Name=name, Value="v1", Type="String")
+            ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+            resp = ssm.get_parameter(Name=name)
+            assert resp["Parameter"]["Value"] == "v2"
+            assert resp["Parameter"]["Version"] == 2
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_parameter_history(self, ssm):
+        import uuid
+        name = f"/test/hist-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(Name=name, Value="v1", Type="String")
+            ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+            resp = ssm.get_parameter_history(Name=name)
+            versions = [p["Version"] for p in resp["Parameters"]]
+            assert 1 in versions
+            assert 2 in versions
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_label_parameter_version(self, ssm):
+        import uuid
+        name = f"/test/label-{uuid.uuid4().hex[:8]}"
+        try:
+            ssm.put_parameter(Name=name, Value="v1", Type="String")
+            ssm.label_parameter_version(
+                Name=name, ParameterVersion=1, Labels=["production", "stable"]
+            )
+            resp = ssm.get_parameter_history(Name=name)
+            p = resp["Parameters"][0]
+            assert "production" in p.get("Labels", [])
+            assert "stable" in p.get("Labels", [])
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_delete_parameters_batch(self, ssm):
+        import uuid
+        prefix = f"/test/batch-del-{uuid.uuid4().hex[:8]}"
+        names = [f"{prefix}/{i}" for i in range(3)]
+        for n in names:
+            ssm.put_parameter(Name=n, Value="val", Type="String")
+        resp = ssm.delete_parameters(Names=names)
+        assert set(resp["DeletedParameters"]) == set(names)

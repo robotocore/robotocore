@@ -468,3 +468,262 @@ class TestJobs:
         )
         resp = batch.list_jobs(jobQueue=jq_name)
         assert "jobSummaryList" in resp
+
+
+class TestBatchExtended:
+    def test_create_compute_environment_managed_ec2(self, batch):
+        name = _unique("ce-ec2")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "EC2",
+                "maxvCpus": 4,
+                "minvCpus": 0,
+                "instanceTypes": ["m5.large"],
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+                "instanceRole": "ecsInstanceRole",
+            },
+        )
+        assert resp["computeEnvironmentName"] == name
+        batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_create_compute_environment_unmanaged(self, batch):
+        name = _unique("ce-unm")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="UNMANAGED",
+        )
+        assert resp["computeEnvironmentName"] == name
+        batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_compute_environment_has_arn(self, batch):
+        name = _unique("ce-arn")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        assert "computeEnvironmentArn" in resp
+        assert name in resp["computeEnvironmentArn"]
+        batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_delete_compute_environment(self, batch):
+        name = _unique("ce-del")
+        batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        batch.delete_compute_environment(computeEnvironment=name)
+        resp = batch.describe_compute_environments(computeEnvironments=[name])
+        names = [ce["computeEnvironmentName"] for ce in resp["computeEnvironments"]
+                 if ce.get("status") != "DELETED"]
+        assert name not in names
+
+    def test_register_job_definition_with_command(self, batch):
+        name = _unique("jd-cmd")
+        resp = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+                "command": ["echo", "hello"],
+            },
+        )
+        try:
+            desc = batch.describe_job_definitions(jobDefinitionName=name)
+            jd = desc["jobDefinitions"][0]
+            assert jd["containerProperties"]["command"] == ["echo", "hello"]
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+    def test_register_job_definition_with_timeout(self, batch):
+        name = _unique("jd-to")
+        resp = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+            },
+            timeout={"attemptDurationSeconds": 60},
+        )
+        try:
+            desc = batch.describe_job_definitions(jobDefinitionName=name)
+            jd = desc["jobDefinitions"][0]
+            assert jd["timeout"]["attemptDurationSeconds"] == 60
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+    def test_job_definition_has_arn(self, batch):
+        name = _unique("jd-arn")
+        resp = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+            },
+        )
+        assert "jobDefinitionArn" in resp
+        assert name in resp["jobDefinitionArn"]
+        batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+    def test_job_definition_revision_increments(self, batch):
+        name = _unique("jd-rev")
+        r1 = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={"image": "busybox", "vcpus": 1, "memory": 128},
+        )
+        r2 = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={"image": "busybox", "vcpus": 1, "memory": 256},
+        )
+        assert r1["revision"] == 1
+        assert r2["revision"] == 2
+        batch.deregister_job_definition(jobDefinition=f"{name}:1")
+        batch.deregister_job_definition(jobDefinition=f"{name}:2")
+
+    def test_create_job_queue_with_priority(self, batch):
+        ce_name = _unique("ce-prio")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+        ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+        jq_name = _unique("jq-prio")
+        try:
+            resp = batch.create_job_queue(
+                jobQueueName=jq_name,
+                priority=10,
+                computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+            )
+            assert resp["jobQueueName"] == jq_name
+            desc = batch.describe_job_queues(jobQueues=[jq_name])
+            assert desc["jobQueues"][0]["priority"] == 10
+        finally:
+            batch.delete_job_queue(jobQueue=jq_name)
+            batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_update_job_queue_priority(self, batch):
+        ce_name = _unique("ce-upd")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+        ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+        jq_name = _unique("jq-upd")
+        try:
+            batch.create_job_queue(
+                jobQueueName=jq_name,
+                priority=1,
+                computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+            )
+            batch.update_job_queue(jobQueue=jq_name, priority=5)
+            desc = batch.describe_job_queues(jobQueues=[jq_name])
+            assert desc["jobQueues"][0]["priority"] == 5
+        finally:
+            batch.delete_job_queue(jobQueue=jq_name)
+            batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_job_queue_has_arn(self, batch):
+        ce_name = _unique("ce-jqa")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+        ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+        jq_name = _unique("jq-arn")
+        try:
+            resp = batch.create_job_queue(
+                jobQueueName=jq_name,
+                priority=1,
+                computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+            )
+            assert "jobQueueArn" in resp
+        finally:
+            batch.delete_job_queue(jobQueue=jq_name)
+            batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_describe_job_definitions_by_status(self, batch):
+        name = _unique("jd-status")
+        batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={"image": "busybox", "vcpus": 1, "memory": 128},
+        )
+        try:
+            resp = batch.describe_job_definitions(jobDefinitionName=name, status="ACTIVE")
+            assert all(d["status"] == "ACTIVE" for d in resp["jobDefinitions"])
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+    def test_register_job_definition_with_volumes(self, batch):
+        name = _unique("jd-vol")
+        resp = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+                "volumes": [{"name": "data", "host": {"sourcePath": "/tmp/data"}}],
+                "mountPoints": [
+                    {"containerPath": "/data", "sourceVolume": "data", "readOnly": False}
+                ],
+            },
+        )
+        try:
+            desc = batch.describe_job_definitions(jobDefinitionName=name)
+            jd = desc["jobDefinitions"][0]
+            assert len(jd["containerProperties"]["volumes"]) == 1
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+    def test_describe_compute_environments_empty(self, batch):
+        name = _unique("nonexist-ce")
+        resp = batch.describe_compute_environments(computeEnvironments=[name])
+        assert resp["computeEnvironments"] == []
+
+    def test_describe_job_definitions_empty(self, batch):
+        resp = batch.describe_job_definitions(jobDefinitionName=_unique("nonexist-jd"))
+        assert resp["jobDefinitions"] == []

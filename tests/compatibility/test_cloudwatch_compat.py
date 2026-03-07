@@ -1058,3 +1058,166 @@ class TestCloudWatchOperations:
                 assert alarm["Threshold"] == threshold
         finally:
             cw.delete_alarms(AlarmNames=[a[0] for a in alarms])
+
+    def test_put_metric_alarm_with_actions(self, cw):
+        """PutMetricAlarm with alarm, OK, and insufficient data actions."""
+        import uuid
+        suffix = uuid.uuid4().hex[:8]
+        alarm_name = f"action-alarm-{suffix}"
+        sns_arn = f"arn:aws:sns:us-east-1:123456789012:alarm-topic-{suffix}"
+        cw.put_metric_alarm(
+            AlarmName=alarm_name,
+            Namespace="ActionNS",
+            MetricName="Errors",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Sum",
+            Threshold=5.0,
+            AlarmActions=[sns_arn],
+            OKActions=[sns_arn],
+            InsufficientDataActions=[sns_arn],
+        )
+        desc = cw.describe_alarms(AlarmNames=[alarm_name])
+        alarm = desc["MetricAlarms"][0]
+        assert sns_arn in alarm["AlarmActions"]
+        assert sns_arn in alarm["OKActions"]
+        assert sns_arn in alarm["InsufficientDataActions"]
+        cw.delete_alarms(AlarmNames=[alarm_name])
+
+    def test_put_metric_alarm_with_dimensions(self, cw):
+        """PutMetricAlarm scoped to a dimension."""
+        import uuid
+        suffix = uuid.uuid4().hex[:8]
+        alarm_name = f"dim-alarm-{suffix}"
+        cw.put_metric_alarm(
+            AlarmName=alarm_name,
+            Namespace="DimNS",
+            MetricName="CPUUtilization",
+            Dimensions=[{"Name": "InstanceId", "Value": "i-12345"}],
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=300,
+            Statistic="Average",
+            Threshold=80.0,
+        )
+        desc = cw.describe_alarms(AlarmNames=[alarm_name])
+        alarm = desc["MetricAlarms"][0]
+        dims = {d["Name"]: d["Value"] for d in alarm["Dimensions"]}
+        assert dims["InstanceId"] == "i-12345"
+        cw.delete_alarms(AlarmNames=[alarm_name])
+
+    def test_put_metric_data_with_dimensions(self, cw):
+        """PutMetricData with dimensions and retrieve filtered."""
+        import uuid
+        ns = f"DimData-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[
+                {
+                    "MetricName": "Latency",
+                    "Dimensions": [
+                        {"Name": "Service", "Value": "API"},
+                        {"Name": "Stage", "Value": "prod"},
+                    ],
+                    "Value": 42.0,
+                    "Unit": "Milliseconds",
+                    "Timestamp": now,
+                }
+            ],
+        )
+        resp = cw.list_metrics(
+            Namespace=ns,
+            Dimensions=[{"Name": "Service", "Value": "API"}],
+        )
+        assert len(resp["Metrics"]) >= 1
+
+    @pytest.mark.xfail(reason="PutCompositeAlarm may not be supported")
+    def test_put_composite_alarm(self, cw):
+        """PutCompositeAlarm creates a composite alarm from metric alarms."""
+        import uuid
+        suffix = uuid.uuid4().hex[:8]
+        child_name = f"child-{suffix}"
+        composite_name = f"composite-{suffix}"
+        try:
+            cw.put_metric_alarm(
+                AlarmName=child_name,
+                Namespace="CompNS",
+                MetricName="M",
+                ComparisonOperator="GreaterThanThreshold",
+                EvaluationPeriods=1,
+                Period=60,
+                Statistic="Average",
+                Threshold=50.0,
+            )
+            cw.put_composite_alarm(
+                AlarmName=composite_name,
+                AlarmRule=f'ALARM("{child_name}")',
+            )
+            resp = cw.describe_alarms(AlarmNames=[composite_name], AlarmTypes=["CompositeAlarm"])
+            assert len(resp.get("CompositeAlarms", [])) >= 1
+        finally:
+            try:
+                cw.delete_alarms(AlarmNames=[composite_name, child_name])
+            except Exception:
+                pass
+
+    def test_list_metrics_with_dimensions_filter(self, cw):
+        """ListMetrics filtered by Dimensions."""
+        import uuid
+        ns = f"DimFilter-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[
+                {
+                    "MetricName": "Requests",
+                    "Dimensions": [{"Name": "Endpoint", "Value": "/api/v1"}],
+                    "Value": 100.0,
+                    "Unit": "Count",
+                },
+                {
+                    "MetricName": "Requests",
+                    "Dimensions": [{"Name": "Endpoint", "Value": "/api/v2"}],
+                    "Value": 50.0,
+                    "Unit": "Count",
+                },
+            ],
+        )
+        resp = cw.list_metrics(
+            Namespace=ns,
+            MetricName="Requests",
+            Dimensions=[{"Name": "Endpoint", "Value": "/api/v1"}],
+        )
+        assert len(resp["Metrics"]) >= 1
+        for m in resp["Metrics"]:
+            dim_vals = [d["Value"] for d in m["Dimensions"] if d["Name"] == "Endpoint"]
+            assert "/api/v1" in dim_vals
+
+    @pytest.mark.xfail(reason="ExtendedStatistics percentiles may not be supported")
+    def test_get_metric_statistics_extended_stats(self, cw):
+        """GetMetricStatistics with ExtendedStatistics (percentiles)."""
+        import uuid
+        ns = f"ExtStat-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+        for v in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
+            cw.put_metric_data(
+                Namespace=ns,
+                MetricData=[
+                    {"MetricName": "Latency", "Value": float(v), "Unit": "Milliseconds",
+                     "Timestamp": now}
+                ],
+            )
+        resp = cw.get_metric_statistics(
+            Namespace=ns,
+            MetricName="Latency",
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=5),
+            Period=300,
+            ExtendedStatistics=["p50", "p99"],
+        )
+        assert "Datapoints" in resp
+        if resp["Datapoints"]:
+            dp = resp["Datapoints"][0]
+            assert "ExtendedStatistics" in dp
+            assert "p50" in dp["ExtendedStatistics"]

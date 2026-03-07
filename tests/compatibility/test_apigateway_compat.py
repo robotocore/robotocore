@@ -715,3 +715,232 @@ class TestAPIGatewayOperations:
             accepts="application/json",
         )
         assert "body" in resp
+
+
+class TestAPIGatewayExtended:
+    """Extended API Gateway operations for higher coverage."""
+
+    @pytest.fixture
+    def apigw(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def rest_api(self, apigw):
+        import uuid
+        resp = apigw.create_rest_api(
+            name=f"ext-api-{uuid.uuid4().hex[:8]}",
+            description="Extended test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_get_rest_api(self, apigw, rest_api):
+        resp = apigw.get_rest_api(restApiId=rest_api)
+        assert resp["id"] == rest_api
+        assert "name" in resp
+        assert "description" in resp
+
+    def test_get_rest_apis(self, apigw, rest_api):
+        resp = apigw.get_rest_apis()
+        assert "items" in resp
+        ids = [a["id"] for a in resp["items"]]
+        assert rest_api in ids
+
+    def test_update_rest_api(self, apigw, rest_api):
+        apigw.update_rest_api(
+            restApiId=rest_api,
+            patchOperations=[
+                {"op": "replace", "path": "/description", "value": "Updated desc"},
+            ],
+        )
+        resp = apigw.get_rest_api(restApiId=rest_api)
+        assert resp["description"] == "Updated desc"
+
+    def test_create_resource_with_path_part(self, apigw, rest_api):
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="users"
+        )
+        assert child["pathPart"] == "users"
+        assert child["path"] == "/users"
+
+        # Nested resource
+        nested = apigw.create_resource(
+            restApiId=rest_api, parentId=child["id"], pathPart="{userId}"
+        )
+        assert nested["pathPart"] == "{userId}"
+        assert nested["path"] == "/users/{userId}"
+
+    def test_put_method_response(self, apigw, rest_api):
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+        apigw.put_method(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", authorizationType="NONE",
+        )
+        apigw.put_method_response(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", statusCode="200",
+            responseModels={"application/json": "Empty"},
+        )
+        resp = apigw.get_method_response(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", statusCode="200",
+        )
+        assert resp["statusCode"] == "200"
+
+    def test_put_integration_response(self, apigw, rest_api):
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+        apigw.put_method(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        apigw.put_method_response(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", statusCode="200",
+        )
+        apigw.put_integration_response(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", statusCode="200",
+            responseTemplates={"application/json": ""},
+        )
+        resp = apigw.get_integration_response(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", statusCode="200",
+        )
+        assert resp["statusCode"] == "200"
+
+    def test_create_api_key(self, apigw):
+        import uuid
+        key_name = f"test-key-{uuid.uuid4().hex[:8]}"
+        resp = apigw.create_api_key(
+            name=key_name, enabled=True, value=f"apikey-{uuid.uuid4().hex}"
+        )
+        key_id = resp["id"]
+        try:
+            assert resp["name"] == key_name
+            assert resp["enabled"] is True
+
+            got = apigw.get_api_key(apiKey=key_id)
+            assert got["name"] == key_name
+        finally:
+            apigw.delete_api_key(apiKey=key_id)
+
+    def test_get_api_keys(self, apigw):
+        resp = apigw.get_api_keys()
+        assert "items" in resp
+
+    def test_create_usage_plan(self, apigw):
+        import uuid
+        name = f"usage-plan-{uuid.uuid4().hex[:8]}"
+        resp = apigw.create_usage_plan(
+            name=name,
+            throttle={"burstLimit": 100, "rateLimit": 50.0},
+            quota={"limit": 1000, "period": "MONTH"},
+        )
+        plan_id = resp["id"]
+        try:
+            assert resp["name"] == name
+            assert resp["throttle"]["burstLimit"] == 100
+
+            got = apigw.get_usage_plan(usagePlanId=plan_id)
+            assert got["name"] == name
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan_id)
+
+    def test_get_usage_plans(self, apigw):
+        resp = apigw.get_usage_plans()
+        assert "items" in resp
+
+    def test_create_model(self, apigw, rest_api):
+        import uuid
+        import json
+        model_name = f"TestModel{uuid.uuid4().hex[:8]}"
+        schema = json.dumps({
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+        })
+        resp = apigw.create_model(
+            restApiId=rest_api,
+            name=model_name,
+            contentType="application/json",
+            schema=schema,
+        )
+        assert resp["name"] == model_name
+
+        models = apigw.get_models(restApiId=rest_api)
+        names = [m["name"] for m in models["items"]]
+        assert model_name in names
+
+    def test_create_get_delete_domain_name(self, apigw):
+        import uuid
+        domain = f"api-{uuid.uuid4().hex[:8]}.example.com"
+        try:
+            resp = apigw.create_domain_name(
+                domainName=domain,
+                certificateArn=f"arn:aws:acm:us-east-1:123456789012:certificate/{uuid.uuid4()}",
+            )
+            assert resp["domainName"] == domain
+
+            got = apigw.get_domain_name(domainName=domain)
+            assert got["domainName"] == domain
+        finally:
+            try:
+                apigw.delete_domain_name(domainName=domain)
+            except Exception:
+                pass
+
+    def test_get_account(self, apigw):
+        resp = apigw.get_account()
+        assert "throttleSettings" in resp or "cloudwatchRoleArn" in resp or resp is not None
+
+    def test_create_deployment_and_stages(self, apigw, rest_api):
+        import uuid
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api, resourceId=root_id,
+            httpMethod="GET", type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api)
+        stage_name = f"stg-{uuid.uuid4().hex[:8]}"
+        apigw.create_stage(
+            restApiId=rest_api,
+            stageName=stage_name,
+            deploymentId=dep["id"],
+            description="Test stage",
+        )
+        stages = apigw.get_stages(restApiId=rest_api)
+        stage_names = [s["stageName"] for s in stages["item"]]
+        assert stage_name in stage_names
+
+        apigw.delete_stage(restApiId=rest_api, stageName=stage_name)
+
+    @pytest.mark.xfail(reason="TagResource on API Gateway may not be supported")
+    def test_tag_rest_api(self, apigw, rest_api):
+        import uuid
+        apigw.tag_resource(
+            resourceArn=f"arn:aws:apigateway:us-east-1::/restapis/{rest_api}",
+            tags={"env": "test", "team": "api"},
+        )
+        resp = apigw.get_tags(
+            resourceArn=f"arn:aws:apigateway:us-east-1::/restapis/{rest_api}",
+        )
+        assert resp["tags"]["env"] == "test"

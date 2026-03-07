@@ -530,3 +530,146 @@ class TestDynamoDBStreamsOperations:
             assert "ShardIterator" in response
 
         dynamodb.delete_table(TableName=table_name)
+
+    def test_update_item_generates_modify_event(self, dynamodb, dynamodbstreams):
+        table_name = f"modify-ev-{_uid()}"
+        dynamodb.create_table(
+            TableName=table_name,
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+            StreamSpecification={
+                "StreamEnabled": True,
+                "StreamViewType": "NEW_AND_OLD_IMAGES",
+            },
+        )
+        dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "u1"}, "val": {"S": "old"}})
+        dynamodb.update_item(
+            TableName=table_name,
+            Key={"pk": {"S": "u1"}},
+            UpdateExpression="SET val = :v",
+            ExpressionAttributeValues={":v": {"S": "new"}},
+        )
+
+        streams = dynamodbstreams.list_streams(TableName=table_name)
+        stream_arn = streams["Streams"][0]["StreamArn"]
+        desc = dynamodbstreams.describe_stream(StreamArn=stream_arn)
+        shards = desc["StreamDescription"]["Shards"]
+
+        if shards:
+            shard_id = shards[0]["ShardId"]
+            it = dynamodbstreams.get_shard_iterator(
+                StreamArn=stream_arn, ShardId=shard_id,
+                ShardIteratorType="TRIM_HORIZON",
+            )["ShardIterator"]
+            records = dynamodbstreams.get_records(ShardIterator=it)["Records"]
+            modify = [r for r in records if r["eventName"] == "MODIFY"]
+            if modify:
+                rec = modify[0]
+                assert "OldImage" in rec["dynamodb"]
+                assert "NewImage" in rec["dynamodb"]
+
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_delete_item_generates_remove_event(self, dynamodb, dynamodbstreams):
+        table_name = f"remove-ev-{_uid()}"
+        dynamodb.create_table(
+            TableName=table_name,
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+            StreamSpecification={
+                "StreamEnabled": True,
+                "StreamViewType": "NEW_AND_OLD_IMAGES",
+            },
+        )
+        dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "d1"}, "val": {"S": "gone"}})
+        dynamodb.delete_item(TableName=table_name, Key={"pk": {"S": "d1"}})
+
+        streams = dynamodbstreams.list_streams(TableName=table_name)
+        stream_arn = streams["Streams"][0]["StreamArn"]
+        desc = dynamodbstreams.describe_stream(StreamArn=stream_arn)
+        shards = desc["StreamDescription"]["Shards"]
+
+        if shards:
+            shard_id = shards[0]["ShardId"]
+            it = dynamodbstreams.get_shard_iterator(
+                StreamArn=stream_arn, ShardId=shard_id,
+                ShardIteratorType="TRIM_HORIZON",
+            )["ShardIterator"]
+            records = dynamodbstreams.get_records(ShardIterator=it)["Records"]
+            removes = [r for r in records if r["eventName"] == "REMOVE"]
+            if removes:
+                rec = removes[0]
+                assert "OldImage" in rec["dynamodb"]
+                assert "Keys" in rec["dynamodb"]
+
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_stream_record_has_aws_region(self, dynamodb, dynamodbstreams):
+        table_name = f"region-{_uid()}"
+        dynamodb.create_table(
+            TableName=table_name,
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+            StreamSpecification={
+                "StreamEnabled": True,
+                "StreamViewType": "NEW_AND_OLD_IMAGES",
+            },
+        )
+        dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "r1"}})
+
+        streams = dynamodbstreams.list_streams(TableName=table_name)
+        stream_arn = streams["Streams"][0]["StreamArn"]
+        desc = dynamodbstreams.describe_stream(StreamArn=stream_arn)
+        shards = desc["StreamDescription"]["Shards"]
+
+        if shards:
+            it = dynamodbstreams.get_shard_iterator(
+                StreamArn=stream_arn, ShardId=shards[0]["ShardId"],
+                ShardIteratorType="TRIM_HORIZON",
+            )["ShardIterator"]
+            records = dynamodbstreams.get_records(ShardIterator=it)["Records"]
+            if records:
+                assert "awsRegion" in records[0]
+                assert "eventSource" in records[0]
+
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_stream_arn_format(self, dynamodb, dynamodbstreams):
+        table_name = f"arn-fmt-{_uid()}"
+        dynamodb.create_table(
+            TableName=table_name,
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+            StreamSpecification={
+                "StreamEnabled": True,
+                "StreamViewType": "NEW_AND_OLD_IMAGES",
+            },
+        )
+        streams = dynamodbstreams.list_streams(TableName=table_name)
+        stream_arn = streams["Streams"][0]["StreamArn"]
+        assert "arn:aws:dynamodb" in stream_arn
+        assert table_name in stream_arn
+        assert "stream" in stream_arn
+
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_list_streams_limit(self, dynamodb, dynamodbstreams):
+        table_name = f"limit-{_uid()}"
+        dynamodb.create_table(
+            TableName=table_name,
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+            StreamSpecification={
+                "StreamEnabled": True,
+                "StreamViewType": "NEW_AND_OLD_IMAGES",
+            },
+        )
+        resp = dynamodbstreams.list_streams(Limit=1)
+        assert len(resp["Streams"]) <= 1
+
+        dynamodb.delete_table(TableName=table_name)

@@ -518,3 +518,107 @@ class TestKinesisOperations:
                 kinesis.delete_stream(StreamName=multi_stream, EnforceConsumerDeletion=True)
             except ClientError:
                 pass
+
+    def test_increase_stream_retention_period(self, kinesis, stream):
+        """IncreaseStreamRetentionPeriod beyond default 24 hours."""
+        kinesis.increase_stream_retention_period(
+            StreamName=stream, RetentionPeriodHours=48
+        )
+        desc = kinesis.describe_stream(StreamName=stream)
+        assert desc["StreamDescription"]["RetentionPeriodHours"] >= 48
+
+    def test_decrease_stream_retention_period(self, kinesis, stream):
+        """DecreaseStreamRetentionPeriod back to 24 hours."""
+        kinesis.increase_stream_retention_period(
+            StreamName=stream, RetentionPeriodHours=48
+        )
+        kinesis.decrease_stream_retention_period(
+            StreamName=stream, RetentionPeriodHours=24
+        )
+        desc = kinesis.describe_stream(StreamName=stream)
+        assert desc["StreamDescription"]["RetentionPeriodHours"] == 24
+
+    def test_add_tags_to_stream(self, kinesis, stream):
+        kinesis.add_tags_to_stream(
+            StreamName=stream,
+            Tags={"env": "test", "team": "platform"},
+        )
+        resp = kinesis.list_tags_for_stream(StreamName=stream)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "platform"
+
+    def test_remove_tags_from_stream(self, kinesis, stream):
+        kinesis.add_tags_to_stream(StreamName=stream, Tags={"keep": "yes", "drop": "no"})
+        kinesis.remove_tags_from_stream(StreamName=stream, TagKeys=["drop"])
+        resp = kinesis.list_tags_for_stream(StreamName=stream)
+        keys = [t["Key"] for t in resp["Tags"]]
+        assert "keep" in keys
+        assert "drop" not in keys
+
+    def test_describe_stream_summary(self, kinesis, stream):
+        resp = kinesis.describe_stream_summary(StreamName=stream)
+        summary = resp["StreamDescriptionSummary"]
+        assert summary["StreamName"] == stream
+        assert "StreamARN" in summary
+        assert "StreamStatus" in summary
+        assert "OpenShardCount" in summary
+
+    def test_list_streams(self, kinesis, stream):
+        resp = kinesis.list_streams()
+        assert stream in resp["StreamNames"]
+
+    def test_put_record_explicit_hash_key(self, kinesis, stream):
+        resp = kinesis.put_record(
+            StreamName=stream,
+            Data=b"hash-key-data",
+            PartitionKey="pk1",
+            ExplicitHashKey="170141183460469231731687303715884105727",
+        )
+        assert "ShardId" in resp
+        assert "SequenceNumber" in resp
+
+    def test_get_records_limit(self, kinesis, stream):
+        """GetRecords with Limit parameter."""
+        for i in range(5):
+            kinesis.put_record(StreamName=stream, Data=f"rec-{i}".encode(), PartitionKey="pk")
+        desc = kinesis.describe_stream(StreamName=stream)
+        shard_id = desc["StreamDescription"]["Shards"][0]["ShardId"]
+        iterator = kinesis.get_shard_iterator(
+            StreamName=stream, ShardId=shard_id, ShardIteratorType="TRIM_HORIZON"
+        )["ShardIterator"]
+        time.sleep(0.5)
+        resp = kinesis.get_records(ShardIterator=iterator, Limit=2)
+        assert len(resp["Records"]) <= 2
+
+    def test_register_deregister_stream_consumer(self, kinesis, stream):
+        """RegisterStreamConsumer, DescribeStreamConsumer, DeregisterStreamConsumer."""
+        desc = kinesis.describe_stream(StreamName=stream)
+        stream_arn = desc["StreamDescription"]["StreamARN"]
+        consumer_name = f"consumer-{uuid.uuid4().hex[:8]}"
+        try:
+            reg = kinesis.register_stream_consumer(
+                StreamARN=stream_arn, ConsumerName=consumer_name
+            )
+            consumer = reg["Consumer"]
+            assert consumer["ConsumerName"] == consumer_name
+            assert "ConsumerARN" in consumer
+
+            desc_resp = kinesis.describe_stream_consumer(
+                StreamARN=stream_arn, ConsumerName=consumer_name
+            )
+            assert desc_resp["ConsumerDescription"]["ConsumerName"] == consumer_name
+        finally:
+            try:
+                kinesis.deregister_stream_consumer(
+                    StreamARN=stream_arn, ConsumerName=consumer_name
+                )
+            except ClientError:
+                pass
+
+    def test_list_stream_consumers(self, kinesis, stream):
+        """ListStreamConsumers."""
+        desc = kinesis.describe_stream(StreamName=stream)
+        stream_arn = desc["StreamDescription"]["StreamARN"]
+        resp = kinesis.list_stream_consumers(StreamARN=stream_arn)
+        assert "Consumers" in resp

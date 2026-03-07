@@ -929,3 +929,226 @@ class TestEventBridgeApiDestinations:
                 events.delete_connection(Name=conn_name)
             except Exception:
                 pass
+
+
+class TestEventBridgeExtended:
+    """Extended EventBridge operations for higher coverage."""
+
+    @pytest.fixture
+    def events(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("events")
+
+    def test_put_rule_with_event_pattern(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"pattern-rule-{suffix}"
+        pattern = json.dumps({"source": ["my.app"], "detail-type": ["OrderPlaced"]})
+        try:
+            resp = events.put_rule(Name=rule_name, EventPattern=pattern)
+            assert "RuleArn" in resp
+            desc = events.describe_rule(Name=rule_name)
+            assert desc["Name"] == rule_name
+            parsed = json.loads(desc["EventPattern"])
+            assert parsed["source"] == ["my.app"]
+        finally:
+            events.delete_rule(Name=rule_name)
+
+    def test_enable_disable_rule(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"toggle-rule-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            events.disable_rule(Name=rule_name)
+            desc = events.describe_rule(Name=rule_name)
+            assert desc["State"] == "DISABLED"
+
+            events.enable_rule(Name=rule_name)
+            desc = events.describe_rule(Name=rule_name)
+            assert desc["State"] == "ENABLED"
+        finally:
+            events.delete_rule(Name=rule_name)
+
+    def test_list_rules_name_prefix(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        prefix = f"pfx-{suffix}"
+        names = [f"{prefix}-a", f"{prefix}-b"]
+        try:
+            for name in names:
+                events.put_rule(Name=name, ScheduleExpression="rate(1 hour)")
+            resp = events.list_rules(NamePrefix=prefix)
+            returned = [r["Name"] for r in resp["Rules"]]
+            for name in names:
+                assert name in returned
+        finally:
+            for name in names:
+                events.delete_rule(Name=name)
+
+    def test_put_events(self, events):
+        resp = events.put_events(
+            Entries=[
+                {
+                    "Source": "my.app",
+                    "DetailType": "TestEvent",
+                    "Detail": json.dumps({"key": "value"}),
+                },
+            ]
+        )
+        assert resp["FailedEntryCount"] == 0
+        assert len(resp["Entries"]) == 1
+        assert "EventId" in resp["Entries"][0]
+
+    def test_put_events_multiple(self, events):
+        resp = events.put_events(
+            Entries=[
+                {
+                    "Source": "my.app",
+                    "DetailType": "Event1",
+                    "Detail": json.dumps({"n": 1}),
+                },
+                {
+                    "Source": "my.app",
+                    "DetailType": "Event2",
+                    "Detail": json.dumps({"n": 2}),
+                },
+                {
+                    "Source": "my.app",
+                    "DetailType": "Event3",
+                    "Detail": json.dumps({"n": 3}),
+                },
+            ]
+        )
+        assert resp["FailedEntryCount"] == 0
+        assert len(resp["Entries"]) == 3
+
+    def test_create_custom_event_bus(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"custom-bus-{suffix}"
+        try:
+            resp = events.create_event_bus(Name=bus_name)
+            assert "EventBusArn" in resp
+
+            desc = events.describe_event_bus(Name=bus_name)
+            assert desc["Name"] == bus_name
+            assert "Arn" in desc
+        finally:
+            events.delete_event_bus(Name=bus_name)
+
+    def test_list_event_buses(self, events):
+        resp = events.list_event_buses()
+        assert "EventBuses" in resp
+        names = [b["Name"] for b in resp["EventBuses"]]
+        assert "default" in names
+
+    def test_put_rule_on_custom_bus(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"rule-bus-{suffix}"
+        rule_name = f"bus-rule-{suffix}"
+        try:
+            events.create_event_bus(Name=bus_name)
+            resp = events.put_rule(
+                Name=rule_name,
+                EventBusName=bus_name,
+                ScheduleExpression="rate(5 minutes)",
+            )
+            assert "RuleArn" in resp
+
+            rules = events.list_rules(EventBusName=bus_name)
+            rule_names = [r["Name"] for r in rules["Rules"]]
+            assert rule_name in rule_names
+        finally:
+            try:
+                events.delete_rule(Name=rule_name, EventBusName=bus_name)
+            except Exception:
+                pass
+            try:
+                events.delete_event_bus(Name=bus_name)
+            except Exception:
+                pass
+
+    def test_put_targets_with_input_transformer(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"input-xform-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            resp = events.put_targets(
+                Rule=rule_name,
+                Targets=[
+                    {
+                        "Id": "t1",
+                        "Arn": "arn:aws:sqs:us-east-1:123456789012:q",
+                        "InputTransformer": {
+                            "InputPathsMap": {"detail": "$.detail"},
+                            "InputTemplate": '"Transformed: <detail>"',
+                        },
+                    }
+                ],
+            )
+            assert resp["FailedEntryCount"] == 0
+        finally:
+            events.remove_targets(Rule=rule_name, Ids=["t1"])
+            events.delete_rule(Name=rule_name)
+
+    def test_put_targets_with_input(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"input-const-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            resp = events.put_targets(
+                Rule=rule_name,
+                Targets=[
+                    {
+                        "Id": "t1",
+                        "Arn": "arn:aws:sqs:us-east-1:123456789012:q",
+                        "Input": json.dumps({"fixed": "payload"}),
+                    }
+                ],
+            )
+            assert resp["FailedEntryCount"] == 0
+        finally:
+            events.remove_targets(Rule=rule_name, Ids=["t1"])
+            events.delete_rule(Name=rule_name)
+
+    def test_describe_event_bus_default(self, events):
+        resp = events.describe_event_bus(Name="default")
+        assert resp["Name"] == "default"
+        assert "Arn" in resp
+
+    def test_list_archives(self, events):
+        resp = events.list_archives()
+        assert "Archives" in resp
+
+    def test_put_rule_with_description(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"desc-rule-{suffix}"
+        try:
+            events.put_rule(
+                Name=rule_name,
+                ScheduleExpression="rate(1 hour)",
+                Description="A test rule with description",
+            )
+            desc = events.describe_rule(Name=rule_name)
+            assert desc["Description"] == "A test rule with description"
+        finally:
+            events.delete_rule(Name=rule_name)
+
+    @pytest.mark.xfail(reason="UpdateArchive may not be supported")
+    def test_update_archive(self, events):
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"upd-archive-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+                RetentionDays=7,
+            )
+            events.update_archive(
+                ArchiveName=archive_name,
+                RetentionDays=14,
+                Description="Updated archive",
+            )
+            desc = events.describe_archive(ArchiveName=archive_name)
+            assert desc["RetentionDays"] == 14
+        finally:
+            events.delete_archive(ArchiveName=archive_name)

@@ -1,6 +1,7 @@
 """EventBridge Scheduler compatibility tests."""
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -367,3 +368,173 @@ class TestSchedulerOperations:
             assert got["Name"] == "tagged-group"
         finally:
             scheduler.delete_schedule_group(Name="tagged-group")
+
+
+class TestSchedulerExtended:
+    @pytest.fixture
+    def scheduler(self):
+        return make_client("scheduler")
+
+    def _target(self):
+        return {
+            "Arn": "arn:aws:sqs:us-east-1:123456789012:my-queue",
+            "RoleArn": "arn:aws:iam::123456789012:role/scheduler-role",
+        }
+
+    def test_create_schedule_with_description(self, scheduler):
+        name = "desc-sched"
+        scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+            Description="A test schedule",
+        )
+        try:
+            resp = scheduler.get_schedule(Name=name)
+            assert resp.get("Description") == "A test schedule"
+        finally:
+            scheduler.delete_schedule(Name=name)
+
+    def test_create_schedule_with_state_disabled(self, scheduler):
+        name = "disabled-sched"
+        scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+            State="DISABLED",
+        )
+        try:
+            resp = scheduler.get_schedule(Name=name)
+            assert resp["State"] == "DISABLED"
+        finally:
+            scheduler.delete_schedule(Name=name)
+
+    def test_update_schedule_state(self, scheduler):
+        name = "upd-state-sched"
+        scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+            State="ENABLED",
+        )
+        try:
+            scheduler.update_schedule(
+                Name=name,
+                ScheduleExpression="rate(1 hour)",
+                FlexibleTimeWindow={"Mode": "OFF"},
+                Target=self._target(),
+                State="DISABLED",
+            )
+            resp = scheduler.get_schedule(Name=name)
+            assert resp["State"] == "DISABLED"
+        finally:
+            scheduler.delete_schedule(Name=name)
+
+    def test_update_schedule_target(self, scheduler):
+        name = "upd-target-sched"
+        scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+        )
+        try:
+            new_target = {
+                "Arn": "arn:aws:sqs:us-east-1:123456789012:new-queue",
+                "RoleArn": "arn:aws:iam::123456789012:role/scheduler-role",
+            }
+            scheduler.update_schedule(
+                Name=name,
+                ScheduleExpression="rate(2 hours)",
+                FlexibleTimeWindow={"Mode": "OFF"},
+                Target=new_target,
+            )
+            resp = scheduler.get_schedule(Name=name)
+            assert resp["ScheduleExpression"] == "rate(2 hours)"
+        finally:
+            scheduler.delete_schedule(Name=name)
+
+    def test_list_schedules_returns_all(self, scheduler):
+        names = ["list-s1", "list-s2", "list-s3"]
+        for n in names:
+            scheduler.create_schedule(
+                Name=n,
+                ScheduleExpression="rate(1 hour)",
+                FlexibleTimeWindow={"Mode": "OFF"},
+                Target=self._target(),
+            )
+        try:
+            resp = scheduler.list_schedules()
+            found = [s["Name"] for s in resp["Schedules"]]
+            for n in names:
+                assert n in found
+        finally:
+            for n in names:
+                scheduler.delete_schedule(Name=n)
+
+    def test_create_and_list_multiple_groups(self, scheduler):
+        groups = ["ext-grp-1", "ext-grp-2"]
+        for g in groups:
+            scheduler.create_schedule_group(Name=g)
+        try:
+            resp = scheduler.list_schedule_groups()
+            found = [g["Name"] for g in resp["ScheduleGroups"]]
+            for g in groups:
+                assert g in found
+        finally:
+            for g in groups:
+                scheduler.delete_schedule_group(Name=g)
+
+    def test_schedule_arn_format(self, scheduler):
+        name = "arn-sched"
+        resp = scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+        )
+        try:
+            assert "ScheduleArn" in resp
+            assert name in resp["ScheduleArn"]
+        finally:
+            scheduler.delete_schedule(Name=name)
+
+    def test_schedule_group_arn_format(self, scheduler):
+        name = "arn-grp"
+        resp = scheduler.create_schedule_group(Name=name)
+        try:
+            assert "ScheduleGroupArn" in resp
+            assert name in resp["ScheduleGroupArn"]
+        finally:
+            scheduler.delete_schedule_group(Name=name)
+
+    def test_get_schedule_has_target(self, scheduler):
+        name = "target-check"
+        scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+        )
+        try:
+            resp = scheduler.get_schedule(Name=name)
+            assert "Target" in resp
+            assert "Arn" in resp["Target"]
+        finally:
+            scheduler.delete_schedule(Name=name)
+
+    def test_delete_schedule_idempotent(self, scheduler):
+        name = "del-idem"
+        scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+        )
+        scheduler.delete_schedule(Name=name)
+        # Second delete should raise
+        with pytest.raises(ClientError):
+            scheduler.delete_schedule(Name=name)

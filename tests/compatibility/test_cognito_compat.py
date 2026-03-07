@@ -297,3 +297,166 @@ class TestCognitoUserOperations:
             assert response["UserPoolClient"]["ClientName"] == "desc-client"
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoExtended:
+    """Extended Cognito operations for higher coverage."""
+
+    @pytest.fixture
+    def cognito(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("cognito-idp")
+
+    def test_admin_set_user_password(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("setpw-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("pw-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="Temp1234!"
+            )
+            cognito.admin_set_user_password(
+                UserPoolId=pool_id, Username=username,
+                Password="Permanent1!", Permanent=True,
+            )
+            user = cognito.admin_get_user(UserPoolId=pool_id, Username=username)
+            assert user["UserStatus"] == "CONFIRMED"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_disable_enable_user(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("toggle-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("toggle-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="Temp1234!"
+            )
+            cognito.admin_disable_user(UserPoolId=pool_id, Username=username)
+            user = cognito.admin_get_user(UserPoolId=pool_id, Username=username)
+            assert user["Enabled"] is False
+
+            cognito.admin_enable_user(UserPoolId=pool_id, Username=username)
+            user = cognito.admin_get_user(UserPoolId=pool_id, Username=username)
+            assert user["Enabled"] is True
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_delete_user(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("del-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("del-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="Temp1234!"
+            )
+            cognito.admin_delete_user(UserPoolId=pool_id, Username=username)
+            resp = cognito.list_users(UserPoolId=pool_id)
+            usernames = [u["Username"] for u in resp["Users"]]
+            assert username not in usernames
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    @pytest.mark.xfail(reason="UpdateUserPool may not be supported")
+    def test_update_user_pool(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("upd-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.update_user_pool(
+                UserPoolId=pool_id,
+                AutoVerifiedAttributes=["email"],
+            )
+            desc = cognito.describe_user_pool(UserPoolId=pool_id)
+            assert "email" in desc["UserPool"].get("AutoVerifiedAttributes", [])
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_user_pool_client(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("updcli-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client = cognito.create_user_pool_client(
+                UserPoolId=pool_id, ClientName="upd-client"
+            )["UserPoolClient"]
+            cognito.update_user_pool_client(
+                UserPoolId=pool_id,
+                ClientId=client["ClientId"],
+                ClientName="renamed-client",
+            )
+            desc = cognito.describe_user_pool_client(
+                UserPoolId=pool_id, ClientId=client["ClientId"]
+            )
+            assert desc["UserPoolClient"]["ClientName"] == "renamed-client"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    @pytest.mark.xfail(reason="AdminUpdateUserAttributes may not be supported")
+    def test_admin_update_user_attributes(self, cognito):
+        pool = cognito.create_user_pool(
+            PoolName=_unique("attr-pool"),
+            Schema=[{"Name": "email", "AttributeDataType": "String", "Mutable": True}],
+        )["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("attr-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="Temp1234!"
+            )
+            cognito.admin_update_user_attributes(
+                UserPoolId=pool_id,
+                Username=username,
+                UserAttributes=[{"Name": "email", "Value": "test@example.com"}],
+            )
+            user = cognito.admin_get_user(UserPoolId=pool_id, Username=username)
+            attrs = {a["Name"]: a["Value"] for a in user.get("UserAttributes", [])}
+            assert attrs.get("email") == "test@example.com"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_remove_user_from_group(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("rmgrp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("rmgrp-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id, Username=username, TemporaryPassword="Temp1234!"
+            )
+            cognito.create_group(GroupName="rm-group", UserPoolId=pool_id)
+            cognito.admin_add_user_to_group(
+                UserPoolId=pool_id, Username=username, GroupName="rm-group"
+            )
+            cognito.admin_remove_user_from_group(
+                UserPoolId=pool_id, Username=username, GroupName="rm-group"
+            )
+            resp = cognito.admin_list_groups_for_user(
+                UserPoolId=pool_id, Username=username
+            )
+            groups = [g["GroupName"] for g in resp["Groups"]]
+            assert "rm-group" not in groups
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_group(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("delgrp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_group(GroupName="to-delete", UserPoolId=pool_id)
+            cognito.delete_group(GroupName="to-delete", UserPoolId=pool_id)
+            resp = cognito.list_groups(UserPoolId=pool_id)
+            names = [g["GroupName"] for g in resp["Groups"]]
+            assert "to-delete" not in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_get_group(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("getgrp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_group(
+                GroupName="info-group", UserPoolId=pool_id, Description="Test group"
+            )
+            resp = cognito.get_group(GroupName="info-group", UserPoolId=pool_id)
+            assert resp["Group"]["GroupName"] == "info-group"
+            assert resp["Group"].get("Description") == "Test group"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)

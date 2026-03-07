@@ -168,3 +168,61 @@ class TestRedshiftOperations:
         assert response["Snapshots"][0]["SnapshotIdentifier"] == snap_name
         redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_name)
         redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster(self, redshift):
+        cid = f"mod-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_cluster(
+                ClusterIdentifier=cid,
+                AllowVersionUpgrade=False,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_parameter_groups_all(self, redshift):
+        resp = redshift.describe_cluster_parameter_groups()
+        assert "ParameterGroups" in resp
+
+    def test_describe_cluster_security_groups(self, redshift):
+        resp = redshift.describe_cluster_security_groups()
+        assert "ClusterSecurityGroups" in resp
+
+    def test_list_cluster_tags(self, redshift):
+        cid = f"tags-{_uid()}"
+        create = redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        arn = create["Cluster"]["ClusterNamespaceArn"] if "ClusterNamespaceArn" in create["Cluster"] else None
+        try:
+            desc = redshift.describe_clusters(ClusterIdentifier=cid)
+            tags = {t["Key"]: t["Value"] for t in desc["Clusters"][0].get("Tags", [])}
+            assert tags.get("env") == "test"
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_delete_cluster_parameter_group(self, redshift):
+        name = f"pg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="temp group",
+        )
+        redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+        resp = redshift.describe_cluster_parameter_groups()
+        names = [g["ParameterGroupName"] for g in resp["ParameterGroups"]]
+        assert name not in names

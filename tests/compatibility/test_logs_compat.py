@@ -854,3 +854,164 @@ class TestLogsOperations:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
         finally:
             logs.delete_log_group(logGroupName=name)
+
+
+class TestLogsExtended:
+    """Extended CloudWatch Logs operations for higher coverage."""
+
+    @pytest.fixture
+    def logs(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("logs")
+
+    def test_create_log_group_with_retention(self, logs):
+        name = _unique("/test/ret-create")
+        try:
+            logs.create_log_group(logGroupName=name)
+            logs.put_retention_policy(logGroupName=name, retentionInDays=7)
+            resp = logs.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            assert group["retentionInDays"] == 7
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_filter_log_events(self, logs):
+        name = _unique("/test/filter-events")
+        stream = "filter-stream"
+        logs.create_log_group(logGroupName=name)
+        logs.create_log_stream(logGroupName=name, logStreamName=stream)
+        try:
+            ts = int(time.time() * 1000)
+            logs.put_log_events(
+                logGroupName=name,
+                logStreamName=stream,
+                logEvents=[
+                    {"timestamp": ts, "message": "ERROR something failed"},
+                    {"timestamp": ts + 1, "message": "INFO all good"},
+                    {"timestamp": ts + 2, "message": "ERROR another failure"},
+                ],
+            )
+            resp = logs.filter_log_events(
+                logGroupName=name,
+                filterPattern="ERROR",
+            )
+            messages = [e["message"] for e in resp["events"]]
+            assert all("ERROR" in m for m in messages)
+            assert len(messages) >= 2
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_filter_log_events_with_time_range(self, logs):
+        name = _unique("/test/filter-time")
+        stream = "time-stream"
+        logs.create_log_group(logGroupName=name)
+        logs.create_log_stream(logGroupName=name, logStreamName=stream)
+        try:
+            base = int(time.time() * 1000)
+            logs.put_log_events(
+                logGroupName=name,
+                logStreamName=stream,
+                logEvents=[
+                    {"timestamp": base, "message": "event-0"},
+                    {"timestamp": base + 5000, "message": "event-5"},
+                ],
+            )
+            resp = logs.filter_log_events(
+                logGroupName=name,
+                startTime=base,
+                endTime=base + 3000,
+            )
+            messages = [e["message"] for e in resp["events"]]
+            assert "event-0" in messages
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_describe_log_groups_limit(self, logs):
+        resp = logs.describe_log_groups(limit=5)
+        assert "logGroups" in resp
+        assert len(resp["logGroups"]) <= 5
+
+    def test_put_log_events_multiple_batches(self, logs):
+        name = _unique("/test/multi-batch")
+        stream = "batch-stream"
+        logs.create_log_group(logGroupName=name)
+        logs.create_log_stream(logGroupName=name, logStreamName=stream)
+        try:
+            ts = int(time.time() * 1000)
+            resp1 = logs.put_log_events(
+                logGroupName=name,
+                logStreamName=stream,
+                logEvents=[{"timestamp": ts, "message": "batch-1"}],
+            )
+            seq = resp1.get("nextSequenceToken")
+            kwargs = {"logGroupName": name, "logStreamName": stream,
+                      "logEvents": [{"timestamp": ts + 1000, "message": "batch-2"}]}
+            if seq:
+                kwargs["sequenceToken"] = seq
+            logs.put_log_events(**kwargs)
+
+            events = logs.get_log_events(logGroupName=name, logStreamName=stream)
+            messages = [e["message"] for e in events["events"]]
+            assert "batch-1" in messages
+            assert "batch-2" in messages
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_create_log_group_with_tags(self, logs):
+        name = _unique("/test/tagged-group")
+        try:
+            logs.create_log_group(
+                logGroupName=name,
+                tags={"env": "test", "team": "platform"},
+            )
+            resp = logs.list_tags_log_group(logGroupName=name)
+            assert resp["tags"]["env"] == "test"
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_describe_log_streams_limit(self, logs):
+        name = _unique("/test/stream-limit")
+        logs.create_log_group(logGroupName=name)
+        try:
+            for i in range(5):
+                logs.create_log_stream(logGroupName=name, logStreamName=f"stream-{i}")
+            resp = logs.describe_log_streams(logGroupName=name, limit=3)
+            assert len(resp["logStreams"]) <= 3
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_delete_log_stream(self, logs):
+        name = _unique("/test/del-stream")
+        logs.create_log_group(logGroupName=name)
+        try:
+            logs.create_log_stream(logGroupName=name, logStreamName="to-delete")
+            logs.delete_log_stream(logGroupName=name, logStreamName="to-delete")
+            resp = logs.describe_log_streams(logGroupName=name)
+            names = [s["logStreamName"] for s in resp["logStreams"]]
+            assert "to-delete" not in names
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_put_describe_delete_metric_filter(self, logs):
+        name = _unique("/test/metric-filter")
+        logs.create_log_group(logGroupName=name)
+        try:
+            logs.put_metric_filter(
+                logGroupName=name,
+                filterName="error-count",
+                filterPattern="ERROR",
+                metricTransformations=[
+                    {
+                        "metricName": "ErrorCount",
+                        "metricNamespace": "TestApp",
+                        "metricValue": "1",
+                    }
+                ],
+            )
+            resp = logs.describe_metric_filters(logGroupName=name)
+            names = [f["filterName"] for f in resp["metricFilters"]]
+            assert "error-count" in names
+
+            logs.delete_metric_filter(logGroupName=name, filterName="error-count")
+        finally:
+            logs.delete_log_group(logGroupName=name)

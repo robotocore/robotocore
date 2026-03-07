@@ -290,3 +290,115 @@ class TestOpenSearchOperations:
         assert "DomainId" in status
 
         opensearch.delete_domain(DomainName=domain_name)
+
+
+class TestOpenSearchExtended:
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_create_domain_with_cluster_config(self, opensearch):
+        name = _unique_domain()
+        resp = opensearch.create_domain(
+            DomainName=name,
+            EngineVersion="OpenSearch_2.5",
+            ClusterConfig={
+                "InstanceType": "t3.small.search",
+                "InstanceCount": 1,
+            },
+        )
+        try:
+            assert resp["DomainStatus"]["DomainName"] == name
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_domain_processing_status(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = opensearch.describe_domain(DomainName=name)
+            assert "Processing" in resp["DomainStatus"]
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_domain_engine_version(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = opensearch.describe_domain(DomainName=name)
+            assert resp["DomainStatus"]["EngineVersion"] == "OpenSearch_2.5"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_describe_domain_config_engine_version(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = opensearch.describe_domain_config(DomainName=name)
+            assert "DomainConfig" in resp
+            assert "EngineVersion" in resp["DomainConfig"]
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    @pytest.mark.xfail(reason="list_versions not implemented")
+    def test_list_versions(self, opensearch):
+        resp = opensearch.list_versions()
+        assert "Versions" in resp
+        assert len(resp["Versions"]) > 0
+
+    def test_list_domain_names_empty(self, opensearch):
+        resp = opensearch.list_domain_names()
+        assert "DomainNames" in resp
+
+    def test_add_multiple_tags(self, opensearch):
+        name = _unique_domain()
+        resp = opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        arn = resp["DomainStatus"]["ARN"]
+        try:
+            opensearch.add_tags(
+                ARN=arn,
+                TagList=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                    {"Key": "project", "Value": "search"},
+                ],
+            )
+            tags = opensearch.list_tags(ARN=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "platform"
+            assert tag_map["project"] == "search"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_remove_specific_tags(self, opensearch):
+        name = _unique_domain()
+        resp = opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        arn = resp["DomainStatus"]["ARN"]
+        try:
+            opensearch.add_tags(
+                ARN=arn,
+                TagList=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "remove", "Value": "yes"},
+                ],
+            )
+            opensearch.remove_tags(ARN=arn, TagKeys=["remove"])
+            tags = opensearch.list_tags(ARN=arn)
+            keys = [t["Key"] for t in tags["TagList"]]
+            assert "keep" in keys
+            assert "remove" not in keys
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_update_domain_cluster_config(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = opensearch.update_domain_config(
+                DomainName=name,
+                ClusterConfig={"InstanceType": "t3.medium.search", "InstanceCount": 2},
+            )
+            assert "DomainConfig" in resp
+        finally:
+            opensearch.delete_domain(DomainName=name)
