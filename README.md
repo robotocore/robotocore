@@ -9,22 +9,23 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
-  <a href="#supported-services">42 Services</a> ·
+  <a href="#accounts--regions">Accounts & Regions</a> ·
   <a href="#for-ai-agents">For AI Agents</a> ·
-  <a href="#why-robotocore">Why Robotocore</a> ·
+  <a href="#supported-services">42 Services</a> ·
+  <a href="#why-robotocore">Why robotocore</a> ·
   <a href="#architecture">Architecture</a>
 </p>
 
 ---
 
-## What is Robotocore?
+## What is robotocore?
 
-Robotocore is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls.
-Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
+robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
 - **42 AWS services** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and more
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
-- **Single container** — one `docker run` command, no config, no accounts, no cloud
+- **Multi-account** — unlimited isolated AWS accounts, all in one container
+- **Single container** — one `docker run` command, no config, no cloud
 - **MIT licensed** — free forever, no paid tiers, no registration, no telemetry
 
 Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](https://github.com/getmoto/moto), on top of Moto's ~195 service implementations.
@@ -45,19 +46,25 @@ That's it. Your local AWS digital twin is running.
 import boto3
 
 # Point any boto3 client at localhost:4566
-s3 = boto3.client("s3", endpoint_url="http://localhost:4566")
+# Any non-empty string works for credentials — the 12-digit access key IS your account ID
+s3 = boto3.client(
+    "s3",
+    endpoint_url="http://localhost:4566",
+    aws_access_key_id="123456789012",
+    aws_secret_access_key="test",
+    region_name="us-east-1",
+)
 s3.create_bucket(Bucket="my-bucket")
 s3.put_object(Bucket="my-bucket", Key="hello.txt", Body=b"Hello, world!")
-
-obj = s3.get_object(Bucket="my-bucket", Key="hello.txt")
-print(obj["Body"].read())  # b"Hello, world!"
+print(s3.get_object(Bucket="my-bucket", Key="hello.txt")["Body"].read())
+# b"Hello, world!"
 ```
 
 ### AWS CLI
 
 ```bash
 export AWS_ENDPOINT_URL=http://localhost:4566
-export AWS_ACCESS_KEY_ID=test
+export AWS_ACCESS_KEY_ID=123456789012
 export AWS_SECRET_ACCESS_KEY=test
 export AWS_DEFAULT_REGION=us-east-1
 
@@ -75,16 +82,87 @@ services:
     image: robotocore
     ports:
       - "4566:4566"
-    environment:
-      - AWS_DEFAULT_REGION=us-east-1
 
   app:
     build: .
     environment:
       - AWS_ENDPOINT_URL=http://aws:4566
-      - AWS_ACCESS_KEY_ID=test
+      - AWS_ACCESS_KEY_ID=123456789012
       - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
 ```
+
+---
+
+## Accounts & Regions
+
+robotocore supports **multiple AWS accounts** and **all regions** simultaneously, with complete state isolation between them.
+
+### How account IDs work
+
+The 12-digit number you use as `aws_access_key_id` is your account ID. That's it — no setup required.
+
+```python
+import boto3
+
+def client(service, account_id, region="us-east-1"):
+    return boto3.client(
+        service,
+        endpoint_url="http://localhost:4566",
+        aws_access_key_id=account_id,
+        aws_secret_access_key="test",
+        region_name=region,
+    )
+
+# Two completely isolated AWS accounts
+prod  = client("s3", "111111111111")
+dev   = client("s3", "222222222222")
+
+prod.create_bucket(Bucket="assets")   # exists only in account 111111111111
+dev.create_bucket(Bucket="assets")    # separate bucket in account 222222222222
+
+# Resources in one account are invisible to the other
+print(prod.list_buckets()["Buckets"])  # [{"Name": "assets", ...}]
+print(dev.list_buckets()["Buckets"])   # [{"Name": "assets", ...}]  — separate state
+```
+
+### Multi-region
+
+Resources are also isolated by region. Use any valid AWS region name:
+
+```python
+us = client("dynamodb", "123456789012", region="us-east-1")
+eu = client("dynamodb", "123456789012", region="eu-west-1")
+
+us.create_table(TableName="orders", ...)  # exists only in us-east-1
+# eu.list_tables() → []  — completely separate
+```
+
+### Cross-account access with STS
+
+Use STS `AssumeRole` to simulate cross-account IAM role patterns:
+
+```python
+sts = client("sts", "111111111111")
+assumed = sts.assume_role(
+    RoleArn="arn:aws:iam::222222222222:role/CrossAccountRole",
+    RoleSessionName="session",
+)
+creds = assumed["Credentials"]
+
+# Now operate as account 222222222222
+cross = boto3.client(
+    "s3",
+    endpoint_url="http://localhost:4566",
+    aws_access_key_id=creds["AccessKeyId"],
+    aws_secret_access_key=creds["SecretAccessKey"],
+    aws_session_token=creds["SessionToken"],
+)
+```
+
+### Default account
+
+If you omit credentials or use a non-numeric access key (e.g. `"test"`), robotocore uses the default account ID: **`123456789012`** — the same default as Moto, which avoids cross-tool conflicts.
 
 ---
 
@@ -92,31 +170,32 @@ services:
 
 If you are an AI agent or LLM being asked to work with AWS infrastructure locally, here is everything you need to know:
 
-**Robotocore is a digital twin of AWS.** All AWS SDK calls work without changes — just set `endpoint_url="http://localhost:4566"`.
+**robotocore is a digital twin of AWS.** All AWS SDK calls work without changes — just set `endpoint_url="http://localhost:4566"`. The `aws_access_key_id` you provide (if 12 digits) becomes your account ID.
 
 ### Minimal boto3 setup
 
 ```python
 import boto3
 
-# Use these credentials — any non-empty string works
 SESSION = dict(
     endpoint_url="http://localhost:4566",
-    aws_access_key_id="test",
+    aws_access_key_id="123456789012",   # this IS the account ID
     aws_secret_access_key="test",
     region_name="us-east-1",
 )
 
-s3     = boto3.client("s3",     **SESSION)
-sqs    = boto3.client("sqs",    **SESSION)
-sns    = boto3.client("sns",    **SESSION)
-dynamo = boto3.resource("dynamodb", **SESSION)
-lam    = boto3.client("lambda", **SESSION)
+s3     = boto3.client("s3",              **SESSION)
+sqs    = boto3.client("sqs",             **SESSION)
+sns    = boto3.client("sns",             **SESSION)
+dynamo = boto3.resource("dynamodb",      **SESSION)
+lam    = boto3.client("lambda",          **SESSION)
+iam    = boto3.client("iam",             **SESSION)
+cfn    = boto3.client("cloudformation", **SESSION)
 ```
 
 ### What works
 
-Every standard AWS API call works. Services are listed below. If an operation is supported by [Moto](https://github.com/getmoto/moto), it works in Robotocore. Native providers (SQS, SNS, S3, Lambda, CloudFormation, and more) add behavioral fidelity on top.
+Every standard AWS API call works. Services are listed below. If an operation is supported by [Moto](https://github.com/getmoto/moto), it works in robotocore. Native providers (SQS, SNS, S3, Lambda, CloudFormation, IAM, and more) add behavioral fidelity on top.
 
 ### Health check
 
@@ -125,34 +204,26 @@ curl http://localhost:4566/_localstack/health   # service status
 curl http://localhost:4566/_localstack/info     # version info
 ```
 
-### Account & region
-
-Default account ID: `123456789012`. Any region works. Use `us-east-1` if unsure.
-
 ### Common patterns
 
 ```python
-# Create DynamoDB table
-dynamo = boto3.resource("dynamodb", **SESSION)
+# DynamoDB table
 table = dynamo.create_table(
     TableName="users",
     KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
     AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
     BillingMode="PAY_PER_REQUEST",
 )
+table.put_item(Item={"id": "u1", "name": "Alice"})
 
-# Publish SNS → SQS
-sns_client = boto3.client("sns", **SESSION)
-sqs_client = boto3.client("sqs", **SESSION)
-
-queue = sqs_client.create_queue(QueueName="events")
-queue_arn = sqs_client.get_queue_attributes(
+# SNS → SQS fanout
+queue = sqs.create_queue(QueueName="events")
+queue_arn = sqs.get_queue_attributes(
     QueueUrl=queue["QueueUrl"], AttributeNames=["QueueArn"]
 )["Attributes"]["QueueArn"]
-
-topic = sns_client.create_topic(Name="notifications")
-sns_client.subscribe(TopicArn=topic["TopicArn"], Protocol="sqs", Endpoint=queue_arn)
-sns_client.publish(TopicArn=topic["TopicArn"], Message="hello")
+topic = sns.create_topic(Name="notifications")
+sns.subscribe(TopicArn=topic["TopicArn"], Protocol="sqs", Endpoint=queue_arn)
+sns.publish(TopicArn=topic["TopicArn"], Message="hello")
 
 # Lambda invocation
 import json, zipfile, io
@@ -163,7 +234,6 @@ def make_zip(code: str) -> bytes:
         z.writestr("index.py", code)
     return buf.getvalue()
 
-lam = boto3.client("lambda", **SESSION)
 lam.create_function(
     FunctionName="my-fn",
     Runtime="python3.12",
@@ -177,11 +247,11 @@ print(json.loads(result["Payload"].read()))  # {"status": "ok"}
 
 ---
 
-## Why Robotocore?
+## Why robotocore?
 
-LocalStack Community Edition was discontinued in February 2026. Robotocore is the replacement — MIT licensed, free forever, and closing in on full LocalStack Pro parity:
+LocalStack Community Edition was discontinued in February 2026. robotocore is the replacement — MIT licensed, free forever, and closing in on full LocalStack Pro parity:
 
-| | Robotocore | LocalStack (any tier) |
+| | robotocore | LocalStack (any tier) |
 |---|---|---|
 | Price | **Free forever** | $0–70+/mo |
 | License | **MIT** | Apache 2.0 / Commercial |
@@ -191,6 +261,7 @@ LocalStack Community Edition was discontinued in February 2026. Robotocore is th
 | Lambda execution | **Real** | Simulated / Real |
 | SQS fidelity | **Full** | Partial / Full |
 | IAM enforcement | **Optional** | No / Yes |
+| Multi-account | **Yes** | No / Yes |
 
 ---
 
@@ -247,7 +318,7 @@ All **42 services** are available. **Native** providers go beyond Moto with full
 
 ## Architecture
 
-Robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed to either a native provider or Moto's backend.
+robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed to either a native provider or Moto's backend. State is stored in-memory, isolated per account and region.
 
 ```
 ┌───────────────────────────────────────────────────┐
@@ -257,8 +328,9 @@ Robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 │  │           Starlette Gateway                 │  │
 │  │                                             │  │
 │  │  AWS Request Router                         │  │
-│  │  (detects service from Auth headers,        │  │
-│  │   X-Amz-Target, URL path, Host header)      │  │
+│  │  (service from Auth header, X-Amz-Target,   │  │
+│  │   URL path, Host header)                    │  │
+│  │  Account ID from Credential (12-digit key)  │  │
 │  │              │                              │  │
 │  │   ┌──────────┴──────────────┐               │  │
 │  │   │                         │               │  │
@@ -274,9 +346,10 @@ Robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 
 **Request flow:**
 1. AWS SDK sends a signed HTTP request to `localhost:4566`
-2. Router reads `Authorization` header, `X-Amz-Target`, URL path, and `Host` header to identify the AWS service and operation
-3. Native provider handles it (if one exists) or Moto bridge forwards to Moto's backend
-4. Response is serialized in the correct AWS wire format (query, JSON, REST-XML, etc.)
+2. Router identifies the service from `Authorization` header, `X-Amz-Target`, URL path, or `Host` header
+3. Account ID is parsed from the `Credential` field of the `Authorization` header (the 12-digit access key ID)
+4. Native provider handles the request (if one exists) or Moto bridge forwards to Moto's backend
+5. Response is serialized in the correct AWS wire format (query, JSON, REST-XML, etc.)
 
 ---
 
@@ -315,17 +388,10 @@ uv run pytest tests/integration/    # 42 integration tests (requires Docker)
 ### Useful scripts
 
 ```bash
-# Check which operations work against a live server
-uv run python scripts/probe_service.py --service s3
-
-# Generate a parity report vs botocore
-uv run python scripts/generate_parity_report.py
-
-# Analyze gaps vs LocalStack
-uv run python scripts/analyze_localstack.py
-
-# Run 20-service smoke test
-uv run python scripts/smoke_test.py
+uv run python scripts/probe_service.py --service s3    # which ops work
+uv run python scripts/generate_parity_report.py        # parity vs botocore
+uv run python scripts/analyze_localstack.py            # gaps vs LocalStack
+uv run python scripts/smoke_test.py                    # 20-service smoke test
 ```
 
 ### Build Docker image
