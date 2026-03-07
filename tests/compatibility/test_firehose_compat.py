@@ -355,3 +355,71 @@ class TestFirehoseOperations:
         )
         assert "Tags" in response
         assert isinstance(response["Tags"], list)
+
+    def test_tag_and_untag_delivery_stream(self, firehose, delivery_stream):
+        """TagDeliveryStream / UntagDeliveryStream / ListTagsForDeliveryStream."""
+        firehose.tag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "data"},
+            ],
+        )
+        resp = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "data"
+
+        firehose.untag_delivery_stream(
+            DeliveryStreamName=delivery_stream, TagKeys=["team"]
+        )
+        resp2 = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )
+        keys = [t["Key"] for t in resp2["Tags"]]
+        assert "env" in keys
+        assert "team" not in keys
+
+    def test_put_record_returns_record_id(self, firehose, delivery_stream):
+        """PutRecord returns RecordId."""
+        resp = firehose.put_record(
+            DeliveryStreamName=delivery_stream,
+            Record={"Data": b"record-id-test\n"},
+        )
+        assert "RecordId" in resp
+
+    def test_put_record_batch_returns_record_ids(self, firehose, delivery_stream):
+        """PutRecordBatch returns RecordId for each record."""
+        resp = firehose.put_record_batch(
+            DeliveryStreamName=delivery_stream,
+            Records=[
+                {"Data": b"batch-1\n"},
+                {"Data": b"batch-2\n"},
+                {"Data": b"batch-3\n"},
+            ],
+        )
+        assert resp["FailedPutCount"] == 0
+        assert len(resp["RequestResponses"]) == 3
+        for r in resp["RequestResponses"]:
+            assert "RecordId" in r
+
+    def test_describe_delivery_stream_fields(self, firehose, delivery_stream):
+        """DescribeDeliveryStream returns all expected fields."""
+        resp = firehose.describe_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )
+        desc = resp["DeliveryStreamDescription"]
+        assert desc["DeliveryStreamName"] == delivery_stream
+        assert "DeliveryStreamARN" in desc
+        assert "DeliveryStreamStatus" in desc
+        assert desc["DeliveryStreamStatus"] in ("CREATING", "ACTIVE")
+        assert "Destinations" in desc
+        assert len(desc["Destinations"]) >= 1
+
+    def test_list_delivery_streams_with_limit(self, firehose):
+        """ListDeliveryStreams with Limit parameter."""
+        resp = firehose.list_delivery_streams(Limit=10)
+        assert "DeliveryStreamNames" in resp
+        assert "HasMoreDeliveryStreams" in resp

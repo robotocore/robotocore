@@ -233,3 +233,116 @@ class TestServices:
         finally:
             ecs.delete_cluster(cluster=cluster_name)
 
+
+class TestECSExtended:
+    """Extended ECS operations for higher coverage."""
+
+    @pytest.fixture
+    def ecs(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("ecs")
+
+    def test_list_clusters(self, ecs):
+        name = _unique("list-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.list_clusters()
+            assert any(name in arn for arn in resp["clusterArns"])
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_describe_clusters(self, ecs):
+        name = _unique("desc-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.describe_clusters(clusters=[name])
+            assert len(resp["clusters"]) == 1
+            assert resp["clusters"][0]["clusterName"] == name
+            assert resp["clusters"][0]["status"] == "ACTIVE"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_create_cluster_with_tags(self, ecs):
+        name = _unique("tagged-cluster")
+        resp = ecs.create_cluster(
+            clusterName=name,
+            tags=[{"key": "env", "value": "staging"}],
+        )
+        try:
+            tags = {t["key"]: t["value"] for t in resp["cluster"].get("tags", [])}
+            assert tags.get("env") == "staging"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_register_deregister_task_definition(self, ecs):
+        import uuid
+        family = f"task-fam-{uuid.uuid4().hex[:8]}"
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[
+                {
+                    "name": "web",
+                    "image": "nginx:latest",
+                    "memory": 256,
+                    "cpu": 128,
+                }
+            ],
+        )
+        td_arn = resp["taskDefinition"]["taskDefinitionArn"]
+        assert resp["taskDefinition"]["family"] == family
+
+        desc = ecs.describe_task_definition(taskDefinition=td_arn)
+        assert desc["taskDefinition"]["family"] == family
+        containers = desc["taskDefinition"]["containerDefinitions"]
+        assert len(containers) == 1
+        assert containers[0]["name"] == "web"
+
+        ecs.deregister_task_definition(taskDefinition=td_arn)
+
+    def test_list_task_definitions(self, ecs):
+        import uuid
+        family = f"list-td-{uuid.uuid4().hex[:8]}"
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[
+                {"name": "app", "image": "alpine", "memory": 64}
+            ],
+        )
+        resp = ecs.list_task_definitions(familyPrefix=family)
+        assert len(resp["taskDefinitionArns"]) >= 1
+        assert any(family in arn for arn in resp["taskDefinitionArns"])
+
+    def test_list_task_definition_families(self, ecs):
+        resp = ecs.list_task_definition_families()
+        assert "families" in resp
+
+    def test_create_cluster_with_settings(self, ecs):
+        name = _unique("settings-cluster")
+        resp = ecs.create_cluster(
+            clusterName=name,
+            settings=[{"name": "containerInsights", "value": "enabled"}],
+        )
+        try:
+            settings = {s["name"]: s["value"] for s in resp["cluster"].get("settings", [])}
+            assert settings.get("containerInsights") == "enabled"
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    @pytest.mark.xfail(reason="PutClusterCapacityProviders may not be supported")
+    def test_put_cluster_capacity_providers(self, ecs):
+        name = _unique("cap-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            ecs.put_cluster_capacity_providers(
+                cluster=name,
+                capacityProviders=["FARGATE"],
+                defaultCapacityProviderStrategy=[
+                    {"capacityProvider": "FARGATE", "weight": 1}
+                ],
+            )
+            desc = ecs.describe_clusters(clusters=[name], include=["SETTINGS"])
+            cluster = desc["clusters"][0]
+            assert "FARGATE" in cluster.get("capacityProviders", [])
+        finally:
+            ecs.delete_cluster(cluster=name)
+
