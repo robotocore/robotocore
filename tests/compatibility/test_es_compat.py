@@ -102,3 +102,71 @@ class TestElasticsearchOperations:
     def test_list_domain_names_empty(self, es):
         response = es.list_domain_names()
         assert "DomainNames" in response
+
+    def test_describe_domains_multiple(self, es):
+        d1 = f"es-{_uid()}"
+        d2 = f"es-{_uid()}"
+        es.create_elasticsearch_domain(DomainName=d1, ElasticsearchVersion="7.10")
+        es.create_elasticsearch_domain(DomainName=d2, ElasticsearchVersion="7.10")
+        try:
+            resp = es.describe_elasticsearch_domains(DomainNames=[d1, d2])
+            names = [d["DomainName"] for d in resp["DomainStatusList"]]
+            assert d1 in names
+            assert d2 in names
+        finally:
+            es.delete_elasticsearch_domain(DomainName=d1)
+            es.delete_elasticsearch_domain(DomainName=d2)
+
+    def test_update_domain_config(self, es):
+        name = f"es-{_uid()}"
+        es.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = es.update_elasticsearch_domain_config(
+                DomainName=name,
+                ElasticsearchClusterConfig={
+                    "InstanceType": "t3.medium.elasticsearch",
+                    "InstanceCount": 2,
+                },
+            )
+            assert "DomainConfig" in resp
+        finally:
+            es.delete_elasticsearch_domain(DomainName=name)
+
+    def test_domain_has_arn(self, es):
+        name = f"es-{_uid()}"
+        resp = es.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            assert "ARN" in resp["DomainStatus"]
+            assert name in resp["DomainStatus"]["ARN"]
+        finally:
+            es.delete_elasticsearch_domain(DomainName=name)
+
+    def test_domain_has_domain_id(self, es):
+        name = f"es-{_uid()}"
+        resp = es.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            assert "DomainId" in resp["DomainStatus"]
+        finally:
+            es.delete_elasticsearch_domain(DomainName=name)
+
+    def test_create_domain_with_ebs_options(self, es):
+        name = f"es-{_uid()}"
+        resp = es.create_elasticsearch_domain(
+            DomainName=name,
+            ElasticsearchVersion="7.10",
+            EBSOptions={"EBSEnabled": True, "VolumeType": "gp2", "VolumeSize": 10},
+        )
+        try:
+            assert resp["DomainStatus"]["DomainName"] == name
+        finally:
+            es.delete_elasticsearch_domain(DomainName=name)
+
+    @pytest.mark.xfail(reason="GetCompatibleElasticsearchVersions not implemented")
+    def test_get_compatible_versions(self, es):
+        name = f"es-{_uid()}"
+        es.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = es.get_compatible_elasticsearch_versions(DomainName=name)
+            assert "CompatibleElasticsearchVersions" in resp
+        finally:
+            es.delete_elasticsearch_domain(DomainName=name)

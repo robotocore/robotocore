@@ -138,3 +138,87 @@ class TestSWFOperations:
             activityType={"name": "desc-activity", "version": "2.0"},
         )
         swf.deprecate_domain(name=domain_name)
+
+    def test_register_multiple_workflow_versions(self, swf):
+        domain = f"ver-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            swf.register_workflow_type(domain=domain, name="ver-wf", version="1.0")
+            swf.register_workflow_type(domain=domain, name="ver-wf", version="2.0")
+            types = swf.list_workflow_types(domain=domain, registrationStatus="REGISTERED")
+            versions = [
+                t["workflowType"]["version"]
+                for t in types["typeInfos"]
+                if t["workflowType"]["name"] == "ver-wf"
+            ]
+            assert "1.0" in versions
+            assert "2.0" in versions
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "ver-wf", "version": "1.0"}
+            )
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "ver-wf", "version": "2.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_deprecate_workflow_type(self, swf):
+        domain = f"depwf-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_workflow_type(domain=domain, name="dep-wf", version="1.0")
+        swf.deprecate_workflow_type(
+            domain=domain, workflowType={"name": "dep-wf", "version": "1.0"}
+        )
+        deprecated = swf.list_workflow_types(domain=domain, registrationStatus="DEPRECATED")
+        names = [t["workflowType"]["name"] for t in deprecated["typeInfos"]]
+        assert "dep-wf" in names
+        swf.deprecate_domain(name=domain)
+
+    def test_deprecate_activity_type(self, swf):
+        domain = f"depact-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_activity_type(domain=domain, name="dep-act", version="1.0")
+        swf.deprecate_activity_type(
+            domain=domain, activityType={"name": "dep-act", "version": "1.0"}
+        )
+        deprecated = swf.list_activity_types(domain=domain, registrationStatus="DEPRECATED")
+        names = [t["activityType"]["name"] for t in deprecated["typeInfos"]]
+        assert "dep-act" in names
+        swf.deprecate_domain(name=domain)
+
+    def test_list_activity_types(self, swf):
+        domain = f"listact-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            swf.register_activity_type(domain=domain, name="act-a", version="1.0")
+            swf.register_activity_type(domain=domain, name="act-b", version="1.0")
+            resp = swf.list_activity_types(domain=domain, registrationStatus="REGISTERED")
+            names = [t["activityType"]["name"] for t in resp["typeInfos"]]
+            assert "act-a" in names
+            assert "act-b" in names
+        finally:
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "act-a", "version": "1.0"}
+            )
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "act-b", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_domain_retention_period(self, swf):
+        domain = f"ret-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="90")
+        resp = swf.describe_domain(name=domain)
+        assert resp["configuration"]["workflowExecutionRetentionPeriodInDays"] == "90"
+        swf.deprecate_domain(name=domain)
+
+    def test_register_domain_with_description(self, swf):
+        domain = f"desc-domain-{_uid()}"
+        swf.register_domain(
+            name=domain,
+            workflowExecutionRetentionPeriodInDays="30",
+            description="Test domain description",
+        )
+        resp = swf.describe_domain(name=domain)
+        assert resp["domainInfo"]["description"] == "Test domain description"
+        swf.deprecate_domain(name=domain)
