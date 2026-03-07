@@ -196,9 +196,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "dax": ServiceInfo(
         "dax", ServiceStatus.MOTO_BACKED, "json", "DynamoDB Accelerator"
     ),
-    "directconnect": ServiceInfo(
-        "directconnect", ServiceStatus.MOTO_BACKED, "json", "Direct Connect"
-    ),
+    # directconnect: deregistered — all Moto ops return 500
     "dms": ServiceInfo(
         "dms", ServiceStatus.MOTO_BACKED, "json", "Database Migration Service"
     ),
@@ -208,9 +206,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "dsql": ServiceInfo(
         "dsql", ServiceStatus.MOTO_BACKED, "rest-json", "Aurora DSQL"
     ),
-    "ebs": ServiceInfo(
-        "ebs", ServiceStatus.MOTO_BACKED, "rest-json", "EBS Direct APIs"
-    ),
+    # ebs: deregistered — all Moto ops return 500
     "ec2instanceconnect": ServiceInfo(
         "ec2instanceconnect", ServiceStatus.MOTO_BACKED, "json", "EC2 Instance Connect"
     ),
@@ -241,9 +237,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "emrserverless": ServiceInfo(
         "emrserverless", ServiceStatus.MOTO_BACKED, "rest-json", "EMR Serverless"
     ),
-    "forecast": ServiceInfo(
-        "forecast", ServiceStatus.MOTO_BACKED, "json", "Amazon Forecast"
-    ),
+    # forecast: deregistered — deprecated by AWS, all Moto ops return 500
     "fsx": ServiceInfo(
         "fsx", ServiceStatus.MOTO_BACKED, "json", "FSx File Systems"
     ),
@@ -283,10 +277,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "kinesisvideo": ServiceInfo(
         "kinesisvideo", ServiceStatus.MOTO_BACKED, "rest-json", "Kinesis Video Streams"
     ),
-    "kinesisvideoarchivedmedia": ServiceInfo(
-        "kinesisvideoarchivedmedia", ServiceStatus.MOTO_BACKED, "rest-json",
-        "Kinesis Video Archived Media",
-    ),
+    # kinesisvideoarchivedmedia: deregistered — shares signing name with kinesisvideo, not routable
     "lakeformation": ServiceInfo(
         "lakeformation", ServiceStatus.MOTO_BACKED, "rest-json", "Lake Formation"
     ),
@@ -314,15 +305,11 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "mediastore": ServiceInfo(
         "mediastore", ServiceStatus.MOTO_BACKED, "json", "MediaStore"
     ),
-    "mediastoredata": ServiceInfo(
-        "mediastoredata", ServiceStatus.MOTO_BACKED, "rest-json", "MediaStore Data"
-    ),
+    # mediastoredata: deregistered — shares signing name with mediastore, not routable
     "memorydb": ServiceInfo(
         "memorydb", ServiceStatus.MOTO_BACKED, "json", "MemoryDB for Redis"
     ),
-    "meteringmarketplace": ServiceInfo(
-        "meteringmarketplace", ServiceStatus.MOTO_BACKED, "json", "Marketplace Metering"
-    ),
+    # meteringmarketplace: deregistered — requires marketplace context, not useful locally
     "mq": ServiceInfo(
         "mq", ServiceStatus.MOTO_BACKED, "rest-json", "Amazon MQ Message Brokers"
     ),
@@ -344,9 +331,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "panorama": ServiceInfo(
         "panorama", ServiceStatus.MOTO_BACKED, "rest-json", "Panorama"
     ),
-    "personalize": ServiceInfo(
-        "personalize", ServiceStatus.MOTO_BACKED, "json", "Amazon Personalize"
-    ),
+    # personalize: deregistered — all Moto ops return 500
     "pinpoint": ServiceInfo(
         "pinpoint", ServiceStatus.MOTO_BACKED, "rest-json", "Pinpoint"
     ),
@@ -389,15 +374,9 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "sagemaker": ServiceInfo(
         "sagemaker", ServiceStatus.MOTO_BACKED, "json", "SageMaker ML Platform"
     ),
-    "sagemakermetrics": ServiceInfo(
-        "sagemakermetrics", ServiceStatus.MOTO_BACKED, "rest-json", "SageMaker Metrics"
-    ),
-    "sagemakerruntime": ServiceInfo(
-        "sagemakerruntime", ServiceStatus.MOTO_BACKED, "rest-json", "SageMaker Runtime"
-    ),
-    "sdb": ServiceInfo(
-        "sdb", ServiceStatus.MOTO_BACKED, "query", "SimpleDB"
-    ),
+    # sagemakermetrics: deregistered — shares signing name with sagemaker, not routable
+    # sagemakerruntime: deregistered — shares signing name with sagemaker, not routable
+    # sdb: deregistered — all Moto ops return InternalError
     "securityhub": ServiceInfo(
         "securityhub", ServiceStatus.MOTO_BACKED, "rest-json", "Security Hub"
     ),
@@ -411,9 +390,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "servicediscovery": ServiceInfo(
         "servicediscovery", ServiceStatus.MOTO_BACKED, "json", "Cloud Map Service Discovery"
     ),
-    "servicequotas": ServiceInfo(
-        "servicequotas", ServiceStatus.MOTO_BACKED, "json", "Service Quotas"
-    ),
+    # servicequotas: deregistered — all Moto ops return 500
     "shield": ServiceInfo(
         "shield", ServiceStatus.MOTO_BACKED, "json", "Shield DDoS Protection"
     ),
