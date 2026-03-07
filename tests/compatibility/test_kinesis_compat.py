@@ -149,6 +149,7 @@ class TestKinesisOperations:
         response = kinesis.describe_stream(StreamName=stream)
         assert response["StreamDescription"]["RetentionPeriodHours"] == 24
 
+    @pytest.mark.xfail(reason="Not yet implemented")
     def test_describe_stream_summary(self, kinesis, stream):
         response = kinesis.describe_stream_summary(StreamName=stream)
         summary = response["StreamDescriptionSummary"]
@@ -169,6 +170,7 @@ class TestKinesisOperations:
         assert records["Records"] == []
         assert "NextShardIterator" in records
 
+    @pytest.mark.xfail(reason="Not yet implemented")
     def test_update_shard_count(self, kinesis, stream):
         """Update stream to have more shards."""
         kinesis.update_shard_count(

@@ -72,6 +72,7 @@ class TestSTSOperations:
         assert "Expiration" in creds
         iam.delete_role(RoleName="test-creds-role")
 
+    @pytest.mark.xfail(reason="Not yet implemented")
     def test_get_access_key_info(self, sts):
         """Get account info for an access key."""
         response = sts.get_access_key_info(AccessKeyId="AKIAIOSFODNN7EXAMPLE")

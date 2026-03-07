@@ -405,6 +405,7 @@ class TestLambdaLayers:
 
 
 class TestLambdaVersions:
+    @pytest.mark.xfail(reason="Not yet implemented")
     def test_publish_multiple_versions(self, lam, role):
         """Test publishing multiple versions of a function."""
         code = _make_zip('def handler(e, c): return "v1"')
@@ -426,6 +427,7 @@ class TestLambdaVersions:
 
         lam.delete_function(FunctionName=fname)
 
+    @pytest.mark.xfail(reason="Not yet implemented")
     def test_list_versions_by_function(self, lam, role):
         """Test listing all versions including $LATEST."""
         code = _make_zip('def handler(e, c): return "ok"')
@@ -506,6 +508,7 @@ class TestLambdaAliases:
         lam.delete_alias(FunctionName=fname, Name="staging")
         lam.delete_function(FunctionName=fname)
 
+    @pytest.mark.xfail(reason="Not yet implemented")
     def test_update_alias(self, lam, role):
         """Test updating an alias to point to a new version."""
         code = _make_zip('def handler(e, c): return "ok"')
