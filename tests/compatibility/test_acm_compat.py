@@ -1,9 +1,45 @@
 """ACM compatibility tests."""
 
+import datetime
+
 import pytest
 from botocore.exceptions import ClientError
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 from tests.compatibility.conftest import make_client
+
+
+def _generate_self_signed_cert():
+    """Generate a self-signed certificate and private key in PEM format."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "California"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Test"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
+    ])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+        .not_valid_after(
+            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
+        )
+        .sign(key, hashes.SHA256())
+    )
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    key_pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption(),
+    )
+    return cert_pem, key_pem
 
 
 @pytest.fixture
@@ -197,3 +233,42 @@ class TestACMOperations:
         arn = acm.request_certificate(DomainName="status.example.com")["CertificateArn"]
         cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
         assert cert["Status"] == "PENDING_VALIDATION"
+    def test_import_certificate(self, acm):
+        """ImportCertificate imports a self-signed cert and returns an ARN."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        response = acm.import_certificate(
+            Certificate=cert_pem,
+            PrivateKey=key_pem,
+        )
+        assert "CertificateArn" in response
+        arn = response["CertificateArn"]
+        # Verify the imported cert is describable
+        detail = acm.describe_certificate(CertificateArn=arn)
+        assert detail["Certificate"]["CertificateArn"] == arn
+        assert detail["Certificate"]["Type"] == "IMPORTED"
+        # Cleanup
+        acm.delete_certificate(CertificateArn=arn)
+
+    def test_import_certificate_with_chain(self, acm):
+        """ImportCertificate with a certificate chain (self-signed as chain)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        response = acm.import_certificate(
+            Certificate=cert_pem,
+            PrivateKey=key_pem,
+            CertificateChain=cert_pem,  # self-signed acts as its own chain
+        )
+        assert "CertificateArn" in response
+        acm.delete_certificate(CertificateArn=response["CertificateArn"])
+
+    def test_get_account_configuration(self, acm):
+        """GetAccountConfiguration returns without error."""
+        try:
+            response = acm.get_account_configuration()
+            # May have ExpiryEvents or may be empty depending on state
+            assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except acm.exceptions.ClientError as e:
+            # AccessDeniedException is acceptable if not configured
+            assert e.response["Error"]["Code"] in (
+                "AccessDeniedException",
+                "ResourceNotFoundException",
+            )

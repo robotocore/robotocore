@@ -204,3 +204,20 @@ class TestSSMParameterOperations:
         assert params["/pathval/b"] == "beta"
         ssm.delete_parameter(Name="/pathval/a")
         ssm.delete_parameter(Name="/pathval/b")
+    def test_label_parameter_version(self, ssm):
+        ssm.put_parameter(Name="/label/param", Value="v1", Type="String")
+        ssm.label_parameter_version(
+            Name="/label/param", ParameterVersion=1, Labels=["prod"]
+        )
+        response = ssm.get_parameter_history(Name="/label/param")
+        labels = response["Parameters"][0].get("Labels", [])
+        assert "prod" in labels
+        ssm.delete_parameter(Name="/label/param")
+
+    def test_delete_parameters(self, ssm):
+        ssm.put_parameter(Name="/delmulti/a", Value="1", Type="String")
+        ssm.put_parameter(Name="/delmulti/b", Value="2", Type="String")
+        response = ssm.delete_parameters(Names=["/delmulti/a", "/delmulti/b"])
+        deleted = response["DeletedParameters"]
+        assert "/delmulti/a" in deleted
+        assert "/delmulti/b" in deleted
