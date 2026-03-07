@@ -162,7 +162,6 @@ class TestSESOperations:
             )
             ses.delete_receipt_rule_set(RuleSetName="rule-test-set")
 
-    @pytest.mark.xfail(reason="SetIdentityNotificationTopic not fully supported")
     def test_set_identity_notification_topic(self, ses):
         """Set notification topic for an identity."""
         ses.verify_email_identity(EmailAddress="notif@example.com")
@@ -249,7 +248,6 @@ class TestSESOperations:
         assert len(response["Identities"]) <= 2
 
 
-@pytest.mark.xfail(reason="SES v2 endpoints not yet routed by gateway")
 class TestSESv2Operations:
     def test_create_email_identity(self, sesv2):
         """Create an email identity via SES v2."""

@@ -43,6 +43,7 @@ from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
 from robotocore.services.s3.provider import handle_s3_request
 from robotocore.services.scheduler.provider import handle_scheduler_request
 from robotocore.services.ses.provider import handle_ses_request
+from robotocore.services.ses.sesv2_provider import handle_sesv2_request
 from robotocore.services.sns.provider import handle_sns_request
 from robotocore.services.sqs.provider import handle_sqs_request
 from robotocore.services.stepfunctions.provider import handle_stepfunctions_request
@@ -70,6 +71,7 @@ NATIVE_PROVIDERS = {
     "s3": handle_s3_request,
     "scheduler": handle_scheduler_request,
     "ses": handle_ses_request,
+    "sesv2": handle_sesv2_request,
     "sqs": handle_sqs_request,
     "sns": handle_sns_request,
     "stepfunctions": handle_stepfunctions_request,

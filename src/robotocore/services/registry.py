@@ -89,6 +89,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "route53resolver", ServiceStatus.MOTO_BACKED, "json", "Route 53 Resolver"
     ),
     "ses": ServiceInfo("ses", ServiceStatus.NATIVE, "query", "Simple Email Service"),
+    "sesv2": ServiceInfo("sesv2", ServiceStatus.NATIVE, "rest-json", "Simple Email Service v2"),
     "support": ServiceInfo("support", ServiceStatus.MOTO_BACKED, "json", "Support"),
     "swf": ServiceInfo("swf", ServiceStatus.MOTO_BACKED, "json", "Simple Workflow"),
     "transcribe": ServiceInfo("transcribe", ServiceStatus.MOTO_BACKED, "json", "Transcribe"),

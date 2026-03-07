@@ -174,6 +174,24 @@ def _create_receipt_rule(params: dict, region: str, account_id: str) -> str:
     return ""
 
 
+def _set_identity_notification_topic(params: dict, region: str, account_id: str) -> str:
+    """SetIdentityNotificationTopic - workaround for Moto KeyError when clearing topic."""
+    backend = _get_ses_backend(account_id, region)
+    identity = params.get("Identity", "")
+    notification_type = params.get("NotificationType", "")
+    sns_topic = params.get("SnsTopic")
+
+    identity_sns_topics = backend.sns_topics.get(identity, {})
+    if sns_topic is None or sns_topic == "":
+        # Clear the topic — Moto raises KeyError if it doesn't exist
+        identity_sns_topics.pop(notification_type, None)
+    else:
+        identity_sns_topics[notification_type] = sns_topic
+    backend.sns_topics[identity] = identity_sns_topics
+
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Response helpers
 # ---------------------------------------------------------------------------
@@ -215,4 +233,5 @@ _ACTION_MAP = {
     "GetAccountSendingEnabled": _get_account_sending_enabled,
     "DeleteReceiptRule": _delete_receipt_rule,
     "CreateReceiptRule": _create_receipt_rule,
+    "SetIdentityNotificationTopic": _set_identity_notification_topic,
 }
