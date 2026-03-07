@@ -82,7 +82,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "resource-groups", ServiceStatus.MOTO_BACKED, "rest-json", "Resource Groups"
     ),
     "resourcegroupstaggingapi": ServiceInfo(
-        "resourcegroupstaggingapi", ServiceStatus.MOTO_BACKED, "json", "Resource Groups Tagging API"
+        "resourcegroupstaggingapi", ServiceStatus.NATIVE, "json", "Resource Groups Tagging API"
     ),
     "route53": ServiceInfo("route53", ServiceStatus.MOTO_BACKED, "rest-xml", "Route 53"),
     "route53resolver": ServiceInfo(

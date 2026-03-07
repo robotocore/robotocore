@@ -47,6 +47,7 @@ from robotocore.services.sns.provider import handle_sns_request
 from robotocore.services.sqs.provider import handle_sqs_request
 from robotocore.services.stepfunctions.provider import handle_stepfunctions_request
 from robotocore.services.sts.provider import handle_sts_request
+from robotocore.services.tagging.provider import handle_tagging_request
 
 # Services with native providers (bypass Moto)
 NATIVE_PROVIDERS = {
@@ -73,6 +74,7 @@ NATIVE_PROVIDERS = {
     "sns": handle_sns_request,
     "stepfunctions": handle_stepfunctions_request,
     "sts": handle_sts_request,
+    "resourcegroupstaggingapi": handle_tagging_request,
 }
 
 # Default account ID (matches LocalStack)

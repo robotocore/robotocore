@@ -557,27 +557,38 @@ def _deliver_to_sqs(
     if sub.raw_message_delivery:
         body = message
     else:
-        body = json.dumps(
-            {
-                "Type": "Notification",
-                "MessageId": message_id,
-                "TopicArn": topic_arn,
-                "Subject": subject or "",
-                "Message": message,
-                "Timestamp": _iso_timestamp(),
-                "SignatureVersion": "1",
-                "Signature": "EXAMPLE",
-                "SigningCertURL": (
-                    "https://sns.us-east-1.amazonaws.com/"
-                    "SimpleNotificationService.pem"
-                ),
-                "UnsubscribeURL": (
-                    f"https://sns.us-east-1.amazonaws.com/"
-                    f"?Action=Unsubscribe"
-                    f"&SubscriptionArn={sub.subscription_arn}"
-                ),
-            }
-        )
+        # Build SNS notification JSON matching AWS format
+        notification: dict = {
+            "Type": "Notification",
+            "MessageId": message_id,
+            "TopicArn": topic_arn,
+            "Subject": subject or "",
+            "Message": message,
+            "Timestamp": _iso_timestamp(),
+            "SignatureVersion": "1",
+            "Signature": "EXAMPLE",
+            "SigningCertURL": (
+                "https://sns.us-east-1.amazonaws.com/"
+                "SimpleNotificationService.pem"
+            ),
+            "UnsubscribeURL": (
+                f"https://sns.us-east-1.amazonaws.com/"
+                f"?Action=Unsubscribe"
+                f"&SubscriptionArn={sub.subscription_arn}"
+            ),
+        }
+        # Include MessageAttributes in the notification JSON (matches real AWS)
+        if message_attributes:
+            sns_attrs = {}
+            for attr_name, attr_val in message_attributes.items():
+                sns_attrs[attr_name] = {
+                    "Type": attr_val.get("DataType", "String"),
+                    "Value": attr_val.get(
+                        "StringValue", attr_val.get("Value", "")
+                    ),
+                }
+            notification["MessageAttributes"] = sns_attrs
+        body = json.dumps(notification)
 
     sqs_msg = SqsMessage(
         message_id=str(uuid.uuid4()),

@@ -337,7 +337,6 @@ class TestLogsExportTasks:
 
 
 class TestLogsLogGroupWithTags:
-    @pytest.mark.xfail(reason="Moto list_tags_for_resource on CloudWatch Logs not returning tags")
     def test_create_log_group_with_tags(self, logs):
         name = f"/test/tagged-{uuid.uuid4().hex[:8]}"
         logs.create_log_group(logGroupName=name, tags={"app": "myapp", "stage": "dev"})
