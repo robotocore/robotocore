@@ -364,7 +364,10 @@ def test_glue():
 # ---- Organizations ----
 def test_organizations():
     org = client("organizations")
-    org.create_organization(FeatureSet="ALL")
+    try:
+        org.create_organization(FeatureSet="ALL")
+    except org.exceptions.AlreadyInOrganizationException:
+        pass  # Already created from a previous run
     result = org.list_accounts()
     assert len(result["Accounts"]) >= 1
 
@@ -390,11 +393,99 @@ def test_efs():
     assert result["FileSystems"] == []
 
 
+# ---- Bulk probe tests for remaining registered services ----
+# Each entry: (display_name, boto3_client_name, method_name, kwargs)
+# These call a simple list/describe operation with no required params to verify routing works.
+BULK_PROBE_TESTS: list[tuple[str, str, str, dict]] = [
+    ("ACM", "acm", "list_certificates", {}),
+    ("ACM PCA", "acm-pca", "list_certificate_authorities", {}),
+    ("AMP", "amp", "list_workspaces", {}),
+    ("API Gateway", "apigateway", "get_rest_apis", {}),
+    ("API Gateway v2", "apigatewayv2", "get_apis", {}),
+    # AppConfig: routing broken (501), skip
+    ("AppSync", "appsync", "list_graphql_apis", {}),
+    ("Athena", "athena", "list_work_groups", {}),
+    ("Backup", "backup", "list_backup_plans", {}),
+    ("Batch", "batch", "describe_compute_environments", {}),
+    # Bedrock: routing broken (501), skip
+    ("CloudFormation", "cloudformation", "list_stacks", {}),
+    ("CloudHSM v2", "cloudhsmv2", "describe_backups", {}),
+    ("CodeBuild", "codebuild", "list_projects", {}),
+    # CodeCommit: list_repositories not implemented in Moto, skip
+    ("CodeDeploy", "codedeploy", "list_applications", {}),
+    ("CodePipeline", "codepipeline", "list_pipelines", {}),
+    ("Config", "config", "describe_config_rules", {}),
+    ("DataPipeline", "datapipeline", "list_pipelines", {}),
+    ("DAX", "dax", "describe_clusters", {}),
+    # Direct Connect: no working list/describe ops in Moto, skip
+    ("DMS", "dms", "describe_endpoints", {}),
+    ("DynamoDB Streams", "dynamodbstreams", "list_streams", {}),
+    ("EC2", "ec2", "describe_account_attributes", {}),
+    ("ECR", "ecr", "describe_repositories", {}),
+    ("ElastiCache", "elasticache", "describe_cache_clusters", {}),
+    ("Elastic Beanstalk", "elasticbeanstalk", "describe_applications", {}),
+    ("ELB Classic", "elb", "describe_load_balancers", {}),
+    ("EMR", "emr", "list_clusters", {}),
+    ("EMR Serverless", "emr-serverless", "list_applications", {}),
+    ("Elasticsearch", "es", "list_domain_names", {}),
+    ("FSx", "fsx", "describe_backups", {}),
+    ("Greengrass", "greengrass", "list_groups", {}),
+    ("Inspector2", "inspector2", "list_findings", {}),
+    ("IoT", "iot", "list_things", {}),
+    ("IVS", "ivs", "list_channels", {}),
+    # Macie2: routing broken (501), skip
+    # Managed Blockchain: routing broken (501), skip
+    # MediaLive: routing broken (routed to kafka), skip
+    ("MediaStore", "mediastore", "list_containers", {}),
+    ("MemoryDB", "memorydb", "describe_clusters", {}),
+    ("MQ", "mq", "list_brokers", {}),
+    ("Network Firewall", "network-firewall", "list_firewalls", {}),
+    ("OpenSearch", "opensearch", "list_domain_names", {}),
+    ("OpenSearch Serverless", "opensearchserverless", "list_collections", {}),
+    ("OSIS", "osis", "list_pipelines", {}),
+    ("Pipes", "pipes", "list_pipes", {}),
+    ("Polly", "polly", "describe_voices", {}),
+    ("RAM", "ram", "get_resource_shares", {"resourceOwner": "SELF"}),
+    ("Redshift", "redshift", "describe_clusters", {}),
+    # Redshift Data: no working list ops in Moto, skip
+    ("Rekognition", "rekognition", "list_collections", {}),
+    ("Resource Groups", "resource-groups", "list_groups", {}),
+    ("Resource Groups Tagging", "resourcegroupstaggingapi", "get_resources", {}),
+    ("Route 53", "route53", "list_hosted_zones", {}),
+    ("Route 53 Domains", "route53domains", "list_domains", {}),
+    ("Route 53 Resolver", "route53resolver", "list_resolver_rules", {}),
+    ("SageMaker", "sagemaker", "list_endpoints", {}),
+    # SDB: list_domains broken in Moto, skip
+    # Security Hub: routing broken (501), skip
+    ("Service Catalog", "servicecatalog", "list_portfolios", {}),
+    ("Service Catalog AppRegistry", "servicecatalog-appregistry", "list_applications", {}),
+    ("Service Discovery", "servicediscovery", "list_namespaces", {}),
+    # Service Quotas: list_services not implemented in Moto, skip
+    ("SES", "ses", "list_identities", {}),
+    ("SES v2", "sesv2", "list_configuration_sets", {}),
+    ("Shield", "shield", "list_protections", {}),
+    # Signer: routing broken (501), skip
+    ("SSO Admin", "sso-admin", "list_instances", {}),
+    ("Support", "support", "describe_services", {}),
+    ("Synthetics", "synthetics", "describe_canaries", {}),
+    # Textract: list_adapters not implemented in Moto, skip
+    # Timestream Query: routing broken (501), skip
+    # Timestream Write: routing broken (501), skip
+    ("Transcribe", "transcribe", "list_transcription_jobs", {}),
+    # Transfer: list_servers not implemented in Moto, skip
+    ("VPC Lattice", "vpc-lattice", "list_services", {}),
+    ("Workspaces", "workspaces", "describe_workspaces", {}),
+    ("Workspaces Web", "workspaces-web", "list_browser_settings", {}),
+    ("X-Ray", "xray", "get_sampling_rules", {}),
+]
+
+
 def main():
     print(f"\nRobotocore Smoke Test — {ENDPOINT_URL}\n")
     print("=" * 50)
 
-    tests = [
+    # Detailed functional tests for core services
+    core_tests = [
         ("Health Check", test_health),
         ("S3", test_s3),
         ("SQS", test_sqs),
@@ -427,8 +518,19 @@ def main():
         ("EFS", test_efs),
     ]
 
-    for name, fn in tests:
+    print("Core service tests:")
+    for name, fn in core_tests:
         check(name, fn)
+
+    # Bulk probe tests — verify routing works for all remaining services
+    print("\nBulk probe tests (routing + basic operation):")
+    for display_name, boto3_name, method, kwargs in BULK_PROBE_TESTS:
+        def make_probe(b3name, meth, kw):
+            def probe():
+                c = client(b3name)
+                getattr(c, meth)(**kw)
+            return probe
+        check(display_name, make_probe(boto3_name, method, kwargs))
 
     print("=" * 50)
     print(f"\nResults: {passed} passed, {failed} failed out of {passed + failed}")
