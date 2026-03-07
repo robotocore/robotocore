@@ -13,7 +13,8 @@
   <a href="#for-ai-agents">For AI Agents</a> ·
   <a href="#supported-services">42 Services</a> ·
   <a href="#why-robotocore">Why robotocore</a> ·
-  <a href="#architecture">Architecture</a>
+  <a href="#architecture">Architecture</a> ·
+  <a href="AGENTS.md">AGENTS.md</a>
 </p>
 
 ---
@@ -35,10 +36,18 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 ## Quick Start
 
 ```bash
-docker run -p 4566:4566 robotocore
+# Docker Hub
+docker run -d -p 4566:4566 jackdanger/robotocore:latest
+
+# GitHub Container Registry (alternative)
+docker run -d -p 4566:4566 ghcr.io/jackdanger/robotocore:latest
 ```
 
-That's it. Your local AWS digital twin is running.
+Verify it's running:
+
+```bash
+curl -s http://localhost:4566/_localstack/health | python3 -m json.tool
+```
 
 ### Python (boto3)
 
@@ -79,7 +88,7 @@ aws dynamodb list-tables
 ```yaml
 services:
   aws:
-    image: robotocore
+    image: jackdanger/robotocore:latest
     ports:
       - "4566:4566"
 
@@ -90,6 +99,31 @@ services:
       - AWS_ACCESS_KEY_ID=123456789012
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
+```
+
+### GitHub Actions
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      robotocore:
+        image: jackdanger/robotocore:latest
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/_localstack/health"
+          --health-interval 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: pytest tests/
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+          AWS_ACCESS_KEY_ID: "123456789012"
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
 ```
 
 ---
@@ -166,7 +200,81 @@ If you omit credentials or use a non-numeric access key (e.g. `"test"`), robotoc
 
 ---
 
+## Accounts & Regions
+
+robotocore supports **multiple AWS accounts** and **all regions** simultaneously, with complete state isolation between them.
+
+### How account IDs work
+
+The 12-digit number you use as `aws_access_key_id` is your account ID. That's it — no setup required.
+
+```python
+import boto3
+
+def client(service, account_id, region="us-east-1"):
+    return boto3.client(
+        service,
+        endpoint_url="http://localhost:4566",
+        aws_access_key_id=account_id,
+        aws_secret_access_key="test",
+        region_name=region,
+    )
+
+# Two completely isolated AWS accounts
+prod  = client("s3", "111111111111")
+dev   = client("s3", "222222222222")
+
+prod.create_bucket(Bucket="assets")   # exists only in account 111111111111
+dev.create_bucket(Bucket="assets")    # separate bucket in account 222222222222
+
+# Resources in one account are invisible to the other
+print(prod.list_buckets()["Buckets"])  # [{"Name": "assets", ...}]
+print(dev.list_buckets()["Buckets"])   # [{"Name": "assets", ...}]  — separate state
+```
+
+### Multi-region
+
+Resources are also isolated by region. Use any valid AWS region name:
+
+```python
+us = client("dynamodb", "123456789012", region="us-east-1")
+eu = client("dynamodb", "123456789012", region="eu-west-1")
+
+us.create_table(TableName="orders", ...)  # exists only in us-east-1
+# eu.list_tables() → []  — completely separate
+```
+
+### Cross-account access with STS
+
+Use STS `AssumeRole` to simulate cross-account IAM role patterns:
+
+```python
+sts = client("sts", "111111111111")
+assumed = sts.assume_role(
+    RoleArn="arn:aws:iam::222222222222:role/CrossAccountRole",
+    RoleSessionName="session",
+)
+creds = assumed["Credentials"]
+
+# Now operate as account 222222222222
+cross = boto3.client(
+    "s3",
+    endpoint_url="http://localhost:4566",
+    aws_access_key_id=creds["AccessKeyId"],
+    aws_secret_access_key=creds["SecretAccessKey"],
+    aws_session_token=creds["SessionToken"],
+)
+```
+
+### Default account
+
+If you omit credentials or use a non-numeric access key (e.g. `"test"`), robotocore uses the default account ID: **`123456789012`** — the same default as Moto, which avoids cross-tool conflicts.
+
+---
+
 ## For AI Agents
+
+> **If you are an AI agent**, read [AGENTS.md](AGENTS.md) — it's a standalone reference with everything you need: Docker image, endpoint, credentials, multi-account setup, common patterns, health checks, and troubleshooting. No prior context required.
 
 If you are an AI agent or LLM being asked to work with AWS infrastructure locally, here is everything you need to know:
 
