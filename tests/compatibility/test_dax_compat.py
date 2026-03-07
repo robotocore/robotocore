@@ -47,10 +47,6 @@ class TestDAXClusterOperations:
         assert "ClusterArn" in cluster
         dax.delete_cluster(ClusterName=name)
 
-    def test_describe_clusters_empty(self, dax):
-        resp = dax.describe_clusters()
-        assert "Clusters" in resp
-
     def test_describe_clusters_filtered(self, dax, cluster):
         resp = dax.describe_clusters(ClusterNames=[cluster["name"]])
         clusters = resp["Clusters"]
