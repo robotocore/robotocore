@@ -432,7 +432,6 @@ class TestCloudWatchDashboards:
 
 
 class TestCloudWatchAlarmHistory:
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_describe_alarm_history(self, cw):
         """Describe alarm history for an alarm."""
         cw.put_metric_alarm(
@@ -457,7 +456,6 @@ class TestCloudWatchAlarmHistory:
 
 
 class TestCloudWatchAlarmActions:
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_enable_disable_alarm_actions(self, cw):
         """Enable and disable alarm actions."""
         cw.put_metric_alarm(

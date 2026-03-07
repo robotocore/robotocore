@@ -398,6 +398,87 @@ def _remove_tags(store: KinesisStore, params: dict, region: str, account_id: str
     return {}
 
 
+def _describe_stream_summary(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("StreamName", "")
+    stream = store.get_stream(name)
+    if not stream:
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
+
+    open_shard_count = len(stream.shards)
+
+    return {
+        "StreamDescriptionSummary": {
+            "StreamName": stream.name,
+            "StreamARN": stream.arn,
+            "StreamStatus": stream.status,
+            "StreamModeDetails": {"StreamMode": "PROVISIONED"},
+            "RetentionPeriodHours": stream.retention_hours,
+            "StreamCreationTimestamp": stream.created,
+            "EnhancedMonitoring": [{"ShardLevelMetrics": []}],
+            "OpenShardCount": open_shard_count,
+            "ConsumerCount": 0,
+        }
+    }
+
+
+def _update_shard_count(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("StreamName", "")
+    stream = store.get_stream(name)
+    if not stream:
+        raise KinesisError(
+            "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
+        )
+
+    target_shard_count = params.get("TargetShardCount")
+    scaling_type = params.get("ScalingType", "UNIFORM_SCALING")
+
+    if target_shard_count is None:
+        raise KinesisError("ValidationException", "TargetShardCount is required")
+    if scaling_type != "UNIFORM_SCALING":
+        raise KinesisError(
+            "ValidationException",
+            f"ScalingType {scaling_type} is not supported. Only UNIFORM_SCALING is supported.",
+        )
+    if target_shard_count < 1:
+        raise KinesisError(
+            "InvalidArgumentException", "TargetShardCount must be at least 1."
+        )
+
+    current_shard_count = len(stream.shards)
+
+    # Rebuild shards to match the new target count
+    from robotocore.services.kinesis.models import MAX_HASH_KEY, Shard
+
+    new_shards = []
+    for i in range(target_shard_count):
+        range_size = (MAX_HASH_KEY + 1) // target_shard_count
+        start = i * range_size
+        end = (i + 1) * range_size - 1 if i < target_shard_count - 1 else MAX_HASH_KEY
+        shard = Shard(
+            shard_id=f"shardId-{i:012d}",
+            hash_key_start=start,
+            hash_key_end=end,
+            starting_sequence_number="00000000000000000000",
+        )
+        new_shards.append(shard)
+
+    stream.shards = new_shards
+    stream.shard_count = target_shard_count
+
+    return {
+        "StreamName": stream.name,
+        "CurrentShardCount": current_shard_count,
+        "TargetShardCount": target_shard_count,
+        "StreamARN": stream.arn,
+    }
+
+
 def _list_tags(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
@@ -430,4 +511,6 @@ _ACTION_MAP: dict[str, Callable] = {
     "AddTagsToStream": _add_tags,
     "RemoveTagsFromStream": _remove_tags,
     "ListTagsForStream": _list_tags,
+    "DescribeStreamSummary": _describe_stream_summary,
+    "UpdateShardCount": _update_shard_count,
 }

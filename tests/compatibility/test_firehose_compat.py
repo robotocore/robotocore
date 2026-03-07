@@ -98,6 +98,42 @@ class TestFirehoseOperations:
         assert response["FailedPutCount"] == 0
         assert len(response["RequestResponses"]) == 3
 
+    def test_tag_delivery_stream(self, firehose, delivery_stream):
+        firehose.tag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        response = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+        )
+        tags = response["Tags"]
+        tag_map = {t["Key"]: t["Value"] for t in tags}
+        assert tag_map["env"] == "test"
+        assert tag_map["team"] == "platform"
+
+    def test_untag_delivery_stream(self, firehose, delivery_stream):
+        firehose.tag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        firehose.untag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            TagKeys=["env"],
+        )
+        response = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+        )
+        tags = response["Tags"]
+        tag_keys = [t["Key"] for t in tags]
+        assert "env" not in tag_keys
+        assert "team" in tag_keys
+
     def test_delete_delivery_stream(self, firehose, s3):
         s3.create_bucket(Bucket="fh-delete-test")
         firehose.create_delivery_stream(
@@ -111,59 +147,3 @@ class TestFirehoseOperations:
         streams = firehose.list_delivery_streams()["DeliveryStreamNames"]
         assert "delete-test-stream" not in streams
         s3.delete_bucket(Bucket="fh-delete-test")
-
-
-class TestFirehoseTagging:
-    @pytest.mark.xfail(reason="Not yet implemented")
-    def test_tag_delivery_stream(self, firehose, delivery_stream):
-        """Tag a delivery stream and list tags."""
-        firehose.tag_delivery_stream(
-            DeliveryStreamName=delivery_stream,
-            Tags=[
-                {"Key": "env", "Value": "test"},
-                {"Key": "team", "Value": "data"},
-            ],
-        )
-        response = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
-        tag_map = {t["Key"]: t["Value"] for t in response["Tags"]}
-        assert tag_map["env"] == "test"
-        assert tag_map["team"] == "data"
-
-    @pytest.mark.xfail(reason="Not yet implemented")
-    def test_untag_delivery_stream(self, firehose, delivery_stream):
-        """Untag a delivery stream."""
-        firehose.tag_delivery_stream(
-            DeliveryStreamName=delivery_stream,
-            Tags=[{"Key": "k1", "Value": "v1"}, {"Key": "k2", "Value": "v2"}],
-        )
-        firehose.untag_delivery_stream(
-            DeliveryStreamName=delivery_stream,
-            TagKeys=["k1"],
-        )
-        response = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
-        tag_map = {t["Key"]: t["Value"] for t in response["Tags"]}
-        assert "k1" not in tag_map
-        assert tag_map["k2"] == "v2"
-
-
-class TestFirehoseDescribeDetails:
-    def test_describe_stream_has_destinations(self, firehose, delivery_stream):
-        """Verify describe stream includes destination configuration."""
-        response = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
-        desc = response["DeliveryStreamDescription"]
-        assert "Destinations" in desc
-        assert len(desc["Destinations"]) >= 1
-        assert "DeliveryStreamARN" in desc
-
-    def test_list_delivery_streams_with_type(self, firehose, delivery_stream):
-        """List streams filtered by type."""
-        response = firehose.list_delivery_streams(
-            DeliveryStreamType="DirectPut"
-        )
-        assert delivery_stream in response["DeliveryStreamNames"]

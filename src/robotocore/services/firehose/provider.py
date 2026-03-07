@@ -12,6 +12,7 @@ from starlette.responses import Response
 
 _delivery_streams: dict[str, dict] = {}
 _stream_buffers: dict[str, list[bytes]] = {}
+_stream_tags: dict[str, list[dict[str, str]]] = {}
 _lock = threading.Lock()
 _worker_started = False
 _worker_lock = threading.Lock()
@@ -148,6 +149,7 @@ def _create_delivery_stream(params: dict, region: str, account_id: str) -> dict:
         }
         _delivery_streams[name] = stream
         _stream_buffers[name] = []
+        _stream_tags[name] = list(params.get("Tags", []))
 
     return {"DeliveryStreamARN": stream["arn"]}
 
@@ -159,6 +161,7 @@ def _delete_delivery_stream(params: dict, region: str, account_id: str) -> dict:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
         del _delivery_streams[name]
         _stream_buffers.pop(name, None)
+        _stream_tags.pop(name, None)
     return {}
 
 
@@ -262,6 +265,43 @@ def _put_record_batch(params: dict, region: str, account_id: str) -> dict:
     }
 
 
+def _tag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    tags = params.get("Tags", [])
+    with _lock:
+        if name not in _delivery_streams:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+        existing = _stream_tags.setdefault(name, [])
+        # Merge: update existing keys, add new ones
+        existing_keys = {t["Key"]: i for i, t in enumerate(existing)}
+        for tag in tags:
+            if tag["Key"] in existing_keys:
+                existing[existing_keys[tag["Key"]]] = tag
+            else:
+                existing.append(tag)
+    return {}
+
+
+def _untag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    tag_keys = params.get("TagKeys", [])
+    with _lock:
+        if name not in _delivery_streams:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+        existing = _stream_tags.get(name, [])
+        _stream_tags[name] = [t for t in existing if t["Key"] not in tag_keys]
+    return {}
+
+
+def _list_tags_for_delivery_stream(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("DeliveryStreamName", "")
+    with _lock:
+        if name not in _delivery_streams:
+            raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
+        tags = list(_stream_tags.get(name, []))
+    return {"Tags": tags, "HasMoreTags": False}
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
@@ -274,4 +314,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListDeliveryStreams": _list_delivery_streams,
     "PutRecord": _put_record,
     "PutRecordBatch": _put_record_batch,
+    "TagDeliveryStream": _tag_delivery_stream,
+    "UntagDeliveryStream": _untag_delivery_stream,
+    "ListTagsForDeliveryStream": _list_tags_for_delivery_stream,
 }

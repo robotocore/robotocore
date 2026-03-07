@@ -200,7 +200,6 @@ class TestSNSTags:
 
 
 class TestSNSPublishBatch:
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_publish_batch(self, sns, topic_arn):
         """Publish a batch of messages."""
         response = sns.publish_batch(

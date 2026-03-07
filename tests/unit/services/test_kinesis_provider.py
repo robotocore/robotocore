@@ -288,6 +288,73 @@ class TestHandleKinesisRequest:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_describe_stream_summary(self):
+        req1 = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 3})
+        await handle_kinesis_request(req1, "us-east-1", "123456789012")
+
+        req2 = _make_request("DescribeStreamSummary", {"StreamName": "s1"})
+        resp = await handle_kinesis_request(req2, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        summary = data["StreamDescriptionSummary"]
+        assert summary["StreamName"] == "s1"
+        assert summary["StreamStatus"] == "ACTIVE"
+        assert summary["OpenShardCount"] == 3
+        assert "StreamARN" in summary
+        assert "RetentionPeriodHours" in summary
+        assert summary["ConsumerCount"] == 0
+
+    @pytest.mark.asyncio
+    async def test_describe_stream_summary_nonexistent(self):
+        req = _make_request("DescribeStreamSummary", {"StreamName": "nope"})
+        resp = await handle_kinesis_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        assert "ResourceNotFoundException" in resp.body.decode()
+
+    @pytest.mark.asyncio
+    async def test_update_shard_count(self):
+        req1 = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req1, "us-east-1", "123456789012")
+
+        req2 = _make_request(
+            "UpdateShardCount",
+            {"StreamName": "s1", "TargetShardCount": 4, "ScalingType": "UNIFORM_SCALING"},
+        )
+        resp = await handle_kinesis_request(req2, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["CurrentShardCount"] == 1
+        assert data["TargetShardCount"] == 4
+
+        # Verify shards were actually updated
+        req3 = _make_request("ListShards", {"StreamName": "s1"})
+        resp3 = await handle_kinesis_request(req3, "us-east-1", "123456789012")
+        shards = json.loads(resp3.body)["Shards"]
+        assert len(shards) == 4
+
+    @pytest.mark.asyncio
+    async def test_update_shard_count_nonexistent_stream(self):
+        req = _make_request(
+            "UpdateShardCount",
+            {"StreamName": "nope", "TargetShardCount": 2, "ScalingType": "UNIFORM_SCALING"},
+        )
+        resp = await handle_kinesis_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        assert "ResourceNotFoundException" in resp.body.decode()
+
+    @pytest.mark.asyncio
+    async def test_update_shard_count_missing_target(self):
+        req1 = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req1, "us-east-1", "123456789012")
+
+        req2 = _make_request(
+            "UpdateShardCount",
+            {"StreamName": "s1", "ScalingType": "UNIFORM_SCALING"},
+        )
+        resp = await handle_kinesis_request(req2, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_internal_error_returns_500(self):
         """Unexpected exception becomes 500 InternalError."""
         from robotocore.services.kinesis.provider import _ACTION_MAP

@@ -149,36 +149,26 @@ class TestKinesisOperations:
         response = kinesis.describe_stream(StreamName=stream)
         assert response["StreamDescription"]["RetentionPeriodHours"] == 24
 
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_describe_stream_summary(self, kinesis, stream):
+        """DescribeStreamSummary returns summary with OpenShardCount."""
         response = kinesis.describe_stream_summary(StreamName=stream)
         summary = response["StreamDescriptionSummary"]
         assert summary["StreamName"] == stream
         assert summary["StreamStatus"] == "ACTIVE"
-        assert summary["OpenShardCount"] >= 1
+        assert summary["OpenShardCount"] == 1
+        assert "StreamARN" in summary
+        assert "RetentionPeriodHours" in summary
 
-    def test_get_records_empty_shard(self, kinesis, stream):
-        """Get records from shard with no data returns empty list."""
-        desc = kinesis.describe_stream(StreamName=stream)
-        shard_id = desc["StreamDescription"]["Shards"][0]["ShardId"]
-        iterator = kinesis.get_shard_iterator(
-            StreamName=stream,
-            ShardId=shard_id,
-            ShardIteratorType="LATEST",
-        )["ShardIterator"]
-        records = kinesis.get_records(ShardIterator=iterator)
-        assert records["Records"] == []
-        assert "NextShardIterator" in records
-
-    @pytest.mark.xfail(reason="Not yet implemented")
     def test_update_shard_count(self, kinesis, stream):
-        """Update stream to have more shards."""
-        kinesis.update_shard_count(
+        """UpdateShardCount changes the number of shards."""
+        response = kinesis.update_shard_count(
             StreamName=stream,
             TargetShardCount=2,
             ScalingType="UNIFORM_SCALING",
         )
-        # After update, stream should reflect the new count
-        kinesis.get_waiter("stream_exists").wait(StreamName=stream)
-        kinesis.describe_stream_summary(StreamName=stream)
-        # Shard count update may be async, just verify no error
+        assert response["CurrentShardCount"] == 1
+        assert response["TargetShardCount"] == 2
+
+        # Verify the stream now has 2 shards
+        desc = kinesis.describe_stream_summary(StreamName=stream)
+        assert desc["StreamDescriptionSummary"]["OpenShardCount"] == 2

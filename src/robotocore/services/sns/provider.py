@@ -330,7 +330,28 @@ def _publish_batch(
     if not topic:
         raise SnsError("NotFound", f"Topic {topic_arn} not found", 404)
 
-    entries = params.get("PublishBatchRequestEntries", [])
+    # Parse entries from query params: PublishBatchRequestEntries.member.N.Field
+    entries = []
+    i = 1
+    while f"PublishBatchRequestEntries.member.{i}.Id" in params:
+        entry = {
+            "Id": params[f"PublishBatchRequestEntries.member.{i}.Id"],
+            "Message": params.get(f"PublishBatchRequestEntries.member.{i}.Message", ""),
+        }
+        subject = params.get(f"PublishBatchRequestEntries.member.{i}.Subject")
+        if subject:
+            entry["Subject"] = subject
+        group_id = params.get(f"PublishBatchRequestEntries.member.{i}.MessageGroupId")
+        if group_id:
+            entry["MessageGroupId"] = group_id
+        dedup_id = params.get(
+            f"PublishBatchRequestEntries.member.{i}.MessageDeduplicationId"
+        )
+        if dedup_id:
+            entry["MessageDeduplicationId"] = dedup_id
+        i += 1
+        entries.append(entry)
+
     successful = []
     for entry in entries:
         msg_id = _new_id()
