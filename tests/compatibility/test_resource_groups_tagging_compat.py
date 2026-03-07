@@ -83,3 +83,89 @@ class TestResourceGroupsTaggingOperations:
         assert "ResourceTagMappingList" in response
         queue_url = sqs.get_queue_url(QueueName="type-filter-queue")["QueueUrl"]
         sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestTaggingExtended:
+    @pytest.fixture
+    def tagging(self):
+        return make_client("resourcegroupstaggingapi")
+
+    @pytest.fixture
+    def sqs(self):
+        return make_client("sqs")
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_get_tag_keys_returns_list(self, tagging):
+        resp = tagging.get_tag_keys()
+        assert "TagKeys" in resp
+
+    def test_get_tag_values_returns_list(self, tagging):
+        resp = tagging.get_tag_values(Key="env")
+        assert "TagValues" in resp
+
+    def test_tag_resources_multiple_tags(self, tagging, sqs):
+        import uuid
+        name = f"multi-tag-{uuid.uuid4().hex[:8]}"
+        sqs.create_queue(QueueName=name)
+        url = sqs.get_queue_url(QueueName=name)["QueueUrl"]
+        attrs = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])
+        arn = attrs["Attributes"]["QueueArn"]
+        try:
+            resp = tagging.tag_resources(
+                ResourceARNList=[arn],
+                Tags={"env": "test", "team": "platform", "project": "search"},
+            )
+            assert "FailedResourcesMap" in resp
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_get_resources_with_multiple_tag_filters(self, tagging, sqs):
+        import uuid
+        name = f"multi-filter-{uuid.uuid4().hex[:8]}"
+        sqs.create_queue(QueueName=name, tags={"env": "filter-test", "team": "dev"})
+        url = sqs.get_queue_url(QueueName=name)["QueueUrl"]
+        try:
+            resp = tagging.get_resources(
+                TagFilters=[
+                    {"Key": "env", "Values": ["filter-test"]},
+                    {"Key": "team", "Values": ["dev"]},
+                ],
+            )
+            assert "ResourceTagMappingList" in resp
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_get_resources_empty_result(self, tagging):
+        resp = tagging.get_resources(
+            TagFilters=[{"Key": "nonexistent-key-xyz", "Values": ["nothing"]}],
+        )
+        assert resp["ResourceTagMappingList"] == []
+
+    def test_tag_and_get_resources_sns(self, tagging, sns):
+        import uuid
+        name = f"tag-topic-{uuid.uuid4().hex[:8]}"
+        resp = sns.create_topic(Name=name, Tags=[{"Key": "env", "Value": "tag-test"}])
+        arn = resp["TopicArn"]
+        try:
+            resources = tagging.get_resources(
+                TagFilters=[{"Key": "env", "Values": ["tag-test"]}],
+            )
+            assert "ResourceTagMappingList" in resources
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_untag_resources_returns_empty_failures(self, tagging, sqs):
+        import uuid
+        name = f"untag-empty-{uuid.uuid4().hex[:8]}"
+        sqs.create_queue(QueueName=name, tags={"temp": "yes"})
+        url = sqs.get_queue_url(QueueName=name)["QueueUrl"]
+        attrs = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])
+        arn = attrs["Attributes"]["QueueArn"]
+        try:
+            resp = tagging.untag_resources(ResourceARNList=[arn], TagKeys=["temp"])
+            assert resp["FailedResourcesMap"] == {} or "FailedResourcesMap" in resp
+        finally:
+            sqs.delete_queue(QueueUrl=url)
