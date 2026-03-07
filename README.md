@@ -517,6 +517,8 @@ Contributions are welcome. The project is built on Moto — when we find a bug i
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture notes and conventions (readable by both humans and AI coding agents).
 
+The [`prompts/`](prompts/) directory contains a log of the AI prompts and reasoning used to build this project — a [prompt log](https://jackdanger.com/promptlog/). If you're reviewing a change and want to understand *why* a particular approach was taken (not just what the code does), that's the place to look. If you're an agent picking up this codebase, it's also a useful record of which patterns have been tried, what worked, and what didn't.
+
 ---
 
 ## License
