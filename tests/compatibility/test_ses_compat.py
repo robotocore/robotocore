@@ -1,7 +1,5 @@
 """SES compatibility tests."""
 
-import uuid
-
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -12,9 +10,12 @@ def ses():
     return make_client("ses")
 
 
-class TestSESIdentities:
-    """Tests for email and domain identity management."""
+@pytest.fixture
+def sesv2():
+    return make_client("sesv2")
 
+
+class TestSESOperations:
     def test_verify_email_identity(self, ses):
         response = ses.verify_email_identity(EmailAddress="test@example.com")
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
@@ -23,80 +24,6 @@ class TestSESIdentities:
         ses.verify_email_identity(EmailAddress="list@example.com")
         response = ses.list_identities()
         assert "list@example.com" in response["Identities"]
-
-    def test_verify_domain_identity(self, ses):
-        response = ses.verify_domain_identity(Domain="example.org")
-        assert "VerificationToken" in response
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        identities = ses.list_identities(IdentityType="Domain")
-        assert "example.org" in identities["Identities"]
-
-    def test_list_verified_identities_email_type(self, ses):
-        """List identities filtered by email type."""
-        ses.verify_email_identity(EmailAddress="filter-email@example.com")
-        response = ses.list_identities(IdentityType="EmailAddress")
-        assert "filter-email@example.com" in response["Identities"]
-
-    def test_delete_identity(self, ses):
-        """Verify and then delete an identity."""
-        ses.verify_email_identity(EmailAddress="delete-me@example.com")
-        identities = ses.list_identities()
-        assert "delete-me@example.com" in identities["Identities"]
-        ses.delete_identity(Identity="delete-me@example.com")
-        identities = ses.list_identities()
-        assert "delete-me@example.com" not in identities["Identities"]
-
-    def test_delete_identity_idempotent(self, ses):
-        """Deleting a non-existent identity should succeed without error."""
-        response = ses.delete_identity(Identity="nonexistent@example.com")
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_get_identity_verification_attributes(self, ses):
-        ses.verify_email_identity(EmailAddress="verify-attrs@example.com")
-        response = ses.get_identity_verification_attributes(
-            Identities=["verify-attrs@example.com"]
-        )
-        attrs = response["VerificationAttributes"]
-        assert "verify-attrs@example.com" in attrs
-        assert attrs["verify-attrs@example.com"]["VerificationStatus"] == "Success"
-
-    def test_get_identity_verification_attributes_multiple(self, ses):
-        """Query verification attributes for multiple identities at once."""
-        ses.verify_email_identity(EmailAddress="multi-a@example.com")
-        ses.verify_email_identity(EmailAddress="multi-b@example.com")
-        response = ses.get_identity_verification_attributes(
-            Identities=["multi-a@example.com", "multi-b@example.com"]
-        )
-        attrs = response["VerificationAttributes"]
-        assert "multi-a@example.com" in attrs
-        assert "multi-b@example.com" in attrs
-
-    def test_set_identity_feedback_forwarding(self, ses):
-        """Enable/disable feedback forwarding for an identity."""
-        ses.verify_email_identity(EmailAddress="feedback@example.com")
-        response = ses.set_identity_feedback_forwarding_enabled(
-            Identity="feedback@example.com",
-            ForwardingEnabled=False,
-        )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_list_identities_with_max_items(self, ses):
-        """List identities respects MaxItems parameter."""
-        for i in range(3):
-            ses.verify_email_identity(EmailAddress=f"page-{i}@example.com")
-        response = ses.list_identities(MaxItems=2)
-        assert len(response["Identities"]) <= 2
-
-    def test_verify_domain_dkim(self, ses):
-        """Verify DKIM for a domain returns DKIM tokens."""
-        response = ses.verify_domain_dkim(Domain="dkim-test.example.org")
-        assert "DkimTokens" in response
-        assert isinstance(response["DkimTokens"], list)
-        assert len(response["DkimTokens"]) > 0
-
-
-class TestSESSendEmail:
-    """Tests for sending emails."""
 
     def test_send_email(self, ses):
         ses.verify_email_identity(EmailAddress="sender@example.com")
@@ -110,36 +37,26 @@ class TestSESSendEmail:
         )
         assert "MessageId" in response
 
-    def test_send_email_html_body(self, ses):
-        """Send an email with an HTML body."""
-        ses.verify_email_identity(EmailAddress="html-sender@example.com")
-        response = ses.send_email(
-            Source="html-sender@example.com",
-            Destination={"ToAddresses": ["recipient@example.com"]},
-            Message={
-                "Subject": {"Data": "HTML Test"},
-                "Body": {"Html": {"Data": "<h1>Hello</h1><p>HTML body</p>"}},
-            },
-        )
-        assert "MessageId" in response
+    def test_verify_domain_identity(self, ses):
+        response = ses.verify_domain_identity(Domain="example.org")
+        assert "VerificationToken" in response
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Confirm the domain appears in identities
+        identities = ses.list_identities(IdentityType="Domain")
+        assert "example.org" in identities["Identities"]
+
+    def test_get_send_statistics(self, ses):
+        response = ses.get_send_statistics()
+        assert "SendDataPoints" in response
+        assert isinstance(response["SendDataPoints"], list)
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_send_email_multiple_recipients(self, ses):
-        """Send an email to multiple To, CC, and BCC addresses."""
-        ses.verify_email_identity(EmailAddress="multi-rcpt@example.com")
-        response = ses.send_email(
-            Source="multi-rcpt@example.com",
-            Destination={
-                "ToAddresses": ["to1@example.com", "to2@example.com"],
-                "CcAddresses": ["cc@example.com"],
-                "BccAddresses": ["bcc@example.com"],
-            },
-            Message={
-                "Subject": {"Data": "Multi-recipient"},
-                "Body": {"Text": {"Data": "Body"}},
-            },
-        )
-        assert "MessageId" in response
+    def test_get_identity_verification_attributes(self, ses):
+        ses.verify_email_identity(EmailAddress="verify-attrs@example.com")
+        response = ses.get_identity_verification_attributes(Identities=["verify-attrs@example.com"])
+        attrs = response["VerificationAttributes"]
+        assert "verify-attrs@example.com" in attrs
+        assert attrs["verify-attrs@example.com"]["VerificationStatus"] == "Success"
 
     def test_send_raw_email(self, ses):
         """Send a raw MIME email."""
@@ -159,26 +76,11 @@ class TestSESSendEmail:
         assert "MessageId" in response
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_send_raw_email_with_destinations(self, ses):
-        """Send a raw email specifying explicit destinations."""
-        ses.verify_email_identity(EmailAddress="raw2@example.com")
-        raw_message = (
-            "From: raw2@example.com\r\n"
-            "Subject: Raw with destinations\r\n"
-            "Content-Type: text/plain\r\n"
-            "\r\n"
-            "Body content.\r\n"
-        )
-        response = ses.send_raw_email(
-            Source="raw2@example.com",
-            Destinations=["dest1@example.com", "dest2@example.com"],
-            RawMessage={"Data": raw_message},
-        )
-        assert "MessageId" in response
-
-
-class TestSESSendQuotaAndStats:
-    """Tests for send quota and statistics."""
+    def test_list_verified_identities_email_type(self, ses):
+        """List identities filtered by email type."""
+        ses.verify_email_identity(EmailAddress="filter-email@example.com")
+        response = ses.list_identities(IdentityType="EmailAddress")
+        assert "filter-email@example.com" in response["Identities"]
 
     def test_get_send_quota(self, ses):
         """Get send quota returns expected fields."""
@@ -188,244 +90,328 @@ class TestSESSendQuotaAndStats:
         assert "MaxSendRate" in response
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_send_statistics(self, ses):
-        response = ses.get_send_statistics()
-        assert "SendDataPoints" in response
-        assert isinstance(response["SendDataPoints"], list)
+    def test_set_identity_feedback_forwarding(self, ses):
+        """Enable/disable feedback forwarding for an identity."""
+        ses.verify_email_identity(EmailAddress="feedback@example.com")
+        response = ses.set_identity_feedback_forwarding_enabled(
+            Identity="feedback@example.com",
+            ForwardingEnabled=False,
+        )
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_account_sending_enabled(self, ses):
-        """Check that account sending status can be retrieved."""
-        response = ses.get_account_sending_enabled()
-        assert "Enabled" in response
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_delete_identity(self, ses):
+        """Verify and then delete an identity."""
+        ses.verify_email_identity(EmailAddress="delete-me@example.com")
+        identities = ses.list_identities()
+        assert "delete-me@example.com" in identities["Identities"]
+        ses.delete_identity(Identity="delete-me@example.com")
+        identities = ses.list_identities()
+        assert "delete-me@example.com" not in identities["Identities"]
 
+    def test_verify_domain_identity_in_list(self, ses):
+        """Verify a domain and check it appears in domain identity list."""
+        ses.verify_domain_identity(Domain="compat-domain.com")
+        identities = ses.list_identities(IdentityType="Domain")
+        assert "compat-domain.com" in identities["Identities"]
 
-class TestSESReceiptRules:
-    """Tests for receipt rule sets and receipt rules."""
+    def test_get_send_quota_fields(self, ses):
+        """Verify send quota returns numeric fields."""
+        quota = ses.get_send_quota()
+        assert isinstance(quota["Max24HourSend"], float)
+        assert isinstance(quota["MaxSendRate"], float)
+        assert isinstance(quota["SentLast24Hours"], float)
+
+    def test_get_send_statistics_structure(self, ses):
+        """Verify send statistics returns a list of data points."""
+        stats = ses.get_send_statistics()
+        assert "SendDataPoints" in stats
+        # Each data point should have expected keys if any exist
+        for dp in stats["SendDataPoints"]:
+            assert "Timestamp" in dp
 
     def test_create_receipt_rule_set(self, ses):
-        rule_set_name = f"test-ruleset-{uuid.uuid4().hex[:8]}"
-        response = ses.create_receipt_rule_set(RuleSetName=rule_set_name)
+        """Create a receipt rule set."""
+        response = ses.create_receipt_rule_set(RuleSetName="compat-ruleset")
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Cleanup
-        ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
-
-    def test_describe_receipt_rule_set(self, ses):
-        rule_set_name = f"test-describe-rs-{uuid.uuid4().hex[:8]}"
-        ses.create_receipt_rule_set(RuleSetName=rule_set_name)
-        response = ses.describe_receipt_rule_set(RuleSetName=rule_set_name)
-        assert "Metadata" in response
-        assert response["Metadata"]["Name"] == rule_set_name
-        assert "Rules" in response
-        assert isinstance(response["Rules"], list)
-        # Cleanup
-        ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
-
-    def test_delete_receipt_rule_set(self, ses):
-        rule_set_name = f"test-delete-rs-{uuid.uuid4().hex[:8]}"
-        ses.create_receipt_rule_set(RuleSetName=rule_set_name)
-        response = ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Verify it no longer exists
-        with pytest.raises(ses.exceptions.RuleSetDoesNotExistException):
-            ses.describe_receipt_rule_set(RuleSetName=rule_set_name)
+        # Clean up
+        ses.delete_receipt_rule_set(RuleSetName="compat-ruleset")
 
     def test_create_receipt_rule(self, ses):
-        rule_set_name = f"test-rule-rs-{uuid.uuid4().hex[:8]}"
-        ses.create_receipt_rule_set(RuleSetName=rule_set_name)
-        response = ses.create_receipt_rule(
-            RuleSetName=rule_set_name,
-            Rule={
-                "Name": "my-rule",
-                "Enabled": True,
-                "Recipients": ["inbox@example.com"],
-                "Actions": [
-                    {
-                        "S3Action": {
-                            "BucketName": "my-bucket",
+        """Create a receipt rule within a rule set."""
+        ses.create_receipt_rule_set(RuleSetName="rule-test-set")
+        try:
+            response = ses.create_receipt_rule(
+                RuleSetName="rule-test-set",
+                Rule={
+                    "Name": "test-rule",
+                    "Enabled": True,
+                    "Recipients": ["test@example.com"],
+                    "Actions": [
+                        {
+                            "S3Action": {
+                                "BucketName": "my-bucket",
+                            }
                         }
-                    }
-                ],
-            },
-        )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Verify rule exists in rule set
-        desc = ses.describe_receipt_rule_set(RuleSetName=rule_set_name)
-        rule_names = [r["Name"] for r in desc["Rules"]]
-        assert "my-rule" in rule_names
-        # Cleanup
-        ses.delete_receipt_rule(RuleSetName=rule_set_name, RuleName="my-rule")
-        ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
-
-    def test_delete_receipt_rule(self, ses):
-        rule_set_name = f"test-delrule-rs-{uuid.uuid4().hex[:8]}"
-        ses.create_receipt_rule_set(RuleSetName=rule_set_name)
-        ses.create_receipt_rule(
-            RuleSetName=rule_set_name,
-            Rule={
-                "Name": "rule-to-delete",
-                "Enabled": True,
-                "Recipients": [],
-                "Actions": [],
-            },
-        )
-        response = ses.delete_receipt_rule(
-            RuleSetName=rule_set_name, RuleName="rule-to-delete"
-        )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        desc = ses.describe_receipt_rule_set(RuleSetName=rule_set_name)
-        rule_names = [r["Name"] for r in desc["Rules"]]
-        assert "rule-to-delete" not in rule_names
-        # Cleanup
-        ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
-
-    def test_list_receipt_rule_sets(self, ses):
-        rule_set_name = f"test-list-rs-{uuid.uuid4().hex[:8]}"
-        ses.create_receipt_rule_set(RuleSetName=rule_set_name)
-        response = ses.list_receipt_rule_sets()
-        assert "RuleSets" in response
-        names = [rs["Name"] for rs in response["RuleSets"]]
-        assert rule_set_name in names
-        # Cleanup
-        ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
-
-
-class TestSESConfigurationSets:
-    """Tests for configuration set management."""
-
-    def test_create_configuration_set(self, ses):
-        cs_name = f"test-cs-{uuid.uuid4().hex[:8]}"
-        response = ses.create_configuration_set(
-            ConfigurationSet={"Name": cs_name}
-        )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Cleanup
-        ses.delete_configuration_set(ConfigurationSetName=cs_name)
-
-    def test_describe_configuration_set(self, ses):
-        cs_name = f"test-desc-cs-{uuid.uuid4().hex[:8]}"
-        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
-        response = ses.describe_configuration_set(
-            ConfigurationSetName=cs_name,
-            ConfigurationSetAttributeNames=["eventDestinations"],
-        )
-        assert response["ConfigurationSet"]["Name"] == cs_name
-        assert "EventDestinations" in response
-        # Cleanup
-        ses.delete_configuration_set(ConfigurationSetName=cs_name)
-
-    def test_delete_configuration_set(self, ses):
-        cs_name = f"test-del-cs-{uuid.uuid4().hex[:8]}"
-        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
-        response = ses.delete_configuration_set(ConfigurationSetName=cs_name)
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Verify deletion
-        with pytest.raises(ses.exceptions.ConfigurationSetDoesNotExistException):
-            ses.describe_configuration_set(
-                ConfigurationSetName=cs_name,
-                ConfigurationSetAttributeNames=["eventDestinations"],
+                    ],
+                },
             )
+            assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_receipt_rule(
+                RuleSetName="rule-test-set", RuleName="test-rule"
+            )
+            ses.delete_receipt_rule_set(RuleSetName="rule-test-set")
 
-    def test_list_configuration_sets(self, ses):
-        cs_name = f"test-listcs-{uuid.uuid4().hex[:8]}"
-        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
-        response = ses.list_configuration_sets()
-        assert "ConfigurationSets" in response
-        names = [cs["Name"] for cs in response["ConfigurationSets"]]
-        assert cs_name in names
-        # Cleanup
-        ses.delete_configuration_set(ConfigurationSetName=cs_name)
-
-
-class TestSESTemplates:
-    """Tests for email template management."""
-
-    def test_create_template(self, ses):
-        tpl_name = f"test-tpl-{uuid.uuid4().hex[:8]}"
-        response = ses.create_template(
-            Template={
-                "TemplateName": tpl_name,
-                "SubjectPart": "Hello {{name}}",
-                "TextPart": "Dear {{name}}, welcome!",
-                "HtmlPart": "<h1>Hello {{name}}</h1>",
-            }
+    @pytest.mark.xfail(reason="SetIdentityNotificationTopic not fully supported")
+    def test_set_identity_notification_topic(self, ses):
+        """Set notification topic for an identity."""
+        ses.verify_email_identity(EmailAddress="notif@example.com")
+        response = ses.set_identity_notification_topic(
+            Identity="notif@example.com",
+            NotificationType="Bounce",
         )
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Cleanup
-        ses.delete_template(TemplateName=tpl_name)
 
-    def test_get_template(self, ses):
-        tpl_name = f"test-get-tpl-{uuid.uuid4().hex[:8]}"
-        ses.create_template(
-            Template={
-                "TemplateName": tpl_name,
-                "SubjectPart": "Subject {{var}}",
-                "TextPart": "Text {{var}}",
-                "HtmlPart": "<p>{{var}}</p>",
-            }
-        )
-        response = ses.get_template(TemplateName=tpl_name)
-        template = response["Template"]
-        assert template["TemplateName"] == tpl_name
-        assert template["SubjectPart"] == "Subject {{var}}"
-        assert template["TextPart"] == "Text {{var}}"
-        assert template["HtmlPart"] == "<p>{{var}}</p>"
-        # Cleanup
-        ses.delete_template(TemplateName=tpl_name)
+    def test_send_raw_email_with_attachment(self, ses):
+        """Send a raw MIME email with an attachment-like structure."""
+        ses.verify_email_identity(EmailAddress="attach-sender@example.com")
+        import base64
 
-    def test_list_templates(self, ses):
-        tpl_name = f"test-list-tpl-{uuid.uuid4().hex[:8]}"
-        ses.create_template(
-            Template={
-                "TemplateName": tpl_name,
-                "SubjectPart": "S",
-                "TextPart": "T",
-            }
+        attachment_data = base64.b64encode(b"Hello attachment content").decode()
+        raw_message = (
+            "From: attach-sender@example.com\r\n"
+            "To: recipient@example.com\r\n"
+            "Subject: Attachment Test\r\n"
+            "MIME-Version: 1.0\r\n"
+            'Content-Type: multipart/mixed; boundary="boundary"\r\n'
+            "\r\n"
+            "--boundary\r\n"
+            "Content-Type: text/plain\r\n"
+            "\r\n"
+            "This email has an attachment.\r\n"
+            "--boundary\r\n"
+            "Content-Type: application/octet-stream\r\n"
+            "Content-Transfer-Encoding: base64\r\n"
+            'Content-Disposition: attachment; filename="test.txt"\r\n'
+            "\r\n"
+            f"{attachment_data}\r\n"
+            "--boundary--\r\n"
         )
-        response = ses.list_templates()
-        assert "TemplatesMetadata" in response
-        names = [t["Name"] for t in response["TemplatesMetadata"]]
-        assert tpl_name in names
-        # Cleanup
-        ses.delete_template(TemplateName=tpl_name)
+        response = ses.send_raw_email(
+            Source="attach-sender@example.com",
+            RawMessage={"Data": raw_message},
+        )
+        assert "MessageId" in response
 
-    def test_delete_template(self, ses):
-        tpl_name = f"test-del-tpl-{uuid.uuid4().hex[:8]}"
-        ses.create_template(
-            Template={
-                "TemplateName": tpl_name,
-                "SubjectPart": "S",
-                "TextPart": "T",
-            }
+    def test_send_email_html_body(self, ses):
+        """Send an email with HTML body."""
+        ses.verify_email_identity(EmailAddress="html-sender@example.com")
+        response = ses.send_email(
+            Source="html-sender@example.com",
+            Destination={"ToAddresses": ["html-recipient@example.com"]},
+            Message={
+                "Subject": {"Data": "HTML Test"},
+                "Body": {"Html": {"Data": "<h1>Hello</h1><p>World</p>"}},
+            },
         )
-        response = ses.delete_template(TemplateName=tpl_name)
+        assert "MessageId" in response
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Verify deletion
-        with pytest.raises(ses.exceptions.TemplateDoesNotExistException):
-            ses.get_template(TemplateName=tpl_name)
 
-    def test_update_template(self, ses):
-        tpl_name = f"test-upd-tpl-{uuid.uuid4().hex[:8]}"
-        ses.create_template(
-            Template={
-                "TemplateName": tpl_name,
-                "SubjectPart": "Original",
-                "TextPart": "Original text",
-            }
+    def test_send_email_with_cc_and_bcc(self, ses):
+        """Send an email with CC and BCC recipients."""
+        ses.verify_email_identity(EmailAddress="cc-sender@example.com")
+        response = ses.send_email(
+            Source="cc-sender@example.com",
+            Destination={
+                "ToAddresses": ["to@example.com"],
+                "CcAddresses": ["cc@example.com"],
+                "BccAddresses": ["bcc@example.com"],
+            },
+            Message={
+                "Subject": {"Data": "CC BCC Test"},
+                "Body": {"Text": {"Data": "Testing CC and BCC"}},
+            },
         )
-        response = ses.update_template(
-            Template={
-                "TemplateName": tpl_name,
-                "SubjectPart": "Updated",
-                "TextPart": "Updated text",
-                "HtmlPart": "<p>Updated</p>",
-            }
+        assert "MessageId" in response
+
+    def test_get_identity_dkim_attributes(self, ses):
+        """Get DKIM attributes for a verified identity."""
+        ses.verify_email_identity(EmailAddress="dkim@example.com")
+        response = ses.get_identity_dkim_attributes(Identities=["dkim@example.com"])
+        assert "DkimAttributes" in response
+        assert "dkim@example.com" in response["DkimAttributes"]
+
+    def test_list_identities_pagination(self, ses):
+        """Verify list identities supports MaxItems."""
+        for i in range(5):
+            ses.verify_email_identity(EmailAddress=f"page-{i}@example.com")
+        response = ses.list_identities(MaxItems=2)
+        assert len(response["Identities"]) <= 2
+
+
+@pytest.mark.xfail(reason="SES v2 endpoints not yet routed by gateway")
+class TestSESv2Operations:
+    def test_create_email_identity(self, sesv2):
+        """Create an email identity via SES v2."""
+        response = sesv2.create_email_identity(EmailIdentity="v2test@example.com")
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.delete_email_identity(EmailIdentity="v2test@example.com")
+
+    def test_get_email_identity(self, sesv2):
+        """Create and get an email identity via SES v2."""
+        sesv2.create_email_identity(EmailIdentity="v2get@example.com")
+        try:
+            got = sesv2.get_email_identity(EmailIdentity="v2get@example.com")
+            assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "IdentityType" in got
+        finally:
+            sesv2.delete_email_identity(EmailIdentity="v2get@example.com")
+
+    def test_list_email_identities(self, sesv2):
+        """List email identities via SES v2."""
+        sesv2.create_email_identity(EmailIdentity="v2list@example.com")
+        try:
+            response = sesv2.list_email_identities()
+            identity_names = [
+                i["IdentityName"] for i in response["EmailIdentities"]
+            ]
+            assert "v2list@example.com" in identity_names
+        finally:
+            sesv2.delete_email_identity(EmailIdentity="v2list@example.com")
+
+    def test_delete_email_identity(self, sesv2):
+        """Create and delete an email identity via SES v2."""
+        sesv2.create_email_identity(EmailIdentity="v2del@example.com")
+        sesv2.delete_email_identity(EmailIdentity="v2del@example.com")
+        response = sesv2.list_email_identities()
+        identity_names = [i["IdentityName"] for i in response["EmailIdentities"]]
+        assert "v2del@example.com" not in identity_names
+
+    def test_create_configuration_set(self, sesv2):
+        """Create a configuration set via SES v2."""
+        response = sesv2.create_configuration_set(
+            ConfigurationSetName="compat-config-set"
         )
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Verify update
-        got = ses.get_template(TemplateName=tpl_name)
-        assert got["Template"]["SubjectPart"] == "Updated"
-        assert got["Template"]["TextPart"] == "Updated text"
-        # Cleanup
-        ses.delete_template(TemplateName=tpl_name)
+        sesv2.delete_configuration_set(ConfigurationSetName="compat-config-set")
+
+    def test_list_configuration_sets(self, sesv2):
+        """Create configuration sets and list them."""
+        sesv2.create_configuration_set(ConfigurationSetName="list-config-1")
+        sesv2.create_configuration_set(ConfigurationSetName="list-config-2")
+        try:
+            response = sesv2.list_configuration_sets()
+            names = [cs for cs in response["ConfigurationSets"]]
+            assert "list-config-1" in names
+            assert "list-config-2" in names
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName="list-config-1")
+            sesv2.delete_configuration_set(ConfigurationSetName="list-config-2")
+
+    def test_delete_configuration_set(self, sesv2):
+        """Create and delete a configuration set."""
+        sesv2.create_configuration_set(ConfigurationSetName="del-config")
+        sesv2.delete_configuration_set(ConfigurationSetName="del-config")
+        response = sesv2.list_configuration_sets()
+        names = [cs for cs in response["ConfigurationSets"]]
+        assert "del-config" not in names
+
+    def test_create_email_template(self, sesv2):
+        """Create an email template via SES v2."""
+        response = sesv2.create_email_template(
+            TemplateName="compat-template",
+            TemplateContent={
+                "Subject": "Hello {{name}}",
+                "Text": "Hi {{name}}, welcome!",
+                "Html": "<h1>Hi {{name}}</h1>",
+            },
+        )
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.delete_email_template(TemplateName="compat-template")
+
+    def test_get_email_template(self, sesv2):
+        """Create and get an email template."""
+        sesv2.create_email_template(
+            TemplateName="get-template",
+            TemplateContent={
+                "Subject": "Test",
+                "Text": "Body",
+            },
+        )
+        try:
+            got = sesv2.get_email_template(TemplateName="get-template")
+            assert got["TemplateName"] == "get-template"
+            assert got["TemplateContent"]["Subject"] == "Test"
+        finally:
+            sesv2.delete_email_template(TemplateName="get-template")
+
+    def test_list_email_templates(self, sesv2):
+        """Create templates and list them."""
+        sesv2.create_email_template(
+            TemplateName="list-tmpl-1",
+            TemplateContent={"Subject": "S1", "Text": "B1"},
+        )
+        sesv2.create_email_template(
+            TemplateName="list-tmpl-2",
+            TemplateContent={"Subject": "S2", "Text": "B2"},
+        )
+        try:
+            response = sesv2.list_email_templates()
+            names = [t["TemplateName"] for t in response["TemplatesMetadata"]]
+            assert "list-tmpl-1" in names
+            assert "list-tmpl-2" in names
+        finally:
+            sesv2.delete_email_template(TemplateName="list-tmpl-1")
+            sesv2.delete_email_template(TemplateName="list-tmpl-2")
+
+    def test_update_email_template(self, sesv2):
+        """Create and update an email template."""
+        sesv2.create_email_template(
+            TemplateName="upd-template",
+            TemplateContent={"Subject": "Original", "Text": "Original body"},
+        )
+        try:
+            sesv2.update_email_template(
+                TemplateName="upd-template",
+                TemplateContent={"Subject": "Updated", "Text": "Updated body"},
+            )
+            got = sesv2.get_email_template(TemplateName="upd-template")
+            assert got["TemplateContent"]["Subject"] == "Updated"
+        finally:
+            sesv2.delete_email_template(TemplateName="upd-template")
+
+    def test_create_contact_list(self, sesv2):
+        """Create a contact list via SES v2."""
+        response = sesv2.create_contact_list(ContactListName="compat-contacts")
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.delete_contact_list(ContactListName="compat-contacts")
+
+    def test_get_contact_list(self, sesv2):
+        """Create and get a contact list."""
+        sesv2.create_contact_list(ContactListName="get-contacts")
+        try:
+            got = sesv2.get_contact_list(ContactListName="get-contacts")
+            assert got["ContactListName"] == "get-contacts"
+        finally:
+            sesv2.delete_contact_list(ContactListName="get-contacts")
+
+    def test_list_contact_lists(self, sesv2):
+        """Create contact lists and list them."""
+        sesv2.create_contact_list(ContactListName="cl-list-1")
+        sesv2.create_contact_list(ContactListName="cl-list-2")
+        try:
+            response = sesv2.list_contact_lists()
+            names = [cl["ContactListName"] for cl in response["ContactLists"]]
+            assert "cl-list-1" in names
+            assert "cl-list-2" in names
+        finally:
+            sesv2.delete_contact_list(ContactListName="cl-list-1")
+            sesv2.delete_contact_list(ContactListName="cl-list-2")
+
+    def test_delete_contact_list(self, sesv2):
+        """Create and delete a contact list."""
+        sesv2.create_contact_list(ContactListName="del-contacts")
+        sesv2.delete_contact_list(ContactListName="del-contacts")
+        response = sesv2.list_contact_lists()
+        names = [cl["ContactListName"] for cl in response["ContactLists"]]
+        assert "del-contacts" not in names

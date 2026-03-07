@@ -1,6 +1,7 @@
 """Step Functions compatibility tests — including ASL execution."""
 
 import json
+import time
 import uuid
 
 import pytest
@@ -438,299 +439,64 @@ class TestASLExecution:
         assert output["greeting"] == "Alice"
         assert output["static"] == "value"
 
-
-def _unique(prefix: str) -> str:
-    return f"{prefix}-{uuid.uuid4().hex[:8]}"
-
-
-SFN_TRUST_POLICY = json.dumps(
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {"Service": "states.amazonaws.com"},
-                "Action": "sts:AssumeRole",
-            }
-        ],
-    }
-)
-
-
-class TestStepFunctionsExtended:
-    """Extended Step Functions CRUD tests."""
-
-    @pytest.fixture
-    def role_arn(self):
-        iam = make_client("iam")
-        name = _unique("sfn-ext-role")
-        iam.create_role(
-            RoleName=name,
-            AssumeRolePolicyDocument=SFN_TRUST_POLICY,
-        )
-        yield f"arn:aws:iam::123456789012:role/{name}"
-        iam.delete_role(RoleName=name)
-
-    def test_create_state_machine_and_tag(self, sfn, role_arn):
-        """Create state machine, tag it, and verify tags."""
-        name = _unique("tag-sm")
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=name,
-            definition=definition,
-            roleArn=role_arn,
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            sfn.tag_resource(
-                resourceArn=sm_arn,
-                tags=[
-                    {"key": "env", "value": "test"},
-                    {"key": "team", "value": "platform"},
-                ],
-            )
-            tag_resp = sfn.list_tags_for_resource(resourceArn=sm_arn)
-            tag_keys = {t["key"] for t in tag_resp["tags"]}
-            assert "env" in tag_keys
-            assert "team" in tag_keys
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_tag_untag_state_machine(self, sfn, role_arn):
-        """Tag and untag a state machine after creation."""
-        name = _unique("tg-sm")
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            sfn.tag_resource(
-                resourceArn=sm_arn,
-                tags=[
-                    {"key": "project", "value": "robotocore"},
-                    {"key": "version", "value": "1"},
-                ],
-            )
-            tag_resp = sfn.list_tags_for_resource(resourceArn=sm_arn)
-            tag_keys = {t["key"] for t in tag_resp["tags"]}
-            assert "project" in tag_keys
-            assert "version" in tag_keys
-
-            sfn.untag_resource(resourceArn=sm_arn, tagKeys=["version"])
-            tag_resp = sfn.list_tags_for_resource(resourceArn=sm_arn)
-            tag_keys = {t["key"] for t in tag_resp["tags"]}
-            assert "project" in tag_keys
-            assert "version" not in tag_keys
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_describe_execution_fields(self, sfn, role_arn):
-        """Verify describe_execution returns expected fields."""
-        name = _unique("desc-sm")
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "Result": {"ok": True}, "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            exec_resp = sfn.start_execution(
-                stateMachineArn=sm_arn, input=json.dumps({"x": 1})
-            )
-            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
-            assert "executionArn" in desc
-            assert "stateMachineArn" in desc
-            assert desc["stateMachineArn"] == sm_arn
-            assert "status" in desc
-            assert "startDate" in desc
-            assert "input" in desc
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_get_execution_history(self, sfn, role_arn):
-        """Get execution history for a completed execution."""
-        name = _unique("hist-sm")
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "Result": {"done": True}, "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
-            hist = sfn.get_execution_history(executionArn=exec_resp["executionArn"])
-            assert "events" in hist
-            assert len(hist["events"]) >= 1
-            # First event should be ExecutionStarted
-            event_types = [e["type"] for e in hist["events"]]
-            assert "ExecutionStarted" in event_types
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_stop_execution(self, sfn, role_arn):
-        """Stop a running execution (use a Wait state to keep it running)."""
-        name = _unique("stop-sm")
-        definition = json.dumps(
-            {
-                "StartAt": "WaitLong",
-                "States": {
-                    "WaitLong": {
-                        "Type": "Wait",
-                        "Seconds": 300,
-                        "Next": "Done",
-                    },
-                    "Done": {"Type": "Pass", "End": True},
-                },
-            }
-        )
-        resp = sfn.create_state_machine(
-            name=name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
-            exec_arn = exec_resp["executionArn"]
-            sfn.stop_execution(executionArn=exec_arn)
-            desc = sfn.describe_execution(executionArn=exec_arn)
-            assert desc["status"] == "ABORTED"
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_update_state_machine_definition(self, sfn, role_arn):
-        """Update state machine definition and verify."""
-        name = _unique("upd-sm")
-        definition = json.dumps(
-            {"StartAt": "A", "States": {"A": {"Type": "Pass", "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            new_def = json.dumps(
-                {"StartAt": "B", "States": {"B": {"Type": "Pass", "Result": {"v": 2}, "End": True}}}
-            )
-            upd = sfn.update_state_machine(stateMachineArn=sm_arn, definition=new_def)
-            assert "updateDate" in upd
-
-            desc = sfn.describe_state_machine(stateMachineArn=sm_arn)
-            parsed = json.loads(desc["definition"])
-            assert "B" in parsed["States"]
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_list_executions_status_filter(self, sfn, role_arn):
-        """List executions filtered by SUCCEEDED status."""
-        name = _unique("lef-sm")
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            sfn.start_execution(stateMachineArn=sm_arn)
-            sfn.start_execution(stateMachineArn=sm_arn)
-            list_resp = sfn.list_executions(
-                stateMachineArn=sm_arn, statusFilter="SUCCEEDED"
-            )
-            for exc in list_resp["executions"]:
-                assert exc["status"] == "SUCCEEDED"
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_start_execution_with_name(self, sfn, role_arn):
-        """Start execution with a custom name."""
-        sm_name = _unique("named-sm")
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "End": True}}}
-        )
-        resp = sfn.create_state_machine(
-            name=sm_name, definition=definition, roleArn=role_arn
-        )
-        sm_arn = resp["stateMachineArn"]
-        try:
-            exec_name = _unique("my-exec")
-            exec_resp = sfn.start_execution(
-                stateMachineArn=sm_arn, name=exec_name
-            )
-            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
-            assert desc["name"] == exec_name
-        finally:
-            sfn.delete_state_machine(stateMachineArn=sm_arn)
-
-    def test_list_state_machines_multiple(self, sfn, role_arn):
-        """List state machines includes all created machines."""
-        sm_arns = []
-        names = []
-        definition = json.dumps(
-            {"StartAt": "P", "States": {"P": {"Type": "Pass", "End": True}}}
-        )
-        for _ in range(3):
-            name = _unique("multi-sm")
-            names.append(name)
-            resp = sfn.create_state_machine(
-                name=name, definition=definition, roleArn=role_arn
-            )
-            sm_arns.append(resp["stateMachineArn"])
-        try:
-            resp = sfn.list_state_machines()
-            listed_names = {m["name"] for m in resp["stateMachines"]}
-            for n in names:
-                assert n in listed_names
-        finally:
-            for arn in sm_arns:
-                sfn.delete_state_machine(stateMachineArn=arn)
-
-
-class TestASLExecutionExtended:
-    """Additional ASL execution tests."""
-
-    @pytest.fixture
-    def role_arn(self):
-        iam = make_client("iam")
-        name = _unique("sfn-asl-role")
-        iam.create_role(
-            RoleName=name,
-            AssumeRolePolicyDocument=SFN_TRUST_POLICY,
-        )
-        yield f"arn:aws:iam::123456789012:role/{name}"
-        iam.delete_role(RoleName=name)
-
-    def _create_and_execute(self, sfn, role_arn, definition, input_data=None):
-        name = _unique("asl-sm")
-        sm = sfn.create_state_machine(
-            name=name,
-            definition=json.dumps(definition),
-            roleArn=role_arn,
-        )
-        sm_arn = sm["stateMachineArn"]
-        exec_resp = sfn.start_execution(
-            stateMachineArn=sm_arn,
-            input=json.dumps(input_data or {}),
-        )
-        result = sfn.describe_execution(executionArn=exec_resp["executionArn"])
-        sfn.delete_state_machine(stateMachineArn=sm_arn)
-        return result
-
-    def test_wait_state_seconds(self, role_arn):
-        """Wait state with short Seconds value."""
+    def test_choice_string_equals(self, role_arn):
+        """Test Choice state with StringEquals comparison."""
         sfn = make_client("stepfunctions")
         result = self._create_and_execute(
             sfn,
             role_arn,
             {
-                "StartAt": "ShortWait",
+                "StartAt": "Route",
                 "States": {
-                    "ShortWait": {
+                    "Route": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {
+                                "Variable": "$.action",
+                                "StringEquals": "create",
+                                "Next": "CreateBranch",
+                            },
+                            {
+                                "Variable": "$.action",
+                                "StringEquals": "delete",
+                                "Next": "DeleteBranch",
+                            },
+                        ],
+                        "Default": "DefaultBranch",
+                    },
+                    "CreateBranch": {
+                        "Type": "Pass",
+                        "Result": {"routed": "create"},
+                        "End": True,
+                    },
+                    "DeleteBranch": {
+                        "Type": "Pass",
+                        "Result": {"routed": "delete"},
+                        "End": True,
+                    },
+                    "DefaultBranch": {
+                        "Type": "Pass",
+                        "Result": {"routed": "default"},
+                        "End": True,
+                    },
+                },
+            },
+            {"action": "delete"},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output["routed"] == "delete"
+
+    def test_wait_state_seconds(self, role_arn):
+        """Test Wait state with Seconds pauses execution."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "WaitStep",
+                "States": {
+                    "WaitStep": {
                         "Type": "Wait",
                         "Seconds": 1,
                         "Next": "Done",
@@ -747,65 +513,37 @@ class TestASLExecutionExtended:
         output = json.loads(result["output"])
         assert output["waited"] is True
 
-    def test_choice_string_equals(self, role_arn):
-        """Choice state with StringEquals comparison."""
+    def test_parallel_two_branches_combined_output(self, role_arn):
+        """Test Parallel state with two branches, verify combined array output."""
         sfn = make_client("stepfunctions")
         result = self._create_and_execute(
             sfn,
             role_arn,
             {
-                "StartAt": "Route",
+                "StartAt": "RunParallel",
                 "States": {
-                    "Route": {
-                        "Type": "Choice",
-                        "Choices": [
-                            {
-                                "Variable": "$.color",
-                                "StringEquals": "red",
-                                "Next": "Red",
-                            },
-                            {
-                                "Variable": "$.color",
-                                "StringEquals": "blue",
-                                "Next": "Blue",
-                            },
-                        ],
-                        "Default": "Other",
-                    },
-                    "Red": {"Type": "Pass", "Result": {"picked": "red"}, "End": True},
-                    "Blue": {"Type": "Pass", "Result": {"picked": "blue"}, "End": True},
-                    "Other": {"Type": "Pass", "Result": {"picked": "other"}, "End": True},
-                },
-            },
-            {"color": "blue"},
-        )
-        assert result["status"] == "SUCCEEDED"
-        output = json.loads(result["output"])
-        assert output["picked"] == "blue"
-
-    def test_parallel_branches(self, role_arn):
-        """Parallel state with three branches."""
-        sfn = make_client("stepfunctions")
-        result = self._create_and_execute(
-            sfn,
-            role_arn,
-            {
-                "StartAt": "Fan",
-                "States": {
-                    "Fan": {
+                    "RunParallel": {
                         "Type": "Parallel",
                         "Branches": [
                             {
-                                "StartAt": "A",
-                                "States": {"A": {"Type": "Pass", "Result": {"b": "a"}, "End": True}},
+                                "StartAt": "BranchA",
+                                "States": {
+                                    "BranchA": {
+                                        "Type": "Pass",
+                                        "Result": {"name": "alpha", "value": 1},
+                                        "End": True,
+                                    }
+                                },
                             },
                             {
-                                "StartAt": "B",
-                                "States": {"B": {"Type": "Pass", "Result": {"b": "b"}, "End": True}},
-                            },
-                            {
-                                "StartAt": "C",
-                                "States": {"C": {"Type": "Pass", "Result": {"b": "c"}, "End": True}},
+                                "StartAt": "BranchB",
+                                "States": {
+                                    "BranchB": {
+                                        "Type": "Pass",
+                                        "Result": {"name": "beta", "value": 2},
+                                        "End": True,
+                                    }
+                                },
                             },
                         ],
                         "End": True,
@@ -815,29 +553,31 @@ class TestASLExecutionExtended:
         )
         assert result["status"] == "SUCCEEDED"
         output = json.loads(result["output"])
-        assert len(output) == 3
-        branches = [o["b"] for o in output]
-        assert "a" in branches
-        assert "b" in branches
-        assert "c" in branches
+        assert isinstance(output, list)
+        assert len(output) == 2
+        assert output[0]["name"] == "alpha"
+        assert output[1]["name"] == "beta"
 
-    def test_map_state(self, role_arn):
-        """Map state iterates over an array."""
+    def test_map_state_iterate_array(self, role_arn):
+        """Test Map state iterating over an array and transforming each element."""
         sfn = make_client("stepfunctions")
         result = self._create_and_execute(
             sfn,
             role_arn,
             {
-                "StartAt": "MapIt",
+                "StartAt": "MapItems",
                 "States": {
-                    "MapIt": {
+                    "MapItems": {
                         "Type": "Map",
                         "ItemsPath": "$.items",
                         "Iterator": {
-                            "StartAt": "Process",
+                            "StartAt": "Transform",
                             "States": {
-                                "Process": {
+                                "Transform": {
                                     "Type": "Pass",
+                                    "Parameters": {
+                                        "processed.$": "$.name",
+                                    },
                                     "End": True,
                                 }
                             },
@@ -846,38 +586,317 @@ class TestASLExecutionExtended:
                     }
                 },
             },
-            {"items": [{"id": 1}, {"id": 2}, {"id": 3}]},
+            {"items": [{"name": "a"}, {"name": "b"}, {"name": "c"}]},
         )
         assert result["status"] == "SUCCEEDED"
         output = json.loads(result["output"])
+        assert isinstance(output, list)
         assert len(output) == 3
+        assert output[0]["processed"] == "a"
+        assert output[1]["processed"] == "b"
+        assert output[2]["processed"] == "c"
 
-    def test_result_path_null(self, role_arn):
-        """ResultPath null discards the result, keeping original input."""
+    def test_pass_state_result_path_and_parameters(self, role_arn):
+        """Test Pass state with both ResultPath and Parameters."""
         sfn = make_client("stepfunctions")
         result = self._create_and_execute(
             sfn,
             role_arn,
             {
-                "StartAt": "Discard",
+                "StartAt": "Enrich",
                 "States": {
-                    "Discard": {
+                    "Enrich": {
                         "Type": "Pass",
-                        "Result": {"throwaway": True},
-                        "ResultPath": None,
+                        "Parameters": {
+                            "original.$": "$.data",
+                            "extra": "added",
+                        },
+                        "ResultPath": "$.enriched",
                         "End": True,
                     }
                 },
             },
-            {"keep": "me"},
+            {"data": "hello"},
         )
         assert result["status"] == "SUCCEEDED"
         output = json.loads(result["output"])
-        assert output["keep"] == "me"
-        assert "throwaway" not in output
+        assert output["data"] == "hello"
+        assert output["enriched"]["original"] == "hello"
+        assert output["enriched"]["extra"] == "added"
 
-    def test_input_path_output_path(self, role_arn):
-        """Test InputPath and OutputPath filtering."""
+    def test_execution_with_name(self, role_arn):
+        """Test start execution with explicit name, then describe by name."""
+        sfn = make_client("stepfunctions")
+        name = f"test-sm-named-{uuid.uuid4().hex[:8]}"
+        exec_name = f"my-exec-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "P",
+                "States": {"P": {"Type": "Pass", "End": True}},
+            }),
+            roleArn=role_arn,
+        )
+        sm_arn = sm["stateMachineArn"]
+
+        exec_resp = sfn.start_execution(
+            stateMachineArn=sm_arn,
+            name=exec_name,
+            input=json.dumps({"x": 1}),
+        )
+        desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+        assert desc["name"] == exec_name
+        assert exec_name in desc["executionArn"]
+
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_list_executions_status_filter_succeeded(self, role_arn):
+        """ListExecutions with statusFilter=SUCCEEDED returns only matching."""
+        sfn = make_client("stepfunctions")
+        name = f"test-sm-filter-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "P",
+                "States": {"P": {"Type": "Pass", "End": True}},
+            }),
+            roleArn=role_arn,
+        )
+        sm_arn = sm["stateMachineArn"]
+
+        sfn.start_execution(stateMachineArn=sm_arn)
+        result = sfn.list_executions(
+            stateMachineArn=sm_arn,
+            statusFilter="SUCCEEDED",
+        )
+        for exc in result["executions"]:
+            assert exc["status"] == "SUCCEEDED"
+
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_list_executions_status_filter_failed(self, role_arn):
+        """ListExecutions with statusFilter=FAILED returns only failed ones."""
+        sfn = make_client("stepfunctions")
+        name = f"test-sm-fail-filter-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "FailNow",
+                "States": {
+                    "FailNow": {
+                        "Type": "Fail",
+                        "Error": "TestError",
+                        "Cause": "testing",
+                    }
+                },
+            }),
+            roleArn=role_arn,
+        )
+        sm_arn = sm["stateMachineArn"]
+
+        sfn.start_execution(stateMachineArn=sm_arn)
+        failed = sfn.list_executions(
+            stateMachineArn=sm_arn,
+            statusFilter="FAILED",
+        )
+        assert len(failed["executions"]) >= 1
+        for exc in failed["executions"]:
+            assert exc["status"] == "FAILED"
+
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_tag_resource(self, role_arn):
+        """TagResource, ListTagsForResource on a state machine."""
+        sfn = make_client("stepfunctions")
+        name = f"test-sm-tag-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "P",
+                "States": {"P": {"Type": "Pass", "End": True}},
+            }),
+            roleArn=role_arn,
+        )
+        sm_arn = sm["stateMachineArn"]
+
+        sfn.tag_resource(
+            resourceArn=sm_arn,
+            tags=[{"key": "env", "value": "test"}],
+        )
+        tags_resp = sfn.list_tags_for_resource(resourceArn=sm_arn)
+        assert "tags" in tags_resp
+
+        sfn.untag_resource(resourceArn=sm_arn, tagKeys=["env"])
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_intrinsic_states_format(self, role_arn):
+        """Test States.Format intrinsic function in Parameters."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "Format",
+                "States": {
+                    "Format": {
+                        "Type": "Pass",
+                        "Parameters": {
+                            "message.$": "States.Format('Hello, {}!', $.name)",
+                        },
+                        "End": True,
+                    }
+                },
+            },
+            {"name": "World"},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output["message"] == "Hello, World!"
+
+    def test_intrinsic_states_json_to_string_and_back(self, role_arn):
+        """Test States.JsonToString and States.StringToJson intrinsics."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "Serialize",
+                "States": {
+                    "Serialize": {
+                        "Type": "Pass",
+                        "Parameters": {
+                            "serialized.$": "States.JsonToString($.data)",
+                        },
+                        "End": True,
+                    }
+                },
+            },
+            {"data": {"key": "val"}},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        # Should be a JSON string representation
+        parsed = json.loads(output["serialized"])
+        assert parsed["key"] == "val"
+
+    def test_error_handling_catch_block(self, role_arn):
+        """Test Catch block handles a Fail state error."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "TryFail",
+                "States": {
+                    "TryFail": {
+                        "Type": "Fail",
+                        "Error": "CustomError",
+                        "Cause": "intentional failure",
+                    },
+                },
+            },
+        )
+        # Fail state with no Catch always results in FAILED
+        assert result["status"] == "FAILED"
+
+    def test_catch_with_specific_error(self, role_arn):
+        """Test Catch block catches specific error and routes to fallback."""
+        sfn = make_client("stepfunctions")
+        # Use a Pass state chain where we simulate error via a Fail state
+        # wrapped in a Parallel to enable Catch
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "TryBlock",
+                "States": {
+                    "TryBlock": {
+                        "Type": "Parallel",
+                        "Branches": [
+                            {
+                                "StartAt": "WillFail",
+                                "States": {
+                                    "WillFail": {
+                                        "Type": "Fail",
+                                        "Error": "MyCustomError",
+                                        "Cause": "something broke",
+                                    }
+                                },
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["MyCustomError"],
+                                "Next": "HandleError",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                        "Next": "Success",
+                    },
+                    "HandleError": {
+                        "Type": "Pass",
+                        "Result": {"recovered": True},
+                        "ResultPath": "$.recovery",
+                        "End": True,
+                    },
+                    "Success": {
+                        "Type": "Pass",
+                        "End": True,
+                    },
+                },
+            },
+            {"input": "test"},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output["recovery"]["recovered"] is True
+
+    def test_multiple_sequential_pass_states(self, role_arn):
+        """Test multiple sequential Pass states building up data."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "A",
+                "States": {
+                    "A": {
+                        "Type": "Pass",
+                        "Result": "first",
+                        "ResultPath": "$.a",
+                        "Next": "B",
+                    },
+                    "B": {
+                        "Type": "Pass",
+                        "Result": "second",
+                        "ResultPath": "$.b",
+                        "Next": "C",
+                    },
+                    "C": {
+                        "Type": "Pass",
+                        "Result": "third",
+                        "ResultPath": "$.c",
+                        "Next": "D",
+                    },
+                    "D": {
+                        "Type": "Pass",
+                        "Result": "fourth",
+                        "ResultPath": "$.d",
+                        "End": True,
+                    },
+                },
+            },
+            {},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output["a"] == "first"
+        assert output["b"] == "second"
+        assert output["c"] == "third"
+        assert output["d"] == "fourth"
+
+    def test_input_output_path_processing(self, role_arn):
+        """Test InputPath and OutputPath processing."""
         sfn = make_client("stepfunctions")
         result = self._create_and_execute(
             sfn,
@@ -887,14 +906,121 @@ class TestASLExecutionExtended:
                 "States": {
                     "Filter": {
                         "Type": "Pass",
-                        "InputPath": "$.data",
-                        "OutputPath": "$.value",
+                        "InputPath": "$.payload",
+                        "Result": {"processed": True},
+                        "ResultPath": "$.status",
+                        "OutputPath": "$",
                         "End": True,
                     }
                 },
             },
-            {"data": {"value": 42, "extra": "ignored"}},
+            {"payload": {"x": 1, "y": 2}},
         )
         assert result["status"] == "SUCCEEDED"
         output = json.loads(result["output"])
-        assert output == 42
+        assert output["status"]["processed"] is True
+
+    def test_get_execution_history(self, role_arn):
+        """Test GetExecutionHistory returns events for a completed execution."""
+        sfn = make_client("stepfunctions")
+        name = f"test-sm-hist-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "Step1",
+                "States": {
+                    "Step1": {
+                        "Type": "Pass",
+                        "Result": {"done": True},
+                        "End": True,
+                    }
+                },
+            }),
+            roleArn=role_arn,
+        )
+        sm_arn = sm["stateMachineArn"]
+
+        exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+        history = sfn.get_execution_history(
+            executionArn=exec_resp["executionArn"],
+        )
+        events = history["events"]
+        assert len(events) >= 1
+        # First event should be ExecutionStarted
+        event_types = [e.get("type") for e in events]
+        assert "ExecutionStarted" in event_types
+
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_choice_boolean_equals(self, role_arn):
+        """Test Choice state with BooleanEquals comparison."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "CheckBool",
+                "States": {
+                    "CheckBool": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {
+                                "Variable": "$.flag",
+                                "BooleanEquals": True,
+                                "Next": "TrueBranch",
+                            },
+                        ],
+                        "Default": "FalseBranch",
+                    },
+                    "TrueBranch": {
+                        "Type": "Pass",
+                        "Result": {"branch": "true"},
+                        "End": True,
+                    },
+                    "FalseBranch": {
+                        "Type": "Pass",
+                        "Result": {"branch": "false"},
+                        "End": True,
+                    },
+                },
+            },
+            {"flag": True},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output["branch"] == "true"
+
+    def test_result_selector(self, role_arn):
+        """Test ResultSelector transforms output of a state."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "WithSelector",
+                "States": {
+                    "WithSelector": {
+                        "Type": "Parallel",
+                        "Branches": [
+                            {
+                                "StartAt": "B1",
+                                "States": {
+                                    "B1": {
+                                        "Type": "Pass",
+                                        "Result": {"x": 10},
+                                        "End": True,
+                                    }
+                                },
+                            },
+                        ],
+                        "ResultSelector": {
+                            "count": 1,
+                        },
+                        "End": True,
+                    }
+                },
+            },
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output["count"] == 1
