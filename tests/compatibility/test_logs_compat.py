@@ -139,3 +139,96 @@ class TestLogsOperations:
         response = logs.describe_log_groups(logGroupNamePrefix=log_group)
         group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
         assert "retentionInDays" not in group
+
+    def test_tag_log_group(self, logs, log_group):
+        logs.tag_log_group(logGroupName=log_group, tags={"env": "test", "app": "roboto"})
+        response = logs.list_tags_log_group(logGroupName=log_group)
+        assert response["tags"]["env"] == "test"
+        assert response["tags"]["app"] == "roboto"
+
+    def test_untag_log_group(self, logs, log_group):
+        logs.tag_log_group(logGroupName=log_group, tags={"k1": "v1", "k2": "v2"})
+        logs.untag_log_group(logGroupName=log_group, tags=["k1"])
+        response = logs.list_tags_log_group(logGroupName=log_group)
+        assert "k1" not in response["tags"]
+        assert response["tags"]["k2"] == "v2"
+
+    def test_put_metric_filter(self, logs, log_group):
+        logs.put_metric_filter(
+            logGroupName=log_group,
+            filterName="ErrorCount",
+            filterPattern="ERROR",
+            metricTransformations=[{
+                "metricName": "ErrorCount",
+                "metricNamespace": "TestApp",
+                "metricValue": "1",
+            }],
+        )
+        response = logs.describe_metric_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["metricFilters"]]
+        assert "ErrorCount" in names
+
+    def test_delete_metric_filter(self, logs, log_group):
+        logs.put_metric_filter(
+            logGroupName=log_group,
+            filterName="ToDelete",
+            filterPattern="WARN",
+            metricTransformations=[{
+                "metricName": "WarnCount",
+                "metricNamespace": "TestApp",
+                "metricValue": "1",
+            }],
+        )
+        logs.delete_metric_filter(logGroupName=log_group, filterName="ToDelete")
+        response = logs.describe_metric_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["metricFilters"]]
+        assert "ToDelete" not in names
+
+    def test_put_subscription_filter(self, logs, log_group):
+        logs.put_subscription_filter(
+            logGroupName=log_group,
+            filterName="SubFilter",
+            filterPattern="",
+            destinationArn="arn:aws:lambda:us-east-1:123456789012:function:log-processor",
+        )
+        response = logs.describe_subscription_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["subscriptionFilters"]]
+        assert "SubFilter" in names
+
+    def test_delete_subscription_filter(self, logs, log_group):
+        logs.put_subscription_filter(
+            logGroupName=log_group,
+            filterName="TempSub",
+            filterPattern="",
+            destinationArn="arn:aws:lambda:us-east-1:123456789012:function:temp",
+        )
+        logs.delete_subscription_filter(logGroupName=log_group, filterName="TempSub")
+        response = logs.describe_subscription_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in response["subscriptionFilters"]]
+        assert "TempSub" not in names
+
+    def test_put_log_events_multiple_batches(self, logs, log_group):
+        """Put multiple batches of log events to the same stream."""
+        logs.create_log_stream(logGroupName=log_group, logStreamName="batch-stream")
+        now = int(time.time() * 1000)
+        resp1 = logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName="batch-stream",
+            logEvents=[{"timestamp": now, "message": "batch-1"}],
+        )
+        token = resp1.get("nextSequenceToken")
+        kwargs = {}
+        if token:
+            kwargs["sequenceToken"] = token
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName="batch-stream",
+            logEvents=[{"timestamp": now + 1, "message": "batch-2"}],
+            **kwargs,
+        )
+        response = logs.get_log_events(
+            logGroupName=log_group, logStreamName="batch-stream"
+        )
+        messages = [e["message"] for e in response["events"]]
+        assert "batch-1" in messages
+        assert "batch-2" in messages

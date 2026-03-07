@@ -175,6 +175,224 @@ class TestEventBridgeOperations:
         events.delete_rule(Name=rule_name)
 
 
+class TestEventBusTags:
+    def test_tag_and_list_tags(self, events):
+        """tag_resource and list_tags_for_resource on an event bus."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"tag-bus-{suffix}"
+        resp = events.create_event_bus(Name=bus_name)
+        bus_arn = resp["EventBusArn"]
+
+        events.tag_resource(
+            ResourceARN=bus_arn,
+            Tags=[
+                {"Key": "env", "Value": "staging"},
+                {"Key": "team", "Value": "infra"},
+            ],
+        )
+
+        tag_resp = events.list_tags_for_resource(ResourceARN=bus_arn)
+        tags = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+        assert tags["env"] == "staging"
+        assert tags["team"] == "infra"
+
+        events.delete_event_bus(Name=bus_name)
+
+    def test_untag_resource(self, events):
+        """untag_resource removes specified tags from an event bus."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"untag-bus-{suffix}"
+        resp = events.create_event_bus(Name=bus_name)
+        bus_arn = resp["EventBusArn"]
+
+        events.tag_resource(
+            ResourceARN=bus_arn,
+            Tags=[
+                {"Key": "keep", "Value": "yes"},
+                {"Key": "remove", "Value": "bye"},
+            ],
+        )
+        events.untag_resource(ResourceARN=bus_arn, TagKeys=["remove"])
+
+        tag_resp = events.list_tags_for_resource(ResourceARN=bus_arn)
+        tag_keys = [t["Key"] for t in tag_resp["Tags"]]
+        assert "keep" in tag_keys
+        assert "remove" not in tag_keys
+
+        events.delete_event_bus(Name=bus_name)
+
+
+class TestEventPatterns:
+    def test_put_rule_with_detailed_event_pattern(self, events):
+        """Create a rule with a complex event pattern including detail fields."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"detailed-pattern-{suffix}"
+        pattern = {
+            "source": ["myapp.orders"],
+            "detail-type": ["OrderPlaced"],
+            "detail": {
+                "amount": [{"numeric": [">", 100]}],
+            },
+        }
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps(pattern),
+        )
+        desc = events.describe_rule(Name=rule_name)
+        parsed = json.loads(desc["EventPattern"])
+        assert parsed["source"] == ["myapp.orders"]
+        assert parsed["detail-type"] == ["OrderPlaced"]
+        assert "detail" in parsed
+        events.delete_rule(Name=rule_name)
+
+    def test_put_rule_with_prefix_pattern(self, events):
+        """Create a rule with prefix matching in event pattern."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"prefix-pattern-{suffix}"
+        pattern = {
+            "source": [{"prefix": "myapp."}],
+        }
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps(pattern),
+        )
+        desc = events.describe_rule(Name=rule_name)
+        parsed = json.loads(desc["EventPattern"])
+        assert parsed["source"] == [{"prefix": "myapp."}]
+        events.delete_rule(Name=rule_name)
+
+
+class TestMultipleTargets:
+    def test_put_multiple_targets_and_remove_one(self, events):
+        """Put 3 targets, remove 1, verify 2 remain."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"rm-target-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[
+                {"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:q1"},
+                {"Id": "t2", "Arn": "arn:aws:sqs:us-east-1:123456789012:q2"},
+                {"Id": "t3", "Arn": "arn:aws:sqs:us-east-1:123456789012:q3"},
+            ],
+        )
+        response = events.list_targets_by_rule(Rule=rule_name)
+        assert len(response["Targets"]) == 3
+
+        events.remove_targets(Rule=rule_name, Ids=["t2"])
+        response = events.list_targets_by_rule(Rule=rule_name)
+        ids = [t["Id"] for t in response["Targets"]]
+        assert len(ids) == 2
+        assert "t1" in ids
+        assert "t3" in ids
+        assert "t2" not in ids
+
+        events.remove_targets(Rule=rule_name, Ids=["t1", "t3"])
+        events.delete_rule(Name=rule_name)
+
+
+class TestEventArchives:
+    def test_create_and_describe_archive(self, events):
+        """Create an archive and describe it."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"test-archive-{suffix}"
+
+        # Get default bus ARN
+        bus_resp = events.describe_event_bus(Name="default")
+        bus_arn = bus_resp["Arn"]
+
+        create_resp = events.create_archive(
+            ArchiveName=archive_name,
+            EventSourceArn=bus_arn,
+            Description="Test archive",
+            RetentionDays=7,
+        )
+        assert "ArchiveArn" in create_resp
+
+        desc_resp = events.describe_archive(ArchiveName=archive_name)
+        assert desc_resp["ArchiveName"] == archive_name
+        assert desc_resp["EventSourceArn"] == bus_arn
+        assert desc_resp["RetentionDays"] == 7
+
+        events.delete_archive(ArchiveName=archive_name)
+
+    def test_list_archives(self, events):
+        """Create archives and list them."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"list-archive-{suffix}"
+
+        bus_resp = events.describe_event_bus(Name="default")
+        bus_arn = bus_resp["Arn"]
+
+        events.create_archive(
+            ArchiveName=archive_name,
+            EventSourceArn=bus_arn,
+        )
+
+        list_resp = events.list_archives()
+        names = [a["ArchiveName"] for a in list_resp["Archives"]]
+        assert archive_name in names
+
+        events.delete_archive(ArchiveName=archive_name)
+
+    def test_delete_archive(self, events):
+        """Delete an archive and verify it is gone."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"del-archive-{suffix}"
+
+        bus_resp = events.describe_event_bus(Name="default")
+        bus_arn = bus_resp["Arn"]
+
+        events.create_archive(
+            ArchiveName=archive_name,
+            EventSourceArn=bus_arn,
+        )
+        events.delete_archive(ArchiveName=archive_name)
+
+        with pytest.raises(Exception):
+            events.describe_archive(ArchiveName=archive_name)
+
+
+class TestPutEventsDetailed:
+    def test_put_events_with_event_bus(self, events):
+        """Put events specifying EventBusName."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"put-bus-{suffix}"
+        events.create_event_bus(Name=bus_name)
+
+        response = events.put_events(
+            Entries=[
+                {
+                    "Source": "custom.app",
+                    "DetailType": "AppEvent",
+                    "Detail": json.dumps({"action": "deploy", "version": "1.2.3"}),
+                    "EventBusName": bus_name,
+                }
+            ]
+        )
+        assert response["FailedEntryCount"] == 0
+        assert len(response["Entries"]) == 1
+
+        events.delete_event_bus(Name=bus_name)
+
+    def test_put_events_with_resources(self, events):
+        """Put events including Resources field."""
+        response = events.put_events(
+            Entries=[
+                {
+                    "Source": "myapp.service",
+                    "DetailType": "ResourceEvent",
+                    "Detail": json.dumps({"status": "completed"}),
+                    "Resources": [
+                        "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+                    ],
+                }
+            ]
+        )
+        assert response["FailedEntryCount"] == 0
+
+
 class TestEventBridgeSQSTarget:
     """Test EventBridge → SQS cross-service delivery."""
 
