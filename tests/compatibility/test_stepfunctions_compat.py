@@ -437,3 +437,173 @@ class TestASLExecution:
         output = json.loads(result["output"])
         assert output["greeting"] == "Alice"
         assert output["static"] == "value"
+
+    def test_wait_seconds(self, role_arn):
+        """Test Wait state with Seconds (should complete immediately in emulator)."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "WaitStep",
+                "States": {
+                    "WaitStep": {
+                        "Type": "Wait",
+                        "Seconds": 0,
+                        "Next": "Done",
+                    },
+                    "Done": {"Type": "Pass", "End": True},
+                },
+            },
+            {"data": "preserved"},
+        )
+        assert result["status"] == "SUCCEEDED"
+
+    def test_map_state_inline(self, role_arn):
+        """Test Map state with inline iteration."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "MapStep",
+                "States": {
+                    "MapStep": {
+                        "Type": "Map",
+                        "ItemsPath": "$.items",
+                        "Iterator": {
+                            "StartAt": "AddField",
+                            "States": {
+                                "AddField": {
+                                    "Type": "Pass",
+                                    "Result": "processed",
+                                    "ResultPath": "$.status",
+                                    "End": True,
+                                }
+                            },
+                        },
+                        "End": True,
+                    }
+                },
+            },
+            {"items": [{"id": 1}, {"id": 2}, {"id": 3}]},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert len(output) == 3
+        for item in output:
+            assert item["status"] == "processed"
+
+    def test_input_output_path(self, role_arn):
+        """Test InputPath and OutputPath filtering."""
+        sfn = make_client("stepfunctions")
+        result = self._create_and_execute(
+            sfn,
+            role_arn,
+            {
+                "StartAt": "Filter",
+                "States": {
+                    "Filter": {
+                        "Type": "Pass",
+                        "InputPath": "$.data",
+                        "OutputPath": "$.value",
+                        "End": True,
+                    }
+                },
+            },
+            {"data": {"value": 42, "extra": "ignored"}},
+        )
+        assert result["status"] == "SUCCEEDED"
+        output = json.loads(result["output"])
+        assert output == 42
+
+
+class TestStepFunctionsTags:
+    def test_tag_and_list_tags(self):
+        """Tag a state machine and list tags."""
+        sfn = make_client("stepfunctions")
+        iam = make_client("iam")
+
+        name = f"tag-sm-{uuid.uuid4().hex[:8]}"
+        role = iam.create_role(
+            RoleName=name,
+            AssumeRolePolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": "states.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }],
+            }),
+        )
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "Pass", "States": {"Pass": {"Type": "Pass", "End": True}}
+            }),
+            roleArn=role["Role"]["Arn"],
+        )
+        arn = sm["stateMachineArn"]
+
+        try:
+            sfn.tag_resource(
+                resourceArn=arn,
+                tags=[
+                    {"key": "env", "value": "test"},
+                    {"key": "team", "value": "platform"},
+                ],
+            )
+            response = sfn.list_tags_for_resource(resourceArn=arn)
+            tag_map = {t["key"]: t["value"] for t in response["tags"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "platform"
+
+            sfn.untag_resource(resourceArn=arn, tagKeys=["env"])
+            response = sfn.list_tags_for_resource(resourceArn=arn)
+            tag_map = {t["key"]: t["value"] for t in response["tags"]}
+            assert "env" not in tag_map
+            assert tag_map["team"] == "platform"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=arn)
+            iam.delete_role(RoleName=name)
+
+
+class TestStepFunctionsExecutionHistory:
+    def test_get_execution_history(self):
+        """Get execution history for a completed execution."""
+        sfn = make_client("stepfunctions")
+        iam = make_client("iam")
+
+        name = f"hist-sm-{uuid.uuid4().hex[:8]}"
+        role = iam.create_role(
+            RoleName=name,
+            AssumeRolePolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": "states.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }],
+            }),
+        )
+        sm = sfn.create_state_machine(
+            name=name,
+            definition=json.dumps({
+                "StartAt": "P", "States": {"P": {"Type": "Pass", "End": True}}
+            }),
+            roleArn=role["Role"]["Arn"],
+        )
+        arn = sm["stateMachineArn"]
+
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=arn)
+            history = sfn.get_execution_history(
+                executionArn=exec_resp["executionArn"]
+            )
+            assert "events" in history
+            assert len(history["events"]) >= 1
+            event_types = [e["type"] for e in history["events"]]
+            assert "ExecutionStarted" in event_types
+        finally:
+            sfn.delete_state_machine(stateMachineArn=arn)
+            iam.delete_role(RoleName=name)

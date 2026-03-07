@@ -71,3 +71,36 @@ class TestSTSOperations:
         assert "SessionToken" in creds
         assert "Expiration" in creds
         iam.delete_role(RoleName="test-creds-role")
+
+    def test_get_access_key_info(self, sts):
+        """Get account info for an access key."""
+        response = sts.get_access_key_info(AccessKeyId="AKIAIOSFODNN7EXAMPLE")
+        assert "Account" in response
+
+    def test_assume_role_with_tags(self, sts):
+        """Assume role with session tags."""
+        import uuid
+
+        role_name = f"test-tags-role-{uuid.uuid4().hex[:8]}"
+        iam = make_client("iam")
+        trust_policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"*"},'
+            '"Action":"sts:AssumeRole"}]}'
+        )
+        role = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=trust_policy,
+        )
+        role_arn = role["Role"]["Arn"]
+        response = sts.assume_role(
+            RoleArn=role_arn,
+            RoleSessionName="tag-session",
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        assert "Credentials" in response
+        assert "AssumedRoleUser" in response
+        iam.delete_role(RoleName=role_name)

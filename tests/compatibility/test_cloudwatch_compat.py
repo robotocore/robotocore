@@ -321,3 +321,183 @@ class TestCloudWatchOperations:
         # Deleting non-existent alarms should not error
         response = cw.delete_alarms(AlarmNames=["nonexistent-alarm"])
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudWatchTagging:
+    def test_tag_alarm(self, cw):
+        """Tag an alarm and list tags."""
+        cw.put_metric_alarm(
+            AlarmName="tag-test-alarm",
+            Namespace="TagNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        alarms = cw.describe_alarms(AlarmNames=["tag-test-alarm"])
+        arn = alarms["MetricAlarms"][0]["AlarmArn"]
+
+        cw.tag_resource(ResourceARN=arn, Tags=[
+            {"Key": "env", "Value": "test"},
+            {"Key": "team", "Value": "platform"},
+        ])
+        tags = cw.list_tags_for_resource(ResourceARN=arn)
+        tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+        assert tag_map["env"] == "test"
+        assert tag_map["team"] == "platform"
+
+        cw.delete_alarms(AlarmNames=["tag-test-alarm"])
+
+    def test_untag_alarm(self, cw):
+        """Remove a tag from an alarm."""
+        cw.put_metric_alarm(
+            AlarmName="untag-alarm",
+            Namespace="UntagNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        alarms = cw.describe_alarms(AlarmNames=["untag-alarm"])
+        arn = alarms["MetricAlarms"][0]["AlarmArn"]
+
+        cw.tag_resource(ResourceARN=arn, Tags=[
+            {"Key": "k1", "Value": "v1"},
+            {"Key": "k2", "Value": "v2"},
+        ])
+        cw.untag_resource(ResourceARN=arn, TagKeys=["k1"])
+        tags = cw.list_tags_for_resource(ResourceARN=arn)
+        tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+        assert "k1" not in tag_map
+        assert tag_map["k2"] == "v2"
+
+        cw.delete_alarms(AlarmNames=["untag-alarm"])
+
+
+class TestCloudWatchDashboards:
+    def test_put_and_get_dashboard(self, cw):
+        """Create and retrieve a dashboard."""
+        import json
+
+        body = json.dumps({
+            "widgets": [
+                {
+                    "type": "metric",
+                    "x": 0, "y": 0, "width": 12, "height": 6,
+                    "properties": {
+                        "metrics": [["TestNS", "TestMetric"]],
+                        "period": 300,
+                    },
+                }
+            ]
+        })
+        cw.put_dashboard(DashboardName="test-dash", DashboardBody=body)
+        response = cw.get_dashboard(DashboardName="test-dash")
+        assert response["DashboardName"] == "test-dash"
+        assert "DashboardBody" in response
+        assert "DashboardArn" in response
+
+        cw.delete_dashboards(DashboardNames=["test-dash"])
+
+    def test_list_dashboards(self, cw):
+        """List dashboards."""
+        import json
+
+        body = json.dumps({"widgets": []})
+        cw.put_dashboard(DashboardName="list-dash-1", DashboardBody=body)
+        cw.put_dashboard(DashboardName="list-dash-2", DashboardBody=body)
+
+        response = cw.list_dashboards()
+        names = [d["DashboardName"] for d in response["DashboardEntries"]]
+        assert "list-dash-1" in names
+        assert "list-dash-2" in names
+
+        cw.delete_dashboards(DashboardNames=["list-dash-1", "list-dash-2"])
+
+    def test_delete_dashboard(self, cw):
+        """Delete a dashboard."""
+        import json
+
+        body = json.dumps({"widgets": []})
+        cw.put_dashboard(DashboardName="del-dash", DashboardBody=body)
+        cw.delete_dashboards(DashboardNames=["del-dash"])
+
+        response = cw.list_dashboards(DashboardNamePrefix="del-dash")
+        names = [d["DashboardName"] for d in response["DashboardEntries"]]
+        assert "del-dash" not in names
+
+
+class TestCloudWatchAlarmHistory:
+    def test_describe_alarm_history(self, cw):
+        """Describe alarm history for an alarm."""
+        cw.put_metric_alarm(
+            AlarmName="history-alarm",
+            Namespace="HistNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        cw.set_alarm_state(
+            AlarmName="history-alarm",
+            StateValue="ALARM",
+            StateReason="Test transition",
+        )
+        response = cw.describe_alarm_history(AlarmName="history-alarm")
+        assert "AlarmHistoryItems" in response
+
+        cw.delete_alarms(AlarmNames=["history-alarm"])
+
+
+class TestCloudWatchAlarmActions:
+    def test_enable_disable_alarm_actions(self, cw):
+        """Enable and disable alarm actions."""
+        cw.put_metric_alarm(
+            AlarmName="actions-alarm",
+            Namespace="ActionsNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        cw.disable_alarm_actions(AlarmNames=["actions-alarm"])
+        response = cw.describe_alarms(AlarmNames=["actions-alarm"])
+        assert response["MetricAlarms"][0]["ActionsEnabled"] is False
+
+        cw.enable_alarm_actions(AlarmNames=["actions-alarm"])
+        response = cw.describe_alarms(AlarmNames=["actions-alarm"])
+        assert response["MetricAlarms"][0]["ActionsEnabled"] is True
+
+        cw.delete_alarms(AlarmNames=["actions-alarm"])
+
+
+class TestCloudWatchDescribeAlarmsForMetric:
+    def test_describe_alarms_for_metric(self, cw):
+        """Find alarms associated with a specific metric."""
+        cw.put_metric_alarm(
+            AlarmName="metric-alarm-1",
+            Namespace="MetricAlarmNS",
+            MetricName="TargetMetric",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        response = cw.describe_alarms_for_metric(
+            Namespace="MetricAlarmNS",
+            MetricName="TargetMetric",
+        )
+        assert "MetricAlarms" in response
+        names = [a["AlarmName"] for a in response["MetricAlarms"]]
+        assert "metric-alarm-1" in names
+
+        cw.delete_alarms(AlarmNames=["metric-alarm-1"])
