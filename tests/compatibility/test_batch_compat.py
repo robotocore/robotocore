@@ -108,6 +108,248 @@ class TestJobDefinitions:
             batch.deregister_job_definition(jobDefinition=f"{name}:2")
 
 
+class TestComputeEnvironmentExtended:
+    def test_create_compute_environment_with_tags(self, batch):
+        name = _unique("ce-tag")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+            tags={"env": "test", "project": "robotocore"},
+        )
+        assert resp["computeEnvironmentName"] == name
+        batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_update_compute_environment(self, batch):
+        name = _unique("ce-upd")
+        batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            state="ENABLED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = batch.update_compute_environment(
+                computeEnvironment=name,
+                state="DISABLED",
+            )
+            assert resp["computeEnvironmentName"] == name
+        finally:
+            batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_describe_compute_environments_multiple(self, batch):
+        names = [_unique("ce-multi") for _ in range(2)]
+        for n in names:
+            batch.create_compute_environment(
+                computeEnvironmentName=n,
+                type="MANAGED",
+                computeResources={
+                    "type": "FARGATE",
+                    "maxvCpus": 2,
+                    "subnets": ["subnet-12345"],
+                    "securityGroupIds": ["sg-12345"],
+                },
+            )
+        try:
+            resp = batch.describe_compute_environments(computeEnvironments=names)
+            found = {ce["computeEnvironmentName"] for ce in resp["computeEnvironments"]}
+            for n in names:
+                assert n in found
+        finally:
+            for n in names:
+                batch.delete_compute_environment(computeEnvironment=n)
+
+    def test_describe_compute_environment_fields(self, batch):
+        name = _unique("ce-fields")
+        batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 4,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = batch.describe_compute_environments(computeEnvironments=[name])
+            ce = resp["computeEnvironments"][0]
+            assert "computeEnvironmentArn" in ce
+            assert ce["computeEnvironmentName"] == name
+            assert ce["type"] == "MANAGED"
+            assert "computeResources" in ce
+        finally:
+            batch.delete_compute_environment(computeEnvironment=name)
+
+
+class TestJobDefinitionExtended:
+    def test_register_job_definition_with_retry_strategy(self, batch):
+        name = _unique("jd-retry")
+        resp = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+            },
+            retryStrategy={"attempts": 3},
+        )
+        assert resp["jobDefinitionName"] == name
+        try:
+            desc = batch.describe_job_definitions(jobDefinitionName=name)
+            jd = desc["jobDefinitions"][0]
+            assert jd["retryStrategy"]["attempts"] == 3
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+    def test_deregister_job_definition(self, batch):
+        name = _unique("jd-dereg")
+        batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+            },
+        )
+        batch.deregister_job_definition(jobDefinition=f"{name}:1")
+        resp = batch.describe_job_definitions(jobDefinitionName=name, status="ACTIVE")
+        active = [d for d in resp["jobDefinitions"] if d["status"] == "ACTIVE"]
+        assert len(active) == 0
+
+    def test_register_job_definition_with_environment(self, batch):
+        name = _unique("jd-env")
+        resp = batch.register_job_definition(
+            jobDefinitionName=name,
+            type="container",
+            containerProperties={
+                "image": "busybox",
+                "vcpus": 1,
+                "memory": 128,
+                "environment": [
+                    {"name": "FOO", "value": "bar"},
+                    {"name": "BAZ", "value": "qux"},
+                ],
+            },
+        )
+        assert resp["jobDefinitionName"] == name
+        try:
+            desc = batch.describe_job_definitions(jobDefinitionName=name)
+            jd = desc["jobDefinitions"][0]
+            env_names = [e["name"] for e in jd["containerProperties"]["environment"]]
+            assert "FOO" in env_names
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{name}:1")
+
+
+class TestJobExtended:
+    @pytest.fixture
+    def job_setup(self, batch):
+        ce_name = _unique("ext-ce")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+        ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+
+        jq_name = _unique("ext-jq")
+        batch.create_job_queue(
+            jobQueueName=jq_name,
+            priority=1,
+            computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+        )
+
+        jd_name = _unique("ext-jd")
+        batch.register_job_definition(
+            jobDefinitionName=jd_name,
+            type="container",
+            containerProperties={"image": "busybox", "vcpus": 1, "memory": 128},
+        )
+
+        yield jq_name, jd_name
+
+        batch.deregister_job_definition(jobDefinition=f"{jd_name}:1")
+        batch.delete_job_queue(jobQueue=jq_name)
+        batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_submit_job_with_container_overrides(self, batch, job_setup):
+        jq_name, jd_name = job_setup
+        resp = batch.submit_job(
+            jobName=_unique("override-job"),
+            jobQueue=jq_name,
+            jobDefinition=f"{jd_name}:1",
+            containerOverrides={
+                "vcpus": 2,
+                "memory": 256,
+                "environment": [{"name": "OVERRIDE_VAR", "value": "yes"}],
+            },
+        )
+        assert "jobId" in resp
+        assert "jobName" in resp
+
+    def test_describe_jobs_fields(self, batch, job_setup):
+        jq_name, jd_name = job_setup
+        job_name = _unique("field-job")
+        submitted = batch.submit_job(
+            jobName=job_name,
+            jobQueue=jq_name,
+            jobDefinition=f"{jd_name}:1",
+        )
+        job_id = submitted["jobId"]
+        resp = batch.describe_jobs(jobs=[job_id])
+        assert len(resp["jobs"]) == 1
+        job = resp["jobs"][0]
+        assert job["jobId"] == job_id
+        assert job["jobName"] == job_name
+        assert "jobDefinition" in job
+        assert "jobQueue" in job
+        assert "status" in job
+
+    def test_cancel_job(self, batch, job_setup):
+        jq_name, jd_name = job_setup
+        submitted = batch.submit_job(
+            jobName=_unique("cancel-job"),
+            jobQueue=jq_name,
+            jobDefinition=f"{jd_name}:1",
+        )
+        job_id = submitted["jobId"]
+        # Cancel the job
+        batch.cancel_job(jobId=job_id, reason="Testing cancellation")
+        # Verify it's no longer in SUBMITTED/RUNNABLE state
+        resp = batch.describe_jobs(jobs=[job_id])
+        assert len(resp["jobs"]) == 1
+
+    def test_list_jobs_with_status_filter(self, batch, job_setup):
+        jq_name, jd_name = job_setup
+        batch.submit_job(
+            jobName=_unique("status-job"),
+            jobQueue=jq_name,
+            jobDefinition=f"{jd_name}:1",
+        )
+        # List jobs filtering by SUBMITTED status
+        resp = batch.list_jobs(jobQueue=jq_name, jobStatus="SUBMITTED")
+        assert "jobSummaryList" in resp
+
+
 class TestJobQueues:
     @pytest.fixture
     def compute_env(self, batch):

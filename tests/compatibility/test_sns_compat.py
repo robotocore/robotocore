@@ -1,6 +1,7 @@
 """SNS compatibility tests."""
 
 import json
+import uuid
 
 import pytest
 
@@ -92,6 +93,48 @@ class TestSNSSubscriptions:
         assert sub_arn not in sub_arns
 
 
+class TestSNSAttributeOperations:
+    def test_set_and_get_topic_attributes(self, sns):
+        arn = sns.create_topic(Name="attr-topic")["TopicArn"]
+        sns.set_topic_attributes(
+            TopicArn=arn,
+            AttributeName="DisplayName",
+            AttributeValue="My Test Display",
+        )
+        attrs = sns.get_topic_attributes(TopicArn=arn)["Attributes"]
+        assert attrs["DisplayName"] == "My Test Display"
+        sns.delete_topic(TopicArn=arn)
+
+    def test_set_and_get_subscription_attributes(self, sns):
+        arn = sns.create_topic(Name="sub-attr-topic")["TopicArn"]
+        sub_arn = sns.subscribe(
+            TopicArn=arn,
+            Protocol="sqs",
+            Endpoint="arn:aws:sqs:us-east-1:123456789012:test",
+        )["SubscriptionArn"]
+        sns.set_subscription_attributes(
+            SubscriptionArn=sub_arn,
+            AttributeName="RawMessageDelivery",
+            AttributeValue="true",
+        )
+        attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
+        assert attrs["RawMessageDelivery"] == "true"
+        sns.unsubscribe(SubscriptionArn=sub_arn)
+        sns.delete_topic(TopicArn=arn)
+
+    def test_list_subscriptions_by_topic_filtered(self, sns):
+        arn = sns.create_topic(Name="list-sub-topic")["TopicArn"]
+        sns.subscribe(
+            TopicArn=arn,
+            Protocol="sqs",
+            Endpoint="arn:aws:sqs:us-east-1:123456789012:test",
+        )
+        subs = sns.list_subscriptions_by_topic(TopicArn=arn)
+        sub_endpoints = [s["Endpoint"] for s in subs["Subscriptions"]]
+        assert "arn:aws:sqs:us-east-1:123456789012:test" in sub_endpoints
+        sns.delete_topic(TopicArn=arn)
+
+
 class TestSNSToSQSDelivery:
     def test_publish_delivers_to_sqs(self, sns, sqs):
         # Create SQS queue
@@ -169,3 +212,595 @@ class TestSNSToSQSDelivery:
         sqs.delete_queue(QueueUrl=q1_url)
         sqs.delete_queue(QueueUrl=q2_url)
         sns.delete_topic(TopicArn=topic_arn)
+
+
+class TestSNSFifoTopics:
+    def test_create_fifo_topic(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        name = f"fifo-topic-{suffix}.fifo"
+        try:
+            response = sns.create_topic(
+                Name=name,
+                Attributes={
+                    "FifoTopic": "true",
+                    "ContentBasedDeduplication": "true",
+                },
+            )
+            arn = response["TopicArn"]
+            assert arn.endswith(".fifo")
+            attrs = sns.get_topic_attributes(TopicArn=arn)["Attributes"]
+            assert attrs["FifoTopic"] == "true"
+            assert attrs["ContentBasedDeduplication"] == "true"
+        finally:
+            sns.delete_topic(TopicArn=response["TopicArn"])
+
+    def test_publish_to_fifo_topic(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        name = f"fifo-pub-{suffix}.fifo"
+        arn = sns.create_topic(
+            Name=name,
+            Attributes={"FifoTopic": "true", "ContentBasedDeduplication": "true"},
+        )["TopicArn"]
+        try:
+            response = sns.publish(
+                TopicArn=arn,
+                Message="fifo message",
+                MessageGroupId="group1",
+            )
+            assert "MessageId" in response
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_fifo_topic_with_dedup_id(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        name = f"fifo-dedup-{suffix}.fifo"
+        arn = sns.create_topic(
+            Name=name,
+            Attributes={"FifoTopic": "true"},
+        )["TopicArn"]
+        try:
+            response = sns.publish(
+                TopicArn=arn,
+                Message="dedup message",
+                MessageGroupId="group1",
+                MessageDeduplicationId="dedup-123",
+            )
+            assert "MessageId" in response
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+
+class TestSNSFilterPolicy:
+    def test_subscription_filter_policy_string_match(self, sns, sqs):
+        suffix = uuid.uuid4().hex[:8]
+        q_url = sqs.create_queue(QueueName=f"filter-str-{suffix}")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name=f"filter-str-{suffix}")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            sns.set_subscription_attributes(
+                SubscriptionArn=sub_arn,
+                AttributeName="FilterPolicy",
+                AttributeValue=json.dumps({"color": ["blue"]}),
+            )
+            # Matching message
+            sns.publish(
+                TopicArn=topic_arn,
+                Message="blue msg",
+                MessageAttributes={
+                    "color": {"DataType": "String", "StringValue": "blue"}
+                },
+            )
+            recv = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=3)
+            assert len(recv.get("Messages", [])) == 1
+
+            # Non-matching message
+            sns.publish(
+                TopicArn=topic_arn,
+                Message="red msg",
+                MessageAttributes={
+                    "color": {"DataType": "String", "StringValue": "red"}
+                },
+            )
+            recv2 = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=1)
+            assert len(recv2.get("Messages", [])) == 0
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+            sns.delete_topic(TopicArn=topic_arn)
+
+    def test_subscription_filter_policy_prefix(self, sns, sqs):
+        suffix = uuid.uuid4().hex[:8]
+        q_url = sqs.create_queue(QueueName=f"filter-pfx-{suffix}")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name=f"filter-pfx-{suffix}")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            sns.set_subscription_attributes(
+                SubscriptionArn=sub_arn,
+                AttributeName="FilterPolicy",
+                AttributeValue=json.dumps({"event": [{"prefix": "order"}]}),
+            )
+            sns.publish(
+                TopicArn=topic_arn,
+                Message="order event",
+                MessageAttributes={
+                    "event": {"DataType": "String", "StringValue": "order.created"}
+                },
+            )
+            recv = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=3)
+            assert len(recv.get("Messages", [])) == 1
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+            sns.delete_topic(TopicArn=topic_arn)
+
+    def test_subscription_filter_policy_numeric(self, sns, sqs):
+        suffix = uuid.uuid4().hex[:8]
+        q_url = sqs.create_queue(QueueName=f"filter-num-{suffix}")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name=f"filter-num-{suffix}")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            sns.set_subscription_attributes(
+                SubscriptionArn=sub_arn,
+                AttributeName="FilterPolicy",
+                AttributeValue=json.dumps(
+                    {"price": [{"numeric": [">=", 100]}]}
+                ),
+            )
+            sns.publish(
+                TopicArn=topic_arn,
+                Message="expensive item",
+                MessageAttributes={
+                    "price": {"DataType": "Number", "StringValue": "150"}
+                },
+            )
+            recv = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=3)
+            assert len(recv.get("Messages", [])) == 1
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+            sns.delete_topic(TopicArn=topic_arn)
+
+
+class TestSNSTopicTags:
+    def test_tag_resource(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"tag-topic-{suffix}")["TopicArn"]
+        try:
+            sns.tag_resource(
+                ResourceArn=arn,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            )
+            tags = sns.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "platform"
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_untag_resource(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"untag-topic-{suffix}")["TopicArn"]
+        try:
+            sns.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "keep", "Value": "yes"}],
+            )
+            sns.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            tags = sns.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            keys = [t["Key"] for t in tags]
+            assert "env" not in keys
+            assert "keep" in keys
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_list_tags_for_resource_empty(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"notags-{suffix}")["TopicArn"]
+        try:
+            tags = sns.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert tags == []
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+
+class TestSNSTopicAndSubscriptionAttributes:
+    def test_get_topic_attributes_fields(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"attrs-{suffix}")["TopicArn"]
+        try:
+            attrs = sns.get_topic_attributes(TopicArn=arn)["Attributes"]
+            assert "TopicArn" in attrs
+            assert "Owner" in attrs
+            assert "SubscriptionsConfirmed" in attrs
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_set_topic_display_name(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"display-{suffix}")["TopicArn"]
+        try:
+            sns.set_topic_attributes(
+                TopicArn=arn,
+                AttributeName="DisplayName",
+                AttributeValue="My Topic Display",
+            )
+            attrs = sns.get_topic_attributes(TopicArn=arn)["Attributes"]
+            assert attrs["DisplayName"] == "My Topic Display"
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_set_topic_policy(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"policy-{suffix}")["TopicArn"]
+        try:
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "SNS:Publish",
+                            "Resource": arn,
+                        }
+                    ],
+                }
+            )
+            sns.set_topic_attributes(
+                TopicArn=arn,
+                AttributeName="Policy",
+                AttributeValue=policy,
+            )
+            attrs = sns.get_topic_attributes(TopicArn=arn)["Attributes"]
+            returned_policy = json.loads(attrs["Policy"])
+            assert returned_policy["Version"] == "2012-10-17"
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_get_subscription_attributes(self, sns, sqs):
+        suffix = uuid.uuid4().hex[:8]
+        q_url = sqs.create_queue(QueueName=f"sub-attrs-{suffix}")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name=f"sub-attrs-{suffix}")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)[
+                "Attributes"
+            ]
+            assert attrs["Protocol"] == "sqs"
+            assert attrs["Endpoint"] == q_arn
+            assert attrs["TopicArn"] == topic_arn
+            assert "SubscriptionArn" in attrs
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+            sns.delete_topic(TopicArn=topic_arn)
+
+    def test_set_subscription_raw_message_delivery(self, sns, sqs):
+        suffix = uuid.uuid4().hex[:8]
+        q_url = sqs.create_queue(QueueName=f"sub-raw-{suffix}")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name=f"sub-raw-{suffix}")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            sns.set_subscription_attributes(
+                SubscriptionArn=sub_arn,
+                AttributeName="RawMessageDelivery",
+                AttributeValue="true",
+            )
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)[
+                "Attributes"
+            ]
+            assert attrs["RawMessageDelivery"] == "true"
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+            sns.delete_topic(TopicArn=topic_arn)
+
+
+class TestSNSPublishFeatures:
+    def test_publish_with_message_attributes(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"msg-attrs-{suffix}")["TopicArn"]
+        try:
+            response = sns.publish(
+                TopicArn=arn,
+                Message="message with attributes",
+                MessageAttributes={
+                    "name": {"DataType": "String", "StringValue": "test-name"},
+                    "count": {"DataType": "Number", "StringValue": "42"},
+                },
+            )
+            assert "MessageId" in response
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_publish_batch(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"batch-{suffix}")["TopicArn"]
+        try:
+            response = sns.publish_batch(
+                TopicArn=arn,
+                PublishBatchRequestEntries=[
+                    {"Id": "msg1", "Message": "first message"},
+                    {"Id": "msg2", "Message": "second message"},
+                    {"Id": "msg3", "Message": "third message"},
+                ],
+            )
+            assert len(response.get("Successful", [])) == 3
+            assert len(response.get("Failed", [])) == 0
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_publish_with_subject(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"subject-{suffix}")["TopicArn"]
+        try:
+            response = sns.publish(
+                TopicArn=arn,
+                Message="message with subject",
+                Subject="Test Subject",
+            )
+            assert "MessageId" in response
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_publish_message_structure_json(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"json-struct-{suffix}")["TopicArn"]
+        try:
+            response = sns.publish(
+                TopicArn=arn,
+                Message=json.dumps({"default": "default message", "sqs": "sqs message"}),
+                MessageStructure="json",
+            )
+            assert "MessageId" in response
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+
+class TestSNSPlatformApplications:
+    def test_create_and_list_platform_application(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        name = f"test-app-{suffix}"
+        try:
+            response = sns.create_platform_application(
+                Name=name,
+                Platform="GCM",
+                Attributes={"PlatformCredential": "test-api-key"},
+            )
+            app_arn = response["PlatformApplicationArn"]
+            assert app_arn is not None
+
+            apps = sns.list_platform_applications()
+            arns = [
+                a["PlatformApplicationArn"]
+                for a in apps["PlatformApplications"]
+            ]
+            assert app_arn in arns
+        finally:
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+    def test_delete_platform_application(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        name = f"del-app-{suffix}"
+        response = sns.create_platform_application(
+            Name=name,
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        app_arn = response["PlatformApplicationArn"]
+        sns.delete_platform_application(PlatformApplicationArn=app_arn)
+        apps = sns.list_platform_applications()
+        arns = [
+            a["PlatformApplicationArn"]
+            for a in apps["PlatformApplications"]
+        ]
+        assert app_arn not in arns
+class TestSNSSubscriptionAttributes:
+    def test_set_and_get_filter_policy(self, sns, sqs):
+        """SetSubscriptionAttributes + GetSubscriptionAttributes with filter policy."""
+        topic_arn = sns.create_topic(Name="filter-policy-topic")["TopicArn"]
+        q_url = sqs.create_queue(QueueName="filter-policy-queue")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+            "SubscriptionArn"
+        ]
+
+        filter_policy = json.dumps({"event_type": ["order_placed"]})
+        sns.set_subscription_attributes(
+            SubscriptionArn=sub_arn,
+            AttributeName="FilterPolicy",
+            AttributeValue=filter_policy,
+        )
+
+        attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
+        assert json.loads(attrs["FilterPolicy"]) == {"event_type": ["order_placed"]}
+        assert attrs["TopicArn"] == topic_arn
+        assert attrs["Protocol"] == "sqs"
+
+        sqs.delete_queue(QueueUrl=q_url)
+        sns.delete_topic(TopicArn=topic_arn)
+
+    def test_get_subscription_attributes_basic(self, sns, sqs):
+        """GetSubscriptionAttributes returns standard fields."""
+        topic_arn = sns.create_topic(Name="get-sub-attrs-topic")["TopicArn"]
+        q_url = sqs.create_queue(QueueName="get-sub-attrs-queue")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+            "SubscriptionArn"
+        ]
+
+        attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
+        assert attrs["SubscriptionArn"] == sub_arn
+        assert attrs["TopicArn"] == topic_arn
+        assert attrs["Protocol"] == "sqs"
+        assert attrs["Endpoint"] == q_arn
+        assert "Owner" in attrs
+
+        sqs.delete_queue(QueueUrl=q_url)
+        sns.delete_topic(TopicArn=topic_arn)
+
+
+class TestSNSMessageAttributes:
+    def test_tag_untag_list_tags(self, sns, topic_arn):
+        """Test TagResource, UntagResource, ListTagsForResource on topics."""
+        sns.tag_resource(
+            ResourceArn=topic_arn,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        tags_resp = sns.list_tags_for_resource(ResourceArn=topic_arn)
+        tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "platform"
+
+        # Untag one key
+        sns.untag_resource(ResourceArn=topic_arn, TagKeys=["team"])
+        tags_resp = sns.list_tags_for_resource(ResourceArn=topic_arn)
+        keys = [t["Key"] for t in tags_resp["Tags"]]
+        assert "env" in keys
+        assert "team" not in keys
+
+
+class TestSNSSubscriptionAttributes:
+    def test_set_subscription_filter_policy(self, sns, sqs):
+        """Test SetSubscriptionAttributes with FilterPolicy."""
+        q_url = sqs.create_queue(QueueName="sns-filter-test")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name="filter-topic")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            filter_policy = json.dumps({"event_type": ["order_placed"]})
+            sns.set_subscription_attributes(
+                SubscriptionArn=sub_arn,
+                AttributeName="FilterPolicy",
+                AttributeValue=filter_policy,
+            )
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)
+            assert "FilterPolicy" in attrs["Attributes"]
+            assert json.loads(attrs["Attributes"]["FilterPolicy"]) == {
+                "event_type": ["order_placed"]
+            }
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_list_topics_pagination(self, sns):
+        """Test ListTopics pagination by creating many topics."""
+        created_arns = []
+        try:
+            for i in range(5):
+                arn = sns.create_topic(Name=f"page-topic-{i}")["TopicArn"]
+                created_arns.append(arn)
+            # List all topics — should include our topics
+            all_arns = []
+            response = sns.list_topics()
+            all_arns.extend([t["TopicArn"] for t in response["Topics"]])
+            while "NextToken" in response:
+                response = sns.list_topics(NextToken=response["NextToken"])
+                all_arns.extend([t["TopicArn"] for t in response["Topics"]])
+            for arn in created_arns:
+                assert arn in all_arns
+        finally:
+            for arn in created_arns:
+                sns.delete_topic(TopicArn=arn)
+
+    def test_confirm_subscription_with_dummy_token(self, sns, topic_arn):
+        """ConfirmSubscription with an invalid token should raise an error."""
+        with pytest.raises(Exception):
+            sns.confirm_subscription(
+                TopicArn=topic_arn,
+                Token="invalid-dummy-token-12345",
+            )
+
+
+class TestSNSPlatformApplication:
+    def test_create_and_delete_platform_application(self, sns):
+        """Test CreatePlatformApplication and DeletePlatformApplication."""
+        response = sns.create_platform_application(
+            Name="test-platform-app",
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        arn = response["PlatformApplicationArn"]
+        assert arn is not None
+        sns.delete_platform_application(PlatformApplicationArn=arn)
+
+
+class TestSNSTopicAttributesExtended:
+    def test_get_topic_attributes_all_fields(self, sns, topic_arn):
+        """Test GetTopicAttributes returns all expected fields."""
+        attrs = sns.get_topic_attributes(TopicArn=topic_arn)["Attributes"]
+        assert "TopicArn" in attrs
+        assert "Owner" in attrs
+        assert "DisplayName" in attrs
+        assert "SubscriptionsConfirmed" in attrs
+        assert "SubscriptionsPending" in attrs
+        assert "SubscriptionsDeleted" in attrs
+
+
+class TestSNSSubscribeProtocols:
+    def test_subscribe_sqs_protocol(self, sns, sqs, topic_arn):
+        """Test Subscribe with SQS protocol."""
+        q_url = sqs.create_queue(QueueName="sns-proto-sqs")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        try:
+            sub = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)
+            assert "SubscriptionArn" in sub
+            # SQS subscriptions are auto-confirmed
+            assert sub["SubscriptionArn"] != "PendingConfirmation"
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_subscribe_lambda_protocol(self, sns, topic_arn):
+        """Test Subscribe with lambda protocol."""
+        lambda_arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+        sub = sns.subscribe(
+            TopicArn=topic_arn, Protocol="lambda", Endpoint=lambda_arn
+        )
+        assert "SubscriptionArn" in sub
+
+    def test_subscribe_https_protocol(self, sns, topic_arn):
+        """Test Subscribe with https protocol."""
+        sub = sns.subscribe(
+            TopicArn=topic_arn,
+            Protocol="https",
+            Endpoint="https://example.com/sns-endpoint",
+        )
+        assert "SubscriptionArn" in sub

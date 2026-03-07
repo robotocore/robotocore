@@ -399,10 +399,20 @@ def _create_lambda_function(resource: CfnResource, region: str, account_id: str)
         import io
         import zipfile
 
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("index.py", zip_file)
-        code_obj = {"ZipFile": base64.b64encode(buf.getvalue()).decode()}
+        # Check if it's already a base64-encoded zip
+        try:
+            decoded = base64.b64decode(zip_file)
+            if decoded[:4] == b"PK\x03\x04":
+                # Already a valid zip file, pass through
+                code_obj = {"ZipFile": zip_file}
+            else:
+                raise ValueError("not a zip")
+        except Exception:
+            # Treat as inline source code — wrap in a zip
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("index.py", zip_file)
+            code_obj = {"ZipFile": base64.b64encode(buf.getvalue()).decode()}
     else:
         code_obj = {"ZipFile": ""}
     spec = {

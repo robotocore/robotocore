@@ -59,3 +59,48 @@ class TestRoute53ResolverOperations:
     def test_list_resolver_rules(self, resolver):
         response = resolver.list_resolver_rules()
         assert "ResolverRules" in response
+
+    def test_create_resolver_rule(self, resolver):
+        name = f"test-rule-{_uid()}"
+        response = resolver.create_resolver_rule(
+            CreatorRequestId=_uid(),
+            Name=name,
+            RuleType="FORWARD",
+            DomainName="example.com.",
+        )
+        assert response["ResolverRule"]["Name"] == name
+        rule_id = response["ResolverRule"]["Id"]
+        resolver.delete_resolver_rule(ResolverRuleId=rule_id)
+
+    def test_get_resolver_rule(self, resolver):
+        name = f"get-rule-{_uid()}"
+        create = resolver.create_resolver_rule(
+            CreatorRequestId=_uid(),
+            Name=name,
+            RuleType="FORWARD",
+            DomainName="get-test.example.com",
+        )
+        rule_id = create["ResolverRule"]["Id"]
+        response = resolver.get_resolver_rule(ResolverRuleId=rule_id)
+        assert response["ResolverRule"]["Name"] == name
+        assert "get-test.example.com" in response["ResolverRule"]["DomainName"]
+        resolver.delete_resolver_rule(ResolverRuleId=rule_id)
+
+    def test_tag_resolver_rule(self, resolver):
+        name = f"tag-rule-{_uid()}"
+        create = resolver.create_resolver_rule(
+            CreatorRequestId=_uid(),
+            Name=name,
+            RuleType="FORWARD",
+            DomainName="tag-test.example.com.",
+        )
+        arn = create["ResolverRule"]["Arn"]
+        rule_id = create["ResolverRule"]["Id"]
+        resolver.tag_resource(
+            ResourceArn=arn,
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        tags = resolver.list_tags_for_resource(ResourceArn=arn)["Tags"]
+        tag_map = {t["Key"]: t["Value"] for t in tags}
+        assert tag_map["env"] == "test"
+        resolver.delete_resolver_rule(ResolverRuleId=rule_id)

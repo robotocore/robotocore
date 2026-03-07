@@ -22,6 +22,10 @@ _integrations: dict[str, dict[str, dict[str, dict]]] = {}  # region -> api -> in
 _stages: dict[str, dict[str, dict[str, dict]]] = {}  # region -> api_id -> stage_name -> stage
 _authorizers: dict[str, dict[str, dict[str, dict]]] = {}  # region -> api -> auth_id -> auth
 _deployments: dict[str, dict[str, dict[str, dict]]] = {}  # region -> api -> deploy_id -> deploy
+_vpc_links: dict[str, dict[str, dict]] = {}  # region -> vpc_link_id -> vpc_link
+_domain_names: dict[str, dict[str, dict]] = {}  # region -> domain_name -> domain
+_api_mappings: dict[str, dict[str, dict[str, dict]]] = {}  # region -> domain -> mapping_id -> mapping
+_models: dict[str, dict[str, dict[str, dict]]] = {}  # region -> api_id -> model_id -> model
 # WebSocket connection tracking
 _connections: dict[str, dict[str, dict]] = {}  # api_id -> connection_id -> conn_info
 
@@ -60,6 +64,17 @@ _DEPLOYMENT_PATH = re.compile(r"^/v2/apis/([^/]+)/deployments/([^/]+)$")
 _DEPLOYMENTS_LIST = re.compile(r"^/v2/apis/([^/]+)/deployments/?$")
 
 _TAGS_PATH = re.compile(r"^/v2/tags/(.+)$")
+
+_VPC_LINK_PATH = re.compile(r"^/v2/vpclinks/([^/]+)$")
+_VPC_LINKS_LIST = re.compile(r"^/v2/vpclinks/?$")
+
+_DOMAIN_NAME_PATH = re.compile(r"^/v2/domainnames/([^/]+)$")
+_DOMAIN_NAMES_LIST = re.compile(r"^/v2/domainnames/?$")
+_API_MAPPING_PATH = re.compile(r"^/v2/domainnames/([^/]+)/apimappings/([^/]+)$")
+_API_MAPPINGS_LIST = re.compile(r"^/v2/domainnames/([^/]+)/apimappings/?$")
+
+_MODEL_PATH = re.compile(r"^/v2/apis/([^/]+)/models/([^/]+)$")
+_MODELS_LIST = re.compile(r"^/v2/apis/([^/]+)/models/?$")
 
 
 class ApiGatewayV2Error(Exception):
@@ -220,6 +235,92 @@ async def handle_apigatewayv2_request(
                 return _json_response(
                     _get_deployment(api_id, deploy_id, region)
                 )
+            if method == "DELETE":
+                _delete_deployment(api_id, deploy_id, region)
+                return Response(status_code=204)
+
+        # VPC Links
+        m = _VPC_LINKS_LIST.match(path)
+        if m:
+            if method == "POST":
+                return _json_response(
+                    _create_vpc_link(params, region, account_id), 201
+                )
+            if method == "GET":
+                return _json_response(_get_vpc_links(region))
+
+        m = _VPC_LINK_PATH.match(path)
+        if m:
+            vpc_link_id = m.group(1)
+            if method == "GET":
+                return _json_response(_get_vpc_link(vpc_link_id, region))
+            if method == "PATCH":
+                return _json_response(_update_vpc_link(vpc_link_id, params, region))
+            if method == "DELETE":
+                _delete_vpc_link(vpc_link_id, region)
+                return Response(status_code=204)
+
+        # Domain Names
+        m = _DOMAIN_NAMES_LIST.match(path)
+        if m:
+            if method == "POST":
+                return _json_response(
+                    _create_domain_name(params, region, account_id), 201
+                )
+            if method == "GET":
+                return _json_response(_get_domain_names(region))
+
+        m = _API_MAPPINGS_LIST.match(path)
+        if m:
+            domain = m.group(1)
+            if method == "POST":
+                return _json_response(
+                    _create_api_mapping(domain, params, region), 201
+                )
+            if method == "GET":
+                return _json_response(_get_api_mappings(domain, region))
+
+        m = _API_MAPPING_PATH.match(path)
+        if m:
+            domain, mapping_id = m.group(1), m.group(2)
+            if method == "GET":
+                return _json_response(_get_api_mapping(domain, mapping_id, region))
+            if method == "DELETE":
+                _delete_api_mapping(domain, mapping_id, region)
+                return Response(status_code=204)
+
+        m = _DOMAIN_NAME_PATH.match(path)
+        if m:
+            domain = m.group(1)
+            if method == "GET":
+                return _json_response(_get_domain_name(domain, region))
+            if method == "PATCH":
+                return _json_response(_update_domain_name(domain, params, region))
+            if method == "DELETE":
+                _delete_domain_name(domain, region)
+                return Response(status_code=204)
+
+        # Models
+        m = _MODELS_LIST.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "POST":
+                return _json_response(
+                    _create_model(api_id, params, region), 201
+                )
+            if method == "GET":
+                return _json_response(_get_models(api_id, region))
+
+        m = _MODEL_PATH.match(path)
+        if m:
+            api_id, model_id = m.group(1), m.group(2)
+            if method == "GET":
+                return _json_response(_get_model(api_id, model_id, region))
+            if method == "PATCH":
+                return _json_response(_update_model(api_id, model_id, params, region))
+            if method == "DELETE":
+                _delete_model(api_id, model_id, region)
+                return Response(status_code=204)
 
         # Tags
         m = _TAGS_PATH.match(path)
@@ -716,6 +817,249 @@ def _get_deployments(api_id: str, region: str) -> dict:
     with _lock:
         items = list(deployments.values())
     return {"Items": items}
+
+
+def _delete_deployment(api_id: str, deploy_id: str, region: str) -> None:
+    _require_api(api_id, region)
+    deployments = _store(_deployments, region, api_id)
+    with _lock:
+        if deploy_id not in deployments:
+            raise ApiGatewayV2Error(
+                "NotFoundException", f"Deployment {deploy_id} not found", 404
+            )
+        del deployments[deploy_id]
+
+
+# ---------------------------------------------------------------------------
+# VPC Link CRUD
+# ---------------------------------------------------------------------------
+
+
+def _create_vpc_link(params: dict, region: str, account_id: str) -> dict:
+    links = _store(_vpc_links, region)
+    vpc_link_id = _short_id()
+    link = {
+        "VpcLinkId": vpc_link_id,
+        "Name": params.get("Name", ""),
+        "SubnetIds": params.get("SubnetIds", []),
+        "SecurityGroupIds": params.get("SecurityGroupIds", []),
+        "VpcLinkStatus": "AVAILABLE",
+        "VpcLinkStatusMessage": "VPC link is ready to route traffic",
+        "VpcLinkVersion": "V2",
+        "Tags": params.get("Tags", {}),
+        "CreatedDate": _iso_time(),
+    }
+    with _lock:
+        links[vpc_link_id] = link
+    return link
+
+
+def _get_vpc_link(vpc_link_id: str, region: str) -> dict:
+    links = _store(_vpc_links, region)
+    with _lock:
+        link = links.get(vpc_link_id)
+    if not link:
+        raise ApiGatewayV2Error("NotFoundException", f"VPC link {vpc_link_id} not found", 404)
+    return link
+
+
+def _get_vpc_links(region: str) -> dict:
+    links = _store(_vpc_links, region)
+    with _lock:
+        items = list(links.values())
+    return {"Items": items}
+
+
+def _update_vpc_link(vpc_link_id: str, params: dict, region: str) -> dict:
+    links = _store(_vpc_links, region)
+    with _lock:
+        link = links.get(vpc_link_id)
+        if not link:
+            raise ApiGatewayV2Error(
+                "NotFoundException", f"VPC link {vpc_link_id} not found", 404
+            )
+        for key in ("Name", "SecurityGroupIds"):
+            if key in params:
+                link[key] = params[key]
+    return link
+
+
+def _delete_vpc_link(vpc_link_id: str, region: str) -> None:
+    links = _store(_vpc_links, region)
+    with _lock:
+        if vpc_link_id not in links:
+            raise ApiGatewayV2Error(
+                "NotFoundException", f"VPC link {vpc_link_id} not found", 404
+            )
+        del links[vpc_link_id]
+
+
+# ---------------------------------------------------------------------------
+# Domain Name CRUD
+# ---------------------------------------------------------------------------
+
+
+def _create_domain_name(params: dict, region: str, account_id: str) -> dict:
+    domains = _store(_domain_names, region)
+    domain_name = params.get("DomainName", "")
+    domain = {
+        "DomainName": domain_name,
+        "DomainNameConfigurations": params.get("DomainNameConfigurations", []),
+        "MutualTlsAuthentication": params.get("MutualTlsAuthentication"),
+        "Tags": params.get("Tags", {}),
+        "ApiMappingSelectionExpression": "$request.basepath",
+    }
+    with _lock:
+        domains[domain_name] = domain
+    return domain
+
+
+def _get_domain_name(domain: str, region: str) -> dict:
+    domains = _store(_domain_names, region)
+    with _lock:
+        d = domains.get(domain)
+    if not d:
+        raise ApiGatewayV2Error("NotFoundException", f"Domain {domain} not found", 404)
+    return d
+
+
+def _get_domain_names(region: str) -> dict:
+    domains = _store(_domain_names, region)
+    with _lock:
+        items = list(domains.values())
+    return {"Items": items}
+
+
+def _update_domain_name(domain: str, params: dict, region: str) -> dict:
+    domains = _store(_domain_names, region)
+    with _lock:
+        d = domains.get(domain)
+        if not d:
+            raise ApiGatewayV2Error("NotFoundException", f"Domain {domain} not found", 404)
+        for key in ("DomainNameConfigurations", "MutualTlsAuthentication"):
+            if key in params:
+                d[key] = params[key]
+    return d
+
+
+def _delete_domain_name(domain: str, region: str) -> None:
+    domains = _store(_domain_names, region)
+    with _lock:
+        if domain not in domains:
+            raise ApiGatewayV2Error("NotFoundException", f"Domain {domain} not found", 404)
+        del domains[domain]
+    # Clean up api mappings
+    _api_mappings.get(region, {}).pop(domain, None)
+
+
+# ---------------------------------------------------------------------------
+# API Mapping CRUD
+# ---------------------------------------------------------------------------
+
+
+def _create_api_mapping(domain: str, params: dict, region: str) -> dict:
+    # Verify domain exists
+    _get_domain_name(domain, region)
+    mappings = _store(_api_mappings, region, domain)
+    mapping_id = _short_id()
+    mapping = {
+        "ApiMappingId": mapping_id,
+        "ApiId": params.get("ApiId", ""),
+        "ApiMappingKey": params.get("ApiMappingKey", ""),
+        "Stage": params.get("Stage", ""),
+    }
+    with _lock:
+        mappings[mapping_id] = mapping
+    return mapping
+
+
+def _get_api_mapping(domain: str, mapping_id: str, region: str) -> dict:
+    mappings = _store(_api_mappings, region, domain)
+    with _lock:
+        mapping = mappings.get(mapping_id)
+    if not mapping:
+        raise ApiGatewayV2Error(
+            "NotFoundException", f"API mapping {mapping_id} not found", 404
+        )
+    return mapping
+
+
+def _get_api_mappings(domain: str, region: str) -> dict:
+    mappings = _store(_api_mappings, region, domain)
+    with _lock:
+        items = list(mappings.values())
+    return {"Items": items}
+
+
+def _delete_api_mapping(domain: str, mapping_id: str, region: str) -> None:
+    mappings = _store(_api_mappings, region, domain)
+    with _lock:
+        if mapping_id not in mappings:
+            raise ApiGatewayV2Error(
+                "NotFoundException", f"API mapping {mapping_id} not found", 404
+            )
+        del mappings[mapping_id]
+
+
+# ---------------------------------------------------------------------------
+# Model CRUD
+# ---------------------------------------------------------------------------
+
+
+def _create_model(api_id: str, params: dict, region: str) -> dict:
+    _require_api(api_id, region)
+    models = _store(_models, region, api_id)
+    model_id = _short_id()
+    model = {
+        "ModelId": model_id,
+        "ContentType": params.get("ContentType", "application/json"),
+        "Description": params.get("Description", ""),
+        "Name": params.get("Name", ""),
+        "Schema": params.get("Schema", ""),
+    }
+    with _lock:
+        models[model_id] = model
+    return model
+
+
+def _get_model(api_id: str, model_id: str, region: str) -> dict:
+    _require_api(api_id, region)
+    models = _store(_models, region, api_id)
+    with _lock:
+        model = models.get(model_id)
+    if not model:
+        raise ApiGatewayV2Error("NotFoundException", f"Model {model_id} not found", 404)
+    return model
+
+
+def _get_models(api_id: str, region: str) -> dict:
+    _require_api(api_id, region)
+    models = _store(_models, region, api_id)
+    with _lock:
+        items = list(models.values())
+    return {"Items": items}
+
+
+def _update_model(api_id: str, model_id: str, params: dict, region: str) -> dict:
+    _require_api(api_id, region)
+    models = _store(_models, region, api_id)
+    with _lock:
+        model = models.get(model_id)
+        if not model:
+            raise ApiGatewayV2Error("NotFoundException", f"Model {model_id} not found", 404)
+        for key in ("ContentType", "Description", "Name", "Schema"):
+            if key in params:
+                model[key] = params[key]
+    return model
+
+
+def _delete_model(api_id: str, model_id: str, region: str) -> None:
+    _require_api(api_id, region)
+    models = _store(_models, region, api_id)
+    with _lock:
+        if model_id not in models:
+            raise ApiGatewayV2Error("NotFoundException", f"Model {model_id} not found", 404)
+        del models[model_id]
 
 
 # ---------------------------------------------------------------------------

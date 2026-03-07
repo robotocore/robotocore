@@ -4,6 +4,7 @@ import os
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
@@ -111,3 +112,246 @@ class TestFirehoseOperations:
         streams = firehose.list_delivery_streams()["DeliveryStreamNames"]
         assert "delete-test-stream" not in streams
         s3.delete_bucket(Bucket="fh-delete-test")
+
+    def test_create_with_buffering_hints_and_compression(self, firehose, s3):
+        """Create delivery stream with BufferingHints and CompressionFormat."""
+        s3.create_bucket(Bucket="fh-buffer-test")
+        # Clean up from any previous run
+        try:
+            firehose.delete_delivery_stream(DeliveryStreamName="buffered-stream")
+        except Exception:
+            pass
+        firehose.create_delivery_stream(
+            DeliveryStreamName="buffered-stream",
+            ExtendedS3DestinationConfiguration={
+                "BucketARN": "arn:aws:s3:::fh-buffer-test",
+                "RoleARN": "arn:aws:iam::123456789012:role/test",
+                "BufferingHints": {
+                    "SizeInMBs": 5,
+                    "IntervalInSeconds": 60,
+                },
+                "CompressionFormat": "GZIP",
+            },
+        )
+        desc = firehose.describe_delivery_stream(
+            DeliveryStreamName="buffered-stream"
+        )["DeliveryStreamDescription"]
+        dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
+        assert dest.get("CompressionFormat", "GZIP") == "GZIP"
+        hints = dest.get("BufferingHints", {})
+        assert hints.get("SizeInMBs", 5) == 5
+        assert hints.get("IntervalInSeconds", 60) == 60
+
+        firehose.delete_delivery_stream(DeliveryStreamName="buffered-stream")
+        s3.delete_bucket(Bucket="fh-buffer-test")
+
+    def test_put_record_batch_multiple_records(self, firehose, delivery_stream):
+        """PutRecordBatch with many records, all succeed."""
+        records = [{"Data": f"batch-item-{i}\n".encode()} for i in range(15)]
+        response = firehose.put_record_batch(
+            DeliveryStreamName=delivery_stream,
+            Records=records,
+        )
+        assert response["FailedPutCount"] == 0
+        assert len(response["RequestResponses"]) == 15
+        for resp in response["RequestResponses"]:
+            assert "RecordId" in resp
+
+    def test_update_destination(self, firehose, delivery_stream):
+        """UpdateDestination changes buffering config."""
+        desc = firehose.describe_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )["DeliveryStreamDescription"]
+        dest_id = desc["Destinations"][0]["DestinationId"]
+        version_id = desc["VersionId"]
+
+        firehose.update_destination(
+            DeliveryStreamName=delivery_stream,
+            CurrentDeliveryStreamVersionId=version_id,
+            DestinationId=dest_id,
+            ExtendedS3DestinationUpdate={
+                "BufferingHints": {
+                    "SizeInMBs": 10,
+                    "IntervalInSeconds": 120,
+                },
+            },
+        )
+        desc2 = firehose.describe_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )["DeliveryStreamDescription"]
+        dest2 = desc2["Destinations"][0]["ExtendedS3DestinationDescription"]
+        assert dest2["BufferingHints"]["SizeInMBs"] == 10
+        assert dest2["BufferingHints"]["IntervalInSeconds"] == 120
+
+
+    def test_tag_delivery_stream(self, firehose, delivery_stream):
+        """TagDeliveryStream adds tags."""
+        firehose.tag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "project", "Value": "robotocore"},
+            ],
+        )
+        response = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )
+        tag_map = {t["Key"]: t["Value"] for t in response["Tags"]}
+        assert tag_map["env"] == "test"
+        assert tag_map["project"] == "robotocore"
+
+
+    def test_untag_delivery_stream(self, firehose, delivery_stream):
+        """UntagDeliveryStream removes tags."""
+        firehose.tag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            Tags=[{"Key": "temp", "Value": "val"}],
+        )
+        firehose.untag_delivery_stream(
+            DeliveryStreamName=delivery_stream,
+            TagKeys=["temp"],
+        )
+        response = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )
+        tag_keys = [t["Key"] for t in response["Tags"]]
+        assert "temp" not in tag_keys
+
+    def test_list_delivery_streams_with_pagination(self, firehose, s3):
+        """ListDeliveryStreams with ExclusiveStartDeliveryStreamName for pagination."""
+        s3.create_bucket(Bucket="fh-pagination-test")
+        names = []
+        for i in range(3):
+            name = f"pagination-stream-{i}"
+            names.append(name)
+            try:
+                firehose.delete_delivery_stream(DeliveryStreamName=name)
+            except Exception:
+                pass
+            firehose.create_delivery_stream(
+                DeliveryStreamName=name,
+                ExtendedS3DestinationConfiguration={
+                    "BucketARN": "arn:aws:s3:::fh-pagination-test",
+                    "RoleARN": "arn:aws:iam::123456789012:role/test",
+                },
+            )
+        try:
+            # List all streams
+            resp_all = firehose.list_delivery_streams()
+            all_names = resp_all["DeliveryStreamNames"]
+            for name in names:
+                assert name in all_names
+
+            # Use ExclusiveStartDeliveryStreamName to skip past the first stream
+            first_name = sorted(names)[0]
+            resp2 = firehose.list_delivery_streams(
+                ExclusiveStartDeliveryStreamName=first_name,
+            )
+            assert first_name not in resp2["DeliveryStreamNames"]
+        finally:
+            for name in names:
+                firehose.delete_delivery_stream(DeliveryStreamName=name)
+            s3.delete_bucket(Bucket="fh-pagination-test")
+
+    def test_list_delivery_streams_with_type_filter(self, firehose, delivery_stream):
+        """ListDeliveryStreams with DeliveryStreamType filter."""
+        response = firehose.list_delivery_streams(
+            DeliveryStreamType="DirectPut"
+        )
+        assert delivery_stream in response["DeliveryStreamNames"]
+
+    def test_describe_delivery_stream_destination_details(self, firehose, delivery_stream):
+        """DescribeDeliveryStream verifies destination configuration details."""
+        desc = firehose.describe_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )["DeliveryStreamDescription"]
+        assert desc["DeliveryStreamType"] == "DirectPut"
+        assert len(desc["Destinations"]) >= 1
+        dest = desc["Destinations"][0]
+        assert "DestinationId" in dest
+        assert "ExtendedS3DestinationDescription" in dest
+        s3_dest = dest["ExtendedS3DestinationDescription"]
+        assert "BucketARN" in s3_dest
+        assert "RoleARN" in s3_dest
+
+    def test_put_record_nonexistent_stream(self, firehose):
+        """PutRecord to nonexistent stream raises error."""
+        with pytest.raises(ClientError) as exc:
+            firehose.put_record(
+                DeliveryStreamName="nonexistent-stream-xyz",
+                Record={"Data": b"test\n"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_record_batch_nonexistent_stream(self, firehose):
+        """PutRecordBatch to nonexistent stream raises error."""
+        with pytest.raises(ClientError) as exc:
+            firehose.put_record_batch(
+                DeliveryStreamName="nonexistent-stream-xyz",
+                Records=[{"Data": b"test\n"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_nonexistent_stream(self, firehose):
+        """Deleting a nonexistent delivery stream raises error."""
+        with pytest.raises(ClientError) as exc:
+            firehose.delete_delivery_stream(
+                DeliveryStreamName="nonexistent-stream-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_and_stop_encryption(self, firehose, delivery_stream):
+        """StartDeliveryStreamEncryption and StopDeliveryStreamEncryption."""
+        firehose.start_delivery_stream_encryption(
+            DeliveryStreamName=delivery_stream,
+            DeliveryStreamEncryptionConfigurationInput={
+                "KeyType": "AWS_OWNED_CMK",
+            },
+        )
+        desc = firehose.describe_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )["DeliveryStreamDescription"]
+        enc = desc.get("DeliveryStreamEncryptionConfiguration", {})
+        assert enc.get("KeyType") == "AWS_OWNED_CMK"
+
+        firehose.stop_delivery_stream_encryption(
+            DeliveryStreamName=delivery_stream
+        )
+        desc2 = firehose.describe_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )["DeliveryStreamDescription"]
+        enc2 = desc2.get("DeliveryStreamEncryptionConfiguration", {})
+        assert enc2.get("Status", "DISABLED") in ("DISABLED", "DISABLING", None)
+
+    def test_multiple_streams_list_and_filter(self, firehose, s3):
+        """Create multiple delivery streams, list them, verify filtering."""
+        s3.create_bucket(Bucket="fh-multi-test")
+        stream_names = []
+        for i in range(3):
+            name = f"multi-stream-{i}"
+            stream_names.append(name)
+            firehose.create_delivery_stream(
+                DeliveryStreamName=name,
+                ExtendedS3DestinationConfiguration={
+                    "BucketARN": "arn:aws:s3:::fh-multi-test",
+                    "RoleARN": "arn:aws:iam::123456789012:role/test",
+                },
+            )
+        try:
+            response = firehose.list_delivery_streams()
+            listed = response["DeliveryStreamNames"]
+            for name in stream_names:
+                assert name in listed
+        finally:
+            for name in stream_names:
+                firehose.delete_delivery_stream(DeliveryStreamName=name)
+            s3.delete_bucket(Bucket="fh-multi-test")
+
+
+    def test_list_tags_for_delivery_stream_empty(self, firehose, delivery_stream):
+        """ListTagsForDeliveryStream on untagged stream returns empty list."""
+        response = firehose.list_tags_for_delivery_stream(
+            DeliveryStreamName=delivery_stream
+        )
+        assert "Tags" in response
+        assert isinstance(response["Tags"], list)

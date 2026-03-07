@@ -1,8 +1,6 @@
 """State persistence compatibility tests — save, restore, and reset emulator state."""
 
-import json
 import os
-import tempfile
 
 import boto3
 import pytest

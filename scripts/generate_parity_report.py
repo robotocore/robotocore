@@ -129,6 +129,11 @@ _SERVICE_DIR_MAP = {
     "resourcegroupstaggingapi": None,
 }
 
+# Some native providers live in a different directory or use non-standard filenames
+_SERVICE_PROVIDER_FILES = {
+    "logs": SRC_SERVICES_DIR / "cloudwatch" / "logs_provider.py",
+}
+
 
 def _extract_action_map_keys(filepath: Path) -> list[str]:
     """Extract operation names from _ACTION_MAP or ACTION_MAP dicts in a provider file."""
@@ -209,6 +214,24 @@ def _extract_rest_route_operations(filepath: Path, service_name: str) -> list[st
         # This service delegates to Moto -- we'll count Moto's operations separately
         pass
 
+    # Pattern 5: Handler function names (def _create_api, def _get_routes, etc.)
+    # These are the implementation functions in REST-based providers
+    aws_verbs = {
+        "create", "get", "put", "delete", "update", "list", "describe",
+        "register", "deregister", "submit", "cancel", "terminate", "start",
+        "stop", "run", "tag", "untag", "publish", "invoke", "send", "receive",
+        "admin", "initiate", "respond", "confirm", "forgot", "change", "sign",
+        "set", "add", "remove", "batch", "associate", "disassociate",
+        "enable", "disable", "schedule", "query", "scan", "execute",
+    }
+    for m in re.finditer(r"^def _([a-z][a-z_]+)\(", content, re.MULTILINE):
+        func_name = m.group(1)
+        parts = func_name.split("_")
+        # Only include if starts with an AWS-like verb
+        if parts[0] in aws_verbs and len(parts) >= 2:
+            pascal = "".join(word.capitalize() for word in parts)
+            operations.add(pascal)
+
     return sorted(operations)
 
 
@@ -217,13 +240,18 @@ def get_native_operations(service_name: str) -> tuple[list[str], bool]:
 
     Returns (operations_list, delegates_to_moto).
     """
-    dir_name = _SERVICE_DIR_MAP.get(service_name, service_name)
-    if dir_name is None:
-        return [], False
-
-    provider_path = SRC_SERVICES_DIR / dir_name / "provider.py"
-    if not provider_path.exists():
-        return [], False
+    # Check for non-standard provider file locations first
+    if service_name in _SERVICE_PROVIDER_FILES:
+        provider_path = _SERVICE_PROVIDER_FILES[service_name]
+        if not provider_path.exists():
+            return [], False
+    else:
+        dir_name = _SERVICE_DIR_MAP.get(service_name, service_name)
+        if dir_name is None:
+            return [], False
+        provider_path = SRC_SERVICES_DIR / dir_name / "provider.py"
+        if not provider_path.exists():
+            return [], False
 
     # Check if this provider delegates to Moto
     try:
@@ -273,39 +301,54 @@ def get_moto_operations(service_name: str) -> list[str]:
                 vendor_responses = alt_path
                 break
 
-    if not vendor_responses.exists():
+    # Collect all response files to scan
+    response_files = []
+    if vendor_responses.exists():
+        response_files.append(vendor_responses)
+    else:
+        # Check for responses/ directory (e.g., EC2 splits across many files)
+        responses_dir = vendor_responses.parent / "responses"
+        if responses_dir.is_dir():
+            response_files.extend(responses_dir.glob("*.py"))
+
+    if not response_files:
+        # Fallback: scan models.py for public methods on Backend classes
+        moto_dir = PROJECT_ROOT / "vendor" / "moto" / "moto" / moto_name
+        models_path = moto_dir / "models.py"
+        if models_path.exists():
+            response_files.append(models_path)
+
+    if not response_files:
         return []
 
-    try:
-        content = vendor_responses.read_text()
-    except Exception:
-        return []
-
-    # Moto response classes have methods that handle AWS operations.
-    # These map to AWS operations via dispatch. Extract public methods from
-    # response classes that look like operation handlers.
     operations = set()
 
-    try:
-        tree = ast.parse(content)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                for item in node.body:
-                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        name = item.name
-                        if name.startswith("_") or name in (
-                            "setup_class",
-                            "call_action",
-                            "dispatch",
-                            "tags",
-                        ):
-                            continue
-                        # Convert snake_case to PascalCase for AWS operation name
-                        pascal = "".join(word.capitalize() for word in name.split("_"))
-                        if len(pascal) > 3:
-                            operations.add(pascal)
-    except SyntaxError:
-        pass
+    for resp_file in response_files:
+        try:
+            content = resp_file.read_text()
+        except Exception:
+            continue
+
+        try:
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    for item in node.body:
+                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            name = item.name
+                            if name.startswith("_") or name in (
+                                "setup_class",
+                                "call_action",
+                                "dispatch",
+                                "tags",
+                            ):
+                                continue
+                            # Convert snake_case to PascalCase for AWS operation name
+                            pascal = "".join(word.capitalize() for word in name.split("_"))
+                            if len(pascal) > 3:
+                                operations.add(pascal)
+        except SyntaxError:
+            pass
 
     return sorted(operations)
 

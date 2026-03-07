@@ -17,9 +17,13 @@ from robotocore.services.stepfunctions.provider import (
     _json,
     _list_executions,
     _list_state_machines,
+    _list_tags_for_resource,
     _start_execution,
     _state_machines,
     _stop_execution,
+    _tag_resource,
+    _tags,
+    _untag_resource,
     _update_state_machine,
     handle_stepfunctions_request,
 )
@@ -318,3 +322,64 @@ class TestHandleStepFunctionsRequest:
         assert resp.status_code == 400
         data = json.loads(resp.body)
         assert data["__type"] == "StateMachineDoesNotExist"
+
+
+class TestStepFunctionsTags:
+    """Test tag operations for Step Functions."""
+
+    def setup_method(self):
+        _tags.clear()
+
+    def test_tag_resource(self):
+        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
+        result = _tag_resource(
+            {"resourceArn": arn, "tags": [{"key": "env", "value": "test"}]},
+            "us-east-1", "123456789012",
+        )
+        assert result == {}
+        assert len(_tags[arn]) == 1
+        assert _tags[arn][0] == {"key": "env", "value": "test"}
+
+    def test_tag_resource_merge(self):
+        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
+        _tag_resource(
+            {"resourceArn": arn, "tags": [{"key": "env", "value": "dev"}]},
+            "us-east-1", "123456789012",
+        )
+        _tag_resource(
+            {
+                "resourceArn": arn,
+                "tags": [
+                    {"key": "env", "value": "prod"},
+                    {"key": "team", "value": "eng"},
+                ],
+            },
+            "us-east-1", "123456789012",
+        )
+        tag_map = {t["key"]: t["value"] for t in _tags[arn]}
+        assert tag_map["env"] == "prod"
+        assert tag_map["team"] == "eng"
+
+    def test_untag_resource(self):
+        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
+        _tags[arn] = [{"key": "env", "value": "test"}, {"key": "team", "value": "eng"}]
+        _untag_resource(
+            {"resourceArn": arn, "tagKeys": ["env"]},
+            "us-east-1", "123456789012",
+        )
+        assert len(_tags[arn]) == 1
+        assert _tags[arn][0]["key"] == "team"
+
+    def test_list_tags_for_resource(self):
+        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
+        _tags[arn] = [{"key": "env", "value": "test"}]
+        result = _list_tags_for_resource(
+            {"resourceArn": arn}, "us-east-1", "123456789012"
+        )
+        assert result == {"tags": [{"key": "env", "value": "test"}]}
+
+    def test_list_tags_empty(self):
+        result = _list_tags_for_resource(
+            {"resourceArn": "arn:nonexistent"}, "us-east-1", "123456789012"
+        )
+        assert result == {"tags": []}

@@ -260,6 +260,111 @@ class TestHandleEventsRequest:
 # ---------------------------------------------------------------------------
 
 
+class TestTagOperations:
+    @pytest.mark.asyncio
+    async def test_tag_and_list_tags(self):
+        # Create a rule to get an ARN
+        req1 = _make_request("PutRule", {"Name": "tag-rule", "ScheduleExpression": "rate(1 hour)"})
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        rule_arn = json.loads(resp1.body)["RuleArn"]
+
+        # Tag it
+        req2 = _make_request(
+            "TagResource",
+            {
+                "ResourceARN": rule_arn,
+                "Tags": [
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            },
+        )
+        resp2 = await handle_events_request(req2, "us-east-1", "123456789012")
+        assert resp2.status_code == 200
+
+        # List tags
+        req3 = _make_request("ListTagsForResource", {"ResourceARN": rule_arn})
+        resp3 = await handle_events_request(req3, "us-east-1", "123456789012")
+        data = json.loads(resp3.body)
+        tags = {t["Key"]: t["Value"] for t in data["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "platform"
+
+    @pytest.mark.asyncio
+    async def test_untag_resource(self):
+        req1 = _make_request(
+            "PutRule", {"Name": "untag-rule", "ScheduleExpression": "rate(1 hour)"}
+        )
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        rule_arn = json.loads(resp1.body)["RuleArn"]
+
+        # Tag it
+        req2 = _make_request(
+            "TagResource",
+            {
+                "ResourceARN": rule_arn,
+                "Tags": [
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            },
+        )
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Untag 'env'
+        req3 = _make_request(
+            "UntagResource",
+            {"ResourceARN": rule_arn, "TagKeys": ["env"]},
+        )
+        resp3 = await handle_events_request(req3, "us-east-1", "123456789012")
+        assert resp3.status_code == 200
+
+        # Verify only 'team' remains
+        req4 = _make_request("ListTagsForResource", {"ResourceARN": rule_arn})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        data = json.loads(resp4.body)
+        keys = [t["Key"] for t in data["Tags"]]
+        assert "env" not in keys
+        assert "team" in keys
+
+    @pytest.mark.asyncio
+    async def test_list_tags_empty(self):
+        req = _make_request(
+            "ListTagsForResource",
+            {"ResourceARN": "arn:aws:events:us-east-1:123456789012:rule/no-such-rule"},
+        )
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        data = json.loads(resp.body)
+        assert data["Tags"] == []
+
+    @pytest.mark.asyncio
+    async def test_tag_overwrite(self):
+        req1 = _make_request("PutRule", {"Name": "ow-rule", "ScheduleExpression": "rate(1 hour)"})
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        rule_arn = json.loads(resp1.body)["RuleArn"]
+
+        # Tag with env=test
+        req2 = _make_request(
+            "TagResource",
+            {"ResourceARN": rule_arn, "Tags": [{"Key": "env", "Value": "test"}]},
+        )
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Overwrite env=prod
+        req3 = _make_request(
+            "TagResource",
+            {"ResourceARN": rule_arn, "Tags": [{"Key": "env", "Value": "prod"}]},
+        )
+        await handle_events_request(req3, "us-east-1", "123456789012")
+
+        req4 = _make_request("ListTagsForResource", {"ResourceARN": rule_arn})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        data = json.loads(resp4.body)
+        tags = {t["Key"]: t["Value"] for t in data["Tags"]}
+        assert tags["env"] == "prod"
+        assert len(data["Tags"]) == 1
+
+
 class TestInvocationLog:
     def test_get_and_clear(self):
         assert get_invocation_log() == []
