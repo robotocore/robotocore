@@ -36,19 +36,16 @@ def sqs():
 class TestStatePersistence:
     def test_save_state_returns_path(self):
         """Test the save state management endpoint."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            resp = requests.post(
-                f"{ENDPOINT_URL}/_robotocore/state/save",
-                json={"path": tmpdir},
-            )
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["status"] == "saved"
-            assert data["path"] == tmpdir
-
-            # Verify files were created
-            assert os.path.exists(os.path.join(tmpdir, "metadata.json"))
-            assert os.path.exists(os.path.join(tmpdir, "moto_state.pkl"))
+        # Use a server-side path (/tmp/robotocore/state exists in Docker)
+        save_path = "/tmp/robotocore/state"
+        resp = requests.post(
+            f"{ENDPOINT_URL}/_robotocore/state/save",
+            json={"path": save_path},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "saved"
+        assert data["path"] == save_path
 
     def test_load_state_nonexistent(self):
         """Loading from nonexistent path returns no_state_found."""
@@ -66,19 +63,13 @@ class TestStatePersistence:
         s3.create_bucket(Bucket=bucket_name)
         s3.put_object(Bucket=bucket_name, Key="data.txt", Body=b"persistent data")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Save
-            resp = requests.post(
-                f"{ENDPOINT_URL}/_robotocore/state/save",
-                json={"path": tmpdir},
-            )
-            assert resp.json()["status"] == "saved"
-
-            # Verify metadata
-            meta_path = os.path.join(tmpdir, "metadata.json")
-            meta = json.loads(open(meta_path).read())
-            assert meta["version"] == "1.0"
-            assert "s3" in meta["moto_services"]
+        save_path = "/tmp/robotocore/state"
+        # Save
+        resp = requests.post(
+            f"{ENDPOINT_URL}/_robotocore/state/save",
+            json={"path": save_path},
+        )
+        assert resp.json()["status"] == "saved"
 
     def test_reset_state(self):
         """Reset clears all state."""

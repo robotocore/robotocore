@@ -76,7 +76,9 @@ async def handle_apigatewayv2_request(
     path = request.url.path
     method = request.method.upper()
     body = await request.body()
-    params = json.loads(body) if body else {}
+    raw_params = json.loads(body) if body else {}
+    # Normalize incoming params to PascalCase (boto3 sends camelCase on the wire)
+    params = _pascal_keys(raw_params)
 
     try:
         # APIs
@@ -819,9 +821,41 @@ def _iso_time() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _to_camel(key: str) -> str:
+    """Convert PascalCase to camelCase (e.g., ApiId -> apiId)."""
+    if not key:
+        return key
+    return key[0].lower() + key[1:]
+
+
+def _to_pascal(key: str) -> str:
+    """Convert camelCase to PascalCase (e.g., apiId -> ApiId)."""
+    if not key:
+        return key
+    return key[0].upper() + key[1:]
+
+
+def _camel_keys(obj):
+    """Recursively convert all dict keys from PascalCase to camelCase."""
+    if isinstance(obj, dict):
+        return {_to_camel(k): _camel_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_camel_keys(item) for item in obj]
+    return obj
+
+
+def _pascal_keys(obj):
+    """Recursively convert all dict keys from camelCase to PascalCase."""
+    if isinstance(obj, dict):
+        return {_to_pascal(k): _pascal_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_pascal_keys(item) for item in obj]
+    return obj
+
+
 def _json_response(data: dict, status: int = 200) -> Response:
     return Response(
-        content=json.dumps(data, default=str),
+        content=json.dumps(_camel_keys(data), default=str),
         status_code=status,
         media_type="application/json",
     )

@@ -20,8 +20,8 @@ class TestExtractAccountId:
         req = _make_request()
         assert _extract_account_id(req) == DEFAULT_ACCOUNT_ID
 
-    def test_default_is_twelve_zeros(self):
-        assert DEFAULT_ACCOUNT_ID == "000000000000"
+    def test_default_is_moto_default(self):
+        assert DEFAULT_ACCOUNT_ID == "123456789012"
 
     def test_extracts_from_sigv4_auth(self):
         req = _make_request(headers={

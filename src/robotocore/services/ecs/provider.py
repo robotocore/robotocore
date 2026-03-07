@@ -258,6 +258,27 @@ def _list_task_definitions(
     return {"taskDefinitionArns": arns}
 
 
+def _list_task_definition_families(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    family_prefix = params.get("familyPrefix", "")
+    status_filter = params.get("status", "ACTIVE")
+
+    families = []
+    with store.lock:
+        for family, revisions in store.task_definitions.items():
+            if family_prefix and not family.startswith(family_prefix):
+                continue
+            if status_filter == "ACTIVE" and any(td["status"] == "ACTIVE" for td in revisions):
+                families.append(family)
+            elif status_filter == "INACTIVE" and any(td["status"] == "INACTIVE" for td in revisions):
+                families.append(family)
+            elif status_filter == "ALL":
+                families.append(family)
+
+    return {"families": sorted(families)}
+
+
 def _deregister_task_definition(
     store: EcsStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -645,6 +666,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "RegisterTaskDefinition": _register_task_definition,
     "DescribeTaskDefinition": _describe_task_definition,
     "ListTaskDefinitions": _list_task_definitions,
+    "ListTaskDefinitionFamilies": _list_task_definition_families,
     "DeregisterTaskDefinition": _deregister_task_definition,
     "CreateService": _create_service,
     "DescribeServices": _describe_services,

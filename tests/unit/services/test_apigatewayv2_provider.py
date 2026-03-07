@@ -69,10 +69,10 @@ class TestApiCrud:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["Name"] == "my-api"
-        assert data["ProtocolType"] == "HTTP"
-        assert "ApiId" in data
-        assert "ApiEndpoint" in data
+        assert data["name"] == "my-api"
+        assert data["protocolType"] == "HTTP"
+        assert "apiId" in data
+        assert "apiEndpoint" in data
 
     def test_create_websocket_api(self):
         resp = _make_request("POST", "/v2/apis", {
@@ -82,18 +82,18 @@ class TestApiCrud:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["ProtocolType"] == "WEBSOCKET"
-        assert "$request.body.action" in data["RouteSelectionExpression"]
+        assert data["protocolType"] == "WEBSOCKET"
+        assert "$request.body.action" in data["routeSelectionExpression"]
 
     def test_get_api(self):
         create_resp = _make_request("POST", "/v2/apis", {
             "Name": "test", "ProtocolType": "HTTP"
         })
-        api_id = create_resp.json()["ApiId"]
+        api_id = create_resp.json()["apiId"]
 
         resp = _make_request("GET", f"/v2/apis/{api_id}")
         assert resp.status_code == 200
-        assert resp.json()["Name"] == "test"
+        assert resp.json()["name"] == "test"
 
     def test_get_api_not_found(self):
         resp = _make_request("GET", "/v2/apis/nonexistent")
@@ -109,28 +109,28 @@ class TestApiCrud:
 
         resp = _make_request("GET", "/v2/apis")
         assert resp.status_code == 200
-        items = resp.json()["Items"]
+        items = resp.json()["items"]
         assert len(items) == 2
 
     def test_update_api(self):
         create_resp = _make_request("POST", "/v2/apis", {
             "Name": "original", "ProtocolType": "HTTP"
         })
-        api_id = create_resp.json()["ApiId"]
+        api_id = create_resp.json()["apiId"]
 
         resp = _make_request("PATCH", f"/v2/apis/{api_id}", {
             "Name": "updated",
             "Description": "new desc",
         })
         assert resp.status_code == 200
-        assert resp.json()["Name"] == "updated"
-        assert resp.json()["Description"] == "new desc"
+        assert resp.json()["name"] == "updated"
+        assert resp.json()["description"] == "new desc"
 
     def test_delete_api(self):
         create_resp = _make_request("POST", "/v2/apis", {
             "Name": "to-delete", "ProtocolType": "HTTP"
         })
-        api_id = create_resp.json()["ApiId"]
+        api_id = create_resp.json()["apiId"]
 
         resp = _make_request("DELETE", f"/v2/apis/{api_id}")
         assert resp.status_code == 204
@@ -149,7 +149,7 @@ class TestRouteCrud:
         resp = _make_request("POST", "/v2/apis", {
             "Name": "test", "ProtocolType": "HTTP"
         })
-        return resp.json()["ApiId"]
+        return resp.json()["apiId"]
 
     def test_create_route(self):
         api_id = self._create_api()
@@ -158,8 +158,8 @@ class TestRouteCrud:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["RouteKey"] == "GET /pets"
-        assert "RouteId" in data
+        assert data["routeKey"] == "GET /pets"
+        assert "routeId" in data
 
     def test_create_default_route(self):
         api_id = self._create_api()
@@ -173,7 +173,7 @@ class TestRouteCrud:
             "Name": "ws", "ProtocolType": "WEBSOCKET",
             "RouteSelectionExpression": "$request.body.action",
         })
-        api_id = resp.json()["ApiId"]
+        api_id = resp.json()["apiId"]
 
         for key in ("$connect", "$disconnect", "$default"):
             r = _make_request("POST", f"/v2/apis/{api_id}/routes", {
@@ -186,11 +186,11 @@ class TestRouteCrud:
         create_resp = _make_request("POST", f"/v2/apis/{api_id}/routes", {
             "RouteKey": "GET /items",
         })
-        route_id = create_resp.json()["RouteId"]
+        route_id = create_resp.json()["routeId"]
 
         resp = _make_request("GET", f"/v2/apis/{api_id}/routes/{route_id}")
         assert resp.status_code == 200
-        assert resp.json()["RouteKey"] == "GET /items"
+        assert resp.json()["routeKey"] == "GET /items"
 
     def test_list_routes(self):
         api_id = self._create_api()
@@ -202,14 +202,14 @@ class TestRouteCrud:
         })
 
         resp = _make_request("GET", f"/v2/apis/{api_id}/routes")
-        assert len(resp.json()["Items"]) == 2
+        assert len(resp.json()["items"]) == 2
 
     def test_delete_route(self):
         api_id = self._create_api()
         create_resp = _make_request("POST", f"/v2/apis/{api_id}/routes", {
             "RouteKey": "GET /x"
         })
-        route_id = create_resp.json()["RouteId"]
+        route_id = create_resp.json()["routeId"]
 
         resp = _make_request("DELETE", f"/v2/apis/{api_id}/routes/{route_id}")
         assert resp.status_code == 204
@@ -225,7 +225,7 @@ class TestIntegrationCrud:
         resp = _make_request("POST", "/v2/apis", {
             "Name": "test", "ProtocolType": "HTTP"
         })
-        return resp.json()["ApiId"]
+        return resp.json()["apiId"]
 
     def test_create_integration(self):
         api_id = self._create_api()
@@ -236,8 +236,8 @@ class TestIntegrationCrud:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["IntegrationType"] == "AWS_PROXY"
-        assert "IntegrationId" in data
+        assert data["integrationType"] == "AWS_PROXY"
+        assert "integrationId" in data
 
     def test_get_integration(self):
         api_id = self._create_api()
@@ -248,7 +248,7 @@ class TestIntegrationCrud:
                 "IntegrationUri": "arn:aws:lambda:us-east-1:123:function:fn",
             },
         )
-        integ_id = create_resp.json()["IntegrationId"]
+        integ_id = create_resp.json()["integrationId"]
 
         resp = _make_request(
             "GET", f"/v2/apis/{api_id}/integrations/{integ_id}"
@@ -265,7 +265,7 @@ class TestIntegrationCrud:
         })
 
         resp = _make_request("GET", f"/v2/apis/{api_id}/integrations")
-        assert len(resp.json()["Items"]) == 2
+        assert len(resp.json()["items"]) == 2
 
     def test_delete_integration(self):
         api_id = self._create_api()
@@ -273,7 +273,7 @@ class TestIntegrationCrud:
             "POST", f"/v2/apis/{api_id}/integrations",
             {"IntegrationType": "AWS_PROXY", "IntegrationUri": "x"},
         )
-        integ_id = create_resp.json()["IntegrationId"]
+        integ_id = create_resp.json()["integrationId"]
 
         resp = _make_request(
             "DELETE", f"/v2/apis/{api_id}/integrations/{integ_id}"
@@ -291,7 +291,7 @@ class TestStageCrud:
         resp = _make_request("POST", "/v2/apis", {
             "Name": "test", "ProtocolType": "HTTP"
         })
-        return resp.json()["ApiId"]
+        return resp.json()["apiId"]
 
     def test_create_stage(self):
         api_id = self._create_api()
@@ -300,8 +300,8 @@ class TestStageCrud:
             "AutoDeploy": True,
         })
         assert resp.status_code == 201
-        assert resp.json()["StageName"] == "$default"
-        assert resp.json()["AutoDeploy"] is True
+        assert resp.json()["stageName"] == "$default"
+        assert resp.json()["autoDeploy"] is True
 
     def test_create_stage_with_variables(self):
         api_id = self._create_api()
@@ -310,7 +310,7 @@ class TestStageCrud:
             "StageVariables": {"env": "production"},
         })
         assert resp.status_code == 201
-        assert resp.json()["StageVariables"]["env"] == "production"
+        assert resp.json()["stageVariables"]["env"] == "production"
 
     def test_duplicate_stage(self):
         api_id = self._create_api()
@@ -339,7 +339,7 @@ class TestStageCrud:
             "StageName": "s2"
         })
         resp = _make_request("GET", f"/v2/apis/{api_id}/stages")
-        assert len(resp.json()["Items"]) == 2
+        assert len(resp.json()["items"]) == 2
 
     def test_delete_stage(self):
         api_id = self._create_api()
@@ -362,7 +362,7 @@ class TestAuthorizerCrud:
         resp = _make_request("POST", "/v2/apis", {
             "Name": "test", "ProtocolType": "HTTP"
         })
-        return resp.json()["ApiId"]
+        return resp.json()["apiId"]
 
     def test_create_jwt_authorizer(self):
         api_id = self._create_api()
@@ -377,9 +377,9 @@ class TestAuthorizerCrud:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["AuthorizerType"] == "JWT"
-        assert data["Name"] == "my-jwt"
-        assert data["JwtConfiguration"]["Issuer"] == "https://issuer.example.com"
+        assert data["authorizerType"] == "JWT"
+        assert data["name"] == "my-jwt"
+        assert data["jwtConfiguration"]["issuer"] == "https://issuer.example.com"
 
     def test_get_authorizer(self):
         api_id = self._create_api()
@@ -387,7 +387,7 @@ class TestAuthorizerCrud:
             "POST", f"/v2/apis/{api_id}/authorizers",
             {"AuthorizerType": "JWT", "Name": "a1"},
         )
-        auth_id = create_resp.json()["AuthorizerId"]
+        auth_id = create_resp.json()["authorizerId"]
 
         resp = _make_request(
             "GET", f"/v2/apis/{api_id}/authorizers/{auth_id}"
@@ -403,7 +403,7 @@ class TestAuthorizerCrud:
             "AuthorizerType": "JWT", "Name": "a2"
         })
         resp = _make_request("GET", f"/v2/apis/{api_id}/authorizers")
-        assert len(resp.json()["Items"]) == 2
+        assert len(resp.json()["items"]) == 2
 
     def test_delete_authorizer(self):
         api_id = self._create_api()
@@ -411,7 +411,7 @@ class TestAuthorizerCrud:
             "POST", f"/v2/apis/{api_id}/authorizers",
             {"AuthorizerType": "JWT", "Name": "temp"},
         )
-        auth_id = create_resp.json()["AuthorizerId"]
+        auth_id = create_resp.json()["authorizerId"]
         resp = _make_request(
             "DELETE", f"/v2/apis/{api_id}/authorizers/{auth_id}"
         )
@@ -428,7 +428,7 @@ class TestDeploymentCrud:
         resp = _make_request("POST", "/v2/apis", {
             "Name": "test", "ProtocolType": "HTTP"
         })
-        return resp.json()["ApiId"]
+        return resp.json()["apiId"]
 
     def test_create_deployment(self):
         api_id = self._create_api()
@@ -437,15 +437,15 @@ class TestDeploymentCrud:
         })
         assert resp.status_code == 201
         data = resp.json()
-        assert data["DeploymentStatus"] == "DEPLOYED"
-        assert "DeploymentId" in data
+        assert data["deploymentStatus"] == "DEPLOYED"
+        assert "deploymentId" in data
 
     def test_get_deployment(self):
         api_id = self._create_api()
         create_resp = _make_request(
             "POST", f"/v2/apis/{api_id}/deployments", {}
         )
-        deploy_id = create_resp.json()["DeploymentId"]
+        deploy_id = create_resp.json()["deploymentId"]
 
         resp = _make_request(
             "GET", f"/v2/apis/{api_id}/deployments/{deploy_id}"
@@ -458,7 +458,7 @@ class TestDeploymentCrud:
         _make_request("POST", f"/v2/apis/{api_id}/deployments", {})
 
         resp = _make_request("GET", f"/v2/apis/{api_id}/deployments")
-        assert len(resp.json()["Items"]) == 2
+        assert len(resp.json()["items"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -471,7 +471,7 @@ class TestAutoDeploy:
         api_resp = _make_request("POST", "/v2/apis", {
             "Name": "auto", "ProtocolType": "HTTP"
         })
-        api_id = api_resp.json()["ApiId"]
+        api_id = api_resp.json()["apiId"]
 
         # Create stage with auto-deploy
         _make_request("POST", f"/v2/apis/{api_id}/stages", {
@@ -486,9 +486,9 @@ class TestAutoDeploy:
 
         # Check deployments
         resp = _make_request("GET", f"/v2/apis/{api_id}/deployments")
-        items = resp.json()["Items"]
+        items = resp.json()["items"]
         assert len(items) >= 1
-        assert any(d.get("AutoDeployed") for d in items)
+        assert any(d.get("autoDeployed") for d in items)
 
 
 # ---------------------------------------------------------------------------

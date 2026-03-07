@@ -68,7 +68,7 @@ NATIVE_PROVIDERS = {
 }
 
 # Default account ID (matches LocalStack)
-DEFAULT_ACCOUNT_ID = "000000000000"
+DEFAULT_ACCOUNT_ID = "123456789012"
 
 # Regex to extract account ID from SigV4 Credential
 _CREDENTIAL_RE = re.compile(r"Credential=(\d+)/")
@@ -79,9 +79,12 @@ _server_start_time: float = 0.0
 
 def _build_handler_chain() -> HandlerChain:
     """Build the default handler chain for AWS requests."""
+    from robotocore.gateway.iam_middleware import iam_enforcement_handler
+
     chain = HandlerChain()
     chain.request_handlers.append(cors_handler)
     chain.request_handlers.append(populate_context_handler)
+    chain.request_handlers.append(iam_enforcement_handler)
     chain.response_handlers.append(cors_response_handler)
     chain.response_handlers.append(logging_response_handler)
     chain.exception_handlers.append(error_normalizer)
