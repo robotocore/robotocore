@@ -882,3 +882,190 @@ class TestIAMPolicyVersionsExtended:
                 if not v["IsDefaultVersion"]:
                     iam.delete_policy_version(PolicyArn=arn, VersionId=v["VersionId"])
             iam.delete_policy(PolicyArn=arn)
+
+
+
+class TestIAMGroupCRUD:
+    def test_create_and_delete_group(self, iam):
+        group_name = _unique("crud-group")
+        resp = iam.create_group(GroupName=group_name)
+        assert resp["Group"]["GroupName"] == group_name
+        iam.delete_group(GroupName=group_name)
+
+    def test_get_group(self, iam):
+        group_name = _unique("get-group")
+        iam.create_group(GroupName=group_name)
+        resp = iam.get_group(GroupName=group_name)
+        assert resp["Group"]["GroupName"] == group_name
+        iam.delete_group(GroupName=group_name)
+
+    def test_list_groups(self, iam):
+        group_name = _unique("list-group")
+        iam.create_group(GroupName=group_name)
+        resp = iam.list_groups()
+        names = [g["GroupName"] for g in resp["Groups"]]
+        assert group_name in names
+        iam.delete_group(GroupName=group_name)
+
+
+class TestIAMGroupMembership:
+    def test_add_remove_user_from_group(self, iam):
+        group_name = _unique("mem-group")
+        user_name = _unique("mem-user")
+        iam.create_group(GroupName=group_name)
+        iam.create_user(UserName=user_name)
+        try:
+            iam.add_user_to_group(GroupName=group_name, UserName=user_name)
+            resp = iam.list_groups_for_user(UserName=user_name)
+            group_names = [g["GroupName"] for g in resp["Groups"]]
+            assert group_name in group_names
+
+            iam.remove_user_from_group(GroupName=group_name, UserName=user_name)
+            resp = iam.list_groups_for_user(UserName=user_name)
+            group_names = [g["GroupName"] for g in resp["Groups"]]
+            assert group_name not in group_names
+        finally:
+            try:
+                iam.remove_user_from_group(GroupName=group_name, UserName=user_name)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMAttachDetachRolePolicy:
+    def test_attach_list_detach_role_policy(self, iam):
+        role_name = _unique("att-role")
+        policy_name = _unique("att-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=arn)
+            resp = iam.list_attached_role_policies(RoleName=role_name)
+            arns = [p["PolicyArn"] for p in resp["AttachedPolicies"]]
+            assert arn in arns
+
+            iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            resp = iam.list_attached_role_policies(RoleName=role_name)
+            arns = [p["PolicyArn"] for p in resp["AttachedPolicies"]]
+            assert arn not in arns
+        finally:
+            try:
+                iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            except Exception:
+                pass
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMInstanceProfileCRUD:
+    def test_create_delete_list_instance_profiles(self, iam):
+        profile_name = _unique("ip-crud")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        resp = iam.list_instance_profiles()
+        names = [p["InstanceProfileName"] for p in resp["InstanceProfiles"]]
+        assert profile_name in names
+        iam.delete_instance_profile(InstanceProfileName=profile_name)
+
+    def test_add_remove_role_from_instance_profile(self, iam):
+        profile_name = _unique("ip-role")
+        role_name = _unique("ip-role-r")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            iam.add_role_to_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            resp = iam.get_instance_profile(InstanceProfileName=profile_name)
+            role_names = [r["RoleName"] for r in resp["InstanceProfile"]["Roles"]]
+            assert role_name in role_names
+
+            iam.remove_role_from_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            resp = iam.get_instance_profile(InstanceProfileName=profile_name)
+            role_names = [r["RoleName"] for r in resp["InstanceProfile"]["Roles"]]
+            assert role_name not in role_names
+        finally:
+            try:
+                iam.remove_role_from_instance_profile(
+                    InstanceProfileName=profile_name, RoleName=role_name
+                )
+            except Exception:
+                pass
+            iam.delete_instance_profile(InstanceProfileName=profile_name)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMRoleInlinePolicy:
+    def test_put_get_delete_list_role_policy(self, iam):
+        role_name = _unique("rp-role")
+        policy_name = _unique("rp-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName=policy_name,
+                PolicyDocument=SIMPLE_POLICY_DOC,
+            )
+            resp = iam.list_role_policies(RoleName=role_name)
+            assert policy_name in resp["PolicyNames"]
+
+            get_resp = iam.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+            assert get_resp["PolicyName"] == policy_name
+
+            iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+            resp = iam.list_role_policies(RoleName=role_name)
+            assert policy_name not in resp["PolicyNames"]
+        finally:
+            try:
+                iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+            except Exception:
+                pass
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMAccessKeysLifecycle:
+    def test_create_list_delete_access_key(self, iam):
+        user_name = _unique("ak-user")
+        iam.create_user(UserName=user_name)
+        try:
+            create_resp = iam.create_access_key(UserName=user_name)
+            access_key_id = create_resp["AccessKey"]["AccessKeyId"]
+            assert create_resp["AccessKey"]["UserName"] == user_name
+
+            list_resp = iam.list_access_keys(UserName=user_name)
+            key_ids = [k["AccessKeyId"] for k in list_resp["AccessKeyMetadata"]]
+            assert access_key_id in key_ids
+
+            iam.delete_access_key(UserName=user_name, AccessKeyId=access_key_id)
+            list_resp = iam.list_access_keys(UserName=user_name)
+            key_ids = [k["AccessKeyId"] for k in list_resp["AccessKeyMetadata"]]
+            assert access_key_id not in key_ids
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMLoginProfile:
+    def test_create_get_delete_login_profile(self, iam):
+        user_name = _unique("lp-user")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.create_login_profile(UserName=user_name, Password="T3stP@ss!")
+            get_resp = iam.get_login_profile(UserName=user_name)
+            assert get_resp["LoginProfile"]["UserName"] == user_name
+
+            iam.delete_login_profile(UserName=user_name)
+            # Verify it's deleted by expecting an error
+            try:
+                iam.get_login_profile(UserName=user_name)
+                assert False, "Expected NoSuchEntity error"
+            except iam.exceptions.NoSuchEntityException:
+                pass
+        finally:
+            try:
+                iam.delete_login_profile(UserName=user_name)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)

@@ -179,6 +179,9 @@ class TestKMSOperations:
 
     def test_generate_data_key_without_plaintext(self, kms):
         key = kms.create_key(Description="data key no pt")
+    def test_generate_data_key_without_plaintext(self, kms):
+        """GenerateDataKeyWithoutPlaintext returns only ciphertext."""
+        key = kms.create_key(Description="dk-no-pt")
         key_id = key["KeyMetadata"]["KeyId"]
 
         response = kms.generate_data_key_without_plaintext(KeyId=key_id, KeySpec="AES_256")
@@ -246,3 +249,87 @@ class TestKMSOperations:
         grants = kms.list_grants(KeyId=key_id)
         grant_ids = [g["GrantId"] for g in grants["Grants"]]
         assert grant["GrantId"] not in grant_ids
+        """ReEncrypt re-encrypts ciphertext under a different key."""
+        key1 = kms.create_key(Description="re-encrypt-src")
+        key1_id = key1["KeyMetadata"]["KeyId"]
+        key2 = kms.create_key(Description="re-encrypt-dst")
+        key2_id = key2["KeyMetadata"]["KeyId"]
+
+        # Encrypt under key1
+        enc = kms.encrypt(KeyId=key1_id, Plaintext=b"reencrypt me")
+        ct1 = enc["CiphertextBlob"]
+
+        # Re-encrypt under key2
+        re_enc = kms.re_encrypt(
+            CiphertextBlob=ct1,
+            DestinationKeyId=key2_id,
+        )
+        ct2 = re_enc["CiphertextBlob"]
+        assert ct2 != ct1  # ciphertext should differ
+
+        # Decrypt should yield original plaintext
+        dec = kms.decrypt(CiphertextBlob=ct2)
+        assert dec["Plaintext"] == b"reencrypt me"
+
+    def test_get_key_policy(self, kms):
+        """GetKeyPolicy returns the default key policy."""
+        key = kms.create_key(Description="policy-get")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        response = kms.get_key_policy(KeyId=key_id, PolicyName="default")
+        assert "Policy" in response
+        assert isinstance(response["Policy"], str)
+
+    def test_put_key_policy(self, kms):
+        """PutKeyPolicy sets a key policy and GetKeyPolicy retrieves it."""
+        key = kms.create_key(Description="policy-put")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        import json
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Id": "custom-policy",
+            "Statement": [
+                {
+                    "Sid": "Enable IAM User Permissions",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                    "Action": "kms:*",
+                    "Resource": "*",
+                }
+            ],
+        })
+        kms.put_key_policy(KeyId=key_id, PolicyName="default", Policy=policy)
+
+        response = kms.get_key_policy(KeyId=key_id, PolicyName="default")
+        retrieved = json.loads(response["Policy"])
+        assert retrieved["Id"] == "custom-policy"
+
+    def test_key_rotation_status(self, kms):
+        """Enable, check, and disable key rotation."""
+        key = kms.create_key(Description="rotation-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        # Default: rotation disabled
+        status = kms.get_key_rotation_status(KeyId=key_id)
+        assert status["KeyRotationEnabled"] is False
+
+        # Enable rotation
+        kms.enable_key_rotation(KeyId=key_id)
+        status = kms.get_key_rotation_status(KeyId=key_id)
+        assert status["KeyRotationEnabled"] is True
+
+        # Disable rotation
+        kms.disable_key_rotation(KeyId=key_id)
+        status = kms.get_key_rotation_status(KeyId=key_id)
+        assert status["KeyRotationEnabled"] is False
+
+    def test_generate_random(self, kms):
+        """GenerateRandom returns random bytes of specified length."""
+        response = kms.generate_random(NumberOfBytes=32)
+        assert "Plaintext" in response
+        assert len(response["Plaintext"]) == 32
+
+        # Different calls should (almost certainly) produce different bytes
+        response2 = kms.generate_random(NumberOfBytes=32)
+        assert response["Plaintext"] != response2["Plaintext"]

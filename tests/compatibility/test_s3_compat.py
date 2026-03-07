@@ -281,6 +281,243 @@ class TestS3EventNotifications:
         sqs.delete_queue(QueueUrl=q_url)
 
 
+class TestS3BucketConfigurations:
+    def test_get_bucket_location(self, s3, bucket):
+        response = s3.get_bucket_location(Bucket=bucket)
+        # us-east-1 returns None for LocationConstraint per AWS behavior
+        assert response["LocationConstraint"] is None or response["LocationConstraint"] == "us-east-1"
+
+    def test_bucket_versioning(self, s3):
+        vbucket = "test-versioning-bucket"
+        s3.create_bucket(Bucket=vbucket)
+        try:
+            # Initially versioning is not enabled
+            response = s3.get_bucket_versioning(Bucket=vbucket)
+            assert response.get("Status") is None or response.get("Status") == ""
+
+            # Enable versioning
+            s3.put_bucket_versioning(
+                Bucket=vbucket,
+                VersioningConfiguration={"Status": "Enabled"},
+            )
+            response = s3.get_bucket_versioning(Bucket=vbucket)
+            assert response["Status"] == "Enabled"
+
+            # Suspend versioning
+            s3.put_bucket_versioning(
+                Bucket=vbucket,
+                VersioningConfiguration={"Status": "Suspended"},
+            )
+            response = s3.get_bucket_versioning(Bucket=vbucket)
+            assert response["Status"] == "Suspended"
+        finally:
+            s3.delete_bucket(Bucket=vbucket)
+
+    def test_list_object_versions(self, s3):
+        vbucket = "test-list-versions-bucket"
+        s3.create_bucket(Bucket=vbucket)
+        try:
+            # Enable versioning
+            s3.put_bucket_versioning(
+                Bucket=vbucket,
+                VersioningConfiguration={"Status": "Enabled"},
+            )
+            # Put two versions of the same key
+            s3.put_object(Bucket=vbucket, Key="versioned.txt", Body=b"v1")
+            s3.put_object(Bucket=vbucket, Key="versioned.txt", Body=b"v2")
+
+            response = s3.list_object_versions(Bucket=vbucket, Prefix="versioned.txt")
+            versions = response.get("Versions", [])
+            assert len(versions) == 2
+            # Each version should have a unique VersionId
+            version_ids = [v["VersionId"] for v in versions]
+            assert len(set(version_ids)) == 2
+        finally:
+            # Delete all versions
+            response = s3.list_object_versions(Bucket=vbucket)
+            for v in response.get("Versions", []):
+                s3.delete_object(Bucket=vbucket, Key=v["Key"], VersionId=v["VersionId"])
+            s3.delete_bucket(Bucket=vbucket)
+
+    def test_bucket_cors(self, s3, bucket):
+        cors_config = {
+            "CORSRules": [
+                {
+                    "AllowedOrigins": ["http://example.com"],
+                    "AllowedMethods": ["GET", "PUT"],
+                    "AllowedHeaders": ["*"],
+                    "MaxAgeSeconds": 3000,
+                }
+            ]
+        }
+        s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors_config)
+
+        response = s3.get_bucket_cors(Bucket=bucket)
+        rules = response["CORSRules"]
+        assert len(rules) == 1
+        assert "http://example.com" in rules[0]["AllowedOrigins"]
+        assert "GET" in rules[0]["AllowedMethods"]
+
+        s3.delete_bucket_cors(Bucket=bucket)
+        with pytest.raises(s3.exceptions.ClientError) as exc_info:
+            s3.get_bucket_cors(Bucket=bucket)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchCORSConfiguration"
+
+    def test_bucket_policy(self, s3, bucket):
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "PublicRead",
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "s3:GetObject",
+                    "Resource": f"arn:aws:s3:::{bucket}/*",
+                }
+            ],
+        })
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+
+        response = s3.get_bucket_policy(Bucket=bucket)
+        retrieved = json.loads(response["Policy"])
+        assert retrieved["Statement"][0]["Sid"] == "PublicRead"
+
+        s3.delete_bucket_policy(Bucket=bucket)
+        with pytest.raises(s3.exceptions.ClientError) as exc_info:
+            s3.get_bucket_policy(Bucket=bucket)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucketPolicy"
+
+    def test_bucket_encryption(self, s3, bucket):
+        enc_config = {
+            "Rules": [
+                {
+                    "ApplyServerSideEncryptionByDefault": {
+                        "SSEAlgorithm": "AES256",
+                    },
+                    "BucketKeyEnabled": False,
+                }
+            ]
+        }
+        s3.put_bucket_encryption(
+            Bucket=bucket,
+            ServerSideEncryptionConfiguration=enc_config,
+        )
+
+        response = s3.get_bucket_encryption(Bucket=bucket)
+        rules = response["ServerSideEncryptionConfiguration"]["Rules"]
+        assert len(rules) >= 1
+        assert rules[0]["ApplyServerSideEncryptionByDefault"]["SSEAlgorithm"] == "AES256"
+
+    def test_bucket_website(self, s3, bucket):
+        website_config = {
+            "IndexDocument": {"Suffix": "index.html"},
+            "ErrorDocument": {"Key": "error.html"},
+        }
+        s3.put_bucket_website(Bucket=bucket, WebsiteConfiguration=website_config)
+
+        response = s3.get_bucket_website(Bucket=bucket)
+        assert response["IndexDocument"]["Suffix"] == "index.html"
+        assert response["ErrorDocument"]["Key"] == "error.html"
+
+        s3.delete_bucket_website(Bucket=bucket)
+        with pytest.raises(s3.exceptions.ClientError) as exc_info:
+            s3.get_bucket_website(Bucket=bucket)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchWebsiteConfiguration"
+
+    def test_bucket_lifecycle_configuration(self, s3, bucket):
+        lifecycle_config = {
+            "Rules": [
+                {
+                    "ID": "expire-old",
+                    "Filter": {"Prefix": "logs/"},
+                    "Status": "Enabled",
+                    "Expiration": {"Days": 30},
+                }
+            ]
+        }
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
+            LifecycleConfiguration=lifecycle_config,
+        )
+
+        response = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+        rules = response["Rules"]
+        assert len(rules) == 1
+        assert rules[0]["ID"] == "expire-old"
+        assert rules[0]["Expiration"]["Days"] == 30
+
+
+class TestS3AclOperations:
+    def test_get_bucket_acl(self, s3, bucket):
+        response = s3.get_bucket_acl(Bucket=bucket)
+        assert "Owner" in response
+        assert "Grants" in response
+
+    def test_get_object_acl(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="acl-test.txt", Body=b"acl test")
+
+        response = s3.get_object_acl(Bucket=bucket, Key="acl-test.txt")
+        assert "Owner" in response
+        assert "Grants" in response
+
+
+class TestS3CopyObject:
+    def test_copy_object_between_buckets(self, s3, bucket):
+        dest_bucket = "test-copy-dest-bucket"
+        s3.create_bucket(Bucket=dest_bucket)
+        try:
+            s3.put_object(Bucket=bucket, Key="source.txt", Body=b"cross-bucket copy")
+            s3.copy_object(
+                Bucket=dest_bucket,
+                Key="dest.txt",
+                CopySource={"Bucket": bucket, "Key": "source.txt"},
+            )
+            response = s3.get_object(Bucket=dest_bucket, Key="dest.txt")
+            assert response["Body"].read() == b"cross-bucket copy"
+        finally:
+            try:
+                s3.delete_object(Bucket=dest_bucket, Key="dest.txt")
+                s3.delete_bucket(Bucket=dest_bucket)
+            except Exception:
+                pass
+
+
+class TestS3MultipartLifecycle:
+    def test_create_and_abort_multipart(self, s3, bucket):
+        response = s3.create_multipart_upload(Bucket=bucket, Key="multi-abort.bin")
+        upload_id = response["UploadId"]
+        assert upload_id
+
+        # Upload a part
+        s3.upload_part(
+            Bucket=bucket,
+            Key="multi-abort.bin",
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=b"partial data",
+        )
+
+        # Abort
+        abort_resp = s3.abort_multipart_upload(
+            Bucket=bucket, Key="multi-abort.bin", UploadId=upload_id
+        )
+        assert abort_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_list_multipart_uploads(self, s3, bucket):
+        response = s3.create_multipart_upload(Bucket=bucket, Key="list-multi.bin")
+        upload_id = response["UploadId"]
+
+        try:
+            list_resp = s3.list_multipart_uploads(Bucket=bucket)
+            uploads = list_resp.get("Uploads", [])
+            upload_ids = [u["UploadId"] for u in uploads]
+            assert upload_id in upload_ids
+        finally:
+            s3.abort_multipart_upload(
+                Bucket=bucket, Key="list-multi.bin", UploadId=upload_id
+            )
+
+
 class TestS3PresignedUrls:
     def test_presigned_get_url(self, s3, bucket):
         """Test generating and using a presigned GET URL."""

@@ -355,6 +355,103 @@ class TestLambdaConcurrency:
         assert usage["FunctionCount"] >= 0
 
 
+class TestLambdaPermissions:
+    def test_add_and_get_policy(self, lam, role):
+        """Test AddPermission creates a resource policy retrievable via GetPolicy."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"perm-func-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.add_permission(
+            FunctionName=fname,
+            StatementId="allow-invoke",
+            Action="lambda:InvokeFunction",
+            Principal="s3.amazonaws.com",
+        )
+        policy_resp = lam.get_policy(FunctionName=fname)
+        policy = json.loads(policy_resp["Policy"])
+        statements = policy.get("Statement", [])
+        sids = [s["Sid"] for s in statements]
+        assert "allow-invoke" in sids
+        lam.delete_function(FunctionName=fname)
+
+    def test_remove_permission(self, lam, role):
+        """Test RemovePermission removes a statement from the policy."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"rmperm-func-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.add_permission(
+            FunctionName=fname,
+            StatementId="to-remove",
+            Action="lambda:InvokeFunction",
+            Principal="sns.amazonaws.com",
+        )
+        lam.remove_permission(FunctionName=fname, StatementId="to-remove")
+        # After removing the only statement, GetPolicy should fail or return empty
+        try:
+            policy_resp = lam.get_policy(FunctionName=fname)
+            policy = json.loads(policy_resp["Policy"])
+            sids = [s["Sid"] for s in policy.get("Statement", [])]
+            assert "to-remove" not in sids
+        except lam.exceptions.ResourceNotFoundException:
+            pass  # No policy left is also valid
+        lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaAliases:
+    def test_create_get_list_delete_alias(self, lam, role):
+        """Test full alias lifecycle: create, get, list, delete."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"alias-func-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        lam.publish_version(FunctionName=fname)
+
+        # Create alias
+        alias_resp = lam.create_alias(
+            FunctionName=fname,
+            Name="prod",
+            FunctionVersion="1",
+            Description="production alias",
+        )
+        assert alias_resp["Name"] == "prod"
+        assert alias_resp["FunctionVersion"] == "1"
+
+        # Get alias
+        get_resp = lam.get_alias(FunctionName=fname, Name="prod")
+        assert get_resp["Name"] == "prod"
+        assert get_resp["Description"] == "production alias"
+
+        # List aliases
+        list_resp = lam.list_aliases(FunctionName=fname)
+        alias_names = [a["Name"] for a in list_resp["Aliases"]]
+        assert "prod" in alias_names
+
+        # Delete alias
+        lam.delete_alias(FunctionName=fname, Name="prod")
+        list_resp = lam.list_aliases(FunctionName=fname)
+        alias_names = [a["Name"] for a in list_resp["Aliases"]]
+        assert "prod" not in alias_names
+
+        lam.delete_function(FunctionName=fname)
+
+
 class TestLambdaLayers:
     def test_publish_layer_version(self, lam):
         """Test creating a Lambda layer."""

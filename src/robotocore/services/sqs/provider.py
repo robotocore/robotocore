@@ -394,6 +394,117 @@ def _delete_message_batch(
     return {"Successful": successful, "Failed": []}
 
 
+def _change_message_visibility_batch(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    queue = _resolve_queue(store, params, request)
+    successful = []
+    failed = []
+    entries = params.get("Entries", [])
+    # Query protocol
+    i = 1
+    while f"ChangeMessageVisibilityBatchRequestEntry.{i}.Id" in params:
+        entries.append(
+            {
+                "Id": params[f"ChangeMessageVisibilityBatchRequestEntry.{i}.Id"],
+                "ReceiptHandle": params.get(
+                    f"ChangeMessageVisibilityBatchRequestEntry.{i}.ReceiptHandle", ""
+                ),
+                "VisibilityTimeout": params.get(
+                    f"ChangeMessageVisibilityBatchRequestEntry.{i}.VisibilityTimeout", "30"
+                ),
+            }
+        )
+        i += 1
+
+    for entry in entries:
+        receipt = entry.get("ReceiptHandle", "")
+        timeout = int(entry.get("VisibilityTimeout", "30"))
+        ok = queue.change_visibility(receipt, timeout)
+        if ok:
+            successful.append({"Id": entry.get("Id", "")})
+        else:
+            failed.append(
+                {
+                    "Id": entry.get("Id", ""),
+                    "Code": "ReceiptHandleIsInvalid",
+                    "Message": "The input receipt handle is invalid.",
+                    "SenderFault": True,
+                }
+            )
+
+    return {"Successful": successful, "Failed": failed}
+
+
+def _add_permission(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    queue = _resolve_queue(store, params, request)
+    label = params.get("Label", "")
+    aws_account_ids = params.get("AWSAccountIds", [])
+    actions = params.get("Actions", [])
+    # Query protocol
+    i = 1
+    while f"AWSAccountId.{i}" in params:
+        aws_account_ids.append(params[f"AWSAccountId.{i}"])
+        i += 1
+    i = 1
+    while f"ActionName.{i}" in params:
+        actions.append(params[f"ActionName.{i}"])
+        i += 1
+
+    # Build or update the policy
+    policy_str = queue.attributes.get("Policy")
+    if policy_str:
+        policy = json.loads(policy_str) if isinstance(policy_str, str) else policy_str
+    else:
+        policy = {
+            "Version": "2012-10-17",
+            "Id": f"{queue.arn}/SQSDefaultPolicy",
+            "Statement": [],
+        }
+
+    action_list = [f"SQS:{a}" for a in actions]
+    statement = {
+        "Sid": label,
+        "Effect": "Allow",
+        "Principal": {"AWS": [f"arn:aws:iam::{aid}:root" for aid in aws_account_ids]},
+        "Action": action_list if len(action_list) > 1 else action_list[0],
+        "Resource": queue.arn,
+    }
+    # Remove any existing statement with the same label
+    policy["Statement"] = [s for s in policy["Statement"] if s.get("Sid") != label]
+    policy["Statement"].append(statement)
+    queue.attributes["Policy"] = json.dumps(policy)
+    return {}
+
+
+def _remove_permission(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    queue = _resolve_queue(store, params, request)
+    label = params.get("Label", "")
+    policy_str = queue.attributes.get("Policy")
+    if policy_str:
+        policy = json.loads(policy_str) if isinstance(policy_str, str) else policy_str
+        policy["Statement"] = [s for s in policy["Statement"] if s.get("Sid") != label]
+        queue.attributes["Policy"] = json.dumps(policy)
+    return {}
+
+
+def _list_dead_letter_source_queues(
+    store: SqsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    queue = _resolve_queue(store, params, request)
+    target_arn = queue.arn
+    source_urls = []
+    for q in store.list_queues():
+        rp = q.redrive_policy
+        if rp and rp.get("deadLetterTargetArn") == target_arn:
+            source_urls.append(q.url)
+    return {"queueUrls": source_urls}
+
+
 def _tag_queue(
     store: SqsStore, params: dict, region: str, account_id: str, request: Request
 ) -> dict:
@@ -607,6 +718,10 @@ _ACTION_MAP: dict[str, Callable] = {
     "GetQueueUrl": _get_queue_url,
     "PurgeQueue": _purge_queue,
     "ChangeMessageVisibility": _change_message_visibility,
+    "ChangeMessageVisibilityBatch": _change_message_visibility_batch,
+    "AddPermission": _add_permission,
+    "RemovePermission": _remove_permission,
+    "ListDeadLetterSourceQueues": _list_dead_letter_source_queues,
     "SendMessageBatch": _send_message_batch,
     "DeleteMessageBatch": _delete_message_batch,
     "TagQueue": _tag_queue,

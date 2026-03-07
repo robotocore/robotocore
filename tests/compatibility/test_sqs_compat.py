@@ -147,6 +147,28 @@ class TestSQSBatchOperations:
         response = sqs.delete_message_batch(QueueUrl=queue_url, Entries=entries)
         assert len(response["Successful"]) == len(entries)
 
+    def test_change_message_visibility_batch(self, sqs, queue_url):
+        # Send multiple messages
+        sqs.send_message_batch(
+            QueueUrl=queue_url,
+            Entries=[
+                {"Id": "msg1", "MessageBody": "vis batch 1"},
+                {"Id": "msg2", "MessageBody": "vis batch 2"},
+            ],
+        )
+        recv = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
+        messages = recv.get("Messages", [])
+        assert len(messages) >= 1
+
+        # Change visibility of all received messages
+        entries = [
+            {"Id": str(i), "ReceiptHandle": m["ReceiptHandle"], "VisibilityTimeout": 0}
+            for i, m in enumerate(messages)
+        ]
+        response = sqs.change_message_visibility_batch(QueueUrl=queue_url, Entries=entries)
+        assert len(response["Successful"]) == len(entries)
+        assert len(response.get("Failed", [])) == 0
+
     def test_batch_receive_multiple(self, sqs, queue_url):
         for i in range(5):
             sqs.send_message(QueueUrl=queue_url, MessageBody=f"msg {i}")
@@ -258,6 +280,22 @@ class TestSQSFIFO:
         )
         recv = sqs.receive_message(QueueUrl=fifo_queue_url, AttributeNames=["All"])
         assert recv["Messages"][0]["Attributes"]["MessageGroupId"] == "mygroup"
+
+
+class TestSQSPermissions:
+    def test_add_and_remove_permission(self, sqs, queue_url):
+        sqs.add_permission(
+            QueueUrl=queue_url,
+            Label="test-permission",
+            AWSAccountIds=["111111111111"],
+            Actions=["SendMessage"],
+        )
+        # Verify the policy was added
+        attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["Policy"])
+        assert "Policy" in attrs["Attributes"]
+
+        # Remove the permission
+        sqs.remove_permission(QueueUrl=queue_url, Label="test-permission")
 
 
 class TestSQSDeadLetterQueue:
@@ -1018,3 +1056,40 @@ class TestSQSSystemAttributes:
         assert send_resp["MD5OfMessageBody"] == expected_md5
         recv = sqs.receive_message(QueueUrl=queue_url)
         assert recv["Messages"][0]["MD5OfBody"] == expected_md5
+    def test_list_dead_letter_source_queues(self, sqs):
+        import json
+
+        # Create DLQ
+        dlq_url = sqs.create_queue(QueueName="test-list-dlq-target")["QueueUrl"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        # Create two source queues pointing to this DLQ
+        source1_url = sqs.create_queue(
+            QueueName="test-list-dlq-source1",
+            Attributes={
+                "RedrivePolicy": json.dumps(
+                    {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "3"}
+                )
+            },
+        )["QueueUrl"]
+        source2_url = sqs.create_queue(
+            QueueName="test-list-dlq-source2",
+            Attributes={
+                "RedrivePolicy": json.dumps(
+                    {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "3"}
+                )
+            },
+        )["QueueUrl"]
+
+        try:
+            response = sqs.list_dead_letter_source_queues(QueueUrl=dlq_url)
+            source_urls = response.get("queueUrls", [])
+            assert len(source_urls) == 2
+            assert source1_url in source_urls
+            assert source2_url in source_urls
+        finally:
+            sqs.delete_queue(QueueUrl=source1_url)
+            sqs.delete_queue(QueueUrl=source2_url)
+            sqs.delete_queue(QueueUrl=dlq_url)

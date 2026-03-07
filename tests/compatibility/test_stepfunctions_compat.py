@@ -177,6 +177,78 @@ class TestStepFunctionsOperations:
             assert exc["status"] == "SUCCEEDED"
 
 
+class TestStepFunctionsExecutionHistory:
+    def test_get_execution_history(self, sfn, state_machine):
+        """Test GetExecutionHistory returns events for a completed execution."""
+        exec_resp = sfn.start_execution(
+            stateMachineArn=state_machine,
+            input=json.dumps({"key": "value"}),
+        )
+        exec_arn = exec_resp["executionArn"]
+
+        history = sfn.get_execution_history(executionArn=exec_arn)
+        events = history["events"]
+        assert len(events) >= 1
+        # First event should be ExecutionStarted
+        event_types = [e["type"] for e in events]
+        assert "ExecutionStarted" in event_types
+
+    def test_stop_execution(self, sfn, iam):
+        """Test StopExecution stops a running execution."""
+        role = iam.create_role(
+            RoleName="sfn-stop-role",
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "states.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+        )
+        # Use a Wait state so execution stays RUNNING long enough to stop
+        definition = json.dumps(
+            {
+                "StartAt": "WaitState",
+                "States": {
+                    "WaitState": {
+                        "Type": "Wait",
+                        "Seconds": 300,
+                        "Next": "Done",
+                    },
+                    "Done": {"Type": "Pass", "End": True},
+                },
+            }
+        )
+        sm_name = f"stop-test-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name,
+            definition=definition,
+            roleArn=role["Role"]["Arn"],
+        )
+        sm_arn = sm["stateMachineArn"]
+
+        exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+        exec_arn = exec_resp["executionArn"]
+
+        stop_resp = sfn.stop_execution(
+            executionArn=exec_arn,
+            error="UserCancelled",
+            cause="Testing stop",
+        )
+        assert "stopDate" in stop_resp
+
+        desc = sfn.describe_execution(executionArn=exec_arn)
+        assert desc["status"] == "ABORTED"
+
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+        iam.delete_role(RoleName="sfn-stop-role")
+
+
 class TestASLExecution:
     """Test actual ASL state machine execution — Enterprise-grade feature."""
 

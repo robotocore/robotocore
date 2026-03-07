@@ -576,3 +576,52 @@ class TestSNSPlatformApplications:
             for a in apps["PlatformApplications"]
         ]
         assert app_arn not in arns
+class TestSNSSubscriptionAttributes:
+    def test_set_and_get_filter_policy(self, sns, sqs):
+        """SetSubscriptionAttributes + GetSubscriptionAttributes with filter policy."""
+        topic_arn = sns.create_topic(Name="filter-policy-topic")["TopicArn"]
+        q_url = sqs.create_queue(QueueName="filter-policy-queue")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+            "SubscriptionArn"
+        ]
+
+        filter_policy = json.dumps({"event_type": ["order_placed"]})
+        sns.set_subscription_attributes(
+            SubscriptionArn=sub_arn,
+            AttributeName="FilterPolicy",
+            AttributeValue=filter_policy,
+        )
+
+        attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
+        assert json.loads(attrs["FilterPolicy"]) == {"event_type": ["order_placed"]}
+        assert attrs["TopicArn"] == topic_arn
+        assert attrs["Protocol"] == "sqs"
+
+        sqs.delete_queue(QueueUrl=q_url)
+        sns.delete_topic(TopicArn=topic_arn)
+
+    def test_get_subscription_attributes_basic(self, sns, sqs):
+        """GetSubscriptionAttributes returns standard fields."""
+        topic_arn = sns.create_topic(Name="get-sub-attrs-topic")["TopicArn"]
+        q_url = sqs.create_queue(QueueName="get-sub-attrs-queue")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+            "SubscriptionArn"
+        ]
+
+        attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
+        assert attrs["SubscriptionArn"] == sub_arn
+        assert attrs["TopicArn"] == topic_arn
+        assert attrs["Protocol"] == "sqs"
+        assert attrs["Endpoint"] == q_arn
+        assert "Owner" in attrs
+
+        sqs.delete_queue(QueueUrl=q_url)
+        sns.delete_topic(TopicArn=topic_arn)

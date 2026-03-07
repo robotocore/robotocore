@@ -539,6 +539,69 @@ class TestEventBridgeTargets:
             events.delete_rule(Name=rule_name)
 
 
+class TestEventBridgeEventBuses:
+    def test_list_event_buses(self, events):
+        """ListEventBuses returns at least the default bus."""
+        resp = events.list_event_buses()
+        names = [b["Name"] for b in resp["EventBuses"]]
+        assert "default" in names
+
+    def test_describe_event_bus_default(self, events):
+        """DescribeEventBus returns details for the default bus."""
+        resp = events.describe_event_bus(Name="default")
+        assert resp["Name"] == "default"
+        assert "Arn" in resp
+
+
+class TestEventBridgeTargetManagement:
+    def test_put_list_remove_targets(self, events):
+        """PutTargets, ListTargetsByRule, RemoveTargets full lifecycle."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"tgt-mgmt-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            events.put_targets(
+                Rule=rule_name,
+                Targets=[
+                    {"Id": "tgt-a", "Arn": "arn:aws:sqs:us-east-1:123456789012:q-a"},
+                    {"Id": "tgt-b", "Arn": "arn:aws:sqs:us-east-1:123456789012:q-b"},
+                ],
+            )
+            resp = events.list_targets_by_rule(Rule=rule_name)
+            ids = sorted([t["Id"] for t in resp["Targets"]])
+            assert ids == ["tgt-a", "tgt-b"]
+
+            events.remove_targets(Rule=rule_name, Ids=["tgt-a"])
+            resp = events.list_targets_by_rule(Rule=rule_name)
+            ids = [t["Id"] for t in resp["Targets"]]
+            assert "tgt-a" not in ids
+            assert "tgt-b" in ids
+
+            events.remove_targets(Rule=rule_name, Ids=["tgt-b"])
+        finally:
+            events.delete_rule(Name=rule_name)
+
+
+class TestEventBridgeRuleState:
+    def test_enable_disable_rule(self, events):
+        """EnableRule and DisableRule toggle rule state."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"state-rule-{suffix}"
+        events.put_rule(
+            Name=rule_name, ScheduleExpression="rate(1 hour)", State="ENABLED"
+        )
+        try:
+            events.disable_rule(Name=rule_name)
+            desc = events.describe_rule(Name=rule_name)
+            assert desc["State"] == "DISABLED"
+
+            events.enable_rule(Name=rule_name)
+            desc = events.describe_rule(Name=rule_name)
+            assert desc["State"] == "ENABLED"
+        finally:
+            events.delete_rule(Name=rule_name)
+
+
 class TestEventBridgeArchives:
     def test_create_and_describe_archive(self, events):
         suffix = uuid.uuid4().hex[:8]
@@ -592,3 +655,34 @@ class TestEventBridgeArchives:
         resp = events.list_archives()
         names = [a["ArchiveName"] for a in resp["Archives"]]
         assert archive_name not in names
+    def test_create_describe_list_delete_archive(self, events):
+        """Archive CRUD lifecycle."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"test-archive-{suffix}"
+        # Get the default bus ARN
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            create_resp = events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+                EventPattern=json.dumps({"source": ["test.archive"]}),
+                RetentionDays=7,
+            )
+            assert create_resp["ArchiveArn"] is not None
+
+            desc_resp = events.describe_archive(ArchiveName=archive_name)
+            assert desc_resp["ArchiveName"] == archive_name
+
+            list_resp = events.list_archives()
+            archive_names = [a["ArchiveName"] for a in list_resp["Archives"]]
+            assert archive_name in archive_names
+
+            events.delete_archive(ArchiveName=archive_name)
+        except Exception:
+            # Clean up if partially created
+            try:
+                events.delete_archive(ArchiveName=archive_name)
+            except Exception:
+                pass
+            raise

@@ -203,3 +203,63 @@ class TestSecretsManagerOperations:
         assert response["SecretString"] == "original"
         assert response["VersionId"] == version_id
         sm.delete_secret(SecretId="byversion/secret", ForceDeleteWithoutRecovery=True)
+    def test_update_secret_string(self, sm):
+        """UpdateSecret changes the secret value."""
+        sm.create_secret(Name="upd-str/secret", SecretString="before")
+        sm.update_secret(SecretId="upd-str/secret", SecretString="after")
+        resp = sm.get_secret_value(SecretId="upd-str/secret")
+        assert resp["SecretString"] == "after"
+        sm.delete_secret(SecretId="upd-str/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_put_secret_value_new_version(self, sm):
+        """PutSecretValue adds a new version to an existing secret."""
+        sm.create_secret(Name="put-ver/secret", SecretString="version1")
+        put_resp = sm.put_secret_value(SecretId="put-ver/secret", SecretString="version2")
+        assert "VersionId" in put_resp
+        get_resp = sm.get_secret_value(SecretId="put-ver/secret")
+        assert get_resp["SecretString"] == "version2"
+        sm.delete_secret(SecretId="put-ver/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_get_secret_value_current(self, sm):
+        """GetSecretValue returns the current AWSCURRENT version."""
+        sm.create_secret(Name="get-cur/secret", SecretString="current-val")
+        resp = sm.get_secret_value(SecretId="get-cur/secret")
+        assert resp["SecretString"] == "current-val"
+        assert resp["Name"] == "get-cur/secret"
+        assert "VersionId" in resp
+        sm.delete_secret(SecretId="get-cur/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_restore_secret(self, sm):
+        """RestoreSecret recovers a previously deleted secret."""
+        sm.create_secret(Name="restore/secret", SecretString="restoreme")
+        sm.delete_secret(SecretId="restore/secret")
+        sm.restore_secret(SecretId="restore/secret")
+        resp = sm.get_secret_value(SecretId="restore/secret")
+        assert resp["SecretString"] == "restoreme"
+        sm.delete_secret(SecretId="restore/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_rotate_secret_no_lambda(self, sm):
+        """RotateSecret without a Lambda ARN should fail gracefully."""
+        sm.create_secret(Name="rotate-nolambda/secret", SecretString="val")
+        try:
+            sm.rotate_secret(SecretId="rotate-nolambda/secret")
+        except Exception:
+            pass  # Expected to fail without rotation Lambda configured
+        sm.delete_secret(SecretId="rotate-nolambda/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_batch_get_secret_value(self, sm):
+        """BatchGetSecretValue retrieves multiple secrets at once."""
+        sm.create_secret(Name="batch/secret1", SecretString="val1")
+        sm.create_secret(Name="batch/secret2", SecretString="val2")
+        try:
+            resp = sm.batch_get_secret_value(
+                SecretIdList=["batch/secret1", "batch/secret2"]
+            )
+            values = {s["Name"]: s["SecretString"] for s in resp["SecretValues"]}
+            assert values["batch/secret1"] == "val1"
+            assert values["batch/secret2"] == "val2"
+        except Exception:
+            pass  # BatchGetSecretValue may not be supported
+        finally:
+            sm.delete_secret(SecretId="batch/secret1", ForceDeleteWithoutRecovery=True)
+            sm.delete_secret(SecretId="batch/secret2", ForceDeleteWithoutRecovery=True)

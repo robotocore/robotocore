@@ -1294,11 +1294,11 @@ class TestTransactionsAdvanced:
         assert r2["Item"]["balance"]["N"] == "80"
 
     def test_transact_get_items(self, dynamodb, table):
-        """TransactGetItems retrieves multiple items atomically."""
+        """transact_get_items retrieves multiple items transactionally."""
         for i in range(3):
             dynamodb.put_item(
                 TableName=table,
-                Item={"pk": {"S": f"tg-{i}"}, "val": {"S": f"value-{i}"}},
+                Item={"pk": {"S": f"tg-{i}"}, "data": {"S": f"value-{i}"}},
             )
 
         response = dynamodb.transact_get_items(
@@ -1309,7 +1309,7 @@ class TestTransactionsAdvanced:
         )
         items = [r["Item"] for r in response["Responses"]]
         assert len(items) == 3
-        vals = sorted(item["val"]["S"] for item in items)
+        vals = sorted(item["data"]["S"] for item in items)
         assert vals == ["value-0", "value-1", "value-2"]
 
     def test_transact_get_items_with_projection(self, dynamodb, table):
@@ -1712,3 +1712,24 @@ class TestErrorHandling:
                 BillingMode="PAY_PER_REQUEST",
             )
         assert exc_info.value.response["Error"]["Code"] == "ResourceInUseException"
+
+
+class TestDescribeEndpointsAndLimits:
+    def test_describe_endpoints(self, dynamodb):
+        """DescribeEndpoints returns a list of endpoints."""
+        response = dynamodb.describe_endpoints()
+        assert "Endpoints" in response
+        assert isinstance(response["Endpoints"], list)
+        assert len(response["Endpoints"]) >= 1
+        # Each endpoint has Address and CachePeriodInMinutes
+        ep = response["Endpoints"][0]
+        assert "Address" in ep
+        assert "CachePeriodInMinutes" in ep
+
+    def test_describe_limits(self, dynamodb):
+        """DescribeLimits returns account-level DynamoDB limits."""
+        response = dynamodb.describe_limits()
+        assert "AccountMaxReadCapacityUnits" in response
+        assert "AccountMaxWriteCapacityUnits" in response
+        assert "TableMaxReadCapacityUnits" in response
+        assert "TableMaxWriteCapacityUnits" in response
