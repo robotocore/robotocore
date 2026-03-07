@@ -219,7 +219,6 @@ class TestDeployments:
         resp = apigwv2.get_deployments(ApiId=api)
         assert len(resp["Items"]) >= 1
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 delete_deployment not routed")
     def test_delete_deployment(self, apigwv2, api):
         created = apigwv2.create_deployment(ApiId=api)
         dep_id = created["DeploymentId"]
@@ -236,12 +235,11 @@ class TestAuthorizers:
         yield created["ApiId"]
         apigwv2.delete_api(ApiId=created["ApiId"])
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
     def test_create_authorizer(self, apigwv2, api):
         resp = apigwv2.create_authorizer(
             ApiId=api,
             AuthorizerType="JWT",
-            IdentitySource="$request.header.Authorization",
+            IdentitySource=["$request.header.Authorization"],
             Name=_unique("jwt-auth"),
             JwtConfiguration={
                 "Audience": ["my-api"],
@@ -251,13 +249,12 @@ class TestAuthorizers:
         assert "AuthorizerId" in resp
         assert resp["AuthorizerType"] == "JWT"
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
     def test_get_authorizer(self, apigwv2, api):
         name = _unique("get-auth")
         created = apigwv2.create_authorizer(
             ApiId=api,
             AuthorizerType="JWT",
-            IdentitySource="$request.header.Authorization",
+            IdentitySource=["$request.header.Authorization"],
             Name=name,
             JwtConfiguration={
                 "Audience": ["my-api"],
@@ -268,12 +265,11 @@ class TestAuthorizers:
         assert resp["Name"] == name
         assert resp["AuthorizerType"] == "JWT"
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
     def test_delete_authorizer(self, apigwv2, api):
         created = apigwv2.create_authorizer(
             ApiId=api,
             AuthorizerType="JWT",
-            IdentitySource="$request.header.Authorization",
+            IdentitySource=["$request.header.Authorization"],
             Name=_unique("del-auth"),
             JwtConfiguration={
                 "Audience": ["my-api"],
@@ -286,12 +282,11 @@ class TestAuthorizers:
         with pytest.raises(Exception):
             apigwv2.get_authorizer(ApiId=api, AuthorizerId=auth_id)
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
     def test_get_authorizers(self, apigwv2, api):
         apigwv2.create_authorizer(
             ApiId=api,
             AuthorizerType="JWT",
-            IdentitySource="$request.header.Authorization",
+            IdentitySource=["$request.header.Authorization"],
             Name=_unique("list-auth"),
             JwtConfiguration={
                 "Audience": ["my-api"],
@@ -320,7 +315,6 @@ class TestUpdateRoute:
 
 
 class TestVpcLinks:
-    @pytest.mark.xfail(reason="Moto apigatewayv2 VpcLinks not routed")
     def test_create_and_get_vpc_link(self, apigwv2):
         name = _unique("vpc-link")
         created = apigwv2.create_vpc_link(
@@ -336,7 +330,6 @@ class TestVpcLinks:
         # Clean up
         apigwv2.delete_vpc_link(VpcLinkId=created["VpcLinkId"])
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 VpcLinks not routed")
     def test_get_vpc_links(self, apigwv2):
         name = _unique("list-vpcl")
         created = apigwv2.create_vpc_link(
@@ -349,7 +342,6 @@ class TestVpcLinks:
 
         apigwv2.delete_vpc_link(VpcLinkId=created["VpcLinkId"])
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 VpcLinks not routed")
     def test_delete_vpc_link(self, apigwv2):
         created = apigwv2.create_vpc_link(
             Name=_unique("del-vpcl"),
@@ -363,7 +355,6 @@ class TestVpcLinks:
 
 
 class TestApiMappings:
-    @pytest.mark.xfail(reason="Moto apigatewayv2 DomainNames not routed")
     def test_create_and_get_api_mapping(self, apigwv2):
         api_name = _unique("mapping-api")
         domain_name = _unique("domain") + ".example.com"
@@ -406,7 +397,6 @@ class TestModels:
         yield created["ApiId"]
         apigwv2.delete_api(ApiId=created["ApiId"])
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 Models not routed")
     def test_create_and_get_model(self, apigwv2, api):
         import json
 
@@ -423,7 +413,6 @@ class TestModels:
         resp = apigwv2.get_model(ApiId=api, ModelId=created["ModelId"])
         assert resp["Name"] == name
 
-    @pytest.mark.xfail(reason="Moto apigatewayv2 Models not routed")
     def test_delete_model(self, apigwv2, api):
         import json
 
