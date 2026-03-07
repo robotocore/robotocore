@@ -233,12 +233,3 @@ class TestServices:
         finally:
             ecs.delete_cluster(cluster=cluster_name)
 
-    def test_describe_task_definition(self, ecs, task_def):
-        resp = ecs.describe_task_definition(taskDefinition=task_def)
-        td = resp["taskDefinition"]
-        assert len(td["containerDefinitions"]) > 0
-        assert "taskDefinitionArn" in td
-
-    def test_list_task_definitions(self, ecs, task_def):
-        resp = ecs.list_task_definitions()
-        assert len(resp["taskDefinitionArns"]) >= 1

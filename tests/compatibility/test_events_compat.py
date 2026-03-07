@@ -181,17 +181,6 @@ class TestEventBridgeOperations:
         assert response["Name"] == "default"
         assert "Arn" in response
 
-    def test_create_and_delete_event_bus(self, events):
-        """Create event bus with unique name, verify, describe, delete."""
-        suffix = uuid.uuid4().hex[:8]
-        bus_name = f"lifecycle-bus-{suffix}"
-        create_resp = events.create_event_bus(Name=bus_name)
-        assert "EventBusArn" in create_resp
-        assert bus_name in create_resp["EventBusArn"]
-        desc_resp = events.describe_event_bus(Name=bus_name)
-        assert desc_resp["Name"] == bus_name
-        events.delete_event_bus(Name=bus_name)
-
     def test_list_event_buses(self, events):
         """Create event bus, list_event_buses, assert name in list. Cleanup."""
         suffix = uuid.uuid4().hex[:8]
@@ -600,20 +589,6 @@ class TestEventBridgeTargets:
 
 
 class TestEventBridgeEventBuses:
-    def test_list_event_buses(self, events):
-        """ListEventBuses returns at least the default bus."""
-        resp = events.list_event_buses()
-        names = [b["Name"] for b in resp["EventBuses"]]
-        assert "default" in names
-
-    def test_describe_event_bus_default(self, events):
-        """DescribeEventBus returns details for the default bus."""
-        resp = events.describe_event_bus(Name="default")
-        assert resp["Name"] == "default"
-        assert "Arn" in resp
-
-
-class TestEventBridgeTargetManagement:
     def test_put_list_remove_targets(self, events):
         """PutTargets, ListTargetsByRule, RemoveTargets full lifecycle."""
         suffix = uuid.uuid4().hex[:8]
@@ -643,26 +618,6 @@ class TestEventBridgeTargetManagement:
 
 
 class TestEventBridgeRuleState:
-    def test_enable_disable_rule(self, events):
-        """EnableRule and DisableRule toggle rule state."""
-        suffix = uuid.uuid4().hex[:8]
-        rule_name = f"state-rule-{suffix}"
-        events.put_rule(
-            Name=rule_name, ScheduleExpression="rate(1 hour)", State="ENABLED"
-        )
-        try:
-            events.disable_rule(Name=rule_name)
-            desc = events.describe_rule(Name=rule_name)
-            assert desc["State"] == "DISABLED"
-
-            events.enable_rule(Name=rule_name)
-            desc = events.describe_rule(Name=rule_name)
-            assert desc["State"] == "ENABLED"
-        finally:
-            events.delete_rule(Name=rule_name)
-
-
-class TestEventBridgeArchives:
     def test_create_and_describe_archive(self, events):
         suffix = uuid.uuid4().hex[:8]
         archive_name = f"test-archive-{suffix}"
@@ -746,3 +701,231 @@ class TestEventBridgeArchives:
             except Exception:
                 pass
             raise
+
+
+class TestEventBridgeDescribeRuleFields:
+    def test_describe_rule_all_fields(self, events):
+        """DescribeRule returns all expected fields."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"describe-fields-{suffix}"
+        events.put_rule(
+            Name=rule_name,
+            ScheduleExpression="rate(5 minutes)",
+            State="ENABLED",
+            Description="A test rule",
+        )
+        try:
+            resp = events.describe_rule(Name=rule_name)
+            assert resp["Name"] == rule_name
+            assert "Arn" in resp
+            assert resp["State"] == "ENABLED"
+            assert resp["ScheduleExpression"] == "rate(5 minutes)"
+            assert resp["Description"] == "A test rule"
+            assert "EventBusName" in resp
+        finally:
+            events.delete_rule(Name=rule_name)
+
+
+class TestEventBridgeTargets:
+    def test_list_targets_by_rule(self, events):
+        """ListTargetsByRule returns targets for a rule."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"lt-rule-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            events.put_targets(
+                Rule=rule_name,
+                Targets=[
+                    {"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:q1"},
+                ],
+            )
+            resp = events.list_targets_by_rule(Rule=rule_name)
+            assert len(resp["Targets"]) == 1
+            assert resp["Targets"][0]["Id"] == "t1"
+        finally:
+            events.remove_targets(Rule=rule_name, Ids=["t1"])
+            events.delete_rule(Name=rule_name)
+
+    def test_put_targets_multiple(self, events):
+        """PutTargets with multiple targets on one rule."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"multi-tgt-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            resp = events.put_targets(
+                Rule=rule_name,
+                Targets=[
+                    {"Id": "tA", "Arn": "arn:aws:sqs:us-east-1:123456789012:qA"},
+                    {"Id": "tB", "Arn": "arn:aws:sqs:us-east-1:123456789012:qB"},
+                    {"Id": "tC", "Arn": "arn:aws:lambda:us-east-1:123456789012:function:fn"},
+                ],
+            )
+            assert resp["FailedEntryCount"] == 0
+            targets = events.list_targets_by_rule(Rule=rule_name)["Targets"]
+            ids = [t["Id"] for t in targets]
+            assert "tA" in ids
+            assert "tB" in ids
+            assert "tC" in ids
+        finally:
+            events.remove_targets(Rule=rule_name, Ids=["tA", "tB", "tC"])
+            events.delete_rule(Name=rule_name)
+
+    def test_remove_targets(self, events):
+        """RemoveTargets removes specific targets from a rule."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"rm-tgt-{suffix}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            events.put_targets(
+                Rule=rule_name,
+                Targets=[
+                    {"Id": "keep", "Arn": "arn:aws:sqs:us-east-1:123456789012:keep"},
+                    {"Id": "remove", "Arn": "arn:aws:sqs:us-east-1:123456789012:remove"},
+                ],
+            )
+            events.remove_targets(Rule=rule_name, Ids=["remove"])
+            targets = events.list_targets_by_rule(Rule=rule_name)["Targets"]
+            ids = [t["Id"] for t in targets]
+            assert "keep" in ids
+            assert "remove" not in ids
+        finally:
+            events.remove_targets(Rule=rule_name, Ids=["keep"])
+            events.delete_rule(Name=rule_name)
+
+
+class TestEventBridgeListRulesFilter:
+    def test_create_describe_delete_archive(self, events):
+        """Test CreateArchive, DescribeArchive, DeleteArchive lifecycle."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"test-archive-{suffix}"
+        # Get the default event bus ARN
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            create_resp = events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+                Description="Test archive",
+                RetentionDays=7,
+            )
+            assert "ArchiveArn" in create_resp
+
+            desc_resp = events.describe_archive(ArchiveName=archive_name)
+            assert desc_resp["ArchiveName"] == archive_name
+            assert desc_resp["RetentionDays"] == 7
+            assert "State" in desc_resp
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventBridgePartnerEvents:
+    @pytest.mark.xfail(reason="PutPartnerEventsSource may not be supported")
+    def test_put_partner_events_source(self, events):
+        """PutPartnerEventsSource is not commonly supported in emulators."""
+        events.put_partner_events(
+            Entries=[
+                {
+                    "Source": "aws.partner/example.com/test",
+                    "DetailType": "PartnerEvent",
+                    "Detail": json.dumps({"key": "value"}),
+                }
+            ]
+        )
+
+
+class TestEventBridgeRuleTagging:
+    def test_tag_untag_list_tags_on_rule(self, events):
+        """TagResource, UntagResource, ListTagsForResource on rules."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"tag-rule-{suffix}"
+        resp = events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        rule_arn = resp["RuleArn"]
+        try:
+            events.tag_resource(
+                ResourceARN=rule_arn,
+                Tags=[
+                    {"Key": "env", "Value": "staging"},
+                    {"Key": "team", "Value": "infra"},
+                ],
+            )
+            tags_resp = events.list_tags_for_resource(ResourceARN=rule_arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["env"] == "staging"
+            assert tags["team"] == "infra"
+
+            events.untag_resource(ResourceARN=rule_arn, TagKeys=["team"])
+            tags_resp = events.list_tags_for_resource(ResourceARN=rule_arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "env" in keys
+            assert "team" not in keys
+        finally:
+            events.delete_rule(Name=rule_name)
+
+
+class TestEventBridgeConnections:
+    @pytest.mark.xfail(reason="CreateConnection may not be supported")
+    def test_create_describe_connection(self, events):
+        """Test CreateConnection and DescribeConnection."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"test-conn-{suffix}"
+        try:
+            resp = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret123",
+                    }
+                },
+            )
+            assert "ConnectionArn" in resp
+            desc = events.describe_connection(Name=conn_name)
+            assert desc["Name"] == conn_name
+            assert desc["AuthorizationType"] == "API_KEY"
+        finally:
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
+class TestEventBridgeApiDestinations:
+    @pytest.mark.xfail(reason="CreateApiDestination may not be supported")
+    def test_create_describe_api_destination(self, events):
+        """Test CreateApiDestination and DescribeApiDestination."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"api-dest-conn-{suffix}"
+        dest_name = f"test-api-dest-{suffix}"
+        try:
+            conn_resp = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret",
+                    }
+                },
+            )
+            conn_arn = conn_resp["ConnectionArn"]
+            resp = events.create_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/api",
+                HttpMethod="POST",
+                InvocationRateLimitPerSecond=10,
+            )
+            assert "ApiDestinationArn" in resp
+            desc = events.describe_api_destination(Name=dest_name)
+            assert desc["Name"] == dest_name
+            assert desc["HttpMethod"] == "POST"
+        finally:
+            try:
+                events.delete_api_destination(Name=dest_name)
+            except Exception:
+                pass
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass

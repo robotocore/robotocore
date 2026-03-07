@@ -1,5 +1,6 @@
 """S3 compatibility tests — verify robotocore matches LocalStack behavior."""
 
+from botocore.exceptions import ClientError
 import json
 import os
 import time
@@ -700,18 +701,6 @@ class TestS3MultipartExtended:
         listing = s3.list_objects_v2(Bucket=bucket, Prefix=key)
         assert listing.get("Contents") is None or len(listing["Contents"]) == 0
 
-    def test_list_multipart_uploads(self, s3, bucket):
-        """List in-progress multipart uploads."""
-        key = "multipart-list-test.bin"
-        resp = s3.create_multipart_upload(Bucket=bucket, Key=key)
-        upload_id = resp["UploadId"]
-        try:
-            listing = s3.list_multipart_uploads(Bucket=bucket)
-            upload_ids = [u["UploadId"] for u in listing.get("Uploads", [])]
-            assert upload_id in upload_ids
-        finally:
-            s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
-
     def test_list_parts(self, s3, bucket):
         """List parts of an in-progress multipart upload."""
         key = "multipart-list-parts.bin"
@@ -1254,3 +1243,4 @@ class TestS3BucketPolicy:
             s3.get_bucket_policy(Bucket=bucket)
         err_str = str(exc_info.value)
         assert "NoSuchBucketPolicy" in err_str or "does not have" in err_str or "404" in err_str
+

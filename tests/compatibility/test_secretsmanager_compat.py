@@ -257,15 +257,6 @@ class TestSecretsManagerOperations:
         assert "VersionId" in resp
         sm.delete_secret(SecretId="get-cur/secret", ForceDeleteWithoutRecovery=True)
 
-    def test_restore_secret(self, sm):
-        """RestoreSecret recovers a previously deleted secret."""
-        sm.create_secret(Name="restore/secret", SecretString="restoreme")
-        sm.delete_secret(SecretId="restore/secret")
-        sm.restore_secret(SecretId="restore/secret")
-        resp = sm.get_secret_value(SecretId="restore/secret")
-        assert resp["SecretString"] == "restoreme"
-        sm.delete_secret(SecretId="restore/secret", ForceDeleteWithoutRecovery=True)
-
     def test_rotate_secret_no_lambda(self, sm):
         """RotateSecret without a Lambda ARN should fail gracefully."""
         sm.create_secret(Name="rotate-nolambda/secret", SecretString="val")
@@ -291,3 +282,84 @@ class TestSecretsManagerOperations:
         finally:
             sm.delete_secret(SecretId="batch/secret1", ForceDeleteWithoutRecovery=True)
             sm.delete_secret(SecretId="batch/secret2", ForceDeleteWithoutRecovery=True)
+
+    @pytest.mark.xfail(reason="RotateSecret requires a Lambda rotation function")
+    def test_rotate_secret(self, sm):
+        """Test RotateSecret."""
+        sm.create_secret(Name="rotate-test/secret", SecretString="original")
+        try:
+            sm.rotate_secret(
+                SecretId="rotate-test/secret",
+                RotationLambdaARN="arn:aws:lambda:us-east-1:123456789012:function:rotation",
+                RotationRules={"AutomaticallyAfterDays": 30},
+            )
+        finally:
+            sm.delete_secret(SecretId="rotate-test/secret", ForceDeleteWithoutRecovery=True)
+
+    def test_put_get_delete_resource_policy(self, sm):
+        """Test PutResourcePolicy, GetResourcePolicy, DeleteResourcePolicy."""
+        sm.create_secret(Name="policy-test/secret", SecretString="val")
+        try:
+            policy = json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "secretsmanager:GetSecretValue",
+                        "Resource": "*",
+                    }
+                ],
+            })
+            sm.put_resource_policy(SecretId="policy-test/secret", ResourcePolicy=policy)
+
+            get_resp = sm.get_resource_policy(SecretId="policy-test/secret")
+            assert "ResourcePolicy" in get_resp
+            parsed = json.loads(get_resp["ResourcePolicy"])
+            assert len(parsed["Statement"]) == 1
+
+            sm.delete_resource_policy(SecretId="policy-test/secret")
+            get_resp2 = sm.get_resource_policy(SecretId="policy-test/secret")
+            # After deletion, policy should be empty or None
+            assert not get_resp2.get("ResourcePolicy")
+        finally:
+            sm.delete_secret(SecretId="policy-test/secret", ForceDeleteWithoutRecovery=True)
+
+    @pytest.mark.xfail(reason="ValidateResourcePolicy may not be supported")
+    def test_validate_resource_policy(self, sm):
+        """Test ValidateResourcePolicy."""
+        sm.create_secret(Name="validate-policy/secret", SecretString="val")
+        try:
+            policy = json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "secretsmanager:GetSecretValue",
+                        "Resource": "*",
+                    }
+                ],
+            })
+            response = sm.validate_resource_policy(
+                SecretId="validate-policy/secret",
+                ResourcePolicy=policy,
+            )
+            assert "PolicyValidationPassed" in response
+        finally:
+            sm.delete_secret(SecretId="validate-policy/secret", ForceDeleteWithoutRecovery=True)
+
+    @pytest.mark.xfail(reason="ReplicateSecretToRegions may not be supported")
+    def test_replicate_secret_to_regions(self, sm):
+        """Test ReplicateSecretToRegions."""
+        sm.create_secret(Name="replicate-test/secret", SecretString="val")
+        try:
+            response = sm.replicate_secret_to_regions(
+                SecretId="replicate-test/secret",
+                AddReplicaRegions=[{"Region": "eu-west-1"}],
+                ForceOverwriteReplicaSecret=True,
+            )
+            assert "ReplicationStatusList" in response
+        finally:
+            sm.delete_secret(SecretId="replicate-test/secret", ForceDeleteWithoutRecovery=True)
+

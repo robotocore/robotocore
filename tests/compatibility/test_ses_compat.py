@@ -413,3 +413,100 @@ class TestSESv2Operations:
         response = sesv2.list_contact_lists()
         names = [cl["ContactListName"] for cl in response["ContactLists"]]
         assert "del-contacts" not in names
+
+    def test_create_describe_delete_configuration_set(self, ses):
+        """CreateConfigurationSet / DescribeConfigurationSet / DeleteConfigurationSet."""
+        cs_name = "test-config-set"
+        try:
+            ses.create_configuration_set(
+                ConfigurationSet={"Name": cs_name}
+            )
+            described = ses.describe_configuration_set(
+                ConfigurationSetName=cs_name
+            )
+            assert described["ConfigurationSet"]["Name"] == cs_name
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_create_describe_delete_receipt_rule(self, ses):
+        """CreateReceiptRule / DescribeReceiptRule / DeleteReceiptRule."""
+        rule_set_name = "test-rule-set"
+        rule_name = "test-rule"
+        ses.create_receipt_rule_set(RuleSetName=rule_set_name)
+        try:
+            ses.create_receipt_rule(
+                RuleSetName=rule_set_name,
+                Rule={
+                    "Name": rule_name,
+                    "Enabled": True,
+                    "Recipients": ["test@example.com"],
+                    "Actions": [],
+                },
+            )
+            described = ses.describe_receipt_rule(
+                RuleSetName=rule_set_name, RuleName=rule_name
+            )
+            assert described["Rule"]["Name"] == rule_name
+
+            ses.delete_receipt_rule(
+                RuleSetName=rule_set_name, RuleName=rule_name
+            )
+        finally:
+            ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
+
+    def test_create_get_delete_template(self, ses):
+        """CreateTemplate / GetTemplate / DeleteTemplate."""
+        template_name = "test-template"
+        ses.create_template(
+            Template={
+                "TemplateName": template_name,
+                "SubjectPart": "Hello {{name}}",
+                "TextPart": "Dear {{name}}, welcome!",
+                "HtmlPart": "<h1>Hello {{name}}</h1>",
+            }
+        )
+        try:
+            got = ses.get_template(TemplateName=template_name)
+            assert got["Template"]["TemplateName"] == template_name
+            assert got["Template"]["SubjectPart"] == "Hello {{name}}"
+        finally:
+            ses.delete_template(TemplateName=template_name)
+
+    def test_list_templates(self, ses):
+        """ListTemplates returns created templates."""
+        template_name = "list-template"
+        ses.create_template(
+            Template={
+                "TemplateName": template_name,
+                "SubjectPart": "Subject",
+                "TextPart": "Body",
+            }
+        )
+        try:
+            response = ses.list_templates()
+            names = [t["Name"] for t in response.get("TemplatesMetadata", [])]
+            assert template_name in names
+        finally:
+            ses.delete_template(TemplateName=template_name)
+
+    def test_send_templated_email(self, ses):
+        """SendTemplatedEmail using a template."""
+        ses.verify_email_identity(EmailAddress="tmpl-sender@example.com")
+        template_name = "send-tmpl"
+        ses.create_template(
+            Template={
+                "TemplateName": template_name,
+                "SubjectPart": "Hi {{name}}",
+                "TextPart": "Hello {{name}}",
+            }
+        )
+        try:
+            response = ses.send_templated_email(
+                Source="tmpl-sender@example.com",
+                Destination={"ToAddresses": ["recipient@example.com"]},
+                Template=template_name,
+                TemplateData='{"name": "World"}',
+            )
+            assert "MessageId" in response
+        finally:
+            ses.delete_template(TemplateName=template_name)

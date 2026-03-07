@@ -667,3 +667,140 @@ class TestSNSSubscriptionAttributes:
 
         sqs.delete_queue(QueueUrl=q_url)
         sns.delete_topic(TopicArn=topic_arn)
+
+
+class TestSNSMessageAttributes:
+    def test_tag_untag_list_tags(self, sns, topic_arn):
+        """Test TagResource, UntagResource, ListTagsForResource on topics."""
+        sns.tag_resource(
+            ResourceArn=topic_arn,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        tags_resp = sns.list_tags_for_resource(ResourceArn=topic_arn)
+        tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "platform"
+
+        # Untag one key
+        sns.untag_resource(ResourceArn=topic_arn, TagKeys=["team"])
+        tags_resp = sns.list_tags_for_resource(ResourceArn=topic_arn)
+        keys = [t["Key"] for t in tags_resp["Tags"]]
+        assert "env" in keys
+        assert "team" not in keys
+
+
+class TestSNSSubscriptionAttributes:
+    def test_set_subscription_filter_policy(self, sns, sqs):
+        """Test SetSubscriptionAttributes with FilterPolicy."""
+        q_url = sqs.create_queue(QueueName="sns-filter-test")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        topic_arn = sns.create_topic(Name="filter-topic")["TopicArn"]
+        try:
+            sub_arn = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )["SubscriptionArn"]
+            filter_policy = json.dumps({"event_type": ["order_placed"]})
+            sns.set_subscription_attributes(
+                SubscriptionArn=sub_arn,
+                AttributeName="FilterPolicy",
+                AttributeValue=filter_policy,
+            )
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)
+            assert "FilterPolicy" in attrs["Attributes"]
+            assert json.loads(attrs["Attributes"]["FilterPolicy"]) == {
+                "event_type": ["order_placed"]
+            }
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_list_topics_pagination(self, sns):
+        """Test ListTopics pagination by creating many topics."""
+        created_arns = []
+        try:
+            for i in range(5):
+                arn = sns.create_topic(Name=f"page-topic-{i}")["TopicArn"]
+                created_arns.append(arn)
+            # List all topics — should include our topics
+            all_arns = []
+            response = sns.list_topics()
+            all_arns.extend([t["TopicArn"] for t in response["Topics"]])
+            while "NextToken" in response:
+                response = sns.list_topics(NextToken=response["NextToken"])
+                all_arns.extend([t["TopicArn"] for t in response["Topics"]])
+            for arn in created_arns:
+                assert arn in all_arns
+        finally:
+            for arn in created_arns:
+                sns.delete_topic(TopicArn=arn)
+
+    def test_confirm_subscription_with_dummy_token(self, sns, topic_arn):
+        """ConfirmSubscription with an invalid token should raise an error."""
+        with pytest.raises(Exception):
+            sns.confirm_subscription(
+                TopicArn=topic_arn,
+                Token="invalid-dummy-token-12345",
+            )
+
+
+class TestSNSPlatformApplication:
+    def test_create_and_delete_platform_application(self, sns):
+        """Test CreatePlatformApplication and DeletePlatformApplication."""
+        response = sns.create_platform_application(
+            Name="test-platform-app",
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        arn = response["PlatformApplicationArn"]
+        assert arn is not None
+        sns.delete_platform_application(PlatformApplicationArn=arn)
+
+
+class TestSNSTopicAttributesExtended:
+    def test_get_topic_attributes_all_fields(self, sns, topic_arn):
+        """Test GetTopicAttributes returns all expected fields."""
+        attrs = sns.get_topic_attributes(TopicArn=topic_arn)["Attributes"]
+        assert "TopicArn" in attrs
+        assert "Owner" in attrs
+        assert "DisplayName" in attrs
+        assert "SubscriptionsConfirmed" in attrs
+        assert "SubscriptionsPending" in attrs
+        assert "SubscriptionsDeleted" in attrs
+
+
+class TestSNSSubscribeProtocols:
+    def test_subscribe_sqs_protocol(self, sns, sqs, topic_arn):
+        """Test Subscribe with SQS protocol."""
+        q_url = sqs.create_queue(QueueName="sns-proto-sqs")["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        try:
+            sub = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)
+            assert "SubscriptionArn" in sub
+            # SQS subscriptions are auto-confirmed
+            assert sub["SubscriptionArn"] != "PendingConfirmation"
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_subscribe_lambda_protocol(self, sns, topic_arn):
+        """Test Subscribe with lambda protocol."""
+        lambda_arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+        sub = sns.subscribe(
+            TopicArn=topic_arn, Protocol="lambda", Endpoint=lambda_arn
+        )
+        assert "SubscriptionArn" in sub
+
+    def test_subscribe_https_protocol(self, sns, topic_arn):
+        """Test Subscribe with https protocol."""
+        sub = sns.subscribe(
+            TopicArn=topic_arn,
+            Protocol="https",
+            Endpoint="https://example.com/sns-endpoint",
+        )
+        assert "SubscriptionArn" in sub

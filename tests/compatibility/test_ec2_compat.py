@@ -503,3 +503,444 @@ class TestEC2MultipleSubnets:
             for sid in subnet_ids:
                 ec2.delete_subnet(SubnetId=sid)
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2InstanceTypes:
+    def test_describe_instance_types(self, ec2):
+        """DescribeInstanceTypes returns results."""
+        response = ec2.describe_instance_types()
+        assert len(response["InstanceTypes"]) > 0
+
+    def test_describe_images_owner_alias(self, ec2):
+        """DescribeImages with owner-alias=amazon filter."""
+        response = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        assert "Images" in response
+
+
+class TestEC2RunInstances:
+    def test_run_and_terminate_instances(self, ec2):
+        """RunInstances / TerminateInstances with t2.micro."""
+        # Get an AMI to use
+        images = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        if not images["Images"]:
+            # Fallback: use any available image
+            images = ec2.describe_images()
+        assert len(images["Images"]) > 0
+        ami_id = images["Images"][0]["ImageId"]
+
+        resp = ec2.run_instances(
+            ImageId=ami_id, InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        instance_id = resp["Instances"][0]["InstanceId"]
+        try:
+            assert instance_id.startswith("i-")
+            assert resp["Instances"][0]["InstanceType"] == "t2.micro"
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_describe_instances_with_filters(self, ec2):
+        """DescribeInstances with instance-state-name and tag:Name filters."""
+        images = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        if not images["Images"]:
+            images = ec2.describe_images()
+        ami_id = images["Images"][0]["ImageId"]
+        tag_name = _unique("filter-test")
+
+        resp = ec2.run_instances(
+            ImageId=ami_id,
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+            TagSpecifications=[
+                {
+                    "ResourceType": "instance",
+                    "Tags": [{"Key": "Name", "Value": tag_name}],
+                }
+            ],
+        )
+        instance_id = resp["Instances"][0]["InstanceId"]
+        try:
+            # Filter by state
+            by_state = ec2.describe_instances(
+                Filters=[{"Name": "instance-state-name", "Values": ["running", "pending"]}]
+            )
+            all_ids = [
+                i["InstanceId"]
+                for r in by_state["Reservations"]
+                for i in r["Instances"]
+            ]
+            assert instance_id in all_ids
+
+            # Filter by tag:Name
+            by_tag = ec2.describe_instances(
+                Filters=[{"Name": "tag:Name", "Values": [tag_name]}]
+            )
+            tag_ids = [
+                i["InstanceId"]
+                for r in by_tag["Reservations"]
+                for i in r["Instances"]
+            ]
+            assert instance_id in tag_ids
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_describe_instance_status(self, ec2):
+        """DescribeInstanceStatus returns valid response."""
+        images = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        if not images["Images"]:
+            images = ec2.describe_images()
+        ami_id = images["Images"][0]["ImageId"]
+
+        resp = ec2.run_instances(
+            ImageId=ami_id, InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        instance_id = resp["Instances"][0]["InstanceId"]
+        try:
+            status_resp = ec2.describe_instance_status(
+                InstanceIds=[instance_id], IncludeAllInstances=True
+            )
+            assert "InstanceStatuses" in status_resp
+            ids = [s["InstanceId"] for s in status_resp["InstanceStatuses"]]
+            assert instance_id in ids
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_modify_instance_attribute(self, ec2):
+        """ModifyInstanceAttribute to change instance type."""
+        images = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        if not images["Images"]:
+            images = ec2.describe_images()
+        ami_id = images["Images"][0]["ImageId"]
+
+        resp = ec2.run_instances(
+            ImageId=ami_id, InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        instance_id = resp["Instances"][0]["InstanceId"]
+        try:
+            # Stop instance first (required for modifying instance type)
+            ec2.stop_instances(InstanceIds=[instance_id])
+            waiter = ec2.get_waiter("instance_stopped")
+            waiter.wait(InstanceIds=[instance_id], WaiterConfig={"Delay": 1, "MaxAttempts": 10})
+            ec2.modify_instance_attribute(
+                InstanceId=instance_id, InstanceType={"Value": "t2.small"}
+            )
+            desc = ec2.describe_instances(InstanceIds=[instance_id])
+            inst = desc["Reservations"][0]["Instances"][0]
+            assert inst["InstanceType"] == "t2.small"
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+
+class TestEC2Tags:
+    def test_create_describe_delete_tags(self, ec2):
+        """CreateTags / DescribeTags / DeleteTags lifecycle."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.80.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        try:
+            ec2.create_tags(
+                Resources=[vpc_id],
+                Tags=[
+                    {"Key": "Env", "Value": "test"},
+                    {"Key": "Project", "Value": "robotocore"},
+                ],
+            )
+
+            tags_resp = ec2.describe_tags(
+                Filters=[{"Name": "resource-id", "Values": [vpc_id]}]
+            )
+            tag_keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "Env" in tag_keys
+            assert "Project" in tag_keys
+
+            ec2.delete_tags(
+                Resources=[vpc_id], Tags=[{"Key": "Env"}]
+            )
+            tags_resp2 = ec2.describe_tags(
+                Filters=[{"Name": "resource-id", "Values": [vpc_id]}]
+            )
+            tag_keys2 = [t["Key"] for t in tags_resp2["Tags"]]
+            assert "Env" not in tag_keys2
+            assert "Project" in tag_keys2
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2Volumes:
+    def test_create_describe_delete_volume(self, ec2):
+        """CreateVolume / DescribeVolumes / DeleteVolume."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=10)
+        vol_id = vol["VolumeId"]
+        try:
+            assert vol_id.startswith("vol-")
+            assert vol["Size"] == 10
+
+            described = ec2.describe_volumes(VolumeIds=[vol_id])
+            assert len(described["Volumes"]) == 1
+            assert described["Volumes"][0]["VolumeId"] == vol_id
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    @pytest.mark.xfail(reason="AttachVolume/DetachVolume may require running instance state")
+    def test_attach_detach_volume(self, ec2):
+        """AttachVolume / DetachVolume lifecycle."""
+        images = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        if not images["Images"]:
+            images = ec2.describe_images()
+        ami_id = images["Images"][0]["ImageId"]
+
+        inst_resp = ec2.run_instances(
+            ImageId=ami_id, InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        instance_id = inst_resp["Instances"][0]["InstanceId"]
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=10)
+        vol_id = vol["VolumeId"]
+        try:
+            attach = ec2.attach_volume(
+                VolumeId=vol_id, InstanceId=instance_id, Device="/dev/sdf"
+            )
+            assert attach["State"] in ("attaching", "attached")
+
+            ec2.detach_volume(VolumeId=vol_id)
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+            try:
+                ec2.delete_volume(VolumeId=vol_id)
+            except Exception:
+                pass
+
+
+class TestEC2Snapshots:
+    def test_create_describe_delete_snapshot(self, ec2):
+        """CreateSnapshot / DescribeSnapshots / DeleteSnapshot."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id, Description="test snapshot")
+            snap_id = snap["SnapshotId"]
+            assert snap_id.startswith("snap-")
+
+            described = ec2.describe_snapshots(SnapshotIds=[snap_id])
+            assert len(described["Snapshots"]) == 1
+            assert described["Snapshots"][0]["VolumeId"] == vol_id
+
+            ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2AMIs:
+    def test_create_describe_deregister_image(self, ec2):
+        """CreateImage / DescribeImages / DeregisterImage."""
+        images = ec2.describe_images(
+            Filters=[{"Name": "owner-alias", "Values": ["amazon"]}]
+        )
+        if not images["Images"]:
+            images = ec2.describe_images()
+        ami_id = images["Images"][0]["ImageId"]
+
+        inst_resp = ec2.run_instances(
+            ImageId=ami_id, InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        instance_id = inst_resp["Instances"][0]["InstanceId"]
+        try:
+            image_resp = ec2.create_image(
+                InstanceId=instance_id, Name=_unique("test-ami")
+            )
+            new_ami_id = image_resp["ImageId"]
+            assert new_ami_id.startswith("ami-")
+
+            described = ec2.describe_images(ImageIds=[new_ami_id])
+            assert len(described["Images"]) == 1
+
+            ec2.deregister_image(ImageId=new_ami_id)
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+
+class TestEC2InternetGatewayFull:
+    def test_create_attach_detach_delete_igw(self, ec2):
+        """Full IGW lifecycle: create, attach to VPC, detach, delete."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.70.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        igw_resp = ec2.create_internet_gateway()
+        igw_id = igw_resp["InternetGateway"]["InternetGatewayId"]
+        try:
+            ec2.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+
+            described = ec2.describe_internet_gateways(InternetGatewayIds=[igw_id])
+            attachments = described["InternetGateways"][0]["Attachments"]
+            assert any(a["VpcId"] == vpc_id for a in attachments)
+
+            ec2.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+        finally:
+            ec2.delete_internet_gateway(InternetGatewayId=igw_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2RouteTables:
+    def test_create_describe_delete_route_table(self, ec2):
+        """CreateRouteTable / DescribeRouteTables / DeleteRouteTable."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.60.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        try:
+            rt_resp = ec2.create_route_table(VpcId=vpc_id)
+            rt_id = rt_resp["RouteTable"]["RouteTableId"]
+            assert rt_id.startswith("rtb-")
+
+            described = ec2.describe_route_tables(RouteTableIds=[rt_id])
+            assert len(described["RouteTables"]) == 1
+            assert described["RouteTables"][0]["VpcId"] == vpc_id
+
+            ec2.delete_route_table(RouteTableId=rt_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_create_and_delete_route(self, ec2):
+        """CreateRoute / DeleteRoute in a route table."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.61.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        igw_resp = ec2.create_internet_gateway()
+        igw_id = igw_resp["InternetGateway"]["InternetGatewayId"]
+        ec2.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+        try:
+            rt_resp = ec2.create_route_table(VpcId=vpc_id)
+            rt_id = rt_resp["RouteTable"]["RouteTableId"]
+
+            ec2.create_route(
+                RouteTableId=rt_id,
+                DestinationCidrBlock="0.0.0.0/0",
+                GatewayId=igw_id,
+            )
+
+            described = ec2.describe_route_tables(RouteTableIds=[rt_id])
+            routes = described["RouteTables"][0]["Routes"]
+            dest_cidrs = [r.get("DestinationCidrBlock") for r in routes]
+            assert "0.0.0.0/0" in dest_cidrs
+
+            ec2.delete_route(RouteTableId=rt_id, DestinationCidrBlock="0.0.0.0/0")
+            ec2.delete_route_table(RouteTableId=rt_id)
+        finally:
+            ec2.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+            ec2.delete_internet_gateway(InternetGatewayId=igw_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_associate_disassociate_route_table(self, ec2):
+        """AssociateRouteTable / DisassociateRouteTable."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.62.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        subnet_resp = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.62.1.0/24")
+        subnet_id = subnet_resp["Subnet"]["SubnetId"]
+        try:
+            rt_resp = ec2.create_route_table(VpcId=vpc_id)
+            rt_id = rt_resp["RouteTable"]["RouteTableId"]
+
+            assoc = ec2.associate_route_table(
+                RouteTableId=rt_id, SubnetId=subnet_id
+            )
+            assoc_id = assoc["AssociationId"]
+            assert assoc_id.startswith("rtbassoc-")
+
+            ec2.disassociate_route_table(AssociationId=assoc_id)
+            ec2.delete_route_table(RouteTableId=rt_id)
+        finally:
+            ec2.delete_subnet(SubnetId=subnet_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2NatGateway:
+    def test_create_describe_delete_nat_gateway(self, ec2):
+        """CreateNatGateway / DescribeNatGateways / DeleteNatGateway."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.50.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        subnet_resp = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.50.1.0/24")
+        subnet_id = subnet_resp["Subnet"]["SubnetId"]
+        alloc = ec2.allocate_address(Domain="vpc")
+        alloc_id = alloc["AllocationId"]
+        try:
+            nat = ec2.create_nat_gateway(
+                SubnetId=subnet_id, AllocationId=alloc_id
+            )
+            nat_id = nat["NatGateway"]["NatGatewayId"]
+            assert nat_id.startswith("nat-")
+
+            described = ec2.describe_nat_gateways(NatGatewayIds=[nat_id])
+            assert len(described["NatGateways"]) == 1
+
+            ec2.delete_nat_gateway(NatGatewayId=nat_id)
+        finally:
+            ec2.release_address(AllocationId=alloc_id)
+            ec2.delete_subnet(SubnetId=subnet_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2NetworkInterfaces:
+    def test_create_describe_delete_network_interface(self, ec2):
+        """CreateNetworkInterface / DescribeNetworkInterfaces / DeleteNetworkInterface."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.40.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        subnet_resp = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.40.1.0/24")
+        subnet_id = subnet_resp["Subnet"]["SubnetId"]
+        try:
+            eni = ec2.create_network_interface(SubnetId=subnet_id)
+            eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+            assert eni_id.startswith("eni-")
+
+            described = ec2.describe_network_interfaces(
+                NetworkInterfaceIds=[eni_id]
+            )
+            assert len(described["NetworkInterfaces"]) == 1
+            assert described["NetworkInterfaces"][0]["SubnetId"] == subnet_id
+
+            ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+        finally:
+            ec2.delete_subnet(SubnetId=subnet_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2LaunchTemplates:
+    def test_create_describe_delete_launch_template(self, ec2):
+        """CreateLaunchTemplate / DescribeLaunchTemplates / DeleteLaunchTemplate."""
+        lt_name = _unique("lt")
+        resp = ec2.create_launch_template(
+            LaunchTemplateName=lt_name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+        )
+        lt_id = resp["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            assert lt_id.startswith("lt-")
+            assert resp["LaunchTemplate"]["LaunchTemplateName"] == lt_name
+
+            described = ec2.describe_launch_templates(
+                LaunchTemplateIds=[lt_id]
+            )
+            assert len(described["LaunchTemplates"]) == 1
+            assert described["LaunchTemplates"][0]["LaunchTemplateName"] == lt_name
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+
+class TestEC2PlacementGroups:
+    @pytest.mark.xfail(reason="CreatePlacementGroup may not be implemented")
+    def test_create_describe_delete_placement_group(self, ec2):
+        """CreatePlacementGroup / DescribePlacementGroups / DeletePlacementGroup."""
+        pg_name = _unique("pg")
+        ec2.create_placement_group(GroupName=pg_name, Strategy="cluster")
+        try:
+            described = ec2.describe_placement_groups(GroupNames=[pg_name])
+            assert len(described["PlacementGroups"]) == 1
+            assert described["PlacementGroups"][0]["GroupName"] == pg_name
+            assert described["PlacementGroups"][0]["Strategy"] == "cluster"
+        finally:
+            ec2.delete_placement_group(GroupName=pg_name)

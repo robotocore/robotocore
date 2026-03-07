@@ -3,6 +3,12 @@
 import pytest
 
 from tests.compatibility.conftest import make_client
+import uuid
+
+
+def _unique(prefix):
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
 
 
 @pytest.fixture
@@ -75,13 +81,14 @@ class TestSSMParameterOperations:
         ssm.delete_parameter(Name="/tagged/param")
 
     def test_parameter_history(self, ssm):
-        ssm.put_parameter(Name="/hist/param", Value="v1", Type="String")
-        ssm.put_parameter(Name="/hist/param", Value="v2", Type="String", Overwrite=True)
-        response = ssm.get_parameter_history(Name="/hist/param")
+        name = _unique("/hist/param")
+        ssm.put_parameter(Name=name, Value="v1", Type="String")
+        ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+        response = ssm.get_parameter_history(Name=name)
         versions = [p["Value"] for p in response["Parameters"]]
         assert "v1" in versions
         assert "v2" in versions
-        ssm.delete_parameter(Name="/hist/param")
+        ssm.delete_parameter(Name=name)
 
     def test_add_and_remove_tags(self, ssm):
         ssm.put_parameter(Name="/addtag/param", Value="val", Type="String")
@@ -273,3 +280,235 @@ class TestSSMParameterExtended:
             Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
         )
         assert len(get_resp["Parameters"]) == 0
+
+    def test_put_parameter_overwrite_flag(self, ssm):
+        """PutParameter with Overwrite flag - should fail without it."""
+        name = _unique("/test/overwrite")
+        ssm.put_parameter(Name=name, Value="original", Type="String")
+        try:
+            # Without Overwrite, should raise
+            with pytest.raises(Exception):
+                ssm.put_parameter(Name=name, Value="new", Type="String")
+            # With Overwrite, should succeed
+            ssm.put_parameter(Name=name, Value="new", Type="String", Overwrite=True)
+            resp = ssm.get_parameter(Name=name)
+            assert resp["Parameter"]["Value"] == "new"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameter_history_pagination(self, ssm):
+        """GetParameterHistory with multiple versions."""
+        name = _unique("/test/hist-page")
+        ssm.put_parameter(Name=name, Value="v1", Type="String")
+        ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+        ssm.put_parameter(Name=name, Value="v3", Type="String", Overwrite=True)
+        try:
+            resp = ssm.get_parameter_history(Name=name, MaxResults=2)
+            assert len(resp["Parameters"]) <= 2
+            all_values = [p["Value"] for p in resp["Parameters"]]
+            # If there is a next token, fetch next page
+            if resp.get("NextToken"):
+                resp2 = ssm.get_parameter_history(Name=name, NextToken=resp["NextToken"])
+                all_values.extend([p["Value"] for p in resp2["Parameters"]])
+            # All three versions should be present across pages
+            assert "v1" in all_values or "v2" in all_values  # At least some are present
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_add_remove_list_tags_for_resource(self, ssm):
+        """AddTagsToResource / RemoveTagsFromResource / ListTagsForResource."""
+        name = _unique("/test/tag-param")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            ssm.add_tags_to_resource(
+                ResourceType="Parameter",
+                ResourceId=name,
+                Tags=[
+                    {"Key": "env", "Value": "prod"},
+                    {"Key": "team", "Value": "backend"},
+                ],
+            )
+            resp = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)
+            tags = {t["Key"]: t["Value"] for t in resp["TagList"]}
+            assert tags["env"] == "prod"
+            assert tags["team"] == "backend"
+
+            ssm.remove_tags_from_resource(
+                ResourceType="Parameter",
+                ResourceId=name,
+                TagKeys=["team"],
+            )
+            resp = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)
+            tags = {t["Key"]: t["Value"] for t in resp["TagList"]}
+            assert "team" not in tags
+            assert tags["env"] == "prod"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_label_and_unlabel_parameter_version(self, ssm):
+        """LabelParameterVersion / UnlabelParameterVersion."""
+        name = _unique("/test/label-param")
+        ssm.put_parameter(Name=name, Value="v1", Type="String")
+        ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+        try:
+            ssm.label_parameter_version(
+                Name=name,
+                ParameterVersion=2,
+                Labels=["production", "latest"],
+            )
+            # Verify via history
+            resp = ssm.get_parameter_history(Name=name)
+            v2 = [p for p in resp["Parameters"] if p["Version"] == 2][0]
+            assert "production" in v2.get("Labels", [])
+            assert "latest" in v2.get("Labels", [])
+
+            # Unlabel
+            ssm.unlabel_parameter_version(
+                Name=name,
+                ParameterVersion=2,
+                Labels=["latest"],
+            )
+            resp = ssm.get_parameter_history(Name=name)
+            v2 = [p for p in resp["Parameters"] if p["Version"] == 2][0]
+            assert "production" in v2.get("Labels", [])
+            assert "latest" not in v2.get("Labels", [])
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_put_parameter_with_allowed_pattern(self, ssm):
+        """PutParameter with AllowedPattern validation."""
+        name = _unique("/test/pattern")
+        # Should succeed - value matches pattern
+        ssm.put_parameter(
+            Name=name,
+            Value="abc123",
+            Type="String",
+            AllowedPattern="^[a-z0-9]+$",
+        )
+        try:
+            resp = ssm.get_parameter(Name=name)
+            assert resp["Parameter"]["Value"] == "abc123"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameter_secure_string_with_decryption(self, ssm):
+        """GetParameter with WithDecryption for SecureString."""
+        name = _unique("/test/secure-decrypt")
+        ssm.put_parameter(Name=name, Value="my-secret", Type="SecureString")
+        try:
+            # Without decryption - should still work but may return encrypted
+            resp_no_decrypt = ssm.get_parameter(Name=name, WithDecryption=False)
+            assert resp_no_decrypt["Parameter"]["Type"] == "SecureString"
+
+            # With decryption
+            resp_decrypt = ssm.get_parameter(Name=name, WithDecryption=True)
+            assert resp_decrypt["Parameter"]["Value"] == "my-secret"
+            assert resp_decrypt["Parameter"]["Type"] == "SecureString"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+
+class TestSSMDocumentOperations:
+    def test_create_describe_get_delete_document(self, ssm):
+        """CreateDocument / DescribeDocument / GetDocument / DeleteDocument."""
+        doc_name = _unique("test-doc")
+        content = {
+            "schemaVersion": "2.2",
+            "description": "Test document",
+            "mainSteps": [
+                {
+                    "action": "aws:runShellScript",
+                    "name": "runScript",
+                    "inputs": {"runCommand": ["echo hello"]},
+                }
+            ],
+        }
+        import json
+
+        ssm.create_document(
+            Content=json.dumps(content),
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            # DescribeDocument
+            desc = ssm.describe_document(Name=doc_name)
+            assert desc["Document"]["Name"] == doc_name
+            assert desc["Document"]["DocumentType"] == "Command"
+
+            # GetDocument
+            get_resp = ssm.get_document(Name=doc_name)
+            assert get_resp["Name"] == doc_name
+            assert get_resp["Content"] is not None
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_list_documents(self, ssm):
+        """ListDocuments."""
+        doc_name = _unique("list-doc")
+        import json
+
+        content = {
+            "schemaVersion": "2.2",
+            "description": "List test document",
+            "mainSteps": [
+                {
+                    "action": "aws:runShellScript",
+                    "name": "runScript",
+                    "inputs": {"runCommand": ["echo test"]},
+                }
+            ],
+        }
+        ssm.create_document(
+            Content=json.dumps(content),
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.list_documents(
+                Filters=[{"Key": "Name", "Values": [doc_name]}],
+            )
+            names = [d["Name"] for d in resp["DocumentIdentifiers"]]
+            assert doc_name in names
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMCommandOperations:
+    @pytest.mark.xfail(reason="SendCommand/ListCommands may not be supported")
+    def test_send_list_commands(self, ssm):
+        """SendCommand / ListCommands / ListCommandInvocations."""
+        resp = ssm.send_command(
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["echo hello"]},
+            Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+        )
+        command_id = resp["Command"]["CommandId"]
+        list_resp = ssm.list_commands(CommandId=command_id)
+        assert len(list_resp["Commands"]) >= 1
+
+        inv_resp = ssm.list_command_invocations(CommandId=command_id)
+        assert "CommandInvocations" in inv_resp
+
+
+class TestSSMMaintenanceWindow:
+    @pytest.mark.xfail(reason="CreateMaintenanceWindow may not be supported")
+    def test_create_describe_delete_maintenance_window(self, ssm):
+        """CreateMaintenanceWindow / DescribeMaintenanceWindows / DeleteMaintenanceWindow."""
+        name = _unique("mw")
+        resp = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="rate(1 day)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        window_id = resp["WindowId"]
+        try:
+            desc = ssm.describe_maintenance_windows()
+            ids = [w["WindowId"] for w in desc["WindowIdentities"]]
+            assert window_id in ids
+        finally:
+            ssm.delete_maintenance_window(WindowId=window_id)

@@ -120,3 +120,81 @@ class TestSTSOperations:
         except sts.exceptions.InvalidAuthorizationMessageException:
             # Expected — the message is not a real encoded authorization message
             pass
+
+    def test_assume_role_with_duration(self, sts):
+        """AssumeRole with DurationSeconds."""
+        import uuid
+
+        iam = make_client("iam")
+        role_name = f"dur-role-{uuid.uuid4().hex[:8]}"
+        trust_policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"*"},'
+            '"Action":"sts:AssumeRole"}]}'
+        )
+        role = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=trust_policy,
+        )
+        role_arn = role["Role"]["Arn"]
+        try:
+            response = sts.assume_role(
+                RoleArn=role_arn,
+                RoleSessionName="dur-session",
+                DurationSeconds=3600,
+            )
+            assert "Credentials" in response
+            creds = response["Credentials"]
+            assert "AccessKeyId" in creds
+            assert "Expiration" in creds
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_assume_role_with_inline_policy(self, sts):
+        """AssumeRole with an inline session Policy."""
+        import json
+        import uuid
+
+        iam = make_client("iam")
+        role_name = f"pol-role-{uuid.uuid4().hex[:8]}"
+        trust_policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"*"},'
+            '"Action":"sts:AssumeRole"}]}'
+        )
+        role = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=trust_policy,
+        )
+        role_arn = role["Role"]["Arn"]
+        session_policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": "s3:GetObject",
+                        "Resource": "arn:aws:s3:::my-bucket/*",
+                    }
+                ],
+            }
+        )
+        try:
+            response = sts.assume_role(
+                RoleArn=role_arn,
+                RoleSessionName="policy-session",
+                Policy=session_policy,
+            )
+            assert "Credentials" in response
+            assert "AssumedRoleUser" in response
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_get_session_token_with_duration(self, sts):
+        """GetSessionToken with DurationSeconds."""
+        response = sts.get_session_token(DurationSeconds=900)
+        creds = response["Credentials"]
+        assert "AccessKeyId" in creds
+        assert "SecretAccessKey" in creds
+        assert "SessionToken" in creds
+        assert "Expiration" in creds

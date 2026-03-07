@@ -1,10 +1,16 @@
 """CloudWatch Logs compatibility tests."""
 
 import time
+import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
+
+
+def _unique(prefix):
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 def _log_group_arn(group_name: str) -> str:
@@ -670,3 +676,188 @@ class TestLogsOperations:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
                 pass
+        logs.put_retention_policy(logGroupName=log_group, retentionInDays=7)
+        logs.delete_retention_policy(logGroupName=log_group)
+        response = logs.describe_log_groups(logGroupNamePrefix=log_group)
+        group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
+        assert "retentionInDays" not in group
+
+    def test_describe_log_groups_prefix_filter(self, logs):
+        """DescribeLogGroups with prefix filter."""
+        prefix = f"/test/prefix-{uuid.uuid4().hex[:8]}"
+        name1 = f"{prefix}/group-a"
+        name2 = f"{prefix}/group-b"
+        name3 = f"/test/other-{uuid.uuid4().hex[:8]}/group-c"
+        logs.create_log_group(logGroupName=name1)
+        logs.create_log_group(logGroupName=name2)
+        logs.create_log_group(logGroupName=name3)
+        try:
+            resp = logs.describe_log_groups(logGroupNamePrefix=prefix)
+            names = [g["logGroupName"] for g in resp["logGroups"]]
+            assert name1 in names
+            assert name2 in names
+            assert name3 not in names
+        finally:
+            logs.delete_log_group(logGroupName=name1)
+            logs.delete_log_group(logGroupName=name2)
+            logs.delete_log_group(logGroupName=name3)
+
+    def test_describe_log_streams_prefix_and_ordering(self, logs, log_group):
+        """DescribeLogStreams with prefix filter and ordering."""
+        logs.create_log_stream(logGroupName=log_group, logStreamName="order-alpha")
+        logs.create_log_stream(logGroupName=log_group, logStreamName="order-beta")
+        logs.create_log_stream(logGroupName=log_group, logStreamName="other-gamma")
+        resp = logs.describe_log_streams(
+            logGroupName=log_group,
+            logStreamNamePrefix="order-",
+            orderBy="LogStreamName",
+        )
+        names = [s["logStreamName"] for s in resp["logStreams"]]
+        assert "order-alpha" in names
+        assert "order-beta" in names
+        assert "other-gamma" not in names
+        # Should be sorted by name
+        order_names = [n for n in names if n.startswith("order-")]
+        assert order_names == sorted(order_names)
+
+    def test_get_log_events_with_time_and_limit(self, logs, log_group):
+        """GetLogEvents with startTime, endTime, and limit."""
+        stream = _unique("time-stream")
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+        base = int(time.time() * 1000)
+        events = [
+            {"timestamp": base, "message": "event-0"},
+            {"timestamp": base + 1000, "message": "event-1"},
+            {"timestamp": base + 2000, "message": "event-2"},
+            {"timestamp": base + 3000, "message": "event-3"},
+        ]
+        logs.put_log_events(logGroupName=log_group, logStreamName=stream, logEvents=events)
+
+        resp = logs.get_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            startTime=base,
+            endTime=base + 2500,
+            limit=10,
+        )
+        messages = [e["message"] for e in resp["events"]]
+        assert "event-0" in messages
+        assert "event-1" in messages
+        # event-2 may or may not be included depending on inclusivity of endTime
+        assert "event-3" not in messages
+
+    def test_tag_untag_log_group(self, logs):
+        """TagLogGroup / UntagLogGroup / ListTagsLogGroup (legacy API)."""
+        name = _unique("/test/tag-group")
+        logs.create_log_group(logGroupName=name)
+        try:
+            logs.tag_log_group(logGroupName=name, tags={"env": "test", "team": "platform"})
+            resp = logs.list_tags_log_group(logGroupName=name)
+            assert resp["tags"]["env"] == "test"
+            assert resp["tags"]["team"] == "platform"
+
+            logs.untag_log_group(logGroupName=name, tags=["team"])
+            resp = logs.list_tags_log_group(logGroupName=name)
+            assert "team" not in resp["tags"]
+            assert resp["tags"]["env"] == "test"
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    def test_put_and_delete_retention_policy_new_group(self, logs):
+        """PutRetentionPolicy / DeleteRetentionPolicy on a new group."""
+        name = _unique("/test/ret-group")
+        logs.create_log_group(logGroupName=name)
+        try:
+            logs.put_retention_policy(logGroupName=name, retentionInDays=30)
+            resp = logs.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            assert group["retentionInDays"] == 30
+
+            logs.delete_retention_policy(logGroupName=name)
+            resp = logs.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            assert "retentionInDays" not in group
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    @pytest.mark.xfail(reason="PutDestination may not be supported")
+    def test_put_describe_delete_destination(self, logs):
+        """PutDestination / DescribeDestinations / DeleteDestination."""
+        dest_name = _unique("dest")
+        logs.put_destination(
+            destinationName=dest_name,
+            targetArn="arn:aws:kinesis:us-east-1:000000000000:stream/dummy",
+            roleArn="arn:aws:iam::000000000000:role/dummy",
+        )
+        try:
+            resp = logs.describe_destinations(DestinationNamePrefix=dest_name)
+            names = [d["destinationName"] for d in resp["destinations"]]
+            assert dest_name in names
+        finally:
+            logs.delete_destination(destinationName=dest_name)
+
+    @pytest.mark.xfail(reason="DescribeQueries may not be supported")
+    def test_describe_queries(self, logs):
+        """DescribeQueries."""
+        resp = logs.describe_queries()
+        assert "queries" in resp
+
+    @pytest.mark.xfail(reason="StartQuery/GetQueryResults (Log Insights) may not be supported")
+    def test_start_query_and_get_results(self, logs, log_group):
+        """StartQuery / GetQueryResults - Log Insights."""
+        now = int(time.time())
+        resp = logs.start_query(
+            logGroupName=log_group,
+            startTime=now - 3600,
+            endTime=now,
+            queryString="fields @timestamp, @message | limit 5",
+        )
+        query_id = resp["queryId"]
+        # Just verify we can call get_query_results
+        result = logs.get_query_results(queryId=query_id)
+        assert "status" in result
+
+    def test_tag_resource_new_api(self, logs):
+        """TagResource / UntagResource / ListTagsForResource (new API)."""
+        name = _unique("/test/newtag-group")
+        logs.create_log_group(logGroupName=name)
+        try:
+            # Get the ARN
+            resp = logs.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            arn = group["arn"]
+
+            logs.tag_resource(resourceArn=arn, tags={"env": "staging", "version": "2"})
+            resp = logs.list_tags_for_resource(resourceArn=arn)
+            assert resp["tags"]["env"] == "staging"
+            assert resp["tags"]["version"] == "2"
+
+            logs.untag_resource(resourceArn=arn, tagKeys=["version"])
+            resp = logs.list_tags_for_resource(resourceArn=arn)
+            assert "version" not in resp["tags"]
+            assert resp["tags"]["env"] == "staging"
+        finally:
+            logs.delete_log_group(logGroupName=name)
+
+    @pytest.mark.xfail(reason="AssociateKmsKey/DisassociateKmsKey may not be supported")
+    def test_associate_disassociate_kms_key(self, logs):
+        """AssociateKmsKey / DisassociateKmsKey."""
+        name = _unique("/test/kms-group")
+        logs.create_log_group(logGroupName=name)
+        try:
+            kms = make_client("kms")
+            key = kms.create_key()
+            key_id = key["KeyMetadata"]["KeyId"]
+            key_arn = key["KeyMetadata"]["Arn"]
+            logs.associate_kms_key(logGroupName=name, kmsKeyId=key_arn)
+            resp = logs.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            assert "kmsKeyId" in group
+
+            logs.disassociate_kms_key(logGroupName=name)
+            resp = logs.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            assert "kmsKeyId" not in group
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+        finally:
+            logs.delete_log_group(logGroupName=name)

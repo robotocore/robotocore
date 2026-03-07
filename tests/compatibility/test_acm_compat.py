@@ -285,3 +285,65 @@ class TestACMOperations:
             assert opts.get("CertificateTransparencyLoggingPreference") == "DISABLED"
         finally:
             acm.delete_certificate(CertificateArn=arn)
+
+
+class TestACMImportCertificate:
+    def _generate_self_signed_cert(self):
+        """Generate a self-signed certificate using the cryptography library."""
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+        import datetime
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
+        ])
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+            .not_valid_after(
+                datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
+            )
+            .sign(key, hashes.SHA256())
+        )
+        cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+        key_pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+        return cert_pem, key_pem
+
+    def test_request_certificate_with_idempotency_token(self, acm):
+        """RequestCertificate with IdempotencyToken returns same ARN."""
+        token = "idempotency-test-token-12345"
+        resp1 = acm.request_certificate(
+            DomainName="idempotent.example.com",
+            IdempotencyToken=token,
+        )
+        resp2 = acm.request_certificate(
+            DomainName="idempotent.example.com",
+            IdempotencyToken=token,
+        )
+        assert resp1["CertificateArn"] == resp2["CertificateArn"]
+
+    def test_list_certificates_with_filtering(self, acm):
+        """ListCertificates with certificate status filtering."""
+        # Request a certificate so there's at least one
+        acm.request_certificate(DomainName="filter-test.example.com")
+
+        # List with PENDING_VALIDATION status (default for requested certs)
+        response = acm.list_certificates(
+            CertificateStatuses=["PENDING_VALIDATION"],
+        )
+        assert "CertificateSummaryList" in response
+        # All returned certs should have matching status
+        for cert in response["CertificateSummaryList"]:
+            assert "CertificateArn" in cert
+            assert "DomainName" in cert

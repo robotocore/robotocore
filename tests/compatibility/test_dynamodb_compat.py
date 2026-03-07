@@ -1842,3 +1842,245 @@ class TestDescribeEndpointsAndLimits:
         assert "AccountMaxWriteCapacityUnits" in response
         assert "TableMaxReadCapacityUnits" in response
         assert "TableMaxWriteCapacityUnits" in response
+
+
+class TestDynamoDBExtendedOperations:
+    """Extended DynamoDB operations: backups, global tables, PartiQL, tags, etc."""
+
+    def test_describe_continuous_backups(self, dynamodb, table):
+        """DescribeContinuousBackups returns point-in-time recovery status."""
+        response = dynamodb.describe_continuous_backups(TableName=table)
+        cb = response["ContinuousBackupsDescription"]
+        assert "ContinuousBackupsStatus" in cb
+        assert cb["ContinuousBackupsStatus"] in ("ENABLED", "DISABLED")
+
+    def test_create_and_delete_backup(self, dynamodb, table):
+        """CreateBackup, DescribeBackup, ListBackups, DeleteBackup lifecycle."""
+        backup_name = f"backup-{uuid.uuid4().hex[:8]}"
+        try:
+            create_resp = dynamodb.create_backup(
+                TableName=table, BackupName=backup_name
+            )
+            backup_arn = create_resp["BackupDetails"]["BackupArn"]
+            assert create_resp["BackupDetails"]["BackupName"] == backup_name
+            assert create_resp["BackupDetails"]["BackupStatus"] in (
+                "CREATING",
+                "AVAILABLE",
+            )
+
+            # DescribeBackup
+            desc_resp = dynamodb.describe_backup(BackupArn=backup_arn)
+            assert desc_resp["BackupDescription"]["BackupDetails"]["BackupArn"] == backup_arn
+
+            # ListBackups
+            list_resp = dynamodb.list_backups(TableName=table)
+            arns = [b["BackupArn"] for b in list_resp["BackupSummaries"]]
+            assert backup_arn in arns
+
+            # DeleteBackup
+            del_resp = dynamodb.delete_backup(BackupArn=backup_arn)
+            assert del_resp["BackupDescription"]["BackupDetails"]["BackupStatus"] in (
+                "DELETED",
+                "DELETING",
+                "AVAILABLE",
+            )
+        except ClientError:
+            raise
+
+    @pytest.mark.xfail(reason="Global tables v1 may not be fully supported")
+    def test_create_and_describe_global_table(self, dynamodb):
+        """CreateGlobalTable, DescribeGlobalTable, ListGlobalTables."""
+        table_name = f"global-tbl-{uuid.uuid4().hex[:8]}"
+        try:
+            # Must create table first
+            dynamodb.create_table(
+                TableName=table_name,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+                StreamSpecification={
+                    "StreamEnabled": True,
+                    "StreamViewType": "NEW_AND_OLD_IMAGES",
+                },
+            )
+
+            create_resp = dynamodb.create_global_table(
+                GlobalTableName=table_name,
+                ReplicationGroup=[{"RegionName": "us-east-1"}],
+            )
+            assert "GlobalTableDescription" in create_resp
+            assert create_resp["GlobalTableDescription"]["GlobalTableName"] == table_name
+
+            desc_resp = dynamodb.describe_global_table(GlobalTableName=table_name)
+            assert desc_resp["GlobalTableDescription"]["GlobalTableName"] == table_name
+
+            list_resp = dynamodb.list_global_tables()
+            names = [gt["GlobalTableName"] for gt in list_resp["GlobalTables"]]
+            assert table_name in names
+        finally:
+            dynamodb.delete_table(TableName=table_name)
+
+    def test_execute_statement_partiql_select(self, dynamodb, table):
+        """ExecuteStatement with PartiQL SELECT."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "partiql-1"}, "val": {"S": "hello"}},
+        )
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "partiql-2"}, "val": {"S": "world"}},
+        )
+        response = dynamodb.execute_statement(
+            Statement=f"SELECT * FROM \"{table}\" WHERE pk = 'partiql-1'"
+        )
+        assert "Items" in response
+        assert len(response["Items"]) == 1
+        assert response["Items"][0]["pk"]["S"] == "partiql-1"
+
+    def test_batch_execute_statement(self, dynamodb, table):
+        """BatchExecuteStatement with multiple PartiQL statements."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "bexec-1"}, "val": {"S": "a"}},
+        )
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "bexec-2"}, "val": {"S": "b"}},
+        )
+        response = dynamodb.batch_execute_statement(
+            Statements=[
+                {"Statement": f"SELECT * FROM \"{table}\" WHERE pk = 'bexec-1'"},
+                {"Statement": f"SELECT * FROM \"{table}\" WHERE pk = 'bexec-2'"},
+            ]
+        )
+        assert "Responses" in response
+        assert len(response["Responses"]) == 2
+
+    def test_scan_with_filter_and_limit(self, dynamodb, table):
+        """Scan with FilterExpression and Limit parameter."""
+        for i in range(10):
+            dynamodb.put_item(
+                TableName=table,
+                Item={"pk": {"S": f"scanlim-{i}"}, "category": {"S": "A" if i < 7 else "B"}},
+            )
+        response = dynamodb.scan(
+            TableName=table,
+            FilterExpression="category = :cat",
+            ExpressionAttributeValues={":cat": {"S": "A"}},
+            Limit=3,
+        )
+        # Limit applies before filter, so we may get fewer than 3 matching items
+        assert response["ScannedCount"] <= 3
+        for item in response["Items"]:
+            assert item["category"]["S"] == "A"
+
+    def test_update_item_add_to_number(self, dynamodb, table):
+        """UpdateItem with ADD on a numeric attribute."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "add-num"}, "cnt": {"N": "10"}},
+        )
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "add-num"}},
+            UpdateExpression="ADD cnt :inc",
+            ExpressionAttributeValues={":inc": {"N": "5"}},
+        )
+        response = dynamodb.get_item(TableName=table, Key={"pk": {"S": "add-num"}})
+        assert response["Item"]["cnt"]["N"] == "15"
+
+    def test_update_item_add_to_set(self, dynamodb, table):
+        """UpdateItem with ADD on a string set attribute."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "add-set"}, "tags": {"SS": ["alpha", "beta"]}},
+        )
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "add-set"}},
+            UpdateExpression="ADD tags :newtags",
+            ExpressionAttributeValues={":newtags": {"SS": ["gamma"]}},
+        )
+        response = dynamodb.get_item(TableName=table, Key={"pk": {"S": "add-set"}})
+        assert set(response["Item"]["tags"]["SS"]) == {"alpha", "beta", "gamma"}
+
+    def test_update_item_delete_from_set(self, dynamodb, table):
+        """UpdateItem with DELETE on a string set attribute."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "del-set"}, "tags": {"SS": ["x", "y", "z"]}},
+        )
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "del-set"}},
+            UpdateExpression="DELETE tags :rm",
+            ExpressionAttributeValues={":rm": {"SS": ["y"]}},
+        )
+        response = dynamodb.get_item(TableName=table, Key={"pk": {"S": "del-set"}})
+        assert set(response["Item"]["tags"]["SS"]) == {"x", "z"}
+
+    def test_delete_item_with_condition_expression(self, dynamodb, table):
+        """DeleteItem with ConditionExpression succeeds when condition met."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "condel"}, "status": {"S": "inactive"}},
+        )
+        dynamodb.delete_item(
+            TableName=table,
+            Key={"pk": {"S": "condel"}},
+            ConditionExpression="#s = :expected",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":expected": {"S": "inactive"}},
+        )
+        response = dynamodb.get_item(TableName=table, Key={"pk": {"S": "condel"}})
+        assert "Item" not in response
+
+    def test_delete_item_condition_fails(self, dynamodb, table):
+        """DeleteItem with ConditionExpression fails when condition not met."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "condel-fail"}, "status": {"S": "active"}},
+        )
+        with pytest.raises(ClientError) as exc_info:
+            dynamodb.delete_item(
+                TableName=table,
+                Key={"pk": {"S": "condel-fail"}},
+                ConditionExpression="#s = :expected",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":expected": {"S": "inactive"}},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
+
+    @pytest.mark.xfail(reason="DescribeTableReplicaAutoScaling may not be supported")
+    def test_describe_table_replica_auto_scaling(self, dynamodb, table):
+        """DescribeTableReplicaAutoScaling returns auto scaling info."""
+        response = dynamodb.describe_table_replica_auto_scaling(TableName=table)
+        assert "TableAutoScalingDescription" in response
+
+    def test_tag_resource(self, dynamodb, table):
+        """TagResource, UntagResource, ListTagsOfResource on a table."""
+        # Get the table ARN
+        desc = dynamodb.describe_table(TableName=table)
+        table_arn = desc["Table"]["TableArn"]
+
+        # Tag the table
+        dynamodb.tag_resource(
+            ResourceArn=table_arn,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "project", "Value": "robotocore"},
+            ],
+        )
+
+        # List tags
+        tag_resp = dynamodb.list_tags_of_resource(ResourceArn=table_arn)
+        tag_map = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+        assert tag_map["env"] == "test"
+        assert tag_map["project"] == "robotocore"
+
+        # Untag
+        dynamodb.untag_resource(ResourceArn=table_arn, TagKeys=["env"])
+        tag_resp2 = dynamodb.list_tags_of_resource(ResourceArn=table_arn)
+        tag_keys = [t["Key"] for t in tag_resp2["Tags"]]
+        assert "env" not in tag_keys
+        assert "project" in tag_keys

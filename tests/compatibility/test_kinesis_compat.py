@@ -1,6 +1,10 @@
 """Kinesis compatibility tests."""
 
+import time
+import uuid
+
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -392,3 +396,125 @@ class TestKinesisOperations:
         finally:
             kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
 
+    def test_register_and_deregister_stream_consumer(self, kinesis, stream):
+        """RegisterStreamConsumer, DescribeStreamConsumer, DeregisterStreamConsumer."""
+        # Get stream ARN
+        desc = kinesis.describe_stream(StreamName=stream)
+        stream_arn = desc["StreamDescription"]["StreamARN"]
+        consumer_name = f"consumer-{uuid.uuid4().hex[:8]}"
+
+        try:
+            reg_resp = kinesis.register_stream_consumer(
+                StreamARN=stream_arn, ConsumerName=consumer_name
+            )
+            consumer = reg_resp["Consumer"]
+            assert consumer["ConsumerName"] == consumer_name
+            assert "ConsumerARN" in consumer
+            assert consumer["ConsumerStatus"] in ("CREATING", "ACTIVE")
+            consumer_arn = consumer["ConsumerARN"]
+
+            # DescribeStreamConsumer
+            desc_resp = kinesis.describe_stream_consumer(
+                StreamARN=stream_arn, ConsumerName=consumer_name
+            )
+            assert desc_resp["ConsumerDescription"]["ConsumerName"] == consumer_name
+            assert desc_resp["ConsumerDescription"]["ConsumerARN"] == consumer_arn
+        finally:
+            try:
+                kinesis.deregister_stream_consumer(
+                    StreamARN=stream_arn, ConsumerName=consumer_name
+                )
+            except ClientError:
+                pass
+
+    def test_put_records_batch_all_succeed(self, kinesis, stream):
+        """PutRecords with multiple records, verify all succeed."""
+        records = [
+            {"Data": f"rec-{i}".encode(), "PartitionKey": f"pk-{i}"}
+            for i in range(10)
+        ]
+        response = kinesis.put_records(StreamName=stream, Records=records)
+        assert response["FailedRecordCount"] == 0
+        assert len(response["Records"]) == 10
+        for rec in response["Records"]:
+            assert "SequenceNumber" in rec
+            assert "ShardId" in rec
+            assert "ErrorCode" not in rec or rec["ErrorCode"] is None
+
+    def test_latest_vs_trim_horizon_iterator(self, kinesis, stream):
+        """LATEST iterator only sees new records; TRIM_HORIZON sees all."""
+        # Put a record before getting iterators
+        kinesis.put_record(
+            StreamName=stream, Data=b"before-latest", PartitionKey="pk1"
+        )
+
+        desc = kinesis.describe_stream(StreamName=stream)
+        shard_id = desc["StreamDescription"]["Shards"][0]["ShardId"]
+
+        # Get LATEST iterator (should not see existing records)
+        latest_iter = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=shard_id,
+            ShardIteratorType="LATEST",
+        )["ShardIterator"]
+
+        # Get TRIM_HORIZON iterator (should see all records)
+        horizon_iter = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=shard_id,
+            ShardIteratorType="TRIM_HORIZON",
+        )["ShardIterator"]
+
+        # Put a new record after LATEST iterator was created
+        kinesis.put_record(
+            StreamName=stream, Data=b"after-latest", PartitionKey="pk1"
+        )
+
+        # Allow a moment for propagation
+        time.sleep(0.5)
+
+        latest_records = kinesis.get_records(ShardIterator=latest_iter)["Records"]
+        horizon_records = kinesis.get_records(ShardIterator=horizon_iter)["Records"]
+
+        # TRIM_HORIZON should have more records (includes "before-latest")
+        assert len(horizon_records) >= len(latest_records)
+        # TRIM_HORIZON should contain the "before-latest" record
+        horizon_data = [r["Data"] for r in horizon_records]
+        assert b"before-latest" in horizon_data
+
+    def test_start_and_stop_stream_encryption(self, kinesis, stream):
+        """StartStreamEncryption and StopStreamEncryption."""
+        kinesis.start_stream_encryption(
+            StreamName=stream,
+            EncryptionType="KMS",
+            KeyId="alias/aws/kinesis",
+        )
+        desc = kinesis.describe_stream(StreamName=stream)
+        assert desc["StreamDescription"]["EncryptionType"] in ("KMS", "NONE")
+
+        kinesis.stop_stream_encryption(
+            StreamName=stream,
+            EncryptionType="KMS",
+            KeyId="alias/aws/kinesis",
+        )
+
+    def test_list_shards_multi_shard_stream(self, kinesis):
+        """ListShards on a stream with multiple shards."""
+        multi_stream = f"multi-shard-{uuid.uuid4().hex[:8]}"
+        try:
+            kinesis.create_stream(StreamName=multi_stream, ShardCount=3)
+            kinesis.get_waiter("stream_exists").wait(StreamName=multi_stream)
+
+            response = kinesis.list_shards(StreamName=multi_stream)
+            assert len(response["Shards"]) == 3
+            shard_ids = [s["ShardId"] for s in response["Shards"]]
+            # Each shard should have a unique ID
+            assert len(set(shard_ids)) == 3
+            for shard in response["Shards"]:
+                assert "HashKeyRange" in shard
+                assert "SequenceNumberRange" in shard
+        finally:
+            try:
+                kinesis.delete_stream(StreamName=multi_stream, EnforceConsumerDeletion=True)
+            except ClientError:
+                pass

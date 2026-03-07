@@ -1105,3 +1105,350 @@ class TestIAMLoginProfile:
             except Exception:
                 pass
             iam.delete_user(UserName=user_name)
+
+    def test_get_account_authorization_details_filter(self, iam):
+        """Filter get_account_authorization_details by entity type."""
+        user_name = _unique("authf-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.get_account_authorization_details(Filter=["User"])
+            assert "UserDetailList" in resp
+            user_names = [u["UserName"] for u in resp.get("UserDetailList", [])]
+            assert user_name in user_names
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMServiceLinkedRole:
+    def test_create_and_delete_service_linked_role(self, iam):
+        """CreateServiceLinkedRole / DeleteServiceLinkedRole / GetServiceLinkedRoleDeletionStatus."""
+        try:
+            resp = iam.create_service_linked_role(AWSServiceName="elasticbeanstalk.amazonaws.com")
+            role = resp["Role"]
+            assert "elasticbeanstalk" in role["RoleName"].lower() or "AWSServiceRole" in role["Path"]
+            role_name = role["RoleName"]
+        except iam.exceptions.InvalidInputException:
+            pytest.skip("Service linked role already exists")
+            return
+
+        try:
+            del_resp = iam.delete_service_linked_role(RoleName=role_name)
+            deletion_task_id = del_resp["DeletionTaskId"]
+            assert deletion_task_id is not None
+
+            status_resp = iam.get_service_linked_role_deletion_status(
+                DeletionTaskId=deletion_task_id
+            )
+            assert status_resp["Status"] in ("SUCCEEDED", "IN_PROGRESS", "NOT_STARTED", "FAILED")
+        except Exception:
+            # Best-effort cleanup
+            try:
+                iam.delete_role(RoleName=role_name)
+            except Exception:
+                pass
+
+
+class TestIAMOpenIDConnectProvider:
+    def test_create_get_delete_oidc_provider(self, iam):
+        """CreateOpenIDConnectProvider / GetOpenIDConnectProvider / DeleteOpenIDConnectProvider."""
+        url = "https://oidc.example.com"
+        thumbprint = "a" * 40
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=[thumbprint],
+            ClientIDList=["my-client-id"],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert get_resp["Url"] == "oidc.example.com" or get_resp["Url"] == url
+            assert thumbprint in get_resp["ThumbprintList"]
+            assert "my-client-id" in get_resp["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+class TestIAMSAMLProvider:
+    @pytest.mark.xfail(reason="SAML provider may not be fully supported")
+    def test_create_get_delete_saml_provider(self, iam):
+        """CreateSAMLProvider / GetSAMLProvider / DeleteSAMLProvider."""
+        saml_metadata = """<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
+            entityID="https://idp.example.com">
+            <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+                <SingleSignOnService
+                    Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+                    Location="https://idp.example.com/sso"/>
+            </IDPSSODescriptor>
+        </EntityDescriptor>"""
+        name = _unique("saml-prov")
+        resp = iam.create_saml_provider(
+            SAMLMetadataDocument=saml_metadata,
+            Name=name,
+        )
+        arn = resp["SAMLProviderArn"]
+        try:
+            get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
+            assert "SAMLMetadataDocument" in get_resp
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+class TestIAMSimulatePolicy:
+    @pytest.mark.xfail(reason="SimulatePrincipalPolicy may not be supported")
+    def test_simulate_principal_policy(self, iam):
+        """SimulatePrincipalPolicy."""
+        role_name = _unique("sim-role")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(PolicyName=_unique("sim-pol"), PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=arn)
+            role_arn = iam.get_role(RoleName=role_name)["Role"]["Arn"]
+            resp = iam.simulate_principal_policy(
+                PolicySourceArn=role_arn,
+                ActionNames=["s3:GetObject"],
+            )
+            assert "EvaluationResults" in resp
+        finally:
+            iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
+
+    @pytest.mark.xfail(reason="SimulateCustomPolicy may not be supported")
+    def test_simulate_custom_policy(self, iam):
+        """SimulateCustomPolicy."""
+        resp = iam.simulate_custom_policy(
+            PolicyInputList=[SIMPLE_POLICY_DOC],
+            ActionNames=["s3:GetObject"],
+        )
+        assert "EvaluationResults" in resp
+
+
+class TestIAMAccountSummary:
+    def test_get_account_summary(self, iam):
+        """GetAccountSummary returns a summary map."""
+        resp = iam.get_account_summary()
+        summary = resp["SummaryMap"]
+        assert "Users" in summary
+        assert "Roles" in summary
+        assert "Policies" in summary
+
+
+class TestIAMPolicyVersionsExtended:
+    def test_create_list_get_delete_policy_version(self, iam):
+        """CreatePolicyVersion / ListPolicyVersions / GetPolicyVersion / DeletePolicyVersion."""
+        policy_name = _unique("pv-pol")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            new_doc = json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            })
+            v2 = iam.create_policy_version(PolicyArn=arn, PolicyDocument=new_doc)
+            assert v2["PolicyVersion"]["VersionId"] == "v2"
+
+            versions = iam.list_policy_versions(PolicyArn=arn)
+            version_ids = [v["VersionId"] for v in versions["Versions"]]
+            assert "v1" in version_ids
+            assert "v2" in version_ids
+
+            get_resp = iam.get_policy_version(PolicyArn=arn, VersionId="v2")
+            assert get_resp["PolicyVersion"]["VersionId"] == "v2"
+            assert get_resp["PolicyVersion"]["Document"] is not None
+
+            iam.delete_policy_version(PolicyArn=arn, VersionId="v2")
+            versions_after = iam.list_policy_versions(PolicyArn=arn)
+            version_ids_after = [v["VersionId"] for v in versions_after["Versions"]]
+            assert "v2" not in version_ids_after
+        finally:
+            for v in iam.list_policy_versions(PolicyArn=arn)["Versions"]:
+                if not v["IsDefaultVersion"]:
+                    iam.delete_policy_version(PolicyArn=arn, VersionId=v["VersionId"])
+            iam.delete_policy(PolicyArn=arn)
+
+    def test_list_entities_for_policy(self, iam):
+        """ListEntitiesForPolicy."""
+        role_name = _unique("ent-role")
+        policy_name = _unique("ent-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=arn)
+            resp = iam.list_entities_for_policy(PolicyArn=arn)
+            role_names = [r["RoleName"] for r in resp.get("PolicyRoles", [])]
+            assert role_name in role_names
+        finally:
+            iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMListPoliciesWithScope:
+    def test_list_policies_aws_scope(self, iam):
+        """ListPolicies with Scope=AWS returns only AWS-managed policies (may be empty)."""
+        resp = iam.list_policies(Scope="AWS")
+        assert "Policies" in resp
+        # If there are AWS-managed policies, they should have aws in the ARN
+        for p in resp["Policies"][:5]:
+            assert ":aws:policy/" in p["Arn"] or "arn:aws:iam" in p["Arn"]
+
+    def test_list_policies_local_scope(self, iam):
+        """ListPolicies with Scope=Local returns only customer-managed policies."""
+        policy_name = _unique("scope-local-pol")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.list_policies(Scope="Local")
+            names = [p["PolicyName"] for p in resp["Policies"]]
+            assert policy_name in names
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+
+class TestIAMAccountPasswordPolicy:
+    def test_update_get_delete_account_password_policy(self, iam):
+        """UpdateAccountPasswordPolicy / GetAccountPasswordPolicy / DeleteAccountPasswordPolicy."""
+        try:
+            iam.update_account_password_policy(
+                MinimumPasswordLength=12,
+                RequireSymbols=True,
+                RequireNumbers=True,
+                RequireUppercaseCharacters=True,
+                RequireLowercaseCharacters=True,
+                MaxPasswordAge=90,
+                PasswordReusePrevention=5,
+            )
+            resp = iam.get_account_password_policy()
+            policy = resp["PasswordPolicy"]
+            assert policy["MinimumPasswordLength"] == 12
+            assert policy["RequireSymbols"] is True
+            assert policy["RequireNumbers"] is True
+        finally:
+            try:
+                iam.delete_account_password_policy()
+            except Exception:
+                pass
+
+
+class TestIAMChangePassword:
+    @pytest.mark.xfail(reason="ChangePassword requires actual user session")
+    def test_change_password(self, iam):
+        """ChangePassword."""
+        iam.change_password(OldPassword="oldpass", NewPassword="newpass123!")
+
+
+class TestIAMMFADevices:
+    def test_list_mfa_devices(self, iam):
+        """ListMFADevices for a user with no MFA."""
+        user_name = _unique("mfa-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.list_mfa_devices(UserName=user_name)
+            assert "MFADevices" in resp
+            assert len(resp["MFADevices"]) == 0
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMSigningCertificates:
+    def test_list_signing_certificates(self, iam):
+        """ListSigningCertificates for a user with no certs."""
+        user_name = _unique("cert-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.list_signing_certificates(UserName=user_name)
+            assert "Certificates" in resp
+            assert len(resp["Certificates"]) == 0
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMSSHPublicKeys:
+    @pytest.mark.xfail(reason="ListSSHPublicKeys may not be supported")
+    def test_list_ssh_public_keys(self, iam):
+        """ListSSHPublicKeys."""
+        user_name = _unique("ssh-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.list_ssh_public_keys(UserName=user_name)
+            assert "SSHPublicKeys" in resp
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMUserTags:
+    def test_tag_untag_list_user_tags(self, iam):
+        """TagUser / UntagUser / ListUserTags."""
+        user_name = _unique("tag-user")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.tag_user(
+                UserName=user_name,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "backend"},
+                ],
+            )
+            resp = iam.list_user_tags(UserName=user_name)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["env"] == "test"
+            assert tags["team"] == "backend"
+
+            iam.untag_user(UserName=user_name, TagKeys=["team"])
+            resp = iam.list_user_tags(UserName=user_name)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert "team" not in tags
+            assert tags["env"] == "test"
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMRoleTags:
+    def test_tag_untag_list_role_tags(self, iam):
+        """TagRole / UntagRole / ListRoleTags."""
+        role_name = _unique("tag-role")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            iam.tag_role(
+                RoleName=role_name,
+                Tags=[
+                    {"Key": "project", "Value": "robotocore"},
+                    {"Key": "stage", "Value": "dev"},
+                ],
+            )
+            resp = iam.list_role_tags(RoleName=role_name)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["project"] == "robotocore"
+            assert tags["stage"] == "dev"
+
+            iam.untag_role(RoleName=role_name, TagKeys=["stage"])
+            resp = iam.list_role_tags(RoleName=role_name)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert "stage" not in tags
+            assert tags["project"] == "robotocore"
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMPermissionsBoundary:
+    @pytest.mark.xfail(reason="PutRolePermissionsBoundary may not be supported")
+    def test_put_delete_role_permissions_boundary(self, iam):
+        """PutRolePermissionsBoundary / DeleteRolePermissionsBoundary."""
+        role_name = _unique("pb-role")
+        policy_name = _unique("pb-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.put_role_permissions_boundary(RoleName=role_name, PermissionsBoundary=arn)
+            role_resp = iam.get_role(RoleName=role_name)
+            assert role_resp["Role"]["PermissionsBoundary"]["PermissionsBoundaryArn"] == arn
+
+            iam.delete_role_permissions_boundary(RoleName=role_name)
+            role_resp = iam.get_role(RoleName=role_name)
+            assert "PermissionsBoundary" not in role_resp["Role"]
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
