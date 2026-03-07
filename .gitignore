@@ -16,3 +16,4 @@ htmlcov/
 venv/
 *.log
 .DS_Store
+.robotocore.pid

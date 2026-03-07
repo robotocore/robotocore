@@ -77,9 +77,10 @@ robotocore/
 │   ├── integration/           # Tests against running container
 │   └── compatibility/         # Tests that verify LocalStack parity
 ├── scripts/
-│   ├── discover_services.py   # Enumerate LocalStack community services
-│   ├── generate_coverage.py   # Compare robotocore vs localstack coverage
-│   └── run_aws_tests.py       # Exercise AWS APIs against robotocore
+│   ├── dev.py                 # Dev server lifecycle & test runner
+│   ├── smoke_test.py          # Cross-service smoke test
+│   ├── probe_service.py       # Discover working operations per service
+│   └── ...                    # gen_provider, gen_compat_tests, batch_register, etc.
 ├── vendor/
 │   ├── moto/                  # Git submodule: getmoto/moto
 │   └── localstack/            # Git submodule: localstack/localstack
@@ -142,7 +143,7 @@ make status                            # Check if server is running
 2. **Moto as the service layer**: Don't reimplement what Moto already does well. Wrap it, extend it, fix its gaps.
 3. **Protocol handling via botocore specs**: Use botocore's own service JSON specs to parse/serialize requests, same as LocalStack's ASF does
 4. **In-memory state by default**: No persistence layer needed for dev/test use. Optional persistence can come later.
-5. **No plugin system initially**: Direct imports, not lazy loading. Simplicity over startup optimization.
+5. **Plugin system**: `RobotocorePlugin` base class with entry point, env var, and directory discovery.
 6. **ASGI with uvicorn**: Modern async-capable HTTP server
 
 ## Coding Conventions
@@ -170,36 +171,13 @@ make status                            # Check if server is running
   - `localstack-core/localstack/aws/handlers/` — Handler chain
   - `localstack-core/localstack/services/` — Service providers
 
-## Target Services (LocalStack Community Parity)
+## Service Coverage (158 services registered)
 
-Phase 1 - Core (most used):
-- S3, S3 Control
-- SQS, SNS
-- DynamoDB, DynamoDB Streams
-- Lambda
-- IAM, STS
-- CloudFormation
-- CloudWatch (Logs + Metrics)
+All LocalStack Community services are implemented. 38 have native providers with enhanced fidelity; 120 are Moto-backed.
 
-Phase 2 - Integration:
-- API Gateway (REST v1)
-- Step Functions
-- EventBridge, EventBridge Scheduler
-- Kinesis Streams, Kinesis Firehose
-- KMS, Secrets Manager, SSM Parameter Store
+**Native providers** (38): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
 
-Phase 3 - Remaining:
-- EC2
-- SES
-- Route 53, Route 53 Resolver
-- SWF
-- ACM
-- Config
-- Resource Groups
-- Elasticsearch, OpenSearch
-- Redshift
-- Transcribe
-- Support API
+**Test coverage**: 4815 tests (2524 unit + 2249 compat + 42 integration), 0 failures, 0 xfails. 83 services have compat tests; ~75 Moto-backed services still need compat test coverage.
 
 ## Adding a New Moto-Backed Service (Checklist)
 
@@ -244,7 +222,7 @@ When using Claude Code agents on this project:
 - Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
 - Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
 - Run `uv run python scripts/<tool>.py` to analyze, then spawn agents to act on the results
-- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `coverage_gaps.py`, `analyze_localstack.py`, `batch_register_services.py`, `dev.py`, `service_health_matrix.py`
+- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`
 
 ### Subagent patterns
 - **Research first**: Use Explore agents (parallel, no worktree) to understand the problem, then code agents to implement
