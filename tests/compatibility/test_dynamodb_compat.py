@@ -2084,3 +2084,265 @@ class TestDynamoDBExtendedOperations:
         tag_keys = [t["Key"] for t in tag_resp2["Tags"]]
         assert "env" not in tag_keys
         assert "project" in tag_keys
+
+
+class TestDynamoDBMoreOperations:
+    """Additional DynamoDB operations for higher coverage."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, dynamodb):
+        name = f"more-ops-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield name
+        dynamodb.delete_table(TableName=name)
+
+    def test_list_tables(self, dynamodb, table):
+        resp = dynamodb.list_tables()
+        assert table in resp["TableNames"]
+
+    def test_list_tables_with_limit(self, dynamodb, table):
+        resp = dynamodb.list_tables(Limit=100)
+        assert "TableNames" in resp
+        assert table in resp["TableNames"]
+
+    def test_update_table_add_gsi(self, dynamodb):
+        """UpdateTable to add a Global Secondary Index."""
+        name = f"gsi-table-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            dynamodb.update_table(
+                TableName=name,
+                AttributeDefinitions=[
+                    {"AttributeName": "gsi_key", "AttributeType": "S"},
+                ],
+                GlobalSecondaryIndexUpdates=[
+                    {
+                        "Create": {
+                            "IndexName": "gsi-index",
+                            "KeySchema": [{"AttributeName": "gsi_key", "KeyType": "HASH"}],
+                            "Projection": {"ProjectionType": "ALL"},
+                        }
+                    }
+                ],
+            )
+            desc = dynamodb.describe_table(TableName=name)
+            gsi_names = [g["IndexName"] for g in desc["Table"].get("GlobalSecondaryIndexes", [])]
+            assert "gsi-index" in gsi_names
+        finally:
+            dynamodb.delete_table(TableName=name)
+
+    def test_transact_write_items(self, dynamodb, table):
+        """TransactWriteItems with Put and ConditionCheck."""
+        dynamodb.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": table,
+                        "Item": {"pk": {"S": "txn-1"}, "val": {"S": "a"}},
+                    }
+                },
+                {
+                    "Put": {
+                        "TableName": table,
+                        "Item": {"pk": {"S": "txn-2"}, "val": {"S": "b"}},
+                    }
+                },
+            ]
+        )
+        r1 = dynamodb.get_item(TableName=table, Key={"pk": {"S": "txn-1"}})
+        r2 = dynamodb.get_item(TableName=table, Key={"pk": {"S": "txn-2"}})
+        assert r1["Item"]["val"]["S"] == "a"
+        assert r2["Item"]["val"]["S"] == "b"
+
+    def test_transact_get_items(self, dynamodb, table):
+        """TransactGetItems reads multiple items atomically."""
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "tg-1"}, "v": {"N": "10"}})
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "tg-2"}, "v": {"N": "20"}})
+        resp = dynamodb.transact_get_items(
+            TransactItems=[
+                {"Get": {"TableName": table, "Key": {"pk": {"S": "tg-1"}}}},
+                {"Get": {"TableName": table, "Key": {"pk": {"S": "tg-2"}}}},
+            ]
+        )
+        assert len(resp["Responses"]) == 2
+        vals = [int(r["Item"]["v"]["N"]) for r in resp["Responses"]]
+        assert set(vals) == {10, 20}
+
+    def test_update_item_return_values(self, dynamodb, table):
+        """UpdateItem with ReturnValues=ALL_NEW."""
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "rv-1"}, "count": {"N": "5"}})
+        resp = dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "rv-1"}},
+            UpdateExpression="SET #c = #c + :inc",
+            ExpressionAttributeNames={"#c": "count"},
+            ExpressionAttributeValues={":inc": {"N": "3"}},
+            ReturnValues="ALL_NEW",
+        )
+        assert resp["Attributes"]["count"]["N"] == "8"
+
+    def test_update_item_return_values_all_old(self, dynamodb, table):
+        """UpdateItem with ReturnValues=ALL_OLD."""
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "rv-old"}, "v": {"S": "before"}})
+        resp = dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "rv-old"}},
+            UpdateExpression="SET v = :new",
+            ExpressionAttributeValues={":new": {"S": "after"}},
+            ReturnValues="ALL_OLD",
+        )
+        assert resp["Attributes"]["v"]["S"] == "before"
+
+    def test_put_item_return_values(self, dynamodb, table):
+        """PutItem with ReturnValues=ALL_OLD for overwrite."""
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "pv-1"}, "x": {"S": "old"}})
+        resp = dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "pv-1"}, "x": {"S": "new"}},
+            ReturnValues="ALL_OLD",
+        )
+        assert resp["Attributes"]["x"]["S"] == "old"
+
+    def test_query_with_begins_with(self, dynamodb):
+        """Query with begins_with on sort key."""
+        name = f"begins-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            for suffix in ["order#001", "order#002", "user#001"]:
+                dynamodb.put_item(
+                    TableName=name, Item={"pk": {"S": "main"}, "sk": {"S": suffix}}
+                )
+            resp = dynamodb.query(
+                TableName=name,
+                KeyConditionExpression="pk = :pk AND begins_with(sk, :prefix)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": "main"},
+                    ":prefix": {"S": "order#"},
+                },
+            )
+            assert resp["Count"] == 2
+            for item in resp["Items"]:
+                assert item["sk"]["S"].startswith("order#")
+        finally:
+            dynamodb.delete_table(TableName=name)
+
+    def test_query_between(self, dynamodb):
+        """Query with BETWEEN on sort key."""
+        name = f"between-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "N"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        try:
+            for i in range(1, 11):
+                dynamodb.put_item(
+                    TableName=name, Item={"pk": {"S": "data"}, "sk": {"N": str(i)}}
+                )
+            resp = dynamodb.query(
+                TableName=name,
+                KeyConditionExpression="pk = :pk AND sk BETWEEN :lo AND :hi",
+                ExpressionAttributeValues={
+                    ":pk": {"S": "data"},
+                    ":lo": {"N": "3"},
+                    ":hi": {"N": "7"},
+                },
+            )
+            assert resp["Count"] == 5
+        finally:
+            dynamodb.delete_table(TableName=name)
+
+    def test_execute_statement_insert(self, dynamodb, table):
+        """ExecuteStatement with PartiQL INSERT."""
+        dynamodb.execute_statement(
+            Statement=f"INSERT INTO \"{table}\" VALUE {{'pk': 'partiql-ins', 'v': 'inserted'}}"
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "partiql-ins"}})
+        assert r["Item"]["v"]["S"] == "inserted"
+
+    def test_execute_statement_update(self, dynamodb, table):
+        """ExecuteStatement with PartiQL UPDATE."""
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "partiql-upd"}, "v": {"S": "old"}})
+        dynamodb.execute_statement(
+            Statement=f"UPDATE \"{table}\" SET v='new' WHERE pk='partiql-upd'"
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "partiql-upd"}})
+        assert r["Item"]["v"]["S"] == "new"
+
+    def test_execute_statement_delete(self, dynamodb, table):
+        """ExecuteStatement with PartiQL DELETE."""
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "partiql-del"}, "v": {"S": "bye"}})
+        dynamodb.execute_statement(
+            Statement=f"DELETE FROM \"{table}\" WHERE pk='partiql-del'"
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "partiql-del"}})
+        assert "Item" not in r
+
+    def test_scan_with_projection_expression(self, dynamodb, table):
+        """Scan with ProjectionExpression to return only specific attributes."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "proj-1"}, "a": {"S": "x"}, "b": {"S": "y"}, "c": {"S": "z"}},
+        )
+        resp = dynamodb.scan(
+            TableName=table,
+            FilterExpression="pk = :pk",
+            ExpressionAttributeValues={":pk": {"S": "proj-1"}},
+            ProjectionExpression="pk, a",
+        )
+        assert len(resp["Items"]) >= 1
+        item = resp["Items"][0]
+        assert "pk" in item
+        assert "a" in item
+        assert "b" not in item
+
+    def test_update_item_remove(self, dynamodb, table):
+        """UpdateItem with REMOVE to delete an attribute."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "rm-1"}, "keep": {"S": "yes"}, "drop": {"S": "no"}},
+        )
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "rm-1"}},
+            UpdateExpression="REMOVE #d",
+            ExpressionAttributeNames={"#d": "drop"},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "rm-1"}})
+        assert "keep" in r["Item"]
+        assert "drop" not in r["Item"]
