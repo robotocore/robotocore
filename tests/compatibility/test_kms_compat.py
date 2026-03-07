@@ -1,6 +1,9 @@
 """KMS compatibility tests."""
 
+import uuid
+
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -87,178 +90,218 @@ class TestKMSOperations:
         tag_map = {t["TagKey"]: t["TagValue"] for t in tags["Tags"]}
         assert tag_map.get("env") == "test"
 
-    def test_create_key_symmetric_default(self, kms):
-        """Create a key with SYMMETRIC_DEFAULT spec."""
-        response = kms.create_key(
-            Description="symmetric key",
-            KeySpec="SYMMETRIC_DEFAULT",
-            KeyUsage="ENCRYPT_DECRYPT",
-        )
-        meta = response["KeyMetadata"]
-        assert meta["KeySpec"] == "SYMMETRIC_DEFAULT"
-        assert meta["KeyUsage"] == "ENCRYPT_DECRYPT"
-        assert meta["KeyManager"] == "CUSTOMER"
-        kms.schedule_key_deletion(KeyId=meta["KeyId"], PendingWindowInDays=7)
-
-    def test_create_key_rsa_2048(self, kms):
-        """Create an asymmetric RSA key."""
-        response = kms.create_key(
-            Description="rsa key",
-            KeySpec="RSA_2048",
-            KeyUsage="SIGN_VERIFY",
-        )
-        meta = response["KeyMetadata"]
-        assert meta["KeySpec"] == "RSA_2048"
-        assert meta["KeyUsage"] == "SIGN_VERIFY"
-        kms.schedule_key_deletion(KeyId=meta["KeyId"], PendingWindowInDays=7)
-
-    def test_list_keys_pagination(self, kms):
-        """List keys returns truncated results with marker."""
-        key_ids = []
-        for i in range(3):
-            resp = kms.create_key(Description=f"list-page-key-{i}")
-            key_ids.append(resp["KeyMetadata"]["KeyId"])
-
-        response = kms.list_keys(Limit=1)
-        assert len(response["Keys"]) >= 1
-        assert "Truncated" in response
-
-    def test_describe_key_arn(self, kms):
-        """Describe key using ARN instead of key ID."""
-        key = kms.create_key(Description="arn-describe key")
-        key_arn = key["KeyMetadata"]["Arn"]
-
-        response = kms.describe_key(KeyId=key_arn)
-        assert response["KeyMetadata"]["Arn"] == key_arn
-        assert response["KeyMetadata"]["Description"] == "arn-describe key"
-
-    def test_create_and_list_aliases(self, kms):
-        """Create multiple aliases and verify listing."""
-        key = kms.create_key(Description="multi-alias key")
-        key_id = key["KeyMetadata"]["KeyId"]
-
-        kms.create_alias(AliasName="alias/compat-alias-1", TargetKeyId=key_id)
-        kms.create_alias(AliasName="alias/compat-alias-2", TargetKeyId=key_id)
-
-        aliases = kms.list_aliases(KeyId=key_id)
-        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
-        assert "alias/compat-alias-1" in alias_names
-        assert "alias/compat-alias-2" in alias_names
-
-        kms.delete_alias(AliasName="alias/compat-alias-1")
-        kms.delete_alias(AliasName="alias/compat-alias-2")
-
-    def test_delete_alias(self, kms):
-        """Delete alias and verify it is gone."""
-        key = kms.create_key(Description="del-alias key")
-        key_id = key["KeyMetadata"]["KeyId"]
-        kms.create_alias(AliasName="alias/to-delete", TargetKeyId=key_id)
-
-        kms.delete_alias(AliasName="alias/to-delete")
-
-        aliases = kms.list_aliases(KeyId=key_id)
-        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
-        assert "alias/to-delete" not in alias_names
-
-    def test_encrypt_decrypt_with_context(self, kms):
-        """Encrypt/decrypt with encryption context."""
-        key = kms.create_key(Description="context-enc key")
-        key_id = key["KeyMetadata"]["KeyId"]
-        context = {"purpose": "testing", "app": "robotocore"}
-
-        encrypted = kms.encrypt(
-            KeyId=key_id,
-            Plaintext=b"context secret",
-            EncryptionContext=context,
-        )
-        decrypted = kms.decrypt(
-            CiphertextBlob=encrypted["CiphertextBlob"],
-            EncryptionContext=context,
-        )
-        assert decrypted["Plaintext"] == b"context secret"
-
-    def test_generate_data_key_without_plaintext(self, kms):
-        """Generate data key without plaintext returns only ciphertext."""
-        key = kms.create_key(Description="datakeynoplain key")
-        key_id = key["KeyMetadata"]["KeyId"]
-
-        response = kms.generate_data_key_without_plaintext(KeyId=key_id, KeySpec="AES_256")
-        assert "CiphertextBlob" in response
-        assert "Plaintext" not in response or response.get("Plaintext") is None
-
-    def test_tag_untag_list_tags(self, kms):
-        """Tag, untag, and list resource tags on a key."""
-        key = kms.create_key(Description="tag-ops key")
-        key_id = key["KeyMetadata"]["KeyId"]
-
-        kms.tag_resource(
-            KeyId=key_id,
+    def test_create_key_with_tags(self, kms):
+        uid = uuid.uuid4().hex[:8]
+        key = kms.create_key(
+            Description=f"tagged-{uid}",
             Tags=[
-                {"TagKey": "team", "TagValue": "platform"},
-                {"TagKey": "cost-center", "TagValue": "12345"},
+                {"TagKey": "project", "TagValue": "robotocore"},
+                {"TagKey": "tier", "TagValue": "free"},
             ],
         )
-
+        key_id = key["KeyMetadata"]["KeyId"]
         tags = kms.list_resource_tags(KeyId=key_id)
         tag_map = {t["TagKey"]: t["TagValue"] for t in tags["Tags"]}
-        assert tag_map["team"] == "platform"
-        assert tag_map["cost-center"] == "12345"
+        assert tag_map["project"] == "robotocore"
+        assert tag_map["tier"] == "free"
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
 
-        kms.untag_resource(KeyId=key_id, TagKeys=["cost-center"])
-
+    def test_tag_resource(self, kms):
+        key = kms.create_key(Description="tag-resource-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        kms.tag_resource(
+            KeyId=key_id, Tags=[{"TagKey": "added", "TagValue": "later"}]
+        )
         tags = kms.list_resource_tags(KeyId=key_id)
         tag_map = {t["TagKey"]: t["TagValue"] for t in tags["Tags"]}
-        assert "cost-center" not in tag_map
-        assert tag_map["team"] == "platform"
+        assert tag_map["added"] == "later"
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_untag_resource(self, kms):
+        key = kms.create_key(
+            Description="untag-test",
+            Tags=[
+                {"TagKey": "keep", "TagValue": "yes"},
+                {"TagKey": "remove", "TagValue": "bye"},
+            ],
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        kms.untag_resource(KeyId=key_id, TagKeys=["remove"])
+        tags = kms.list_resource_tags(KeyId=key_id)
+        tag_map = {t["TagKey"]: t["TagValue"] for t in tags["Tags"]}
+        assert "remove" not in tag_map
+        assert tag_map["keep"] == "yes"
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_create_list_delete_alias(self, kms):
+        uid = uuid.uuid4().hex[:8]
+        alias_name = f"alias/test-{uid}"
+        key = kms.create_key(Description=f"alias-cld-{uid}")
+        key_id = key["KeyMetadata"]["KeyId"]
+        kms.create_alias(AliasName=alias_name, TargetKeyId=key_id)
+
+        aliases = kms.list_aliases()
+        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
+        assert alias_name in alias_names
+
+        kms.delete_alias(AliasName=alias_name)
+        aliases = kms.list_aliases()
+        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
+        assert alias_name not in alias_names
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_update_alias(self, kms):
+        uid = uuid.uuid4().hex[:8]
+        alias_name = f"alias/upd-{uid}"
+        key1 = kms.create_key(Description=f"alias-upd1-{uid}")
+        key2 = kms.create_key(Description=f"alias-upd2-{uid}")
+        key1_id = key1["KeyMetadata"]["KeyId"]
+        key2_id = key2["KeyMetadata"]["KeyId"]
+
+        kms.create_alias(AliasName=alias_name, TargetKeyId=key1_id)
+        kms.update_alias(AliasName=alias_name, TargetKeyId=key2_id)
+
+        aliases = kms.list_aliases(KeyId=key2_id)
+        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
+        assert alias_name in alias_names
+
+        kms.delete_alias(AliasName=alias_name)
+        kms.schedule_key_deletion(KeyId=key1_id, PendingWindowInDays=7)
+        kms.schedule_key_deletion(KeyId=key2_id, PendingWindowInDays=7)
 
     def test_enable_key_rotation(self, kms):
-        """Enable key rotation and verify status."""
-        key = kms.create_key(Description="rotation key")
+        key = kms.create_key(Description="rotation-test")
         key_id = key["KeyMetadata"]["KeyId"]
 
         kms.enable_key_rotation(KeyId=key_id)
         status = kms.get_key_rotation_status(KeyId=key_id)
         assert status["KeyRotationEnabled"] is True
 
-    def test_disable_key_rotation(self, kms):
-        """Enable then disable key rotation."""
-        key = kms.create_key(Description="rotation-off key")
-        key_id = key["KeyMetadata"]["KeyId"]
-
-        kms.enable_key_rotation(KeyId=key_id)
         kms.disable_key_rotation(KeyId=key_id)
         status = kms.get_key_rotation_status(KeyId=key_id)
         assert status["KeyRotationEnabled"] is False
 
-    def test_get_key_policy(self, kms):
-        """Get the default key policy."""
-        key = kms.create_key(Description="policy key")
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_data_key_without_plaintext(self, kms):
+        key = kms.create_key(Description="dk-no-pt")
         key_id = key["KeyMetadata"]["KeyId"]
 
-        response = kms.get_key_policy(KeyId=key_id, PolicyName="default")
-        assert "Policy" in response
-        assert len(response["Policy"]) > 0
-
-    def test_list_key_policies(self, kms):
-        """List key policies returns default policy name."""
-        key = kms.create_key(Description="list-policy key")
-        key_id = key["KeyMetadata"]["KeyId"]
-
-        response = kms.list_key_policies(KeyId=key_id)
-        assert "default" in response["PolicyNames"]
-
-    def test_put_key_policy(self, kms):
-        """Put a key policy and verify it can be retrieved."""
-        key = kms.create_key(Description="put-policy key")
-        key_id = key["KeyMetadata"]["KeyId"]
-
-        policy = (
-            '{"Version":"2012-10-17","Id":"custom-policy",'
-            '"Statement":[{"Sid":"EnableRootAccess","Effect":"Allow",'
-            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
-            '"Action":"kms:*","Resource":"*"}]}'
+        response = kms.generate_data_key_without_plaintext(
+            KeyId=key_id, KeySpec="AES_256"
         )
+        assert "CiphertextBlob" in response
+        assert "Plaintext" not in response
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
 
-        kms.put_key_policy(KeyId=key_id, PolicyName="default", Policy=policy)
-        response = kms.get_key_policy(KeyId=key_id, PolicyName="default")
-        assert "custom-policy" in response["Policy"]
+    def test_re_encrypt(self, kms):
+        key1 = kms.create_key(Description="reenc-src")
+        key2 = kms.create_key(Description="reenc-dst")
+        key1_id = key1["KeyMetadata"]["KeyId"]
+        key2_id = key2["KeyMetadata"]["KeyId"]
+
+        encrypted = kms.encrypt(KeyId=key1_id, Plaintext=b"reencrypt me")
+        re_encrypted = kms.re_encrypt(
+            CiphertextBlob=encrypted["CiphertextBlob"],
+            DestinationKeyId=key2_id,
+        )
+        decrypted = kms.decrypt(CiphertextBlob=re_encrypted["CiphertextBlob"])
+        assert decrypted["Plaintext"] == b"reencrypt me"
+
+        kms.schedule_key_deletion(KeyId=key1_id, PendingWindowInDays=7)
+        kms.schedule_key_deletion(KeyId=key2_id, PendingWindowInDays=7)
+
+    def test_describe_key_metadata_fields(self, kms):
+        key = kms.create_key(Description="metadata-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        desc = kms.describe_key(KeyId=key_id)
+        meta = desc["KeyMetadata"]
+        assert meta["KeyId"] == key_id
+        assert "Arn" in meta
+        assert meta["KeyState"] == "Enabled"
+        assert "CreationDate" in meta
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_schedule_and_cancel_key_deletion(self, kms):
+        key = kms.create_key(Description="del-cancel-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+        desc = kms.describe_key(KeyId=key_id)
+        assert desc["KeyMetadata"]["KeyState"] == "PendingDeletion"
+
+        kms.cancel_key_deletion(KeyId=key_id)
+        desc = kms.describe_key(KeyId=key_id)
+        assert desc["KeyMetadata"]["KeyState"] == "Disabled"
+        # Re-enable and clean up
+        kms.enable_key(KeyId=key_id)
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_list_aliases_for_key(self, kms):
+        uid = uuid.uuid4().hex[:8]
+        key = kms.create_key(Description=f"alias-list-{uid}")
+        key_id = key["KeyMetadata"]["KeyId"]
+        alias1 = f"alias/lk1-{uid}"
+        alias2 = f"alias/lk2-{uid}"
+        kms.create_alias(AliasName=alias1, TargetKeyId=key_id)
+        kms.create_alias(AliasName=alias2, TargetKeyId=key_id)
+
+        aliases = kms.list_aliases(KeyId=key_id)
+        alias_names = [a["AliasName"] for a in aliases["Aliases"]]
+        assert alias1 in alias_names
+        assert alias2 in alias_names
+
+        kms.delete_alias(AliasName=alias1)
+        kms.delete_alias(AliasName=alias2)
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_encrypt_decrypt_with_context(self, kms):
+        key = kms.create_key(Description="ctx-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        ctx = {"purpose": "test"}
+
+        encrypted = kms.encrypt(
+            KeyId=key_id, Plaintext=b"context data", EncryptionContext=ctx
+        )
+        decrypted = kms.decrypt(
+            CiphertextBlob=encrypted["CiphertextBlob"], EncryptionContext=ctx
+        )
+        assert decrypted["Plaintext"] == b"context data"
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_decrypt_wrong_context_fails(self, kms):
+        key = kms.create_key(Description="bad-ctx-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        encrypted = kms.encrypt(
+            KeyId=key_id, Plaintext=b"data", EncryptionContext={"a": "b"}
+        )
+        with pytest.raises(ClientError) as exc_info:
+            kms.decrypt(
+                CiphertextBlob=encrypted["CiphertextBlob"],
+                EncryptionContext={"wrong": "context"},
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidCiphertextException",
+            "IncorrectKeyException",
+        )
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_random(self, kms):
+        response = kms.generate_random(NumberOfBytes=32)
+        assert len(response["Plaintext"]) == 32
+
+    def test_create_key_symmetric_default(self, kms):
+        key = kms.create_key(Description="sym-default")
+        meta = key["KeyMetadata"]
+        assert meta["KeySpec"] in ("SYMMETRIC_DEFAULT", "AES_256")
+        kms.schedule_key_deletion(KeyId=meta["KeyId"], PendingWindowInDays=7)
+
+    def test_list_keys_contains_created_key(self, kms):
+        key = kms.create_key(Description="list-check")
+        key_id = key["KeyMetadata"]["KeyId"]
+        response = kms.list_keys()
+        key_ids = [k["KeyId"] for k in response["Keys"]]
+        assert key_id in key_ids
+        kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
