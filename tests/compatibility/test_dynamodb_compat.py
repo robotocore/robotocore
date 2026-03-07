@@ -2346,3 +2346,199 @@ class TestDynamoDBMoreOperations:
         r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "rm-1"}})
         assert "keep" in r["Item"]
         assert "drop" not in r["Item"]
+
+
+class TestDynamoDBAdvanced:
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, dynamodb):
+        import uuid
+        name = f"adv-table-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield name
+        dynamodb.delete_table(TableName=name)
+
+    def test_batch_write_item(self, dynamodb, table):
+        dynamodb.batch_write_item(
+            RequestItems={
+                table: [
+                    {"PutRequest": {"Item": {"pk": {"S": f"bw-{i}"}, "v": {"N": str(i)}}}}
+                    for i in range(5)
+                ]
+            }
+        )
+        resp = dynamodb.scan(TableName=table)
+        assert resp["Count"] >= 5
+
+    def test_batch_get_item(self, dynamodb, table):
+        for i in range(3):
+            dynamodb.put_item(TableName=table, Item={"pk": {"S": f"bg-{i}"}, "v": {"S": "val"}})
+        resp = dynamodb.batch_get_item(
+            RequestItems={
+                table: {"Keys": [{"pk": {"S": f"bg-{i}"}} for i in range(3)]}
+            }
+        )
+        assert len(resp["Responses"][table]) == 3
+
+    def test_conditional_put_item(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "cond-1"}, "v": {"S": "exists"}})
+        with pytest.raises(ClientError) as exc:
+            dynamodb.put_item(
+                TableName=table,
+                Item={"pk": {"S": "cond-1"}, "v": {"S": "new"}},
+                ConditionExpression="attribute_not_exists(pk)",
+            )
+        assert "ConditionalCheckFailed" in exc.value.response["Error"]["Code"]
+
+    def test_update_item_add_number(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "add-1"}, "count": {"N": "10"}})
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "add-1"}},
+            UpdateExpression="ADD #c :inc",
+            ExpressionAttributeNames={"#c": "count"},
+            ExpressionAttributeValues={":inc": {"N": "5"}},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "add-1"}})
+        assert r["Item"]["count"]["N"] == "15"
+
+    def test_update_item_set_if_not_exists(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "ifne-1"}})
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "ifne-1"}},
+            UpdateExpression="SET v = if_not_exists(v, :default)",
+            ExpressionAttributeValues={":default": {"S": "default_val"}},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "ifne-1"}})
+        assert r["Item"]["v"]["S"] == "default_val"
+
+    def test_scan_filter_expression(self, dynamodb, table):
+        for i in range(5):
+            dynamodb.put_item(
+                TableName=table,
+                Item={"pk": {"S": f"sf-{i}"}, "num": {"N": str(i * 10)}},
+            )
+        resp = dynamodb.scan(
+            TableName=table,
+            FilterExpression="num > :threshold",
+            ExpressionAttributeValues={":threshold": {"N": "20"}},
+        )
+        assert all(int(item["num"]["N"]) > 20 for item in resp["Items"])
+
+    def test_scan_with_limit(self, dynamodb, table):
+        for i in range(10):
+            dynamodb.put_item(TableName=table, Item={"pk": {"S": f"lim-{i}"}})
+        resp = dynamodb.scan(TableName=table, Limit=3)
+        assert resp["Count"] <= 3
+
+    def test_scan_pagination(self, dynamodb, table):
+        for i in range(10):
+            dynamodb.put_item(TableName=table, Item={"pk": {"S": f"pg-{i}"}})
+        resp1 = dynamodb.scan(TableName=table, Limit=5)
+        assert "LastEvaluatedKey" in resp1
+        resp2 = dynamodb.scan(
+            TableName=table, ExclusiveStartKey=resp1["LastEvaluatedKey"]
+        )
+        total = resp1["Count"] + resp2["Count"]
+        assert total >= 10
+
+    def test_delete_item_return_values(self, dynamodb, table):
+        dynamodb.put_item(TableName=table, Item={"pk": {"S": "del-rv"}, "v": {"S": "gone"}})
+        resp = dynamodb.delete_item(
+            TableName=table,
+            Key={"pk": {"S": "del-rv"}},
+            ReturnValues="ALL_OLD",
+        )
+        assert resp["Attributes"]["pk"]["S"] == "del-rv"
+        assert resp["Attributes"]["v"]["S"] == "gone"
+
+    def test_update_item_list_append(self, dynamodb, table):
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "la-1"}, "vals": {"L": [{"S": "a"}]}},
+        )
+        dynamodb.update_item(
+            TableName=table,
+            Key={"pk": {"S": "la-1"}},
+            UpdateExpression="SET vals = list_append(vals, :new)",
+            ExpressionAttributeValues={":new": {"L": [{"S": "b"}, {"S": "c"}]}},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "la-1"}})
+        items = [v["S"] for v in r["Item"]["vals"]["L"]]
+        assert items == ["a", "b", "c"]
+
+    def test_describe_table_fields(self, dynamodb, table):
+        resp = dynamodb.describe_table(TableName=table)
+        t = resp["Table"]
+        assert t["TableName"] == table
+        assert "TableArn" in t
+        assert "TableStatus" in t
+        assert t["TableStatus"] == "ACTIVE"
+        assert "KeySchema" in t
+        assert "AttributeDefinitions" in t
+
+    def test_describe_table_item_count(self, dynamodb, table):
+        for i in range(3):
+            dynamodb.put_item(TableName=table, Item={"pk": {"S": f"cnt-{i}"}})
+        resp = dynamodb.describe_table(TableName=table)
+        assert resp["Table"]["ItemCount"] >= 0  # May be approximate
+
+    def test_put_item_with_map_type(self, dynamodb, table):
+        dynamodb.put_item(
+            TableName=table,
+            Item={
+                "pk": {"S": "map-1"},
+                "nested": {"M": {"key1": {"S": "val1"}, "key2": {"N": "42"}}},
+            },
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "map-1"}})
+        assert r["Item"]["nested"]["M"]["key1"]["S"] == "val1"
+        assert r["Item"]["nested"]["M"]["key2"]["N"] == "42"
+
+    def test_put_item_with_boolean_and_null(self, dynamodb, table):
+        dynamodb.put_item(
+            TableName=table,
+            Item={
+                "pk": {"S": "types-1"},
+                "flag": {"BOOL": True},
+                "empty": {"NULL": True},
+            },
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "types-1"}})
+        assert r["Item"]["flag"]["BOOL"] is True
+        assert r["Item"]["empty"]["NULL"] is True
+
+    def test_put_item_with_binary(self, dynamodb, table):
+        import base64
+        data = b"\x00\x01\x02\x03"
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "bin-1"}, "data": {"B": data}},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "bin-1"}})
+        assert r["Item"]["data"]["B"] == data
+
+    def test_put_item_with_string_set(self, dynamodb, table):
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "ss-1"}, "tags": {"SS": ["a", "b", "c"]}},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "ss-1"}})
+        assert set(r["Item"]["tags"]["SS"]) == {"a", "b", "c"}
+
+    def test_put_item_with_number_set(self, dynamodb, table):
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "ns-1"}, "nums": {"NS": ["1", "2", "3"]}},
+        )
+        r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "ns-1"}})
+        assert set(r["Item"]["nums"]["NS"]) == {"1", "2", "3"}

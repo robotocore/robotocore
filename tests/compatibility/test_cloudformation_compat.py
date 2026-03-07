@@ -8,6 +8,8 @@ import uuid
 import boto3
 import pytest
 
+from tests.compatibility.conftest import make_client
+
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 
@@ -1204,5 +1206,235 @@ class TestCloudFormationAdvanced:
             resp = cfn.list_stacks(StackStatusFilter=["CREATE_COMPLETE"])
             names = [s["StackName"] for s in resp["StackSummaries"]]
             assert stack_name in names
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+
+class TestCloudFormationAdvancedOps:
+    @pytest.fixture
+    def cfn(self):
+        return make_client("cloudformation")
+
+    def test_create_stack_with_outputs(self, cfn):
+        stack_name = f"output-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+            "Outputs": {
+                "QueueUrl": {
+                    "Value": {"Ref": "Q"},
+                    "Description": "Queue URL",
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            outputs = resp["Stacks"][0].get("Outputs", [])
+            out_keys = [o["OutputKey"] for o in outputs]
+            assert "QueueUrl" in out_keys
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    @pytest.mark.xfail(reason="Parameters not returned in describe_stacks")
+    def test_create_stack_with_parameters(self, cfn):
+        stack_name = f"params-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Parameters": {
+                "QueueName": {"Type": "String", "Default": "default-queue"},
+            },
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue",
+                       "Properties": {"QueueName": {"Ref": "QueueName"}}},
+            },
+        })
+        cfn.create_stack(
+            StackName=stack_name,
+            TemplateBody=template,
+            Parameters=[{"ParameterKey": "QueueName", "ParameterValue": f"{stack_name}-pq"}],
+        )
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            params = resp["Stacks"][0].get("Parameters", [])
+            param_map = {p["ParameterKey"]: p["ParameterValue"] for p in params}
+            assert param_map.get("QueueName") == f"{stack_name}-pq"
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_get_template(self, cfn):
+        stack_name = f"tmpl-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.get_template(StackName=stack_name)
+            assert "TemplateBody" in resp
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    @pytest.mark.xfail(reason="validate_template response missing Parameters key")
+    def test_validate_template(self, cfn):
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue"},
+            },
+        })
+        resp = cfn.validate_template(TemplateBody=template)
+        assert "Parameters" in resp
+
+    def test_create_stack_with_tags(self, cfn):
+        stack_name = f"tags-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(
+            StackName=stack_name,
+            TemplateBody=template,
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            tags = {t["Key"]: t["Value"] for t in resp["Stacks"][0].get("Tags", [])}
+            assert tags.get("env") == "test"
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_update_stack(self, cfn):
+        stack_name = f"upd-{uuid.uuid4().hex[:8]}"
+        template1 = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q1"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template1)
+        try:
+            template2 = json.dumps({
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q2"}},
+                },
+            })
+            cfn.update_stack(StackName=stack_name, TemplateBody=template2)
+            resp = cfn.describe_stacks(StackName=stack_name)
+            status = resp["Stacks"][0]["StackStatus"]
+            assert status in ("UPDATE_COMPLETE", "CREATE_COMPLETE", "UPDATE_IN_PROGRESS")
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_describe_stack_resource(self, cfn):
+        stack_name = f"res-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "MyQueue": {"Type": "AWS::SQS::Queue",
+                             "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stack_resource(
+                StackName=stack_name, LogicalResourceId="MyQueue"
+            )
+            detail = resp["StackResourceDetail"]
+            assert detail["LogicalResourceId"] == "MyQueue"
+            assert detail["ResourceType"] == "AWS::SQS::Queue"
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_create_stack_with_sns_topic(self, cfn):
+        stack_name = f"sns-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Topic": {"Type": "AWS::SNS::Topic",
+                           "Properties": {"TopicName": f"{stack_name}-topic"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stack_resources(StackName=stack_name)
+            types = [r["ResourceType"] for r in resp["StackResources"]]
+            assert "AWS::SNS::Topic" in types
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_fn_join(self, cfn):
+        stack_name = f"join-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue",
+                       "Properties": {
+                           "QueueName": {"Fn::Join": ["-", [stack_name, "joined", "q"]]},
+                       }},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            assert resp["Stacks"][0]["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_fn_sub(self, cfn):
+        stack_name = f"sub-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue",
+                       "Properties": {
+                           "QueueName": {"Fn::Sub": "${AWS::StackName}-sub-q"},
+                       }},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            assert resp["Stacks"][0]["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    @pytest.mark.xfail(reason="DELETE_COMPLETE status not tracked in list_stacks")
+    def test_delete_stack_removes_resources(self, cfn):
+        stack_name = f"delres-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        cfn.delete_stack(StackName=stack_name)
+        resp = cfn.list_stacks(StackStatusFilter=["DELETE_COMPLETE"])
+        names = [s["StackName"] for s in resp["StackSummaries"]]
+        assert stack_name in names
+
+    def test_list_stack_resources_types(self, cfn):
+        stack_name = f"types-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+                "T": {"Type": "AWS::SNS::Topic", "Properties": {"TopicName": f"{stack_name}-t"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.list_stack_resources(StackName=stack_name)
+            types = {r["ResourceType"] for r in resp["StackResourceSummaries"]}
+            assert "AWS::SQS::Queue" in types
+            assert "AWS::SNS::Topic" in types
         finally:
             cfn.delete_stack(StackName=stack_name)
