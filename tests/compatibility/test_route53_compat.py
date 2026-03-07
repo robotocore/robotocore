@@ -1053,3 +1053,240 @@ class TestRoute53Extended:
             assert "QueryLoggingConfig" in resp
         finally:
             logs.delete_log_group(logGroupName=log_group)
+
+
+class TestRoute53Extended:
+    @pytest.fixture
+    def route53(self):
+        return make_client("route53")
+
+    @pytest.mark.xfail(reason="Private hosted zones may have issues")
+    def test_create_private_hosted_zone(self, route53):
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.99.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        ref = _unique("private")
+        try:
+            zone = route53.create_hosted_zone(
+                Name="private.test.com",
+                CallerReference=ref,
+                HostedZoneConfig={"PrivateZone": True},
+                VPC={"VPCRegion": "us-east-1", "VPCId": vpc_id},
+            )
+            zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+            assert zone["HostedZone"]["Config"]["PrivateZone"] is True
+            route53.delete_hosted_zone(Id=zone_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_create_aaaa_record(self, route53):
+        ref = _unique("aaaa")
+        zone = route53.create_hosted_zone(Name="aaaa.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={
+                    "Changes": [{
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": "ipv6.aaaa.test.com",
+                            "Type": "AAAA",
+                            "TTL": 300,
+                            "ResourceRecords": [{"Value": "2001:db8::1"}],
+                        },
+                    }]
+                },
+            )
+            resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
+            aaaa = [r for r in resp["ResourceRecordSets"] if r["Type"] == "AAAA"]
+            assert len(aaaa) == 1
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{
+                    "Action": "DELETE",
+                    "ResourceRecordSet": aaaa[0],
+                }]},
+            )
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_create_srv_record(self, route53):
+        ref = _unique("srv")
+        zone = route53.create_hosted_zone(Name="srv.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={
+                    "Changes": [{
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": "_sip._tcp.srv.test.com",
+                            "Type": "SRV",
+                            "TTL": 60,
+                            "ResourceRecords": [{"Value": "10 60 5060 sip.srv.test.com"}],
+                        },
+                    }]
+                },
+            )
+            resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
+            srv = [r for r in resp["ResourceRecordSets"] if r["Type"] == "SRV"]
+            assert len(srv) == 1
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{"Action": "DELETE", "ResourceRecordSet": srv[0]}]},
+            )
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_multiple_records_same_type(self, route53):
+        ref = _unique("multi-a")
+        zone = route53.create_hosted_zone(Name="multi.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={
+                    "Changes": [{
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": "app.multi.test.com",
+                            "Type": "A",
+                            "TTL": 60,
+                            "ResourceRecords": [
+                                {"Value": "10.0.0.1"},
+                                {"Value": "10.0.0.2"},
+                                {"Value": "10.0.0.3"},
+                            ],
+                        },
+                    }]
+                },
+            )
+            resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
+            a_recs = [r for r in resp["ResourceRecordSets"]
+                      if r["Name"].startswith("app.multi") and r["Type"] == "A"]
+            assert len(a_recs) == 1
+            assert len(a_recs[0]["ResourceRecords"]) == 3
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{"Action": "DELETE", "ResourceRecordSet": a_recs[0]}]},
+            )
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_upsert_creates_and_updates(self, route53):
+        ref = _unique("upsert2")
+        zone = route53.create_hosted_zone(Name="upsert2.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            rrs = {
+                "Name": "www.upsert2.test.com",
+                "Type": "A",
+                "TTL": 60,
+                "ResourceRecords": [{"Value": "1.1.1.1"}],
+            }
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{"Action": "UPSERT", "ResourceRecordSet": rrs}]},
+            )
+            rrs["ResourceRecords"] = [{"Value": "2.2.2.2"}]
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{"Action": "UPSERT", "ResourceRecordSet": rrs}]},
+            )
+            resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
+            www = [r for r in resp["ResourceRecordSets"]
+                   if r["Name"].startswith("www.upsert2") and r["Type"] == "A"]
+            assert len(www) == 1
+            assert www[0]["ResourceRecords"][0]["Value"] == "2.2.2.2"
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{"Action": "DELETE", "ResourceRecordSet": rrs}]},
+            )
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_hosted_zone_has_soa_and_ns(self, route53):
+        ref = _unique("soans")
+        zone = route53.create_hosted_zone(Name="soans.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
+            types = {r["Type"] for r in resp["ResourceRecordSets"]}
+            assert "SOA" in types
+            assert "NS" in types
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_get_change(self, route53):
+        ref = _unique("chg")
+        zone = route53.create_hosted_zone(Name="chg.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            change = route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={
+                    "Changes": [{
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": "x.chg.test.com",
+                            "Type": "A",
+                            "TTL": 60,
+                            "ResourceRecords": [{"Value": "3.3.3.3"}],
+                        },
+                    }]
+                },
+            )
+            change_id = change["ChangeInfo"]["Id"].split("/")[-1]
+            resp = route53.get_change(Id=change_id)
+            assert resp["ChangeInfo"]["Status"] in ("PENDING", "INSYNC")
+            route53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={"Changes": [{
+                    "Action": "DELETE",
+                    "ResourceRecordSet": {
+                        "Name": "x.chg.test.com",
+                        "Type": "A",
+                        "TTL": 60,
+                        "ResourceRecords": [{"Value": "3.3.3.3"}],
+                    },
+                }]},
+            )
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_create_multiple_hosted_zones(self, route53):
+        zones = []
+        for i in range(3):
+            ref = _unique(f"multi-zone-{i}")
+            z = route53.create_hosted_zone(Name=f"zone{i}.test.com", CallerReference=ref)
+            zones.append(z["HostedZone"]["Id"].split("/")[-1])
+        try:
+            resp = route53.list_hosted_zones()
+            ids = {z["Id"].split("/")[-1] for z in resp["HostedZones"]}
+            for zid in zones:
+                assert zid in ids
+        finally:
+            for zid in zones:
+                route53.delete_hosted_zone(Id=zid)
+
+    def test_hosted_zone_record_set_count(self, route53):
+        ref = _unique("count")
+        zone = route53.create_hosted_zone(Name="count.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            resp = route53.get_hosted_zone(Id=zone_id)
+            # SOA + NS = at least 2
+            assert resp["HostedZone"]["ResourceRecordSetCount"] >= 2
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_delete_hosted_zone_with_no_custom_records(self, route53):
+        ref = _unique("delzone")
+        zone = route53.create_hosted_zone(Name="delzone.test.com", CallerReference=ref)
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        route53.delete_hosted_zone(Id=zone_id)
+        resp = route53.list_hosted_zones()
+        ids = {z["Id"].split("/")[-1] for z in resp["HostedZones"]}
+        assert zone_id not in ids

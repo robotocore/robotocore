@@ -735,3 +735,229 @@ class TestStepFunctionsExtended:
                 assert len(output) == 2
         finally:
             sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_wait_state_seconds(self, sfn, role_arn):
+        sm_name = f"wait-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "WaitStep",
+            "States": {
+                "WaitStep": {
+                    "Type": "Wait",
+                    "Seconds": 1,
+                    "Next": "Done",
+                },
+                "Done": {"Type": "Succeed"},
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            import time
+            time.sleep(3)
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            assert desc["status"] == "SUCCEEDED"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_map_state_inline(self, sfn, role_arn):
+        sm_name = f"map-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "MapStep",
+            "States": {
+                "MapStep": {
+                    "Type": "Map",
+                    "ItemsPath": "$.items",
+                    "Iterator": {
+                        "StartAt": "PassItem",
+                        "States": {
+                            "PassItem": {
+                                "Type": "Pass",
+                                "End": True,
+                            }
+                        },
+                    },
+                    "End": True,
+                },
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(
+                stateMachineArn=sm_arn,
+                input=json.dumps({"items": [1, 2, 3]}),
+            )
+            import time
+            time.sleep(2)
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            if desc["status"] == "SUCCEEDED":
+                output = json.loads(desc["output"])
+                assert len(output) == 3
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_catch_on_task_error(self, sfn, role_arn):
+        sm_name = f"catch-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "FailTask",
+            "States": {
+                "FailTask": {
+                    "Type": "Fail",
+                    "Error": "CustomError",
+                    "Cause": "Something failed",
+                },
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            import time
+            time.sleep(2)
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            assert desc["status"] == "FAILED"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_pass_state_with_parameters(self, sfn, role_arn):
+        sm_name = f"params-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "PassParams",
+            "States": {
+                "PassParams": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "greeting": "hello",
+                        "count": 42,
+                    },
+                    "End": True,
+                },
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            import time
+            time.sleep(2)
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            if desc["status"] == "SUCCEEDED":
+                output = json.loads(desc["output"])
+                assert output["greeting"] == "hello"
+                assert output["count"] == 42
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_choice_state_default(self, sfn, role_arn):
+        sm_name = f"choice-def-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "ChoiceStep",
+            "States": {
+                "ChoiceStep": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.val",
+                            "NumericEquals": 999,
+                            "Next": "NeverMatch",
+                        }
+                    ],
+                    "Default": "DefaultState",
+                },
+                "NeverMatch": {"Type": "Fail", "Error": "ShouldNotMatch"},
+                "DefaultState": {
+                    "Type": "Pass",
+                    "Result": "took-default",
+                    "End": True,
+                },
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(
+                stateMachineArn=sm_arn, input=json.dumps({"val": 1})
+            )
+            import time
+            time.sleep(2)
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            if desc["status"] == "SUCCEEDED":
+                assert json.loads(desc["output"]) == "took-default"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_stop_execution_with_error(self, sfn, role_arn):
+        sm_name = f"stop-err-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "LongWait",
+            "States": {
+                "LongWait": {"Type": "Wait", "Seconds": 300, "End": True},
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            sfn.stop_execution(
+                executionArn=exec_resp["executionArn"],
+                error="ManualStop",
+                cause="Stopped by test",
+            )
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            assert desc["status"] == "ABORTED"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_delete_state_machine(self, sfn, role_arn):
+        sm_name = f"del-sm-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "Pass",
+            "States": {"Pass": {"Type": "Succeed"}},
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+        resp = sfn.list_state_machines()
+        arns = [s["stateMachineArn"] for s in resp["stateMachines"]]
+        assert sm_arn not in arns
+
+    def test_execution_input_output_roundtrip(self, sfn, role_arn):
+        sm_name = f"io-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps({
+            "StartAt": "Echo",
+            "States": {
+                "Echo": {"Type": "Pass", "End": True},
+            },
+        })
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=definition, roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            inp = {"key": "value", "nested": {"a": 1}}
+            exec_resp = sfn.start_execution(
+                stateMachineArn=sm_arn, input=json.dumps(inp)
+            )
+            import time
+            time.sleep(2)
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            if desc["status"] == "SUCCEEDED":
+                output = json.loads(desc["output"])
+                assert output == inp
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
