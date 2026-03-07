@@ -105,6 +105,56 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
                 logger.debug("Failed to process log filters", exc_info=True)
         return response
 
+    # ListTagsForResource: normalize ARN (strip trailing :*) before forwarding
+    if action == "ListTagsForResource":
+        resource_arn = params.get("resourceArn", "")
+        if resource_arn.endswith(":*"):
+            resource_arn = resource_arn[:-2]
+        try:
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
+
+            acct = account_id or DEFAULT_ACCOUNT_ID
+            logs_backend = get_backend("logs")[acct][region]
+            tags = logs_backend.list_tags_for_resource(resource_arn)
+            return _json_response(200, {"tags": tags})
+        except Exception:
+            return await forward_to_moto(request, "logs")
+
+    # TagResource: normalize ARN (strip trailing :*) before forwarding
+    if action == "TagResource":
+        resource_arn = params.get("resourceArn", "")
+        if resource_arn.endswith(":*"):
+            resource_arn = resource_arn[:-2]
+        tags = params.get("tags", {})
+        try:
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
+
+            acct = account_id or DEFAULT_ACCOUNT_ID
+            logs_backend = get_backend("logs")[acct][region]
+            logs_backend.tag_resource(resource_arn, tags)
+            return _json_response(200, {})
+        except Exception:
+            return await forward_to_moto(request, "logs")
+
+    # UntagResource: normalize ARN (strip trailing :*) before forwarding
+    if action == "UntagResource":
+        resource_arn = params.get("resourceArn", "")
+        if resource_arn.endswith(":*"):
+            resource_arn = resource_arn[:-2]
+        tag_keys = params.get("tagKeys", [])
+        try:
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
+
+            acct = account_id or DEFAULT_ACCOUNT_ID
+            logs_backend = get_backend("logs")[acct][region]
+            logs_backend.untag_resource(resource_arn, tag_keys)
+            return _json_response(200, {})
+        except Exception:
+            return await forward_to_moto(request, "logs")
+
     # Fall back to Moto for everything else
     return await forward_to_moto(request, "logs")
 

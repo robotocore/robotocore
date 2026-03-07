@@ -846,7 +846,6 @@ class TestSNSToSQS:
         sns.delete_topic(TopicArn=topic_arn)
         sqs.delete_queue(QueueUrl=queue_url)
 
-    @pytest.mark.xfail(reason="SNS->SQS delivery does not include MessageAttributes yet")
     def test_sns_to_sqs_with_message_attributes(self):
         """Publish with MessageAttributes, verify they arrive in SQS."""
         sns = make_client("sns")
@@ -974,7 +973,6 @@ class TestCloudFormationDynamoDB:
 class TestCloudFormationLambda:
     """CloudFormation with Lambda: Deploy a template that creates a Lambda function."""
 
-    @pytest.mark.xfail(reason="CloudFormation Lambda resource creation not fully implemented")
     def test_cfn_creates_and_invokes_lambda(self):
         cfn = make_client("cloudformation")
         lam = make_client("lambda")
@@ -1049,7 +1047,6 @@ class TestCloudFormationLambda:
 class TestSQSTagsViaResourceGroupsTagging:
     """SQS queue tags visible through Resource Groups Tagging API."""
 
-    @pytest.mark.xfail(reason="Resource Groups Tagging cross-service tag discovery not implemented")
     def test_sqs_tags_via_tagging_api(self):
         sqs = make_client("sqs")
         tagging = make_client("resourcegroupstaggingapi")
@@ -1078,7 +1075,6 @@ class TestSQSTagsViaResourceGroupsTagging:
         # Clean up
         sqs.delete_queue(QueueUrl=queue_url)
 
-    @pytest.mark.xfail(reason="Resource Groups Tagging cross-service tag discovery not implemented")
     def test_sqs_tags_via_tagging_api_get_tag_keys(self):
         sqs = make_client("sqs")
         tagging = make_client("resourcegroupstaggingapi")

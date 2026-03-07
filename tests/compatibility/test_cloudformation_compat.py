@@ -665,7 +665,6 @@ class TestCloudFormationExtended:
         finally:
             cfn.delete_stack(StackName=stack_name)
 
-    @pytest.mark.xfail(reason="CreateChangeSet not implemented in native CFN provider")
     def test_create_and_describe_change_set(self, cfn):
         """Create a change set and describe it."""
         stack_name = f"test-cs-{_uid()}"

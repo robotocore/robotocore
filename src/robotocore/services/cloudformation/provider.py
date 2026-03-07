@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.services.cloudformation.engine import (
+    CfnChangeSet,
     CfnResource,
     CfnStack,
     CfnStore,
@@ -491,6 +492,113 @@ def _describe_stack_resource(store: CfnStore, params: dict, region: str, account
     }
 
 
+def _create_change_set(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
+    stack_name = params.get("StackName", "")
+    cs_name = params.get("ChangeSetName", "")
+    template_body = params.get("TemplateBody", "")
+    cs_type = params.get("ChangeSetType", "UPDATE")
+
+    if not stack_name:
+        raise CfnError("ValidationError", "StackName is required")
+    if not cs_name:
+        raise CfnError("ValidationError", "ChangeSetName is required")
+
+    cs_id = (
+        f"arn:aws:cloudformation:{region}:{account_id}:"
+        f"changeSet/{cs_name}/{_new_id()}"
+    )
+
+    # For CREATE type, also create a stub stack if it doesn't exist
+    stack = store.get_stack(stack_name)
+    stack_id = stack.stack_id if stack else (
+        f"arn:aws:cloudformation:{region}:{account_id}:stack/{stack_name}/{_new_id()}"
+    )
+    if not stack and cs_type == "CREATE":
+        stub = CfnStack(
+            stack_id=stack_id,
+            stack_name=stack_name,
+            template_body=template_body,
+            status="REVIEW_IN_PROGRESS",
+        )
+        store.put_stack(stub)
+
+    cs = CfnChangeSet(
+        change_set_id=cs_id,
+        change_set_name=cs_name,
+        stack_name=stack_name,
+        stack_id=stack_id,
+        template_body=template_body,
+        change_set_type=cs_type,
+        status="CREATE_COMPLETE",
+    )
+    with store.mutex:
+        store.change_sets[cs_id] = cs
+
+    return {"Id": cs_id, "StackId": stack_id}
+
+
+def _describe_change_set(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
+    cs_name = params.get("ChangeSetName", "")
+    stack_name = params.get("StackName", "")
+
+    cs = None
+    with store.mutex:
+        # Look up by ID or name
+        if cs_name in store.change_sets:
+            cs = store.change_sets[cs_name]
+        else:
+            for c in store.change_sets.values():
+                if c.change_set_name == cs_name and (
+                    not stack_name or c.stack_name == stack_name
+                ):
+                    cs = c
+                    break
+
+    if not cs:
+        raise CfnError(
+            "ChangeSetNotFoundException",
+            f"ChangeSet [{cs_name}] does not exist",
+            404,
+        )
+
+    return {
+        "ChangeSetId": cs.change_set_id,
+        "ChangeSetName": cs.change_set_name,
+        "StackId": cs.stack_id or "",
+        "StackName": cs.stack_name,
+        "Status": cs.status,
+        "StatusReason": cs.status_reason,
+        "Changes": "",
+    }
+
+
+def _delete_change_set(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
+    cs_name = params.get("ChangeSetName", "")
+    stack_name = params.get("StackName", "")
+
+    with store.mutex:
+        to_delete = None
+        if cs_name in store.change_sets:
+            to_delete = cs_name
+        else:
+            for cs_id, c in store.change_sets.items():
+                if c.change_set_name == cs_name and (
+                    not stack_name or c.stack_name == stack_name
+                ):
+                    to_delete = cs_id
+                    break
+        if to_delete:
+            del store.change_sets[to_delete]
+
+    return {}
+
+
+def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
+    cs_name = params.get("ChangeSetName", "")
+    # Just return success - full execution would require template processing
+    return {}
+
+
 def _list_exports(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     exports = []
     for export_name, export_value in store.exports.items():
@@ -567,4 +675,8 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListExports": _list_exports,
     "GetTemplate": _get_template,
     "ValidateTemplate": _validate_template,
+    "CreateChangeSet": _create_change_set,
+    "DescribeChangeSet": _describe_change_set,
+    "DeleteChangeSet": _delete_change_set,
+    "ExecuteChangeSet": _execute_change_set,
 }

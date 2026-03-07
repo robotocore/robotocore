@@ -41,12 +41,27 @@ class CfnStack:
         return self.stack_id
 
 
+@dataclass
+class CfnChangeSet:
+    change_set_id: str
+    change_set_name: str
+    stack_name: str
+    stack_id: str | None = None
+    template_body: str = ""
+    status: str = "CREATE_COMPLETE"
+    status_reason: str = ""
+    change_set_type: str = "CREATE"
+    changes: list = field(default_factory=list)
+    created: float = field(default_factory=time.time)
+
+
 class CfnStore:
     """Per-region CloudFormation store."""
 
     def __init__(self):
         self.stacks: dict[str, CfnStack] = {}
         self.exports: dict[str, dict] = {}  # export_name -> {Value, StackId}
+        self.change_sets: dict[str, CfnChangeSet] = {}  # change_set_id -> CfnChangeSet
         self.mutex = threading.RLock()
 
     def get_stack(self, name_or_id: str) -> CfnStack | None:
