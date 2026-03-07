@@ -235,6 +235,11 @@ When using Claude Code agents on this project:
 - Fan out by file/module: give each agent a non-overlapping set of files
 - After agents complete, review their worktree branches and merge/cherry-pick results
 
+### Work sequencing
+- **Do 100% of the work** — don't prioritize by impact. Everything gets done.
+- **Sequence by dependencies** — do foundational pieces first that make later work easier. Build the tool before using it. Build the test harness before writing tests. Register the service before probing it.
+- **Don't stop to ask** unless truly blocked. If the plan says to do steps 1-12, do all 12.
+
 ### Build CLI tools first
 - Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
 - Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
