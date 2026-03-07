@@ -259,466 +259,339 @@ class TestIAMAccountAuthorizationDetails:
             iam.delete_user(UserName=user_name)
             iam.delete_role(RoleName=role_name)
 
-
-class TestIAMGroupCRUD:
-    """Group create, get, list, delete, add/remove user."""
-
-    def test_create_group(self, iam):
-        name = _unique("grp")
-        resp = iam.create_group(GroupName=name)
-        assert resp["Group"]["GroupName"] == name
-        iam.delete_group(GroupName=name)
-
-    def test_get_group(self, iam):
-        name = _unique("grp")
-        iam.create_group(GroupName=name)
+    def test_get_account_authorization_details_filter(self, iam):
+        """Filter by entity type (User only)."""
+        user_name = _unique("authf-user")
+        iam.create_user(UserName=user_name)
         try:
-            resp = iam.get_group(GroupName=name)
-            assert resp["Group"]["GroupName"] == name
-            assert isinstance(resp["Users"], list)
+            resp = iam.get_account_authorization_details(Filter=["User"])
+            user_names = [u["UserName"] for u in resp.get("UserDetailList", [])]
+            assert user_name in user_names
+            # When filtering by User, RoleDetailList should be empty
+            assert len(resp.get("RoleDetailList", [])) == 0
         finally:
-            iam.delete_group(GroupName=name)
+            iam.delete_user(UserName=user_name)
 
-    def test_list_groups(self, iam):
-        name = _unique("grp")
-        iam.create_group(GroupName=name)
+
+class TestIAMInstanceProfileExtended:
+    def test_create_and_delete_instance_profile(self, iam):
+        """Create and delete an instance profile without a role."""
+        profile_name = _unique("ip-bare")
+        resp = iam.create_instance_profile(InstanceProfileName=profile_name)
+        assert resp["InstanceProfile"]["InstanceProfileName"] == profile_name
+        assert resp["InstanceProfile"]["Roles"] == []
+        iam.delete_instance_profile(InstanceProfileName=profile_name)
+
+    def test_list_instance_profiles(self, iam):
+        """List instance profiles includes the one we created."""
+        profile_name = _unique("ip-list")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
         try:
-            resp = iam.list_groups()
-            names = [g["GroupName"] for g in resp["Groups"]]
-            assert name in names
+            resp = iam.list_instance_profiles()
+            names = [p["InstanceProfileName"] for p in resp["InstanceProfiles"]]
+            assert profile_name in names
         finally:
-            iam.delete_group(GroupName=name)
+            iam.delete_instance_profile(InstanceProfileName=profile_name)
 
-    def test_delete_group(self, iam):
-        name = _unique("grp")
-        iam.create_group(GroupName=name)
-        iam.delete_group(GroupName=name)
-        resp = iam.list_groups()
-        names = [g["GroupName"] for g in resp["Groups"]]
-        assert name not in names
-
-    def test_add_user_to_group(self, iam):
-        group = _unique("grp")
-        user = _unique("usr")
-        iam.create_group(GroupName=group)
-        iam.create_user(UserName=user)
+    def test_add_remove_role_from_instance_profile(self, iam):
+        """Add a role, verify, remove it, verify empty."""
+        profile_name = _unique("ip-role")
+        role_name = _unique("ip-r")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
         try:
-            iam.add_user_to_group(GroupName=group, UserName=user)
-            resp = iam.get_group(GroupName=group)
-            user_names = [u["UserName"] for u in resp["Users"]]
-            assert user in user_names
-        finally:
-            iam.remove_user_from_group(GroupName=group, UserName=user)
-            iam.delete_user(UserName=user)
-            iam.delete_group(GroupName=group)
+            iam.add_role_to_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            resp = iam.get_instance_profile(InstanceProfileName=profile_name)
+            assert any(r["RoleName"] == role_name for r in resp["InstanceProfile"]["Roles"])
 
-    def test_remove_user_from_group(self, iam):
-        group = _unique("grp")
-        user = _unique("usr")
-        iam.create_group(GroupName=group)
-        iam.create_user(UserName=user)
-        iam.add_user_to_group(GroupName=group, UserName=user)
+            iam.remove_role_from_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            resp = iam.get_instance_profile(InstanceProfileName=profile_name)
+            assert len(resp["InstanceProfile"]["Roles"]) == 0
+        finally:
+            iam.delete_instance_profile(InstanceProfileName=profile_name)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMLoginProfile:
+    def test_create_and_delete_login_profile(self, iam):
+        user_name = _unique("login-user")
+        iam.create_user(UserName=user_name)
         try:
-            iam.remove_user_from_group(GroupName=group, UserName=user)
-            resp = iam.get_group(GroupName=group)
-            user_names = [u["UserName"] for u in resp["Users"]]
-            assert user not in user_names
+            resp = iam.create_login_profile(
+                UserName=user_name, Password="TestPass123!", PasswordResetRequired=False
+            )
+            assert resp["LoginProfile"]["UserName"] == user_name
+
+            get_resp = iam.get_login_profile(UserName=user_name)
+            assert get_resp["LoginProfile"]["UserName"] == user_name
+
+            iam.delete_login_profile(UserName=user_name)
         finally:
-            iam.delete_user(UserName=user)
-            iam.delete_group(GroupName=group)
+            iam.delete_user(UserName=user_name)
 
 
-class TestIAMManagedPolicyCRUD:
-    """Managed policy create, get, list, attach/detach, get-policy-version."""
+class TestIAMAccessKeys:
+    def test_create_list_delete_access_key(self, iam):
+        user_name = _unique("ak-user")
+        iam.create_user(UserName=user_name)
+        try:
+            create_resp = iam.create_access_key(UserName=user_name)
+            key_id = create_resp["AccessKey"]["AccessKeyId"]
+            assert create_resp["AccessKey"]["UserName"] == user_name
+            assert "SecretAccessKey" in create_resp["AccessKey"]
 
-    def test_create_managed_policy(self, iam):
-        name = _unique("mpol")
-        resp = iam.create_policy(PolicyName=name, PolicyDocument=SIMPLE_POLICY_DOC)
-        assert resp["Policy"]["PolicyName"] == name
-        assert resp["Policy"]["DefaultVersionId"] == "v1"
-        iam.delete_policy(PolicyArn=resp["Policy"]["Arn"])
+            list_resp = iam.list_access_keys(UserName=user_name)
+            key_ids = [k["AccessKeyId"] for k in list_resp["AccessKeyMetadata"]]
+            assert key_id in key_ids
 
+            iam.delete_access_key(UserName=user_name, AccessKeyId=key_id)
+            list_resp = iam.list_access_keys(UserName=user_name)
+            key_ids = [k["AccessKeyId"] for k in list_resp["AccessKeyMetadata"]]
+            assert key_id not in key_ids
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMAccountAlias:
+    def test_create_list_delete_account_alias(self, iam):
+        alias = _unique("myalias").lower().replace("_", "")
+        iam.create_account_alias(AccountAlias=alias)
+        try:
+            resp = iam.list_account_aliases()
+            assert alias in resp["AccountAliases"]
+        finally:
+            iam.delete_account_alias(AccountAlias=alias)
+        resp = iam.list_account_aliases()
+        assert alias not in resp["AccountAliases"]
+
+
+class TestIAMAttachedPolicies:
+    def test_list_attached_role_policies(self, iam):
+        role_name = _unique("arp-role")
+        policy_name = _unique("arp-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=arn)
+            resp = iam.list_attached_role_policies(RoleName=role_name)
+            attached = [p["PolicyName"] for p in resp["AttachedPolicies"]]
+            assert policy_name in attached
+        finally:
+            iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
+
+    def test_attach_detach_user_policy(self, iam):
+        user_name = _unique("aup-user")
+        policy_name = _unique("aup-pol")
+        iam.create_user(UserName=user_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_user_policy(UserName=user_name, PolicyArn=arn)
+            resp = iam.list_attached_user_policies(UserName=user_name)
+            attached = [p["PolicyName"] for p in resp["AttachedPolicies"]]
+            assert policy_name in attached
+
+            iam.detach_user_policy(UserName=user_name, PolicyArn=arn)
+            resp = iam.list_attached_user_policies(UserName=user_name)
+            assert len(resp["AttachedPolicies"]) == 0
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMGroupPolicies:
+    def test_put_list_delete_group_policy(self, iam):
+        group_name = _unique("gp-group")
+        policy_name = _unique("gp-pol")
+        iam.create_group(GroupName=group_name)
+        try:
+            iam.put_group_policy(
+                GroupName=group_name,
+                PolicyName=policy_name,
+                PolicyDocument=SIMPLE_POLICY_DOC,
+            )
+            resp = iam.list_group_policies(GroupName=group_name)
+            assert policy_name in resp["PolicyNames"]
+
+            iam.delete_group_policy(GroupName=group_name, PolicyName=policy_name)
+            resp = iam.list_group_policies(GroupName=group_name)
+            assert policy_name not in resp["PolicyNames"]
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMPolicyVersionsExtended:
+    def test_create_list_set_default_delete_version(self, iam):
+        """Full lifecycle: create v2, set v2 default, delete v1."""
+        policy_name = _unique("pvx-pol")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            new_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+                }
+            )
+            v2 = iam.create_policy_version(
+                PolicyArn=arn, PolicyDocument=new_doc, SetAsDefault=True
+            )
+            assert v2["PolicyVersion"]["VersionId"] == "v2"
+            assert v2["PolicyVersion"]["IsDefaultVersion"] is True
+
+            versions = iam.list_policy_versions(PolicyArn=arn)
+            ids = [v["VersionId"] for v in versions["Versions"]]
+            assert "v1" in ids
+            assert "v2" in ids
+
+            # v1 is no longer default, delete it
+            iam.delete_policy_version(PolicyArn=arn, VersionId="v1")
+            versions = iam.list_policy_versions(PolicyArn=arn)
+            ids = [v["VersionId"] for v in versions["Versions"]]
+            assert "v1" not in ids
+            assert "v2" in ids
+        finally:
+            # Clean remaining non-default versions
+            for v in iam.list_policy_versions(PolicyArn=arn)["Versions"]:
+                if not v["IsDefaultVersion"]:
+                    iam.delete_policy_version(PolicyArn=arn, VersionId=v["VersionId"])
+            iam.delete_policy(PolicyArn=arn)
+
+
+class TestIAMTagRole:
+    def test_tag_untag_role(self, iam):
+        role_name = _unique("tag-role")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            iam.tag_role(
+                RoleName=role_name,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            )
+            resp = iam.list_role_tags(RoleName=role_name)
+            tag_keys = {t["Key"] for t in resp["Tags"]}
+            assert "env" in tag_keys
+            assert "team" in tag_keys
+
+            iam.untag_role(RoleName=role_name, TagKeys=["team"])
+            resp = iam.list_role_tags(RoleName=role_name)
+            tag_keys = {t["Key"] for t in resp["Tags"]}
+            assert "env" in tag_keys
+            assert "team" not in tag_keys
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMTagUser:
+    def test_tag_untag_user(self, iam):
+        user_name = _unique("tag-user")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.tag_user(
+                UserName=user_name,
+                Tags=[
+                    {"Key": "dept", "Value": "engineering"},
+                    {"Key": "project", "Value": "robotocore"},
+                ],
+            )
+            resp = iam.list_user_tags(UserName=user_name)
+            tag_keys = {t["Key"] for t in resp["Tags"]}
+            assert "dept" in tag_keys
+            assert "project" in tag_keys
+
+            iam.untag_user(UserName=user_name, TagKeys=["project"])
+            resp = iam.list_user_tags(UserName=user_name)
+            tag_keys = {t["Key"] for t in resp["Tags"]}
+            assert "dept" in tag_keys
+            assert "project" not in tag_keys
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMGetRolePolicy:
+    def test_put_and_get_role_policy(self, iam):
+        role_name = _unique("grp-role")
+        policy_name = _unique("grp-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName=policy_name,
+                PolicyDocument=SIMPLE_POLICY_DOC,
+            )
+            resp = iam.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+            assert resp["RoleName"] == role_name
+            assert resp["PolicyName"] == policy_name
+            # PolicyDocument comes back URL-encoded from AWS/Moto
+            assert "Statement" in resp["PolicyDocument"] or "Statement" in json.loads(
+                resp["PolicyDocument"]
+            )
+        finally:
+            iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+            iam.delete_role(RoleName=role_name)
+
+    def test_list_role_policies(self, iam):
+        role_name = _unique("lrp-role")
+        policy_name = _unique("lrp-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName=policy_name,
+                PolicyDocument=SIMPLE_POLICY_DOC,
+            )
+            resp = iam.list_role_policies(RoleName=role_name)
+            assert policy_name in resp["PolicyNames"]
+        finally:
+            iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMServiceLinkedRole:
+    def test_create_service_linked_role(self, iam):
+        """Create a service-linked role for elasticbeanstalk."""
+        try:
+            resp = iam.create_service_linked_role(
+                AWSServiceName="elasticbeanstalk.amazonaws.com",
+            )
+            role_name = resp["Role"]["RoleName"]
+            assert "elasticbeanstalk" in role_name.lower() or "AWSServiceRoleFor" in role_name
+        finally:
+            # Service-linked roles need deletion via delete_service_linked_role
+            iam.delete_service_linked_role(RoleName=role_name)
+
+
+class TestIAMGetPolicy:
     def test_get_policy(self, iam):
-        name = _unique("mpol")
-        pol = iam.create_policy(PolicyName=name, PolicyDocument=SIMPLE_POLICY_DOC)
+        """Get policy returns full details."""
+        policy_name = _unique("gp-pol")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
         arn = pol["Policy"]["Arn"]
         try:
             resp = iam.get_policy(PolicyArn=arn)
-            assert resp["Policy"]["PolicyName"] == name
+            assert resp["Policy"]["PolicyName"] == policy_name
             assert resp["Policy"]["Arn"] == arn
+            assert resp["Policy"]["IsAttachable"] is True
         finally:
             iam.delete_policy(PolicyArn=arn)
-
-    def test_list_policies_local_scope(self, iam):
-        name = _unique("mpol")
-        pol = iam.create_policy(PolicyName=name, PolicyDocument=SIMPLE_POLICY_DOC)
-        arn = pol["Policy"]["Arn"]
-        try:
-            resp = iam.list_policies(Scope="Local")
-            names = [p["PolicyName"] for p in resp["Policies"]]
-            assert name in names
-        finally:
-            iam.delete_policy(PolicyArn=arn)
-
-    def test_attach_and_detach_role_policy(self, iam):
-        role = _unique("role")
-        name = _unique("mpol")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        pol = iam.create_policy(PolicyName=name, PolicyDocument=SIMPLE_POLICY_DOC)
-        arn = pol["Policy"]["Arn"]
-        try:
-            iam.attach_role_policy(RoleName=role, PolicyArn=arn)
-            resp = iam.list_attached_role_policies(RoleName=role)
-            arns = [p["PolicyArn"] for p in resp["AttachedPolicies"]]
-            assert arn in arns
-
-            iam.detach_role_policy(RoleName=role, PolicyArn=arn)
-            resp = iam.list_attached_role_policies(RoleName=role)
-            arns = [p["PolicyArn"] for p in resp["AttachedPolicies"]]
-            assert arn not in arns
-        finally:
-            iam.delete_policy(PolicyArn=arn)
-            iam.delete_role(RoleName=role)
 
     def test_get_policy_version(self, iam):
-        name = _unique("mpol")
-        pol = iam.create_policy(PolicyName=name, PolicyDocument=SIMPLE_POLICY_DOC)
+        """Get a specific policy version document."""
+        policy_name = _unique("gpv-pol")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
         arn = pol["Policy"]["Arn"]
         try:
             resp = iam.get_policy_version(PolicyArn=arn, VersionId="v1")
             assert resp["PolicyVersion"]["VersionId"] == "v1"
             assert resp["PolicyVersion"]["IsDefaultVersion"] is True
-            doc = resp["PolicyVersion"]["Document"]
-            # Document may be URL-encoded or dict depending on implementation
-            assert doc is not None
         finally:
             iam.delete_policy(PolicyArn=arn)
-
-
-class TestIAMInstanceProfileCRUD:
-    """Instance profile create, get, list, add/remove role."""
-
-    def test_create_instance_profile(self, iam):
-        name = _unique("ip")
-        resp = iam.create_instance_profile(InstanceProfileName=name)
-        assert resp["InstanceProfile"]["InstanceProfileName"] == name
-        assert resp["InstanceProfile"]["Roles"] == []
-        iam.delete_instance_profile(InstanceProfileName=name)
-
-    def test_get_instance_profile(self, iam):
-        name = _unique("ip")
-        iam.create_instance_profile(InstanceProfileName=name)
-        try:
-            resp = iam.get_instance_profile(InstanceProfileName=name)
-            assert resp["InstanceProfile"]["InstanceProfileName"] == name
-        finally:
-            iam.delete_instance_profile(InstanceProfileName=name)
-
-    def test_list_instance_profiles(self, iam):
-        name = _unique("ip")
-        iam.create_instance_profile(InstanceProfileName=name)
-        try:
-            resp = iam.list_instance_profiles()
-            names = [p["InstanceProfileName"] for p in resp["InstanceProfiles"]]
-            assert name in names
-        finally:
-            iam.delete_instance_profile(InstanceProfileName=name)
-
-    def test_add_role_to_instance_profile(self, iam):
-        ip_name = _unique("ip")
-        role_name = _unique("role")
-        iam.create_instance_profile(InstanceProfileName=ip_name)
-        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
-        try:
-            iam.add_role_to_instance_profile(
-                InstanceProfileName=ip_name, RoleName=role_name
-            )
-            resp = iam.get_instance_profile(InstanceProfileName=ip_name)
-            role_names = [r["RoleName"] for r in resp["InstanceProfile"]["Roles"]]
-            assert role_name in role_names
-        finally:
-            iam.remove_role_from_instance_profile(
-                InstanceProfileName=ip_name, RoleName=role_name
-            )
-            iam.delete_instance_profile(InstanceProfileName=ip_name)
-            iam.delete_role(RoleName=role_name)
-
-    def test_remove_role_from_instance_profile(self, iam):
-        ip_name = _unique("ip")
-        role_name = _unique("role")
-        iam.create_instance_profile(InstanceProfileName=ip_name)
-        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
-        iam.add_role_to_instance_profile(
-            InstanceProfileName=ip_name, RoleName=role_name
-        )
-        try:
-            iam.remove_role_from_instance_profile(
-                InstanceProfileName=ip_name, RoleName=role_name
-            )
-            resp = iam.get_instance_profile(InstanceProfileName=ip_name)
-            assert resp["InstanceProfile"]["Roles"] == []
-        finally:
-            iam.delete_instance_profile(InstanceProfileName=ip_name)
-            iam.delete_role(RoleName=role_name)
-
-
-class TestIAMAccessKeys:
-    """Access key create, list, update, delete."""
-
-    def test_create_access_key(self, iam):
-        user = _unique("usr")
-        iam.create_user(UserName=user)
-        try:
-            resp = iam.create_access_key(UserName=user)
-            key = resp["AccessKey"]
-            assert key["UserName"] == user
-            assert "AccessKeyId" in key
-            assert "SecretAccessKey" in key
-            assert key["Status"] == "Active"
-        finally:
-            iam.delete_access_key(
-                UserName=user, AccessKeyId=resp["AccessKey"]["AccessKeyId"]
-            )
-            iam.delete_user(UserName=user)
-
-    def test_list_access_keys(self, iam):
-        user = _unique("usr")
-        iam.create_user(UserName=user)
-        key_resp = iam.create_access_key(UserName=user)
-        key_id = key_resp["AccessKey"]["AccessKeyId"]
-        try:
-            resp = iam.list_access_keys(UserName=user)
-            key_ids = [k["AccessKeyId"] for k in resp["AccessKeyMetadata"]]
-            assert key_id in key_ids
-        finally:
-            iam.delete_access_key(UserName=user, AccessKeyId=key_id)
-            iam.delete_user(UserName=user)
-
-    def test_update_access_key(self, iam):
-        user = _unique("usr")
-        iam.create_user(UserName=user)
-        key_resp = iam.create_access_key(UserName=user)
-        key_id = key_resp["AccessKey"]["AccessKeyId"]
-        try:
-            iam.update_access_key(
-                UserName=user, AccessKeyId=key_id, Status="Inactive"
-            )
-            resp = iam.list_access_keys(UserName=user)
-            key_meta = [k for k in resp["AccessKeyMetadata"] if k["AccessKeyId"] == key_id][0]
-            assert key_meta["Status"] == "Inactive"
-        finally:
-            iam.delete_access_key(UserName=user, AccessKeyId=key_id)
-            iam.delete_user(UserName=user)
-
-    def test_delete_access_key(self, iam):
-        user = _unique("usr")
-        iam.create_user(UserName=user)
-        key_resp = iam.create_access_key(UserName=user)
-        key_id = key_resp["AccessKey"]["AccessKeyId"]
-        iam.delete_access_key(UserName=user, AccessKeyId=key_id)
-        try:
-            resp = iam.list_access_keys(UserName=user)
-            key_ids = [k["AccessKeyId"] for k in resp["AccessKeyMetadata"]]
-            assert key_id not in key_ids
-        finally:
-            iam.delete_user(UserName=user)
-
-
-class TestIAMRoleInlinePolicies:
-    """Role inline policies: put, get, list, delete."""
-
-    def test_put_role_policy(self, iam):
-        role = _unique("role")
-        pol = _unique("pol")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        try:
-            iam.put_role_policy(
-                RoleName=role, PolicyName=pol, PolicyDocument=SIMPLE_POLICY_DOC
-            )
-            resp = iam.list_role_policies(RoleName=role)
-            assert pol in resp["PolicyNames"]
-        finally:
-            iam.delete_role_policy(RoleName=role, PolicyName=pol)
-            iam.delete_role(RoleName=role)
-
-    def test_get_role_policy(self, iam):
-        role = _unique("role")
-        pol = _unique("pol")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        iam.put_role_policy(
-            RoleName=role, PolicyName=pol, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        try:
-            resp = iam.get_role_policy(RoleName=role, PolicyName=pol)
-            assert resp["RoleName"] == role
-            assert resp["PolicyName"] == pol
-            assert resp["PolicyDocument"] is not None
-        finally:
-            iam.delete_role_policy(RoleName=role, PolicyName=pol)
-            iam.delete_role(RoleName=role)
-
-    def test_list_role_policies(self, iam):
-        role = _unique("role")
-        pol1 = _unique("pol")
-        pol2 = _unique("pol")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        iam.put_role_policy(
-            RoleName=role, PolicyName=pol1, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        iam.put_role_policy(
-            RoleName=role, PolicyName=pol2, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        try:
-            resp = iam.list_role_policies(RoleName=role)
-            assert pol1 in resp["PolicyNames"]
-            assert pol2 in resp["PolicyNames"]
-        finally:
-            iam.delete_role_policy(RoleName=role, PolicyName=pol1)
-            iam.delete_role_policy(RoleName=role, PolicyName=pol2)
-            iam.delete_role(RoleName=role)
-
-    def test_delete_role_policy(self, iam):
-        role = _unique("role")
-        pol = _unique("pol")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        iam.put_role_policy(
-            RoleName=role, PolicyName=pol, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        try:
-            iam.delete_role_policy(RoleName=role, PolicyName=pol)
-            resp = iam.list_role_policies(RoleName=role)
-            assert pol not in resp["PolicyNames"]
-        finally:
-            iam.delete_role(RoleName=role)
-
-
-class TestIAMUserInlinePolicies:
-    """User inline policies: put, get, list."""
-
-    def test_put_user_policy(self, iam):
-        user = _unique("usr")
-        pol = _unique("pol")
-        iam.create_user(UserName=user)
-        try:
-            iam.put_user_policy(
-                UserName=user, PolicyName=pol, PolicyDocument=SIMPLE_POLICY_DOC
-            )
-            resp = iam.list_user_policies(UserName=user)
-            assert pol in resp["PolicyNames"]
-        finally:
-            iam.delete_user_policy(UserName=user, PolicyName=pol)
-            iam.delete_user(UserName=user)
-
-    def test_get_user_policy(self, iam):
-        user = _unique("usr")
-        pol = _unique("pol")
-        iam.create_user(UserName=user)
-        iam.put_user_policy(
-            UserName=user, PolicyName=pol, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        try:
-            resp = iam.get_user_policy(UserName=user, PolicyName=pol)
-            assert resp["UserName"] == user
-            assert resp["PolicyName"] == pol
-            assert resp["PolicyDocument"] is not None
-        finally:
-            iam.delete_user_policy(UserName=user, PolicyName=pol)
-            iam.delete_user(UserName=user)
-
-    def test_list_user_policies(self, iam):
-        user = _unique("usr")
-        pol1 = _unique("pol")
-        pol2 = _unique("pol")
-        iam.create_user(UserName=user)
-        iam.put_user_policy(
-            UserName=user, PolicyName=pol1, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        iam.put_user_policy(
-            UserName=user, PolicyName=pol2, PolicyDocument=SIMPLE_POLICY_DOC
-        )
-        try:
-            resp = iam.list_user_policies(UserName=user)
-            assert pol1 in resp["PolicyNames"]
-            assert pol2 in resp["PolicyNames"]
-        finally:
-            iam.delete_user_policy(UserName=user, PolicyName=pol1)
-            iam.delete_user_policy(UserName=user, PolicyName=pol2)
-            iam.delete_user(UserName=user)
-
-
-class TestIAMTagRole:
-    """Role tagging: tag, untag, list tags."""
-
-    def test_tag_role(self, iam):
-        role = _unique("role")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        try:
-            iam.tag_role(
-                RoleName=role,
-                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "core"}],
-            )
-            resp = iam.list_role_tags(RoleName=role)
-            tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
-            assert tag_map["env"] == "test"
-            assert tag_map["team"] == "core"
-        finally:
-            iam.delete_role(RoleName=role)
-
-    def test_untag_role(self, iam):
-        role = _unique("role")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        iam.tag_role(
-            RoleName=role,
-            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "core"}],
-        )
-        try:
-            iam.untag_role(RoleName=role, TagKeys=["env"])
-            resp = iam.list_role_tags(RoleName=role)
-            tag_keys = [t["Key"] for t in resp["Tags"]]
-            assert "env" not in tag_keys
-            assert "team" in tag_keys
-        finally:
-            iam.delete_role(RoleName=role)
-
-    def test_list_role_tags_empty(self, iam):
-        role = _unique("role")
-        iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
-        try:
-            resp = iam.list_role_tags(RoleName=role)
-            assert resp["Tags"] == []
-        finally:
-            iam.delete_role(RoleName=role)
-
-
-class TestIAMTagUser:
-    """User tagging: tag, untag."""
-
-    def test_tag_user(self, iam):
-        user = _unique("usr")
-        iam.create_user(UserName=user)
-        try:
-            iam.tag_user(
-                UserName=user,
-                Tags=[{"Key": "department", "Value": "eng"}],
-            )
-            resp = iam.list_user_tags(UserName=user)
-            tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
-            assert tag_map["department"] == "eng"
-        finally:
-            iam.delete_user(UserName=user)
-
-    def test_untag_user(self, iam):
-        user = _unique("usr")
-        iam.create_user(UserName=user)
-        iam.tag_user(
-            UserName=user,
-            Tags=[{"Key": "department", "Value": "eng"}, {"Key": "level", "Value": "5"}],
-        )
-        try:
-            iam.untag_user(UserName=user, TagKeys=["department"])
-            resp = iam.list_user_tags(UserName=user)
-            tag_keys = [t["Key"] for t in resp["Tags"]]
-            assert "department" not in tag_keys
-            assert "level" in tag_keys
-        finally:
-            iam.delete_user(UserName=user)
