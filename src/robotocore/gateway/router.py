@@ -77,7 +77,9 @@ TARGET_PREFIX_MAP: dict[str, str] = {
     "SWBExternalService": "ssoadmin",
     "ServiceQuotasV20190624": "servicequotas",
     "Textract": "textract",
-    "Timestream_20181101": "timestreamquery",
+    # Note: Timestream query and write share the same target prefix.
+    # We route to timestreamwrite by default; query ops are handled below.
+    "Timestream_20181101": "timestreamwrite",
     "TransferService": "transfer",
     "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101": "cloudtrail",
 }
@@ -96,6 +98,11 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/2013-04-01/"), "route53"),
     (re.compile(r"^/2014-11-13/"), "logs"),
     (re.compile(r"^/tags$"), "resourcegroupstaggingapi"),
+    (re.compile(r"^/prod/channels"), "medialive"),
+    (re.compile(r"^/prod/inputs"), "medialive"),
+    (re.compile(r"^/prod/input-security-groups"), "medialive"),
+    (re.compile(r"^/prod/offerings"), "medialive"),
+    (re.compile(r"^/prod/reservations"), "medialive"),
     (re.compile(r"^/prod/"), "kafka"),
     (re.compile(r"^/v1/apis"), "appsync"),
     (re.compile(r"^/v1/create"), "batch"),
@@ -147,6 +154,15 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
 }
 
 
+# Timestream Query operations (vs Write ops which are the default)
+_TIMESTREAM_QUERY_OPS = frozenset({
+    "CancelQuery", "CreateScheduledQuery", "DeleteScheduledQuery",
+    "DescribeAccountSettings", "DescribeScheduledQuery", "ExecuteScheduledQuery",
+    "ListScheduledQueries", "PrepareQuery", "Query", "UpdateAccountSettings",
+    "UpdateScheduledQuery",
+})
+
+
 def route_to_service(request: Request) -> str | None:
     """Determine the target AWS service from request attributes."""
 
@@ -155,8 +171,14 @@ def route_to_service(request: Request) -> str | None:
     if target:
         # Target format is "ServiceName.Operation" or "ServiceName_Version.Operation"
         prefix = target.split(".")[0]
+        operation = target.split(".")[-1] if "." in target else ""
         # Strip version suffix (e.g., "DynamoDB_20120810" -> "DynamoDB")
         base_prefix = prefix.split("_")[0]
+
+        # Timestream query and write share the same target prefix — disambiguate by op
+        if prefix == "Timestream_20181101" and operation in _TIMESTREAM_QUERY_OPS:
+            return "timestreamquery"
+
         if prefix in TARGET_PREFIX_MAP:
             return TARGET_PREFIX_MAP[prefix]
         if base_prefix in TARGET_PREFIX_MAP:

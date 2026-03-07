@@ -50,6 +50,16 @@ def _get_moto_routing_table(service: str) -> Map:
     url_map.converters["regex"] = _RegexConverter
 
     for url_path, handler in backend.flask_paths.items():
+        # Moto uses regex catch-all patterns like '/.*' or '/.+' that aren't valid
+        # Werkzeug Rules.  Convert them to a Werkzeug <path:> converter.
+        if url_path in ("", "/"):
+            url_map.add(Rule("/", endpoint=handler, strict_slashes=False))
+            continue
+        if url_path in ("/.*", "/.+"):
+            url_map.add(Rule("/<path:__catch_all>", endpoint=handler, strict_slashes=False))
+            # Also add a rule for the root path itself
+            url_map.add(Rule("/", endpoint=handler, strict_slashes=False))
+            continue
         url_map.add(Rule(url_path, endpoint=handler, strict_slashes=False))
 
     return url_map
