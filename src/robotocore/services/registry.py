@@ -372,7 +372,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "redshiftdata", ServiceStatus.MOTO_BACKED, "json", "Redshift Data API"
     ),
     "rekognition": ServiceInfo(
-        "rekognition", ServiceStatus.MOTO_BACKED, "json", "Rekognition"
+        "rekognition", ServiceStatus.NATIVE, "json", "Rekognition"
     ),
     "resiliencehub": ServiceInfo(
         "resiliencehub", ServiceStatus.MOTO_BACKED, "rest-json", "Resilience Hub"
@@ -454,7 +454,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "workspacesweb", ServiceStatus.MOTO_BACKED, "rest-json", "WorkSpaces Web"
     ),
     "xray": ServiceInfo(
-        "xray", ServiceStatus.MOTO_BACKED, "rest-json", "X-Ray Distributed Tracing"
+        "xray", ServiceStatus.NATIVE, "rest-json", "X-Ray Distributed Tracing"
     ),
 
 }
