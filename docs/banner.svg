@@ -1,110 +1,161 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600" height="200">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 220" width="640" height="220">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f172a"/>
-      <stop offset="100%" style="stop-color:#1e293b"/>
+      <stop offset="0%" style="stop-color:#080f1f"/>
+      <stop offset="100%" style="stop-color:#0f1e3a"/>
     </linearGradient>
     <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" style="stop-color:#06b6d4"/>
-      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="50%" style="stop-color:#818cf8"/>
       <stop offset="100%" style="stop-color:#06b6d4"/>
     </linearGradient>
+    <linearGradient id="twin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:0.3"/>
+      <stop offset="100%" style="stop-color:#818cf8;stop-opacity:0.1"/>
+    </linearGradient>
+    <filter id="glow-filter">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
   </defs>
-  <rect width="600" height="200" rx="16" fill="url(#bg)"/>
-  <!-- Animated circuit lines -->
-  <g opacity="0.15">
-    <line x1="0" y1="50" x2="600" y2="50" stroke="#06b6d4" stroke-width="0.5">
-      <animate attributeName="opacity" values="0.1;0.4;0.1" dur="3s" repeatCount="indefinite"/>
-    </line>
-    <line x1="0" y1="100" x2="600" y2="100" stroke="#8b5cf6" stroke-width="0.5">
-      <animate attributeName="opacity" values="0.1;0.4;0.1" dur="4s" repeatCount="indefinite"/>
-    </line>
-    <line x1="0" y1="150" x2="600" y2="150" stroke="#06b6d4" stroke-width="0.5">
-      <animate attributeName="opacity" values="0.1;0.4;0.1" dur="3.5s" repeatCount="indefinite"/>
-    </line>
-    <line x1="150" y1="0" x2="150" y2="200" stroke="#8b5cf6" stroke-width="0.5">
-      <animate attributeName="opacity" values="0.1;0.3;0.1" dur="2.5s" repeatCount="indefinite"/>
-    </line>
-    <line x1="300" y1="0" x2="300" y2="200" stroke="#06b6d4" stroke-width="0.5">
-      <animate attributeName="opacity" values="0.1;0.3;0.1" dur="3.2s" repeatCount="indefinite"/>
-    </line>
-    <line x1="450" y1="0" x2="450" y2="200" stroke="#8b5cf6" stroke-width="0.5">
-      <animate attributeName="opacity" values="0.1;0.3;0.1" dur="2.8s" repeatCount="indefinite"/>
-    </line>
+
+  <!-- Background -->
+  <rect width="640" height="220" rx="18" fill="url(#bg)"/>
+
+  <!-- Subtle grid -->
+  <g opacity="0.06" stroke="#818cf8" stroke-width="0.5">
+    <line x1="0" y1="44" x2="640" y2="44"/>
+    <line x1="0" y1="88" x2="640" y2="88"/>
+    <line x1="0" y1="132" x2="640" y2="132"/>
+    <line x1="0" y1="176" x2="640" y2="176"/>
+    <line x1="80" y1="0" x2="80" y2="220"/>
+    <line x1="160" y1="0" x2="160" y2="220"/>
+    <line x1="320" y1="0" x2="320" y2="220"/>
+    <line x1="480" y1="0" x2="480" y2="220"/>
+    <line x1="560" y1="0" x2="560" y2="220"/>
   </g>
-  <!-- Animated dots at intersections -->
-  <g>
-    <circle cx="150" cy="50" r="3" fill="#06b6d4">
-      <animate attributeName="r" values="2;4;2" dur="2s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+
+  <!-- Pulsing data lines -->
+  <line x1="0" y1="88" x2="640" y2="88" stroke="#06b6d4" stroke-width="0.8" opacity="0">
+    <animate attributeName="opacity" values="0;0.35;0" dur="4s" begin="0s" repeatCount="indefinite"/>
+  </line>
+  <line x1="0" y1="132" x2="640" y2="132" stroke="#818cf8" stroke-width="0.8" opacity="0">
+    <animate attributeName="opacity" values="0;0.35;0" dur="5s" begin="1.5s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- ═══════════════════════════════════════════
+       ROBOT — left side, cuter design
+  ═══════════════════════════════════════════ -->
+  <g transform="translate(44, 38)">
+    <!-- Antenna glow -->
+    <circle cx="36" cy="0" r="8" fill="#06b6d4" opacity="0.12">
+      <animate attributeName="r" values="6;12;6" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.08;0.22;0.08" dur="2s" repeatCount="indefinite"/>
     </circle>
-    <circle cx="300" cy="100" r="3" fill="#8b5cf6">
-      <animate attributeName="r" values="2;4;2" dur="2.5s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.5;1;0.5" dur="2.5s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="450" cy="150" r="3" fill="#06b6d4">
-      <animate attributeName="r" values="2;4;2" dur="1.8s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.5;1;0.5" dur="1.8s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="450" cy="50" r="3" fill="#8b5cf6">
-      <animate attributeName="r" values="2;4;2" dur="3s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="150" cy="150" r="3" fill="#06b6d4">
-      <animate attributeName="r" values="2;4;2" dur="2.2s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.5;1;0.5" dur="2.2s" repeatCount="indefinite"/>
-    </circle>
-  </g>
-  <!-- Robot icon -->
-  <g transform="translate(80, 60)">
-    <!-- Head -->
-    <rect x="0" y="10" width="40" height="32" rx="6" fill="none" stroke="#06b6d4" stroke-width="2">
-      <animate attributeName="stroke" values="#06b6d4;#8b5cf6;#06b6d4" dur="4s" repeatCount="indefinite"/>
-    </rect>
     <!-- Antenna -->
-    <line x1="20" y1="10" x2="20" y2="0" stroke="#06b6d4" stroke-width="2"/>
-    <circle cx="20" cy="0" r="3" fill="#06b6d4">
-      <animate attributeName="fill" values="#06b6d4;#f59e0b;#06b6d4" dur="1.5s" repeatCount="indefinite"/>
+    <line x1="36" y1="14" x2="36" y2="2" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+    <!-- Antenna tip — blinks amber/cyan -->
+    <circle cx="36" cy="0" r="4" fill="#f59e0b">
+      <animate attributeName="fill" values="#f59e0b;#22d3ee;#f59e0b" dur="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;4.5;3" dur="1.6s" repeatCount="indefinite"/>
     </circle>
-    <!-- Eyes -->
-    <circle cx="13" cy="26" r="4" fill="#06b6d4">
-      <animate attributeName="fill" values="#06b6d4;#22d3ee;#06b6d4" dur="3s" repeatCount="indefinite"/>
+
+    <!-- Head -->
+    <rect x="8" y="14" width="56" height="44" rx="10" fill="#0f2744" stroke="#06b6d4" stroke-width="2">
+      <animate attributeName="stroke" values="#06b6d4;#818cf8;#06b6d4" dur="5s" repeatCount="indefinite"/>
+    </rect>
+    <!-- Ear nubs -->
+    <rect x="2" y="26" width="7" height="12" rx="3" fill="#1e3a5f"/>
+    <rect x="63" y="26" width="7" height="12" rx="3" fill="#1e3a5f"/>
+
+    <!-- Eyes — big expressive circles -->
+    <circle cx="26" cy="36" r="10" fill="#0a1f3d"/>
+    <circle cx="46" cy="36" r="10" fill="#0a1f3d"/>
+    <!-- Eye shine (pupil) -->
+    <circle cx="26" cy="36" r="6" fill="#06b6d4">
+      <animate attributeName="fill" values="#06b6d4;#22d3ee;#818cf8;#06b6d4" dur="4s" repeatCount="indefinite"/>
     </circle>
-    <circle cx="27" cy="26" r="4" fill="#06b6d4">
-      <animate attributeName="fill" values="#06b6d4;#22d3ee;#06b6d4" dur="3s" repeatCount="indefinite"/>
+    <circle cx="46" cy="36" r="6" fill="#06b6d4">
+      <animate attributeName="fill" values="#06b6d4;#22d3ee;#818cf8;#06b6d4" dur="4s" begin="0.5s" repeatCount="indefinite"/>
     </circle>
-    <!-- Mouth -->
-    <rect x="10" y="34" width="20" height="2" rx="1" fill="#06b6d4" opacity="0.7"/>
+    <!-- Specular dots in eyes -->
+    <circle cx="29" cy="33" r="2" fill="white" opacity="0.6"/>
+    <circle cx="49" cy="33" r="2" fill="white" opacity="0.6"/>
+
+    <!-- Smile — arc path -->
+    <path d="M 22 50 Q 36 58 50 50" stroke="#06b6d4" stroke-width="2.5" fill="none" stroke-linecap="round">
+      <animate attributeName="stroke" values="#06b6d4;#22d3ee;#06b6d4" dur="3s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Cheek blush dots -->
+    <circle cx="18" cy="48" r="5" fill="#f472b6" opacity="0.25"/>
+    <circle cx="54" cy="48" r="5" fill="#f472b6" opacity="0.25"/>
+
+    <!-- Neck -->
+    <rect x="28" y="58" width="16" height="8" rx="3" fill="#1e3a5f"/>
+
     <!-- Body -->
-    <rect x="5" y="46" width="30" height="24" rx="4" fill="none" stroke="#06b6d4" stroke-width="1.5" opacity="0.6"/>
-    <!-- Arms -->
-    <line x1="0" y1="50" x2="-8" y2="60" stroke="#06b6d4" stroke-width="1.5" opacity="0.6"/>
-    <line x1="40" y1="50" x2="48" y2="60" stroke="#06b6d4" stroke-width="1.5" opacity="0.6"/>
+    <rect x="4" y="66" width="64" height="48" rx="10" fill="#0f2744" stroke="#06b6d4" stroke-width="1.5" opacity="0.9">
+      <animate attributeName="stroke" values="#06b6d4;#818cf8;#06b6d4" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <!-- Body panel indicator -->
+    <rect x="20" y="78" width="32" height="18" rx="4" fill="#06b6d4" opacity="0.12"/>
+    <rect x="20" y="78" width="32" height="18" rx="4" fill="none" stroke="#06b6d4" stroke-width="1" opacity="0.4"/>
+    <circle cx="36" cy="87" r="5" fill="#06b6d4" opacity="0.6">
+      <animate attributeName="opacity" values="0.4;0.9;0.4" dur="1.2s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Arms with rounded hands -->
+    <rect x="-14" y="70" width="18" height="10" rx="5" fill="#1e3a5f" stroke="#06b6d4" stroke-width="1" opacity="0.8"/>
+    <rect x="68" y="70" width="18" height="10" rx="5" fill="#1e3a5f" stroke="#06b6d4" stroke-width="1" opacity="0.8"/>
   </g>
-  <!-- Title -->
-  <text x="170" y="90" font-family="monospace, Consolas, 'Courier New'" font-size="42" font-weight="bold" fill="white" letter-spacing="-1">
-    robotocore
-  </text>
-  <!-- Animated underline -->
-  <rect x="170" y="100" width="0" height="3" rx="1.5" fill="url(#glow)">
-    <animate attributeName="width" values="0;280;280" dur="1.5s" fill="freeze"/>
+
+  <!-- ═══════════════════════════════════════════
+       TEXT — right of robot
+  ═══════════════════════════════════════════ -->
+
+  <!-- robotocore wordmark -->
+  <text x="188" y="100" font-family="monospace, Consolas, 'Courier New'" font-size="46" font-weight="bold" fill="white" letter-spacing="-1.5">robotocore</text>
+
+  <!-- Animated underline sweep -->
+  <rect x="188" y="112" width="0" height="3" rx="1.5" fill="url(#glow)">
+    <animate attributeName="width" values="0;318;318" dur="1.2s" fill="freeze" begin="0.3s"/>
   </rect>
-  <!-- Subtitle -->
-  <text x="170" y="128" font-family="monospace, Consolas, 'Courier New'" font-size="14" fill="#94a3b8">
-    free &amp; open-source AWS emulator
+
+  <!-- Tagline -->
+  <text x="190" y="140" font-family="monospace, Consolas, 'Courier New'" font-size="15" fill="#94a3b8" letter-spacing="0.3">
+    a digital twin of AWS
   </text>
-  <!-- Stats badges -->
-  <g transform="translate(170, 145)">
-    <rect x="0" y="0" width="90" height="22" rx="4" fill="#06b6d4" opacity="0.2"/>
-    <text x="45" y="15" font-family="monospace" font-size="11" fill="#06b6d4" text-anchor="middle">35 services</text>
-    <rect x="100" y="0" width="80" height="22" rx="4" fill="#8b5cf6" opacity="0.2"/>
-    <text x="140" y="15" font-family="monospace" font-size="11" fill="#8b5cf6" text-anchor="middle">342 tests</text>
-    <rect x="190" y="0" width="60" height="22" rx="4" fill="#10b981" opacity="0.2"/>
-    <text x="220" y="15" font-family="monospace" font-size="11" fill="#10b981" text-anchor="middle">MIT</text>
+
+  <!-- Badges row -->
+  <g transform="translate(190, 158)">
+    <!-- Services badge -->
+    <rect x="0" y="0" width="104" height="24" rx="5" fill="#06b6d4" opacity="0.15"/>
+    <rect x="0" y="0" width="104" height="24" rx="5" fill="none" stroke="#06b6d4" stroke-width="0.8" opacity="0.4"/>
+    <text x="52" y="16.5" font-family="monospace" font-size="11" fill="#22d3ee" text-anchor="middle" font-weight="bold">42 services</text>
+
+    <!-- Tests badge -->
+    <rect x="112" y="0" width="110" height="24" rx="5" fill="#818cf8" opacity="0.15"/>
+    <rect x="112" y="0" width="110" height="24" rx="5" fill="none" stroke="#818cf8" stroke-width="0.8" opacity="0.4"/>
+    <text x="167" y="16.5" font-family="monospace" font-size="11" fill="#a5b4fc" text-anchor="middle" font-weight="bold">3600+ tests</text>
+
+    <!-- MIT badge -->
+    <rect x="230" y="0" width="66" height="24" rx="5" fill="#10b981" opacity="0.15"/>
+    <rect x="230" y="0" width="66" height="24" rx="5" fill="none" stroke="#10b981" stroke-width="0.8" opacity="0.4"/>
+    <text x="263" y="16.5" font-family="monospace" font-size="11" fill="#34d399" text-anchor="middle" font-weight="bold">MIT free</text>
   </g>
-  <!-- Animated pulse ring around robot -->
-  <circle cx="100" cy="90" r="50" fill="none" stroke="#06b6d4" stroke-width="0.5" opacity="0">
-    <animate attributeName="r" values="40;65;40" dur="3s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0;0.3;0" dur="3s" repeatCount="indefinite"/>
+
+  <!-- Decorative twin-pulse ring around robot -->
+  <circle cx="80" cy="108" r="58" fill="none" stroke="#06b6d4" stroke-width="0.8" opacity="0">
+    <animate attributeName="r" values="50;72;50" dur="3.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0.25;0" dur="3.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Corner accent dots -->
+  <circle cx="620" cy="20" r="3" fill="#818cf8" opacity="0.4">
+    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="610" cy="20" r="2" fill="#06b6d4" opacity="0.3">
+    <animate attributeName="opacity" values="0.1;0.5;0.1" dur="3s" begin="0.8s" repeatCount="indefinite"/>
   </circle>
 </svg>

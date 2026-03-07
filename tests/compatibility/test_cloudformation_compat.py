@@ -3,6 +3,7 @@
 import json
 import os
 import time
+import uuid
 
 import boto3
 import pytest
@@ -489,3 +490,489 @@ class TestCloudFormationResourceTypes:
         assert "cfn-sub-us-east-1-queue" in q_url["QueueUrl"]
 
         cfn.delete_stack(StackName="test-sub-stack")
+
+
+class TestCloudFormationAdvanced:
+    """Additional CloudFormation tests covering parameters, intrinsics, updates, tags, etc."""
+
+    def test_stack_with_parameters_resolved(self, cfn, sqs):
+        """Pass Parameters to CreateStack, verify the parameter is resolved in the resource."""
+        uid = uuid.uuid4().hex[:8]
+        queue_name = f"cfn-param-q-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Parameters": {
+                "QName": {"Type": "String"},
+            },
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": {"Ref": "QName"}},
+                },
+            },
+        })
+        stack_name = f"test-param-resolve-{uid}"
+        cfn.create_stack(
+            StackName=stack_name,
+            TemplateBody=template,
+            Parameters=[{"ParameterKey": "QName", "ParameterValue": queue_name}],
+        )
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        q_url = sqs.get_queue_url(QueueName=queue_name)
+        assert queue_name in q_url["QueueUrl"]
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_outputs_and_getatt(self, cfn):
+        """Stack with Fn::GetAtt and Fn::Ref in Outputs."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-outputs-getatt-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "MyQueue": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-out-q-{uid}"},
+                },
+            },
+            "Outputs": {
+                "QUrl": {
+                    "Value": {"Ref": "MyQueue"},
+                    "Description": "Queue URL from Ref",
+                },
+                "QArn": {
+                    "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
+                    "Description": "Queue ARN from GetAtt",
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        stack = resp["Stacks"][0]
+        assert stack["StackStatus"] == "CREATE_COMPLETE"
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
+        assert "QUrl" in outputs
+        assert "QArn" in outputs
+        assert f"cfn-out-q-{uid}" in outputs["QArn"]
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_dynamodb_table(self, cfn, dynamodb):
+        """Stack creates a DynamoDB table, verify it exists and has correct schema."""
+        uid = uuid.uuid4().hex[:8]
+        table_name = f"cfn-ddb-{uid}"
+        stack_name = f"test-ddb-adv-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Table": {
+                    "Type": "AWS::DynamoDB::Table",
+                    "Properties": {
+                        "TableName": table_name,
+                        "AttributeDefinitions": [
+                            {"AttributeName": "id", "AttributeType": "S"},
+                        ],
+                        "KeySchema": [
+                            {"AttributeName": "id", "KeyType": "HASH"},
+                        ],
+                        "BillingMode": "PAY_PER_REQUEST",
+                    },
+                },
+            },
+            "Outputs": {
+                "TableName": {"Value": {"Ref": "Table"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        tables = dynamodb.list_tables()
+        assert table_name in tables["TableNames"]
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_sns_topic(self, cfn, sns):
+        """Stack creates an SNS topic resource."""
+        uid = uuid.uuid4().hex[:8]
+        topic_name = f"cfn-topic-{uid}"
+        stack_name = f"test-sns-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Topic": {
+                    "Type": "AWS::SNS::Topic",
+                    "Properties": {"TopicName": topic_name},
+                },
+            },
+            "Outputs": {
+                "TopicArn": {"Value": {"Ref": "Topic"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+        assert topic_name in outputs.get("TopicArn", "")
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_iam_role(self, cfn, iam):
+        """Stack creates an IAM role resource."""
+        uid = uuid.uuid4().hex[:8]
+        role_name = f"cfn-role-{uid}"
+        stack_name = f"test-iam-adv-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Role": {
+                    "Type": "AWS::IAM::Role",
+                    "Properties": {
+                        "RoleName": role_name,
+                        "AssumeRolePolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [{
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }],
+                        },
+                    },
+                },
+            },
+            "Outputs": {
+                "RoleArn": {"Value": {"Fn::GetAtt": ["Role", "Arn"]}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        role = iam.get_role(RoleName=role_name)
+        assert role["Role"]["RoleName"] == role_name
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_update_changes_resource(self, cfn, sqs):
+        """Update a stack to change a resource property, verify the update."""
+        uid = uuid.uuid4().hex[:8]
+        q1 = f"cfn-upd-q1-{uid}"
+        q2 = f"cfn-upd-q2-{uid}"
+        stack_name = f"test-update-{uid}"
+
+        template_v1 = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": q1},
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template_v1)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        # Update with new queue name
+        template_v2 = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": q2},
+                },
+            },
+        })
+        cfn.update_stack(StackName=stack_name, TemplateBody=template_v2)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "UPDATE_COMPLETE"
+
+        # New queue should exist
+        q_url = sqs.get_queue_url(QueueName=q2)
+        assert q2 in q_url["QueueUrl"]
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_multiple_resources_and_ref(self, cfn, sns, sqs):
+        """Stack with multiple resources using Fn::Ref between them."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-multi-ref-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Topic": {
+                    "Type": "AWS::SNS::Topic",
+                    "Properties": {"TopicName": f"cfn-ref-topic-{uid}"},
+                },
+                "Queue": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-ref-queue-{uid}"},
+                },
+                "Sub": {
+                    "Type": "AWS::SNS::Subscription",
+                    "DependsOn": ["Topic", "Queue"],
+                    "Properties": {
+                        "TopicArn": {"Ref": "Topic"},
+                        "Protocol": "sqs",
+                        "Endpoint": {"Fn::GetAtt": ["Queue", "Arn"]},
+                    },
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        # Verify both resources exist
+        sqs.get_queue_url(QueueName=f"cfn-ref-queue-{uid}")
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_describe_stack_resources_logical_physical(self, cfn):
+        """DescribeStackResources returns logical and physical IDs."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-res-ids-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "MyQueue": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-resid-q-{uid}"},
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        res = cfn.describe_stack_resources(StackName=stack_name)
+        resources = res["StackResources"]
+        assert len(resources) >= 1
+        r = resources[0]
+        assert r["LogicalResourceId"] == "MyQueue"
+        assert r["PhysicalResourceId"] != ""
+        assert r["ResourceType"] == "AWS::SQS::Queue"
+        assert r["ResourceStatus"] == "CREATE_COMPLETE"
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_fn_join_intrinsic(self, cfn):
+        """Stack with Fn::Join in outputs."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-join-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-join-q-{uid}"},
+                },
+            },
+            "Outputs": {
+                "Joined": {
+                    "Value": {
+                        "Fn::Join": ["-", ["prefix", {"Ref": "AWS::Region"}, "suffix"]],
+                    },
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        stack = resp["Stacks"][0]
+        assert stack["StackStatus"] == "CREATE_COMPLETE"
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
+        assert outputs["Joined"] == "prefix-us-east-1-suffix"
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_fn_sub_with_ref(self, cfn, sqs):
+        """Stack with Fn::Sub that references AWS::Region."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-sub-ref-{uid}"
+        expected_name = f"cfn-sub-ref-us-east-1-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {
+                        "QueueName": {
+                            "Fn::Sub": f"cfn-sub-ref-${{AWS::Region}}-{uid}",
+                        },
+                    },
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        q_url = sqs.get_queue_url(QueueName=expected_name)
+        assert expected_name in q_url["QueueUrl"]
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_fn_select(self, cfn):
+        """Stack with Fn::Select picking an element from a list."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-select-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-sel-q-{uid}"},
+                },
+            },
+            "Outputs": {
+                "Selected": {
+                    "Value": {"Fn::Select": ["1", ["alpha", "beta", "gamma"]]},
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        stack = resp["Stacks"][0]
+        assert stack["StackStatus"] == "CREATE_COMPLETE"
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
+        assert outputs["Selected"] == "beta"
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_tags(self, cfn):
+        """Create stack with tags, verify tags in describe output."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-tags-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-tag-q-{uid}"},
+                },
+            },
+        })
+        cfn.create_stack(
+            StackName=stack_name,
+            TemplateBody=template,
+            Tags=[
+                {"Key": "Environment", "Value": "test"},
+                {"Key": "Project", "Value": "robotocore"},
+            ],
+        )
+        resp = cfn.describe_stacks(StackName=stack_name)
+        stack = resp["Stacks"][0]
+        assert stack["StackStatus"] == "CREATE_COMPLETE"
+        tags = {t["Key"]: t["Value"] for t in stack.get("Tags", [])}
+        assert tags["Environment"] == "test"
+        assert tags["Project"] == "robotocore"
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_get_template_matches_submitted(self, cfn):
+        """GetTemplate returns the template that was submitted."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-gettempl-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Description": "GetTemplate test",
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": f"cfn-gt-q-{uid}"},
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.get_template(StackName=stack_name)
+        body = resp["TemplateBody"]
+        if isinstance(body, str):
+            body = json.loads(body)
+        assert body["Description"] == "GetTemplate test"
+        assert "Q" in body["Resources"]
+        assert body["Resources"]["Q"]["Type"] == "AWS::SQS::Queue"
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_eventbridge_rule(self, cfn):
+        """Stack creates an EventBridge rule resource."""
+        uid = uuid.uuid4().hex[:8]
+        stack_name = f"test-eb-rule-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Rule": {
+                    "Type": "AWS::Events::Rule",
+                    "Properties": {
+                        "Name": f"cfn-rule-{uid}",
+                        "ScheduleExpression": "rate(1 hour)",
+                        "State": "ENABLED",
+                    },
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        # Verify resource was created
+        res = cfn.describe_stack_resources(StackName=stack_name)
+        types = [r["ResourceType"] for r in res["StackResources"]]
+        assert "AWS::Events::Rule" in types
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_default_parameter(self, cfn, sqs):
+        """Stack parameter with a Default value used when no override given."""
+        uid = uuid.uuid4().hex[:8]
+        default_name = f"cfn-default-q-{uid}"
+        stack_name = f"test-default-param-{uid}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Parameters": {
+                "QName": {
+                    "Type": "String",
+                    "Default": default_name,
+                },
+            },
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": {"Ref": "QName"}},
+                },
+            },
+        })
+        # Don't pass Parameters — should use Default
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        resp = cfn.describe_stacks(StackName=stack_name)
+        assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        q_url = sqs.get_queue_url(QueueName=default_name)
+        assert default_name in q_url["QueueUrl"]
+
+        cfn.delete_stack(StackName=stack_name)
+
+    def test_validate_template(self, cfn):
+        """ValidateTemplate returns parameter info."""
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Description": "Validation test",
+            "Parameters": {
+                "Env": {
+                    "Type": "String",
+                    "Default": "dev",
+                    "Description": "Environment name",
+                },
+            },
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": "validate-q"},
+                },
+            },
+        })
+        resp = cfn.validate_template(TemplateBody=template)
+        assert resp.get("Description") == "Validation test"
+        params = resp.get("Parameters", [])
+        assert len(params) >= 1
+        p = params[0]
+        assert p["ParameterKey"] == "Env"
+        assert p["DefaultValue"] == "dev"

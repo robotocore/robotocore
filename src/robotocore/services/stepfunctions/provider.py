@@ -25,6 +25,7 @@ from robotocore.services.stepfunctions.asl import (
 _executions: dict[str, dict] = {}
 _state_machines: dict[str, dict] = {}  # arn -> definition
 _execution_histories: dict[str, Any] = {}  # exec_arn -> ExecutionHistory
+_tags: dict[str, list[dict]] = {}  # resource_arn -> [{"key": ..., "value": ...}]
 _exec_lock = threading.Lock()
 
 
@@ -413,15 +414,31 @@ def _send_task_heartbeat_op(params: dict, region: str, account_id: str) -> dict:
 
 
 def _tag_resource(params: dict, region: str, account_id: str) -> dict:
+    arn = params.get("resourceArn", "")
+    new_tags = params.get("tags", [])
+    with _exec_lock:
+        existing = _tags.get(arn, [])
+        # Merge: new tags overwrite existing with same key
+        tag_map = {t["key"]: t["value"] for t in existing}
+        for t in new_tags:
+            tag_map[t["key"]] = t["value"]
+        _tags[arn] = [{"key": k, "value": v} for k, v in tag_map.items()]
     return {}
 
 
 def _untag_resource(params: dict, region: str, account_id: str) -> dict:
+    arn = params.get("resourceArn", "")
+    keys_to_remove = params.get("tagKeys", [])
+    with _exec_lock:
+        existing = _tags.get(arn, [])
+        _tags[arn] = [t for t in existing if t["key"] not in keys_to_remove]
     return {}
 
 
 def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
-    return {"tags": []}
+    arn = params.get("resourceArn", "")
+    with _exec_lock:
+        return {"tags": list(_tags.get(arn, []))}
 
 
 # --- Helpers ---

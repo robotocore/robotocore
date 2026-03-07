@@ -470,22 +470,27 @@ def _list_jobs(
     store: BatchStore, params: dict, region: str, account_id: str
 ) -> dict:
     job_queue = params.get("jobQueue", "")
-    status_filter = params.get("jobStatus", "RUNNING")
+    status_filter = params.get("jobStatus")
 
     with store.lock:
         summaries = []
         for job in store.jobs.values():
-            if job_queue and job["jobQueue"] != job_queue:
+            if job_queue:
+                jq = job["jobQueue"]
+                # Match by full ARN or by queue name
+                jq_name = jq.rsplit("/", 1)[-1] if "/" in jq else jq
+                if job_queue != jq and job_queue != jq_name:
+                    continue
+            if status_filter and job["status"] != status_filter:
                 continue
-            if job["status"] == status_filter:
-                summaries.append({
-                    "jobArn": job["jobArn"],
-                    "jobId": job["jobId"],
-                    "jobName": job["jobName"],
-                    "createdAt": job["createdAt"],
-                    "status": job["status"],
-                    "statusReason": job["statusReason"],
-                })
+            summaries.append({
+                "jobArn": job["jobArn"],
+                "jobId": job["jobId"],
+                "jobName": job["jobName"],
+                "createdAt": job["createdAt"],
+                "status": job["status"],
+                "statusReason": job["statusReason"],
+            })
 
     return {"jobSummaryList": summaries}
 

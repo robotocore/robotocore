@@ -18,7 +18,10 @@ from robotocore.services.firehose.provider import (
     _list_delivery_streams,
     _put_record,
     _put_record_batch,
+    _start_delivery_stream_encryption,
+    _stop_delivery_stream_encryption,
     _stream_buffers,
+    _update_destination,
     _write_to_s3,
     handle_firehose_request,
 )
@@ -318,6 +321,196 @@ class TestWriteToS3:
     def test_exception_is_silenced(self):
         with patch("moto.backends.get_backend", side_effect=Exception("fail")):
             _write_to_s3("bucket", "key", b"data", "us-east-1")
+
+
+# ---------------------------------------------------------------------------
+# _update_destination
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateDestination:
+    def test_updates_prefix(self):
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                    "Prefix": "original/",
+                    "RoleARN": "arn:aws:iam::123456789012:role/test",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _update_destination(
+            {
+                "DeliveryStreamName": "s1",
+                "DestinationId": "dest-1",
+                "CurrentDeliveryStreamVersionId": "1",
+                "ExtendedS3DestinationUpdate": {"Prefix": "updated/"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        assert result == {}
+        assert _delivery_streams["s1"]["s3_config"]["Prefix"] == "updated/"
+        # Original fields preserved
+        assert _delivery_streams["s1"]["s3_config"]["BucketARN"] == "arn:aws:s3:::mybucket"
+
+    def test_updates_buffering_hints(self):
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        _update_destination(
+            {
+                "DeliveryStreamName": "s1",
+                "DestinationId": "dest-1",
+                "CurrentDeliveryStreamVersionId": "1",
+                "ExtendedS3DestinationUpdate": {
+                    "BufferingHints": {"SizeInMBs": 10, "IntervalInSeconds": 300},
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        hints = _delivery_streams["s1"]["s3_config"]["BufferingHints"]
+        assert hints == {"SizeInMBs": 10, "IntervalInSeconds": 300}
+
+    def test_not_found_raises(self):
+        with pytest.raises(FirehoseError) as exc:
+            _update_destination(
+                {
+                    "DeliveryStreamName": "nope",
+                    "DestinationId": "dest-1",
+                    "CurrentDeliveryStreamVersionId": "1",
+                },
+                "us-east-1",
+                "123456789012",
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_missing_destination_id_raises(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        with pytest.raises(FirehoseError) as exc:
+            _update_destination(
+                {
+                    "DeliveryStreamName": "s1",
+                    "CurrentDeliveryStreamVersionId": "1",
+                },
+                "us-east-1",
+                "123456789012",
+            )
+        assert exc.value.code == "ValidationException"
+
+    def test_describe_shows_updated_prefix(self):
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                    "Prefix": "old/",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        _update_destination(
+            {
+                "DeliveryStreamName": "s1",
+                "DestinationId": "dest-1",
+                "CurrentDeliveryStreamVersionId": "1",
+                "ExtendedS3DestinationUpdate": {"Prefix": "new/"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        dest = result["DeliveryStreamDescription"]["Destinations"][0]
+        assert dest["ExtendedS3DestinationDescription"]["Prefix"] == "new/"
+
+
+# ---------------------------------------------------------------------------
+# _start/_stop_delivery_stream_encryption
+# ---------------------------------------------------------------------------
+
+
+class TestDeliveryStreamEncryption:
+    def test_start_encryption(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        result = _start_delivery_stream_encryption(
+            {
+                "DeliveryStreamName": "s1",
+                "DeliveryStreamEncryptionInput": {"KeyType": "AWS_OWNED_CMK"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        assert result == {}
+        assert _delivery_streams["s1"]["encryption"]["Status"] == "ENABLED"
+        assert _delivery_streams["s1"]["encryption"]["KeyType"] == "AWS_OWNED_CMK"
+
+    def test_stop_encryption(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _start_delivery_stream_encryption(
+            {
+                "DeliveryStreamName": "s1",
+                "DeliveryStreamEncryptionInput": {"KeyType": "AWS_OWNED_CMK"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _stop_delivery_stream_encryption(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        assert result == {}
+        assert _delivery_streams["s1"]["encryption"]["Status"] == "DISABLED"
+
+    def test_start_not_found_raises(self):
+        with pytest.raises(FirehoseError) as exc:
+            _start_delivery_stream_encryption(
+                {"DeliveryStreamName": "nope"}, "us-east-1", "123456789012"
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_stop_not_found_raises(self):
+        with pytest.raises(FirehoseError) as exc:
+            _stop_delivery_stream_encryption(
+                {"DeliveryStreamName": "nope"}, "us-east-1", "123456789012"
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_describe_shows_encryption(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _start_delivery_stream_encryption(
+            {
+                "DeliveryStreamName": "s1",
+                "DeliveryStreamEncryptionInput": {"KeyType": "AWS_OWNED_CMK"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        enc = result["DeliveryStreamDescription"]["DeliveryStreamEncryptionConfiguration"]
+        assert enc["Status"] == "ENABLED"
+        assert enc["KeyType"] == "AWS_OWNED_CMK"
+
+    def test_describe_no_encryption_field(self):
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        assert "DeliveryStreamEncryptionConfiguration" not in result["DeliveryStreamDescription"]
 
 
 # ---------------------------------------------------------------------------

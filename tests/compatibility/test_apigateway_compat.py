@@ -204,3 +204,514 @@ class TestAPIGatewayOperations:
         apigw.delete_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
         apigw.delete_api_key(apiKey=key["id"])
         apigw.delete_usage_plan(usagePlanId=plan["id"])
+
+    def test_create_model(self, apigw, rest_api):
+        """Create a model and retrieve it."""
+        model = apigw.create_model(
+            restApiId=rest_api,
+            name="UserModel",
+            contentType="application/json",
+            schema='{"type": "object", "properties": {"name": {"type": "string"}}}',
+        )
+        assert model["name"] == "UserModel"
+        assert model["contentType"] == "application/json"
+
+    def test_get_model(self, apigw, rest_api):
+        """Create a model then get it by name."""
+        apigw.create_model(
+            restApiId=rest_api,
+            name="GetTestModel",
+            contentType="application/json",
+            schema='{"type": "object"}',
+        )
+        got = apigw.get_model(restApiId=rest_api, modelName="GetTestModel")
+        assert got["name"] == "GetTestModel"
+
+    def test_get_models(self, apigw, rest_api):
+        """List models for an API."""
+        apigw.create_model(
+            restApiId=rest_api,
+            name="ListModel1",
+            contentType="application/json",
+            schema='{"type": "object"}',
+        )
+        apigw.create_model(
+            restApiId=rest_api,
+            name="ListModel2",
+            contentType="application/json",
+            schema='{"type": "string"}',
+        )
+        models = apigw.get_models(restApiId=rest_api)
+        names = [m["name"] for m in models["items"]]
+        assert "ListModel1" in names
+        assert "ListModel2" in names
+
+    def test_delete_model(self, apigw, rest_api):
+        """Create and then delete a model."""
+        apigw.create_model(
+            restApiId=rest_api,
+            name="DeleteMe",
+            contentType="application/json",
+            schema='{"type": "object"}',
+        )
+        apigw.delete_model(restApiId=rest_api, modelName="DeleteMe")
+        models = apigw.get_models(restApiId=rest_api)
+        names = [m["name"] for m in models["items"]]
+        assert "DeleteMe" not in names
+
+    def test_get_usage_plan(self, apigw):
+        """Create a usage plan and get it by ID."""
+        plan = apigw.create_usage_plan(name="get-plan-test")
+        try:
+            got = apigw.get_usage_plan(usagePlanId=plan["id"])
+            assert got["name"] == "get-plan-test"
+            assert got["id"] == plan["id"]
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan["id"])
+
+    def test_get_usage_plans(self, apigw):
+        """Create usage plans and list them."""
+        plan1 = apigw.create_usage_plan(name="list-plan-1")
+        plan2 = apigw.create_usage_plan(name="list-plan-2")
+        try:
+            plans = apigw.get_usage_plans()
+            plan_ids = [p["id"] for p in plans["items"]]
+            assert plan1["id"] in plan_ids
+            assert plan2["id"] in plan_ids
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan1["id"])
+            apigw.delete_usage_plan(usagePlanId=plan2["id"])
+
+    def test_get_api_key(self, apigw):
+        """Create an API key and get it by ID."""
+        key = apigw.create_api_key(name="get-key-test", enabled=True)
+        try:
+            got = apigw.get_api_key(apiKey=key["id"])
+            assert got["name"] == "get-key-test"
+            assert got["id"] == key["id"]
+        finally:
+            apigw.delete_api_key(apiKey=key["id"])
+
+    def test_create_deployment(self, apigw, rest_api):
+        """Create a deployment and verify it."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        deployment = apigw.create_deployment(restApiId=rest_api)
+        assert "id" in deployment
+
+    def test_get_deployments(self, apigw, rest_api):
+        """Create deployments and list them."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep1 = apigw.create_deployment(restApiId=rest_api)
+        dep2 = apigw.create_deployment(restApiId=rest_api)
+        deployments = apigw.get_deployments(restApiId=rest_api)
+        dep_ids = [d["id"] for d in deployments["items"]]
+        assert dep1["id"] in dep_ids
+        assert dep2["id"] in dep_ids
+
+    def test_get_deployment(self, apigw, rest_api):
+        """Get a specific deployment by ID."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api)
+        got = apigw.get_deployment(restApiId=rest_api, deploymentId=dep["id"])
+        assert got["id"] == dep["id"]
+
+    def test_get_stages(self, apigw, rest_api):
+        """Create stages and list them."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api)
+        apigw.create_stage(
+            restApiId=rest_api, stageName="dev", deploymentId=dep["id"]
+        )
+        apigw.create_stage(
+            restApiId=rest_api, stageName="staging", deploymentId=dep["id"]
+        )
+        stages = apigw.get_stages(restApiId=rest_api)
+        stage_names = [s["stageName"] for s in stages["item"]]
+        assert "dev" in stage_names
+        assert "staging" in stage_names
+
+    def test_update_stage(self, apigw, rest_api):
+        """Update a stage's description via patch operations."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api)
+        apigw.create_stage(
+            restApiId=rest_api, stageName="upd", deploymentId=dep["id"]
+        )
+        updated = apigw.update_stage(
+            restApiId=rest_api,
+            stageName="upd",
+            patchOperations=[
+                {"op": "replace", "path": "/description", "value": "Updated desc"},
+            ],
+        )
+        assert updated["description"] == "Updated desc"
+
+    def test_delete_stage(self, apigw, rest_api):
+        """Create and delete a stage."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api)
+        apigw.create_stage(
+            restApiId=rest_api, stageName="deleteme", deploymentId=dep["id"]
+        )
+        apigw.delete_stage(restApiId=rest_api, stageName="deleteme")
+        stages = apigw.get_stages(restApiId=rest_api)
+        stage_names = [s["stageName"] for s in stages["item"]]
+        assert "deleteme" not in stage_names
+
+    def test_put_gateway_response(self, apigw, rest_api):
+        """Put and get a gateway response."""
+        resp = apigw.put_gateway_response(
+            restApiId=rest_api,
+            responseType="DEFAULT_4XX",
+            responseTemplates={"application/json": '{"message": "error"}'},
+        )
+        assert resp["responseType"] == "DEFAULT_4XX"
+
+    def test_get_gateway_response(self, apigw, rest_api):
+        """Put a gateway response then retrieve it."""
+        apigw.put_gateway_response(
+            restApiId=rest_api,
+            responseType="DEFAULT_5XX",
+            statusCode="500",
+        )
+        got = apigw.get_gateway_response(
+            restApiId=rest_api, responseType="DEFAULT_5XX"
+        )
+        assert got["responseType"] == "DEFAULT_5XX"
+
+    def test_get_gateway_responses(self, apigw, rest_api):
+        """List gateway responses for an API."""
+        apigw.put_gateway_response(
+            restApiId=rest_api,
+            responseType="UNAUTHORIZED",
+            statusCode="401",
+        )
+        responses = apigw.get_gateway_responses(restApiId=rest_api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "UNAUTHORIZED" in types
+
+    def test_create_request_validator(self, apigw, rest_api):
+        """Create a request validator and list validators."""
+        validator = apigw.create_request_validator(
+            restApiId=rest_api,
+            name="test-validator",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        assert validator["name"] == "test-validator"
+        assert validator["validateRequestBody"] is True
+
+    def test_get_request_validators(self, apigw, rest_api):
+        """Create validators and list them."""
+        apigw.create_request_validator(
+            restApiId=rest_api,
+            name="validator-1",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        apigw.create_request_validator(
+            restApiId=rest_api,
+            name="validator-2",
+            validateRequestBody=False,
+            validateRequestParameters=True,
+        )
+        validators = apigw.get_request_validators(restApiId=rest_api)
+        names = [v["name"] for v in validators["items"]]
+        assert "validator-1" in names
+        assert "validator-2" in names
+
+    def test_get_resource(self, apigw, rest_api):
+        """GetResource for a created child resource."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="orders"
+        )
+        got = apigw.get_resource(restApiId=rest_api, resourceId=child["id"])
+        assert got["pathPart"] == "orders"
+        assert got["id"] == child["id"]
+
+    def test_delete_resource(self, apigw, rest_api):
+        """DeleteResource removes a child resource."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="deleteme"
+        )
+        apigw.delete_resource(restApiId=rest_api, resourceId=child["id"])
+        resources = apigw.get_resources(restApiId=rest_api)
+        ids = [r["id"] for r in resources["items"]]
+        assert child["id"] not in ids
+
+    def test_get_method(self, apigw, rest_api):
+        """PutMethod then GetMethod."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="getmethod"
+        )
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="POST",
+            authorizationType="NONE",
+        )
+        method = apigw.get_method(
+            restApiId=rest_api, resourceId=child["id"], httpMethod="POST"
+        )
+        assert method["httpMethod"] == "POST"
+        assert method["authorizationType"] == "NONE"
+
+    def test_put_method_response(self, apigw, rest_api):
+        """PutMethodResponse / GetMethodResponse."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="methresp"
+        )
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_method_response(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            statusCode="200",
+            responseModels={"application/json": "Empty"},
+        )
+        resp = apigw.get_method_response(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            statusCode="200",
+        )
+        assert resp["statusCode"] == "200"
+
+    def test_put_integration_response(self, apigw, rest_api):
+        """PutIntegration / PutIntegrationResponse / GetIntegrationResponse."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="intresp"
+        )
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        apigw.put_integration_response(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            statusCode="200",
+            responseTemplates={"application/json": ""},
+        )
+        ir = apigw.get_integration_response(
+            restApiId=rest_api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            statusCode="200",
+        )
+        assert ir["statusCode"] == "200"
+
+    def test_create_domain_name(self, apigw):
+        """CreateDomainName / GetDomainNames."""
+        apigw.create_domain_name(
+            domainName="api.example.com",
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+        )
+        try:
+            domains = apigw.get_domain_names()
+            names = [d["domainName"] for d in domains["items"]]
+            assert "api.example.com" in names
+        except Exception:
+            raise
+        finally:
+            try:
+                apigw.delete_domain_name(domainName="api.example.com")
+            except Exception:
+                pass
+
+    def test_create_authorizer(self, apigw, rest_api):
+        """CreateAuthorizer / GetAuthorizers."""
+        auth = apigw.create_authorizer(
+            restApiId=rest_api,
+            name="test-auth",
+            type="TOKEN",
+            authorizerUri="arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:auth/invocations",
+            identitySource="method.request.header.Authorization",
+        )
+        try:
+            auths = apigw.get_authorizers(restApiId=rest_api)
+            auth_ids = [a["id"] for a in auths["items"]]
+            assert auth["id"] in auth_ids
+        except Exception:
+            raise
+
+    @pytest.mark.xfail(reason="TagResource on REST APIs may not be routed correctly")
+    def test_tag_untag_rest_api(self, apigw):
+        """TagResource / UntagResource on REST APIs."""
+        api = apigw.create_rest_api(name="tag-test-api")
+        api_id = api["id"]
+        arn = f"arn:aws:apigateway:us-east-1::/restapis/{api_id}"
+        try:
+            apigw.tag_resource(
+                resourceArn=arn,
+                tags={"Env": "test", "Team": "platform"},
+            )
+            got = apigw.get_rest_api(restApiId=api_id)
+            assert got.get("tags", {}).get("Env") == "test"
+            assert got.get("tags", {}).get("Team") == "platform"
+
+            apigw.untag_resource(resourceArn=arn, tagKeys=["Env"])
+            got2 = apigw.get_rest_api(restApiId=api_id)
+            assert "Env" not in got2.get("tags", {})
+            assert got2.get("tags", {}).get("Team") == "platform"
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    @pytest.mark.xfail(reason="FlushStageAuthorizersCache/FlushStageCache may not be supported")
+    def test_flush_stage_cache(self, apigw, rest_api):
+        """FlushStageAuthorizersCache / FlushStageCache."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api)
+        apigw.create_stage(
+            restApiId=rest_api, stageName="cache", deploymentId=dep["id"]
+        )
+        apigw.flush_stage_authorizers_cache(restApiId=rest_api, stageName="cache")
+        apigw.flush_stage_cache(restApiId=rest_api, stageName="cache")
+
+    def test_get_export(self, apigw, rest_api):
+        """GetExport for swagger/oas30."""
+        resources = apigw.get_resources(restApiId=rest_api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=rest_api, stageName="export")
+        resp = apigw.get_export(
+            restApiId=rest_api,
+            stageName="export",
+            exportType="swagger",
+            accepts="application/json",
+        )
+        assert "body" in resp

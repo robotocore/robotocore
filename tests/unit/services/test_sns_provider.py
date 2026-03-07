@@ -17,6 +17,7 @@ from robotocore.services.sns.provider import (
     _json_response,
     _list_topics,
     _publish,
+    _publish_batch,
     _sub_to_dict,
     _subscribe,
     _xml_response,
@@ -297,3 +298,48 @@ class TestHandleSnsRequest:
         assert resp.status_code == 404
         data = json.loads(resp.body)
         assert data["__type"] == "NotFound"
+
+
+class TestSNSPublishBatch:
+    """Test PublishBatch query param parsing."""
+
+    def test_publish_batch_parses_entries(self):
+        store = SnsStore()
+        store.create_topic("batch-topic", "us-east-1", "123456789012")
+        params = {
+            "TopicArn": "arn:aws:sns:us-east-1:123456789012:batch-topic",
+            "PublishBatchRequestEntries.member.1.Id": "msg1",
+            "PublishBatchRequestEntries.member.1.Message": "hello",
+            "PublishBatchRequestEntries.member.2.Id": "msg2",
+            "PublishBatchRequestEntries.member.2.Message": "world",
+            "PublishBatchRequestEntries.member.3.Id": "msg3",
+            "PublishBatchRequestEntries.member.3.Message": "batch",
+        }
+        req = MagicMock()
+        result = _publish_batch(store, params, "us-east-1", "123456789012", req)
+        assert len(result["Successful"]) == 3
+        assert len(result["Failed"]) == 0
+        ids = [s["Id"] for s in result["Successful"]]
+        assert "msg1" in ids
+        assert "msg2" in ids
+        assert "msg3" in ids
+
+    def test_publish_batch_empty(self):
+        store = SnsStore()
+        store.create_topic("empty-topic", "us-east-1", "123456789012")
+        params = {"TopicArn": "arn:aws:sns:us-east-1:123456789012:empty-topic"}
+        req = MagicMock()
+        result = _publish_batch(store, params, "us-east-1", "123456789012", req)
+        assert result["Successful"] == []
+        assert result["Failed"] == []
+
+    def test_publish_batch_nonexistent_topic(self):
+        store = SnsStore()
+        params = {
+            "TopicArn": "arn:aws:sns:us-east-1:123456789012:nope",
+            "PublishBatchRequestEntries.member.1.Id": "msg1",
+            "PublishBatchRequestEntries.member.1.Message": "hello",
+        }
+        req = MagicMock()
+        with pytest.raises(SnsError):
+            _publish_batch(store, params, "us-east-1", "123456789012", req)

@@ -10,11 +10,18 @@ from starlette.requests import Request
 from robotocore.services.cloudformation.engine import CfnStore
 from robotocore.services.cloudformation.provider import (
     CfnError,
+    _create_change_set,
     _create_stack,
+    _delete_change_set,
     _delete_stack_action,
+    _describe_change_set,
+    _describe_stack_events,
+    _describe_stack_resource,
     _describe_stacks,
     _error,
     _get_template,
+    _list_exports,
+    _list_stack_resources,
     _list_stacks,
     _validate_template,
     _xml_response,
@@ -370,3 +377,344 @@ class TestHandleCloudFormationRequest:
 
         assert resp.status_code == 400
         assert b"ValidationError" in resp.body
+
+
+_TEMPLATE_WITH_DESC = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "A test stack",
+        "Resources": {},
+    }
+)
+
+_CONDITION_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Parameters": {
+            "CreateQueue": {
+                "Type": "String",
+                "Default": "false",
+            },
+        },
+        "Conditions": {
+            "ShouldCreate": {"Fn::Equals": [{"Ref": "CreateQueue"}, "true"]},
+        },
+        "Resources": {
+            "AlwaysQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {"QueueName": "always-queue"},
+            },
+            "ConditionalQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Condition": "ShouldCreate",
+                "Properties": {"QueueName": "cond-queue"},
+            },
+        },
+    }
+)
+
+_EXPORT_TEMPLATE = json.dumps(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": {
+            "MyQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {"QueueName": "export-queue"},
+            },
+        },
+        "Outputs": {
+            "QueueUrl": {
+                "Value": {"Ref": "MyQueue"},
+                "Export": {"Name": "my-export"},
+            },
+        },
+    }
+)
+
+
+class TestStackDescription:
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_description_in_describe_stacks(self, mock_deploy):
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "desc-stack", "TemplateBody": _TEMPLATE_WITH_DESC},
+            "us-east-1",
+            "123",
+        )
+        result = _describe_stacks(store, {"StackName": "desc-stack"}, "us-east-1", "123")
+        assert result["Stacks"][0]["Description"] == "A test stack"
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_no_description_when_absent(self, mock_deploy):
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "nodesc", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        result = _describe_stacks(store, {"StackName": "nodesc"}, "us-east-1", "123")
+        assert "Description" not in result["Stacks"][0]
+
+
+class TestStackEvents:
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_events_recorded(self, mock_deploy):
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "ev-stack", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        result = _describe_stack_events(
+            store, {"StackName": "ev-stack"}, "us-east-1", "123"
+        )
+        events = result["StackEvents"]
+        assert len(events) >= 2  # CREATE_IN_PROGRESS + CREATE_COMPLETE
+        statuses = [e["ResourceStatus"] for e in events]
+        assert "CREATE_IN_PROGRESS" in statuses
+        assert "CREATE_COMPLETE" in statuses
+        for e in events:
+            assert e["StackName"] == "ev-stack"
+
+    def test_events_nonexistent_stack(self):
+        store = CfnStore()
+        with pytest.raises(CfnError):
+            _describe_stack_events(store, {"StackName": "nope"}, "us-east-1", "123")
+
+
+class TestListStackResources:
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_list_resources(self, mock_deploy):
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "lr-stack", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        # Manually add a resource to the stack since deploy is mocked
+        from robotocore.services.cloudformation.engine import CfnResource
+
+        stack = store.get_stack("lr-stack")
+        stack.resources["MyQueue"] = CfnResource(
+            logical_id="MyQueue",
+            resource_type="AWS::SQS::Queue",
+            properties={},
+            physical_id="http://queue-url",
+            status="CREATE_COMPLETE",
+        )
+        result = _list_stack_resources(
+            store, {"StackName": "lr-stack"}, "us-east-1", "123"
+        )
+        summaries = result["StackResourceSummaries"]
+        assert len(summaries) == 1
+        assert summaries[0]["LogicalResourceId"] == "MyQueue"
+        assert summaries[0]["ResourceType"] == "AWS::SQS::Queue"
+
+    def test_list_resources_nonexistent(self):
+        store = CfnStore()
+        with pytest.raises(CfnError):
+            _list_stack_resources(store, {"StackName": "nope"}, "us-east-1", "123")
+
+
+class TestDescribeStackResource:
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_describe_resource(self, mock_deploy):
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "dr-stack", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        from robotocore.services.cloudformation.engine import CfnResource
+
+        stack = store.get_stack("dr-stack")
+        stack.resources["MyQueue"] = CfnResource(
+            logical_id="MyQueue",
+            resource_type="AWS::SQS::Queue",
+            properties={},
+            physical_id="http://queue-url",
+            status="CREATE_COMPLETE",
+        )
+        result = _describe_stack_resource(
+            store,
+            {"StackName": "dr-stack", "LogicalResourceId": "MyQueue"},
+            "us-east-1",
+            "123",
+        )
+        detail = result["StackResourceDetail"]
+        assert detail["LogicalResourceId"] == "MyQueue"
+        assert detail["ResourceType"] == "AWS::SQS::Queue"
+        assert detail["StackName"] == "dr-stack"
+
+    def test_describe_resource_not_found(self):
+        store = CfnStore()
+        with pytest.raises(CfnError):
+            _describe_stack_resource(
+                store,
+                {"StackName": "nope", "LogicalResourceId": "X"},
+                "us-east-1",
+                "123",
+            )
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_describe_resource_wrong_logical_id(self, mock_deploy):
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "dr2-stack", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        with pytest.raises(CfnError):
+            _describe_stack_resource(
+                store,
+                {"StackName": "dr2-stack", "LogicalResourceId": "Nope"},
+                "us-east-1",
+                "123",
+            )
+
+
+class TestListExports:
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_list_exports_empty(self, mock_deploy):
+        store = CfnStore()
+        result = _list_exports(store, {}, "us-east-1", "123")
+        assert result["Exports"] == []
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_list_exports_with_data(self, mock_deploy):
+        store = CfnStore()
+        store.exports["my-export"] = "some-value"
+        result = _list_exports(store, {}, "us-east-1", "123")
+        assert len(result["Exports"]) == 1
+        assert result["Exports"][0]["Name"] == "my-export"
+        assert result["Exports"][0]["Value"] == "some-value"
+
+
+class TestConditions:
+    @patch("robotocore.services.cloudformation.resources.create_resource")
+    def test_condition_false_skips_resource(self, mock_create):
+        """When a condition is false, the resource should not be created."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {
+                "StackName": "cond-stack",
+                "TemplateBody": _CONDITION_TEMPLATE,
+                "Parameters.member.1.ParameterKey": "CreateQueue",
+                "Parameters.member.1.ParameterValue": "false",
+            },
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("cond-stack")
+        assert stack.status == "CREATE_COMPLETE"
+        # Only AlwaysQueue should be created, not ConditionalQueue
+        assert "AlwaysQueue" in stack.resources
+        assert "ConditionalQueue" not in stack.resources
+
+    @patch("robotocore.services.cloudformation.resources.create_resource")
+    def test_condition_true_creates_resource(self, mock_create):
+        """When a condition is true, the resource should be created."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {
+                "StackName": "cond-stack2",
+                "TemplateBody": _CONDITION_TEMPLATE,
+                "Parameters.member.1.ParameterKey": "CreateQueue",
+                "Parameters.member.1.ParameterValue": "true",
+            },
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("cond-stack2")
+        assert "AlwaysQueue" in stack.resources
+        assert "ConditionalQueue" in stack.resources
+
+
+class TestChangeSet:
+    def test_create_change_set(self):
+        store = CfnStore()
+        result = _create_change_set(
+            store,
+            {
+                "StackName": "my-stack",
+                "ChangeSetName": "my-cs",
+                "TemplateBody": '{"AWSTemplateFormatVersion":"2010-09-09","Resources":{}}',
+                "ChangeSetType": "CREATE",
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        assert "Id" in result
+        assert "StackId" in result
+        assert len(store.change_sets) == 1
+
+    def test_describe_change_set(self):
+        store = CfnStore()
+        create_result = _create_change_set(
+            store,
+            {"StackName": "s1", "ChangeSetName": "cs1", "ChangeSetType": "CREATE"},
+            "us-east-1",
+            "123",
+        )
+        desc = _describe_change_set(
+            store, {"ChangeSetName": "cs1", "StackName": "s1"}, "us-east-1", "123"
+        )
+        assert desc["ChangeSetName"] == "cs1"
+        assert desc["StackName"] == "s1"
+        assert desc["Status"] == "CREATE_COMPLETE"
+
+    def test_describe_change_set_not_found(self):
+        store = CfnStore()
+        with pytest.raises(CfnError) as exc_info:
+            _describe_change_set(
+                store, {"ChangeSetName": "nonexistent"}, "us-east-1", "123"
+            )
+        assert "ChangeSetNotFoundException" in exc_info.value.code
+
+    def test_delete_change_set(self):
+        store = CfnStore()
+        _create_change_set(
+            store,
+            {"StackName": "s1", "ChangeSetName": "cs1", "ChangeSetType": "CREATE"},
+            "us-east-1",
+            "123",
+        )
+        assert len(store.change_sets) == 1
+        _delete_change_set(
+            store, {"ChangeSetName": "cs1", "StackName": "s1"}, "us-east-1", "123"
+        )
+        assert len(store.change_sets) == 0
+
+    def test_create_change_set_creates_stub_stack(self):
+        store = CfnStore()
+        _create_change_set(
+            store,
+            {"StackName": "new-stack", "ChangeSetName": "cs1", "ChangeSetType": "CREATE"},
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("new-stack")
+        assert stack is not None
+        assert stack.status == "REVIEW_IN_PROGRESS"
+
+
+class TestCrossStackExports:
+    @patch("robotocore.services.cloudformation.resources.create_resource")
+    def test_exports_registered_in_store(self, mock_create):
+        """Exports should be registered in the store."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "export-stack", "TemplateBody": _EXPORT_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        assert "my-export" in store.exports

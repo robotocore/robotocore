@@ -92,6 +92,9 @@ class KinesisStream:
     retention_hours: int = 24
     tags: dict[str, str] = field(default_factory=dict)
     created: float = field(default_factory=time.time)
+    encryption_type: str = "NONE"
+    key_id: str = ""
+    consumers: dict[str, dict] = field(default_factory=dict)
 
     def _hash_partition_key(self, partition_key: str) -> int:
         """Hash a partition key to determine shard placement (MD5-based, like AWS)."""

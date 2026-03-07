@@ -63,3 +63,4 @@ class TestSupportOperations:
         response = support.resolve_case(caseId=case_id)
         assert "initialCaseStatus" in response
         assert "finalCaseStatus" in response
+

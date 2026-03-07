@@ -830,3 +830,85 @@ class TestBooleanRuleTokens:
     def test_evaluate_false_literal(self):
         ast = parse_alarm_rule("FALSE")
         assert evaluate_alarm_rule(ast, {}) == "OK"
+
+
+class TestCloudWatchJsonProtocol:
+    """Test JSON protocol handling for modern boto3."""
+
+    @pytest.fixture
+    def app(self):
+        from robotocore.services.cloudwatch.provider import handle_cloudwatch_request
+        return handle_cloudwatch_request
+
+    def _make_json_request(self, action, body=None):
+        """Create a mock request with JSON protocol headers."""
+        req = MagicMock()
+        req.headers = {
+            "content-type": "application/x-amz-json-1.0",
+            "x-amz-target": f"GraniteServiceVersion20100801.{action}",
+        }
+        req.url = MagicMock()
+        req.url.query = ""
+
+        async def mock_body():
+            return json.dumps(body or {}).encode()
+
+        req.body = mock_body
+        return req
+
+    @pytest.mark.asyncio
+    async def test_disable_alarm_actions_json(self, app):
+        """DisableAlarmActions via JSON protocol."""
+        with patch("moto.backends.get_backend") as mock_gb:
+            mock_backend = MagicMock()
+            mock_alarm = MagicMock()
+            mock_alarm.actions_enabled = True
+            mock_backend.alarms = {"test-alarm": mock_alarm}
+            mock_gb.return_value = {"123456789012": {"us-east-1": mock_backend}}
+
+            req = self._make_json_request(
+                "DisableAlarmActions", {"AlarmNames": ["test-alarm"]}
+            )
+            resp = await app(req, "us-east-1", "123456789012")
+            assert resp.status_code == 200
+            assert mock_alarm.actions_enabled is False
+            assert "application/x-amz-json-1.0" in resp.media_type
+
+    @pytest.mark.asyncio
+    async def test_enable_alarm_actions_json(self, app):
+        """EnableAlarmActions via JSON protocol."""
+        with patch("moto.backends.get_backend") as mock_gb:
+            mock_backend = MagicMock()
+            mock_alarm = MagicMock()
+            mock_alarm.actions_enabled = False
+            mock_backend.alarms = {"test-alarm": mock_alarm}
+            mock_gb.return_value = {"123456789012": {"us-east-1": mock_backend}}
+
+            req = self._make_json_request(
+                "EnableAlarmActions", {"AlarmNames": ["test-alarm"]}
+            )
+            resp = await app(req, "us-east-1", "123456789012")
+            assert resp.status_code == 200
+            assert mock_alarm.actions_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_describe_alarm_history_json(self, app):
+        """DescribeAlarmHistory via JSON protocol returns empty list."""
+        req = self._make_json_request(
+            "DescribeAlarmHistory", {"AlarmName": "test"}
+        )
+        resp = await app(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        assert body["AlarmHistoryItems"] == []
+
+    @pytest.mark.asyncio
+    async def test_json_fallback_to_moto(self, app):
+        """Unknown JSON actions fall through to Moto."""
+        with patch("robotocore.services.cloudwatch.provider.forward_to_moto") as mock_moto:
+            mock_moto.return_value = MagicMock(status_code=200)
+            req = self._make_json_request(
+                "ListMetrics", {}
+            )
+            await app(req, "us-east-1", "123456789012")
+            mock_moto.assert_called_once()
