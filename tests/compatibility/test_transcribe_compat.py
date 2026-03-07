@@ -121,3 +121,150 @@ class TestTranscribeOperations:
         response = transcribe.list_transcription_jobs(Status="IN_PROGRESS")
         assert "TranscriptionJobSummaries" in response
         transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+
+class TestTranscribeExtended:
+    @pytest.fixture
+    def transcribe(self):
+        return make_client("transcribe")
+
+    def test_start_job_with_output_location(self, transcribe):
+        name = f"output-job-{_uid()}"
+        resp = transcribe.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+        )
+        try:
+            assert resp["TranscriptionJob"]["TranscriptionJobName"] == name
+        finally:
+            transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_start_job_with_media_format(self, transcribe):
+        name = f"format-job-{_uid()}"
+        resp = transcribe.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            MediaFormat="wav",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        try:
+            assert resp["TranscriptionJob"]["MediaFormat"] == "wav"
+        finally:
+            transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_start_job_with_sample_rate(self, transcribe):
+        name = f"rate-job-{_uid()}"
+        resp = transcribe.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            MediaSampleRateHertz=16000,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        try:
+            job = resp["TranscriptionJob"]
+            assert job["TranscriptionJobName"] == name
+        finally:
+            transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_get_job_has_creation_time(self, transcribe):
+        name = f"time-job-{_uid()}"
+        transcribe.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        try:
+            resp = transcribe.get_transcription_job(TranscriptionJobName=name)
+            assert "CreationTime" in resp["TranscriptionJob"]
+        finally:
+            transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_get_job_has_status(self, transcribe):
+        name = f"stat-job-{_uid()}"
+        transcribe.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        try:
+            resp = transcribe.get_transcription_job(TranscriptionJobName=name)
+            assert resp["TranscriptionJob"]["TranscriptionJobStatus"] in (
+                "QUEUED", "IN_PROGRESS", "COMPLETED", "FAILED"
+            )
+        finally:
+            transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_create_vocabulary_with_phrases(self, transcribe):
+        name = f"vocab-phrases-{_uid()}"
+        resp = transcribe.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["hello", "world", "custom-word"],
+        )
+        try:
+            assert resp["VocabularyName"] == name
+            assert resp["LanguageCode"] == "en-US"
+        finally:
+            transcribe.delete_vocabulary(VocabularyName=name)
+
+    def test_get_vocabulary(self, transcribe):
+        name = f"get-vocab-{_uid()}"
+        transcribe.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["test"],
+        )
+        try:
+            resp = transcribe.get_vocabulary(VocabularyName=name)
+            assert resp["VocabularyName"] == name
+            assert resp["LanguageCode"] == "en-US"
+            assert "VocabularyState" in resp
+        finally:
+            transcribe.delete_vocabulary(VocabularyName=name)
+
+    def test_list_vocabularies_filtered(self, transcribe):
+        name = f"filt-vocab-{_uid()}"
+        transcribe.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["filter-test"],
+        )
+        try:
+            resp = transcribe.list_vocabularies(NameContains=name[:10])
+            names = [v["VocabularyName"] for v in resp.get("Vocabularies", [])]
+            assert name in names
+        finally:
+            transcribe.delete_vocabulary(VocabularyName=name)
+
+    def test_list_transcription_jobs_name_contains(self, transcribe):
+        name = f"contains-job-{_uid()}"
+        transcribe.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        try:
+            resp = transcribe.list_transcription_jobs(JobNameContains="contains-job")
+            names = [j["TranscriptionJobName"] for j in resp["TranscriptionJobSummaries"]]
+            assert name in names
+        finally:
+            transcribe.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_start_multiple_jobs(self, transcribe):
+        names = [f"multi-{_uid()}" for _ in range(3)]
+        try:
+            for n in names:
+                transcribe.start_transcription_job(
+                    TranscriptionJobName=n,
+                    LanguageCode="en-US",
+                    Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+                )
+            resp = transcribe.list_transcription_jobs()
+            found = [j["TranscriptionJobName"] for j in resp["TranscriptionJobSummaries"]]
+            for n in names:
+                assert n in found
+        finally:
+            for n in names:
+                transcribe.delete_transcription_job(TranscriptionJobName=n)
