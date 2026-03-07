@@ -112,3 +112,11 @@ class TestSTSOperations:
         assert "SessionToken" in creds
         assert "FederatedUser" in response
         assert "FederatedUserId" in response["FederatedUser"]
+    @pytest.mark.xfail(reason="decode_authorization_message may not be supported")
+    def test_decode_authorization_message(self, sts):
+        """Call decode_authorization_message with a dummy encoded message."""
+        try:
+            sts.decode_authorization_message(EncodedMessage="dummy-encoded-message")
+        except sts.exceptions.InvalidAuthorizationMessageException:
+            # Expected — the message is not a real encoded authorization message
+            pass

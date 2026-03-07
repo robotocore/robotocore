@@ -221,3 +221,55 @@ class TestSSMParameterOperations:
         deleted = response["DeletedParameters"]
         assert "/delmulti/a" in deleted
         assert "/delmulti/b" in deleted
+
+class TestSSMParameterExtended:
+    def test_put_and_get_parameter_secure_string(self, ssm):
+        ssm.put_parameter(Name="/ext/secure", Value="topsecret", Type="SecureString")
+        response = ssm.get_parameter(Name="/ext/secure", WithDecryption=True)
+        assert response["Parameter"]["Value"] == "topsecret"
+        assert response["Parameter"]["Type"] == "SecureString"
+        ssm.delete_parameter(Name="/ext/secure")
+
+    def test_get_parameters_multiple(self, ssm):
+        ssm.put_parameter(Name="/ext/multi/a", Value="alpha", Type="String")
+        ssm.put_parameter(Name="/ext/multi/b", Value="beta", Type="String")
+        ssm.put_parameter(Name="/ext/multi/c", Value="gamma", Type="String")
+        response = ssm.get_parameters(Names=["/ext/multi/a", "/ext/multi/b", "/ext/multi/c"])
+        found = {p["Name"]: p["Value"] for p in response["Parameters"]}
+        assert found["/ext/multi/a"] == "alpha"
+        assert found["/ext/multi/b"] == "beta"
+        assert found["/ext/multi/c"] == "gamma"
+        ssm.delete_parameter(Name="/ext/multi/a")
+        ssm.delete_parameter(Name="/ext/multi/b")
+        ssm.delete_parameter(Name="/ext/multi/c")
+
+    def test_add_tags_to_resource_parameter(self, ssm):
+        ssm.put_parameter(Name="/ext/taggable", Value="val", Type="String")
+        ssm.add_tags_to_resource(
+            ResourceType="Parameter",
+            ResourceId="/ext/taggable",
+            Tags=[{"Key": "team", "Value": "platform"}, {"Key": "env", "Value": "staging"}],
+        )
+        response = ssm.list_tags_for_resource(
+            ResourceType="Parameter", ResourceId="/ext/taggable"
+        )
+        tags = {t["Key"]: t["Value"] for t in response["TagList"]}
+        assert tags["team"] == "platform"
+        assert tags["env"] == "staging"
+        ssm.delete_parameter(Name="/ext/taggable")
+
+    def test_delete_parameters_batch(self, ssm):
+        ssm.put_parameter(Name="/ext/batch/a", Value="1", Type="String")
+        ssm.put_parameter(Name="/ext/batch/b", Value="2", Type="String")
+        ssm.put_parameter(Name="/ext/batch/c", Value="3", Type="String")
+        response = ssm.delete_parameters(
+            Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
+        )
+        assert sorted(response["DeletedParameters"]) == sorted(
+            ["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
+        )
+        # Verify they are actually gone
+        get_resp = ssm.get_parameters(
+            Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
+        )
+        assert len(get_resp["Parameters"]) == 0

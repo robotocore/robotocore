@@ -391,3 +391,4 @@ class TestKinesisOperations:
             assert len(new_shards) >= 1
         finally:
             kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+

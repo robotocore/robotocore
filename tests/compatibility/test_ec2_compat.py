@@ -428,6 +428,47 @@ class TestEC2SecurityGroupEgress:
             described = ec2.describe_security_groups(GroupIds=[sg_id])
             ingress_ports = [p.get("FromPort") for p in described["SecurityGroups"][0]["IpPermissions"]]
             assert 22 not in ingress_ports
+            ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ExtendedOperations:
+    def test_create_and_delete_key_pair(self, ec2):
+        key_name = _unique("ext-key")
+        resp = ec2.create_key_pair(KeyName=key_name)
+        try:
+            assert resp["KeyName"] == key_name
+            assert "KeyMaterial" in resp
+        finally:
+            ec2.delete_key_pair(KeyName=key_name)
+
+    def test_describe_key_pairs(self, ec2):
+        key_name = _unique("ext-desc-key")
+        ec2.create_key_pair(KeyName=key_name)
+        try:
+            response = ec2.describe_key_pairs(KeyNames=[key_name])
+            names = [kp["KeyName"] for kp in response["KeyPairs"]]
+            assert key_name in names
+        finally:
+            ec2.delete_key_pair(KeyName=key_name)
+
+    def test_create_and_delete_security_group(self, ec2):
+        vpc_resp = ec2.create_vpc(CidrBlock="10.88.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        sg_name = _unique("ext-sg")
+        try:
+            sg_resp = ec2.create_security_group(
+                GroupName=sg_name,
+                Description="Extended test security group",
+                VpcId=vpc_id,
+            )
+            sg_id = sg_resp["GroupId"]
+            assert sg_id.startswith("sg-")
+
+            described = ec2.describe_security_groups(GroupIds=[sg_id])
+            assert len(described["SecurityGroups"]) == 1
+            assert described["SecurityGroups"][0]["GroupName"] == sg_name
 
             ec2.delete_security_group(GroupId=sg_id)
         finally:

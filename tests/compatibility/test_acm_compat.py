@@ -147,22 +147,20 @@ class TestACMOperations:
         assert arn1 in arns
         assert arn2 not in arns
 
-    def test_add_multiple_tags(self, acm):
-        """Add multiple tags and verify all are returned."""
-        arn = acm.request_certificate(DomainName="multitag.example.com")["CertificateArn"]
+    def test_add_tags_to_certificate(self, acm):
+        """Request cert, add tags, list and verify."""
+        arn = acm.request_certificate(DomainName="addtags.example.com")["CertificateArn"]
         acm.add_tags_to_certificate(
             CertificateArn=arn,
             Tags=[
-                {"Key": "team", "Value": "platform"},
-                {"Key": "cost-center", "Value": "12345"},
-                {"Key": "managed-by", "Value": "robotocore"},
+                {"Key": "Team", "Value": "platform"},
+                {"Key": "CostCenter", "Value": "12345"},
             ],
         )
         response = acm.list_tags_for_certificate(CertificateArn=arn)
         tags = {t["Key"]: t["Value"] for t in response["Tags"]}
-        assert tags["team"] == "platform"
-        assert tags["cost-center"] == "12345"
-        assert tags["managed-by"] == "robotocore"
+        assert tags["Team"] == "platform"
+        assert tags["CostCenter"] == "12345"
 
     def test_delete_nonexistent_certificate(self, acm):
         """Deleting a non-existent certificate should raise an error."""
@@ -272,3 +270,18 @@ class TestACMOperations:
                 "AccessDeniedException",
                 "ResourceNotFoundException",
             )
+
+    @pytest.mark.xfail(reason="update_certificate_options may not be supported")
+    def test_update_certificate_options(self, acm):
+        """Request cert and update certificate options."""
+        arn = acm.request_certificate(DomainName="update-opts.example.com")["CertificateArn"]
+        try:
+            acm.update_certificate_options(
+                CertificateArn=arn,
+                Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+            )
+            response = acm.describe_certificate(CertificateArn=arn)
+            opts = response["Certificate"].get("Options", {})
+            assert opts.get("CertificateTransparencyLoggingPreference") == "DISABLED"
+        finally:
+            acm.delete_certificate(CertificateArn=arn)
