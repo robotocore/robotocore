@@ -40,9 +40,26 @@ class StateManager:
         """Register a native provider's save/load functions."""
         self._native_handlers[service] = (save_fn, load_fn)
 
-    def save(self, path: str | Path | None = None) -> str:
-        """Save all state to disk. Returns the path used."""
-        save_dir = Path(path) if path else self.state_dir
+    def save(
+        self,
+        path: str | Path | None = None,
+        name: str | None = None,
+        services: list[str] | None = None,
+    ) -> str:
+        """Save all state to disk. Returns the path used.
+
+        Args:
+            path: Directory to save to (defaults to state_dir).
+            name: Named snapshot — saves under state_dir/snapshots/{name}/.
+            services: If provided, only save these services.
+        """
+        if name:
+            base = Path(path) if path else self.state_dir
+            if not base:
+                raise ValueError("No state directory configured")
+            save_dir = base / "snapshots" / name
+        else:
+            save_dir = Path(path) if path else self.state_dir
         if not save_dir:
             raise ValueError("No state directory configured")
 
@@ -51,19 +68,24 @@ class StateManager:
 
         # Save Moto backend state
         moto_path = save_dir / "moto_state.pkl"
-        self._save_moto_state(moto_path)
+        self._save_moto_state(moto_path, services=services)
 
         # Save native provider state
         native_path = save_dir / "native_state.json"
-        self._save_native_state(native_path)
+        self._save_native_state(native_path, services=services)
 
         # Save metadata
         meta = {
             "version": "1.0",
             "timestamp": timestamp,
             "saved_at": time.time(),
-            "moto_services": self._list_moto_services(),
-            "native_services": list(self._native_handlers.keys()),
+            "moto_services": self._list_moto_services(services),
+            "native_services": (
+                [s for s in self._native_handlers if s in services]
+                if services
+                else list(self._native_handlers.keys())
+            ),
+            "name": name,
         }
         meta_path = save_dir / "metadata.json"
         meta_path.write_text(json.dumps(meta, indent=2))
@@ -88,9 +110,49 @@ class StateManager:
             self.save()
             return True
 
-    def load(self, path: str | Path | None = None) -> bool:
-        """Load state from disk. Returns True if successful."""
-        load_dir = Path(path) if path else self.state_dir
+    def list_snapshots(self) -> list[dict]:
+        """List all named snapshots."""
+        if not self.state_dir:
+            return []
+        snap_dir = self.state_dir / "snapshots"
+        if not snap_dir.exists():
+            return []
+        snapshots = []
+        for entry in sorted(snap_dir.iterdir()):
+            if entry.is_dir():
+                meta_path = entry / "metadata.json"
+                if meta_path.exists():
+                    meta = json.loads(meta_path.read_text())
+                    snapshots.append({
+                        "name": entry.name,
+                        "timestamp": meta.get("timestamp"),
+                        "saved_at": meta.get("saved_at"),
+                        "services": meta.get("moto_services", []),
+                    })
+                else:
+                    snapshots.append({"name": entry.name})
+        return snapshots
+
+    def load(
+        self,
+        path: str | Path | None = None,
+        name: str | None = None,
+        services: list[str] | None = None,
+    ) -> bool:
+        """Load state from disk. Returns True if successful.
+
+        Args:
+            path: Directory to load from (defaults to state_dir).
+            name: Named snapshot — loads from state_dir/snapshots/{name}/.
+            services: If provided, only load these services.
+        """
+        if name:
+            base = Path(path) if path else self.state_dir
+            if not base:
+                return False
+            load_dir = base / "snapshots" / name
+        else:
+            load_dir = Path(path) if path else self.state_dir
         if not load_dir or not load_dir.exists():
             logger.debug("No state directory found at %s", load_dir)
             return False
@@ -161,13 +223,13 @@ class StateManager:
                     )
         logger.info("State imported from JSON")
 
-    def _save_moto_state(self, path: Path) -> None:
+    def _save_moto_state(self, path: Path, services: list[str] | None = None) -> None:
         """Pickle all Moto backends."""
         try:
             from moto.backends import get_backend
 
             state = {}
-            for service_name in self._list_moto_services():
+            for service_name in self._list_moto_services(services):
                 try:
                     backend_dict = get_backend(service_name)
                     # Serialize the backend dict (account -> region -> backend)
@@ -216,10 +278,14 @@ class StateManager:
         except Exception:
             logger.warning("Failed to load Moto state", exc_info=True)
 
-    def _save_native_state(self, path: Path) -> None:
+    def _save_native_state(
+        self, path: Path, services: list[str] | None = None
+    ) -> None:
         """Save native provider state as JSON."""
         state = {}
         for service, (save_fn, _) in self._native_handlers.items():
+            if services and service not in services:
+                continue
             try:
                 state[service] = save_fn()
             except Exception:
@@ -266,11 +332,14 @@ class StateManager:
         except Exception:
             logger.debug("Failed to reset Moto state", exc_info=True)
 
-    def _list_moto_services(self) -> list[str]:
+    def _list_moto_services(self, services: list[str] | None = None) -> list[str]:
         """List Moto services that have backends with data."""
         from robotocore.services.registry import SERVICE_REGISTRY
 
-        return sorted(SERVICE_REGISTRY.keys())
+        all_services = sorted(SERVICE_REGISTRY.keys())
+        if services:
+            return [s for s in all_services if s in services]
+        return all_services
 
 
 # Singleton

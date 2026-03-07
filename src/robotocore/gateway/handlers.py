@@ -89,6 +89,22 @@ def cors_response_handler(context: RequestContext) -> None:
             context.response.headers.setdefault(key, value)
 
 
+def audit_response_handler(context: RequestContext) -> None:
+    """Record the request in the audit log."""
+    from robotocore.audit.log import get_audit_log
+
+    status = context.response.status_code if context.response else 0
+    get_audit_log().record(
+        service=context.service_name,
+        operation=context.operation,
+        method=context.request.method,
+        path=context.request.url.path,
+        status_code=status,
+        account_id=context.account_id,
+        region=context.region,
+    )
+
+
 def logging_response_handler(context: RequestContext) -> None:
     """Log completed request details."""
     if context.response is not None:

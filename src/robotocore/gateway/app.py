@@ -12,6 +12,7 @@ from starlette.routing import Route
 
 from robotocore.gateway.handler_chain import HandlerChain, RequestContext
 from robotocore.gateway.handlers import (
+    audit_response_handler,
     cors_handler,
     cors_response_handler,
     error_normalizer,
@@ -112,13 +113,16 @@ _server_start_time: float = 0.0
 
 def _build_handler_chain() -> HandlerChain:
     """Build the default handler chain for AWS requests."""
+    from robotocore.chaos.middleware import chaos_handler
     from robotocore.gateway.iam_middleware import iam_enforcement_handler
 
     chain = HandlerChain()
     chain.request_handlers.append(cors_handler)
     chain.request_handlers.append(populate_context_handler)
+    chain.request_handlers.append(chaos_handler)
     chain.request_handlers.append(iam_enforcement_handler)
     chain.response_handlers.append(cors_response_handler)
+    chain.response_handlers.append(audit_response_handler)
     chain.response_handlers.append(logging_response_handler)
     chain.exception_handlers.append(error_normalizer)
     return chain
@@ -227,7 +231,11 @@ async def save_state(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    saved_path = manager.save(path)
+    saved_path = manager.save(
+        path=path,
+        name=params.get("name"),
+        services=params.get("services"),
+    )
     return JSONResponse({"status": "saved", "path": saved_path})
 
 
@@ -248,8 +256,21 @@ async def load_state(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    success = manager.load(path)
+    success = manager.load(
+        path=path,
+        name=params.get("name"),
+        services=params.get("services"),
+    )
     return JSONResponse({"status": "loaded" if success else "no_state_found", "path": str(path)})
+
+
+async def list_snapshots(request: Request) -> JSONResponse:
+    """List all named state snapshots."""
+    from robotocore.state.manager import get_state_manager
+
+    manager = get_state_manager()
+    snapshots = manager.list_snapshots()
+    return JSONResponse({"snapshots": snapshots})
 
 
 async def reset_state(request: Request) -> JSONResponse:
@@ -281,6 +302,88 @@ async def import_state(request: Request) -> JSONResponse:
     manager = get_state_manager()
     manager.import_json(data)
     return JSONResponse({"status": "imported"})
+
+
+# ---------------------------------------------------------------------------
+# Chaos engineering endpoints
+# ---------------------------------------------------------------------------
+
+
+async def chaos_list_rules(request: Request) -> JSONResponse:
+    """List all fault injection rules."""
+    from robotocore.chaos.fault_rules import get_fault_store
+
+    rules = get_fault_store().list_rules()
+    return JSONResponse({"rules": rules})
+
+
+async def chaos_add_rule(request: Request) -> JSONResponse:
+    """Add a fault injection rule."""
+    from robotocore.chaos.fault_rules import FaultRule, get_fault_store
+
+    body = await request.body()
+    if not body:
+        return JSONResponse({"error": "No rule provided"}, status_code=400)
+
+    data = json.loads(body)
+    rule = FaultRule.from_dict(data)
+    rule_id = get_fault_store().add(rule)
+    return JSONResponse({"status": "created", "rule_id": rule_id}, status_code=201)
+
+
+async def chaos_delete_rule(request: Request) -> JSONResponse:
+    """Delete a fault injection rule by ID."""
+    from robotocore.chaos.fault_rules import get_fault_store
+
+    rule_id = request.path_params["rule_id"]
+    removed = get_fault_store().remove(rule_id)
+    if removed:
+        return JSONResponse({"status": "deleted", "rule_id": rule_id})
+    return JSONResponse({"error": "Rule not found"}, status_code=404)
+
+
+async def chaos_clear_rules(request: Request) -> JSONResponse:
+    """Clear all fault injection rules."""
+    from robotocore.chaos.fault_rules import get_fault_store
+
+    count = get_fault_store().clear()
+    return JSONResponse({"status": "cleared", "count": count})
+
+
+# ---------------------------------------------------------------------------
+# Resource browser endpoints
+# ---------------------------------------------------------------------------
+
+
+async def resources_overview(request: Request) -> JSONResponse:
+    """List resource counts per service."""
+    from robotocore.resources.browser import get_resource_counts
+
+    counts = get_resource_counts()
+    return JSONResponse({"resources": counts})
+
+
+async def resources_for_service(request: Request) -> JSONResponse:
+    """List resources for a specific service."""
+    from robotocore.resources.browser import get_service_resources
+
+    service = request.path_params["service"]
+    resources = get_service_resources(service)
+    return JSONResponse({"service": service, "resources": resources})
+
+
+# ---------------------------------------------------------------------------
+# Request audit log endpoints
+# ---------------------------------------------------------------------------
+
+
+async def audit_log(request: Request) -> JSONResponse:
+    """Return recent API requests."""
+    from robotocore.audit.log import get_audit_log
+
+    limit = int(request.query_params.get("limit", "100"))
+    entries = get_audit_log().recent(limit)
+    return JSONResponse({"entries": entries, "count": len(entries)})
 
 
 # ---------------------------------------------------------------------------
@@ -465,9 +568,20 @@ management_routes = [
     Route("/_robotocore/config", config_endpoint, methods=["GET"]),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
     Route("/_robotocore/state/load", load_state, methods=["POST"]),
+    Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
     Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
     Route("/_robotocore/state/export", export_state, methods=["GET"]),
     Route("/_robotocore/state/import", import_state, methods=["POST"]),
+    # Chaos engineering
+    Route("/_robotocore/chaos/rules", chaos_list_rules, methods=["GET"]),
+    Route("/_robotocore/chaos/rules", chaos_add_rule, methods=["POST"]),
+    Route("/_robotocore/chaos/rules/clear", chaos_clear_rules, methods=["POST"]),
+    Route("/_robotocore/chaos/rules/{rule_id}", chaos_delete_rule, methods=["DELETE"]),
+    # Resource browser
+    Route("/_robotocore/resources", resources_overview, methods=["GET"]),
+    Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),
+    # Audit log
+    Route("/_robotocore/audit", audit_log, methods=["GET"]),
 ]
 
 
