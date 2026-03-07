@@ -1,0 +1,103 @@
+"""DataSync compatibility tests."""
+
+import uuid
+
+import pytest
+from botocore.exceptions import ClientError
+
+from tests.compatibility.conftest import make_client
+
+
+@pytest.fixture
+def datasync():
+    return make_client("datasync")
+
+
+def _unique(prefix):
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+class TestDataSyncLocationOperations:
+    def test_create_location_s3(self, datasync):
+        response = datasync.create_location_s3(
+            S3BucketArn="arn:aws:s3:::test-bucket",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+        )
+        arn = response["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_describe_location_s3(self, datasync):
+        bucket_name = _unique("describe-bucket")
+        create_resp = datasync.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{bucket_name}",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+        )
+        arn = create_resp["LocationArn"]
+
+        desc = datasync.describe_location_s3(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert bucket_name in desc["LocationUri"]
+        assert "S3Config" in desc
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_create_location_s3_with_subdirectory(self, datasync):
+        create_resp = datasync.create_location_s3(
+            S3BucketArn="arn:aws:s3:::subdir-bucket",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+            Subdirectory="/data/",
+        )
+        arn = create_resp["LocationArn"]
+
+        desc = datasync.describe_location_s3(LocationArn=arn)
+        assert "/data/" in desc["LocationUri"]
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_list_locations(self, datasync):
+        resp1 = datasync.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{_unique('list-bucket')}",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+        )
+        arn = resp1["LocationArn"]
+
+        locations = datasync.list_locations()
+        arns = [loc["LocationArn"] for loc in locations["Locations"]]
+        assert arn in arns
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_delete_location(self, datasync):
+        create_resp = datasync.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{_unique('del-bucket')}",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+        )
+        arn = create_resp["LocationArn"]
+        datasync.delete_location(LocationArn=arn)
+
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_s3(LocationArn=arn)
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_delete_location_removes_from_list(self, datasync):
+        create_resp = datasync.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{_unique('dellist-bucket')}",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+        )
+        arn = create_resp["LocationArn"]
+        datasync.delete_location(LocationArn=arn)
+
+        locations = datasync.list_locations()
+        arns = [loc["LocationArn"] for loc in locations["Locations"]]
+        assert arn not in arns
+
+
+class TestDataSyncTaskOperations:
+    def test_list_tasks_empty(self, datasync):
+        response = datasync.list_tasks()
+        assert "Tasks" in response
+        assert isinstance(response["Tasks"], list)
