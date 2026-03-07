@@ -115,7 +115,6 @@ class TestSTSOperations:
         assert "SessionToken" in creds
         assert "FederatedUser" in response
         assert "FederatedUserId" in response["FederatedUser"]
-    @pytest.mark.xfail(reason="decode_authorization_message may not be supported")
     def test_decode_authorization_message(self, sts):
         """Call decode_authorization_message with a dummy encoded message."""
         try:
@@ -517,7 +516,6 @@ class TestSTSExtended:
         finally:
             iam.delete_role(RoleName=role_name)
 
-    @pytest.mark.xfail(reason="assume_role_with_web_identity may not be fully supported")
     def test_assume_role_with_web_identity(self, sts):
         """AssumeRoleWithWebIdentity with a dummy token."""
         import uuid
@@ -535,7 +533,7 @@ class TestSTSExtended:
         finally:
             iam.delete_role(RoleName=role_name)
 
-    @pytest.mark.xfail(reason="assume_role_with_saml may not be fully supported")
+    @pytest.mark.xfail(reason="Moto requires valid SAML assertion XML")
     def test_assume_role_with_saml(self, sts):
         """AssumeRoleWithSAML with dummy parameters."""
         import uuid

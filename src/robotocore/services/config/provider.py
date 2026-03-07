@@ -91,8 +91,29 @@ def _put_config_rule(params: dict, region: str, account_id: str) -> dict:
     # (Moto validates against known managed rule constraints, which is too strict)
     input_parameters = config_rule.pop("InputParameters", "")
 
+    # For CUSTOM_LAMBDA rules, temporarily change owner to "AWS" to avoid
+    # Moto's Lambda validation, then restore after creation
+    source = config_rule.get("Source", {})
+    original_owner = source.get("Owner", "")
+    original_source_id = source.get("SourceIdentifier", "")
+    original_source_details = source.get("SourceDetails")
+    if original_owner == "CUSTOM_LAMBDA":
+        source["Owner"] = "AWS"
+        source["SourceIdentifier"] = "S3_BUCKET_VERSIONING_ENABLED"
+        source.pop("SourceDetails", None)
+
     # Let Moto handle the core creation
     rule_arn = backend.put_config_rule(config_rule, tags)
+
+    # Restore CUSTOM_LAMBDA source info
+    if original_owner == "CUSTOM_LAMBDA" and rule_name in backend.config_rules:
+        rule = backend.config_rules[rule_name]
+        rule.source = {
+            "Owner": original_owner,
+            "SourceIdentifier": original_source_id,
+        }
+        if original_source_details:
+            rule.source["SourceDetails"] = original_source_details
 
     # Ensure InputParameters is stored on the rule object
     if input_parameters and rule_name in backend.config_rules:
@@ -271,10 +292,22 @@ def _error_response(code: str, message: str, status: int) -> Response:
 # Action dispatch map
 # ---------------------------------------------------------------------------
 
+def _describe_compliance_by_resource(params: dict, region: str, account_id: str) -> dict:
+    """DescribeComplianceByResource — return empty compliance list."""
+    return {"ComplianceByResources": []}
+
+
+def _get_compliance_details_by_config_rule(params: dict, region: str, account_id: str) -> dict:
+    """GetComplianceDetailsByConfigRule — return empty evaluation results."""
+    return {"EvaluationResults": []}
+
+
 _ACTION_MAP = {
     "PutConfigRule": _put_config_rule,
     "DescribeConfigRules": _describe_config_rules,
     "DescribeComplianceByConfigRule": _describe_compliance_by_config_rule,
+    "DescribeComplianceByResource": _describe_compliance_by_resource,
+    "GetComplianceDetailsByConfigRule": _get_compliance_details_by_config_rule,
     "PutEvaluations": _put_evaluations,
     "DescribeConfigRuleEvaluationStatus": _describe_config_rule_evaluation_status,
 }

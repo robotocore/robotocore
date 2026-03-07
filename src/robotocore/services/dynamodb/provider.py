@@ -19,11 +19,33 @@ _MUTATION_OPS = {
     "DynamoDB_20120810.TransactWriteItems",
 }
 
+# In-memory global tables store
+_global_tables: dict[str, dict] = {}
+
 
 async def handle_dynamodb_request(request: Request, region: str, account_id: str) -> Response:
     """Handle DynamoDB requests, forwarding to Moto and firing stream hooks on mutations."""
     body_bytes = await request.body()
     target = request.headers.get("x-amz-target", "")
+    op = target.split(".")[-1] if "." in target else ""
+
+    # Intercept operations not implemented in Moto
+    intercepted = _INTERCEPT_OPS.get(op)
+    if intercepted:
+        try:
+            params = json.loads(body_bytes) if body_bytes else {}
+            result = intercepted(params, region, account_id)
+            return Response(
+                content=json.dumps(result),
+                status_code=200,
+                media_type="application/x-amz-json-1.0",
+            )
+        except _DynamoDBError as e:
+            return Response(
+                content=json.dumps({"__type": e.code, "message": e.message}),
+                status_code=400,
+                media_type="application/x-amz-json-1.0",
+            )
 
     # Forward to Moto
     response = await forward_to_moto(request, "dynamodb")
@@ -177,3 +199,78 @@ def _extract_keys_from_item(table_name: str, item: dict, region: str, account_id
     except Exception:
         pass
     return item  # Fallback: return full item as keys
+
+
+# ---------------------------------------------------------------------------
+# Intercepted operations (not implemented in Moto)
+# ---------------------------------------------------------------------------
+
+
+class _DynamoDBError(Exception):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+
+
+def _create_global_table(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("GlobalTableName", "")
+    replication_group = params.get("ReplicationGroup", [])
+    if name in _global_tables:
+        raise _DynamoDBError(
+            "GlobalTableAlreadyExistsException",
+            f"Global table with name '{name}' already exists",
+        )
+    import time
+
+    desc = {
+        "GlobalTableName": name,
+        "ReplicationGroup": replication_group,
+        "GlobalTableArn": f"arn:aws:dynamodb::{account_id}:global-table/{name}",
+        "CreationDateTime": time.time(),
+        "GlobalTableStatus": "ACTIVE",
+    }
+    _global_tables[name] = desc
+    return {"GlobalTableDescription": desc}
+
+
+def _describe_global_table(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("GlobalTableName", "")
+    if name not in _global_tables:
+        raise _DynamoDBError(
+            "GlobalTableNotFoundException",
+            f"Global table with name '{name}' does not exist",
+        )
+    return {"GlobalTableDescription": _global_tables[name]}
+
+
+def _list_global_tables(params: dict, region: str, account_id: str) -> dict:
+    tables = [
+        {"GlobalTableName": gt["GlobalTableName"], "ReplicationGroup": gt["ReplicationGroup"]}
+        for gt in _global_tables.values()
+    ]
+    return {"GlobalTables": tables}
+
+
+def _describe_table_replica_auto_scaling(params: dict, region: str, account_id: str) -> dict:
+    table_name = params.get("TableName", "")
+    return {
+        "TableAutoScalingDescription": {
+            "TableName": table_name,
+            "TableStatus": "ACTIVE",
+            "Replicas": [
+                {
+                    "RegionName": region,
+                    "ReplicaStatus": "ACTIVE",
+                    "ReplicaAutoScalingPolicies": [],
+                }
+            ],
+        }
+    }
+
+
+_INTERCEPT_OPS: dict = {
+    "CreateGlobalTable": _create_global_table,
+    "DescribeGlobalTable": _describe_global_table,
+    "ListGlobalTables": _list_global_tables,
+    "DescribeTableReplicaAutoScaling": _describe_table_replica_auto_scaling,
+}

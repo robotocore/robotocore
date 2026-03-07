@@ -1238,7 +1238,6 @@ class TestCloudFormationAdvancedOps:
         finally:
             cfn.delete_stack(StackName=stack_name)
 
-    @pytest.mark.xfail(reason="Parameters not returned in describe_stacks")
     def test_create_stack_with_parameters(self, cfn):
         stack_name = f"params-{uuid.uuid4().hex[:8]}"
         template = json.dumps({
@@ -1279,7 +1278,6 @@ class TestCloudFormationAdvancedOps:
         finally:
             cfn.delete_stack(StackName=stack_name)
 
-    @pytest.mark.xfail(reason="validate_template response missing Parameters key")
     def test_validate_template(self, cfn):
         template = json.dumps({
             "AWSTemplateFormatVersion": "2010-09-09",
@@ -1406,7 +1404,6 @@ class TestCloudFormationAdvancedOps:
         finally:
             cfn.delete_stack(StackName=stack_name)
 
-    @pytest.mark.xfail(reason="DELETE_COMPLETE status not tracked in list_stacks")
     def test_delete_stack_removes_resources(self, cfn):
         stack_name = f"delres-{uuid.uuid4().hex[:8]}"
         template = json.dumps({

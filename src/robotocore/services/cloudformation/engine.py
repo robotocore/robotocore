@@ -68,10 +68,14 @@ class CfnStore:
         with self.mutex:
             if name_or_id in self.stacks:
                 return self.stacks[name_or_id]
+            # Search by name, preferring non-deleted stacks
+            deleted = None
             for stack in self.stacks.values():
                 if stack.stack_name == name_or_id:
-                    return stack
-            return None
+                    if stack.status != "DELETE_COMPLETE":
+                        return stack
+                    deleted = stack
+            return deleted
 
     def list_stacks(self) -> list[CfnStack]:
         return list(self.stacks.values())

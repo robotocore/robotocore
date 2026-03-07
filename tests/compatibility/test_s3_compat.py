@@ -1532,7 +1532,6 @@ class TestS3ObjectOperations:
         )
         assert len(resp.get("Deleted", [])) == 5
 
-    @pytest.mark.xfail(reason="PutBucketAcl returns 411 Length Required")
     def test_put_bucket_acl(self, s3, bucket):
         s3.put_bucket_acl(Bucket=bucket, ACL="private")
         resp = s3.get_bucket_acl(Bucket=bucket)
@@ -1640,7 +1639,6 @@ class TestS3BucketOperations:
         assert resp["ErrorDocument"]["Key"] == "error.html"
         s3.delete_bucket_website(Bucket=bucket)
 
-    @pytest.mark.xfail(reason="PutBucketLogging may not be supported")
     def test_put_get_bucket_logging(self, s3, bucket):
         import uuid
         log_bucket = f"log-target-{uuid.uuid4().hex[:8]}"

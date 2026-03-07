@@ -436,7 +436,6 @@ class TestConfigCompliance:
 
 
 class TestConfigExtended:
-    @pytest.mark.xfail(reason="CUSTOM_LAMBDA requires valid Lambda function ARN")
     def test_put_config_rule_custom_lambda(self, config):
         name = "custom-lambda-rule"
         config.put_config_rule(
@@ -605,12 +604,10 @@ class TestConfigExtended:
         resp = config.put_retention_configuration(RetentionPeriodInDays=365)
         assert "RetentionConfiguration" in resp
 
-    @pytest.mark.xfail(reason="describe_compliance_by_resource not implemented")
     def test_describe_compliance_by_resource(self, config):
         resp = config.describe_compliance_by_resource(ResourceType="AWS::S3::Bucket")
         assert "ComplianceByResources" in resp
 
-    @pytest.mark.xfail(reason="get_compliance_details_by_config_rule not implemented")
     def test_get_compliance_details_by_config_rule(self, config):
         name = "comp-detail-rule"
         config.put_config_rule(

@@ -149,6 +149,10 @@ async def _handle_functions(
         if sub == "invocations":
             return await _invoke(func_name, body, request, region, account_id)
 
+        # /functions/{name}/invoke-async — InvokeAsync (deprecated)
+        if sub == "invoke-async":
+            return await _invoke_async(func_name, body, request, region, account_id)
+
         # /functions/{name}/configuration — Get/UpdateFunctionConfiguration
         if sub == "configuration":
             if method == "GET":
@@ -774,6 +778,17 @@ async def _invoke(
     return Response(
         content=payload, status_code=200, headers=headers, media_type="application/json"
     )
+
+
+async def _invoke_async(
+    func_name: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
+    """InvokeAsync (deprecated) — queue async invocation and return 202."""
+    backend = _get_moto_backend(account_id, region)
+    # Verify function exists
+    backend.get_function(func_name)
+    # Just return 202 — in a real environment the function would execute asynchronously
+    return Response(content=b'{"Status": 202}', status_code=202, media_type="application/json")
 
 
 def _dispatch_async_result(

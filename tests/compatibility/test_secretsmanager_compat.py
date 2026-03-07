@@ -283,7 +283,6 @@ class TestSecretsManagerOperations:
             sm.delete_secret(SecretId="batch/secret1", ForceDeleteWithoutRecovery=True)
             sm.delete_secret(SecretId="batch/secret2", ForceDeleteWithoutRecovery=True)
 
-    @pytest.mark.xfail(reason="RotateSecret requires a Lambda rotation function")
     def test_rotate_secret(self, sm):
         """Test RotateSecret."""
         sm.create_secret(Name="rotate-test/secret", SecretString="original")
@@ -325,7 +324,6 @@ class TestSecretsManagerOperations:
         finally:
             sm.delete_secret(SecretId="policy-test/secret", ForceDeleteWithoutRecovery=True)
 
-    @pytest.mark.xfail(reason="ValidateResourcePolicy may not be supported")
     def test_validate_resource_policy(self, sm):
         """Test ValidateResourcePolicy."""
         sm.create_secret(Name="validate-policy/secret", SecretString="val")
@@ -349,7 +347,6 @@ class TestSecretsManagerOperations:
         finally:
             sm.delete_secret(SecretId="validate-policy/secret", ForceDeleteWithoutRecovery=True)
 
-    @pytest.mark.xfail(reason="ReplicateSecretToRegions may not be supported")
     def test_replicate_secret_to_regions(self, sm):
         """Test ReplicateSecretToRegions."""
         sm.create_secret(Name="replicate-test/secret", SecretString="val")
@@ -359,7 +356,7 @@ class TestSecretsManagerOperations:
                 AddReplicaRegions=[{"Region": "eu-west-1"}],
                 ForceOverwriteReplicaSecret=True,
             )
-            assert "ReplicationStatusList" in response
+            assert "ReplicationStatus" in response
         finally:
             sm.delete_secret(SecretId="replicate-test/secret", ForceDeleteWithoutRecovery=True)
 

@@ -29,6 +29,7 @@ TARGET_PREFIX_MAP: dict[str, str] = {
     "Route53Domains": "route53domains",
     "SageMaker": "sagemaker",
     "SecretManager": "secretsmanager",
+    "secretsmanager": "secretsmanager",
     "StarlingDoveService": "config",
     "TrentService": "kms",
     "WorkspacesService": "workspaces",
@@ -36,6 +37,7 @@ TARGET_PREFIX_MAP: dict[str, str] = {
 
 # URL path patterns to service names
 PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"^/2014-11-13/functions"), "lambda"),
     (re.compile(r"^/2015-03-31/functions"), "lambda"),
     (re.compile(r"^/2021-01-01/"), "opensearch"),
     (re.compile(r"^/2021-\d{2}-\d{2}/functions/"), "lambda"),
@@ -45,7 +47,7 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/v20180820/"), "s3control"),
     (re.compile(r"^/2013-04-01/"), "route53"),
     (re.compile(r"^/2014-11-13/"), "logs"),
-    (re.compile(r"^/tags"), "resourcegroupstaggingapi"),
+    (re.compile(r"^/tags$"), "resourcegroupstaggingapi"),
     (re.compile(r"^/prod/"), "kafka"),
     (re.compile(r"^/v1/apis"), "appsync"),
     (re.compile(r"^/v1/create"), "batch"),
@@ -133,5 +135,12 @@ def route_to_service(request: Request) -> str | None:
             return "sqs"
         if "Topic" in path or "topic" in path:
             return "sns"
+
+    # 7. Body-based Action detection for unsigned requests
+    # Some STS operations (AssumeRoleWithWebIdentity, AssumeRoleWithSAML)
+    # don't include an Authorization header.
+    content_type = request.headers.get("content-type", "")
+    if "x-www-form-urlencoded" in content_type and not auth:
+        return "sts"
 
     return None

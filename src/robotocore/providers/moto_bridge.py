@@ -84,7 +84,12 @@ def _build_werkzeug_request(request: Request, body: bytes) -> WerkzeugRequest:
         data=body,
         headers=dict(request.headers),
     )
-    return WerkzeugRequest(builder.get_environ())
+    env = builder.get_environ()
+    # Werkzeug EnvironBuilder strips Content-Length when data is empty, but some
+    # Moto handlers (e.g. S3 _bucket_response_put) require it to be present.
+    if "Content-Length" in request.headers and "CONTENT_LENGTH" not in env:
+        env["CONTENT_LENGTH"] = request.headers["Content-Length"]
+    return WerkzeugRequest(env)
 
 
 async def forward_to_moto(request: Request, service_name: str) -> Response:
