@@ -118,17 +118,22 @@ docker run -p 4566:4566 robotocore
 ### Testing
 
 ```bash
-# Unit tests
-uv run pytest tests/unit/
+# Unit tests (parallel, no server needed)
+make test                              # or: uv run pytest tests/unit/ -n12
 
-# Integration tests (requires running container)
-uv run pytest tests/integration/
+# Compat tests (auto-starts/stops server)
+make compat-test                       # or: uv run python scripts/dev.py test-compat
 
-# Compatibility tests (verifies LocalStack parity)
-uv run pytest tests/compatibility/
+# Compat tests (server already running)
+make compat-test-hot
 
-# Full test suite
-uv run pytest
+# All tests: unit + compat + integration
+make test-all
+
+# Server lifecycle
+make start                             # Start dev server in background
+make stop                              # Stop dev server
+make status                            # Check if server is running
 ```
 
 ## Key Technical Decisions
@@ -196,6 +201,26 @@ Phase 3 - Remaining:
 - Transcribe
 - Support API
 
+## Adding a New Moto-Backed Service (Checklist)
+
+1. Verify Moto has the backend: `ls vendor/moto/moto/{service}/`
+2. Find protocol: check botocore service-2.json metadata
+3. Add to registry.py: `ServiceInfo` with `MOTO_BACKED` status
+4. Add routing in router.py (`TARGET_PREFIX_MAP` / `PATH_PATTERNS` / `SERVICE_NAME_ALIASES`)
+5. Run smoke_test.py to verify basic operation
+6. Probe with `probe_service.py` to find working operations
+7. Add compat tests for verified operations only
+
+Or use the batch tool: `uv run python scripts/batch_register_services.py --service <name> --write`
+
+## Infrastructure Features
+
+- **Chaos Engineering**: `POST /_robotocore/chaos/rules` to inject faults (ThrottlingException, latency, etc.)
+- **Resource Browser**: `GET /_robotocore/resources` for cross-service resource overview
+- **Audit Log**: `GET /_robotocore/audit` for recent API call history (ring buffer, configurable via `AUDIT_LOG_SIZE`)
+- **State Snapshots**: `POST /_robotocore/state/save {"name":"my-snap"}` / `POST /_robotocore/state/load {"name":"my-snap"}`
+- **Selective Persistence**: `POST /_robotocore/state/save {"services":["s3","dynamodb"]}`
+
 ## Working with Agents
 
 When using Claude Code agents on this project:
@@ -214,7 +239,7 @@ When using Claude Code agents on this project:
 - Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
 - Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
 - Run `uv run python scripts/<tool>.py` to analyze, then spawn agents to act on the results
-- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `coverage_gaps.py`, `analyze_localstack.py`
+- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `coverage_gaps.py`, `analyze_localstack.py`, `batch_register_services.py`, `dev.py`, `service_health_matrix.py`
 
 ### Subagent patterns
 - **Research first**: Use Explore agents (parallel, no worktree) to understand the problem, then code agents to implement
@@ -230,6 +255,11 @@ When we discover a Moto bug or missing feature that SHOULD be fixed in Moto (not
 4. Open a PR against `getmoto/moto` from the worktree branch
 5. In the meantime, use a native provider intercept in robotocore as the workaround
 6. Track the PR in the commit message so we know when to remove the workaround
+
+### Commit cadence & prompt logging (IMPORTANT)
+- **Commit as you go** — don't accumulate a massive diff. Commit after each logical phase of work (e.g., "registered 100 services", "added chaos module", "extended smoke tests").
+- **Never stop to summarize** — if the plan has more steps, keep executing. A summary is only appropriate when the plan is fully complete.
+- **Prompt log**: Every commit includes a prompt log entry in `prompts/`. Follow the format in `~/www/jackdanger.com/static/promptlog.md`. One file per session phase, named `prompts/{timestamp}-{slug}.md` with YAML frontmatter. Include both human prompts and assistant reasoning for non-obvious decisions.
 
 ### Test expansion rules (IMPORTANT — learned from experience)
 - **Never write tests for unverified operations**. Before writing compat tests for a service, verify what actually works by running the operations against the live server. Use `scripts/probe_service.py` as a starting point.
