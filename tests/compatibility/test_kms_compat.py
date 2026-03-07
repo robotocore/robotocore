@@ -555,3 +555,136 @@ class TestKMSOperations:
             assert parsed2["Statement"][0]["Sid"] == "Enable IAM policies"
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+
+class TestKMSExtended:
+    """Extended KMS operations for higher coverage."""
+
+    @pytest.fixture
+    def kms(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("kms")
+
+    def test_generate_data_key(self, kms):
+        key = kms.create_key()
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key(KeyId=key_id, KeySpec="AES_256")
+            assert "Plaintext" in resp
+            assert "CiphertextBlob" in resp
+            assert "KeyId" in resp
+            assert len(resp["Plaintext"]) == 32  # AES_256 = 32 bytes
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_data_key_without_plaintext(self, kms):
+        key = kms.create_key()
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key_without_plaintext(
+                KeyId=key_id, KeySpec="AES_256"
+            )
+            assert "CiphertextBlob" in resp
+            assert "Plaintext" not in resp or resp.get("Plaintext") is None
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_random(self, kms):
+        resp = kms.generate_random(NumberOfBytes=32)
+        assert "Plaintext" in resp
+        assert len(resp["Plaintext"]) == 32
+
+    def test_list_keys(self, kms):
+        resp = kms.list_keys()
+        assert "Keys" in resp
+        assert isinstance(resp["Keys"], list)
+
+    def test_list_aliases(self, kms):
+        resp = kms.list_aliases()
+        assert "Aliases" in resp
+
+    def test_update_key_description(self, kms):
+        key = kms.create_key(Description="original desc")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            kms.update_key_description(KeyId=key_id, Description="updated desc")
+            desc = kms.describe_key(KeyId=key_id)
+            assert desc["KeyMetadata"]["Description"] == "updated desc"
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_enable_disable_key(self, kms):
+        key = kms.create_key()
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            kms.disable_key(KeyId=key_id)
+            desc = kms.describe_key(KeyId=key_id)
+            assert desc["KeyMetadata"]["Enabled"] is False
+
+            kms.enable_key(KeyId=key_id)
+            desc = kms.describe_key(KeyId=key_id)
+            assert desc["KeyMetadata"]["Enabled"] is True
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_list_key_policies(self, kms):
+        key = kms.create_key()
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.list_key_policies(KeyId=key_id)
+            assert "PolicyNames" in resp
+            assert "default" in resp["PolicyNames"]
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_create_grant(self, kms):
+        key = kms.create_key()
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.create_grant(
+                KeyId=key_id,
+                GranteePrincipal="arn:aws:iam::123456789012:root",
+                Operations=["Encrypt", "Decrypt"],
+            )
+            assert "GrantId" in resp
+            assert "GrantToken" in resp
+
+            grants = kms.list_grants(KeyId=key_id)
+            grant_ids = [g["GrantId"] for g in grants["Grants"]]
+            assert resp["GrantId"] in grant_ids
+
+            kms.revoke_grant(KeyId=key_id, GrantId=resp["GrantId"])
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_encrypt_decrypt_roundtrip(self, kms):
+        key = kms.create_key()
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            plaintext = b"Hello KMS World!"
+            enc_resp = kms.encrypt(KeyId=key_id, Plaintext=plaintext)
+            assert "CiphertextBlob" in enc_resp
+
+            dec_resp = kms.decrypt(CiphertextBlob=enc_resp["CiphertextBlob"])
+            assert dec_resp["Plaintext"] == plaintext
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_re_encrypt(self, kms):
+        key1 = kms.create_key()
+        key2 = kms.create_key()
+        key1_id = key1["KeyMetadata"]["KeyId"]
+        key2_id = key2["KeyMetadata"]["KeyId"]
+        try:
+            enc = kms.encrypt(KeyId=key1_id, Plaintext=b"re-encrypt test")
+            re_enc = kms.re_encrypt(
+                CiphertextBlob=enc["CiphertextBlob"],
+                DestinationKeyId=key2_id,
+            )
+            assert "CiphertextBlob" in re_enc
+
+            dec = kms.decrypt(CiphertextBlob=re_enc["CiphertextBlob"])
+            assert dec["Plaintext"] == b"re-encrypt test"
+        finally:
+            kms.schedule_key_deletion(KeyId=key1_id, PendingWindowInDays=7)
+            kms.schedule_key_deletion(KeyId=key2_id, PendingWindowInDays=7)
