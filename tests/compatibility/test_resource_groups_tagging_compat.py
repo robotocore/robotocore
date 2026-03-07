@@ -139,8 +139,11 @@ class TestTaggingExtended:
             sqs.delete_queue(QueueUrl=url)
 
     def test_get_resources_empty_result(self, tagging):
+        import uuid
+        unique_key = f"nonexistent-key-{uuid.uuid4().hex}"
         resp = tagging.get_resources(
-            TagFilters=[{"Key": "nonexistent-key-xyz", "Values": ["nothing"]}],
+            TagFilters=[{"Key": unique_key, "Values": ["nothing"]}],
+            ResourceTypeFilters=["sqs:queue"],
         )
         assert resp["ResourceTagMappingList"] == []
 

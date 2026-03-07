@@ -1,0 +1,156 @@
+"""Athena compatibility tests."""
+
+import uuid
+
+import pytest
+
+from tests.compatibility.conftest import make_client
+
+
+def _unique(prefix):
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+@pytest.fixture
+def athena():
+    return make_client("athena")
+
+
+class TestAthenaWorkGroupOperations:
+    def test_create_work_group(self, athena):
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={
+                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
+            },
+        )
+        resp = athena.get_work_group(WorkGroup=name)
+        assert resp["WorkGroup"]["Name"] == name
+        # cleanup
+        athena.delete_work_group(WorkGroup=name)
+
+    def test_get_work_group(self, athena):
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={
+                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
+            },
+            Description="test workgroup",
+        )
+        resp = athena.get_work_group(WorkGroup=name)
+        wg = resp["WorkGroup"]
+        assert wg["Name"] == name
+        assert wg["Description"] == "test workgroup"
+        assert wg["State"] == "ENABLED"
+        # cleanup
+        athena.delete_work_group(WorkGroup=name)
+
+    def test_list_work_groups(self, athena):
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={
+                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
+            },
+        )
+        resp = athena.list_work_groups()
+        names = [wg["Name"] for wg in resp["WorkGroups"]]
+        assert name in names
+        # cleanup
+        athena.delete_work_group(WorkGroup=name)
+
+    def test_delete_work_group(self, athena):
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={
+                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
+            },
+        )
+        athena.delete_work_group(WorkGroup=name)
+        # Verify it's gone from the list
+        resp = athena.list_work_groups()
+        names = [wg["Name"] for wg in resp["WorkGroups"]]
+        assert name not in names
+
+
+class TestAthenaNamedQueryOperations:
+    def test_create_named_query(self, athena):
+        name = _unique("nq")
+        resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 1",
+        )
+        assert "NamedQueryId" in resp
+
+    def test_get_named_query(self, athena):
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 1",
+            Description="test query",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.get_named_query(NamedQueryId=query_id)
+        nq = resp["NamedQuery"]
+        assert nq["Name"] == name
+        assert nq["QueryString"] == "SELECT 1"
+        assert nq["Database"] == "default"
+
+    def test_list_named_queries(self, athena):
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 1",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.list_named_queries()
+        assert query_id in resp["NamedQueryIds"]
+
+
+class TestAthenaQueryExecution:
+    def test_start_query_execution(self, athena):
+        resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        assert "QueryExecutionId" in resp
+
+    def test_get_query_execution(self, athena):
+        start_resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        qe_id = start_resp["QueryExecutionId"]
+        resp = athena.get_query_execution(QueryExecutionId=qe_id)
+        qe = resp["QueryExecution"]
+        assert qe["QueryExecutionId"] == qe_id
+        assert qe["Query"] == "SELECT 1"
+        assert "Status" in qe
+
+    def test_list_query_executions(self, athena):
+        start_resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        qe_id = start_resp["QueryExecutionId"]
+        resp = athena.list_query_executions()
+        assert qe_id in resp["QueryExecutionIds"]
+
+
+class TestAthenaListOperations:
+    def test_list_data_catalogs(self, athena):
+        resp = athena.list_data_catalogs()
+        assert "DataCatalogsSummary" in resp
+
+    def test_list_capacity_reservations(self, athena):
+        resp = athena.list_capacity_reservations()
+        assert "CapacityReservations" in resp

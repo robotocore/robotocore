@@ -1,0 +1,332 @@
+"""EFS (Elastic File System) compatibility tests."""
+
+import json
+import uuid
+
+import pytest
+from botocore.exceptions import ClientError
+
+from tests.compatibility.conftest import make_client
+
+
+@pytest.fixture
+def efs():
+    return make_client("efs")
+
+
+def _unique(prefix):
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _create_fs(efs, **kwargs):
+    """Create a file system and return its ID. Caller is responsible for cleanup."""
+    token = uuid.uuid4().hex[:8]
+    r = efs.create_file_system(CreationToken=token, **kwargs)
+    return r["FileSystemId"]
+
+
+class TestEFSFileSystemOperations:
+    def test_create_file_system(self, efs):
+        fs_id = _create_fs(efs)
+        assert fs_id.startswith("fs-")
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_create_file_system_with_tags(self, efs):
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_file_system(
+            CreationToken=token,
+            Tags=[{"Key": "Name", "Value": "tagged-fs"}],
+        )
+        fs_id = r["FileSystemId"]
+        assert r["Name"] == "tagged-fs"
+        tags = [t for t in r["Tags"] if t["Key"] == "Name"]
+        assert tags[0]["Value"] == "tagged-fs"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_create_file_system_fields(self, efs):
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_file_system(CreationToken=token)
+        fs_id = r["FileSystemId"]
+        assert "FileSystemArn" in r
+        assert "CreationTime" in r
+        assert "LifeCycleState" in r
+        assert "SizeInBytes" in r
+        assert "PerformanceMode" in r
+        assert "ThroughputMode" in r
+        assert r["CreationToken"] == token
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_create_file_system_encrypted(self, efs):
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_file_system(CreationToken=token, Encrypted=True)
+        fs_id = r["FileSystemId"]
+        assert r["Encrypted"] is True
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_file_systems(self, efs):
+        fs_id = _create_fs(efs)
+        r = efs.describe_file_systems(FileSystemId=fs_id)
+        assert len(r["FileSystems"]) == 1
+        assert r["FileSystems"][0]["FileSystemId"] == fs_id
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_file_systems_list(self, efs):
+        fs1 = _create_fs(efs)
+        fs2 = _create_fs(efs)
+        r = efs.describe_file_systems()
+        ids = [fs["FileSystemId"] for fs in r["FileSystems"]]
+        assert fs1 in ids
+        assert fs2 in ids
+        efs.delete_file_system(FileSystemId=fs1)
+        efs.delete_file_system(FileSystemId=fs2)
+
+    def test_delete_file_system(self, efs):
+        fs_id = _create_fs(efs)
+        efs.delete_file_system(FileSystemId=fs_id)
+        # Verify it's gone
+        r = efs.describe_file_systems()
+        ids = [fs["FileSystemId"] for fs in r["FileSystems"]]
+        assert fs_id not in ids
+
+    def test_delete_nonexistent_file_system(self, efs):
+        with pytest.raises(ClientError) as exc:
+            efs.delete_file_system(FileSystemId="fs-00000000")
+        assert exc.value.response["Error"]["Code"] == "FileSystemNotFound"
+
+    def test_describe_nonexistent_file_system(self, efs):
+        with pytest.raises(ClientError) as exc:
+            efs.describe_file_systems(FileSystemId="fs-00000000")
+        assert exc.value.response["Error"]["Code"] == "FileSystemNotFound"
+
+    def test_tag_resource(self, efs):
+        fs_id = _create_fs(efs)
+        efs.tag_resource(
+            ResourceId=fs_id,
+            Tags=[{"Key": "Env", "Value": "prod"}, {"Key": "Team", "Value": "infra"}],
+        )
+        r = efs.list_tags_for_resource(ResourceId=fs_id)
+        tag_map = {t["Key"]: t["Value"] for t in r["Tags"]}
+        assert tag_map["Env"] == "prod"
+        assert tag_map["Team"] == "infra"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_untag_resource(self, efs):
+        fs_id = _create_fs(
+            efs, Tags=[{"Key": "Keep", "Value": "yes"}, {"Key": "Remove", "Value": "yes"}]
+        )
+        efs.untag_resource(ResourceId=fs_id, TagKeys=["Remove"])
+        r = efs.list_tags_for_resource(ResourceId=fs_id)
+        keys = [t["Key"] for t in r["Tags"]]
+        assert "Keep" in keys
+        assert "Remove" not in keys
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_list_tags_for_resource(self, efs):
+        fs_id = _create_fs(efs, Tags=[{"Key": "Name", "Value": "tag-test"}])
+        r = efs.list_tags_for_resource(ResourceId=fs_id)
+        tag_map = {t["Key"]: t["Value"] for t in r["Tags"]}
+        assert tag_map["Name"] == "tag-test"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_put_file_system_policy(self, efs):
+        fs_id = _create_fs(efs)
+        fs_arn = f"arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/{fs_id}"
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": ["elasticfilesystem:ClientMount"],
+                    "Resource": fs_arn,
+                }
+            ],
+        })
+        r = efs.put_file_system_policy(FileSystemId=fs_id, Policy=policy)
+        assert r["FileSystemId"] == fs_id
+        assert "Policy" in r
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_file_system_policy(self, efs):
+        fs_id = _create_fs(efs)
+        fs_arn = f"arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/{fs_id}"
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": ["elasticfilesystem:ClientMount"],
+                    "Resource": fs_arn,
+                }
+            ],
+        })
+        efs.put_file_system_policy(FileSystemId=fs_id, Policy=policy)
+        r = efs.describe_file_system_policy(FileSystemId=fs_id)
+        assert r["FileSystemId"] == fs_id
+        returned_policy = json.loads(r["Policy"])
+        assert returned_policy["Version"] == "2012-10-17"
+        assert len(returned_policy["Statement"]) == 1
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_file_system_policy_not_found(self, efs):
+        fs_id = _create_fs(efs)
+        with pytest.raises(ClientError) as exc:
+            efs.describe_file_system_policy(FileSystemId=fs_id)
+        assert exc.value.response["Error"]["Code"] == "PolicyNotFound"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+
+class TestEFSAccessPointOperations:
+    def test_create_access_point(self, efs):
+        fs_id = _create_fs(efs)
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_access_point(
+            ClientToken=token,
+            FileSystemId=fs_id,
+            Tags=[{"Key": "Name", "Value": "test-ap"}],
+        )
+        ap_id = r["AccessPointId"]
+        assert ap_id.startswith("fsap-")
+        assert r["FileSystemId"] == fs_id
+        assert "AccessPointArn" in r
+        efs.delete_access_point(AccessPointId=ap_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_create_access_point_with_posix_user(self, efs):
+        fs_id = _create_fs(efs)
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_access_point(
+            ClientToken=token,
+            FileSystemId=fs_id,
+            PosixUser={"Uid": 1000, "Gid": 1000},
+        )
+        ap_id = r["AccessPointId"]
+        assert r["PosixUser"]["Uid"] == 1000
+        assert r["PosixUser"]["Gid"] == 1000
+        efs.delete_access_point(AccessPointId=ap_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_create_access_point_with_root_directory(self, efs):
+        fs_id = _create_fs(efs)
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_access_point(
+            ClientToken=token,
+            FileSystemId=fs_id,
+            RootDirectory={
+                "Path": "/data",
+                "CreationInfo": {
+                    "OwnerUid": 1000,
+                    "OwnerGid": 1000,
+                    "Permissions": "755",
+                },
+            },
+        )
+        ap_id = r["AccessPointId"]
+        assert r["RootDirectory"]["Path"] == "/data"
+        efs.delete_access_point(AccessPointId=ap_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_access_points(self, efs):
+        fs_id = _create_fs(efs)
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_access_point(ClientToken=token, FileSystemId=fs_id)
+        ap_id = r["AccessPointId"]
+        r = efs.describe_access_points(FileSystemId=fs_id)
+        ap_ids = [ap["AccessPointId"] for ap in r["AccessPoints"]]
+        assert ap_id in ap_ids
+        efs.delete_access_point(AccessPointId=ap_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_access_points_by_id(self, efs):
+        fs_id = _create_fs(efs)
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_access_point(ClientToken=token, FileSystemId=fs_id)
+        ap_id = r["AccessPointId"]
+        r = efs.describe_access_points(AccessPointId=ap_id)
+        assert len(r["AccessPoints"]) == 1
+        assert r["AccessPoints"][0]["AccessPointId"] == ap_id
+        efs.delete_access_point(AccessPointId=ap_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_delete_access_point(self, efs):
+        fs_id = _create_fs(efs)
+        token = uuid.uuid4().hex[:8]
+        r = efs.create_access_point(ClientToken=token, FileSystemId=fs_id)
+        ap_id = r["AccessPointId"]
+        efs.delete_access_point(AccessPointId=ap_id)
+        r = efs.describe_access_points(FileSystemId=fs_id)
+        ap_ids = [ap["AccessPointId"] for ap in r["AccessPoints"]]
+        assert ap_id not in ap_ids
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_delete_nonexistent_access_point(self, efs):
+        """Deleting a nonexistent access point succeeds silently (idempotent)."""
+        efs.delete_access_point(AccessPointId="fsap-00000000")
+
+
+class TestEFSLifecycleConfiguration:
+    def test_put_lifecycle_configuration(self, efs):
+        fs_id = _create_fs(efs)
+        r = efs.put_lifecycle_configuration(
+            FileSystemId=fs_id,
+            LifecyclePolicies=[{"TransitionToIA": "AFTER_30_DAYS"}],
+        )
+        assert len(r["LifecyclePolicies"]) == 1
+        assert r["LifecyclePolicies"][0]["TransitionToIA"] == "AFTER_30_DAYS"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_lifecycle_configuration(self, efs):
+        fs_id = _create_fs(efs)
+        efs.put_lifecycle_configuration(
+            FileSystemId=fs_id,
+            LifecyclePolicies=[{"TransitionToIA": "AFTER_60_DAYS"}],
+        )
+        r = efs.describe_lifecycle_configuration(FileSystemId=fs_id)
+        assert len(r["LifecyclePolicies"]) >= 1
+        policies = {
+            k: v
+            for p in r["LifecyclePolicies"]
+            for k, v in p.items()
+        }
+        assert "TransitionToIA" in policies
+        assert policies["TransitionToIA"] == "AFTER_60_DAYS"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_update_lifecycle_configuration(self, efs):
+        fs_id = _create_fs(efs)
+        efs.put_lifecycle_configuration(
+            FileSystemId=fs_id,
+            LifecyclePolicies=[{"TransitionToIA": "AFTER_30_DAYS"}],
+        )
+        # Update to a different policy
+        r = efs.put_lifecycle_configuration(
+            FileSystemId=fs_id,
+            LifecyclePolicies=[{"TransitionToIA": "AFTER_90_DAYS"}],
+        )
+        assert r["LifecyclePolicies"][0]["TransitionToIA"] == "AFTER_90_DAYS"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_clear_lifecycle_configuration(self, efs):
+        fs_id = _create_fs(efs)
+        efs.put_lifecycle_configuration(
+            FileSystemId=fs_id,
+            LifecyclePolicies=[{"TransitionToIA": "AFTER_30_DAYS"}],
+        )
+        # Clear by passing empty list
+        r = efs.put_lifecycle_configuration(
+            FileSystemId=fs_id,
+            LifecyclePolicies=[],
+        )
+        assert r["LifecyclePolicies"] == []
+        efs.delete_file_system(FileSystemId=fs_id)
+
+
+class TestEFSBackupPolicy:
+    def test_describe_backup_policy_not_found(self, efs):
+        """DescribeBackupPolicy on a FS with no backup policy raises PolicyNotFound."""
+        fs_id = _create_fs(efs)
+        with pytest.raises(ClientError) as exc:
+            efs.describe_backup_policy(FileSystemId=fs_id)
+        assert exc.value.response["Error"]["Code"] == "PolicyNotFound"
+        efs.delete_file_system(FileSystemId=fs_id)
