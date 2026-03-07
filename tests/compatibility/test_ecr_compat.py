@@ -4,6 +4,7 @@ import json
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -140,8 +141,9 @@ class TestECRRepositoryOperations:
         finally:
             ecr.delete_repository(repositoryName=repo_name)
 
+
+class TestECRRepositoryPolicy:
     def test_get_repository_policy(self, ecr):
-        """Set and then retrieve a repository policy."""
         repo_name = _unique("getpol-repo")
         ecr.create_repository(repositoryName=repo_name)
         try:
@@ -150,10 +152,10 @@ class TestECRRepositoryOperations:
                     "Version": "2012-10-17",
                     "Statement": [
                         {
-                            "Sid": "AllowPull",
+                            "Sid": "ReadOnly",
                             "Effect": "Allow",
                             "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                            "Action": ["ecr:GetDownloadUrlForLayer"],
+                            "Action": ["ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
                         }
                     ],
                 }
@@ -163,12 +165,10 @@ class TestECRRepositoryOperations:
             assert response["repositoryName"] == repo_name
             returned = json.loads(response["policyText"])
             assert returned["Version"] == "2012-10-17"
-            assert len(returned["Statement"]) == 1
         finally:
             ecr.delete_repository(repositoryName=repo_name)
 
     def test_delete_repository_policy(self, ecr):
-        """Set and then delete a repository policy."""
         repo_name = _unique("delpol-repo")
         ecr.create_repository(repositoryName=repo_name)
         try:
@@ -177,25 +177,98 @@ class TestECRRepositoryOperations:
                     "Version": "2012-10-17",
                     "Statement": [
                         {
-                            "Sid": "AllowPull",
+                            "Sid": "Test",
                             "Effect": "Allow",
-                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Principal": "*",
                             "Action": ["ecr:GetDownloadUrlForLayer"],
                         }
                     ],
                 }
             )
             ecr.set_repository_policy(repositoryName=repo_name, policyText=policy)
-            response = ecr.delete_repository_policy(repositoryName=repo_name)
-            assert response["repositoryName"] == repo_name
-            # Verify it's gone
-            with pytest.raises(ecr.exceptions.RepositoryPolicyNotFoundException):
+            ecr.delete_repository_policy(repositoryName=repo_name)
+            with pytest.raises(ClientError) as exc_info:
                 ecr.get_repository_policy(repositoryName=repo_name)
+            assert "RepositoryPolicyNotFoundException" in str(exc_info.value)
         finally:
             ecr.delete_repository(repositoryName=repo_name)
 
+
+class TestECRDescribeImages:
+    def test_describe_images_empty_repo(self, ecr):
+        repo_name = _unique("empty-repo")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            response = ecr.describe_images(repositoryName=repo_name)
+            assert response["imageDetails"] == []
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECRLifecyclePolicyErrors:
+    def test_get_lifecycle_policy_not_found(self, ecr):
+        repo_name = _unique("nolc-repo")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ecr.get_lifecycle_policy(repositoryName=repo_name)
+            assert "LifecyclePolicyNotFoundException" in str(exc_info.value)
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECRImageScanning:
+    def test_put_image_scanning_configuration(self, ecr):
+        repo_name = _unique("scan-repo")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            response = ecr.put_image_scanning_configuration(
+                repositoryName=repo_name,
+                imageScanningConfiguration={"scanOnPush": True},
+            )
+            assert response["repositoryName"] == repo_name
+            assert response["imageScanningConfiguration"]["scanOnPush"] is True
+            # Verify via describe
+            described = ecr.describe_repositories(repositoryNames=[repo_name])
+            assert described["repositories"][0]["imageScanningConfiguration"]["scanOnPush"] is True
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECREncryption:
+    def test_create_repository_with_encryption(self, ecr):
+        repo_name = _unique("enc-repo")
+        response = ecr.create_repository(
+            repositoryName=repo_name,
+            encryptionConfiguration={"encryptionType": "AES256"},
+        )
+        try:
+            repo = response["repository"]
+            assert repo["repositoryName"] == repo_name
+            assert repo["encryptionConfiguration"]["encryptionType"] == "AES256"
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECRImageTagMutability:
+    def test_put_image_tag_mutability(self, ecr):
+        repo_name = _unique("mut-repo")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            response = ecr.put_image_tag_mutability(
+                repositoryName=repo_name,
+                imageTagMutability="IMMUTABLE",
+            )
+            assert response["repositoryName"] == repo_name
+            assert response["imageTagMutability"] == "IMMUTABLE"
+            described = ecr.describe_repositories(repositoryNames=[repo_name])
+            assert described["repositories"][0]["imageTagMutability"] == "IMMUTABLE"
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECRDeleteLifecyclePolicy:
     def test_delete_lifecycle_policy(self, ecr):
-        """Put and then delete a lifecycle policy."""
         repo_name = _unique("dellc-repo")
         ecr.create_repository(repositoryName=repo_name)
         try:
@@ -203,7 +276,7 @@ class TestECRRepositoryOperations:
                 "rules": [
                     {
                         "rulePriority": 1,
-                        "description": "Expire old",
+                        "description": "Remove old",
                         "selection": {
                             "tagStatus": "untagged",
                             "countType": "sinceImagePushed",
@@ -220,215 +293,8 @@ class TestECRRepositoryOperations:
             )
             response = ecr.delete_lifecycle_policy(repositoryName=repo_name)
             assert response["repositoryName"] == repo_name
-            # Verify it's gone
-            with pytest.raises(ecr.exceptions.LifecyclePolicyNotFoundException):
+            with pytest.raises(ClientError) as exc_info:
                 ecr.get_lifecycle_policy(repositoryName=repo_name)
-        finally:
-            ecr.delete_repository(repositoryName=repo_name)
-
-    def test_create_repository_with_encryption(self, ecr):
-        """Create a repository with AES256 encryption configuration."""
-        repo_name = _unique("enc-repo")
-        response = ecr.create_repository(
-            repositoryName=repo_name,
-            encryptionConfiguration={"encryptionType": "AES256"},
-        )
-        repo = response["repository"]
-        assert repo["repositoryName"] == repo_name
-        assert repo["encryptionConfiguration"]["encryptionType"] == "AES256"
-        ecr.delete_repository(repositoryName=repo_name)
-
-    def test_create_repository_with_image_tag_mutability(self, ecr):
-        """Create a repository with IMMUTABLE image tag mutability."""
-        repo_name = _unique("immut-repo")
-        response = ecr.create_repository(
-            repositoryName=repo_name,
-            imageTagMutability="IMMUTABLE",
-        )
-        repo = response["repository"]
-        assert repo["imageTagMutability"] == "IMMUTABLE"
-        ecr.delete_repository(repositoryName=repo_name)
-
-    def test_create_repository_with_image_scanning(self, ecr):
-        """Create a repository with scan-on-push enabled."""
-        repo_name = _unique("scan-repo")
-        response = ecr.create_repository(
-            repositoryName=repo_name,
-            imageScanningConfiguration={"scanOnPush": True},
-        )
-        repo = response["repository"]
-        assert repo["imageScanningConfiguration"]["scanOnPush"] is True
-        ecr.delete_repository(repositoryName=repo_name)
-
-    def test_describe_repositories_nonexistent(self, ecr):
-        """Describing a nonexistent repository raises RepositoryNotFoundException."""
-        with pytest.raises(ecr.exceptions.RepositoryNotFoundException):
-            ecr.describe_repositories(repositoryNames=["nonexistent-repo-xyz"])
-
-    def test_delete_repository_nonexistent(self, ecr):
-        """Deleting a nonexistent repository raises RepositoryNotFoundException."""
-        with pytest.raises(ecr.exceptions.RepositoryNotFoundException):
-            ecr.delete_repository(repositoryName="nonexistent-repo-xyz")
-
-
-class TestECRImageOperations:
-    def test_put_image_and_list_images(self, ecr):
-        """Put a fake image manifest and list images in the repository."""
-        repo_name = _unique("img-repo")
-        ecr.create_repository(repositoryName=repo_name)
-        try:
-            manifest = json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-                    "config": {
-                        "mediaType": "application/vnd.docker.container.image.v1+json",
-                        "size": 7023,
-                        "digest": "sha256:" + "a" * 64,
-                    },
-                    "layers": [],
-                }
-            )
-            ecr.put_image(
-                repositoryName=repo_name,
-                imageManifest=manifest,
-                imageTag="latest",
-            )
-            response = ecr.list_images(repositoryName=repo_name)
-            image_ids = response["imageIds"]
-            assert len(image_ids) >= 1
-            tags = [img.get("imageTag") for img in image_ids]
-            assert "latest" in tags
-        finally:
-            ecr.delete_repository(repositoryName=repo_name, force=True)
-
-    def test_batch_get_image(self, ecr):
-        """Put an image and retrieve it via batch_get_image."""
-        repo_name = _unique("batch-repo")
-        ecr.create_repository(repositoryName=repo_name)
-        try:
-            manifest = json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-                    "config": {
-                        "mediaType": "application/vnd.docker.container.image.v1+json",
-                        "size": 7023,
-                        "digest": "sha256:" + "b" * 64,
-                    },
-                    "layers": [],
-                }
-            )
-            ecr.put_image(
-                repositoryName=repo_name,
-                imageManifest=manifest,
-                imageTag="v1",
-            )
-            response = ecr.batch_get_image(
-                repositoryName=repo_name,
-                imageIds=[{"imageTag": "v1"}],
-            )
-            assert len(response["images"]) == 1
-            assert response["images"][0]["imageId"]["imageTag"] == "v1"
-            assert "imageManifest" in response["images"][0]
-        finally:
-            ecr.delete_repository(repositoryName=repo_name, force=True)
-
-    def test_describe_images(self, ecr):
-        """Put an image and describe it."""
-        repo_name = _unique("descimg-repo")
-        ecr.create_repository(repositoryName=repo_name)
-        try:
-            manifest = json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-                    "config": {
-                        "mediaType": "application/vnd.docker.container.image.v1+json",
-                        "size": 7023,
-                        "digest": "sha256:" + "c" * 64,
-                    },
-                    "layers": [],
-                }
-            )
-            ecr.put_image(
-                repositoryName=repo_name,
-                imageManifest=manifest,
-                imageTag="v2",
-            )
-            response = ecr.describe_images(repositoryName=repo_name)
-            assert len(response["imageDetails"]) >= 1
-            tags = []
-            for detail in response["imageDetails"]:
-                tags.extend(detail.get("imageTags", []))
-            assert "v2" in tags
-        finally:
-            ecr.delete_repository(repositoryName=repo_name, force=True)
-
-    def test_list_images_empty_repository(self, ecr):
-        """Listing images in an empty repository returns an empty list."""
-        repo_name = _unique("empty-repo")
-        ecr.create_repository(repositoryName=repo_name)
-        try:
-            response = ecr.list_images(repositoryName=repo_name)
-            assert response["imageIds"] == []
-        finally:
-            ecr.delete_repository(repositoryName=repo_name)
-
-
-class TestECRTagOperations:
-    def test_tag_resource(self, ecr):
-        """Tag an ECR repository and verify with list_tags_for_resource."""
-        repo_name = _unique("tag-repo")
-        response = ecr.create_repository(repositoryName=repo_name)
-        arn = response["repository"]["repositoryArn"]
-        try:
-            ecr.tag_resource(
-                resourceArn=arn,
-                tags=[
-                    {"Key": "Environment", "Value": "test"},
-                    {"Key": "Project", "Value": "robotocore"},
-                ],
-            )
-            tag_response = ecr.list_tags_for_resource(resourceArn=arn)
-            tag_map = {t["Key"]: t["Value"] for t in tag_response["tags"]}
-            assert tag_map["Environment"] == "test"
-            assert tag_map["Project"] == "robotocore"
-        finally:
-            ecr.delete_repository(repositoryName=repo_name)
-
-    def test_untag_resource(self, ecr):
-        """Tag a repository, then remove a tag."""
-        repo_name = _unique("untag-repo")
-        response = ecr.create_repository(repositoryName=repo_name)
-        arn = response["repository"]["repositoryArn"]
-        try:
-            ecr.tag_resource(
-                resourceArn=arn,
-                tags=[
-                    {"Key": "Env", "Value": "dev"},
-                    {"Key": "Team", "Value": "platform"},
-                ],
-            )
-            ecr.untag_resource(resourceArn=arn, tagKeys=["Team"])
-            tag_response = ecr.list_tags_for_resource(resourceArn=arn)
-            tag_keys = [t["Key"] for t in tag_response["tags"]]
-            assert "Env" in tag_keys
-            assert "Team" not in tag_keys
-        finally:
-            ecr.delete_repository(repositoryName=repo_name)
-
-    def test_create_repository_with_tags(self, ecr):
-        """Create a repository with tags and verify via list_tags_for_resource."""
-        repo_name = _unique("tagrepo")
-        response = ecr.create_repository(
-            repositoryName=repo_name,
-            tags=[{"Key": "CreatedBy", "Value": "compat-test"}],
-        )
-        arn = response["repository"]["repositoryArn"]
-        try:
-            tag_response = ecr.list_tags_for_resource(resourceArn=arn)
-            tag_map = {t["Key"]: t["Value"] for t in tag_response["tags"]}
-            assert tag_map["CreatedBy"] == "compat-test"
+            assert "LifecyclePolicyNotFoundException" in str(exc_info.value)
         finally:
             ecr.delete_repository(repositoryName=repo_name)

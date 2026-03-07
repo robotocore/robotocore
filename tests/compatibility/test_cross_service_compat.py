@@ -800,3 +800,514 @@ class TestCloudFormationMultiService:
         topic_arns_after = [t["TopicArn"] for t in topics_after["Topics"]]
         matching_after = [a for a in topic_arns_after if topic_name in a]
         assert len(matching_after) == 0, f"Topic {topic_name} should be deleted"
+
+
+class TestSNSToSQS:
+    """SNS -> SQS: Publish a message to an SNS topic with an SQS subscriber."""
+
+    def test_sns_publishes_to_sqs_subscriber(self):
+        sns = make_client("sns")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        topic_name = f"sns-sqs-topic-{suffix}"
+        queue_name = f"sns-sqs-queue-{suffix}"
+
+        # Create SQS queue
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = q_attrs["Attributes"]["QueueArn"]
+
+        # Create SNS topic
+        topic_resp = sns.create_topic(Name=topic_name)
+        topic_arn = topic_resp["TopicArn"]
+
+        # Subscribe SQS to SNS
+        sub_resp = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=queue_arn)
+        sub_arn = sub_resp["SubscriptionArn"]
+
+        # Publish message
+        msg_body = f"cross-service-test-{suffix}"
+        pub_resp = sns.publish(TopicArn=topic_arn, Message=msg_body)
+        assert "MessageId" in pub_resp
+
+        # Receive from SQS
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Expected at least one message in SQS from SNS"
+
+        body = json.loads(msgs[0]["Body"])
+        assert body["Type"] == "Notification"
+        assert body["TopicArn"] == topic_arn
+        assert body["Message"] == msg_body
+
+        # Clean up
+        sns.unsubscribe(SubscriptionArn=sub_arn)
+        sns.delete_topic(TopicArn=topic_arn)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+    @pytest.mark.xfail(reason="SNS->SQS delivery does not include MessageAttributes yet")
+    def test_sns_to_sqs_with_message_attributes(self):
+        """Publish with MessageAttributes, verify they arrive in SQS."""
+        sns = make_client("sns")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+
+        q_resp = sqs.create_queue(QueueName=f"sns-sqs-attr-{suffix}")
+        queue_url = q_resp["QueueUrl"]
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = q_attrs["Attributes"]["QueueArn"]
+
+        topic_resp = sns.create_topic(Name=f"sns-sqs-attr-topic-{suffix}")
+        topic_arn = topic_resp["TopicArn"]
+
+        sub_resp = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=queue_arn)
+        sub_arn = sub_resp["SubscriptionArn"]
+
+        sns.publish(
+            TopicArn=topic_arn,
+            Message="attr-test",
+            MessageAttributes={
+                "color": {"DataType": "String", "StringValue": "blue"},
+            },
+        )
+
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        assert body["Message"] == "attr-test"
+        assert "MessageAttributes" in body
+
+        # Clean up
+        sns.unsubscribe(SubscriptionArn=sub_arn)
+        sns.delete_topic(TopicArn=topic_arn)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+    def test_sns_to_sqs_multiple_messages(self):
+        """Publish multiple messages and verify all arrive."""
+        sns = make_client("sns")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+
+        q_resp = sqs.create_queue(QueueName=f"sns-sqs-multi-{suffix}")
+        queue_url = q_resp["QueueUrl"]
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = q_attrs["Attributes"]["QueueArn"]
+
+        topic_resp = sns.create_topic(Name=f"sns-sqs-multi-topic-{suffix}")
+        topic_arn = topic_resp["TopicArn"]
+
+        sub_resp = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=queue_arn)
+        sub_arn = sub_resp["SubscriptionArn"]
+
+        # Publish 3 messages
+        for i in range(3):
+            sns.publish(TopicArn=topic_arn, Message=f"message-{i}")
+
+        time.sleep(1)
+
+        # Receive all messages (may take multiple receives)
+        all_msgs = []
+        for _ in range(3):
+            recv = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=3)
+            all_msgs.extend(recv.get("Messages", []))
+            if len(all_msgs) >= 3:
+                break
+
+        assert len(all_msgs) >= 3, f"Expected 3 messages, got {len(all_msgs)}"
+
+        # Clean up
+        sns.unsubscribe(SubscriptionArn=sub_arn)
+        sns.delete_topic(TopicArn=topic_arn)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestCloudFormationDynamoDB:
+    """CloudFormation with DynamoDB: Deploy a template that creates a DDB table."""
+
+    def test_cfn_creates_dynamodb_table(self):
+        cfn = make_client("cloudformation")
+        dynamodb = make_client("dynamodb")
+        suffix = uuid.uuid4().hex[:8]
+        stack_name = f"cfn-ddb-{suffix}"
+        table_name = f"cfn-ddb-table-{suffix}"
+
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyTable": {
+                        "Type": "AWS::DynamoDB::Table",
+                        "Properties": {
+                            "TableName": table_name,
+                            "AttributeDefinitions": [
+                                {"AttributeName": "pk", "AttributeType": "S"},
+                            ],
+                            "KeySchema": [
+                                {"AttributeName": "pk", "KeyType": "HASH"},
+                            ],
+                            "BillingMode": "PAY_PER_REQUEST",
+                        },
+                    },
+                },
+            }
+        )
+
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+
+        # Verify stack created
+        stacks = cfn.describe_stacks(StackName=stack_name)
+        assert stacks["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        # Verify table exists
+        desc = dynamodb.describe_table(TableName=table_name)
+        assert desc["Table"]["TableName"] == table_name
+        assert desc["Table"]["KeySchema"][0]["AttributeName"] == "pk"
+
+        # Delete stack and verify table is cleaned up
+        cfn.delete_stack(StackName=stack_name)
+        with pytest.raises(Exception):
+            dynamodb.describe_table(TableName=table_name)
+
+
+class TestCloudFormationLambda:
+    """CloudFormation with Lambda: Deploy a template that creates a Lambda function."""
+
+    @pytest.mark.xfail(reason="CloudFormation Lambda resource creation not fully implemented")
+    def test_cfn_creates_and_invokes_lambda(self):
+        cfn = make_client("cloudformation")
+        lam = make_client("lambda")
+        iam_client = make_client("iam")
+        suffix = uuid.uuid4().hex[:8]
+        stack_name = f"cfn-lam-{suffix}"
+        func_name = f"cfn-lam-func-{suffix}"
+        role_name = f"cfn-lam-role-{suffix}"
+
+        # Create IAM role first (outside the stack for simplicity)
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        role_resp = iam_client.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+        role_arn = role_resp["Role"]["Arn"]
+
+        code = _make_lambda_zip(
+            "def handler(event, ctx):\n"
+            "    return {'result': 'from-cfn-lambda', 'input': event}\n"
+        )
+
+        import base64
+
+        code_b64 = base64.b64encode(code).decode("utf-8")
+
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyFunction": {
+                        "Type": "AWS::Lambda::Function",
+                        "Properties": {
+                            "FunctionName": func_name,
+                            "Runtime": "python3.12",
+                            "Handler": "lambda_function.handler",
+                            "Role": role_arn,
+                            "Code": {"ZipFile": code_b64},
+                        },
+                    },
+                },
+            }
+        )
+
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+
+        stacks = cfn.describe_stacks(StackName=stack_name)
+        assert stacks["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
+
+        # Verify function exists
+        func = lam.get_function(FunctionName=func_name)
+        assert func["Configuration"]["FunctionName"] == func_name
+
+        # Invoke the function
+        invoke_resp = lam.invoke(FunctionName=func_name, Payload=json.dumps({"key": "value"}))
+        payload = json.loads(invoke_resp["Payload"].read())
+        assert payload["result"] == "from-cfn-lambda"
+
+        # Delete stack
+        cfn.delete_stack(StackName=stack_name)
+        iam_client.delete_role(RoleName=role_name)
+
+
+class TestSQSTagsViaResourceGroupsTagging:
+    """SQS queue tags visible through Resource Groups Tagging API."""
+
+    @pytest.mark.xfail(reason="Resource Groups Tagging cross-service tag discovery not implemented")
+    def test_sqs_tags_via_tagging_api(self):
+        sqs = make_client("sqs")
+        tagging = make_client("resourcegroupstaggingapi")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"tagged-queue-{suffix}"
+
+        # Create SQS queue with tags
+        q_resp = sqs.create_queue(
+            QueueName=queue_name,
+            tags={"Environment": "test", "Project": "robotocore"},
+        )
+        queue_url = q_resp["QueueUrl"]
+
+        # Verify tags via SQS API
+        tags_resp = sqs.list_queue_tags(QueueUrl=queue_url)
+        assert tags_resp["Tags"]["Environment"] == "test"
+
+        # Verify tags via Resource Groups Tagging API
+        resp = tagging.get_resources(
+            TagFilters=[{"Key": "Project", "Values": ["robotocore"]}],
+            ResourceTypeFilters=["sqs"],
+        )
+        arns = [r["ResourceARN"] for r in resp["ResourceTagMappingList"]]
+        assert len(arns) >= 1, "Expected tagged SQS queue to appear in tagging API results"
+
+        # Clean up
+        sqs.delete_queue(QueueUrl=queue_url)
+
+    @pytest.mark.xfail(reason="Resource Groups Tagging cross-service tag discovery not implemented")
+    def test_sqs_tags_via_tagging_api_get_tag_keys(self):
+        sqs = make_client("sqs")
+        tagging = make_client("resourcegroupstaggingapi")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"tagkeys-queue-{suffix}"
+
+        q_resp = sqs.create_queue(
+            QueueName=queue_name,
+            tags={"UniqueTagKey": "value"},
+        )
+        queue_url = q_resp["QueueUrl"]
+
+        # Get tag keys
+        resp = tagging.get_tag_keys()
+        assert "UniqueTagKey" in resp["TagKeys"]
+
+        # Clean up
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestEventBridgeToSQS:
+    """EventBridge -> SQS: Rule with SQS target delivers events."""
+
+    def test_eventbridge_delivers_to_sqs(self):
+        events = make_client("events")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"eb-sqs-rule-{suffix}"
+        queue_name = f"eb-sqs-queue-{suffix}"
+
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = q_attrs["Attributes"]["QueueArn"]
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.eb.sqs"]}),
+            State="ENABLED",
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": "sqs-target", "Arn": queue_arn}],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.eb.sqs",
+                    "DetailType": "SQSDelivery",
+                    "Detail": json.dumps({"payload": "from-eventbridge"}),
+                }
+            ]
+        )
+
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Expected EventBridge to deliver event to SQS"
+
+        body = json.loads(msgs[0]["Body"])
+        assert body["source"] == "test.eb.sqs"
+        assert body["detail"]["payload"] == "from-eventbridge"
+
+        # Clean up
+        events.remove_targets(Rule=rule_name, Ids=["sqs-target"])
+        events.delete_rule(Name=rule_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestEventBridgeToSNS:
+    """EventBridge -> SNS: Rule with SNS target publishes events."""
+
+    def test_eventbridge_delivers_to_sns_then_sqs(self):
+        events = make_client("events")
+        sns = make_client("sns")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+
+        # Set up SQS as SNS subscriber for verification
+        q_resp = sqs.create_queue(QueueName=f"eb-sns-verify-{suffix}")
+        queue_url = q_resp["QueueUrl"]
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = q_attrs["Attributes"]["QueueArn"]
+
+        topic_resp = sns.create_topic(Name=f"eb-sns-topic-{suffix}")
+        topic_arn = topic_resp["TopicArn"]
+
+        sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=queue_arn)
+
+        # EventBridge rule targeting SNS
+        rule_name = f"eb-sns-rule-{suffix}"
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.eb.sns"]}),
+            State="ENABLED",
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": "sns-target", "Arn": topic_arn}],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.eb.sns",
+                    "DetailType": "SNSDelivery",
+                    "Detail": json.dumps({"data": "eb-to-sns"}),
+                }
+            ]
+        )
+
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Expected EventBridge->SNS->SQS chain to deliver"
+
+        # The SQS message is an SNS notification wrapping the EventBridge event
+        body = json.loads(msgs[0]["Body"])
+        assert body["Type"] == "Notification"
+        inner = json.loads(body["Message"])
+        assert inner["source"] == "test.eb.sns"
+
+        # Clean up
+        events.remove_targets(Rule=rule_name, Ids=["sns-target"])
+        events.delete_rule(Name=rule_name)
+        sns.delete_topic(TopicArn=topic_arn)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestSQSLambdaEventSourceMapping:
+    """SQS -> Lambda via Event Source Mapping."""
+
+    def test_sqs_event_source_mapping_crud(self):
+        """Create and verify an SQS event source mapping for Lambda."""
+        lam = make_client("lambda")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        func_name = f"esm-sqs-fn-{suffix}"
+        queue_name = f"esm-sqs-queue-{suffix}"
+
+        iam, role_name, role_arn = _create_lambda_role()
+
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+        q_attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = q_attrs["Attributes"]["QueueArn"]
+
+        code = _make_lambda_zip("def handler(event, ctx): return {'ok': True}")
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        esm_resp = lam.create_event_source_mapping(
+            EventSourceArn=queue_arn,
+            FunctionName=func_name,
+            BatchSize=5,
+        )
+        esm_uuid = esm_resp["UUID"]
+        assert esm_resp["EventSourceArn"] == queue_arn
+        assert esm_resp["BatchSize"] == 5
+
+        # List and verify
+        list_resp = lam.list_event_source_mappings(FunctionName=func_name)
+        uuids = [m["UUID"] for m in list_resp["EventSourceMappings"]]
+        assert esm_uuid in uuids
+
+        # Delete
+        lam.delete_event_source_mapping(UUID=esm_uuid)
+
+        # Clean up
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+        iam.delete_role(RoleName=role_name)
+
+
+class TestKinesisLambdaEventSourceMapping:
+    """Kinesis -> Lambda via Event Source Mapping."""
+
+    def test_kinesis_event_source_mapping_crud(self):
+        """Create and verify a Kinesis event source mapping for Lambda."""
+        lam = make_client("lambda")
+        kinesis = make_client("kinesis")
+        suffix = uuid.uuid4().hex[:8]
+        func_name = f"esm-kin-fn-{suffix}"
+        stream_name = f"esm-kin-stream-{suffix}"
+
+        iam, role_name, role_arn = _create_lambda_role()
+
+        kinesis.create_stream(StreamName=stream_name, ShardCount=1)
+
+        # Wait for stream to be active
+        for _ in range(10):
+            desc = kinesis.describe_stream(StreamName=stream_name)
+            if desc["StreamDescription"]["StreamStatus"] == "ACTIVE":
+                break
+            time.sleep(0.5)
+        stream_arn = desc["StreamDescription"]["StreamARN"]
+
+        code = _make_lambda_zip("def handler(event, ctx): return {'ok': True}")
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        esm_resp = lam.create_event_source_mapping(
+            EventSourceArn=stream_arn,
+            FunctionName=func_name,
+            StartingPosition="LATEST",
+            BatchSize=10,
+        )
+        esm_uuid = esm_resp["UUID"]
+        assert esm_resp["EventSourceArn"] == stream_arn
+        assert esm_resp["BatchSize"] == 10
+
+        # List and verify
+        list_resp = lam.list_event_source_mappings(FunctionName=func_name)
+        uuids = [m["UUID"] for m in list_resp["EventSourceMappings"]]
+        assert esm_uuid in uuids
+
+        # Delete
+        lam.delete_event_source_mapping(UUID=esm_uuid)
+
+        # Clean up
+        lam.delete_function(FunctionName=func_name)
+        kinesis.delete_stream(StreamName=stream_name)
+        iam.delete_role(RoleName=role_name)

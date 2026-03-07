@@ -166,3 +166,274 @@ class TestIntegrations:
         )
         resp = apigwv2.get_integrations(ApiId=api)
         assert len(resp["Items"]) >= 1
+
+    def test_delete_integration(self, apigwv2, api):
+        created = apigwv2.create_integration(
+            ApiId=api,
+            IntegrationType="AWS_PROXY",
+            IntegrationUri="arn:aws:lambda:us-east-1:123456789012:function:del-fn",
+            PayloadFormatVersion="2.0",
+        )
+        int_id = created["IntegrationId"]
+        apigwv2.delete_integration(ApiId=api, IntegrationId=int_id)
+        resp = apigwv2.get_integrations(ApiId=api)
+        int_ids = [i["IntegrationId"] for i in resp["Items"]]
+        assert int_id not in int_ids
+
+    def test_update_integration(self, apigwv2, api):
+        created = apigwv2.create_integration(
+            ApiId=api,
+            IntegrationType="HTTP_PROXY",
+            IntegrationMethod="GET",
+            IntegrationUri="https://example.com",
+            PayloadFormatVersion="1.0",
+        )
+        int_id = created["IntegrationId"]
+        resp = apigwv2.update_integration(
+            ApiId=api,
+            IntegrationId=int_id,
+            IntegrationMethod="POST",
+        )
+        assert resp["IntegrationMethod"] == "POST"
+
+
+class TestDeployments:
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("deploy-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_create_deployment(self, apigwv2, api):
+        resp = apigwv2.create_deployment(ApiId=api)
+        assert "DeploymentId" in resp
+        assert "DeploymentStatus" in resp
+
+    def test_get_deployment(self, apigwv2, api):
+        created = apigwv2.create_deployment(ApiId=api)
+        resp = apigwv2.get_deployment(ApiId=api, DeploymentId=created["DeploymentId"])
+        assert resp["DeploymentId"] == created["DeploymentId"]
+
+    def test_get_deployments(self, apigwv2, api):
+        apigwv2.create_deployment(ApiId=api)
+        resp = apigwv2.get_deployments(ApiId=api)
+        assert len(resp["Items"]) >= 1
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 delete_deployment not routed")
+    def test_delete_deployment(self, apigwv2, api):
+        created = apigwv2.create_deployment(ApiId=api)
+        dep_id = created["DeploymentId"]
+        apigwv2.delete_deployment(ApiId=api, DeploymentId=dep_id)
+        resp = apigwv2.get_deployments(ApiId=api)
+        dep_ids = [d["DeploymentId"] for d in resp["Items"]]
+        assert dep_id not in dep_ids
+
+
+class TestAuthorizers:
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("auth-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
+    def test_create_authorizer(self, apigwv2, api):
+        resp = apigwv2.create_authorizer(
+            ApiId=api,
+            AuthorizerType="JWT",
+            IdentitySource="$request.header.Authorization",
+            Name=_unique("jwt-auth"),
+            JwtConfiguration={
+                "Audience": ["my-api"],
+                "Issuer": "https://example.com",
+            },
+        )
+        assert "AuthorizerId" in resp
+        assert resp["AuthorizerType"] == "JWT"
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
+    def test_get_authorizer(self, apigwv2, api):
+        name = _unique("get-auth")
+        created = apigwv2.create_authorizer(
+            ApiId=api,
+            AuthorizerType="JWT",
+            IdentitySource="$request.header.Authorization",
+            Name=name,
+            JwtConfiguration={
+                "Audience": ["my-api"],
+                "Issuer": "https://example.com",
+            },
+        )
+        resp = apigwv2.get_authorizer(ApiId=api, AuthorizerId=created["AuthorizerId"])
+        assert resp["Name"] == name
+        assert resp["AuthorizerType"] == "JWT"
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
+    def test_delete_authorizer(self, apigwv2, api):
+        created = apigwv2.create_authorizer(
+            ApiId=api,
+            AuthorizerType="JWT",
+            IdentitySource="$request.header.Authorization",
+            Name=_unique("del-auth"),
+            JwtConfiguration={
+                "Audience": ["my-api"],
+                "Issuer": "https://example.com",
+            },
+        )
+        auth_id = created["AuthorizerId"]
+        apigwv2.delete_authorizer(ApiId=api, AuthorizerId=auth_id)
+        # Verify it's gone by trying to get it
+        with pytest.raises(Exception):
+            apigwv2.get_authorizer(ApiId=api, AuthorizerId=auth_id)
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 authorizers not routed")
+    def test_get_authorizers(self, apigwv2, api):
+        apigwv2.create_authorizer(
+            ApiId=api,
+            AuthorizerType="JWT",
+            IdentitySource="$request.header.Authorization",
+            Name=_unique("list-auth"),
+            JwtConfiguration={
+                "Audience": ["my-api"],
+                "Issuer": "https://example.com",
+            },
+        )
+        resp = apigwv2.get_authorizers(ApiId=api)
+        assert len(resp["Items"]) >= 1
+
+
+class TestUpdateRoute:
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("upd-route-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_update_route_key(self, apigwv2, api):
+        created = apigwv2.create_route(ApiId=api, RouteKey="GET /old")
+        resp = apigwv2.update_route(
+            ApiId=api,
+            RouteId=created["RouteId"],
+            RouteKey="GET /new",
+        )
+        assert resp["RouteKey"] == "GET /new"
+
+
+class TestVpcLinks:
+    @pytest.mark.xfail(reason="Moto apigatewayv2 VpcLinks not routed")
+    def test_create_and_get_vpc_link(self, apigwv2):
+        name = _unique("vpc-link")
+        created = apigwv2.create_vpc_link(
+            Name=name,
+            SubnetIds=["subnet-12345678"],
+        )
+        assert "VpcLinkId" in created
+        assert created["Name"] == name
+
+        resp = apigwv2.get_vpc_link(VpcLinkId=created["VpcLinkId"])
+        assert resp["Name"] == name
+
+        # Clean up
+        apigwv2.delete_vpc_link(VpcLinkId=created["VpcLinkId"])
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 VpcLinks not routed")
+    def test_get_vpc_links(self, apigwv2):
+        name = _unique("list-vpcl")
+        created = apigwv2.create_vpc_link(
+            Name=name,
+            SubnetIds=["subnet-12345678"],
+        )
+        resp = apigwv2.get_vpc_links()
+        names = [v["Name"] for v in resp["Items"]]
+        assert name in names
+
+        apigwv2.delete_vpc_link(VpcLinkId=created["VpcLinkId"])
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 VpcLinks not routed")
+    def test_delete_vpc_link(self, apigwv2):
+        created = apigwv2.create_vpc_link(
+            Name=_unique("del-vpcl"),
+            SubnetIds=["subnet-12345678"],
+        )
+        vpc_link_id = created["VpcLinkId"]
+        apigwv2.delete_vpc_link(VpcLinkId=vpc_link_id)
+        resp = apigwv2.get_vpc_links()
+        ids = [v["VpcLinkId"] for v in resp["Items"]]
+        assert vpc_link_id not in ids
+
+
+class TestApiMappings:
+    @pytest.mark.xfail(reason="Moto apigatewayv2 DomainNames not routed")
+    def test_create_and_get_api_mapping(self, apigwv2):
+        api_name = _unique("mapping-api")
+        domain_name = _unique("domain") + ".example.com"
+
+        api = apigwv2.create_api(Name=api_name, ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        stage = apigwv2.create_stage(ApiId=api_id, StageName="prod")
+
+        apigwv2.create_domain_name(
+            DomainName=domain_name,
+            DomainNameConfigurations=[
+                {"CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/abc123"}
+            ],
+        )
+
+        mapping = apigwv2.create_api_mapping(
+            ApiId=api_id,
+            DomainName=domain_name,
+            Stage="prod",
+        )
+        assert "ApiMappingId" in mapping
+
+        resp = apigwv2.get_api_mappings(DomainName=domain_name)
+        mapping_ids = [m["ApiMappingId"] for m in resp["Items"]]
+        assert mapping["ApiMappingId"] in mapping_ids
+
+        # Clean up
+        apigwv2.delete_api_mapping(
+            ApiMappingId=mapping["ApiMappingId"],
+            DomainName=domain_name,
+        )
+        apigwv2.delete_domain_name(DomainName=domain_name)
+        apigwv2.delete_api(ApiId=api_id)
+
+
+class TestModels:
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("model-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 Models not routed")
+    def test_create_and_get_model(self, apigwv2, api):
+        import json
+
+        name = _unique("mymodel")
+        schema = json.dumps({"type": "object", "properties": {"name": {"type": "string"}}})
+        created = apigwv2.create_model(
+            ApiId=api,
+            ContentType="application/json",
+            Name=name,
+            Schema=schema,
+        )
+        assert "ModelId" in created
+
+        resp = apigwv2.get_model(ApiId=api, ModelId=created["ModelId"])
+        assert resp["Name"] == name
+
+    @pytest.mark.xfail(reason="Moto apigatewayv2 Models not routed")
+    def test_delete_model(self, apigwv2, api):
+        import json
+
+        schema = json.dumps({"type": "object"})
+        created = apigwv2.create_model(
+            ApiId=api,
+            ContentType="application/json",
+            Name=_unique("del-model"),
+            Schema=schema,
+        )
+        apigwv2.delete_model(ApiId=api, ModelId=created["ModelId"])
+        with pytest.raises(Exception):
+            apigwv2.get_model(ApiId=api, ModelId=created["ModelId"])
