@@ -976,3 +976,233 @@ class TestCloudFormationAdvanced:
         p = params[0]
         assert p["ParameterKey"] == "Env"
         assert p["DefaultValue"] == "dev"
+
+    def test_describe_stack_events(self, cfn):
+        """DescribeStackEvents returns lifecycle events."""
+        stack_name = f"events-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stack_events(StackName=stack_name)
+            assert "StackEvents" in resp
+            assert len(resp["StackEvents"]) >= 1
+            event = resp["StackEvents"][0]
+            assert "StackName" in event or "LogicalResourceId" in event
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_list_stack_resources(self, cfn):
+        """ListStackResources returns logical and physical IDs."""
+        stack_name = f"lsr-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q1": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q1"}},
+                "Q2": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q2"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.list_stack_resources(StackName=stack_name)
+            summaries = resp["StackResourceSummaries"]
+            logical_ids = [s["LogicalResourceId"] for s in summaries]
+            assert "Q1" in logical_ids
+            assert "Q2" in logical_ids
+            for s in summaries:
+                assert "PhysicalResourceId" in s
+                assert "ResourceType" in s
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_fn_split(self, cfn):
+        """Fn::Split intrinsic function."""
+        stack_name = f"split-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+            "Outputs": {
+                "Second": {
+                    "Value": {"Fn::Select": [1, {"Fn::Split": [",", "a,b,c"]}]},
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            assert outputs.get("Second") == "b"
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_conditions(self, cfn):
+        """Stack with Conditions and Fn::If."""
+        stack_name = f"cond-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Parameters": {
+                "Env": {"Type": "String", "Default": "prod"},
+            },
+            "Conditions": {
+                "IsProd": {"Fn::Equals": [{"Ref": "Env"}, "prod"]},
+            },
+            "Resources": {
+                "Q": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {
+                        "QueueName": {"Fn::If": ["IsProd", f"{stack_name}-prod-q", f"{stack_name}-dev-q"]},
+                    },
+                },
+            },
+            "Outputs": {
+                "QueueName": {"Value": {"Fn::GetAtt": ["Q", "QueueName"]}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            assert outputs.get("QueueName") == f"{stack_name}-prod-q"
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_describe_stacks_returns_status(self, cfn):
+        """DescribeStacks returns StackStatus."""
+        stack_name = f"status-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            stack = resp["Stacks"][0]
+            assert "StackStatus" in stack
+            assert stack["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+            assert "StackName" in stack
+            assert "StackId" in stack
+            assert "CreationTime" in stack
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_kms_key(self, cfn):
+        """Create a stack with a KMS key resource."""
+        stack_name = f"kms-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Key": {
+                    "Type": "AWS::KMS::Key",
+                    "Properties": {
+                        "Description": "test key from cfn",
+                        "KeyPolicy": {
+                            "Version": "2012-10-17",
+                            "Statement": [{
+                                "Sid": "Enable IAM User Permissions",
+                                "Effect": "Allow",
+                                "Principal": {"AWS": "*"},
+                                "Action": "kms:*",
+                                "Resource": "*",
+                            }],
+                        },
+                    },
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stack_resources(StackName=stack_name)
+            resources = resp["StackResources"]
+            assert any(r["ResourceType"] == "AWS::KMS::Key" for r in resources)
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_s3_bucket(self, cfn):
+        """Create a stack with an S3 bucket."""
+        stack_name = f"s3-test-{uuid.uuid4().hex[:8]}"
+        bucket_name = f"cfn-bucket-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Bucket": {
+                    "Type": "AWS::S3::Bucket",
+                    "Properties": {"BucketName": bucket_name},
+                },
+            },
+            "Outputs": {
+                "BucketName": {"Value": {"Ref": "Bucket"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            assert outputs.get("BucketName") == bucket_name
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_stack_with_lambda_function(self, cfn):
+        """Create a stack with a Lambda function."""
+        stack_name = f"lam-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Role": {
+                    "Type": "AWS::IAM::Role",
+                    "Properties": {
+                        "RoleName": f"{stack_name}-role",
+                        "AssumeRolePolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [{
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }],
+                        },
+                    },
+                },
+                "Fn": {
+                    "Type": "AWS::Lambda::Function",
+                    "Properties": {
+                        "FunctionName": f"{stack_name}-fn",
+                        "Runtime": "python3.12",
+                        "Handler": "index.handler",
+                        "Role": {"Fn::GetAtt": ["Role", "Arn"]},
+                        "Code": {"ZipFile": "def handler(event, context): return 'ok'"},
+                    },
+                },
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.describe_stack_resources(StackName=stack_name)
+            types = [r["ResourceType"] for r in resp["StackResources"]]
+            assert "AWS::Lambda::Function" in types
+            assert "AWS::IAM::Role" in types
+        finally:
+            cfn.delete_stack(StackName=stack_name)
+
+    def test_list_stacks_with_filter(self, cfn):
+        """ListStacks with StackStatusFilter."""
+        stack_name = f"filter-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps({
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {
+                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
+            },
+        })
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.list_stacks(StackStatusFilter=["CREATE_COMPLETE"])
+            names = [s["StackName"] for s in resp["StackSummaries"]]
+            assert stack_name in names
+        finally:
+            cfn.delete_stack(StackName=stack_name)

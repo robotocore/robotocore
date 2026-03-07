@@ -804,3 +804,238 @@ class TestSNSSubscribeProtocols:
             Endpoint="https://example.com/sns-endpoint",
         )
         assert "SubscriptionArn" in sub
+
+
+class TestSNSExtendedOperations:
+    """Extended SNS operations for higher coverage."""
+
+    @pytest.fixture
+    def sns(self):
+        from tests.compatibility.conftest import make_client
+        return make_client("sns")
+
+    @pytest.fixture
+    def topic_arn(self, sns):
+        import uuid
+        name = f"ext-topic-{uuid.uuid4().hex[:8]}"
+        resp = sns.create_topic(Name=name)
+        arn = resp["TopicArn"]
+        yield arn
+        sns.delete_topic(TopicArn=arn)
+
+    def test_set_get_topic_attributes(self, sns, topic_arn):
+        sns.set_topic_attributes(
+            TopicArn=topic_arn,
+            AttributeName="DisplayName",
+            AttributeValue="My Display Name",
+        )
+        resp = sns.get_topic_attributes(TopicArn=topic_arn)
+        assert resp["Attributes"]["DisplayName"] == "My Display Name"
+
+    def test_tag_untag_topic(self, sns, topic_arn):
+        sns.tag_resource(
+            ResourceArn=topic_arn,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        resp = sns.list_tags_for_resource(ResourceArn=topic_arn)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "test"
+
+        sns.untag_resource(ResourceArn=topic_arn, TagKeys=["team"])
+        resp = sns.list_tags_for_resource(ResourceArn=topic_arn)
+        keys = [t["Key"] for t in resp["Tags"]]
+        assert "team" not in keys
+
+    def test_set_subscription_attributes(self, sns, topic_arn):
+        from tests.compatibility.conftest import make_client
+        sqs = make_client("sqs")
+        q = sqs.create_queue(QueueName=f"sns-sub-attr-{__import__('uuid').uuid4().hex[:8]}")
+        q_url = q["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(
+            QueueUrl=q_url, AttributeNames=["QueueArn"]
+        )["Attributes"]["QueueArn"]
+        try:
+            sub = sns.subscribe(
+                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
+            )
+            sub_arn = sub["SubscriptionArn"]
+            if sub_arn != "pending confirmation":
+                sns.set_subscription_attributes(
+                    SubscriptionArn=sub_arn,
+                    AttributeName="RawMessageDelivery",
+                    AttributeValue="true",
+                )
+                attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)
+                assert attrs["Attributes"]["RawMessageDelivery"] == "true"
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_publish_with_message_attributes(self, sns, topic_arn):
+        resp = sns.publish(
+            TopicArn=topic_arn,
+            Message="attributed message",
+            MessageAttributes={
+                "event_type": {"DataType": "String", "StringValue": "order.created"},
+                "priority": {"DataType": "Number", "StringValue": "1"},
+            },
+        )
+        assert "MessageId" in resp
+
+    def test_publish_batch(self, sns, topic_arn):
+        resp = sns.publish_batch(
+            TopicArn=topic_arn,
+            PublishBatchRequestEntries=[
+                {"Id": "msg1", "Message": "first"},
+                {"Id": "msg2", "Message": "second"},
+                {"Id": "msg3", "Message": "third"},
+            ],
+        )
+        assert len(resp.get("Successful", [])) == 3
+        assert resp.get("Failed", []) == []
+
+    @pytest.mark.xfail(reason="CreateTopic with Tags may not be supported")
+    def test_create_topic_with_tags(self, sns):
+        import uuid
+        name = f"tagged-topic-{uuid.uuid4().hex[:8]}"
+        resp = sns.create_topic(
+            Name=name,
+            Tags=[{"Key": "env", "Value": "staging"}],
+        )
+        arn = resp["TopicArn"]
+        try:
+            tags = sns.list_tags_for_resource(ResourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+            assert tag_map["env"] == "staging"
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_create_topic_with_attributes(self, sns):
+        import uuid
+        name = f"attr-topic-{uuid.uuid4().hex[:8]}"
+        resp = sns.create_topic(
+            Name=name,
+            Attributes={"DisplayName": "Attributed Topic"},
+        )
+        arn = resp["TopicArn"]
+        try:
+            attrs = sns.get_topic_attributes(TopicArn=arn)
+            assert attrs["Attributes"]["DisplayName"] == "Attributed Topic"
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_list_subscriptions(self, sns, topic_arn):
+        resp = sns.list_subscriptions()
+        assert "Subscriptions" in resp
+
+    def test_list_subscriptions_by_topic(self, sns, topic_arn):
+        from tests.compatibility.conftest import make_client
+        sqs = make_client("sqs")
+        q = sqs.create_queue(QueueName=f"sns-list-sub-{__import__('uuid').uuid4().hex[:8]}")
+        q_url = q["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(
+            QueueUrl=q_url, AttributeNames=["QueueArn"]
+        )["Attributes"]["QueueArn"]
+        try:
+            sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)
+            resp = sns.list_subscriptions_by_topic(TopicArn=topic_arn)
+            assert len(resp["Subscriptions"]) >= 1
+            protocols = [s["Protocol"] for s in resp["Subscriptions"]]
+            assert "sqs" in protocols
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+
+    @pytest.mark.xfail(reason="ConfirmSubscription error handling may differ")
+    def test_confirm_subscription_invalid_token(self, sns, topic_arn):
+        """ConfirmSubscription with invalid token should raise error."""
+        with pytest.raises(ClientError):
+            sns.confirm_subscription(
+                TopicArn=topic_arn, Token="invalid-token-value"
+            )
+
+    def test_create_fifo_topic(self, sns):
+        import uuid
+        name = f"fifo-topic-{uuid.uuid4().hex[:8]}.fifo"
+        resp = sns.create_topic(
+            Name=name,
+            Attributes={"FifoTopic": "true"},
+        )
+        arn = resp["TopicArn"]
+        try:
+            attrs = sns.get_topic_attributes(TopicArn=arn)
+            assert attrs["Attributes"].get("FifoTopic") == "true"
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    def test_publish_to_fifo_topic(self, sns):
+        import uuid
+        name = f"pub-fifo-{uuid.uuid4().hex[:8]}.fifo"
+        resp = sns.create_topic(
+            Name=name,
+            Attributes={"FifoTopic": "true", "ContentBasedDeduplication": "true"},
+        )
+        arn = resp["TopicArn"]
+        try:
+            pub_resp = sns.publish(
+                TopicArn=arn,
+                Message="fifo message",
+                MessageGroupId="group1",
+            )
+            assert "MessageId" in pub_resp
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
+    @pytest.mark.xfail(reason="Subscribe with FilterPolicy attribute may not be supported")
+    def test_subscribe_with_filter_policy(self, sns, topic_arn):
+        from tests.compatibility.conftest import make_client
+        sqs = make_client("sqs")
+        q = sqs.create_queue(QueueName=f"sns-filter-{__import__('uuid').uuid4().hex[:8]}")
+        q_url = q["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(
+            QueueUrl=q_url, AttributeNames=["QueueArn"]
+        )["Attributes"]["QueueArn"]
+        try:
+            sub = sns.subscribe(
+                TopicArn=topic_arn,
+                Protocol="sqs",
+                Endpoint=q_arn,
+                Attributes={
+                    "FilterPolicy": json.dumps({"event_type": ["order.created"]}),
+                },
+            )
+            sub_arn = sub["SubscriptionArn"]
+            if sub_arn != "pending confirmation":
+                attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)
+                fp = json.loads(attrs["Attributes"]["FilterPolicy"])
+                assert fp["event_type"] == ["order.created"]
+        finally:
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_publish_with_subject(self, sns, topic_arn):
+        resp = sns.publish(
+            TopicArn=topic_arn,
+            Subject="Test Subject",
+            Message="Message with subject",
+        )
+        assert "MessageId" in resp
+
+    def test_set_topic_policy(self, sns, topic_arn):
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"AWS": "*"},
+                "Action": "SNS:Publish",
+                "Resource": topic_arn,
+            }],
+        })
+        sns.set_topic_attributes(
+            TopicArn=topic_arn,
+            AttributeName="Policy",
+            AttributeValue=policy,
+        )
+        attrs = sns.get_topic_attributes(TopicArn=topic_arn)
+        parsed = json.loads(attrs["Attributes"]["Policy"])
+        assert len(parsed["Statement"]) >= 1
