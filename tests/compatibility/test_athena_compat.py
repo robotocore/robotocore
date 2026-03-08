@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -136,6 +137,105 @@ class TestAthenaQueryExecution:
         qe_id = start_resp["QueryExecutionId"]
         resp = athena.list_query_executions()
         assert qe_id in resp["QueryExecutionIds"]
+
+
+class TestAthenaDataCatalogOperations:
+    def test_create_data_catalog(self, athena):
+        name = _unique("dc")
+        athena.create_data_catalog(
+            Name=name,
+            Type="HIVE",
+            Description="test catalog",
+            Parameters={
+                "metadata-function": "arn:aws:lambda:us-east-1:123456789012:function:my-func"
+            },
+        )
+        resp = athena.get_data_catalog(Name=name)
+        catalog = resp["DataCatalog"]
+        assert catalog["Name"] == name
+        assert catalog["Type"] == "HIVE"
+
+    def test_get_data_catalog(self, athena):
+        name = _unique("dc")
+        athena.create_data_catalog(
+            Name=name,
+            Type="LAMBDA",
+            Description="lambda catalog",
+            Parameters={
+                "metadata-function": "arn:aws:lambda:us-east-1:123456789012:function:my-func"
+            },
+        )
+        resp = athena.get_data_catalog(Name=name)
+        catalog = resp["DataCatalog"]
+        assert catalog["Name"] == name
+        assert catalog["Type"] == "LAMBDA"
+        assert catalog["Description"] == "lambda catalog"
+
+
+class TestAthenaCapacityReservationOperations:
+    def test_get_capacity_reservation_nonexistent(self, athena):
+        with pytest.raises(ClientError) as exc:
+            athena.get_capacity_reservation(Name="does-not-exist")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
+
+
+class TestAthenaPreparedStatementOperations:
+    def test_create_prepared_statement(self, athena):
+        name = _unique("ps")
+        athena.create_prepared_statement(
+            StatementName=name,
+            WorkGroup="primary",
+            QueryStatement="SELECT ? FROM my_table",
+        )
+        resp = athena.get_prepared_statement(
+            StatementName=name,
+            WorkGroup="primary",
+        )
+        ps = resp["PreparedStatement"]
+        assert ps["StatementName"] == name
+        assert ps["QueryStatement"] == "SELECT ? FROM my_table"
+
+
+class TestAthenaQueryResultsOperations:
+    def test_get_query_results(self, athena):
+        start_resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        qe_id = start_resp["QueryExecutionId"]
+        resp = athena.get_query_results(QueryExecutionId=qe_id)
+        assert "ResultSet" in resp
+
+    def test_get_query_runtime_statistics(self, athena):
+        start_resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        qe_id = start_resp["QueryExecutionId"]
+        resp = athena.get_query_runtime_statistics(QueryExecutionId=qe_id)
+        assert "QueryRuntimeStatistics" in resp
+
+
+class TestAthenaTagOperations:
+    def test_list_tags_for_resource(self, athena):
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        # Get the ARN - work groups don't return ARN directly, construct it
+        resp = athena.list_tags_for_resource(
+            ResourceARN=f"arn:aws:athena:us-east-1:123456789012:workgroup/{name}",
+        )
+        assert "Tags" in resp
+        athena.delete_work_group(WorkGroup=name)
 
 
 class TestAthenaListOperations:
