@@ -1128,3 +1128,54 @@ class TestSNSSMSAttributes:
         )
         resp = sns.get_sms_attributes(attributes=["DefaultSMSType"])
         assert resp["attributes"]["DefaultSMSType"] == "Promotional"
+
+
+class TestSNSEndpointAttributes:
+    """Tests for GetEndpointAttributes and SetEndpointAttributes."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def _create_endpoint(self, sns):
+        """Helper to create a platform app + endpoint, returns (app_arn, ep_arn)."""
+        suffix = uuid.uuid4().hex[:8]
+        app_resp = sns.create_platform_application(
+            Name=f"ep-attr-app-{suffix}",
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        app_arn = app_resp["PlatformApplicationArn"]
+        ep_resp = sns.create_platform_endpoint(
+            PlatformApplicationArn=app_arn,
+            Token=f"test-device-token-{suffix}",
+        )
+        return app_arn, ep_resp["EndpointArn"]
+
+    def test_get_endpoint_attributes(self, sns):
+        """GetEndpointAttributes returns attributes for a platform endpoint."""
+        app_arn, ep_arn = self._create_endpoint(sns)
+        try:
+            resp = sns.get_endpoint_attributes(EndpointArn=ep_arn)
+            attrs = resp["Attributes"]
+            assert "Enabled" in attrs
+            assert "Token" in attrs
+        finally:
+            sns.delete_endpoint(EndpointArn=ep_arn)
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+    def test_set_endpoint_attributes(self, sns):
+        """SetEndpointAttributes updates and persists endpoint attributes."""
+        app_arn, ep_arn = self._create_endpoint(sns)
+        try:
+            sns.set_endpoint_attributes(
+                EndpointArn=ep_arn,
+                Attributes={"Enabled": "false", "CustomUserData": "my-data"},
+            )
+            resp = sns.get_endpoint_attributes(EndpointArn=ep_arn)
+            attrs = resp["Attributes"]
+            assert attrs["Enabled"] == "false"
+            assert attrs["CustomUserData"] == "my-data"
+        finally:
+            sns.delete_endpoint(EndpointArn=ep_arn)
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
