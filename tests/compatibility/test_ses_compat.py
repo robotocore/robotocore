@@ -895,21 +895,139 @@ class TestSesAutoCoverage:
         finally:
             client.delete_template(TemplateName=template_name)
 
+    def test_create_custom_verification_email_template(self, client):
+        """CreateCustomVerificationEmailTemplate creates a template."""
+        import uuid
 
-class TestSESCustomVerificationEmail:
-    """Test GetCustomVerificationEmailTemplate."""
+        name = f"custom-verif-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = client.create_custom_verification_email_template(
+                TemplateName=name,
+                FromEmailAddress="noreply@example.com",
+                TemplateSubject="Please verify your email",
+                TemplateContent="<html><body>Click to verify</body></html>",
+                SuccessRedirectionURL="https://example.com/success",
+                FailureRedirectionURL="https://example.com/failure",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=name)
 
-    @pytest.fixture
-    def client(self):
-        return make_client("ses")
+    def test_get_custom_verification_email_template(self, client):
+        """GetCustomVerificationEmailTemplate retrieves template details."""
+        import uuid
 
-    def test_get_custom_verification_email_template_nonexistent(self, client):
-        """GetCustomVerificationEmailTemplate for nonexistent returns error or empty."""
-        from botocore.exceptions import ClientError
-
-        with pytest.raises(ClientError) as exc:
-            client.get_custom_verification_email_template(TemplateName="nonexistent-template-xyz")
-        assert exc.value.response["Error"]["Code"] in (
-            "CustomVerificationEmailTemplateDoesNotExist",
-            "CustomVerificationEmailTemplateDoesNotExistException",
+        name = f"get-cverif-{uuid.uuid4().hex[:8]}"
+        client.create_custom_verification_email_template(
+            TemplateName=name,
+            FromEmailAddress="noreply@example.com",
+            TemplateSubject="Verify",
+            TemplateContent="<html>Verify</html>",
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
         )
+        try:
+            resp = client.get_custom_verification_email_template(TemplateName=name)
+            assert resp["TemplateName"] == name
+            assert resp["FromEmailAddress"] == "noreply@example.com"
+            assert resp["TemplateSubject"] == "Verify"
+            assert "SuccessRedirectionURL" in resp
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=name)
+
+    def test_list_custom_verification_email_templates_with_content(self, client):
+        """ListCustomVerificationEmailTemplates includes created templates."""
+        import uuid
+
+        name = f"list-cverif-{uuid.uuid4().hex[:8]}"
+        client.create_custom_verification_email_template(
+            TemplateName=name,
+            FromEmailAddress="noreply@example.com",
+            TemplateSubject="Verify",
+            TemplateContent="<html>Verify</html>",
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
+        )
+        try:
+            resp = client.list_custom_verification_email_templates()
+            names = [t["TemplateName"] for t in resp["CustomVerificationEmailTemplates"]]
+            assert name in names
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=name)
+
+    def test_delete_custom_verification_email_template(self, client):
+        """DeleteCustomVerificationEmailTemplate removes the template."""
+        import uuid
+
+        name = f"del-cverif-{uuid.uuid4().hex[:8]}"
+        client.create_custom_verification_email_template(
+            TemplateName=name,
+            FromEmailAddress="noreply@example.com",
+            TemplateSubject="Verify",
+            TemplateContent="<html>Verify</html>",
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
+        )
+        client.delete_custom_verification_email_template(TemplateName=name)
+        resp = client.list_custom_verification_email_templates()
+        names = [t["TemplateName"] for t in resp["CustomVerificationEmailTemplates"]]
+        assert name not in names
+
+    def test_create_receipt_filter(self, client):
+        """CreateReceiptFilter creates an IP address filter."""
+        import uuid
+
+        name = f"filter-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = client.create_receipt_filter(
+                Filter={
+                    "Name": name,
+                    "IpFilter": {
+                        "Policy": "Block",
+                        "Cidr": "10.0.0.0/24",
+                    },
+                }
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_receipt_filter(FilterName=name)
+
+    def test_list_receipt_filters_with_content(self, client):
+        """ListReceiptFilters includes created filters."""
+        import uuid
+
+        name = f"list-filter-{uuid.uuid4().hex[:8]}"
+        client.create_receipt_filter(
+            Filter={
+                "Name": name,
+                "IpFilter": {
+                    "Policy": "Allow",
+                    "Cidr": "192.168.1.0/24",
+                },
+            }
+        )
+        try:
+            resp = client.list_receipt_filters()
+            filter_names = [f["Name"] for f in resp["Filters"]]
+            assert name in filter_names
+        finally:
+            client.delete_receipt_filter(FilterName=name)
+
+    def test_delete_receipt_filter(self, client):
+        """DeleteReceiptFilter removes the filter."""
+        import uuid
+
+        name = f"del-filter-{uuid.uuid4().hex[:8]}"
+        client.create_receipt_filter(
+            Filter={
+                "Name": name,
+                "IpFilter": {
+                    "Policy": "Block",
+                    "Cidr": "172.16.0.0/12",
+                },
+            }
+        )
+        client.delete_receipt_filter(FilterName=name)
+        resp = client.list_receipt_filters()
+        filter_names = [f["Name"] for f in resp["Filters"]]
+        assert name not in filter_names
