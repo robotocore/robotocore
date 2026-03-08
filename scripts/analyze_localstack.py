@@ -161,6 +161,52 @@ def find_enterprise_features() -> dict[str, dict]:
     return enterprise
 
 
+def extract_robotocore_operations(filepath: Path) -> list[str]:
+    """Extract implemented operations from a robotocore provider.py using AST.
+
+    Robotocore providers use a module-level ``_ACTION_MAP`` dict that maps
+    PascalCase operation names to handler functions, e.g.::
+
+        _ACTION_MAP: dict[str, Callable] = {
+            "CreateQueue": _create_queue,
+            ...
+        }
+
+    This function finds that dict and returns the string keys.
+    """
+    try:
+        source = filepath.read_text()
+        tree = ast.parse(source)
+    except Exception:
+        return []
+
+    for node in ast.walk(tree):
+        # _ACTION_MAP may be a plain Assign or an annotated AnnAssign
+        # (e.g. ``_ACTION_MAP: dict[str, Callable] = {...}``)
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+
+        if value is None or not isinstance(value, ast.Dict):
+            continue
+
+        for target in targets:
+            if not (isinstance(target, ast.Name) and target.id == "_ACTION_MAP"):
+                continue
+            ops = []
+            for key in value.keys:
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    ops.append(key.value)
+            return ops
+
+    return []
+
+
 def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]:
     """Compare robotocore implementation against LocalStack Community + Enterprise."""
     robotocore_providers = find_provider_files(ROBOTOCORE_DIR)
@@ -174,8 +220,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
 
         robotocore_ops = set()
         if service in robotocore_providers:
-            robotocore_info = extract_operations(robotocore_providers[service])
-            robotocore_ops = set(robotocore_info["operations"])
+            robotocore_ops = set(extract_robotocore_operations(robotocore_providers[service]))
 
         missing_ops = all_ops - robotocore_ops
         if missing_ops or service not in robotocore_providers:
