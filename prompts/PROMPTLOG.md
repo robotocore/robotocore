@@ -8,34 +8,51 @@ AI-assisted code has provenance — someone asked for it, an AI reasoned about i
 
 ## Format
 
-One file per prompt at `prompts/{timestamp}-{slug}.md`. Timestamp is UTC, formatted `YYYYMMDD-HHmmss`. Slug is a few lowercase url-safe words summarizing the prompt.
+One file per conversation phase at `prompts/{timestamp}-{slug}.md`. Timestamp is UTC, formatted `YYYYMMDD-HHmmss`. Slug is a few lowercase url-safe words summarizing the phase.
+
+Each file has **one YAML frontmatter block** with file-level metadata. The body uses `## Human` and `## Assistant` headings to separate entries. This avoids the "duplicated frontmatter" problem where multiple `---` blocks make the file look like two files concatenated together.
 
 ```
 ---
-role: human
-timestamp: "2026-03-07T14:32:08Z"
 session: "a1b2c3"
+timestamp: "2026-03-07T14:32:08Z"
+model: claude-opus-4-6
 ---
+
+## Human
 
 The auth endpoint is returning 500s for a customer. Stack trace shows
 a nil pointer in the token refresh handler. [Pasted: 12 lines of stack
 trace from auth service, showing nil dereference at token_refresh.go:47].
 Fix the nil pointer in the token refresh handler.
+
+## Assistant
+
+## Key decisions
+
+**Root cause**: The `refreshToken` field is nil when the token was issued
+via API key auth (no refresh token exists). The handler assumed all tokens
+have a refresh path.
+
+**Fix**: Added a nil check at token_refresh.go:45 before dereferencing.
+Chose a nil check over a type switch because only this one code path
+is affected — the broader token interface doesn't need to change.
 ```
 
 That file would be named `prompts/20260307-143208-fix-nil-pointer-auth.md`.
 
-### Fields
+**Do NOT use multiple `---` frontmatter blocks in one file.** Standard YAML/markdown parsers only recognize the first block. A second `---`...`---` block mid-file looks like corruption or concatenation.
+
+### Frontmatter fields
 
 **Required:**
-- `role` — `human` or `assistant`
-- `timestamp` — ISO 8601 UTC when the prompt was sent
 - `session` — hex ID reused for all prompts in one conversation
+- `timestamp` — ISO 8601 UTC when the conversation phase started
 
 **Optional:**
-- `model` — for assistant entries, the model that generated the reasoning (e.g. `model: claude-opus-4-6`)
+- `model` — the model that generated the assistant reasoning (e.g. `model: claude-opus-4-6`)
 - `tools` — list of tools/agents used (e.g. `tools: [subagent, git-worktree]`), helps reviewers understand how work was parallelized
-- `sequence` — integer ordering prompts within a session (1, 2, 3...) so readers can follow the conversation flow without sorting by timestamp
+- `sequence` — integer ordering files within a session (1, 2, 3...) when a session spans multiple files
 - `reconstructed` — set to `true` when logging retroactively from session transcripts
 
 ### Linking prompts to commits
@@ -63,13 +80,7 @@ A reviewer in 6 months doesn't need to know _what_ changed — `git diff` tells 
 **Good** — explains reasoning:
 
 ```
----
-role: assistant
-model: claude-opus-4-6
-timestamp: "2026-03-07T20:16:00Z"
-session: "a1b2c3"
-sequence: 2
----
+## Assistant
 
 ## Key decisions
 
@@ -88,6 +99,8 @@ and unblocking the main path mattered more right now.
 **Avoid** — this is a changelog, not a prompt log:
 
 ```
+## Assistant
+
 - Updated router.py
 - Fixed bug in serializer
 - Added 22 aliases to SERVICE_NAME_ALIASES
