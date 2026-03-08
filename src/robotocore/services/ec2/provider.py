@@ -32,6 +32,13 @@ async def handle_ec2_request(request: Request, region: str, account_id: str) -> 
     if handler:
         try:
             return handler(params, region, account_id)
+        except NotImplementedError as e:
+            xml = (
+                f'<?xml version="1.0" encoding="UTF-8"?>'
+                f"<Response><Errors><Error><Code>NotImplemented</Code>"
+                f"<Message>{e}</Message></Error></Errors></Response>"
+            )
+            return Response(content=xml, status_code=501, media_type="text/xml")
         except Exception as e:
             xml = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'

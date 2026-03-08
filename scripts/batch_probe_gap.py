@@ -552,7 +552,11 @@ def classify_response(client, operation_name: str, error: Exception | None) -> s
         if "unknown action" in msg.lower() or "unknown operation" in msg.lower():
             return "not_implemented"
 
-        # 500 with NotImplementedError traceback = Moto stub
+        # 501 = server explicitly says "not implemented" (new clean signal)
+        if status_code == 501:
+            return "not_implemented"
+
+        # 500 with NotImplementedError traceback = Moto stub (legacy detection)
         if status_code == 500:
             if "NotImplementedError" in msg or "notimplemented" in msg.lower():
                 return "not_implemented"

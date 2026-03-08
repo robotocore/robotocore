@@ -118,7 +118,15 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
     try:
         result = dispatch(werkzeug_request, full_url, werkzeug_request.headers)
         if not result:
-            raise NotImplementedError(f"Moto returned None for {service_name}")
+            return Response(
+                content=(
+                    f"<ErrorResponse><Error><Code>NotImplemented</Code>"
+                    f"<Message>Operation not implemented for {_xml_escape(service_name)}</Message>"
+                    f"</Error></ErrorResponse>"
+                ),
+                status_code=501,
+                media_type="application/xml",
+            )
         status, response_headers, response_body = result
         if isinstance(response_body, str) and len(response_body) == 0:
             response_body = None
@@ -136,6 +144,15 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             content=response_body,
             status_code=status,
             headers=clean_headers,
+        )
+    except NotImplementedError as e:
+        return Response(
+            content=(
+                f"<ErrorResponse><Error><Code>NotImplemented</Code>"
+                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
+            ),
+            status_code=501,
+            media_type="application/xml",
         )
     except Exception as e:
         return Response(
@@ -170,7 +187,15 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
     try:
         result = dispatch(werkzeug_request, full_url, werkzeug_request.headers)
         if not result:
-            raise NotImplementedError(f"Moto returned None for {service_name}")
+            return Response(
+                content=(
+                    f"<ErrorResponse><Error><Code>NotImplemented</Code>"
+                    f"<Message>Operation not implemented for {_xml_escape(service_name)}</Message>"
+                    f"</Error></ErrorResponse>"
+                ),
+                status_code=501,
+                media_type="application/xml",
+            )
         status, response_headers, response_body = result
         if isinstance(response_body, str) and len(response_body) == 0:
             response_body = None
@@ -180,6 +205,15 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             content=response_body,
             status_code=status,
             headers=clean_headers,
+        )
+    except NotImplementedError as e:
+        return Response(
+            content=(
+                f"<ErrorResponse><Error><Code>NotImplemented</Code>"
+                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
+            ),
+            status_code=501,
+            media_type="application/xml",
         )
     except Exception as e:
         return Response(

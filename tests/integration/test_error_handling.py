@@ -36,7 +36,8 @@ class TestUnknownServiceErrors:
             },
         )
         # Should get an error status but not crash
-        assert resp.status_code in (400, 404, 500, 501)
+        # 501 = not implemented (expected for unknown service)
+        assert resp.status_code in (400, 404, 501)
 
 
 class TestMalformedRequests:
@@ -53,7 +54,7 @@ class TestMalformedRequests:
             },
         )
         # Should return an error, not crash
-        assert resp.status_code in (400, 500)
+        assert resp.status_code in (400, 500, 501)
 
     async def test_dynamodb_missing_target_header(self, client):
         """DynamoDB request without X-Amz-Target header."""
@@ -66,7 +67,7 @@ class TestMalformedRequests:
             },
         )
         # Without X-Amz-Target, service routing may fail
-        assert resp.status_code in (400, 500)
+        assert resp.status_code in (400, 500, 501)
 
     async def test_dynamodb_invalid_json_body(self, client):
         """DynamoDB request with broken JSON."""
@@ -78,7 +79,7 @@ class TestMalformedRequests:
                 "X-Amz-Target": "DynamoDB_20120810.DescribeTable",
             },
         )
-        assert resp.status_code in (400, 500)
+        assert resp.status_code in (400, 500, 501)
 
     async def test_lambda_invoke_nonexistent_function(self, client):
         """Invoke a Lambda function that does not exist."""
@@ -87,7 +88,7 @@ class TestMalformedRequests:
             content=b"{}",
             headers=auth_header("lambda"),
         )
-        assert resp.status_code in (404, 500)
+        assert resp.status_code in (404, 500, 501)
         body = resp.json()
         assert "ResourceNotFoundException" in (
             body.get("__type", "")
@@ -121,7 +122,7 @@ class TestMissingRequiredParameters:
             },
         )
         # Some implementations accept this gracefully, others error
-        assert resp.status_code in (200, 400, 404, 500)
+        assert resp.status_code in (200, 400, 404, 500, 501)
 
     async def test_sns_publish_no_topic(self, client):
         """SNS Publish with no TopicArn or TargetArn."""
@@ -133,7 +134,7 @@ class TestMissingRequiredParameters:
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
-        assert resp.status_code in (400, 404, 500)
+        assert resp.status_code in (400, 404, 500, 501)
 
 
 class TestErrorResponseFormat:
@@ -149,7 +150,7 @@ class TestErrorResponseFormat:
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
-        assert resp.status_code in (400, 404, 500)
+        assert resp.status_code in (400, 404, 500, 501)
         text = resp.text
         # Should be valid JSON or XML
         is_json = False
@@ -173,7 +174,7 @@ class TestErrorResponseFormat:
                 "X-Amz-Target": "DynamoDB_20120810.DescribeTable",
             },
         )
-        assert resp.status_code in (400, 404, 500)
+        assert resp.status_code in (400, 404, 500, 501)
         body = resp.json()  # Should not raise
         assert isinstance(body, dict)
 
@@ -187,8 +188,8 @@ class TestErrorResponseFormat:
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
-        # Could be 400 or 500 for unknown action
-        assert resp.status_code in (400, 404, 500)
+        # Could be 400 or 501 for unknown action
+        assert resp.status_code in (400, 404, 501)
 
 
 class TestHealthEndpoint:
@@ -228,5 +229,5 @@ class TestCORSHeaders:
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
-        assert resp.status_code in (400, 404, 500)
+        assert resp.status_code in (400, 404, 501)
         assert "access-control-allow-origin" in resp.headers

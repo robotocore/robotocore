@@ -125,15 +125,23 @@ def logging_response_handler(context: RequestContext) -> None:
 
 
 def error_normalizer(context: RequestContext, exc: Exception) -> None:
-    """Convert exceptions to properly formatted AWS error responses."""
+    """Convert exceptions to properly formatted AWS error responses.
+
+    Uses 501 for NotImplementedError (operation not supported) and 500 for
+    everything else (genuine internal errors). This distinction lets clients
+    and probe scripts differentiate "not yet built" from "broken".
+    """
     from xml.sax.saxutils import escape as xml_escape
 
     protocol = context.protocol or "query"
+    is_not_implemented = isinstance(exc, NotImplementedError)
+    status_code = 501 if is_not_implemented else 500
+    error_code = "NotImplemented" if is_not_implemented else type(exc).__name__
 
     if protocol in ("json", "rest-json"):
         body = json.dumps(
             {
-                "__type": type(exc).__name__,
+                "__type": error_code,
                 "message": str(exc),
             }
         )
@@ -141,7 +149,7 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
         json_version = get_service_json_version(context.service_name) or "1.0"
         context.response = Response(
             content=body,
-            status_code=500,
+            status_code=status_code,
             media_type=f"application/x-amz-json-{json_version}",
         )
     else:
@@ -150,12 +158,12 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
         safe_message = xml_escape(str(exc))
         body = (
             f"<ErrorResponse><Error>"
-            f"<Code>InternalError</Code>"
+            f"<Code>{error_code}</Code>"
             f"<Message>{safe_message}</Message>"
             f"</Error></ErrorResponse>"
         )
         context.response = Response(
             content=body,
-            status_code=500,
+            status_code=status_code,
             media_type="application/xml",
         )

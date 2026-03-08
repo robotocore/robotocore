@@ -179,7 +179,10 @@ def probe_operation(client, operation_name: str, params: dict) -> tuple[bool, st
         }
         if code in implemented_errors:
             return True, f"implemented ({code})"
-        # "Not implemented" or "Unknown action" means it's not supported
+        # 501 or "not implemented" message = not supported
+        status_code = e.response["ResponseMetadata"]["HTTPStatusCode"]
+        if status_code == 501:
+            return False, f"not implemented (501: {code})"
         if "not implemented" in msg.lower() or "unknown" in msg.lower():
             return False, f"not implemented ({code}: {msg})"
         # Other errors likely mean it IS implemented

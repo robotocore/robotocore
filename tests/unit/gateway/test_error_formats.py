@@ -86,7 +86,7 @@ class TestQueryXmlErrorFormat:
         assert error_elem is not None
         assert error_elem.find("Code") is not None
         assert error_elem.find("Message") is not None
-        assert error_elem.find("Code").text == "InternalError"
+        assert error_elem.find("Code").text == "ValueError"
 
     def test_sqs_query_error(self):
         # SQS now uses JSON protocol in newer boto3, but query path still works
@@ -132,6 +132,39 @@ class TestEc2ProtocolErrorFormat:
         body = ctx.response.body.decode()
         root = ET.fromstring(body)
         assert root.tag == "ErrorResponse"
+
+
+class TestNotImplementedErrors:
+    """NotImplementedError should use 501 status code, not 500."""
+
+    def test_not_implemented_json_uses_501(self):
+        ctx = _make_context("dynamodb", "json")
+        error_normalizer(ctx, NotImplementedError("not yet"))
+        assert ctx.response.status_code == 501
+        body = json.loads(ctx.response.body.decode())
+        assert body["__type"] == "NotImplemented"
+        assert body["message"] == "not yet"
+
+    def test_not_implemented_xml_uses_501(self):
+        ctx = _make_context("s3", "rest-xml")
+        error_normalizer(ctx, NotImplementedError("not yet"))
+        assert ctx.response.status_code == 501
+        root = ET.fromstring(ctx.response.body.decode())
+        assert root.find("Error/Code").text == "NotImplemented"
+
+    def test_regular_error_uses_500(self):
+        ctx = _make_context("dynamodb", "json")
+        error_normalizer(ctx, RuntimeError("crash"))
+        assert ctx.response.status_code == 500
+        body = json.loads(ctx.response.body.decode())
+        assert body["__type"] == "RuntimeError"
+
+    def test_regular_error_xml_uses_500(self):
+        ctx = _make_context("sts", "query")
+        error_normalizer(ctx, RuntimeError("crash"))
+        assert ctx.response.status_code == 500
+        root = ET.fromstring(ctx.response.body.decode())
+        assert root.find("Error/Code").text == "RuntimeError"
 
 
 class TestSpecialCharactersInErrors:
