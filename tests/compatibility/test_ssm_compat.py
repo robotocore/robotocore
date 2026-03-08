@@ -39,13 +39,6 @@ class TestSSMParameterOperations:
         ssm.delete_parameter(Name="/app/db/host")
         ssm.delete_parameter(Name="/app/db/port")
 
-    def test_describe_parameters(self, ssm):
-        ssm.put_parameter(Name="/desc/param", Value="val", Type="String")
-        response = ssm.describe_parameters()
-        names = [p["Name"] for p in response["Parameters"]]
-        assert "/desc/param" in names
-        ssm.delete_parameter(Name="/desc/param")
-
     def test_overwrite_parameter(self, ssm):
         ssm.put_parameter(Name="/overwrite/p", Value="v1", Type="String")
         ssm.put_parameter(Name="/overwrite/p", Value="v2", Type="String", Overwrite=True)
@@ -165,18 +158,6 @@ class TestSSMParameterOperations:
         resp = ssm.get_parameter(Name="/owver/param")
         assert resp["Parameter"]["Version"] == 2
         ssm.delete_parameter(Name="/owver/param")
-
-    def test_describe_parameters_with_filters(self, ssm):
-        ssm.put_parameter(Name="/filt/alpha", Value="val", Type="String")
-        ssm.put_parameter(Name="/filt/beta", Value="val", Type="String")
-        response = ssm.describe_parameters(
-            ParameterFilters=[{"Key": "Name", "Values": ["/filt/alpha"]}]
-        )
-        names = [p["Name"] for p in response["Parameters"]]
-        assert "/filt/alpha" in names
-        assert "/filt/beta" not in names
-        ssm.delete_parameter(Name="/filt/alpha")
-        ssm.delete_parameter(Name="/filt/beta")
 
     def test_get_parameters_batch(self, ssm):
         ssm.put_parameter(Name="/batch/x", Value="10", Type="String")
@@ -590,18 +571,6 @@ class TestSSMExtendedOperations:
         finally:
             ssm.delete_parameter(Name=name)
 
-    def test_describe_parameters_filters(self, ssm):
-        import uuid
-
-        name = f"/test/desc-{uuid.uuid4().hex[:8]}"
-        ssm.put_parameter(Name=name, Value="val", Type="String")
-        try:
-            resp = ssm.describe_parameters(ParameterFilters=[{"Key": "Name", "Values": [name]}])
-            names = [p["Name"] for p in resp["Parameters"]]
-            assert name in names
-        finally:
-            ssm.delete_parameter(Name=name)
-
     def test_put_parameter_with_tags(self, ssm):
         import uuid
 
@@ -693,3 +662,375 @@ class TestSSMExtendedOperations:
             ssm.put_parameter(Name=n, Value="val", Type="String")
         resp = ssm.delete_parameters(Names=names)
         assert set(resp["DeletedParameters"]) == set(names)
+
+
+class TestSSMDocumentExtended:
+    """Extended document operations: update, list versions, describe permissions."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _doc_content(self, description="Test document"):
+        import json
+
+        return json.dumps(
+            {
+                "schemaVersion": "2.2",
+                "description": description,
+                "mainSteps": [
+                    {
+                        "action": "aws:runShellScript",
+                        "name": "runScript",
+                        "inputs": {"runCommand": ["echo hello"]},
+                    }
+                ],
+            }
+        )
+
+    def test_update_document(self, ssm):
+        """UpdateDocument creates a new version."""
+        doc_name = _unique("upd-doc")
+        ssm.create_document(
+            Content=self._doc_content("v1"),
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.update_document(
+                Content=self._doc_content("v2"),
+                Name=doc_name,
+                DocumentVersion="$LATEST",
+            )
+            assert resp["DocumentDescription"]["Name"] == doc_name
+            # Version should be "2" after update
+            assert resp["DocumentDescription"]["DocumentVersion"] in ("2", 2)
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_describe_document_permission(self, ssm):
+        """DescribeDocumentPermission returns sharing info."""
+        doc_name = _unique("perm-doc")
+        ssm.create_document(
+            Content=self._doc_content(),
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.describe_document_permission(Name=doc_name, PermissionType="Share")
+            assert "AccountIds" in resp
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMMaintenanceWindowExtended:
+    """Extended maintenance window operations."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _create_window(self, ssm, name=None):
+        name = name or _unique("mw")
+        resp = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="rate(1 day)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        return resp["WindowId"]
+
+    def test_get_maintenance_window(self, ssm):
+        """GetMaintenanceWindow returns details."""
+        wid = self._create_window(ssm)
+        try:
+            resp = ssm.get_maintenance_window(WindowId=wid)
+            assert resp["WindowId"] == wid
+            assert resp["Duration"] == 2
+            assert resp["Cutoff"] == 1
+            assert resp["Schedule"] == "rate(1 day)"
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+    def test_register_and_deregister_target(self, ssm):
+        """RegisterTargetWithMaintenanceWindow / DeregisterTargetFromMaintenanceWindow."""
+        wid = self._create_window(ssm)
+        try:
+            reg = ssm.register_target_with_maintenance_window(
+                WindowId=wid,
+                ResourceType="INSTANCE",
+                Targets=[{"Key": "tag:Environment", "Values": ["prod"]}],
+            )
+            target_id = reg["WindowTargetId"]
+
+            # Verify target is listed
+            desc = ssm.describe_maintenance_window_targets(
+                WindowId=wid,
+                Filters=[],
+            )
+            target_ids = [t["WindowTargetId"] for t in desc["Targets"]]
+            assert target_id in target_ids
+
+            # Deregister
+            ssm.deregister_target_from_maintenance_window(WindowId=wid, WindowTargetId=target_id)
+            desc2 = ssm.describe_maintenance_window_targets(
+                WindowId=wid,
+                Filters=[],
+            )
+            target_ids2 = [t["WindowTargetId"] for t in desc2["Targets"]]
+            assert target_id not in target_ids2
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+    def test_register_and_deregister_task(self, ssm):
+        """RegisterTaskWithMaintenanceWindow / DeregisterTaskFromMaintenanceWindow."""
+        wid = self._create_window(ssm)
+        try:
+            # Register a target first (needed for task)
+            reg_target = ssm.register_target_with_maintenance_window(
+                WindowId=wid,
+                ResourceType="INSTANCE",
+                Targets=[{"Key": "tag:Name", "Values": ["test"]}],
+            )
+            target_id = reg_target["WindowTargetId"]
+
+            reg_task = ssm.register_task_with_maintenance_window(
+                WindowId=wid,
+                Targets=[{"Key": "WindowTargetIds", "Values": [target_id]}],
+                TaskArn="AWS-RunShellScript",
+                TaskType="RUN_COMMAND",
+                MaxConcurrency="1",
+                MaxErrors="0",
+            )
+            task_id = reg_task["WindowTaskId"]
+
+            # Verify task shows up
+            desc = ssm.describe_maintenance_window_tasks(WindowId=wid)
+            task_ids = [t["WindowTaskId"] for t in desc["Tasks"]]
+            assert task_id in task_ids
+
+            # Deregister
+            ssm.deregister_task_from_maintenance_window(WindowId=wid, WindowTaskId=task_id)
+            desc2 = ssm.describe_maintenance_window_tasks(WindowId=wid)
+            task_ids2 = [t["WindowTaskId"] for t in desc2["Tasks"]]
+            assert task_id not in task_ids2
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+    def test_describe_maintenance_windows_filter(self, ssm):
+        """DescribeMaintenanceWindows lists created windows."""
+        name = _unique("mw-filter")
+        wid = self._create_window(ssm, name=name)
+        try:
+            resp = ssm.describe_maintenance_windows(Filters=[{"Key": "Name", "Values": [name]}])
+            found_ids = [w["WindowId"] for w in resp["WindowIdentities"]]
+            assert wid in found_ids
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+
+class TestSSMPatchBaseline:
+    """Patch baseline operations."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_describe_patch_baselines(self, ssm):
+        """DescribePatchBaselines lists baselines."""
+        name = _unique("pb-desc")
+        resp = ssm.create_patch_baseline(Name=name)
+        baseline_id = resp["BaselineId"]
+        try:
+            desc = ssm.describe_patch_baselines(Filters=[{"Key": "NAME_PREFIX", "Values": [name]}])
+            ids = [b["BaselineId"] for b in desc["BaselineIdentities"]]
+            assert baseline_id in ids
+        finally:
+            ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+
+class TestSSMGapStubs:
+    """Tests for newly-stubbed SSM operations that return empty results."""
+
+    def test_list_associations(self, ssm):
+        """ListAssociations returns empty list."""
+        resp = ssm.list_associations()
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+    def test_describe_automation_executions(self, ssm):
+        """DescribeAutomationExecutions returns empty list."""
+        resp = ssm.describe_automation_executions()
+        assert "AutomationExecutionMetadataList" in resp
+        assert isinstance(resp["AutomationExecutionMetadataList"], list)
+
+    def test_list_compliance_items(self, ssm):
+        """ListComplianceItems returns empty list."""
+        resp = ssm.list_compliance_items()
+        assert "ComplianceItems" in resp
+        assert isinstance(resp["ComplianceItems"], list)
+
+    def test_list_compliance_summaries(self, ssm):
+        """ListComplianceSummaries returns empty list."""
+        resp = ssm.list_compliance_summaries()
+        assert "ComplianceSummaryItems" in resp
+        assert isinstance(resp["ComplianceSummaryItems"], list)
+
+    def test_list_resource_compliance_summaries(self, ssm):
+        """ListResourceComplianceSummaries returns empty list."""
+        resp = ssm.list_resource_compliance_summaries()
+        assert "ResourceComplianceSummaryItems" in resp
+        assert isinstance(resp["ResourceComplianceSummaryItems"], list)
+
+    def test_describe_ops_items(self, ssm):
+        """DescribeOpsItems returns empty list."""
+        resp = ssm.describe_ops_items(
+            OpsItemFilters=[{"Key": "Status", "Values": ["Open"], "Operator": "Equal"}]
+        )
+        assert "OpsItemSummaries" in resp
+        assert isinstance(resp["OpsItemSummaries"], list)
+
+    def test_describe_available_patches(self, ssm):
+        """DescribeAvailablePatches returns empty list."""
+        resp = ssm.describe_available_patches()
+        assert "Patches" in resp
+        assert isinstance(resp["Patches"], list)
+
+    def test_describe_patch_groups(self, ssm):
+        """DescribePatchGroups returns empty list."""
+        resp = ssm.describe_patch_groups()
+        assert "Mappings" in resp
+        assert isinstance(resp["Mappings"], list)
+
+    def test_describe_inventory_deletions(self, ssm):
+        """DescribeInventoryDeletions returns empty list."""
+        resp = ssm.describe_inventory_deletions()
+        assert "InventoryDeletions" in resp
+        assert isinstance(resp["InventoryDeletions"], list)
+
+    def test_get_inventory(self, ssm):
+        """GetInventory returns empty list."""
+        resp = ssm.get_inventory()
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_get_inventory_schema(self, ssm):
+        """GetInventorySchema returns empty list."""
+        resp = ssm.get_inventory_schema()
+        assert "Schemas" in resp
+        assert isinstance(resp["Schemas"], list)
+
+    def test_list_resource_data_sync(self, ssm):
+        """ListResourceDataSync returns empty list."""
+        resp = ssm.list_resource_data_sync()
+        assert "ResourceDataSyncItems" in resp
+        assert isinstance(resp["ResourceDataSyncItems"], list)
+
+    def test_list_ops_item_events(self, ssm):
+        """ListOpsItemEvents returns empty list."""
+        resp = ssm.list_ops_item_events()
+        assert "Summaries" in resp
+        assert isinstance(resp["Summaries"], list)
+
+    def test_list_ops_item_related_items(self, ssm):
+        """ListOpsItemRelatedItems returns empty list."""
+        resp = ssm.list_ops_item_related_items(OpsItemId="oi-0000000000")
+        assert "Summaries" in resp
+        assert isinstance(resp["Summaries"], list)
+
+    def test_list_ops_metadata(self, ssm):
+        """ListOpsMetadata returns empty list."""
+        resp = ssm.list_ops_metadata()
+        assert "OpsMetadataList" in resp
+        assert isinstance(resp["OpsMetadataList"], list)
+
+
+class TestSSMGapCoverage:
+    """Additional SSM compat tests to close coverage gaps."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_describe_activations(self, ssm):
+        """DescribeActivations returns list."""
+        resp = ssm.describe_activations()
+        assert "ActivationList" in resp
+        assert isinstance(resp["ActivationList"], list)
+
+    def test_describe_instance_information(self, ssm):
+        """DescribeInstanceInformation returns list."""
+        resp = ssm.describe_instance_information()
+        assert "InstanceInformationList" in resp
+        assert isinstance(resp["InstanceInformationList"], list)
+
+    def test_describe_maintenance_window_schedule(self, ssm):
+        """DescribeMaintenanceWindowSchedule returns list."""
+        resp = ssm.describe_maintenance_window_schedule()
+        assert "ScheduledWindowExecutions" in resp
+        assert isinstance(resp["ScheduledWindowExecutions"], list)
+
+    def test_describe_parameters(self, ssm):
+        """DescribeParameters returns list of parameter metadata."""
+        resp = ssm.describe_parameters()
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)
+
+    def test_describe_parameters_with_filter(self, ssm):
+        """DescribeParameters with ParameterFilters."""
+        name = _unique("/test/desc-param")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert "Parameters" in resp
+            names = [p["Name"] for p in resp["Parameters"]]
+            assert name in names
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_default_patch_baseline(self, ssm):
+        """GetDefaultPatchBaseline returns a baseline ID."""
+        resp = ssm.get_default_patch_baseline()
+        assert "BaselineId" in resp
+        assert resp["BaselineId"].startswith("pb-")
+
+    def test_get_service_setting_activation_tier(self, ssm):
+        """GetServiceSetting for activation-tier."""
+        resp = ssm.get_service_setting(SettingId="/ssm/managed-instance/activation-tier")
+        assert "ServiceSetting" in resp
+        assert resp["ServiceSetting"]["SettingId"] == "/ssm/managed-instance/activation-tier"
+
+    def test_get_service_setting_throughput(self, ssm):
+        """GetServiceSetting for high-throughput-enabled."""
+        resp = ssm.get_service_setting(SettingId="/ssm/parameter-store/high-throughput-enabled")
+        assert "ServiceSetting" in resp
+
+    def test_get_ops_summary(self, ssm):
+        """GetOpsSummary returns list."""
+        resp = ssm.get_ops_summary()
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_list_command_invocations(self, ssm):
+        """ListCommandInvocations returns list."""
+        resp = ssm.list_command_invocations()
+        assert "CommandInvocations" in resp
+        assert isinstance(resp["CommandInvocations"], list)
+
+    def test_get_parameters_by_path_empty(self, ssm):
+        """GetParametersByPath with nonexistent path returns empty list."""
+        resp = ssm.get_parameters_by_path(Path="/nonexistent/probe/path")
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)
+        assert len(resp["Parameters"]) == 0
+
+    def test_describe_parameters_empty(self, ssm):
+        """DescribeParameters returns parameter list."""
+        resp = ssm.describe_parameters()
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)

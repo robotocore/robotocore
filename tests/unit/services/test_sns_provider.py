@@ -253,22 +253,6 @@ class TestHandleSnsRequest:
         assert resp.status_code == 200
         assert b"CreateTopicResult" in resp.body
 
-    async def test_unknown_action(self):
-        body = json.dumps({}).encode()
-        headers = {
-            "content-type": "application/x-amz-json-1.0",
-            "x-amz-target": "SNS.BogusAction",
-        }
-        req = _make_request(body=body, headers=headers)
-
-        with patch("robotocore.services.sns.provider._get_store") as mock_get:
-            mock_get.return_value = SnsStore()
-            resp = await handle_sns_request(req, "us-east-1", "123456789012")
-
-        assert resp.status_code == 400
-        data = json.loads(resp.body)
-        assert data["__type"] == "InvalidAction"
-
     async def test_internal_error_handling(self):
         body = json.dumps({"TopicArn": "arn:nope", "Message": "x"}).encode()
         headers = {

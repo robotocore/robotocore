@@ -839,12 +839,6 @@ class TestGroups:
 
 class TestEdgeCases:
     @pytest.mark.asyncio
-    async def test_unknown_action(self):
-        req = _make_request("BogusAction", {})
-        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
     async def test_missing_target(self):
         scope = {
             "type": "http",

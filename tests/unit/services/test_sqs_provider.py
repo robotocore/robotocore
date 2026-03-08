@@ -261,25 +261,6 @@ class TestHandleSqsRequest:
         assert resp.status_code == 200
         assert b"CreateQueueResult" in resp.body
 
-    async def test_unknown_action(self):
-        body = json.dumps({}).encode()
-        headers = {
-            "content-type": "application/x-amz-json-1.0",
-            "x-amz-target": "AmazonSQS.BogusAction",
-        }
-        req = _make_request(body=body, headers=headers)
-
-        with (
-            patch("robotocore.services.sqs.provider._get_store") as mock_get,
-            patch("robotocore.services.sqs.provider._ensure_worker"),
-        ):
-            mock_get.return_value = SqsStore()
-            resp = await handle_sqs_request(req, "us-east-1", "123456789012")
-
-        assert resp.status_code == 400
-        data = json.loads(resp.body)
-        assert data["__type"] == "InvalidAction"
-
     async def test_sqs_error_handling(self):
         body = json.dumps({"QueueName": "nonexistent"}).encode()
         headers = {

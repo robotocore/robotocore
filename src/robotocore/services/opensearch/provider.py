@@ -1,8 +1,14 @@
 """Native OpenSearch/ES provider.
 
-Intercepts operations that Moto doesn't implement:
+Intercepts operations that Moto doesn't implement or can't route:
 - OpenSearch ListVersions
 - ES GetCompatibleElasticsearchVersions
+- ES operations whose URL paths are missing from Moto's flask_paths:
+  DeleteElasticsearchServiceRole, DescribeInboundCrossClusterSearchConnections,
+  DescribeOutboundCrossClusterSearchConnections, DescribePackages,
+  DescribeReservedElasticsearchInstanceOfferings,
+  DescribeReservedElasticsearchInstances, ListElasticsearchVersions,
+  ListVpcEndpoints
 """
 
 import json
@@ -15,6 +21,19 @@ from robotocore.providers.moto_bridge import forward_to_moto
 
 _OS_VERSIONS_RE = re.compile(r"^/2021-01-01/opensearch/versions$")
 _ES_COMPAT_RE = re.compile(r"^/2015-01-01/es/compatibleVersions$")
+
+# ES operations missing from Moto's flask_paths routing table.
+# These paths exist in the botocore ES service model but Moto's ES backend
+# (which delegates to OpenSearchServiceResponse) doesn't register URL routes
+# for them.
+_ES_ROLE_RE = re.compile(r"^/2015-01-01/es/role$")
+_ES_INBOUND_CCS_RE = re.compile(r"^/2015-01-01/es/ccs/inboundConnection/search$")
+_ES_OUTBOUND_CCS_RE = re.compile(r"^/2015-01-01/es/ccs/outboundConnection/search$")
+_ES_PACKAGES_RE = re.compile(r"^/2015-01-01/packages/describe$")
+_ES_RESERVED_OFFERINGS_RE = re.compile(r"^/2015-01-01/es/reservedInstanceOfferings$")
+_ES_RESERVED_INSTANCES_RE = re.compile(r"^/2015-01-01/es/reservedInstances$")
+_ES_VERSIONS_RE = re.compile(r"^/2015-01-01/es/versions$")
+_ES_VPC_ENDPOINTS_RE = re.compile(r"^/2015-01-01/es/vpcEndpoints$")
 
 _OPENSEARCH_VERSIONS = [
     "OpenSearch_2.13",
@@ -88,6 +107,67 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     if _ES_COMPAT_RE.match(path) and request.method == "GET":
         return Response(
             content=json.dumps({"CompatibleElasticsearchVersions": _ES_COMPAT_VERSIONS}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # DeleteElasticsearchServiceRole (DELETE /2015-01-01/es/role)
+    if _ES_ROLE_RE.match(path) and request.method == "DELETE":
+        return Response(content="", status_code=200, media_type="application/json")
+
+    # DescribeInboundCrossClusterSearchConnections (POST)
+    if _ES_INBOUND_CCS_RE.match(path) and request.method == "POST":
+        return Response(
+            content=json.dumps({"CrossClusterSearchConnections": [], "NextToken": None}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # DescribeOutboundCrossClusterSearchConnections (POST)
+    if _ES_OUTBOUND_CCS_RE.match(path) and request.method == "POST":
+        return Response(
+            content=json.dumps({"CrossClusterSearchConnections": [], "NextToken": None}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # DescribePackages (POST /2015-01-01/packages/describe)
+    if _ES_PACKAGES_RE.match(path) and request.method == "POST":
+        return Response(
+            content=json.dumps({"PackageDetailsList": [], "NextToken": None}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # DescribeReservedElasticsearchInstanceOfferings (GET)
+    if _ES_RESERVED_OFFERINGS_RE.match(path) and request.method == "GET":
+        return Response(
+            content=json.dumps({"ReservedElasticsearchInstanceOfferings": [], "NextToken": None}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # DescribeReservedElasticsearchInstances (GET)
+    if _ES_RESERVED_INSTANCES_RE.match(path) and request.method == "GET":
+        return Response(
+            content=json.dumps({"ReservedElasticsearchInstances": [], "NextToken": None}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # ListElasticsearchVersions (GET /2015-01-01/es/versions)
+    if _ES_VERSIONS_RE.match(path) and request.method == "GET":
+        es_versions = [v for v in _OPENSEARCH_VERSIONS if v.startswith("Elasticsearch_")]
+        return Response(
+            content=json.dumps({"ElasticsearchVersions": es_versions}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    # ListVpcEndpoints (GET /2015-01-01/es/vpcEndpoints)
+    if _ES_VPC_ENDPOINTS_RE.match(path) and request.method == "GET":
+        return Response(
+            content=json.dumps({"VpcEndpointSummaryList": [], "NextToken": None}),
             status_code=200,
             media_type="application/json",
         )

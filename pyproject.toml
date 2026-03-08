@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 dependencies = [
-    # Requires getmoto/moto#9821 for DynamoDB Streams OldImage/NewImage fix
+    # Moto installed from local vendor/ with our gap fixes
     "moto[all]>=5.0",
     "uvicorn>=0.30",
     "starlette>=0.38",
@@ -63,6 +63,9 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.uv.sources]
+moto = { path = "vendor/moto", editable = true }
 
 [tool.mypy]
 python_version = "3.12"

@@ -177,3 +177,19 @@ class TestTaggingExtended:
             assert resp["FailedResourcesMap"] == {} or "FailedResourcesMap" in resp
         finally:
             sqs.delete_queue(QueueUrl=url)
+
+
+class TestRGTAGapStubs:
+    """Tests for gap operations: describe_report_creation, get_compliance_summary."""
+
+    @pytest.fixture
+    def tagging(self):
+        return make_client("resourcegroupstaggingapi")
+
+    def test_describe_report_creation(self, tagging):
+        resp = tagging.describe_report_creation()
+        assert "Status" in resp
+
+    def test_get_compliance_summary(self, tagging):
+        resp = tagging.get_compliance_summary()
+        assert "SummaryList" in resp

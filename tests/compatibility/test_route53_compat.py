@@ -1317,3 +1317,154 @@ class TestRoute53ExtendedV2:
         resp = route53.list_hosted_zones()
         ids = {z["Id"].split("/")[-1] for z in resp["HostedZones"]}
         assert zone_id not in ids
+
+    def test_list_reusable_delegation_sets(self, route53):
+        """ListReusableDelegationSets returns a list (may be empty)."""
+        resp = route53.list_reusable_delegation_sets()
+        assert "DelegationSets" in resp
+        assert isinstance(resp["DelegationSets"], list)
+
+    def test_list_tags_for_resources(self, route53):
+        """ListTagsForResources (plural) returns tags for multiple hosted zones."""
+        ref1 = _unique("tags-res-1")
+        ref2 = _unique("tags-res-2")
+        zone1 = route53.create_hosted_zone(Name="tags1.test.com", CallerReference=ref1)
+        zone2 = route53.create_hosted_zone(Name="tags2.test.com", CallerReference=ref2)
+        z1_id = zone1["HostedZone"]["Id"].split("/")[-1]
+        z2_id = zone2["HostedZone"]["Id"].split("/")[-1]
+        try:
+            route53.change_tags_for_resource(
+                ResourceType="hostedzone",
+                ResourceId=z1_id,
+                AddTags=[{"Key": "env", "Value": "test"}],
+            )
+            resp = route53.list_tags_for_resources(
+                ResourceType="hostedzone",
+                ResourceIds=[z1_id, z2_id],
+            )
+            assert "ResourceTagSets" in resp
+            assert len(resp["ResourceTagSets"]) == 2
+        finally:
+            route53.delete_hosted_zone(Id=z1_id)
+            route53.delete_hosted_zone(Id=z2_id)
+
+    def test_update_health_check(self, route53):
+        """UpdateHealthCheck modifies an existing health check."""
+        resp = route53.create_health_check(
+            CallerReference=_unique("upd-hc"),
+            HealthCheckConfig={
+                "Type": "HTTP",
+                "FullyQualifiedDomainName": "update.example.com",
+                "Port": 80,
+                "ResourcePath": "/health",
+            },
+        )
+        hc_id = resp["HealthCheck"]["Id"]
+        try:
+            update_resp = route53.update_health_check(
+                HealthCheckId=hc_id,
+                ResourcePath="/updated-health",
+                Port=8080,
+            )
+            assert update_resp["HealthCheck"]["Id"] == hc_id
+            config = update_resp["HealthCheck"]["HealthCheckConfig"]
+            assert config["ResourcePath"] == "/updated-health"
+            assert config["Port"] == 8080
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+    def test_delete_health_check(self, route53):
+        """Create and delete a health check, verify it's gone."""
+        resp = route53.create_health_check(
+            CallerReference=_unique("del-hc"),
+            HealthCheckConfig={
+                "Type": "TCP",
+                "IPAddress": "10.0.0.1",
+                "Port": 443,
+            },
+        )
+        hc_id = resp["HealthCheck"]["Id"]
+        route53.delete_health_check(HealthCheckId=hc_id)
+        checks = route53.list_health_checks()
+        hc_ids = [h["Id"] for h in checks["HealthChecks"]]
+        assert hc_id not in hc_ids
+
+    def test_list_tags_for_resource_health_check(self, route53):
+        """ListTagsForResource works for health checks too."""
+        resp = route53.create_health_check(
+            CallerReference=_unique("tag-hc"),
+            HealthCheckConfig={
+                "Type": "HTTP",
+                "FullyQualifiedDomainName": "tags.example.com",
+                "Port": 80,
+            },
+        )
+        hc_id = resp["HealthCheck"]["Id"]
+        try:
+            route53.change_tags_for_resource(
+                ResourceType="healthcheck",
+                ResourceId=hc_id,
+                AddTags=[{"Key": "env", "Value": "staging"}],
+            )
+            tag_resp = route53.list_tags_for_resource(
+                ResourceType="healthcheck",
+                ResourceId=hc_id,
+            )
+            tags = tag_resp["ResourceTagSet"]["Tags"]
+            assert any(t["Key"] == "env" and t["Value"] == "staging" for t in tags)
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+
+# ---------------------------------------------------------------------------
+# Gap stubs — newly verified operations
+# ---------------------------------------------------------------------------
+
+
+class TestRoute53GapStubs:
+    def test_get_checker_ip_ranges(self, route53):
+        """GetCheckerIpRanges returns a list of IP ranges."""
+        resp = route53.get_checker_ip_ranges()
+        assert "CheckerIpRanges" in resp
+        assert isinstance(resp["CheckerIpRanges"], list)
+
+    def test_get_geo_location(self, route53):
+        """GetGeoLocation returns geo location details."""
+        resp = route53.get_geo_location()
+        assert "GeoLocationDetails" in resp
+
+    def test_get_health_check_count(self, route53):
+        """GetHealthCheckCount returns a count."""
+        resp = route53.get_health_check_count()
+        assert "HealthCheckCount" in resp
+        assert isinstance(resp["HealthCheckCount"], int)
+
+    def test_get_traffic_policy_instance_count(self, route53):
+        """GetTrafficPolicyInstanceCount returns a count."""
+        resp = route53.get_traffic_policy_instance_count()
+        assert "TrafficPolicyInstanceCount" in resp
+        assert isinstance(resp["TrafficPolicyInstanceCount"], int)
+
+    def test_list_cidr_collections(self, route53):
+        """ListCidrCollections returns a list (possibly empty)."""
+        resp = route53.list_cidr_collections()
+        assert "CidrCollections" in resp
+        assert isinstance(resp["CidrCollections"], list)
+
+    def test_list_geo_locations(self, route53):
+        """ListGeoLocations returns geo location details."""
+        resp = route53.list_geo_locations()
+        assert "GeoLocationDetailsList" in resp
+        assert isinstance(resp["GeoLocationDetailsList"], list)
+
+    def test_list_traffic_policies(self, route53):
+        """ListTrafficPolicies returns a list (possibly empty)."""
+        resp = route53.list_traffic_policies()
+        assert "TrafficPolicySummaries" in resp
+        assert isinstance(resp["TrafficPolicySummaries"], list)
+
+    def test_list_traffic_policy_instances(self, route53):
+        """ListTrafficPolicyInstances returns a list (possibly empty)."""
+        resp = route53.list_traffic_policy_instances()
+        assert "TrafficPolicyInstances" in resp
+        assert isinstance(resp["TrafficPolicyInstances"], list)
