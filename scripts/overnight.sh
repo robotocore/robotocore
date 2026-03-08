@@ -136,7 +136,8 @@ Print exactly this when done: CHUNK_RESULT: added=N failed=M skipped=K
 PROMPT
 )" > "$CHUNK_LOG" 2>&1
 
-        ADDED=$(grep "CHUNK_RESULT:" "$CHUNK_LOG" 2>/dev/null | grep -oP 'added=\K\d+' || echo "0")
+        ADDED=$(grep "CHUNK_RESULT:" "$CHUNK_LOG" 2>/dev/null | sed -n 's/.*added=\([0-9]*\).*/\1/p' | tail -1)
+        [ -z "$ADDED" ] && ADDED=0
         [ -z "$ADDED" ] && ADDED=0
 
         if [ "$ADDED" = "0" ]; then

@@ -15,11 +15,83 @@ def quicksight():
     return make_client("quicksight")
 
 
+class TestQuickSightAccountSettings:
+    def test_describe_account_settings(self, quicksight):
+        response = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        assert "AccountSettings" in response
+
+    def test_update_account_settings(self, quicksight):
+        response = quicksight.update_account_settings(
+            AwsAccountId=ACCOUNT_ID,
+            DefaultNamespace="default",
+        )
+        assert response["Status"] == 200
+
+
 class TestQuickSightDashboards:
     def test_list_dashboards(self, quicksight):
         response = quicksight.list_dashboards(AwsAccountId=ACCOUNT_ID)
         assert response["Status"] == 200
         assert isinstance(response["DashboardSummaryList"], list)
+
+    def test_create_and_describe_dashboard(self, quicksight):
+        dash_id = f"test-dash-{uuid.uuid4().hex[:8]}"
+        create_resp = quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name="Test Dashboard",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "placeholder",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        assert create_resp["Status"] in (200, 201, 202)
+        assert "DashboardId" in create_resp
+
+        describe_resp = quicksight.describe_dashboard(AwsAccountId=ACCOUNT_ID, DashboardId=dash_id)
+        assert describe_resp["Status"] == 200
+        assert "Dashboard" in describe_resp
+        assert describe_resp["Dashboard"]["DashboardId"] == dash_id
+
+    def test_list_tags_for_resource(self, quicksight):
+        dash_id = f"test-dash-{uuid.uuid4().hex[:8]}"
+        quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name="Tagged Dashboard",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "placeholder",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        arn = f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/{dash_id}"
+        tag_resp = quicksight.list_tags_for_resource(ResourceArn=arn)
+        assert tag_resp["Status"] == 200
+        assert "Tags" in tag_resp
+
+
+class TestQuickSightPublicSharingSettings:
+    def test_update_public_sharing_settings(self, quicksight):
+        response = quicksight.update_public_sharing_settings(
+            AwsAccountId=ACCOUNT_ID,
+            PublicSharingEnabled=False,
+        )
+        assert response["Status"] == 200
 
 
 class TestQuickSightGroups:

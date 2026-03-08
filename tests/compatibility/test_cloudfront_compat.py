@@ -248,6 +248,98 @@ class TestCloudFrontPublicKeys:
         assert pk_id not in ids
 
 
+class TestCloudFrontInvalidations:
+    def _create_dist(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("invalidation-test"))
+        return resp["Distribution"]["Id"]
+
+    def test_create_invalidation(self, cf):
+        dist_id = self._create_dist(cf)
+        resp = cf.create_invalidation(
+            DistributionId=dist_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": 1, "Items": ["/index.html"]},
+                "CallerReference": str(uuid.uuid4()),
+            },
+        )
+        inv = resp["Invalidation"]
+        assert "Id" in inv
+        assert inv["InvalidationBatch"]["Paths"]["Items"] == ["/index.html"]
+
+    def test_get_invalidation(self, cf):
+        dist_id = self._create_dist(cf)
+        create_resp = cf.create_invalidation(
+            DistributionId=dist_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": 1, "Items": ["/assets/*"]},
+                "CallerReference": str(uuid.uuid4()),
+            },
+        )
+        inv_id = create_resp["Invalidation"]["Id"]
+
+        get_resp = cf.get_invalidation(DistributionId=dist_id, Id=inv_id)
+        inv = get_resp["Invalidation"]
+        assert inv["Id"] == inv_id
+        assert inv["InvalidationBatch"]["Paths"]["Items"] == ["/assets/*"]
+
+    def test_list_invalidations(self, cf):
+        dist_id = self._create_dist(cf)
+        cf.create_invalidation(
+            DistributionId=dist_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": 1, "Items": ["/page.html"]},
+                "CallerReference": str(uuid.uuid4()),
+            },
+        )
+
+        resp = cf.list_invalidations(DistributionId=dist_id)
+        inv_list = resp["InvalidationList"]
+        assert "Items" in inv_list
+        assert inv_list["Quantity"] >= 1
+
+
+class TestCloudFrontDistributionConfig:
+    def test_get_distribution_config(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("config-test"))
+        dist_id = resp["Distribution"]["Id"]
+
+        config_resp = cf.get_distribution_config(Id=dist_id)
+        assert "DistributionConfig" in config_resp
+        assert config_resp["DistributionConfig"]["Comment"] == "config-test"
+        assert "ETag" in config_resp
+
+
+class TestCloudFrontOriginAccessControlUpdate:
+    def test_update_origin_access_control(self, cf):
+        name = _unique("oac")
+        resp = cf.create_origin_access_control(
+            OriginAccessControlConfig={
+                "Name": name,
+                "Description": "original",
+                "SigningProtocol": "sigv4",
+                "SigningBehavior": "always",
+                "OriginAccessControlOriginType": "s3",
+            }
+        )
+        oac_id = resp["OriginAccessControl"]["Id"]
+        get_resp = cf.get_origin_access_control(Id=oac_id)
+        etag = get_resp["ETag"]
+
+        update_resp = cf.update_origin_access_control(
+            Id=oac_id,
+            IfMatch=etag,
+            OriginAccessControlConfig={
+                "Name": name,
+                "Description": "updated",
+                "SigningProtocol": "sigv4",
+                "SigningBehavior": "always",
+                "OriginAccessControlOriginType": "s3",
+            },
+        )
+        updated = update_resp["OriginAccessControl"]["OriginAccessControlConfig"]
+        assert updated["Description"] == "updated"
+
+
 class TestCloudfrontAutoCoverage:
     """Auto-generated coverage tests for cloudfront."""
 

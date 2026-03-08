@@ -157,6 +157,20 @@ class TestRDSDBInstanceOperations:
         tag_map = {t["Key"]: t["Value"] for t in resp["TagList"]}
         assert tag_map.get("created-by") == "compat-test"
 
+    def test_reboot_db_instance(self, rds, db_instance):
+        resp = rds.reboot_db_instance(DBInstanceIdentifier=db_instance)
+        assert resp["DBInstance"]["DBInstanceIdentifier"] == db_instance
+
+    def test_stop_db_instance(self, rds, db_instance):
+        resp = rds.stop_db_instance(DBInstanceIdentifier=db_instance)
+        assert resp["DBInstance"]["DBInstanceIdentifier"] == db_instance
+
+    def test_start_db_instance(self, rds, db_instance):
+        # Stop first, then start
+        rds.stop_db_instance(DBInstanceIdentifier=db_instance)
+        resp = rds.start_db_instance(DBInstanceIdentifier=db_instance)
+        assert resp["DBInstance"]["DBInstanceIdentifier"] == db_instance
+
 
 class TestRDSSubnetGroupOperations:
     def test_create_and_describe_subnet_group(self, rds, subnet_group):
@@ -347,3 +361,610 @@ class TestRdsAutoCoverage:
         """DescribeGlobalClusters returns a response."""
         resp = client.describe_global_clusters()
         assert "GlobalClusters" in resp
+
+
+class TestRDSDBClusterParameterGroupOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_db_cluster_parameter_group(self, client):
+        name = _unique("compat-cpg")
+        try:
+            resp = client.create_db_cluster_parameter_group(
+                DBClusterParameterGroupName=name,
+                DBParameterGroupFamily="aurora-mysql8.0",
+                Description="compat test cluster param group",
+            )
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == name
+        finally:
+            try:
+                client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+            except ClientError:
+                pass
+
+    def test_modify_db_cluster_parameter_group(self, client):
+        name = _unique("compat-cpg")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="compat test",
+        )
+        try:
+            resp = client.modify_db_cluster_parameter_group(
+                DBClusterParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "character_set_server",
+                        "ParameterValue": "utf8mb4",
+                        "ApplyMethod": "pending-reboot",
+                    }
+                ],
+            )
+            assert resp["DBClusterParameterGroupName"] == name
+        finally:
+            try:
+                client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+            except ClientError:
+                pass
+
+    def test_delete_db_cluster_parameter_group(self, client):
+        name = _unique("compat-cpg")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="to delete",
+        )
+        client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+        # Verify it's gone - describe should return empty or error
+        resp = client.describe_db_cluster_parameter_groups()
+        names = [g["DBClusterParameterGroupName"] for g in resp["DBClusterParameterGroups"]]
+        assert name not in names
+
+    def test_copy_db_cluster_parameter_group(self, client):
+        src = _unique("compat-cpg-src")
+        tgt = _unique("compat-cpg-tgt")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=src,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="source group",
+        )
+        try:
+            resp = client.copy_db_cluster_parameter_group(
+                SourceDBClusterParameterGroupIdentifier=src,
+                TargetDBClusterParameterGroupIdentifier=tgt,
+                TargetDBClusterParameterGroupDescription="copied group",
+            )
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == tgt
+        finally:
+            for n in [src, tgt]:
+                try:
+                    client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=n)
+                except ClientError:
+                    pass
+
+    def test_describe_db_cluster_parameters(self, client):
+        name = _unique("compat-cpg")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="compat test",
+        )
+        try:
+            resp = client.describe_db_cluster_parameters(DBClusterParameterGroupName=name)
+            assert "Parameters" in resp
+        finally:
+            try:
+                client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+            except ClientError:
+                pass
+
+
+class TestRDSDBParameterGroupCRUDOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_copy_db_parameter_group(self, client):
+        src = _unique("compat-pg-src")
+        tgt = _unique("compat-pg-tgt")
+        client.create_db_parameter_group(
+            DBParameterGroupName=src,
+            DBParameterGroupFamily="mysql8.0",
+            Description="source group",
+        )
+        try:
+            resp = client.copy_db_parameter_group(
+                SourceDBParameterGroupIdentifier=src,
+                TargetDBParameterGroupIdentifier=tgt,
+                TargetDBParameterGroupDescription="copied group",
+            )
+            assert resp["DBParameterGroup"]["DBParameterGroupName"] == tgt
+        finally:
+            for n in [src, tgt]:
+                try:
+                    client.delete_db_parameter_group(DBParameterGroupName=n)
+                except ClientError:
+                    pass
+
+    def test_modify_db_parameter_group(self, client):
+        name = _unique("compat-pg")
+        client.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="mysql8.0",
+            Description="compat test",
+        )
+        try:
+            resp = client.modify_db_parameter_group(
+                DBParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "max_connections",
+                        "ParameterValue": "200",
+                        "ApplyMethod": "pending-reboot",
+                    }
+                ],
+            )
+            assert resp["DBParameterGroupName"] == name
+        finally:
+            try:
+                client.delete_db_parameter_group(DBParameterGroupName=name)
+            except ClientError:
+                pass
+
+
+class TestRDSDBClusterOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_db_cluster(self, client):
+        name = _unique("compat-cl")
+        try:
+            resp = client.create_db_cluster(
+                DBClusterIdentifier=name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123!",
+            )
+            assert resp["DBCluster"]["DBClusterIdentifier"] == name
+            assert resp["DBCluster"]["Engine"] == "aurora-mysql"
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_stop_db_cluster(self, client):
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            resp = client.stop_db_cluster(DBClusterIdentifier=name)
+            assert resp["DBCluster"]["DBClusterIdentifier"] == name
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_start_db_cluster(self, client):
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            client.stop_db_cluster(DBClusterIdentifier=name)
+            resp = client.start_db_cluster(DBClusterIdentifier=name)
+            assert resp["DBCluster"]["DBClusterIdentifier"] == name
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSDBClusterSnapshotOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def cluster(self, client):
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        yield name
+        try:
+            client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_create_db_cluster_snapshot(self, client, cluster):
+        snap = _unique("compat-csnap")
+        try:
+            resp = client.create_db_cluster_snapshot(
+                DBClusterSnapshotIdentifier=snap,
+                DBClusterIdentifier=cluster,
+            )
+            assert resp["DBClusterSnapshot"]["DBClusterSnapshotIdentifier"] == snap
+        finally:
+            try:
+                client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
+            except ClientError:
+                pass
+
+    def test_delete_db_cluster_snapshot(self, client, cluster):
+        snap = _unique("compat-csnap")
+        client.create_db_cluster_snapshot(
+            DBClusterSnapshotIdentifier=snap,
+            DBClusterIdentifier=cluster,
+        )
+        resp = client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
+        assert "DBClusterSnapshot" in resp
+
+    def test_copy_db_cluster_snapshot(self, client, cluster):
+        src = _unique("compat-csnap-src")
+        tgt = _unique("compat-csnap-tgt")
+        client.create_db_cluster_snapshot(
+            DBClusterSnapshotIdentifier=src,
+            DBClusterIdentifier=cluster,
+        )
+        try:
+            resp = client.copy_db_cluster_snapshot(
+                SourceDBClusterSnapshotIdentifier=src,
+                TargetDBClusterSnapshotIdentifier=tgt,
+            )
+            assert resp["DBClusterSnapshot"]["DBClusterSnapshotIdentifier"] == tgt
+        finally:
+            for s in [src, tgt]:
+                try:
+                    client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=s)
+                except ClientError:
+                    pass
+
+    def test_describe_db_cluster_snapshot_attributes(self, client, cluster):
+        snap = _unique("compat-csnap")
+        client.create_db_cluster_snapshot(
+            DBClusterSnapshotIdentifier=snap,
+            DBClusterIdentifier=cluster,
+        )
+        try:
+            resp = client.describe_db_cluster_snapshot_attributes(DBClusterSnapshotIdentifier=snap)
+            assert "DBClusterSnapshotAttributesResult" in resp
+        finally:
+            try:
+                client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
+            except ClientError:
+                pass
+
+    def test_modify_db_cluster_snapshot_attribute(self, client, cluster):
+        snap = _unique("compat-csnap")
+        client.create_db_cluster_snapshot(
+            DBClusterSnapshotIdentifier=snap,
+            DBClusterIdentifier=cluster,
+        )
+        try:
+            resp = client.modify_db_cluster_snapshot_attribute(
+                DBClusterSnapshotIdentifier=snap,
+                AttributeName="restore",
+                ValuesToAdd=["all"],
+            )
+            assert "DBClusterSnapshotAttributesResult" in resp
+        finally:
+            try:
+                client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
+            except ClientError:
+                pass
+
+
+class TestRDSDBSnapshotCRUDOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def instance(self, client):
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_copy_db_snapshot(self, client, instance):
+        src = _unique("compat-snap-src")
+        tgt = _unique("compat-snap-tgt")
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=src,
+            DBInstanceIdentifier=instance,
+        )
+        try:
+            resp = client.copy_db_snapshot(
+                SourceDBSnapshotIdentifier=src,
+                TargetDBSnapshotIdentifier=tgt,
+            )
+            assert resp["DBSnapshot"]["DBSnapshotIdentifier"] == tgt
+        finally:
+            for s in [src, tgt]:
+                try:
+                    client.delete_db_snapshot(DBSnapshotIdentifier=s)
+                except ClientError:
+                    pass
+
+    def test_describe_db_snapshot_attributes(self, client, instance):
+        snap = _unique("compat-snap")
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap,
+            DBInstanceIdentifier=instance,
+        )
+        try:
+            resp = client.describe_db_snapshot_attributes(DBSnapshotIdentifier=snap)
+            assert "DBSnapshotAttributesResult" in resp
+        finally:
+            try:
+                client.delete_db_snapshot(DBSnapshotIdentifier=snap)
+            except ClientError:
+                pass
+
+    def test_modify_db_snapshot_attribute(self, client, instance):
+        snap = _unique("compat-snap")
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap,
+            DBInstanceIdentifier=instance,
+        )
+        try:
+            resp = client.modify_db_snapshot_attribute(
+                DBSnapshotIdentifier=snap,
+                AttributeName="restore",
+                ValuesToAdd=["all"],
+            )
+            assert "DBSnapshotAttributesResult" in resp
+        finally:
+            try:
+                client.delete_db_snapshot(DBSnapshotIdentifier=snap)
+            except ClientError:
+                pass
+
+
+class TestRDSOptionGroupOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_option_group(self, client):
+        name = _unique("compat-og")
+        try:
+            resp = client.create_option_group(
+                OptionGroupName=name,
+                EngineName="mysql",
+                MajorEngineVersion="8.0",
+                OptionGroupDescription="compat test option group",
+            )
+            assert resp["OptionGroup"]["OptionGroupName"] == name
+        finally:
+            try:
+                client.delete_option_group(OptionGroupName=name)
+            except ClientError:
+                pass
+
+    def test_delete_option_group(self, client):
+        name = _unique("compat-og")
+        client.create_option_group(
+            OptionGroupName=name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="to delete",
+        )
+        client.delete_option_group(OptionGroupName=name)
+        # Verify deletion by trying to describe the specific group
+        with pytest.raises(ClientError) as exc:
+            client.describe_option_groups(OptionGroupName=name)
+        assert exc.value.response["Error"]["Code"] in (
+            "OptionGroupNotFoundFault",
+            "InternalError",
+        )
+
+    def test_describe_option_group_options(self, client):
+        resp = client.describe_option_group_options(EngineName="mysql")
+        assert "OptionGroupOptions" in resp
+
+
+class TestRDSDBSecurityGroupOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_db_security_group(self, client):
+        name = _unique("compat-dbsg")
+        try:
+            resp = client.create_db_security_group(
+                DBSecurityGroupName=name,
+                DBSecurityGroupDescription="compat test security group",
+            )
+            assert resp["DBSecurityGroup"]["DBSecurityGroupName"] == name
+        finally:
+            try:
+                client.delete_db_security_group(DBSecurityGroupName=name)
+            except ClientError:
+                pass
+
+    def test_delete_db_security_group(self, client):
+        name = _unique("compat-dbsg")
+        client.create_db_security_group(
+            DBSecurityGroupName=name,
+            DBSecurityGroupDescription="to delete",
+        )
+        client.delete_db_security_group(DBSecurityGroupName=name)
+        resp = client.describe_db_security_groups()
+        names = [g["DBSecurityGroupName"] for g in resp["DBSecurityGroups"]]
+        assert name not in names
+
+    def test_authorize_db_security_group_ingress(self, client):
+        name = _unique("compat-dbsg")
+        client.create_db_security_group(
+            DBSecurityGroupName=name,
+            DBSecurityGroupDescription="compat test",
+        )
+        try:
+            resp = client.authorize_db_security_group_ingress(
+                DBSecurityGroupName=name,
+                CIDRIP="10.0.0.0/24",
+            )
+            assert resp["DBSecurityGroup"]["DBSecurityGroupName"] == name
+        finally:
+            try:
+                client.delete_db_security_group(DBSecurityGroupName=name)
+            except ClientError:
+                pass
+
+
+class TestRDSEventSubscriptionOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_event_subscription(self, client):
+        name = _unique("compat-esub")
+        try:
+            resp = client.create_event_subscription(
+                SubscriptionName=name,
+                SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+            )
+            assert resp["EventSubscription"]["CustSubscriptionId"] == name
+        finally:
+            try:
+                client.delete_event_subscription(SubscriptionName=name)
+            except ClientError:
+                pass
+
+    def test_delete_event_subscription(self, client):
+        name = _unique("compat-esub")
+        client.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        resp = client.delete_event_subscription(SubscriptionName=name)
+        assert "EventSubscription" in resp
+
+
+class TestRDSGlobalClusterOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_global_cluster(self, client):
+        name = _unique("compat-gc")
+        try:
+            resp = client.create_global_cluster(
+                GlobalClusterIdentifier=name,
+                Engine="aurora-mysql",
+            )
+            assert resp["GlobalCluster"]["GlobalClusterIdentifier"] == name
+        finally:
+            try:
+                client.delete_global_cluster(GlobalClusterIdentifier=name)
+            except ClientError:
+                pass
+
+
+class TestRDSDBLogFiles:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_log_files(self, client):
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.describe_db_log_files(DBInstanceIdentifier=name)
+            assert "DescribeDBLogFiles" in resp
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSRoleOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_add_role_to_db_instance(self, client):
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.add_role_to_db_instance(
+                DBInstanceIdentifier=name,
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+                FeatureName="s3Import",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_add_role_to_db_cluster(self, client):
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            resp = client.add_role_to_db_cluster(
+                DBClusterIdentifier=name,
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSFailoverOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_failover_nonexistent_db_cluster(self, client):
+        """FailoverDBCluster returns error for nonexistent cluster."""
+        with pytest.raises(ClientError) as exc:
+            client.failover_db_cluster(DBClusterIdentifier="does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "DBClusterNotFoundFault"
