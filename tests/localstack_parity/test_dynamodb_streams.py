@@ -145,16 +145,13 @@ class TestDynamoDBStreams:
             )
             esm_uuid = esm["UUID"]
             assert esm["EventSourceArn"] == stream_arn
+            assert esm["BatchSize"] == 1
 
-            # Wait for Enabled
-            for _ in range(30):
-                esm_state = lam.get_event_source_mapping(UUID=esm_uuid)
-                if esm_state["State"] in ("Enabled", "Enabling"):
-                    break
-                time.sleep(1)
-
+            # Verify ESM is visible via get
             esm_state = lam.get_event_source_mapping(UUID=esm_uuid)
             assert esm_state["FunctionArn"].endswith(fn_name)
+            assert esm_state["EventSourceArn"] == stream_arn
+            assert esm_state["BatchSize"] == 1
 
         finally:
             if esm_uuid:
