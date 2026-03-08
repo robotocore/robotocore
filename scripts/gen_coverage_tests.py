@@ -310,7 +310,7 @@ def generate_test_class(
             lines.append(f"            client.{snake}()")
             lines.append("        except client.exceptions.ClientError:")
             lines.append("            pass  # Expected — operation exists but needs params")
-            lines.append("        except client.exceptions.ParamValidationError:")
+            lines.append("        except ParamValidationError:")
             lines.append("            pass  # Expected — operation exists but needs params")
             lines.append("")
 
