@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -115,3 +116,66 @@ class TestComprehendAutoCoverage:
         """ListTargetedSentimentDetectionJobs returns a response."""
         resp = client.list_targeted_sentiment_detection_jobs()
         assert "TargetedSentimentDetectionJobPropertiesList" in resp
+
+    def test_create_and_describe_endpoint(self, client):
+        """CreateEndpoint + DescribeEndpoint lifecycle."""
+        name = f"test-ep-{_uid()}"
+        model_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+        create_resp = client.create_endpoint(
+            EndpointName=name,
+            ModelArn=model_arn,
+            DesiredInferenceUnits=1,
+        )
+        endpoint_arn = create_resp["EndpointArn"]
+        assert endpoint_arn
+        try:
+            desc = client.describe_endpoint(EndpointArn=endpoint_arn)
+            props = desc["EndpointProperties"]
+            assert props["EndpointArn"] == endpoint_arn
+            assert props["Status"] == "IN_SERVICE"
+            assert props["DesiredInferenceUnits"] == 1
+        finally:
+            client.delete_endpoint(EndpointArn=endpoint_arn)
+
+    def test_update_endpoint(self, client):
+        """UpdateEndpoint accepts valid request and returns 200."""
+        name = f"test-ep-{_uid()}"
+        model_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+        create_resp = client.create_endpoint(
+            EndpointName=name,
+            ModelArn=model_arn,
+            DesiredInferenceUnits=1,
+        )
+        endpoint_arn = create_resp["EndpointArn"]
+        try:
+            update_resp = client.update_endpoint(
+                EndpointArn=endpoint_arn,
+                DesiredInferenceUnits=2,
+            )
+            assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_endpoint(EndpointArn=endpoint_arn)
+
+    def test_delete_endpoint(self, client):
+        """DeleteEndpoint removes an endpoint."""
+        name = f"test-ep-{_uid()}"
+        model_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+        create_resp = client.create_endpoint(
+            EndpointName=name,
+            ModelArn=model_arn,
+            DesiredInferenceUnits=1,
+        )
+        endpoint_arn = create_resp["EndpointArn"]
+        del_resp = client.delete_endpoint(EndpointArn=endpoint_arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        with pytest.raises(ClientError) as exc:
+            client.describe_endpoint(EndpointArn=endpoint_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_endpoint_nonexistent(self, client):
+        """DescribeEndpoint with nonexistent ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_endpoint(
+                EndpointArn="arn:aws:comprehend:us-east-1:123456789012:endpoint/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
