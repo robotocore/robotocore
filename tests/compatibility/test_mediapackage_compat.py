@@ -102,6 +102,27 @@ class TestMediaPackageOriginEndpoints:
         endpoint_ids = [ep["Id"] for ep in response["OriginEndpoints"]]
         assert endpoint_id not in endpoint_ids
 
+    def test_update_origin_endpoint(self, mediapackage):
+        channel_id = _unique_id("ch")
+        endpoint_id = _unique_id("ep")
+        mediapackage.create_channel(Id=channel_id)
+        mediapackage.create_origin_endpoint(
+            ChannelId=channel_id,
+            Id=endpoint_id,
+            Description="original",
+            HlsPackage={},
+        )
+        response = mediapackage.update_origin_endpoint(
+            Id=endpoint_id,
+            Description="updated",
+            HlsPackage={},
+        )
+        assert response["Id"] == endpoint_id
+        assert response["Description"] == "updated"
+        # Verify via describe
+        desc = mediapackage.describe_origin_endpoint(Id=endpoint_id)
+        assert desc["Description"] == "updated"
+
     def test_list_origin_endpoints_by_channel(self, mediapackage):
         channel_id = _unique_id("ch")
         ep1 = _unique_id("ep")
