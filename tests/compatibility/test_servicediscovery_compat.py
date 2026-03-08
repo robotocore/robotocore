@@ -181,3 +181,159 @@ class TestServiceDiscoveryTags:
         resp = sd.list_tags_for_resource(ResourceARN=service["Arn"])
         tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
         assert tags["env"] == "prod"
+
+
+class TestServiceDiscoveryInstanceOperations:
+    def test_register_instance(self, sd, service):
+        inst_id = _unique("inst")
+        resp = sd.register_instance(
+            ServiceId=service["Id"],
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.1", "AWS_INSTANCE_PORT": "8080"},
+        )
+        assert "OperationId" in resp
+        sd.deregister_instance(ServiceId=service["Id"], InstanceId=inst_id)
+
+    def test_get_instance(self, sd, service):
+        inst_id = _unique("inst")
+        sd.register_instance(
+            ServiceId=service["Id"],
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.2"},
+        )
+        try:
+            resp = sd.get_instance(ServiceId=service["Id"], InstanceId=inst_id)
+            inst = resp["Instance"]
+            assert inst["Id"] == inst_id
+            assert inst["Attributes"]["AWS_INSTANCE_IPV4"] == "10.0.0.2"
+        finally:
+            sd.deregister_instance(ServiceId=service["Id"], InstanceId=inst_id)
+
+    def test_deregister_instance(self, sd, service):
+        inst_id = _unique("inst")
+        sd.register_instance(
+            ServiceId=service["Id"],
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.3"},
+        )
+        resp = sd.deregister_instance(ServiceId=service["Id"], InstanceId=inst_id)
+        assert "OperationId" in resp
+        # Verify it's gone
+        list_resp = sd.list_instances(ServiceId=service["Id"])
+        ids = [i["Id"] for i in list_resp["Instances"]]
+        assert inst_id not in ids
+
+    def test_list_instances(self, sd, service):
+        inst_id = _unique("inst")
+        sd.register_instance(
+            ServiceId=service["Id"],
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.4"},
+        )
+        try:
+            resp = sd.list_instances(ServiceId=service["Id"])
+            assert "Instances" in resp
+            ids = [i["Id"] for i in resp["Instances"]]
+            assert inst_id in ids
+        finally:
+            sd.deregister_instance(ServiceId=service["Id"], InstanceId=inst_id)
+
+    def test_get_instances_health_status(self, sd, service):
+        inst_id = _unique("inst")
+        sd.register_instance(
+            ServiceId=service["Id"],
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.5"},
+        )
+        try:
+            resp = sd.get_instances_health_status(ServiceId=service["Id"])
+            assert "Status" in resp
+        finally:
+            sd.deregister_instance(ServiceId=service["Id"], InstanceId=inst_id)
+
+    def test_update_instance_custom_health_status(self, sd, namespace):
+        # Need a service with custom health check for this op
+        name = _unique("svc")
+        svc_resp = sd.create_service(
+            Name=name,
+            NamespaceId=namespace["Id"],
+            HealthCheckCustomConfig={"FailureThreshold": 1},
+        )
+        svc_id = svc_resp["Service"]["Id"]
+        inst_id = _unique("inst")
+        sd.register_instance(
+            ServiceId=svc_id,
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.6"},
+        )
+        try:
+            sd.update_instance_custom_health_status(
+                ServiceId=svc_id,
+                InstanceId=inst_id,
+                Status="HEALTHY",
+            )
+            # If we get here without error, the op is implemented
+            assert True
+        finally:
+            sd.deregister_instance(ServiceId=svc_id, InstanceId=inst_id)
+            sd.delete_service(Id=svc_id)
+
+
+class TestServiceDiscoveryNamespaceTypes:
+    def test_create_private_dns_namespace(self, sd):
+        name = _unique("priv") + ".local"
+        resp = sd.create_private_dns_namespace(Name=name, Vpc="vpc-12345")
+        assert "OperationId" in resp
+        op = sd.get_operation(OperationId=resp["OperationId"])
+        ns_id = op["Operation"]["Targets"]["NAMESPACE"]
+        sd.delete_namespace(Id=ns_id)
+
+    def test_create_public_dns_namespace(self, sd):
+        name = _unique("pub") + ".example.com"
+        resp = sd.create_public_dns_namespace(Name=name)
+        assert "OperationId" in resp
+        op = sd.get_operation(OperationId=resp["OperationId"])
+        ns_id = op["Operation"]["Targets"]["NAMESPACE"]
+        sd.delete_namespace(Id=ns_id)
+
+    def test_update_http_namespace(self, sd, namespace):
+        resp = sd.update_http_namespace(
+            Id=namespace["Id"],
+            Namespace={"Description": "updated"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_private_dns_namespace(self, sd):
+        name = _unique("priv") + ".local"
+        resp = sd.create_private_dns_namespace(Name=name, Vpc="vpc-12345")
+        op = sd.get_operation(OperationId=resp["OperationId"])
+        ns_id = op["Operation"]["Targets"]["NAMESPACE"]
+        try:
+            upd = sd.update_private_dns_namespace(
+                Id=ns_id,
+                Namespace={"Description": "updated"},
+            )
+            assert "OperationId" in upd
+        finally:
+            sd.delete_namespace(Id=ns_id)
+
+    def test_update_public_dns_namespace(self, sd):
+        name = _unique("pub") + ".example.com"
+        resp = sd.create_public_dns_namespace(Name=name)
+        op = sd.get_operation(OperationId=resp["OperationId"])
+        ns_id = op["Operation"]["Targets"]["NAMESPACE"]
+        try:
+            upd = sd.update_public_dns_namespace(
+                Id=ns_id,
+                Namespace={"Description": "updated"},
+            )
+            assert "OperationId" in upd
+        finally:
+            sd.delete_namespace(Id=ns_id)
+
+    def test_update_service(self, sd, service):
+        resp = sd.update_service(
+            Id=service["Id"],
+            Service={"Description": "updated-desc"},
+        )
+        assert "OperationId" in resp
