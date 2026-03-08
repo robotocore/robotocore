@@ -399,6 +399,10 @@ class TestKMSOperations:
             alias_names3 = [a["AliasName"] for a in aliases3["Aliases"]]
             assert alias_name not in alias_names3
         finally:
+            try:
+                kms.delete_alias(AliasName=alias_name)
+            except Exception:
+                pass
             kms.schedule_key_deletion(KeyId=key1_id, PendingWindowInDays=7)
             kms.schedule_key_deletion(KeyId=key2_id, PendingWindowInDays=7)
 
