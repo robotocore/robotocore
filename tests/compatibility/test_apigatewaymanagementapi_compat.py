@@ -19,3 +19,17 @@ class TestAPIGatewayManagementAPI:
         with pytest.raises(botocore.exceptions.ClientError) as exc_info:
             apigwmgmt.get_connection(ConnectionId="nonexistent-conn-id")
         assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 410
+
+    def test_delete_connection_nonexistent(self, apigwmgmt):
+        """Deleting a non-existent connection succeeds silently."""
+        resp = apigwmgmt.delete_connection(ConnectionId="nonexistent-conn-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_post_to_connection_not_found(self, apigwmgmt):
+        """Posting to a non-existent connection returns 410."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            apigwmgmt.post_to_connection(
+                ConnectionId="nonexistent-conn-id",
+                Data=b"hello",
+            )
+        assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 410
