@@ -958,6 +958,203 @@ class TestRDSRoleOperations:
                 pass
 
 
+class TestRDSBlueGreenDeploymentOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def source_instance(self, client):
+        name = _unique("compat-bg-src")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_create_blue_green_deployment(self, client, source_instance):
+        bg_name = _unique("compat-bg")
+        source_arn = f"arn:aws:rds:us-east-1:123456789012:db:{source_instance}"
+        try:
+            resp = client.create_blue_green_deployment(
+                BlueGreenDeploymentName=bg_name,
+                Source=source_arn,
+            )
+            assert "BlueGreenDeployment" in resp
+            assert resp["BlueGreenDeployment"]["BlueGreenDeploymentName"] == bg_name
+            bg_id = resp["BlueGreenDeployment"]["BlueGreenDeploymentIdentifier"]
+        finally:
+            try:
+                client.delete_blue_green_deployment(BlueGreenDeploymentIdentifier=bg_id)
+            except Exception:
+                pass
+
+    def test_delete_blue_green_deployment(self, client, source_instance):
+        bg_name = _unique("compat-bg")
+        source_arn = f"arn:aws:rds:us-east-1:123456789012:db:{source_instance}"
+        resp = client.create_blue_green_deployment(
+            BlueGreenDeploymentName=bg_name,
+            Source=source_arn,
+        )
+        bg_id = resp["BlueGreenDeployment"]["BlueGreenDeploymentIdentifier"]
+        del_resp = client.delete_blue_green_deployment(
+            BlueGreenDeploymentIdentifier=bg_id,
+        )
+        assert "BlueGreenDeployment" in del_resp
+
+
+class TestRDSRestoreOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_restore_db_cluster_from_snapshot(self, client):
+        cluster_name = _unique("compat-cl")
+        snap_name = _unique("compat-csnap")
+        restored_name = _unique("compat-restored")
+        client.create_db_cluster(
+            DBClusterIdentifier=cluster_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            client.create_db_cluster_snapshot(
+                DBClusterSnapshotIdentifier=snap_name,
+                DBClusterIdentifier=cluster_name,
+            )
+            try:
+                resp = client.restore_db_cluster_from_snapshot(
+                    DBClusterIdentifier=restored_name,
+                    SnapshotIdentifier=snap_name,
+                    Engine="aurora-mysql",
+                )
+                assert resp["DBCluster"]["DBClusterIdentifier"] == restored_name
+            finally:
+                try:
+                    client.delete_db_cluster(
+                        DBClusterIdentifier=restored_name, SkipFinalSnapshot=True
+                    )
+                except ClientError:
+                    pass
+                try:
+                    client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
+                except ClientError:
+                    pass
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSModifyOptionGroupOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_modify_option_group(self, client):
+        name = _unique("compat-og")
+        client.create_option_group(
+            OptionGroupName=name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="compat test",
+        )
+        try:
+            # Empty options lists should return InvalidParameterValue
+            with pytest.raises(ClientError) as exc:
+                client.modify_option_group(
+                    OptionGroupName=name,
+                    OptionsToInclude=[],
+                    ApplyImmediately=True,
+                )
+            assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+        finally:
+            try:
+                client.delete_option_group(OptionGroupName=name)
+            except ClientError:
+                pass
+
+
+class TestRDSExportTaskOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_cancel_export_task_nonexistent(self, client):
+        """CancelExportTask returns error for nonexistent task."""
+        with pytest.raises(ClientError) as exc:
+            client.cancel_export_task(ExportTaskIdentifier="does-not-exist")
+        assert exc.value.response["Error"]["Code"] in (
+            "ExportTaskNotFoundFault",
+            "ExportTaskNotFound",
+        )
+
+
+class TestRDSGlobalClusterMemberOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_remove_from_global_cluster(self, client):
+        """RemoveFromGlobalCluster on a global cluster with a member."""
+        gc_name = _unique("compat-gc")
+        cl_name = _unique("compat-cl")
+        client.create_global_cluster(
+            GlobalClusterIdentifier=gc_name,
+            Engine="aurora-mysql",
+        )
+        try:
+            client.create_db_cluster(
+                DBClusterIdentifier=cl_name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123!",
+                GlobalClusterIdentifier=gc_name,
+            )
+            try:
+                resp = client.remove_from_global_cluster(
+                    GlobalClusterIdentifier=gc_name,
+                    DbClusterIdentifier=f"arn:aws:rds:us-east-1:123456789012:cluster:{cl_name}",
+                )
+                assert "GlobalCluster" in resp
+            finally:
+                try:
+                    client.delete_db_cluster(DBClusterIdentifier=cl_name, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass
+        finally:
+            try:
+                client.delete_global_cluster(GlobalClusterIdentifier=gc_name)
+            except ClientError:
+                pass
+
+
+class TestRDSSwitchoverOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_switchover_blue_green_nonexistent(self, client):
+        """SwitchoverBlueGreenDeployment returns error for nonexistent deployment."""
+        with pytest.raises(ClientError) as exc:
+            client.switchover_blue_green_deployment(
+                BlueGreenDeploymentIdentifier="bgd-does-not-exist",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "BlueGreenDeploymentNotFoundFault",
+            "BlueGreenDeploymentNotFound",
+        )
+
+
 class TestRDSFailoverOperations:
     @pytest.fixture
     def client(self):
