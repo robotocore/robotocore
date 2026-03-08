@@ -736,7 +736,7 @@ class TestLambdaEnvironmentVariables:
 
     def test_create_with_env_vars(self, lam, role):
         code = _make_zip(
-            'import os\ndef handler(e, c): return {"a": os.environ.get("VAR_A"), "b": os.environ.get("VAR_B")}'
+            'import os\ndef handler(e, c): return {"a": os.environ.get("VAR_A"), "b": os.environ.get("VAR_B")}'  # noqa: E501
         )
         fname = f"envvar-create-{uuid.uuid4().hex[:8]}"
         lam.create_function(

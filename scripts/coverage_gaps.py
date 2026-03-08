@@ -199,14 +199,14 @@ def print_report(results, verbose=False):
         print(f"  {'-' * 45} {'-' * 5} {'-' * 5} {'-' * 6} {'-' * 6}")
         for r in sorted(low_coverage, key=lambda x: x["coverage_ratio"]):
             print(
-                f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}"
+                f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}"  # noqa: E501
             )
 
     if verbose:
         print(f"\n  GOOD COVERAGE ({len(good)}):")
         for r in sorted(good, key=lambda x: -x["coverage_ratio"]):
             print(
-                f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}"
+                f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}"  # noqa: E501
             )
 
     # Untested public symbols

@@ -148,7 +148,7 @@ def generate_target_handler(target_name: str, spec: dict) -> str:
                 "    from robotocore.services.kinesis.provider import _get_store",
                 "",
                 "    # Extract stream name from ARN: arn:aws:kinesis:region:acct:stream/name",
-                '    stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]',
+                '    stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]',  # noqa: E501
                 "    store = _get_store(region)",
                 "    stream = store.get_stream(stream_name)",
                 "    if not stream:",
@@ -187,7 +187,7 @@ def generate_target_handler(target_name: str, spec: dict) -> str:
                 "",
                 "    store = _get_store(region)",
                 "    import json as _json_mod",
-                "    input_data = _json_mod.loads(payload) if isinstance(payload, str) else payload",
+                "    input_data = _json_mod.loads(payload) if isinstance(payload, str) else payload",  # noqa: E501
                 "    store.start_execution(arn, _json_mod.dumps(input_data))",
                 '    _log_invocation("stepfunctions", arn, payload)',
                 '    logger.info(f"EventBridge -> StepFunctions: {arn}")',

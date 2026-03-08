@@ -102,9 +102,9 @@ class TestGlueTableOperations:
                         "Columns": [{"Name": "id", "Type": "int"}],
                         "Location": "s3://bucket/path",
                         "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
-                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
                         "SerdeInfo": {
-                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
                         },
                     },
                 },

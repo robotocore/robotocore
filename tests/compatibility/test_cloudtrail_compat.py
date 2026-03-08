@@ -23,7 +23,7 @@ def s3():
 
 @pytest.fixture
 def trail_with_bucket(cloudtrail, s3):
-    """Create an S3 bucket and a trail, yield (trail_name, bucket_name, trail_arn), then clean up."""
+    """Create an S3 bucket and a trail, yield (trail_name, bucket_name, trail_arn), then clean up."""  # noqa: E501
     bucket_name = _unique("ct-bucket")
     trail_name = _unique("ct-trail")
     s3.create_bucket(Bucket=bucket_name)

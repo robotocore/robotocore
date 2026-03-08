@@ -1102,7 +1102,7 @@ class TestIAMLoginProfile:
 
 class TestIAMServiceLinkedRole:
     def test_create_and_delete_service_linked_role(self, iam):
-        """CreateServiceLinkedRole / DeleteServiceLinkedRole / GetServiceLinkedRoleDeletionStatus."""
+        """CreateServiceLinkedRole / DeleteServiceLinkedRole / GetServiceLinkedRoleDeletionStatus."""  # noqa: E501
         try:
             resp = iam.create_service_linked_role(AWSServiceName="elasticbeanstalk.amazonaws.com")
             role = resp["Role"]

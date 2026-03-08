@@ -8,7 +8,8 @@ Reads botocore's service-2.json to generate:
 
 Usage:
     uv run python scripts/gen_provider.py lambda
-    uv run python scripts/gen_provider.py stepfunctions --output-dir src/robotocore/services/stepfunctions/
+    uv run python scripts/gen_provider.py stepfunctions \
+        --output-dir src/robotocore/services/stepfunctions/
 """
 
 import json
@@ -108,7 +109,7 @@ def generate_rest_json_provider(service_name: str, model: dict, operations: list
         "from starlette.responses import Response",
         "",
         "",
-        f"async def handle_{service_name}_request(request: Request, region: str, account_id: str) -> Response:",
+        f"async def handle_{service_name}_request(request: Request, region: str, account_id: str) -> Response:",  # noqa: E501
         f'    """Handle a {service_full} API request."""',
         "    path = request.url.path",
         "    method = request.method.upper()",
@@ -124,7 +125,7 @@ def generate_rest_json_provider(service_name: str, model: dict, operations: list
     lines.extend(
         [
             "",
-            '    return _error("NotImplemented", f"Operation not implemented: {method} {path}", 501)',
+            '    return _error("NotImplemented", f"Operation not implemented: {method} {path}", 501)',  # noqa: E501
             "",
             "",
             "def _json(status_code: int, data) -> Response:",
@@ -160,7 +161,7 @@ def generate_json_provider(service_name: str, model: dict, operations: list[dict
         "from starlette.responses import Response",
         "",
         "",
-        f"async def handle_{service_name}_request(request: Request, region: str, account_id: str) -> Response:",
+        f"async def handle_{service_name}_request(request: Request, region: str, account_id: str) -> Response:",  # noqa: E501
         f'    """Handle a {service_full} API request."""',
         "    body = await request.body()",
         '    target = request.headers.get("x-amz-target", "")',
@@ -220,7 +221,7 @@ def generate_json_provider(service_name: str, model: dict, operations: list[dict
             "",
             "def _error(code: str, message: str, status: int) -> Response:",
             '    body = json.dumps({"__type": code, "message": message})',
-            '    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.0")',
+            '    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.0")',  # noqa: E501
             "",
         ]
     )
@@ -243,7 +244,7 @@ def generate_query_provider(service_name: str, model: dict, operations: list[dic
         "from starlette.responses import Response",
         "",
         "",
-        f"async def handle_{service_name}_request(request: Request, region: str, account_id: str) -> Response:",
+        f"async def handle_{service_name}_request(request: Request, region: str, account_id: str) -> Response:",  # noqa: E501
         f'    """Handle a {service_full} API request."""',
         "    body = await request.body()",
         '    content_type = request.headers.get("content-type", "")',
@@ -301,7 +302,7 @@ def generate_query_provider(service_name: str, model: dict, operations: list[dic
             """        f'<?xml version="1.0"?>'""",
             """        f'<{action}>'""",
             """        f'<{result_name}>{body_xml}</{result_name}>'""",
-            """        f'<ResponseMetadata><RequestId>{uuid.uuid4()}</RequestId></ResponseMetadata>'""",
+            """        f'<ResponseMetadata><RequestId>{uuid.uuid4()}</RequestId></ResponseMetadata>'""",  # noqa: E501
             """        f'</{action}>'""",
             "    )",
             '    return Response(content=xml, status_code=200, media_type="text/xml")',
@@ -311,7 +312,7 @@ def generate_query_provider(service_name: str, model: dict, operations: list[dic
             "    xml = (",
             """        f'<?xml version="1.0"?>'""",
             """        f'<ErrorResponse>'""",
-            """        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'""",
+            """        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'""",  # noqa: E501
             """        f'<RequestId>{uuid.uuid4()}</RequestId>'""",
             """        f'</ErrorResponse>'""",
             "    )",
@@ -392,7 +393,7 @@ def main():
         (out_dir / "__init__.py").touch()
         (out_dir / "provider.py").write_text(code)
         print(
-            f"Generated {out_dir / 'provider.py'} ({len(operations)} operations, protocol={protocol})"
+            f"Generated {out_dir / 'provider.py'} ({len(operations)} operations, protocol={protocol})"  # noqa: E501
         )
     else:
         print(code)
