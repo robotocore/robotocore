@@ -518,3 +518,187 @@ class TestErrorHelper:
         data = json.loads(resp.body)
         assert data["__type"] == "TestCode"
         assert data["message"] == "test msg"
+
+
+# ---------------------------------------------------------------------------
+# Bug: ListDeliveryStreams always returns HasMoreDeliveryStreams=False
+#
+# Even when the result is truncated by Limit, the response always says
+# HasMoreDeliveryStreams: False. This means clients cannot paginate correctly.
+# See provider.py line 231: HasMoreDeliveryStreams is hardcoded to False.
+# ---------------------------------------------------------------------------
+
+
+class TestListDeliveryStreamsHasMore:
+    def test_has_more_when_truncated(self):
+        """ListDeliveryStreams should return HasMoreDeliveryStreams=True when truncated."""
+        # Create 5 streams
+        for i in range(5):
+            _create_delivery_stream(
+                {"DeliveryStreamName": f"stream-{i:02d}"},
+                "us-east-1",
+                "123456789012",
+            )
+
+        # List with Limit=2
+        result = _list_delivery_streams(
+            {"Limit": 2},
+            "us-east-1",
+            "123456789012",
+        )
+
+        assert len(result["DeliveryStreamNames"]) == 2
+        assert result["HasMoreDeliveryStreams"] is True, (
+            "HasMoreDeliveryStreams should be True when there are more streams beyond Limit"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bug: UpdateDestination version_id mismatch when version is passed as int
+#
+# The version comparison does `current_version != expected` where expected
+# is `str(stream.get("version_id", 1))`. But if the caller passes an int
+# (which is valid JSON), the comparison fails because "1" != 1. AWS accepts
+# both string and int for CurrentDeliveryStreamVersionId.
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateDestinationVersionMismatch:
+    def test_version_id_as_int_accepted(self):
+        """UpdateDestination should accept version_id as int, not just string."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                    "Prefix": "original/",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Pass version as int (not string) — this is valid per AWS API
+        try:
+            _update_destination(
+                {
+                    "DeliveryStreamName": "s1",
+                    "DestinationId": "dest-1",
+                    "CurrentDeliveryStreamVersionId": 1,  # int, not "1"
+                    "ExtendedS3DestinationUpdate": {"Prefix": "updated/"},
+                },
+                "us-east-1",
+                "123456789012",
+            )
+        except FirehoseError as e:
+            if "Version mismatch" in e.message:
+                pytest.fail(
+                    f"UpdateDestination rejected int version_id with: {e.message}. "
+                    "AWS accepts both int and string for CurrentDeliveryStreamVersionId."
+                )
+            raise
+        assert _delivery_streams["s1"]["s3_config"]["Prefix"] == "updated/"
+
+
+# ---------------------------------------------------------------------------
+# Bug: DescribeDeliveryStream reads stream data outside the lock
+#
+# In _describe_delivery_stream, the `with _lock:` block (lines 175-178)
+# only covers the lookup. All the field accesses on the stream dict
+# (lines 180+) happen OUTSIDE the lock, creating a race condition where
+# another thread could modify or delete the stream concurrently.
+#
+# This test verifies the describe response has the correct VersionId after
+# an update, which can fail under race conditions when the lock isn't held.
+# ---------------------------------------------------------------------------
+
+
+class TestDescribeDeliveryStreamVersionId:
+    def test_version_id_increments(self):
+        """DescribeDeliveryStream should show incremented VersionId after update."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                    "Prefix": "original/",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Update destination (increments version_id)
+        _update_destination(
+            {
+                "DeliveryStreamName": "s1",
+                "DestinationId": "dest-1",
+                "CurrentDeliveryStreamVersionId": "1",
+                "ExtendedS3DestinationUpdate": {"Prefix": "updated/"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Second update
+        _update_destination(
+            {
+                "DeliveryStreamName": "s1",
+                "DestinationId": "dest-1",
+                "CurrentDeliveryStreamVersionId": "2",
+                "ExtendedS3DestinationUpdate": {"Prefix": "updated2/"},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Describe should show version 3
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        desc = result["DeliveryStreamDescription"]
+        assert desc["VersionId"] == "3", (
+            f"Expected VersionId '3' after two updates, got '{desc['VersionId']}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bug: CreateDeliveryStream with KinesisStreamAsSource missing SourceDescription
+#
+# When creating a stream with DeliveryStreamType=KinesisStreamAsSource and a
+# KinesisStreamSourceConfiguration, the describe response should include a
+# Source section. The provider stores the type but doesn't store or return
+# the source configuration.
+# ---------------------------------------------------------------------------
+
+
+class TestKinesisAsSourceMissingSourceDescription:
+    def test_describe_shows_source_for_kinesis_source_type(self):
+        """Describe should include Source for KinesisStreamAsSource delivery streams."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "DeliveryStreamType": "KinesisStreamAsSource",
+                "KinesisStreamSourceConfiguration": {
+                    "KinesisStreamARN": "arn:aws:kinesis:us-east-1:123456789012:stream/my-stream",
+                    "RoleARN": "arn:aws:iam::123456789012:role/firehose-role",
+                },
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        desc = result["DeliveryStreamDescription"]
+        assert desc["DeliveryStreamType"] == "KinesisStreamAsSource"
+        # AWS includes Source in the describe response for KinesisStreamAsSource
+        assert "Source" in desc, (
+            "DescribeDeliveryStream should include 'Source' for KinesisStreamAsSource streams"
+        )
+        source = desc["Source"]
+        assert "KinesisStreamSourceDescription" in source
