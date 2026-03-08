@@ -6,6 +6,7 @@ Supports both SigV2 and SigV4 presigned URLs:
 - SigV2: AWSAccessKeyId, Signature, Expires
 """
 
+import calendar
 import time
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
@@ -132,7 +133,7 @@ def _check_sigv4_expiration(date_str: str, expires_seconds: int) -> bool:
         return False
     try:
         # Parse ISO 8601 basic format: 20260101T000000Z
-        sign_time = time.mktime(time.strptime(date_str, "%Y%m%dT%H%M%SZ"))
+        sign_time = calendar.timegm(time.strptime(date_str, "%Y%m%dT%H%M%SZ"))
         return time.time() > (sign_time + expires_seconds)
     except (ValueError, OverflowError):
         return False

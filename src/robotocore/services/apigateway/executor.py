@@ -319,11 +319,14 @@ def _get_stage_variables(rest_api, stage_name: str) -> dict:
 
 
 def _substitute_stage_variables(s: str, stage_vars: dict) -> str:
-    """Replace ${stageVariables.X} in a string with actual stage variable values."""
-    if not stage_vars or "${stageVariables." not in s:
+    """Replace ${stageVariables.X} and ${stageVariables['X']} with actual values."""
+    if not stage_vars or "${stageVariables" not in s:
         return s
     for key, val in stage_vars.items():
+        # Dot notation: ${stageVariables.key}
         s = s.replace(f"${{stageVariables.{key}}}", str(val))
+        # Bracket notation: ${stageVariables['key']}
+        s = s.replace(f"${{stageVariables['{key}']}}", str(val))
     return s
 
 
@@ -902,13 +905,28 @@ def _invoke_mock(
 
     responses = getattr(integration, "integration_responses", None) or {}
 
-    # Find best matching response
+    # Find best matching response: try "200", then "default", then first available
     status_code = 200
     resp_body = "{}"
     resp_headers: dict = {}
 
+    resp = None
+    matched_key = None
     if "200" in responses:
+        matched_key = "200"
         resp = responses["200"]
+    elif "default" in responses:
+        matched_key = "default"
+        resp = responses["default"]
+    elif responses:
+        matched_key = next(iter(responses))
+        resp = responses[matched_key]
+
+    if resp is not None:
+        # Use matched key as status code if it's numeric
+        if matched_key and matched_key.isdigit():
+            status_code = int(matched_key)
+
         templates = getattr(resp, "response_templates", None) or {}
         resp_body = templates.get("application/json", "")
 

@@ -192,7 +192,7 @@ def matches_filter_pattern(pattern: str, message: str) -> bool:
 
     # JSON pattern: { $.field op value }
     json_match = re.match(
-        r'\{\s*\$\.(\w[\w.]*)\s*(=|!=|>|>=|<|<=)\s*"?([^"}\s]*)"?\s*\}',
+        r'\{\s*\$\.([\w.[\]0-9-]+)\s*(=|!=|>|>=|<|<=)\s*"?([^"}\s]*)"?\s*\}',
         pattern,
     )
     if json_match:
@@ -213,11 +213,24 @@ def _match_json_pattern(match: re.Match, message: str) -> bool:
     except (json.JSONDecodeError, TypeError):
         return False
 
-    # Navigate the field path
+    # Navigate the field path (supports hyphens and array indices like items[0])
     parts = field_path.split(".")
     current = data
     for part in parts:
-        if isinstance(current, dict):
+        # Check for array index: field[N]
+        arr_match = re.match(r"([\w-]+)\[(\d+)\]", part)
+        if arr_match:
+            field_name = arr_match.group(1)
+            index = int(arr_match.group(2))
+            if isinstance(current, dict):
+                current = current.get(field_name)
+            else:
+                return False
+            if isinstance(current, list) and index < len(current):
+                current = current[index]
+            else:
+                return False
+        elif isinstance(current, dict):
             current = current.get(part)
         else:
             return False

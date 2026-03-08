@@ -32,6 +32,11 @@ class EventRule:
 
     @property
     def arn(self) -> str:
+        if self.event_bus_name and self.event_bus_name != "default":
+            return (
+                f"arn:aws:events:{self.region}:{self.account_id}"
+                f":rule/{self.event_bus_name}/{self.name}"
+            )
         return f"arn:aws:events:{self.region}:{self.account_id}:rule/{self.name}"
 
     def matches_event(self, event: dict) -> bool:
@@ -39,8 +44,8 @@ class EventRule:
         if self.state != "ENABLED":
             return False
         if self.event_pattern is None:
-            # Schedule-based rules don't match events
-            return self.schedule_expression is not None
+            # Schedule-based rules fire on a cron/rate schedule, not on event content
+            return False
         return _match_pattern(self.event_pattern, event)
 
 
@@ -150,7 +155,7 @@ class EventsStore:
         with self.mutex:
             bus = self.buses.get(bus_name)
             if not bus:
-                bus = self.buses.get("default")
+                raise KeyError(f"Event bus '{bus_name}' not found")
             rule = EventRule(
                 name=name,
                 event_bus_name=bus_name,
@@ -280,6 +285,8 @@ class EventsStore:
 
     def archive_event(self, event: dict, bus_name: str) -> None:
         """Store event in matching archives."""
+        import copy
+
         with self.mutex:
             bus = self.buses.get(bus_name)
             if not bus:
@@ -296,7 +303,7 @@ class EventsStore:
                 import json
 
                 event_json = json.dumps(event)
-                archive.events.append(event)
+                archive.events.append(copy.deepcopy(event))
                 archive.event_count += 1
                 archive.size_bytes += len(event_json.encode())
 
@@ -395,13 +402,43 @@ def _match_value_list(pattern_values: list, event_value) -> bool:
             if "prefix" in pv:
                 if isinstance(event_value, str) and event_value.startswith(pv["prefix"]):
                     return True
+                if isinstance(event_value, list):
+                    if any(isinstance(v, str) and v.startswith(pv["prefix"]) for v in event_value):
+                        return True
             elif "suffix" in pv:
                 if isinstance(event_value, str) and event_value.endswith(pv["suffix"]):
                     return True
+                if isinstance(event_value, list):
+                    if any(isinstance(v, str) and v.endswith(pv["suffix"]) for v in event_value):
+                        return True
             elif "anything-but" in pv:
                 excluded = pv["anything-but"]
-                if isinstance(excluded, list):
-                    if event_value not in excluded:
+                if isinstance(excluded, dict):
+                    # anything-but with prefix/suffix: {"anything-but": {"prefix": "x"}}
+                    if "prefix" in excluded:
+                        prefix = excluded["prefix"]
+                        if isinstance(event_value, str) and not event_value.startswith(prefix):
+                            return True
+                        if isinstance(event_value, list):
+                            if not any(
+                                isinstance(v, str) and v.startswith(prefix) for v in event_value
+                            ):
+                                return True
+                    elif "suffix" in excluded:
+                        suffix = excluded["suffix"]
+                        if isinstance(event_value, str) and not event_value.endswith(suffix):
+                            return True
+                        if isinstance(event_value, list):
+                            if not any(
+                                isinstance(v, str) and v.endswith(suffix) for v in event_value
+                            ):
+                                return True
+                elif isinstance(excluded, list):
+                    if isinstance(event_value, list):
+                        # Check each element against the excluded values
+                        if not any(v in excluded for v in event_value):
+                            return True
+                    elif event_value not in excluded:
                         return True
                 else:
                     if event_value != excluded:

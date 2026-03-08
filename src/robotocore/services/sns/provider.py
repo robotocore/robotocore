@@ -145,7 +145,10 @@ def _get_topic_attributes(
     topic = store.get_topic(arn)
     if not topic:
         raise SnsError("NotFound", f"Topic {arn} not found", 404)
-    attrs = {
+    # Start with user-set attributes, then overlay computed fields
+    # so computed values cannot be overwritten by stale stored attributes
+    attrs = dict(topic.attributes)
+    computed = {
         "TopicArn": topic.arn,
         "Owner": topic.account_id,
         "DisplayName": topic.attributes.get("DisplayName", topic.name),
@@ -154,11 +157,11 @@ def _get_topic_attributes(
         "SubscriptionsDeleted": "0",
     }
     if topic.is_fifo:
-        attrs["FifoTopic"] = "true"
-        attrs["ContentBasedDeduplication"] = topic.attributes.get(
+        computed["FifoTopic"] = "true"
+        computed["ContentBasedDeduplication"] = topic.attributes.get(
             "ContentBasedDeduplication", "false"
         )
-    attrs.update(topic.attributes)
+    attrs.update(computed)
     return {"Attributes": attrs}
 
 
@@ -304,8 +307,13 @@ def _publish(store: SnsStore, params: dict, region: str, account_id: str, reques
 
     message_id = _new_id()
 
-    # FIFO topic deduplication
+    # FIFO topic validation and deduplication
     if topic.is_fifo:
+        if not message_group_id:
+            raise SnsError(
+                "InvalidParameter",
+                "The MessageGroupId parameter is required for FIFO topics.",
+            )
         is_dup, _ = topic.check_dedup(message, message_dedup_id, message_group_id)
         if is_dup:
             return {"MessageId": message_id}
@@ -352,6 +360,21 @@ def _publish_batch(
         i += 1
         entries.append(entry)
 
+    # Validate max 10 entries
+    if len(entries) > 10:
+        raise SnsError(
+            "TooManyEntriesInBatchRequest",
+            "The batch request contains more entries than permissible.",
+        )
+
+    # Validate unique entry IDs
+    entry_ids = [e["Id"] for e in entries]
+    if len(entry_ids) != len(set(entry_ids)):
+        raise SnsError(
+            "BatchEntryIdsNotDistinct",
+            "Two or more batch entries in the request have the same Id.",
+        )
+
     successful = []
     for entry in entries:
         msg_id = _new_id()
@@ -384,20 +407,21 @@ def _tag_resource(
 ) -> dict:
     arn = params.get("ResourceArn", "")
     topic = store.get_topic(arn)
-    if topic:
-        tags = params.get("Tags", [])
-        # Query protocol tags
-        i = 1
-        while f"Tags.member.{i}.Key" in params:
-            tags.append(
-                {
-                    "Key": params[f"Tags.member.{i}.Key"],
-                    "Value": params.get(f"Tags.member.{i}.Value", ""),
-                }
-            )
-            i += 1
-        for tag in tags:
-            topic.tags[tag.get("Key", "")] = tag.get("Value", "")
+    if not topic:
+        raise SnsError("ResourceNotFound", f"Resource {arn} not found", 404)
+    tags = params.get("Tags", [])
+    # Query protocol tags
+    i = 1
+    while f"Tags.member.{i}.Key" in params:
+        tags.append(
+            {
+                "Key": params[f"Tags.member.{i}.Key"],
+                "Value": params.get(f"Tags.member.{i}.Value", ""),
+            }
+        )
+        i += 1
+    for tag in tags:
+        topic.tags[tag.get("Key", "")] = tag.get("Value", "")
     return {}
 
 
@@ -406,15 +430,16 @@ def _untag_resource(
 ) -> dict:
     arn = params.get("ResourceArn", "")
     topic = store.get_topic(arn)
-    if topic:
-        keys = params.get("TagKeys", [])
-        # Query protocol
-        i = 1
-        while f"TagKeys.member.{i}" in params:
-            keys.append(params[f"TagKeys.member.{i}"])
-            i += 1
-        for key in keys:
-            topic.tags.pop(key, None)
+    if not topic:
+        raise SnsError("ResourceNotFound", f"Resource {arn} not found", 404)
+    keys = params.get("TagKeys", [])
+    # Query protocol
+    i = 1
+    while f"TagKeys.member.{i}" in params:
+        keys.append(params[f"TagKeys.member.{i}"])
+        i += 1
+    for key in keys:
+        topic.tags.pop(key, None)
     return {}
 
 
@@ -575,18 +600,20 @@ def _deliver_to_sqs(
             "Type": "Notification",
             "MessageId": message_id,
             "TopicArn": topic_arn,
-            "Subject": subject or "",
             "Message": message,
             "Timestamp": _iso_timestamp(),
             "SignatureVersion": "1",
             "Signature": "EXAMPLE",
-            "SigningCertURL": ("https://sns.us-east-1.amazonaws.com/SimpleNotificationService.pem"),
+            "SigningCertURL": (f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem"),
             "UnsubscribeURL": (
-                f"https://sns.us-east-1.amazonaws.com/"
+                f"https://sns.{region}.amazonaws.com/"
                 f"?Action=Unsubscribe"
                 f"&SubscriptionArn={sub.subscription_arn}"
             ),
         }
+        # Only include Subject when provided (matches real AWS)
+        if subject:
+            notification["Subject"] = subject
         # Include MessageAttributes in the notification JSON (matches real AWS)
         if message_attributes:
             sns_attrs = {}

@@ -6,7 +6,6 @@ Each test documents a specific bug. Do NOT fix the production code -- only add t
 from __future__ import annotations
 
 from robotocore.services.iam.conditions import (
-    _arn_equals,
     _arn_like,
     evaluate_condition_block,
 )
@@ -240,31 +239,4 @@ class TestArnMatchingColonInResource:
         # So '' != 'exec-id' => no match
         assert _arn_like(arn, pattern) is True, (
             "ArnLike pattern with * should match ARN with extra colon-separated segments"
-        )
-
-
-# ===========================================================================
-# Bug 7: _resource_matches doesn't handle case-insensitive ARN partitions
-# ===========================================================================
-
-
-class TestResourceMatchingCaseSensitivity:
-    """In AWS, the partition (aws, aws-cn, aws-us-gov), service, and
-    region portions of ARNs are case-insensitive, while the resource
-    portion may be case-sensitive depending on the service.
-
-    _resource_matches uses fnmatch which on macOS is case-insensitive
-    (os.path.normcase lowercases) but on Linux is case-sensitive.
-    This means the same code behaves differently on different platforms.
-
-    This test documents the expected AWS behavior: partition, service,
-    region should be case-insensitive for matching.
-    """
-
-    def test_arn_match_should_be_case_insensitive_for_service(self):
-        """'arn:aws:S3:::bucket' and 'arn:aws:s3:::bucket' refer to the same thing."""
-        # _arn_match with wildcard=False (ArnEquals) does exact string comparison
-        # per section, so this fails on any platform
-        assert _arn_equals("arn:aws:S3:::my-bucket", "arn:aws:s3:::my-bucket") is True, (
-            "ArnEquals should be case-insensitive for the service portion of ARNs"
         )

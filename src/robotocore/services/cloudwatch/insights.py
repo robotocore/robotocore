@@ -457,9 +457,9 @@ def _exec_sort(rows: list[dict], cmd: dict) -> list[dict]:
     def sort_key(row):
         val = row.get(field, "")
         try:
-            return float(val)
+            return (0, float(val))
         except (ValueError, TypeError):
-            return val
+            return (1, str(val))
 
     return sorted(rows, key=sort_key, reverse=reverse)
 

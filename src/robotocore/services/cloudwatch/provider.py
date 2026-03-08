@@ -334,6 +334,16 @@ def put_dashboard(params: dict, region: str, account_id: str) -> dict:
                 "InvalidParameterInput",
                 "DashboardBody must contain a 'widgets' key",
             )
+        if not isinstance(parsed["widgets"], list):
+            raise CloudWatchError(
+                "InvalidParameterInput",
+                "DashboardBody 'widgets' must be a list",
+            )
+        if len(parsed["widgets"]) == 0:
+            raise CloudWatchError(
+                "InvalidParameterInput",
+                "DashboardBody 'widgets' must not be empty",
+            )
     except json.JSONDecodeError as e:
         raise CloudWatchError("InvalidParameterInput", f"Invalid JSON in DashboardBody: {e}")
 
@@ -941,8 +951,10 @@ def _dict_to_xml(data) -> str:
         parts = []
         for key, value in data.items():
             if isinstance(value, list):
+                parts.append(f"<{key}>")
                 for item in value:
                     parts.append(f"<member>{_dict_to_xml(item)}</member>")
+                parts.append(f"</{key}>")
             elif isinstance(value, dict):
                 parts.append(f"<{key}>{_dict_to_xml(value)}</{key}>")
             elif isinstance(value, bool):

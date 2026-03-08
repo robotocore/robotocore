@@ -11,7 +11,6 @@ Implements the full IAM policy evaluation logic:
 
 from __future__ import annotations
 
-import fnmatch
 import re
 from typing import Any
 
@@ -36,15 +35,27 @@ def _substitute_variables(value: str, context: dict[str, Any]) -> str:
     return _VARIABLE_RE.sub(_replace, value)
 
 
+def _iam_match(value: str, pattern: str) -> bool:
+    """Match using IAM wildcard rules (only * is supported, not ? or [])."""
+    regex_parts = []
+    for part in re.split(r"(\*)", pattern):
+        if part == "*":
+            regex_parts.append(".*")
+        else:
+            regex_parts.append(re.escape(part))
+    regex = "^" + "".join(regex_parts) + "$"
+    return bool(re.match(regex, value, re.IGNORECASE))
+
+
 def _action_matches(action: str, pattern: str) -> bool:
-    """Check if an action matches a pattern (case-insensitive, fnmatch-style)."""
-    return fnmatch.fnmatch(action.lower(), pattern.lower())
+    """Check if an action matches a pattern (case-insensitive, only * wildcard)."""
+    return _iam_match(action, pattern)
 
 
 def _resource_matches(resource: str, pattern: str, context: dict[str, Any]) -> bool:
-    """Check if a resource ARN matches a pattern (fnmatch-style with variable substitution)."""
+    """Check if a resource ARN matches a pattern (only * wildcard, with variable substitution)."""
     resolved_pattern = _substitute_variables(pattern, context)
-    return fnmatch.fnmatch(resource, resolved_pattern)
+    return _iam_match(resource, resolved_pattern)
 
 
 def _statement_matches_action(statement: dict, action: str) -> bool:
@@ -159,6 +170,8 @@ def evaluate_with_permission_boundary(
 
     if permission_boundary is not None:
         boundary_result = evaluate_policy([permission_boundary], action, resource, context)
+        if boundary_result == DENY:
+            return DENY
         if boundary_result != ALLOW:
             return IMPLICIT_DENY
 
@@ -166,7 +179,27 @@ def evaluate_with_permission_boundary(
 
 
 def _principal_matches(statement: dict, principal: str) -> bool:
-    """Check if a statement's Principal matches the given principal."""
+    """Check if a statement's Principal or NotPrincipal matches the given principal."""
+    # Handle NotPrincipal: matches everyone EXCEPT the listed principals
+    if "NotPrincipal" in statement:
+        not_principal = statement["NotPrincipal"]
+        # Check if the principal IS in the NotPrincipal list
+        if not_principal == "*":
+            return False  # NotPrincipal: * means nobody matches
+        if isinstance(not_principal, str):
+            if _iam_match(principal, not_principal):
+                return False  # Principal is excluded
+            return True  # Principal is not excluded, so statement applies
+        if isinstance(not_principal, dict):
+            for _key, values in not_principal.items():
+                if isinstance(values, str):
+                    values = [values]
+                for v in values:
+                    if v == "*" or _iam_match(principal, v):
+                        return False  # Principal is excluded
+            return True  # Principal is not excluded
+        return True
+
     stmt_principal = statement.get("Principal")
     if stmt_principal is None:
         return True
@@ -175,7 +208,7 @@ def _principal_matches(statement: dict, principal: str) -> bool:
         return True
 
     if isinstance(stmt_principal, str):
-        return fnmatch.fnmatch(principal, stmt_principal)
+        return _iam_match(principal, stmt_principal)
 
     if isinstance(stmt_principal, dict):
         # Principal can be {"AWS": "arn:..."} or {"AWS": ["arn:...", ...]}
@@ -183,7 +216,7 @@ def _principal_matches(statement: dict, principal: str) -> bool:
             if isinstance(values, str):
                 values = [values]
             for v in values:
-                if v == "*" or fnmatch.fnmatch(principal, v):
+                if v == "*" or _iam_match(principal, v):
                     return True
     return False
 

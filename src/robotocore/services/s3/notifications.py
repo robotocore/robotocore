@@ -134,7 +134,7 @@ def _build_event_record(
         "eventSource": "aws:s3",
         "awsRegion": region,
         "eventTime": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
-        "eventName": event_name.split(":")[-1],
+        "eventName": event_name.removeprefix("s3:"),
         "userIdentity": {"principalId": account_id},
         "requestParameters": {"sourceIPAddress": "127.0.0.1"},
         "responseElements": {},

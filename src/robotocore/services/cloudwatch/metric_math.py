@@ -188,8 +188,15 @@ def _parse_primary(
 
     if tok_type == "func":
         func_name = tok_val
-        # Next token should be lparen (already consumed by tokenizer)
-        pos += 1  # skip lparen
+        # Next token should be lparen (already added by tokenizer)
+        pos += 1  # skip the tokenizer-generated lparen
+        # Handle empty argument list: FUNC() — the tokenizer produces
+        # func, lparen, rparen. After skipping func (above), we're at lparen.
+        # Check for lparen immediately followed by rparen.
+        if pos + 1 < len(tokens) and tokens[pos][0] == "lparen" and tokens[pos + 1][0] == "rparen":
+            pos += 2  # skip lparen and rparen
+            result = _apply_function(func_name, [])
+            return result, pos
         arg, pos = _parse_expression(tokens, pos, data)
         if pos < len(tokens) and tokens[pos][0] == "rparen":
             pos += 1  # skip rparen

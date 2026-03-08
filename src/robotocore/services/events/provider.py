@@ -445,8 +445,18 @@ def _start_replay(store: EventsStore, params: dict, region: str, account_id: str
     bus_name = destination_arn.rsplit("/", 1)[-1] if "/" in destination_arn else "default"
     replayed = 0
     for evt in archive.events:
-        # Replay all archived events (simplified — no time filtering here
-        # because stored events may not have numeric timestamps)
+        # Filter events by time range
+        evt_time_str = evt.get("time", "")
+        if evt_time_str and start_time and end_time:
+            try:
+                from datetime import datetime
+
+                evt_dt = datetime.fromisoformat(evt_time_str.replace("Z", "+00:00"))
+                evt_epoch = evt_dt.timestamp()
+                if evt_epoch < start_time or evt_epoch >= end_time:
+                    continue
+            except (ValueError, TypeError):
+                pass  # Can't parse time, include the event
         bus = store.get_bus(bus_name)
         if bus:
             for rule in bus.rules.values():
@@ -501,10 +511,32 @@ def _apply_input_transformer(transformer: dict, event: dict) -> str:
     for key, path in paths_map.items():
         resolved[key] = _resolve_jsonpath(path, event)
 
+    # Check if template is a JSON template
+    is_json_template = False
+    try:
+        json.loads(template.replace("<", '"__PH_').replace(">", '__PH"'))
+        is_json_template = True
+    except (json.JSONDecodeError, ValueError):
+        # Check simpler heuristic: template starts with { and ends with }
+        stripped = template.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            is_json_template = True
+
     # Replace <key> placeholders in template
     result = template
     for key, value in resolved.items():
-        result = result.replace(f"<{key}>", value)
+        if is_json_template:
+            # In JSON templates, strings need to be quoted
+            # but numbers/booleans/null should not be
+            try:
+                json.loads(value)
+                # Value is valid JSON (number, boolean, null, etc.) — use as-is
+                result = result.replace(f"<{key}>", value)
+            except (json.JSONDecodeError, ValueError):
+                # Value is a plain string — quote it for JSON
+                result = result.replace(f"<{key}>", json.dumps(value))
+        else:
+            result = result.replace(f"<{key}>", value)
 
     return result
 
@@ -531,7 +563,7 @@ def _resolve_jsonpath(path: str, event: dict) -> str:
         if isinstance(current, dict) and part in current:
             current = current[part]
         else:
-            return ""
+            return "null"
 
     if isinstance(current, str):
         return current

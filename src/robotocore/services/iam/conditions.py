@@ -141,19 +141,21 @@ def _not_ip_address(context_val: Any, policy_val: Any) -> bool:
 def _arn_match(arn: str, pattern: str, *, wildcard: bool) -> bool:
     """Match two ARNs section by section.
 
-    When wildcard is True, each section of the pattern supports * and ? globs.
+    When wildcard is True, each section of the pattern supports * globs.
     When wildcard is False, sections must match exactly.
+
+    ARN format: arn:partition:service:region:account:resource
+    The resource portion (everything after the 5th colon) may contain
+    additional colons, so we rejoin those into a single resource string.
     """
     arn_parts = str(arn).split(":")
     pattern_parts = str(pattern).split(":")
     if len(arn_parts) < 6 or len(pattern_parts) < 6:
         return False
-    # Pad to same length (resource can contain colons)
-    while len(arn_parts) < len(pattern_parts):
-        arn_parts.append("")
-    while len(pattern_parts) < len(arn_parts):
-        pattern_parts.append("")
-    for a, p in zip(arn_parts, pattern_parts):
+    # Rejoin the resource portion (segments 5+) into a single string
+    arn_fixed = arn_parts[:5] + [":".join(arn_parts[5:])]
+    pattern_fixed = pattern_parts[:5] + [":".join(pattern_parts[5:])]
+    for a, p in zip(arn_fixed, pattern_fixed):
         if wildcard:
             if not fnmatch.fnmatch(a, p):
                 return False
@@ -256,6 +258,8 @@ def _evaluate_set_operator(
     condition_key: str,
     policy_values: list[str] | str,
     context_values: dict[str, Any],
+    *,
+    if_exists: bool = False,
 ) -> bool:
     """Evaluate ForAllValues: or ForAnyValue: prefixed conditions."""
     if not isinstance(policy_values, list):
@@ -267,6 +271,9 @@ def _evaluate_set_operator(
 
     ctx_val = context_values.get(condition_key)
     if ctx_val is None:
+        # IfExists: missing key means condition is vacuously satisfied
+        if if_exists:
+            return True
         # ForAllValues with no context values: vacuously true
         # ForAnyValue with no context values: false
         return set_prefix == "ForAllValues"
@@ -324,7 +331,12 @@ def evaluate_condition_block(
         for condition_key, policy_values in key_value_map.items():
             if set_prefix:
                 result = _evaluate_set_operator(
-                    set_prefix, operator, condition_key, policy_values, context_values
+                    set_prefix,
+                    operator,
+                    condition_key,
+                    policy_values,
+                    context_values,
+                    if_exists=if_exists,
                 )
             else:
                 result = _evaluate_single_operator(
