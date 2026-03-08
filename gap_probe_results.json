@@ -68,12 +68,12 @@
     },
     "cloudformation": {
       "ActivateOrganizationsAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The activate_organizations_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ActivateType": {
-        "status": "500_error",
-        "detail": "InternalError: The activate_type action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "BatchDescribeTypeConfigurations": {
         "status": "needs_params",
@@ -112,12 +112,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "DeactivateOrganizationsAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The deactivate_organizations_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DeactivateType": {
-        "status": "500_error",
-        "detail": "InternalError: The deactivate_type action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DeleteChangeSet": {
         "status": "needs_params",
@@ -140,12 +140,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "DeregisterType": {
-        "status": "500_error",
-        "detail": "InternalError: The deregister_type action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAccountLimits": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_account_limits action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeChangeSet": {
         "status": "needs_params",
@@ -156,20 +156,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ChangeSetName"
       },
       "DescribeEvents": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_events action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeGeneratedTemplate": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"GeneratedTemp"
       },
       "DescribeOrganizationsAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_organizations_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePublisher": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_publisher action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeResourceScan": {
         "status": "needs_params",
@@ -216,8 +216,8 @@
         "detail": "OK"
       },
       "DescribeType": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_type action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTypeRegistration": {
         "status": "needs_params",
@@ -236,8 +236,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "EstimateTemplateCost": {
-        "status": "500_error",
-        "detail": "InternalError: The estimate_template_cost action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ExecuteChangeSet": {
         "status": "needs_params",
@@ -252,8 +252,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"GeneratedTemp"
       },
       "GetHookResult": {
-        "status": "500_error",
-        "detail": "InternalError: The get_hook_result action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetStackPolicy": {
         "status": "needs_params",
@@ -280,16 +280,16 @@
         "detail": "OK"
       },
       "ListGeneratedTemplates": {
-        "status": "500_error",
-        "detail": "InternalError: The list_generated_templates action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListHookResults": {
-        "status": "500_error",
-        "detail": "InternalError: The list_hook_results action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListImports": {
-        "status": "500_error",
-        "detail": "InternalError: The list_imports action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListResourceScanRelatedResources": {
         "status": "needs_params",
@@ -300,8 +300,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ResourceScanI"
       },
       "ListResourceScans": {
-        "status": "500_error",
-        "detail": "InternalError: The list_resource_scans action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListStackInstanceResourceDrifts": {
         "status": "needs_params",
@@ -316,8 +316,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackRefactor"
       },
       "ListStackRefactors": {
-        "status": "500_error",
-        "detail": "InternalError: The list_stack_refactors action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListStackResources": {
         "status": "working",
@@ -344,28 +344,28 @@
         "detail": "OK"
       },
       "ListTypeRegistrations": {
-        "status": "500_error",
-        "detail": "InternalError: The list_type_registrations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListTypeVersions": {
-        "status": "500_error",
-        "detail": "InternalError: The list_type_versions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListTypes": {
-        "status": "500_error",
-        "detail": "InternalError: The list_types action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "PublishType": {
-        "status": "500_error",
-        "detail": "InternalError: The publish_type action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "RecordHandlerProgress": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"BearerToken\"\n"
       },
       "RegisterPublisher": {
-        "status": "500_error",
-        "detail": "InternalError: The register_publisher action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "RegisterType": {
         "status": "needs_params",
@@ -384,24 +384,24 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Configuration"
       },
       "SetTypeDefaultVersion": {
-        "status": "500_error",
-        "detail": "InternalError: The set_type_default_version action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "SignalResource": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackName\"\nMi"
       },
       "StartResourceScan": {
-        "status": "500_error",
-        "detail": "InternalError: The start_resource_scan action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "StopStackSetOperation": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "TestType": {
-        "status": "500_error",
-        "detail": "InternalError: The test_type action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "UpdateGeneratedTemplate": {
         "status": "needs_params",
@@ -438,8 +438,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AlarmNames\""
       },
       "DeleteAnomalyDetector": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The delete_anomaly_dete"
+        "status": "working",
+        "detail": "OK"
       },
       "DeleteDashboards": {
         "status": "needs_params",
@@ -470,8 +470,8 @@
         "detail": "OK"
       },
       "DescribeAnomalyDetectors": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_anomaly_de"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInsightRules": {
         "status": "working",
@@ -522,20 +522,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"MetricWidget\""
       },
       "ListAlarmMuteRules": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_alarm_mute_rul"
+        "status": "working",
+        "detail": "OK"
       },
       "ListDashboards": {
         "status": "working",
         "detail": "OK"
       },
       "ListManagedInsightRules": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_managed_insigh"
+        "status": "working",
+        "detail": "OK"
       },
       "ListMetricStreams": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_metric_streams"
+        "status": "working",
+        "detail": "OK"
       },
       "ListMetrics": {
         "status": "working",
@@ -550,8 +550,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Name\"\nMissing"
       },
       "PutAnomalyDetector": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The put_anomaly_detecto"
+        "status": "working",
+        "detail": "OK"
       },
       "PutCompositeAlarm": {
         "status": "needs_params",
@@ -732,40 +732,40 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ConformancePa"
       },
       "DescribeConformancePackStatus": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_conformanc"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeConformancePacks": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_conformanc"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDeliveryChannelStatus": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message></Message></Error></Err"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDeliveryChannels": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeOrganizationConfigRuleStatuses": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_organizati"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeOrganizationConfigRules": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_organizati"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeOrganizationConformancePackStatuses": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeOrganizationConformancePacks": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>'NoneType' object is no"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePendingAggregationRequests": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_pending_ag"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeRemediationConfigurations": {
         "status": "needs_params",
@@ -812,16 +812,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ConfigRuleNam"
       },
       "GetComplianceDetailsByResource": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_compliance_deta"
+        "status": "working",
+        "detail": "OK"
       },
       "GetComplianceSummaryByConfigRule": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_compliance_summ"
+        "status": "working",
+        "detail": "OK"
       },
       "GetComplianceSummaryByResourceType": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_compliance_summ"
+        "status": "working",
+        "detail": "OK"
       },
       "GetConformancePackComplianceDetails": {
         "status": "needs_params",
@@ -832,12 +832,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ConformancePa"
       },
       "GetCustomRulePolicy": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_custom_rule_pol"
+        "status": "working",
+        "detail": "OK"
       },
       "GetDiscoveredResourceCounts": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_discovered_reso"
+        "status": "working",
+        "detail": "OK"
       },
       "GetOrganizationConfigRuleDetailedStatus": {
         "status": "needs_params",
@@ -868,24 +868,24 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Configuration"
       },
       "ListConfigurationRecorders": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_configuration_"
+        "status": "working",
+        "detail": "OK"
       },
       "ListConformancePackComplianceScores": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_conformance_pa"
+        "status": "working",
+        "detail": "OK"
       },
       "ListDiscoveredResources": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"resourceType\""
       },
       "ListResourceEvaluations": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_resource_evalu"
+        "status": "working",
+        "detail": "OK"
       },
       "ListStoredQueries": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_stored_queries"
+        "status": "working",
+        "detail": "OK"
       },
       "ListTagsForResource": {
         "status": "needs_params",
@@ -964,8 +964,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Expression\""
       },
       "StartConfigRulesEvaluation": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The start_config_rules_"
+        "status": "working",
+        "detail": "OK"
       },
       "StartConfigurationRecorder": {
         "status": "needs_params",
@@ -1122,20 +1122,20 @@
         "detail": "OK"
       },
       "ListContributorInsights": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_contributor_in"
+        "status": "working",
+        "detail": "OK"
       },
       "ListExports": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>'TableArn'</Message></E"
+        "status": "working",
+        "detail": "OK"
       },
       "ListGlobalTables": {
         "status": "working",
         "detail": "OK"
       },
       "ListImports": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_imports action"
+        "status": "working",
+        "detail": "OK"
       },
       "ListTables": {
         "status": "working",
@@ -1254,8 +1254,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ReservedInsta"
       },
       "AcceptTransitGatewayMulticastDomainAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The accept_transit_gateway_multicast_domain_associations action has not been imp"
+        "status": "working",
+        "detail": "OK"
       },
       "AcceptTransitGatewayPeeringAttachment": {
         "status": "needs_params",
@@ -1450,8 +1450,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ImageId\""
       },
       "CancelImportTask": {
-        "status": "500_error",
-        "detail": "InternalError: The cancel_import_task action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CancelReservedInstancesListing": {
         "status": "needs_params",
@@ -1570,8 +1570,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"SubnetId\""
       },
       "CreateInstanceEventWindow": {
-        "status": "500_error",
-        "detail": "InternalError: The create_instance_event_window action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateInstanceExportTask": {
         "status": "needs_params",
@@ -1586,8 +1586,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"CapacityReser"
       },
       "CreateIpam": {
-        "status": "500_error",
-        "detail": "InternalError: The create_ipam action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateIpamExternalResourceVerificationToken": {
         "status": "needs_params",
@@ -1610,8 +1610,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"IpamPrefixLis"
       },
       "CreateIpamResourceDiscovery": {
-        "status": "500_error",
-        "detail": "InternalError: The create_ipam_resource_discovery action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateIpamScope": {
         "status": "needs_params",
@@ -1674,8 +1674,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"NetworkAclId\""
       },
       "CreateNetworkInsightsAccessScope": {
-        "status": "500_error",
-        "detail": "InternalError: The create_network_insights_access_scope action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateNetworkInsightsPath": {
         "status": "needs_params",
@@ -1694,8 +1694,8 @@
         "detail": "OK"
       },
       "CreatePublicIpv4Pool": {
-        "status": "500_error",
-        "detail": "InternalError: The create_public_ipv4_pool action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateReplaceRootVolumeTask": {
         "status": "needs_params",
@@ -1770,8 +1770,8 @@
         "detail": "InvalidID: The ID 'i-12345' is not valid"
       },
       "CreateTrafficMirrorFilter": {
-        "status": "500_error",
-        "detail": "InternalError: The create_traffic_mirror_filter action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateTrafficMirrorFilterRule": {
         "status": "needs_params",
@@ -1782,8 +1782,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"NetworkInterf"
       },
       "CreateTrafficMirrorTarget": {
-        "status": "500_error",
-        "detail": "InternalError: The create_traffic_mirror_target action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateTransitGateway": {
         "status": "working",
@@ -1846,8 +1846,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"VerifiedAcces"
       },
       "CreateVerifiedAccessInstance": {
-        "status": "500_error",
-        "detail": "InternalError: The create_verified_access_instance action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateVerifiedAccessTrustProvider": {
         "status": "needs_params",
@@ -2294,20 +2294,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceTagAt"
       },
       "DeregisterTransitGatewayMulticastGroupMembers": {
-        "status": "500_error",
-        "detail": "InternalError: The deregister_transit_gateway_multicast_group_members action has not been imple"
+        "status": "working",
+        "detail": "OK"
       },
       "DeregisterTransitGatewayMulticastGroupSources": {
-        "status": "500_error",
-        "detail": "InternalError: The deregister_transit_gateway_multicast_group_sources action has not been imple"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAccountAttributes": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeAddressTransfers": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_address_transfers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAddresses": {
         "status": "working",
@@ -2318,16 +2318,16 @@
         "detail": "OK"
       },
       "DescribeAggregateIdFormat": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_aggregate_id_format action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAvailabilityZones": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeAwsNetworkPerformanceMetricSubscriptions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_aws_network_performance_metric_subscriptions action has not been im"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeBundleTasks": {
         "status": "not_implemented",
@@ -2338,8 +2338,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"MaxResults\""
       },
       "DescribeCapacityBlockExtensionHistory": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_block_extension_history action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCapacityBlockExtensionOfferings": {
         "status": "needs_params",
@@ -2350,40 +2350,40 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"CapacityDurat"
       },
       "DescribeCapacityBlockStatus": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_block_status action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCapacityBlocks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_blocks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCapacityManagerDataExports": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_manager_data_exports action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCapacityReservationBillingRequests": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Role\""
       },
       "DescribeCapacityReservationFleets": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_reservation_fleets action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCapacityReservationTopology": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_reservation_topology action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCapacityReservations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_capacity_reservations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCarrierGateways": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeClassicLinkInstances": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_classic_link_instances action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeClientVpnAuthorizationRules": {
         "status": "needs_params",
@@ -2394,8 +2394,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ClientVpnEndp"
       },
       "DescribeClientVpnEndpoints": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_client_vpn_endpoints action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeClientVpnRoutes": {
         "status": "needs_params",
@@ -2406,20 +2406,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ClientVpnEndp"
       },
       "DescribeCoipPools": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_coip_pools action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeConversionTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_conversion_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeCustomerGateways": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeDeclarativePoliciesReports": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_declarative_policies_reports action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDhcpOptions": {
         "status": "working",
@@ -2430,24 +2430,24 @@
         "detail": "OK"
       },
       "DescribeElasticGpus": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_elastic_gpus action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeExportImageTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_export_image_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeExportTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_export_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeFastLaunchImages": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_fast_launch_images action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeFastSnapshotRestores": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_fast_snapshot_restores action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeFleetHistory": {
         "status": "needs_params",
@@ -2470,16 +2470,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"FpgaImageId\"\n"
       },
       "DescribeFpgaImages": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_fpga_images action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeHostReservationOfferings": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_host_reservation_offerings action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeHostReservations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_host_reservations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeHosts": {
         "status": "working",
@@ -2490,8 +2490,8 @@
         "detail": "OK"
       },
       "DescribeIdFormat": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_id_format action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIdentityIdFormat": {
         "status": "needs_params",
@@ -2506,64 +2506,64 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ImageIds\""
       },
       "DescribeImageUsageReportEntries": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_image_usage_report_entries action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeImageUsageReports": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_image_usage_reports action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeImages": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeImportImageTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_import_image_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeImportSnapshotTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_import_snapshot_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceAttribute": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceId\"\nM"
       },
       "DescribeInstanceConnectEndpoints": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_connect_endpoints action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceCreditSpecifications": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeInstanceEventNotificationAttributes": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_event_notification_attributes action has not been implemen"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceEventWindows": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_event_windows action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceImageMetadata": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_image_metadata action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceSqlHaHistoryStates": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_sql_ha_history_states action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceSqlHaStates": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_sql_ha_states action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceStatus": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeInstanceTopology": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_instance_topology action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceTypeOfferings": {
         "status": "working",
@@ -2582,48 +2582,48 @@
         "detail": "OK"
       },
       "DescribeIpamByoasn": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_byoasn action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamExternalResourceVerificationTokens": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_external_resource_verification_tokens action has not been impl"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamPolicies": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_policies action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamPools": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_pools action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamPrefixListResolverTargets": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_prefix_list_resolver_targets action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamPrefixListResolvers": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_prefix_list_resolvers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamResourceDiscoveries": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_resource_discoveries action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamResourceDiscoveryAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_resource_discovery_associations action has not been implemente"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpamScopes": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipam_scopes action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpams": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipams action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIpv6Pools": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_ipv6_pools action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeKeyPairs": {
         "status": "working",
@@ -2638,48 +2638,48 @@
         "detail": "OK"
       },
       "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_local_gateway_route_table_virtual_interface_group_associations acti"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLocalGatewayRouteTableVpcAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_local_gateway_route_table_vpc_associations action has not been impl"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLocalGatewayRouteTables": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_local_gateway_route_tables action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLocalGatewayVirtualInterfaceGroups": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_local_gateway_virtual_interface_groups action has not been implemen"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLocalGatewayVirtualInterfaces": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_local_gateway_virtual_interfaces action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLocalGateways": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_local_gateways action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLockedSnapshots": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_locked_snapshots action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeMacHosts": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_mac_hosts action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeMacModificationTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_mac_modification_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeManagedPrefixLists": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeMovingAddresses": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_moving_addresses action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeNatGateways": {
         "status": "working",
@@ -2690,36 +2690,36 @@
         "detail": "OK"
       },
       "DescribeNetworkInsightsAccessScopeAnalyses": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_network_insights_access_scope_analyses action has not been implemen"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeNetworkInsightsAccessScopes": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_network_insights_access_scopes action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeNetworkInsightsAnalyses": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_network_insights_analyses action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeNetworkInsightsPaths": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_network_insights_paths action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeNetworkInterfaceAttribute": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"NetworkInterf"
       },
       "DescribeNetworkInterfacePermissions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_network_interface_permissions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeNetworkInterfaces": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeOutpostLags": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_outpost_lags action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePlacementGroups": {
         "status": "working",
@@ -2730,20 +2730,20 @@
         "detail": "OK"
       },
       "DescribePrincipalIdFormat": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_principal_id_format action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePublicIpv4Pools": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_public_ipv4_pools action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeRegions": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeReplaceRootVolumeTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_replace_root_volume_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedInstances": {
         "status": "not_implemented",
@@ -2754,24 +2754,24 @@
         "detail": "InternalError: ReservedInstances.describe_reserved_instances_listings is not yet implemented"
       },
       "DescribeReservedInstancesModifications": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_reserved_instances_modifications action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedInstancesOfferings": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeRouteServerEndpoints": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_route_server_endpoints action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeRouteServerPeers": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_route_server_peers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeRouteServers": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_route_servers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeRouteTables": {
         "status": "working",
@@ -2782,20 +2782,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"FirstSlotStar"
       },
       "DescribeScheduledInstances": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_scheduled_instances action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSecondaryInterfaces": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_secondary_interfaces action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSecondaryNetworks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_secondary_networks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSecondarySubnets": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_secondary_subnets action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSecurityGroupReferences": {
         "status": "needs_params",
@@ -2806,24 +2806,24 @@
         "detail": "OK"
       },
       "DescribeSecurityGroupVpcAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_security_group_vpc_associations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSecurityGroups": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeServiceLinkVirtualInterfaces": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_service_link_virtual_interfaces action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSnapshotAttribute": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Attribute\"\nMi"
       },
       "DescribeSnapshotTierStatus": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_snapshot_tier_status action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSnapshots": {
         "status": "working",
@@ -2858,8 +2858,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"VpcId\""
       },
       "DescribeStoreImageTasks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_store_image_tasks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSubnets": {
         "status": "working",
@@ -2870,52 +2870,52 @@
         "detail": "OK"
       },
       "DescribeTrafficMirrorFilterRules": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_traffic_mirror_filter_rules action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTrafficMirrorFilters": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_traffic_mirror_filters action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTrafficMirrorSessions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_traffic_mirror_sessions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTrafficMirrorTargets": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_traffic_mirror_targets action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayAttachments": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeTransitGatewayConnectPeers": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_transit_gateway_connect_peers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayConnects": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_transit_gateway_connects action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayMeteringPolicies": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_transit_gateway_metering_policies action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayMulticastDomains": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_transit_gateway_multicast_domains action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayPeeringAttachments": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeTransitGatewayPolicyTables": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_transit_gateway_policy_tables action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayRouteTableAnnouncements": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_transit_gateway_route_table_announcements action has not been imple"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTransitGatewayRouteTables": {
         "status": "working",
@@ -2930,28 +2930,28 @@
         "detail": "OK"
       },
       "DescribeTrunkInterfaceAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_trunk_interface_associations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVerifiedAccessEndpoints": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_verified_access_endpoints action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVerifiedAccessGroups": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_verified_access_groups action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVerifiedAccessInstanceLoggingConfigurations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_verified_access_instance_logging_configurations action has not been"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVerifiedAccessInstances": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_verified_access_instances action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVerifiedAccessTrustProviders": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_verified_access_trust_providers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVolumeAttribute": {
         "status": "needs_params",
@@ -2974,12 +2974,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Attribute\"\nMi"
       },
       "DescribeVpcBlockPublicAccessExclusions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpc_block_public_access_exclusions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcBlockPublicAccessOptions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpc_block_public_access_options action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcClassicLink": {
         "status": "working",
@@ -2990,20 +2990,20 @@
         "detail": "OK"
       },
       "DescribeVpcEncryptionControls": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpc_encryption_controls action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcEndpointAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpc_endpoint_associations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcEndpointConnectionNotifications": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpc_endpoint_connection_notifications action has not been implement"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcEndpointConnections": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpc_endpoint_connections action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcEndpointServiceConfigurations": {
         "status": "working",
@@ -3030,8 +3030,8 @@
         "detail": "OK"
       },
       "DescribeVpnConcentrators": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_vpn_concentrators action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpnConnections": {
         "status": "working",
@@ -3070,16 +3070,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AllocationId\""
       },
       "DisableAllowedImagesSettings": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_allowed_images_settings action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableAwsNetworkPerformanceMetricSubscription": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_aws_network_performance_metric_subscription action has not been impl"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableCapacityManager": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_capacity_manager action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableEbsEncryptionByDefault": {
         "status": "working",
@@ -3098,8 +3098,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ImageId\""
       },
       "DisableImageBlockPublicAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_image_block_public_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableImageDeprecation": {
         "status": "needs_params",
@@ -3126,12 +3126,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"RouteServerId"
       },
       "DisableSerialConsoleAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_serial_console_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableSnapshotBlockPublicAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_snapshot_block_public_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableTransitGatewayRouteTablePropagation": {
         "status": "needs_params",
@@ -3230,12 +3230,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AllowedImages"
       },
       "EnableAwsNetworkPerformanceMetricSubscription": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_aws_network_performance_metric_subscription action has not been imple"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableCapacityManager": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_capacity_manager action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableEbsEncryptionByDefault": {
         "status": "working",
@@ -3278,16 +3278,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"IpamPolicyId\""
       },
       "EnableReachabilityAnalyzerOrganizationSharing": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_reachability_analyzer_organization_sharing action has not been implem"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableRouteServerPropagation": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"RouteServerId"
       },
       "EnableSerialConsoleAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_serial_console_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableSnapshotBlockPublicAccess": {
         "status": "needs_params",
@@ -3338,8 +3338,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"VpnConnection"
       },
       "GetAllowedImagesSettings": {
-        "status": "500_error",
-        "detail": "InternalError: The get_allowed_images_settings action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetAssociatedEnclaveCertificateIamRoles": {
         "status": "needs_params",
@@ -3350,12 +3350,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"PoolId\""
       },
       "GetAwsNetworkPerformanceData": {
-        "status": "500_error",
-        "detail": "InternalError: The get_aws_network_performance_data action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetCapacityManagerAttributes": {
-        "status": "500_error",
-        "detail": "InternalError: The get_capacity_manager_attributes action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetCapacityManagerMetricData": {
         "status": "needs_params",
@@ -3390,16 +3390,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceFamil"
       },
       "GetEbsDefaultKmsKeyId": {
-        "status": "500_error",
-        "detail": "InternalError: The get_ebs_default_kms_key_id action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetEbsEncryptionByDefault": {
         "status": "working",
         "detail": "OK"
       },
       "GetEnabledIpamPolicy": {
-        "status": "500_error",
-        "detail": "InternalError: The get_enabled_ipam_policy action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetFlowLogsIntegrationTemplate": {
         "status": "needs_params",
@@ -3418,12 +3418,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ImageId\""
       },
       "GetImageBlockPublicAccessState": {
-        "status": "500_error",
-        "detail": "InternalError: The get_image_block_public_access_state action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetInstanceMetadataDefaults": {
-        "status": "500_error",
-        "detail": "InternalError: The get_instance_metadata_defaults action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetInstanceTpmEkPub": {
         "status": "needs_params",
@@ -3530,12 +3530,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"VpcId\""
       },
       "GetSerialConsoleAccessStatus": {
-        "status": "500_error",
-        "detail": "InternalError: The get_serial_console_access_status action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetSnapshotBlockPublicAccessState": {
-        "status": "500_error",
-        "detail": "InternalError: The get_snapshot_block_public_access_state action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetSpotPlacementScores": {
         "status": "needs_params",
@@ -3598,8 +3598,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"VpnConnection"
       },
       "GetVpnConnectionDeviceTypes": {
-        "status": "500_error",
-        "detail": "InternalError: The get_vpn_connection_device_types action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetVpnTunnelReplacementStatus": {
         "status": "needs_params",
@@ -3610,8 +3610,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ClientVpnEndp"
       },
       "ImportImage": {
-        "status": "500_error",
-        "detail": "InternalError: The import_image action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ImportInstance": {
         "status": "needs_params",
@@ -3622,24 +3622,24 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"KeyName\"\nMiss"
       },
       "ImportSnapshot": {
-        "status": "500_error",
-        "detail": "InternalError: The import_snapshot action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ImportVolume": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Image\"\nMissin"
       },
       "ListImagesInRecycleBin": {
-        "status": "500_error",
-        "detail": "InternalError: The list_images_in_recycle_bin action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListSnapshotsInRecycleBin": {
-        "status": "500_error",
-        "detail": "InternalError: The list_snapshots_in_recycle_bin action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListVolumesInRecycleBin": {
-        "status": "500_error",
-        "detail": "InternalError: The list_volumes_in_recycle_bin action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "LockSnapshot": {
         "status": "needs_params",
@@ -3730,8 +3730,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceId\""
       },
       "ModifyInstanceMetadataDefaults": {
-        "status": "500_error",
-        "detail": "InternalError: The modify_instance_metadata_defaults action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ModifyInstanceMetadataOptions": {
         "status": "needs_params",
@@ -4030,8 +4030,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"CapacityReser"
       },
       "RejectTransitGatewayMulticastDomainAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The reject_transit_gateway_multicast_domain_associations action has not been imp"
+        "status": "working",
+        "detail": "OK"
       },
       "RejectTransitGatewayPeeringAttachment": {
         "status": "needs_params",
@@ -4066,8 +4066,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"IamInstancePr"
       },
       "ReplaceImageCriteriaInAllowedImagesSettings": {
-        "status": "500_error",
-        "detail": "InternalError: The replace_image_criteria_in_allowed_images_settings action has not been implem"
+        "status": "working",
+        "detail": "OK"
       },
       "ReplaceNetworkAclAssociation": {
         "status": "needs_params",
@@ -4110,8 +4110,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AllocationId\""
       },
       "ResetEbsDefaultKmsKeyId": {
-        "status": "500_error",
-        "detail": "InternalError: The reset_ebs_default_kms_key_id action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ResetFpgaImageAttribute": {
         "status": "needs_params",
@@ -4598,16 +4598,16 @@
         "detail": "OK"
       },
       "ListEndpoints": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_endpoints acti"
+        "status": "working",
+        "detail": "OK"
       },
       "ListEventBuses": {
         "status": "working",
         "detail": "OK"
       },
       "ListEventSources": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_event_sources "
+        "status": "working",
+        "detail": "OK"
       },
       "ListPartnerEventSourceAccounts": {
         "status": "needs_params",
@@ -4698,8 +4698,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Name\""
       },
       "UpdateEventBus": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The update_event_bus ac"
+        "status": "working",
+        "detail": "OK"
       }
     },
     "firehose": {
@@ -4958,32 +4958,32 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"UserName\"\nMis"
       },
       "DisableOrganizationsRootCredentialsManagement": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_organizations_root_credentials_management action has not been implem"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableOrganizationsRootSessions": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_organizations_root_sessions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableOutboundWebIdentityFederation": {
-        "status": "500_error",
-        "detail": "InternalError: The disable_outbound_web_identity_federation action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableMFADevice": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"UserName\"\nMis"
       },
       "EnableOrganizationsRootCredentialsManagement": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_organizations_root_credentials_management action has not been impleme"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableOrganizationsRootSessions": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_organizations_root_sessions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "EnableOutboundWebIdentityFederation": {
-        "status": "500_error",
-        "detail": "InternalError: The enable_outbound_web_identity_federation action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GenerateCredentialReport": {
         "status": "working",
@@ -5062,8 +5062,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"JobId\""
       },
       "GetOutboundWebIdentityFederationInfo": {
-        "status": "500_error",
-        "detail": "InternalError: The get_outbound_web_identity_federation_info action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetPolicy": {
         "status": "needs_params",
@@ -5134,8 +5134,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"UserName\""
       },
       "ListDelegationRequests": {
-        "status": "500_error",
-        "detail": "InternalError: The list_delegation_requests action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListEntitiesForPolicy": {
         "status": "needs_params",
@@ -5182,8 +5182,8 @@
         "detail": "OK"
       },
       "ListOrganizationsFeatures": {
-        "status": "500_error",
-        "detail": "InternalError: The list_organizations_features action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListPolicies": {
         "status": "working",
@@ -5234,8 +5234,8 @@
         "detail": "OK"
       },
       "ListServiceSpecificCredentials": {
-        "status": "500_error",
-        "detail": "InternalError: The list_service_specific_credentials action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListSigningCertificates": {
         "status": "working",
@@ -5484,8 +5484,8 @@
         "detail": "destructive operation"
       },
       "DescribeAccountSettings": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_account_se"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLimits": {
         "status": "working",
@@ -5662,8 +5662,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"KeyId\"\nMissin"
       },
       "DescribeCustomKeyStores": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_custom_key"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeKey": {
         "status": "working",
@@ -6298,8 +6298,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"policyType\""
       },
       "DescribeConfigurationTemplates": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_configurat"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDeliveries": {
         "status": "working",
@@ -6330,8 +6330,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"importId\""
       },
       "DescribeImportTasks": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_import_tas"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIndexPolicies": {
         "status": "needs_params",
@@ -6354,8 +6354,8 @@
         "detail": "OK"
       },
       "DescribeQueryDefinitions": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_query_defi"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeResourcePolicies": {
         "status": "working",
@@ -6414,8 +6414,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"dataSourceNam"
       },
       "GetLogGroupFields": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_log_group_field"
+        "status": "working",
+        "detail": "OK"
       },
       "GetLogObject": {
         "status": "needs_params",
@@ -6446,28 +6446,28 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"groupBy\""
       },
       "ListAnomalies": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_anomalies acti"
+        "status": "working",
+        "detail": "OK"
       },
       "ListIntegrations": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_integrations a"
+        "status": "working",
+        "detail": "OK"
       },
       "ListLogAnomalyDetectors": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_log_anomaly_de"
+        "status": "working",
+        "detail": "OK"
       },
       "ListLogGroups": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_log_groups act"
+        "status": "working",
+        "detail": "OK"
       },
       "ListLogGroupsForQuery": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"queryId\""
       },
       "ListScheduledQueries": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_scheduled_quer"
+        "status": "working",
+        "detail": "OK"
       },
       "ListSourcesForS3TableIntegration": {
         "status": "needs_params",
@@ -6534,8 +6534,8 @@
         "detail": "OK"
       },
       "PutQueryDefinition": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The put_query_definitio"
+        "status": "working",
+        "detail": "OK"
       },
       "PutResourcePolicy": {
         "status": "working",
@@ -6736,28 +6736,28 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"DomainName\""
       },
       "DescribeInboundConnections": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_inbound_co"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstanceTypeLimits": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceType\""
       },
       "DescribeOutboundConnections": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_outbound_c"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePackages": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_packages a"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedInstanceOfferings": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_reserved_i"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedInstances": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_reserved_i"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeVpcEndpoints": {
         "status": "needs_params",
@@ -6784,8 +6784,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"DomainName\"\nM"
       },
       "GetDefaultApplicationSetting": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_default_applica"
+        "status": "working",
+        "detail": "OK"
       },
       "GetDirectQueryDataSource": {
         "status": "needs_params",
@@ -6812,16 +6812,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"DomainName\""
       },
       "ListApplications": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_applications a"
+        "status": "working",
+        "detail": "OK"
       },
       "ListDataSources": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"DomainName\""
       },
       "ListDirectQueryDataSources": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_direct_query_d"
+        "status": "working",
+        "detail": "OK"
       },
       "ListDomainMaintenances": {
         "status": "needs_params",
@@ -6860,8 +6860,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"DomainName\""
       },
       "ListVpcEndpoints": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_vpc_endpoints "
+        "status": "working",
+        "detail": "OK"
       },
       "ListVpcEndpointsForDomain": {
         "status": "needs_params",
@@ -7042,8 +7042,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"SnapshotCopyG"
       },
       "CreateSnapshotSchedule": {
-        "status": "500_error",
-        "detail": "InternalError: The create_snapshot_schedule action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "CreateTags": {
         "status": "needs_params",
@@ -7142,16 +7142,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"NamespaceIden"
       },
       "DescribeAccountAttributes": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_account_attributes action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAuthenticationProfiles": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_authentication_profiles action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeClusterDbRevisions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_cluster_db_revisions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeClusterParameterGroups": {
         "status": "working",
@@ -7174,72 +7174,72 @@
         "detail": "OK"
       },
       "DescribeClusterTracks": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_cluster_tracks action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeClusterVersions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_cluster_versions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeClusters": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeCustomDomainAssociations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_custom_domain_associations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDataShares": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_data_shares action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDataSharesForConsumer": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_data_shares_for_consumer action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDataSharesForProducer": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_data_shares_for_producer action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDefaultClusterParameters": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ParameterGrou"
       },
       "DescribeEndpointAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_endpoint_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeEndpointAuthorization": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_endpoint_authorization action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeEventCategories": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_event_categories action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeEventSubscriptions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_event_subscriptions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeEvents": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_events action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeHsmClientCertificates": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_hsm_client_certificates action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeHsmConfigurations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_hsm_configurations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInboundIntegrations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_inbound_integrations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeIntegrations": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_integrations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeLoggingStatus": {
         "status": "needs_params",
@@ -7250,60 +7250,60 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ActionType\""
       },
       "DescribeOrderableClusterOptions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_orderable_cluster_options action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePartners": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AccountId\"\nMi"
       },
       "DescribeRedshiftIdcApplications": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_redshift_idc_applications action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedNodeExchangeStatus": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_reserved_node_exchange_status action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedNodeOfferings": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_reserved_node_offerings action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeReservedNodes": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_reserved_nodes action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeResize": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ClusterIdenti"
       },
       "DescribeScheduledActions": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_scheduled_actions action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeSnapshotCopyGrants": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeSnapshotSchedules": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_snapshot_schedules action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeStorage": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_storage action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTableRestoreStatus": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_table_restore_status action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeTags": {
         "status": "working",
         "detail": "OK"
       },
       "DescribeUsageLimits": {
-        "status": "500_error",
-        "detail": "InternalError: The describe_usage_limits action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "DisableLogging": {
         "status": "needs_params",
@@ -7334,8 +7334,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"DbUser\""
       },
       "GetClusterCredentialsWithIAM": {
-        "status": "500_error",
-        "detail": "InternalError: The get_cluster_credentials_with_iam action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetIdentityCenterAuthToken": {
         "status": "needs_params",
@@ -7354,8 +7354,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ResourceArn\""
       },
       "ListRecommendations": {
-        "status": "500_error",
-        "detail": "InternalError: The list_recommendations action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ModifyAquaConfiguration": {
         "status": "needs_params",
@@ -7486,8 +7486,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ClusterSecuri"
       },
       "RevokeEndpointAccess": {
-        "status": "500_error",
-        "detail": "InternalError: The revoke_endpoint_access action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "RevokeSnapshotAccess": {
         "status": "needs_params",
@@ -7524,8 +7524,8 @@
         "detail": "NotFoundException: One or more of the specified resources don't exist."
       },
       "GetGroupConfiguration": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>None</Message></Error><"
+        "status": "working",
+        "detail": "NotFoundException: One or more of the specified resources don't exist."
       },
       "GetGroupQuery": {
         "status": "working",
@@ -7560,8 +7560,8 @@
         "detail": "OK"
       },
       "PutGroupConfiguration": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>None</Message></Error><"
+        "status": "working",
+        "detail": "NotFoundException: One or more of the specified resources don't exist."
       },
       "SearchResources": {
         "status": "needs_params",
@@ -7588,8 +7588,8 @@
         "detail": "501: <ErrorResponse><Error><Code>NotImplemented</Code><Message>Service resource-group"
       },
       "UpdateGroup": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>None</Message></Error><"
+        "status": "working",
+        "detail": "NotFoundException: One or more of the specified resources don't exist."
       },
       "UpdateGroupQuery": {
         "status": "needs_params",
@@ -7598,12 +7598,12 @@
     },
     "resourcegroupstaggingapi": {
       "DescribeReportCreation": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_report_cre"
+        "status": "working",
+        "detail": "OK"
       },
       "GetComplianceSummary": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_compliance_summ"
+        "status": "working",
+        "detail": "OK"
       },
       "GetResources": {
         "status": "working",
@@ -7618,8 +7618,8 @@
         "detail": "OK"
       },
       "ListRequiredTags": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_required_tags "
+        "status": "working",
+        "detail": "OK"
       },
       "StartReportCreation": {
         "status": "needs_params",
@@ -8074,36 +8074,36 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"FirewallDomai"
       },
       "ListFirewallConfigs": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_firewall_confi"
+        "status": "working",
+        "detail": "OK"
       },
       "ListFirewallDomainLists": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_firewall_domai"
+        "status": "working",
+        "detail": "OK"
       },
       "ListFirewallDomains": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"FirewallDomai"
       },
       "ListFirewallRuleGroupAssociations": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_firewall_rule_"
+        "status": "working",
+        "detail": "OK"
       },
       "ListFirewallRuleGroups": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_firewall_rule_"
+        "status": "working",
+        "detail": "OK"
       },
       "ListFirewallRules": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"FirewallRuleG"
       },
       "ListOutpostResolvers": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_outpost_resolv"
+        "status": "working",
+        "detail": "OK"
       },
       "ListResolverConfigs": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_resolver_confi"
+        "status": "working",
+        "detail": "OK"
       },
       "ListResolverDnssecConfigs": {
         "status": "working",
@@ -9316,8 +9316,8 @@
         "detail": "OK"
       },
       "ListCustomVerificationEmailTemplates": {
-        "status": "500_error",
-        "detail": "InternalError: The list_custom_verification_email_templates action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListIdentities": {
         "status": "working",
@@ -9328,8 +9328,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Identity\""
       },
       "ListReceiptFilters": {
-        "status": "500_error",
-        "detail": "InternalError: The list_receipt_filters action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListReceiptRuleSets": {
         "status": "working",
@@ -9412,8 +9412,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"TemplateName\""
       },
       "UpdateAccountSendingEnabled": {
-        "status": "500_error",
-        "detail": "InternalError: The update_account_sending_enabled action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "UpdateConfigurationSetEventDestination": {
         "status": "needs_params",
@@ -9522,8 +9522,8 @@
         "detail": "OK"
       },
       "GetSMSSandboxAccountStatus": {
-        "status": "500_error",
-        "detail": "InternalError: The get_sms_sandbox_account_status action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "GetSubscriptionAttributes": {
         "status": "needs_params",
@@ -9538,8 +9538,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"PlatformAppli"
       },
       "ListOriginationNumbers": {
-        "status": "500_error",
-        "detail": "InternalError: The list_origination_numbers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListPhoneNumbersOptedOut": {
         "status": "working",
@@ -9550,8 +9550,8 @@
         "detail": "OK"
       },
       "ListSMSSandboxPhoneNumbers": {
-        "status": "500_error",
-        "detail": "InternalError: The list_sms_sandbox_phone_numbers action has not been implemented"
+        "status": "working",
+        "detail": "OK"
       },
       "ListSubscriptions": {
         "status": "working",
@@ -9782,8 +9782,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ActivationId\""
       },
       "DeleteAssociation": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The delete_association "
+        "status": "working",
+        "detail": "OK"
       },
       "DeleteDocument": {
         "status": "needs_params",
@@ -9842,12 +9842,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"WindowId\"\nMis"
       },
       "DescribeActivations": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_activation"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAssociation": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_associatio"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAssociationExecutionTargets": {
         "status": "needs_params",
@@ -9858,16 +9858,16 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AssociationId"
       },
       "DescribeAutomationExecutions": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_automation"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeAutomationStepExecutions": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AutomationExe"
       },
       "DescribeAvailablePatches": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_available_"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeDocument": {
         "status": "working",
@@ -9890,8 +9890,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceId\""
       },
       "DescribeInstanceInformation": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_instance_i"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInstancePatchStates": {
         "status": "needs_params",
@@ -9906,12 +9906,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceId\""
       },
       "DescribeInstanceProperties": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_instance_p"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeInventoryDeletions": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_inventory_"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeMaintenanceWindowExecutionTaskInvocations": {
         "status": "needs_params",
@@ -9926,8 +9926,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"WindowId\""
       },
       "DescribeMaintenanceWindowSchedule": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_maintenanc"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeMaintenanceWindowTargets": {
         "status": "needs_params",
@@ -9946,8 +9946,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Targets\"\nMiss"
       },
       "DescribeOpsItems": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_ops_items "
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeParameters": {
         "status": "working",
@@ -9962,8 +9962,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"PatchGroup\""
       },
       "DescribePatchGroups": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_patch_grou"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePatchProperties": {
         "status": "needs_params",
@@ -9998,8 +9998,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Target\""
       },
       "GetDefaultPatchBaseline": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_default_patch_b"
+        "status": "working",
+        "detail": "OK"
       },
       "GetDeployablePatchSnapshotForInstance": {
         "status": "needs_params",
@@ -10014,12 +10014,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ExecutionPrev"
       },
       "GetInventory": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_inventory actio"
+        "status": "working",
+        "detail": "OK"
       },
       "GetInventorySchema": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_inventory_schem"
+        "status": "working",
+        "detail": "OK"
       },
       "GetMaintenanceWindow": {
         "status": "needs_params",
@@ -10050,8 +10050,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"OpsMetadataAr"
       },
       "GetOpsSummary": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_ops_summary act"
+        "status": "working",
+        "detail": "OK"
       },
       "GetParameter": {
         "status": "working",
@@ -10082,8 +10082,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ResourceArn\""
       },
       "GetServiceSetting": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_service_setting"
+        "status": "working",
+        "detail": "OK"
       },
       "LabelParameterVersion": {
         "status": "working",
@@ -10094,24 +10094,24 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"AssociationId"
       },
       "ListAssociations": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_associations a"
+        "status": "working",
+        "detail": "OK"
       },
       "ListCommandInvocations": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_command_invoca"
+        "status": "working",
+        "detail": "OK"
       },
       "ListCommands": {
         "status": "working",
         "detail": "OK"
       },
       "ListComplianceItems": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_compliance_ite"
+        "status": "working",
+        "detail": "OK"
       },
       "ListComplianceSummaries": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_compliance_sum"
+        "status": "working",
+        "detail": "OK"
       },
       "ListDocumentMetadataHistory": {
         "status": "needs_params",
@@ -10130,32 +10130,32 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"InstanceId\"\nM"
       },
       "ListNodes": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_nodes action h"
+        "status": "working",
+        "detail": "OK"
       },
       "ListNodesSummary": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Aggregators\""
       },
       "ListOpsItemEvents": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_ops_item_event"
+        "status": "working",
+        "detail": "OK"
       },
       "ListOpsItemRelatedItems": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_ops_item_relat"
+        "status": "working",
+        "detail": "OK"
       },
       "ListOpsMetadata": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_ops_metadata a"
+        "status": "working",
+        "detail": "OK"
       },
       "ListResourceComplianceSummaries": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_resource_compl"
+        "status": "working",
+        "detail": "OK"
       },
       "ListResourceDataSync": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_resource_data_"
+        "status": "working",
+        "detail": "OK"
       },
       "ListTagsForResource": {
         "status": "500_error",
@@ -10568,8 +10568,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"checkId\""
       },
       "ResolveCase": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>None</Message></Error><"
+        "status": "working",
+        "detail": "OK"
       }
     },
     "swf": {
@@ -10824,20 +10824,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"VocabularyFil"
       },
       "ListCallAnalyticsCategories": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_call_analytics"
+        "status": "working",
+        "detail": "OK"
       },
       "ListCallAnalyticsJobs": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_call_analytics"
+        "status": "working",
+        "detail": "OK"
       },
       "ListLanguageModels": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_language_model"
+        "status": "working",
+        "detail": "OK"
       },
       "ListMedicalScribeJobs": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_medical_scribe"
+        "status": "working",
+        "detail": "OK"
       },
       "ListMedicalTranscriptionJobs": {
         "status": "working",
@@ -10860,8 +10860,8 @@
         "detail": "OK"
       },
       "ListVocabularyFilters": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_vocabulary_fil"
+        "status": "working",
+        "detail": "OK"
       },
       "StartCallAnalyticsJob": {
         "status": "needs_params",
@@ -10908,10 +10908,10 @@
   "summary": {
     "total_services": 34,
     "total_ops": 2709,
-    "working": 330,
+    "working": 638,
     "needs_params": 2017,
     "not_implemented": 26,
-    "500_error": 318,
+    "500_error": 10,
     "skipped": 16,
     "error": 2,
     "per_service": {
@@ -10926,44 +10926,44 @@
         "effective_working": 16
       },
       "cloudformation": {
-        "working": 11,
+        "working": 36,
         "needs_params": 52,
         "not_implemented": 0,
-        "500_error": 26,
+        "500_error": 1,
         "skipped": 1,
         "error": 0,
         "total": 90,
-        "effective_working": 63
+        "effective_working": 88
       },
       "cloudwatch": {
-        "working": 6,
+        "working": 12,
         "needs_params": 31,
         "not_implemented": 0,
-        "500_error": 6,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 43,
-        "effective_working": 37
+        "effective_working": 43
       },
       "config": {
-        "working": 11,
+        "working": 28,
         "needs_params": 69,
         "not_implemented": 0,
-        "500_error": 17,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 97,
-        "effective_working": 80
+        "effective_working": 97
       },
       "dynamodb": {
-        "working": 9,
+        "working": 12,
         "needs_params": 42,
         "not_implemented": 0,
-        "500_error": 3,
+        "500_error": 0,
         "skipped": 1,
         "error": 2,
         "total": 57,
-        "effective_working": 51
+        "effective_working": 54
       },
       "dynamodbstreams": {
         "working": 1,
@@ -10976,14 +10976,14 @@
         "effective_working": 4
       },
       "ec2": {
-        "working": 87,
+        "working": 228,
         "needs_params": 520,
         "not_implemented": 6,
-        "500_error": 142,
+        "500_error": 1,
         "skipped": 1,
         "error": 0,
         "total": 756,
-        "effective_working": 607
+        "effective_working": 748
       },
       "es": {
         "working": 3,
@@ -10996,14 +10996,14 @@
         "effective_working": 40
       },
       "events": {
-        "working": 9,
+        "working": 12,
         "needs_params": 45,
         "not_implemented": 0,
-        "500_error": 3,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 57,
-        "effective_working": 54
+        "effective_working": 57
       },
       "firehose": {
         "working": 1,
@@ -11016,34 +11016,34 @@
         "effective_working": 11
       },
       "iam": {
-        "working": 26,
+        "working": 36,
         "needs_params": 140,
         "not_implemented": 0,
-        "500_error": 10,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 176,
-        "effective_working": 166
+        "effective_working": 176
       },
       "kinesis": {
-        "working": 9,
+        "working": 10,
         "needs_params": 28,
         "not_implemented": 0,
-        "500_error": 1,
+        "500_error": 0,
         "skipped": 1,
         "error": 0,
         "total": 39,
-        "effective_working": 37
+        "effective_working": 38
       },
       "kms": {
-        "working": 30,
+        "working": 31,
         "needs_params": 18,
         "not_implemented": 0,
-        "500_error": 5,
+        "500_error": 4,
         "skipped": 0,
         "error": 0,
         "total": 53,
-        "effective_working": 48
+        "effective_working": 49
       },
       "lambda": {
         "working": 6,
@@ -11056,54 +11056,54 @@
         "effective_working": 84
       },
       "logs": {
-        "working": 34,
+        "working": 44,
         "needs_params": 64,
         "not_implemented": 0,
-        "500_error": 10,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 108,
-        "effective_working": 98
+        "effective_working": 108
       },
       "opensearch": {
-        "working": 6,
+        "working": 15,
         "needs_params": 66,
         "not_implemented": 0,
-        "500_error": 9,
+        "500_error": 0,
         "skipped": 1,
         "error": 0,
         "total": 82,
-        "effective_working": 72
+        "effective_working": 81
       },
       "redshift": {
-        "working": 7,
+        "working": 39,
         "needs_params": 101,
         "not_implemented": 0,
-        "500_error": 32,
+        "500_error": 0,
         "skipped": 1,
         "error": 0,
         "total": 141,
-        "effective_working": 108
+        "effective_working": 140
       },
       "resource-groups": {
-        "working": 5,
+        "working": 8,
         "needs_params": 12,
         "not_implemented": 3,
-        "500_error": 3,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 23,
-        "effective_working": 17
+        "effective_working": 20
       },
       "resourcegroupstaggingapi": {
-        "working": 3,
+        "working": 6,
         "needs_params": 3,
         "not_implemented": 0,
-        "500_error": 3,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 9,
-        "effective_working": 6
+        "effective_working": 9
       },
       "route53": {
         "working": 6,
@@ -11116,14 +11116,14 @@
         "effective_working": 63
       },
       "route53resolver": {
-        "working": 6,
+        "working": 12,
         "needs_params": 56,
         "not_implemented": 0,
-        "500_error": 6,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 68,
-        "effective_working": 62
+        "effective_working": 68
       },
       "s3": {
         "working": 1,
@@ -11166,24 +11166,24 @@
         "effective_working": 23
       },
       "ses": {
-        "working": 10,
+        "working": 13,
         "needs_params": 58,
         "not_implemented": 0,
-        "500_error": 3,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 71,
-        "effective_working": 68
+        "effective_working": 71
       },
       "sns": {
-        "working": 5,
+        "working": 8,
         "needs_params": 33,
         "not_implemented": 0,
-        "500_error": 3,
+        "500_error": 0,
         "skipped": 1,
         "error": 0,
         "total": 42,
-        "effective_working": 38
+        "effective_working": 41
       },
       "sqs": {
         "working": 1,
@@ -11196,14 +11196,14 @@
         "effective_working": 21
       },
       "ssm": {
-        "working": 15,
+        "working": 41,
         "needs_params": 103,
         "not_implemented": 0,
-        "500_error": 28,
+        "500_error": 2,
         "skipped": 0,
         "error": 0,
         "total": 146,
-        "effective_working": 118
+        "effective_working": 144
       },
       "stepfunctions": {
         "working": 3,
@@ -11226,14 +11226,14 @@
         "effective_working": 11
       },
       "support": {
-        "working": 4,
+        "working": 5,
         "needs_params": 11,
         "not_implemented": 0,
-        "500_error": 1,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 16,
-        "effective_working": 15
+        "effective_working": 16
       },
       "swf": {
         "working": 0,
@@ -11246,17 +11246,17 @@
         "effective_working": 39
       },
       "transcribe": {
-        "working": 4,
+        "working": 9,
         "needs_params": 34,
         "not_implemented": 0,
-        "500_error": 5,
+        "500_error": 0,
         "skipped": 0,
         "error": 0,
         "total": 43,
-        "effective_working": 38
+        "effective_working": 43
       }
     },
-    "effective_working": 2347
+    "effective_working": 2655
   },
-  "elapsed_seconds": 176.4
+  "elapsed_seconds": 13.7
 }
