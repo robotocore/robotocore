@@ -89,6 +89,21 @@ def kinesis(boto_session):
     return boto_session.client("kinesis", endpoint_url=ENDPOINT_URL)
 
 
+@pytest.fixture
+def cloudwatch(boto_session):
+    return boto_session.client("cloudwatch", endpoint_url=ENDPOINT_URL)
+
+
+@pytest.fixture
+def logs(boto_session):
+    return boto_session.client("logs", endpoint_url=ENDPOINT_URL)
+
+
+@pytest.fixture
+def ssm(boto_session):
+    return boto_session.client("ssm", endpoint_url=ENDPOINT_URL)
+
+
 def make_lambda_zip(code: str) -> bytes:
     """Create a Lambda deployment package from inline Python code."""
     buf = io.BytesIO()
