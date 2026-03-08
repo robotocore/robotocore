@@ -571,6 +571,64 @@ class TestECSExtendedV2:
             ecs.delete_cluster(cluster=name)
 
 
+class TestTaskOperations:
+    """Tests for RunTask, StartTask, StopTask, DescribeTasks."""
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("task-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("task-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_run_task(self, ecs, cluster, task_def_arn):
+        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        assert "tasks" in resp
+        assert len(resp["tasks"]) >= 1
+        task = resp["tasks"][0]
+        assert "taskArn" in task
+        assert task["clusterArn"].endswith(f"/{cluster}")
+
+    def test_run_task_with_count(self, ecs, cluster, task_def_arn):
+        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, count=2)
+        assert len(resp["tasks"]) == 2
+
+    def test_stop_task(self, ecs, cluster, task_def_arn):
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        stop_resp = ecs.stop_task(cluster=cluster, task=task_arn, reason="testing")
+        assert "task" in stop_resp
+        assert stop_resp["task"]["taskArn"] == task_arn
+
+    def test_describe_tasks(self, ecs, cluster, task_def_arn):
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        desc_resp = ecs.describe_tasks(cluster=cluster, tasks=[task_arn])
+        assert len(desc_resp["tasks"]) == 1
+        assert desc_resp["tasks"][0]["taskArn"] == task_arn
+
+    def test_start_task_nonexistent_cluster(self, ecs):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.start_task(
+                cluster="nonexistent-cluster",
+                taskDefinition="arn:aws:ecs:us-east-1:123456789012:task-definition/fake:1",
+                containerInstances=["fake-ci-id"],
+            )
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+
 class TestEcsAutoCoverage:
     """Auto-generated coverage tests for ecs."""
 
