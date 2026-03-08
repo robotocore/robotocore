@@ -742,3 +742,155 @@ class TestSesAutoCoverage:
     def test_update_account_sending_enabled(self, client):
         """UpdateAccountSendingEnabled returns a response."""
         client.update_account_sending_enabled()
+
+    def test_send_bulk_templated_email(self, client):
+        """SendBulkTemplatedEmail sends to multiple destinations."""
+        client.verify_email_identity(EmailAddress="bulk-sender@example.com")
+        template_name = "bulk-tmpl"
+        client.create_template(
+            Template={
+                "TemplateName": template_name,
+                "SubjectPart": "Hi {{name}}",
+                "TextPart": "Hello {{name}}",
+            }
+        )
+        try:
+            resp = client.send_bulk_templated_email(
+                Source="bulk-sender@example.com",
+                Template=template_name,
+                DefaultTemplateData='{"name": "default"}',
+                Destinations=[
+                    {
+                        "Destination": {"ToAddresses": ["a@example.com"]},
+                        "ReplacementTemplateData": '{"name": "Alice"}',
+                    },
+                    {
+                        "Destination": {"ToAddresses": ["b@example.com"]},
+                        "ReplacementTemplateData": '{"name": "Bob"}',
+                    },
+                ],
+            )
+            assert "Status" in resp
+            assert len(resp["Status"]) == 2
+            assert "MessageId" in resp["Status"][0]
+        finally:
+            client.delete_template(TemplateName=template_name)
+
+    def test_clone_receipt_rule_set(self, client):
+        """CloneReceiptRuleSet clones an existing rule set."""
+        import uuid
+
+        orig = f"orig-rs-{uuid.uuid4().hex[:8]}"
+        clone = f"clone-rs-{uuid.uuid4().hex[:8]}"
+        client.create_receipt_rule_set(RuleSetName=orig)
+        try:
+            resp = client.clone_receipt_rule_set(
+                RuleSetName=clone,
+                OriginalRuleSetName=orig,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify clone exists
+            rule_sets = client.list_receipt_rule_sets()
+            names = [r["Name"] for r in rule_sets["RuleSets"]]
+            assert clone in names
+        finally:
+            client.delete_receipt_rule_set(RuleSetName=clone)
+            client.delete_receipt_rule_set(RuleSetName=orig)
+
+    def test_create_configuration_set_event_destination(self, client):
+        """CreateConfigurationSetEventDestination adds an event destination."""
+        import uuid
+
+        uid = uuid.uuid4().hex[:8]
+        cs_name = f"evdst-cs-{uid}"
+        client.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = client.create_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestination={
+                    "Name": f"test-dest-{uid}",
+                    "Enabled": True,
+                    "MatchingEventTypes": ["send", "bounce"],
+                    "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_update_configuration_set_reputation_metrics_enabled(self, client):
+        """UpdateConfigurationSetReputationMetricsEnabled toggles metrics."""
+        import uuid
+
+        cs_name = f"rep-cs-{uuid.uuid4().hex[:8]}"
+        client.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = client.update_configuration_set_reputation_metrics_enabled(
+                ConfigurationSetName=cs_name,
+                Enabled=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_verify_email_address(self, client):
+        """VerifyEmailAddress (legacy) sends verification."""
+        resp = client.verify_email_address(EmailAddress="legacy-verify@example.com")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Should appear in verified list
+        listed = client.list_verified_email_addresses()
+        assert "legacy-verify@example.com" in listed["VerifiedEmailAddresses"]
+
+    def test_update_receipt_rule(self, client):
+        """UpdateReceiptRule modifies an existing rule."""
+        import uuid
+
+        rs_name = f"upd-rule-rs-{uuid.uuid4().hex[:8]}"
+        rule_name = f"upd-rule-{uuid.uuid4().hex[:8]}"
+        client.create_receipt_rule_set(RuleSetName=rs_name)
+        try:
+            client.create_receipt_rule(
+                RuleSetName=rs_name,
+                Rule={
+                    "Name": rule_name,
+                    "Enabled": True,
+                    "Recipients": ["test@example.com"],
+                    "Actions": [],
+                },
+            )
+            resp = client.update_receipt_rule(
+                RuleSetName=rs_name,
+                Rule={
+                    "Name": rule_name,
+                    "Enabled": False,
+                    "Recipients": ["updated@example.com"],
+                    "Actions": [],
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify the update
+            described = client.describe_receipt_rule(RuleSetName=rs_name, RuleName=rule_name)
+            assert described["Rule"]["Enabled"] is False
+        finally:
+            client.delete_receipt_rule(RuleSetName=rs_name, RuleName=rule_name)
+            client.delete_receipt_rule_set(RuleSetName=rs_name)
+
+    def test_test_render_template(self, client):
+        """TestRenderTemplate renders a template with data."""
+        template_name = "render-test-tmpl"
+        client.create_template(
+            Template={
+                "TemplateName": template_name,
+                "SubjectPart": "Hi {{name}}",
+                "TextPart": "Hello {{name}}, welcome!",
+                "HtmlPart": "<h1>Hello {{name}}</h1>",
+            }
+        )
+        try:
+            resp = client.test_render_template(
+                TemplateName=template_name,
+                TemplateData='{"name": "World"}',
+            )
+            assert "RenderedTemplate" in resp
+        finally:
+            client.delete_template(TemplateName=template_name)

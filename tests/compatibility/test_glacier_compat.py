@@ -101,3 +101,71 @@ class TestGlacierVaultOperations:
         assert r1["ResponseMetadata"]["HTTPStatusCode"] == 201
         assert r2["ResponseMetadata"]["HTTPStatusCode"] == 201
         glacier.delete_vault(accountId="-", vaultName=name)
+
+
+class TestGlacierJobOperations:
+    def test_list_jobs_empty(self, glacier):
+        """list_jobs on a vault with no jobs returns empty list."""
+        name = f"listjobs-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            response = glacier.list_jobs(accountId="-", vaultName=name)
+            assert "JobList" in response
+            assert isinstance(response["JobList"], list)
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_initiate_and_describe_job(self, glacier):
+        """initiate_job then describe_job returns job details."""
+        name = f"descjob-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            init_resp = glacier.initiate_job(
+                accountId="-",
+                vaultName=name,
+                jobParameters={"Type": "inventory-retrieval"},
+            )
+            job_id = init_resp["jobId"]
+            assert job_id
+
+            desc_resp = glacier.describe_job(accountId="-", vaultName=name, jobId=job_id)
+            assert desc_resp["JobId"] == job_id
+            assert desc_resp["Action"] == "InventoryRetrieval"
+            assert "StatusCode" in desc_resp
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_list_jobs_after_initiate(self, glacier):
+        """list_jobs includes a job after initiate_job."""
+        name = f"ljafter-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            init_resp = glacier.initiate_job(
+                accountId="-",
+                vaultName=name,
+                jobParameters={"Type": "inventory-retrieval"},
+            )
+            job_id = init_resp["jobId"]
+
+            response = glacier.list_jobs(accountId="-", vaultName=name)
+            assert "JobList" in response
+            job_ids = [j["JobId"] for j in response["JobList"]]
+            assert job_id in job_ids
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_upload_archive(self, glacier):
+        """upload_archive stores an archive and returns metadata."""
+        name = f"upload-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            response = glacier.upload_archive(
+                accountId="-",
+                vaultName=name,
+                body=b"test archive data",
+            )
+            assert response["ResponseMetadata"]["HTTPStatusCode"] == 201
+            assert "archiveId" in response
+            assert "checksum" in response
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)

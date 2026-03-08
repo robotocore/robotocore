@@ -97,6 +97,20 @@ class TestPanoramaDescribeDevice:
         )
 
 
+class TestPanoramaCreateNodeFromTemplateJob:
+    def test_create_node_from_template_job_returns_job_id(self, panorama):
+        resp = panorama.create_node_from_template_job(
+            NodeName="test-node",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"key": "value"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        assert "JobId" in resp
+        assert isinstance(resp["JobId"], str)
+        assert len(resp["JobId"]) > 0
+
+
 class TestPanoramaDeleteDevice:
     def test_delete_device_returns_device_id(self, panorama):
         name = f"test-device-{uuid.uuid4().hex[:8]}"

@@ -102,3 +102,12 @@ class TestKinesisVideoCompat:
             kinesisvideo_client.create_stream(
                 StreamName=created_stream["StreamName"], DataRetentionInHours=24
             )
+
+    def test_get_data_endpoint(self, kinesisvideo_client, created_stream):
+        resp = kinesisvideo_client.get_data_endpoint(
+            StreamName=created_stream["StreamName"],
+            APIName="GET_MEDIA",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DataEndpoint" in resp
+        assert resp["DataEndpoint"].startswith("http")

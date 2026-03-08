@@ -387,6 +387,154 @@ class TestELBv2MetadataOperations:
         assert "Ciphers" in policy
 
 
+class TestELBv2ListenerCertificateOperations:
+    """Tests for AddListenerCertificates, DescribeListenerCertificates, RemoveListenerCertificates."""
+
+    @pytest.fixture
+    def acm(self):
+        return make_client("acm")
+
+    @pytest.fixture
+    def https_listener(self, elbv2, acm, vpc_with_subnets):
+        """Create an HTTPS listener with a default certificate for certificate tests."""
+        # Import a self-signed cert into ACM
+        import datetime
+
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+
+        now = datetime.datetime.now(datetime.UTC)
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com")])
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(subject)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + datetime.timedelta(days=365))
+            .sign(key, hashes.SHA256())
+        )
+        cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+        key_pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+
+        acm_resp = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)
+        cert_arn = acm_resp["CertificateArn"]
+
+        # Create a second cert for add/remove tests
+        key2 = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject2 = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test2.example.com")])
+        cert2 = (
+            x509.CertificateBuilder()
+            .subject_name(subject2)
+            .issuer_name(subject2)
+            .public_key(key2.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + datetime.timedelta(days=365))
+            .sign(key2, hashes.SHA256())
+        )
+        cert2_pem = cert2.public_bytes(serialization.Encoding.PEM)
+        key2_pem = key2.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+        acm_resp2 = acm.import_certificate(Certificate=cert2_pem, PrivateKey=key2_pem)
+        cert_arn2 = acm_resp2["CertificateArn"]
+
+        lb_name = _unique("alb")
+        tg_name = _unique("tg")
+
+        lb = elbv2.create_load_balancer(
+            Name=lb_name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+        )
+        lb_arn = lb["LoadBalancers"][0]["LoadBalancerArn"]
+
+        tg = elbv2.create_target_group(
+            Name=tg_name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+        )
+        tg_arn = tg["TargetGroups"][0]["TargetGroupArn"]
+
+        listener = elbv2.create_listener(
+            LoadBalancerArn=lb_arn,
+            Protocol="HTTPS",
+            Port=443,
+            Certificates=[{"CertificateArn": cert_arn}],
+            DefaultActions=[{"Type": "forward", "TargetGroupArn": tg_arn}],
+        )
+        listener_arn = listener["Listeners"][0]["ListenerArn"]
+
+        yield {
+            "listener_arn": listener_arn,
+            "default_cert_arn": cert_arn,
+            "extra_cert_arn": cert_arn2,
+            "lb_arn": lb_arn,
+            "tg_arn": tg_arn,
+        }
+
+        # Cleanup
+        elbv2.delete_listener(ListenerArn=listener_arn)
+        elbv2.delete_target_group(TargetGroupArn=tg_arn)
+        elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+        acm.delete_certificate(CertificateArn=cert_arn)
+        acm.delete_certificate(CertificateArn=cert_arn2)
+
+    def test_describe_listener_certificates(self, elbv2, https_listener):
+        """DescribeListenerCertificates returns the default certificate."""
+        resp = elbv2.describe_listener_certificates(
+            ListenerArn=https_listener["listener_arn"],
+        )
+        assert "Certificates" in resp
+        assert len(resp["Certificates"]) >= 1
+        cert_arns = [c["CertificateArn"] for c in resp["Certificates"]]
+        assert https_listener["default_cert_arn"] in cert_arns
+
+    def test_add_listener_certificates(self, elbv2, https_listener):
+        """AddListenerCertificates adds an extra certificate to the listener."""
+        resp = elbv2.add_listener_certificates(
+            ListenerArn=https_listener["listener_arn"],
+            Certificates=[{"CertificateArn": https_listener["extra_cert_arn"]}],
+        )
+        assert "Certificates" in resp
+        added_arns = [c["CertificateArn"] for c in resp["Certificates"]]
+        assert https_listener["extra_cert_arn"] in added_arns
+
+    def test_remove_listener_certificates(self, elbv2, https_listener):
+        """RemoveListenerCertificates removes a non-default certificate."""
+        # First add the extra cert
+        elbv2.add_listener_certificates(
+            ListenerArn=https_listener["listener_arn"],
+            Certificates=[{"CertificateArn": https_listener["extra_cert_arn"]}],
+        )
+
+        # Now remove it
+        elbv2.remove_listener_certificates(
+            ListenerArn=https_listener["listener_arn"],
+            Certificates=[{"CertificateArn": https_listener["extra_cert_arn"]}],
+        )
+
+        # Verify it's gone
+        resp = elbv2.describe_listener_certificates(
+            ListenerArn=https_listener["listener_arn"],
+        )
+        cert_arns = [c["CertificateArn"] for c in resp["Certificates"]]
+        assert https_listener["extra_cert_arn"] not in cert_arns
+
+
 class TestElbv2AutoCoverage:
     """Auto-generated coverage tests for elbv2."""
 

@@ -81,3 +81,51 @@ class TestShieldProtectionOperations:
         # Verify deletion
         with pytest.raises(shield.exceptions.ResourceNotFoundException):
             shield.describe_protection(ProtectionId=protection_id)
+
+
+class TestShieldResource:
+    """Tests for Shield resource tagging operations."""
+
+    def test_tag_resource(self, shield):
+        name = _unique("tag")
+        arn = _make_resource_arn()
+        resp = shield.create_protection(Name=name, ResourceArn=arn)
+        protection_id = resp["ProtectionId"]
+        # Get the protection ARN for tagging
+        desc = shield.describe_protection(ProtectionId=protection_id)
+        protection_arn = desc["Protection"]["ProtectionArn"]
+        try:
+            tag_resp = shield.tag_resource(
+                ResourceARN=protection_arn,
+                Tags=[{"Key": "Env", "Value": "test"}, {"Key": "Team", "Value": "dev"}],
+            )
+            assert tag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify tags are present
+            tags_resp = shield.list_tags_for_resource(ResourceARN=protection_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp.get("Tags", [])}
+            assert tag_map["Env"] == "test"
+            assert tag_map["Team"] == "dev"
+        finally:
+            shield.delete_protection(ProtectionId=protection_id)
+
+    def test_untag_resource(self, shield):
+        name = _unique("untag")
+        arn = _make_resource_arn()
+        resp = shield.create_protection(Name=name, ResourceArn=arn)
+        protection_id = resp["ProtectionId"]
+        desc = shield.describe_protection(ProtectionId=protection_id)
+        protection_arn = desc["Protection"]["ProtectionArn"]
+        try:
+            shield.tag_resource(
+                ResourceARN=protection_arn,
+                Tags=[{"Key": "Env", "Value": "test"}, {"Key": "Team", "Value": "dev"}],
+            )
+            untag_resp = shield.untag_resource(ResourceARN=protection_arn, TagKeys=["Env"])
+            assert untag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify only Team tag remains
+            tags_resp = shield.list_tags_for_resource(ResourceARN=protection_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp.get("Tags", [])}
+            assert "Env" not in tag_map
+            assert tag_map["Team"] == "dev"
+        finally:
+            shield.delete_protection(ProtectionId=protection_id)
