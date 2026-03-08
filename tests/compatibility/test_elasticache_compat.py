@@ -99,6 +99,40 @@ class TestElastiCacheTags:
         assert tags["project"] == "robotocore"
 
 
+class TestElastiCacheReplicationGroupOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("elasticache")
+
+    def test_create_and_delete_replication_group(self, client):
+        rg_id = _unique("rg")
+        resp = client.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="test replication group",
+        )
+        group = resp["ReplicationGroup"]
+        assert group["ReplicationGroupId"] == rg_id
+        assert group["Description"] == "test replication group"
+        try:
+            desc = client.describe_replication_groups(ReplicationGroupId=rg_id)
+            assert len(desc["ReplicationGroups"]) == 1
+            assert desc["ReplicationGroups"][0]["ReplicationGroupId"] == rg_id
+        finally:
+            del_resp = client.delete_replication_group(ReplicationGroupId=rg_id)
+            assert "ReplicationGroup" in del_resp
+
+    def test_delete_nonexistent_replication_group(self, client):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_replication_group(ReplicationGroupId="does-not-exist")
+        assert exc.value.response["Error"]["Code"] in (
+            "ReplicationGroupNotFoundFault",
+            "ReplicationGroupNotFound",
+            "ReplicationGroupNotFoundFault",
+        )
+
+
 class TestElasticacheAutoCoverage:
     """Auto-generated coverage tests for elasticache."""
 
