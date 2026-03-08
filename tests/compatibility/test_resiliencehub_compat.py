@@ -111,6 +111,133 @@ class TestResilienceHubPolicies:
         assert policy_arn in arns
 
 
+class TestResilienceHubAppVersions:
+    """Tests for AppVersion operations."""
+
+    def _create_app(self, client):
+        name = _unique_name()
+        resp = client.create_app(name=name)
+        return resp["app"]["appArn"]
+
+    def test_publish_app_version(self, resiliencehub):
+        """PublishAppVersion returns versionName and appArn."""
+        app_arn = self._create_app(resiliencehub)
+        resp = resiliencehub.publish_app_version(appArn=app_arn)
+        assert "appArn" in resp
+        assert "appVersion" in resp
+
+    def test_list_app_versions(self, resiliencehub):
+        """ListAppVersions returns appVersions key."""
+        app_arn = self._create_app(resiliencehub)
+        resp = resiliencehub.list_app_versions(appArn=app_arn)
+        assert "appVersions" in resp
+
+    def test_create_app_version_app_component(self, resiliencehub):
+        """CreateAppVersionAppComponent returns appComponent."""
+        app_arn = self._create_app(resiliencehub)
+        resp = resiliencehub.create_app_version_app_component(
+            appArn=app_arn,
+            name="test-component",
+            type="AWS::EC2::Instance",
+        )
+        assert "appArn" in resp
+        assert "appComponent" in resp
+
+    def test_list_app_version_app_components(self, resiliencehub):
+        """ListAppVersionAppComponents returns appComponents."""
+        app_arn = self._create_app(resiliencehub)
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn, name="comp1", type="AWS::EC2::Instance"
+        )
+        resp = resiliencehub.list_app_version_app_components(appArn=app_arn, appVersion="draft")
+        assert "appComponents" in resp
+
+    def test_create_app_version_resource(self, resiliencehub):
+        """CreateAppVersionResource returns physicalResource."""
+        app_arn = self._create_app(resiliencehub)
+        # Create a component first
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn,
+            name="test-comp",
+            type="AWS::EC2::Instance",
+        )
+        resp = resiliencehub.create_app_version_resource(
+            appArn=app_arn,
+            appComponents=["test-comp"],
+            logicalResourceId={"identifier": "my-resource"},
+            physicalResourceId="i-1234567890abcdef0",
+            resourceType="AWS::EC2::Instance",
+        )
+        assert "appArn" in resp
+        assert "physicalResource" in resp
+
+    def test_list_app_version_resources(self, resiliencehub):
+        """ListAppVersionResources returns physicalResources."""
+        app_arn = self._create_app(resiliencehub)
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn, name="comp1", type="AWS::EC2::Instance"
+        )
+        resiliencehub.create_app_version_resource(
+            appArn=app_arn,
+            appComponents=["comp1"],
+            logicalResourceId={"identifier": "res1"},
+            physicalResourceId="i-abc123",
+            resourceType="AWS::EC2::Instance",
+        )
+        resp = resiliencehub.list_app_version_resources(appArn=app_arn, appVersion="draft")
+        assert "physicalResources" in resp
+
+
+class TestResilienceHubTags:
+    """Tests for Tag operations."""
+
+    def test_tag_resource(self, resiliencehub):
+        """TagResource on an app ARN succeeds."""
+        name = _unique_name()
+        app_arn = resiliencehub.create_app(name=name)["app"]["appArn"]
+        resp = resiliencehub.tag_resource(
+            resourceArn=app_arn,
+            tags={"env": "test"},
+        )
+        # TagResource returns empty on success (HTTP 200)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_tags_for_resource(self, resiliencehub):
+        """ListTagsForResource returns tags dict."""
+        name = _unique_name()
+        app_arn = resiliencehub.create_app(name=name)["app"]["appArn"]
+        resiliencehub.tag_resource(resourceArn=app_arn, tags={"env": "test"})
+        resp = resiliencehub.list_tags_for_resource(resourceArn=app_arn)
+        assert "tags" in resp
+        assert resp["tags"].get("env") == "test"
+
+
+class TestResilienceHubDescribePolicy:
+    """Tests for DescribeResiliencyPolicy."""
+
+    def _full_policy(self):
+        return {
+            "Software": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "Hardware": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "AZ": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "Region": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+        }
+
+    def test_describe_resiliency_policy(self, resiliencehub):
+        """DescribeResiliencyPolicy returns policy details."""
+        name = _unique_name("test-policy")
+        create_resp = resiliencehub.create_resiliency_policy(
+            policyName=name,
+            tier="NotApplicable",
+            policy=self._full_policy(),
+        )
+        policy_arn = create_resp["policy"]["policyArn"]
+        resp = resiliencehub.describe_resiliency_policy(policyArn=policy_arn)
+        assert "policy" in resp
+        assert resp["policy"]["policyArn"] == policy_arn
+        assert resp["policy"]["policyName"] == name
+
+
 class TestResiliencehubAutoCoverage:
     """Auto-generated coverage tests for resiliencehub."""
 
