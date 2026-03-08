@@ -55,12 +55,6 @@ class HandlerChain:
         except Exception as exc:
             self._handle_exception(context, exc)
 
-        for handler in self.response_handlers:
-            try:
-                handler(context)
-            except Exception:
-                log.exception("Error in response handler")
-
     def _handle_exception(self, context: RequestContext, exc: Exception) -> None:
         for eh in self.exception_handlers:
             try:
