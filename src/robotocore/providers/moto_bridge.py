@@ -17,6 +17,9 @@ from werkzeug.routing.converters import BaseConverter
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request as WerkzeugRequest
 
+from robotocore.diagnostics import header_value as _diag_header
+from robotocore.diagnostics import record as _diag_record
+
 os.environ.setdefault("MOTO_ALLOW_NONEXISTENT_REGION", "true")
 
 DEFAULT_ACCOUNT_ID = "123456789012"
@@ -146,6 +149,13 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             headers=clean_headers,
         )
     except NotImplementedError as e:
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=501,
+        )
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>NotImplemented</Code>"
@@ -153,8 +163,16 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             ),
             status_code=501,
             media_type="application/xml",
+            headers={"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=500,
+        )
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>InternalError</Code>"
@@ -162,6 +180,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             ),
             status_code=500,
             media_type="application/xml",
+            headers={"x-robotocore-diag": _diag_header(e)},
         )
 
 
@@ -207,6 +226,13 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             headers=clean_headers,
         )
     except NotImplementedError as e:
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=501,
+        )
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>NotImplemented</Code>"
@@ -214,8 +240,16 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             ),
             status_code=501,
             media_type="application/xml",
+            headers={"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=500,
+        )
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>InternalError</Code>"
@@ -223,4 +257,5 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             ),
             status_code=500,
             media_type="application/xml",
+            headers={"x-robotocore-diag": _diag_header(e)},
         )

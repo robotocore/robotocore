@@ -132,6 +132,7 @@ jobs:
           tests/unit/test_state_snapshots.py
           tests/unit/test_state_manager_unit.py
           tests/unit/test_resource_browser.py
+          tests/unit/test_diagnostics.py
           tests/unit/test_main.py
           -n4 -q --tb=short
 

@@ -556,6 +556,15 @@ def classify_response(client, operation_name: str, error: Exception | None) -> s
         if status_code == 501:
             return "not_implemented"
 
+        # Check x-robotocore-diag header for precise error classification
+        diag = (
+            error.response.get("ResponseMetadata", {})
+            .get("HTTPHeaders", {})
+            .get("x-robotocore-diag", "")
+        )
+        if diag and "NotImplementedError" in diag:
+            return "not_implemented"
+
         # 500 with NotImplementedError traceback = Moto stub (legacy detection)
         if status_code == 500:
             if "NotImplementedError" in msg or "notimplemented" in msg.lower():
