@@ -169,11 +169,11 @@ PROMPT
     fi
 
     # Fix lint/format before committing (pre-commit hook requires this)
-    uv run ruff check "$TEST_FILE" --fix --quiet 2>/dev/null || true
-    uv run ruff format "$TEST_FILE" --quiet 2>/dev/null || true
+    uv run ruff check --fix --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
+    uv run ruff format --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
     # Fix E741 (ambiguous variable names) which ruff can't auto-fix
     sed -i '' 's/\[l\[/[lnk[/g; s/ l\[/ lnk[/g; s/for l in/for lnk in/g' "$TEST_FILE" 2>/dev/null || true
-    # Verify lint passes; if not, revert
+    # Verify lint passes; if not, revert test file only
     if ! uv run ruff check "$TEST_FILE" --quiet 2>/dev/null; then
         echo "  LINT FAILED after fixes — reverting $TEST_FILE"
         git checkout "$TEST_FILE" 2>/dev/null
@@ -184,7 +184,8 @@ PROMPT
     AFTER=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
         | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d[0]['covered']}/{d[0]['total_ops']}\")" 2>/dev/null) || AFTER="?"
 
-    git add "$TEST_FILE" vendor/moto
+    # Also pick up any source changes (Claude may fix the server to make tests pass)
+    git add "$TEST_FILE" vendor/moto src/robotocore/
     git commit -m "$(cat <<EOF
 Expand ${SERVICE} compat tests: ${AFTER} operations covered
 
