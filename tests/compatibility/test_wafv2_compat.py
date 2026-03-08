@@ -183,6 +183,162 @@ class TestWAFv2WebACLOperations:
         assert exc.value.response["Error"]["Code"] == "WAFNonexistentItemException"
 
 
+class TestWAFv2WebACLAssociationOperations:
+    """Tests for WAFv2 WebACL association operations."""
+
+    def _create_web_acl(self, wafv2):
+        name = _unique("webacl")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        return name, resp["Summary"]
+
+    def _delete_web_acl(self, wafv2, name, acl_id):
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=acl_id)
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=acl_id, LockToken=get_resp["LockToken"]
+        )
+
+    def test_associate_web_acl(self, wafv2):
+        name, summary = self._create_web_acl(wafv2)
+        # Use a fake ALB ARN for association
+        resource_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/app/my-alb/1234567890123456"
+        )
+        try:
+            resp = wafv2.associate_web_acl(WebACLArn=summary["ARN"], ResourceArn=resource_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+    def test_disassociate_web_acl(self, wafv2):
+        name, summary = self._create_web_acl(wafv2)
+        resource_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/app/my-alb/1234567890123456"
+        )
+        try:
+            wafv2.associate_web_acl(WebACLArn=summary["ARN"], ResourceArn=resource_arn)
+            resp = wafv2.disassociate_web_acl(ResourceArn=resource_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+    def test_get_web_acl_for_resource(self, wafv2):
+        name, summary = self._create_web_acl(wafv2)
+        resource_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/app/my-alb/9876543210987654"
+        )
+        try:
+            wafv2.associate_web_acl(WebACLArn=summary["ARN"], ResourceArn=resource_arn)
+            resp = wafv2.get_web_acl_for_resource(ResourceArn=resource_arn)
+            assert "WebACL" in resp
+            assert resp["WebACL"]["Name"] == name
+        finally:
+            wafv2.disassociate_web_acl(ResourceArn=resource_arn)
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+
+class TestWAFv2LoggingConfigurationOperations:
+    """Tests for WAFv2 LoggingConfiguration operations."""
+
+    def _create_web_acl(self, wafv2):
+        name = _unique("webacl")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        return name, resp["Summary"]
+
+    def _delete_web_acl(self, wafv2, name, acl_id):
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=acl_id)
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=acl_id, LockToken=get_resp["LockToken"]
+        )
+
+    def test_put_and_get_logging_configuration(self, wafv2):
+        name, summary = self._create_web_acl(wafv2)
+        log_dest = "arn:aws:firehose:us-east-1:123456789012:deliverystream/aws-waf-logs-test"
+        try:
+            put_resp = wafv2.put_logging_configuration(
+                LoggingConfiguration={
+                    "ResourceArn": summary["ARN"],
+                    "LogDestinationConfigs": [log_dest],
+                }
+            )
+            assert "LoggingConfiguration" in put_resp
+            assert put_resp["LoggingConfiguration"]["ResourceArn"] == summary["ARN"]
+
+            get_resp = wafv2.get_logging_configuration(ResourceArn=summary["ARN"])
+            assert get_resp["LoggingConfiguration"]["ResourceArn"] == summary["ARN"]
+            assert log_dest in get_resp["LoggingConfiguration"]["LogDestinationConfigs"]
+        finally:
+            try:
+                wafv2.delete_logging_configuration(ResourceArn=summary["ARN"])
+            except Exception:
+                pass
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+    def test_delete_logging_configuration(self, wafv2):
+        name, summary = self._create_web_acl(wafv2)
+        log_dest = "arn:aws:firehose:us-east-1:123456789012:deliverystream/aws-waf-logs-test-del"
+        try:
+            wafv2.put_logging_configuration(
+                LoggingConfiguration={
+                    "ResourceArn": summary["ARN"],
+                    "LogDestinationConfigs": [log_dest],
+                }
+            )
+            del_resp = wafv2.delete_logging_configuration(ResourceArn=summary["ARN"])
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify it's gone
+            with pytest.raises(ClientError) as exc:
+                wafv2.get_logging_configuration(ResourceArn=summary["ARN"])
+            assert exc.value.response["Error"]["Code"] in (
+                "WAFNonexistentItemException",
+                "WAFInternalErrorException",
+            )
+        finally:
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+    def test_list_logging_configurations(self, wafv2):
+        name, summary = self._create_web_acl(wafv2)
+        log_dest = "arn:aws:firehose:us-east-1:123456789012:deliverystream/aws-waf-logs-test-list"
+        try:
+            wafv2.put_logging_configuration(
+                LoggingConfiguration={
+                    "ResourceArn": summary["ARN"],
+                    "LogDestinationConfigs": [log_dest],
+                }
+            )
+            list_resp = wafv2.list_logging_configurations(Scope="REGIONAL")
+            assert "LoggingConfigurations" in list_resp
+            arns = [lc["ResourceArn"] for lc in list_resp["LoggingConfigurations"]]
+            assert summary["ARN"] in arns
+        finally:
+            try:
+                wafv2.delete_logging_configuration(ResourceArn=summary["ARN"])
+            except Exception:
+                pass
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+
 class TestWAFv2IPSetOperations:
     """Tests for WAFv2 IPSet create, get, list, update, delete."""
 
@@ -325,6 +481,36 @@ class TestWAFv2RegexPatternSetOperations:
             Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
         )
 
+    def test_update_regex_pattern_set(self, wafv2):
+        name = _unique("regex")
+        resp = wafv2.create_regex_pattern_set(
+            Name=name,
+            Scope="REGIONAL",
+            RegularExpressionList=[{"RegexString": "^hello"}],
+        )
+        summary = resp["Summary"]
+
+        get_resp = wafv2.get_regex_pattern_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        update_resp = wafv2.update_regex_pattern_set(
+            Name=name,
+            Scope="REGIONAL",
+            Id=summary["Id"],
+            RegularExpressionList=[{"RegexString": "^hello"}, {"RegexString": "^world"}],
+            LockToken=get_resp["LockToken"],
+        )
+        assert "NextLockToken" in update_resp
+
+        # Verify update
+        get_resp2 = wafv2.get_regex_pattern_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        regexes = [r["RegexString"] for r in get_resp2["RegexPatternSet"]["RegularExpressionList"]]
+        assert "^hello" in regexes
+        assert "^world" in regexes
+
+        # Cleanup
+        wafv2.delete_regex_pattern_set(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp2["LockToken"]
+        )
+
     def test_delete_regex_pattern_set(self, wafv2):
         name = _unique("regex")
         resp = wafv2.create_regex_pattern_set(
@@ -395,6 +581,64 @@ class TestWAFv2RuleGroupOperations:
         get_resp = wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
         wafv2.delete_rule_group(
             Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_update_rule_group(self, wafv2):
+        name = _unique("rulegroup")
+        resp = wafv2.create_rule_group(
+            Name=name,
+            Scope="REGIONAL",
+            Capacity=100,
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+
+        get_resp = wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        update_resp = wafv2.update_rule_group(
+            Name=name,
+            Scope="REGIONAL",
+            Id=summary["Id"],
+            LockToken=get_resp["LockToken"],
+            Rules=[
+                {
+                    "Name": "block-rule",
+                    "Priority": 1,
+                    "Statement": {
+                        "ByteMatchStatement": {
+                            "SearchString": b"bad",
+                            "FieldToMatch": {"UriPath": {}},
+                            "TextTransformations": [{"Priority": 0, "Type": "NONE"}],
+                            "PositionalConstraint": "CONTAINS",
+                        }
+                    },
+                    "Action": {"Block": {}},
+                    "VisibilityConfig": {
+                        "SampledRequestsEnabled": True,
+                        "CloudWatchMetricsEnabled": True,
+                        "MetricName": "block-rule",
+                    },
+                }
+            ],
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        assert "NextLockToken" in update_resp
+
+        # Verify update
+        get_resp2 = wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert len(get_resp2["RuleGroup"]["Rules"]) == 1
+        assert get_resp2["RuleGroup"]["Rules"][0]["Name"] == "block-rule"
+
+        # Cleanup
+        wafv2.delete_rule_group(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp2["LockToken"]
         )
 
     def test_delete_rule_group(self, wafv2):
