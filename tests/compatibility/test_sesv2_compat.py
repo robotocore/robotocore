@@ -158,3 +158,241 @@ class TestSesv2AutoCoverage:
         """ListConfigurationSets returns a response."""
         resp = client.list_configuration_sets()
         assert "ConfigurationSets" in resp
+
+    def test_create_configuration_set(self, client):
+        """CreateConfigurationSet creates and is visible in list."""
+        name = _uid("cfgset")
+        client.create_configuration_set(ConfigurationSetName=name)
+        try:
+            resp = client.list_configuration_sets()
+            assert name in resp["ConfigurationSets"]
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_get_configuration_set(self, client):
+        """GetConfigurationSet returns details."""
+        name = _uid("cfgset")
+        client.create_configuration_set(ConfigurationSetName=name)
+        try:
+            resp = client.get_configuration_set(ConfigurationSetName=name)
+            assert resp["ConfigurationSetName"] == name
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_delete_configuration_set(self, client):
+        """DeleteConfigurationSet removes the set."""
+        name = _uid("cfgset")
+        client.create_configuration_set(ConfigurationSetName=name)
+        client.delete_configuration_set(ConfigurationSetName=name)
+        resp = client.list_configuration_sets()
+        assert name not in resp["ConfigurationSets"]
+
+    def test_create_and_get_contact(self, client):
+        """CreateContact + GetContact on a contact list."""
+        cl_name = _uid("cl")
+        email = f"{_uid('ct')}@example.com"
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            client.create_contact(ContactListName=cl_name, EmailAddress=email)
+            resp = client.get_contact(ContactListName=cl_name, EmailAddress=email)
+            assert resp["EmailAddress"] == email
+            client.delete_contact(ContactListName=cl_name, EmailAddress=email)
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_delete_contact(self, client):
+        """DeleteContact removes a contact."""
+        cl_name = _uid("cl")
+        email = f"{_uid('ct')}@example.com"
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            client.create_contact(ContactListName=cl_name, EmailAddress=email)
+            client.delete_contact(ContactListName=cl_name, EmailAddress=email)
+            resp = client.list_contacts(ContactListName=cl_name)
+            emails = [c["EmailAddress"] for c in resp["Contacts"]]
+            assert email not in emails
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_list_contacts(self, client):
+        """ListContacts returns contacts in a list."""
+        cl_name = _uid("cl")
+        email = f"{_uid('ct')}@example.com"
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            client.create_contact(ContactListName=cl_name, EmailAddress=email)
+            resp = client.list_contacts(ContactListName=cl_name)
+            assert "Contacts" in resp
+            emails = [c["EmailAddress"] for c in resp["Contacts"]]
+            assert email in emails
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_get_contact_list(self, client):
+        """GetContactList returns details."""
+        cl_name = _uid("cl")
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            resp = client.get_contact_list(ContactListName=cl_name)
+            assert resp["ContactListName"] == cl_name
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_create_and_delete_dedicated_ip_pool(self, client):
+        """CreateDedicatedIpPool + DeleteDedicatedIpPool."""
+        name = _uid("pool")
+        client.create_dedicated_ip_pool(PoolName=name)
+        try:
+            resp = client.list_dedicated_ip_pools()
+            assert name in resp["DedicatedIpPools"]
+        finally:
+            client.delete_dedicated_ip_pool(PoolName=name)
+
+    def test_get_dedicated_ip_pool(self, client):
+        """GetDedicatedIpPool returns pool details."""
+        name = _uid("pool")
+        client.create_dedicated_ip_pool(PoolName=name)
+        try:
+            resp = client.get_dedicated_ip_pool(PoolName=name)
+            assert resp["DedicatedIpPool"]["PoolName"] == name
+        finally:
+            client.delete_dedicated_ip_pool(PoolName=name)
+
+    def test_create_email_identity_policy(self, client):
+        """CreateEmailIdentityPolicy on a domain identity."""
+        domain = f"{_uid('dom')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        policy_name = _uid("pol")
+        policy_doc = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":"*",'
+            '"Action":"ses:SendEmail","Resource":"*"}]}'
+        )
+        try:
+            client.create_email_identity_policy(
+                EmailIdentity=domain,
+                PolicyName=policy_name,
+                Policy=policy_doc,
+            )
+            resp = client.get_email_identity_policies(EmailIdentity=domain)
+            assert policy_name in resp["Policies"]
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_delete_email_identity_policy(self, client):
+        """DeleteEmailIdentityPolicy removes a policy."""
+        domain = f"{_uid('dom')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        policy_name = _uid("pol")
+        policy_doc = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":"*",'
+            '"Action":"ses:SendEmail","Resource":"*"}]}'
+        )
+        try:
+            client.create_email_identity_policy(
+                EmailIdentity=domain,
+                PolicyName=policy_name,
+                Policy=policy_doc,
+            )
+            client.delete_email_identity_policy(EmailIdentity=domain, PolicyName=policy_name)
+            resp = client.get_email_identity_policies(EmailIdentity=domain)
+            assert policy_name not in resp["Policies"]
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_update_email_identity_policy(self, client):
+        """UpdateEmailIdentityPolicy changes the policy."""
+        domain = f"{_uid('dom')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        policy_name = _uid("pol")
+        policy_v1 = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":"*",'
+            '"Action":"ses:SendEmail","Resource":"*"}]}'
+        )
+        policy_v2 = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Deny","Principal":"*",'
+            '"Action":"ses:SendEmail","Resource":"*"}]}'
+        )
+        try:
+            client.create_email_identity_policy(
+                EmailIdentity=domain,
+                PolicyName=policy_name,
+                Policy=policy_v1,
+            )
+            client.update_email_identity_policy(
+                EmailIdentity=domain,
+                PolicyName=policy_name,
+                Policy=policy_v2,
+            )
+            resp = client.get_email_identity_policies(EmailIdentity=domain)
+            assert policy_name in resp["Policies"]
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_get_email_identity_policies(self, client):
+        """GetEmailIdentityPolicies returns policies dict."""
+        domain = f"{_uid('dom')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        try:
+            resp = client.get_email_identity_policies(EmailIdentity=domain)
+            assert "Policies" in resp
+            assert isinstance(resp["Policies"], dict)
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_update_email_template(self, client):
+        """UpdateEmailTemplate changes template content."""
+        name = _uid("tmpl")
+        client.create_email_template(
+            TemplateName=name,
+            TemplateContent={
+                "Subject": "Original",
+                "Text": "Original body",
+                "Html": "<p>Original</p>",
+            },
+        )
+        try:
+            client.update_email_template(
+                TemplateName=name,
+                TemplateContent={
+                    "Subject": "Updated",
+                    "Text": "Updated body",
+                    "Html": "<p>Updated</p>",
+                },
+            )
+            resp = client.get_email_template(TemplateName=name)
+            assert resp["TemplateContent"]["Subject"] == "Updated"
+        finally:
+            client.delete_email_template(TemplateName=name)
+
+    def test_tag_resource(self, client):
+        """TagResource adds tags to a configuration set."""
+        name = _uid("cfgset")
+        client.create_configuration_set(ConfigurationSetName=name)
+        arn = f"arn:aws:ses:us-east-1:123456789012:configuration-set/{name}"
+        try:
+            client.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in resp
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "env" in tag_keys
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_list_tags_for_resource(self, client):
+        """ListTagsForResource returns tags."""
+        name = _uid("cfgset")
+        client.create_configuration_set(ConfigurationSetName=name)
+        arn = f"arn:aws:ses:us-east-1:123456789012:configuration-set/{name}"
+        try:
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
