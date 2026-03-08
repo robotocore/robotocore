@@ -527,3 +527,28 @@ class TestRedshiftAutoCoverage:
     def test_revoke_endpoint_access(self, client):
         """RevokeEndpointAccess returns a response."""
         client.revoke_endpoint_access()
+
+    def test_create_cluster_security_group(self, client):
+        """CreateClusterSecurityGroup creates and returns the group."""
+        name = f"csg-{_uid()}"
+        try:
+            resp = client.create_cluster_security_group(
+                ClusterSecurityGroupName=name,
+                Description="Test security group",
+            )
+            assert resp["ClusterSecurityGroup"]["ClusterSecurityGroupName"] == name
+            assert resp["ClusterSecurityGroup"]["Description"] == "Test security group"
+        finally:
+            client.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+    def test_delete_cluster_security_group(self, client):
+        """DeleteClusterSecurityGroup removes the group."""
+        name = f"csg-del-{_uid()}"
+        client.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="To be deleted",
+        )
+        client.delete_cluster_security_group(ClusterSecurityGroupName=name)
+        resp = client.describe_cluster_security_groups()
+        names = [g["ClusterSecurityGroupName"] for g in resp["ClusterSecurityGroups"]]
+        assert name not in names
