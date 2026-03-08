@@ -525,3 +525,56 @@ class TestSecretsManagerExtended:
         finally:
             for n in names:
                 sm.delete_secret(SecretId=n, ForceDeleteWithoutRecovery=True)
+
+    def test_cancel_rotate_secret(self, sm):
+        """CancelRotateSecret disables rotation on a secret."""
+        import uuid
+
+        name = f"cancel-rotate-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="val")
+            # Enable rotation first
+            sm.rotate_secret(
+                SecretId=name,
+                RotationLambdaARN="arn:aws:lambda:us-east-1:123456789012:function:rotator",
+                RotationRules={"AutomaticallyAfterDays": 30},
+            )
+            desc = sm.describe_secret(SecretId=name)
+            assert desc.get("RotationEnabled") is True
+
+            # Cancel rotation
+            resp = sm.cancel_rotate_secret(SecretId=name)
+            assert resp["Name"] == name
+
+            desc2 = sm.describe_secret(SecretId=name)
+            assert desc2.get("RotationEnabled") is False
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_update_secret_version_stage(self, sm):
+        """UpdateSecretVersionStage moves a stage label between versions."""
+        import uuid
+
+        name = f"version-stage-{uuid.uuid4().hex[:8]}"
+        try:
+            create_resp = sm.create_secret(Name=name, SecretString="v1")
+            v1_id = create_resp["VersionId"]
+
+            put_resp = sm.put_secret_value(SecretId=name, SecretString="v2")
+            v2_id = put_resp["VersionId"]
+
+            # Move AWSCURRENT from v2 back to v1
+            resp = sm.update_secret_version_stage(
+                SecretId=name,
+                VersionStage="AWSCURRENT",
+                MoveToVersionId=v1_id,
+                RemoveFromVersionId=v2_id,
+            )
+            assert resp["Name"] == name
+
+            # Verify v1 is now AWSCURRENT
+            get_resp = sm.get_secret_value(SecretId=name, VersionStage="AWSCURRENT")
+            assert get_resp["SecretString"] == "v1"
+            assert get_resp["VersionId"] == v1_id
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
