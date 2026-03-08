@@ -1291,3 +1291,11 @@ class TestLogsAutoCoverage:
     def test_list_scheduled_queries(self, client):
         """ListScheduledQueries returns a response."""
         client.list_scheduled_queries()
+
+    def test_get_delivery_source_nonexistent(self, client):
+        """GetDeliverySource for a nonexistent source returns error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_delivery_source(name="nonexistent-source-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

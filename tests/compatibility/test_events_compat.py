@@ -1420,3 +1420,31 @@ class TestEventBridgeCancelReplay:
         with pytest.raises(ClientError) as exc:
             events.cancel_replay(ReplayName="does-not-exist")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestEventBridgeListRuleNamesByTarget:
+    """Test ListRuleNamesByTarget operation."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_list_rule_names_by_target(self, events):
+        """ListRuleNamesByTarget returns matching rule names."""
+        target_arn = "arn:aws:lambda:us-east-1:123456789012:function:my-func"
+        rule_name = f"target-rule-{uuid.uuid4().hex[:8]}"
+        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+        try:
+            events.put_targets(
+                Rule=rule_name,
+                Targets=[{"Id": "target1", "Arn": target_arn}],
+            )
+            resp = events.list_rule_names_by_target(TargetArn=target_arn)
+            assert "RuleNames" in resp
+            assert rule_name in resp["RuleNames"]
+        finally:
+            try:
+                events.remove_targets(Rule=rule_name, Ids=["target1"])
+            except Exception:
+                pass
+            events.delete_rule(Name=rule_name)

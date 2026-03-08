@@ -432,3 +432,40 @@ class TestEcrAutoCoverage:
         """GetRegistryScanningConfiguration returns a response."""
         resp = client.get_registry_scanning_configuration()
         assert "registryId" in resp
+
+    def test_list_images_empty_repo(self, client):
+        """ListImages on an empty repo returns empty imageIds."""
+        repo_name = _unique("listimg-repo")
+        client.create_repository(repositoryName=repo_name)
+        try:
+            resp = client.list_images(repositoryName=repo_name)
+            assert "imageIds" in resp
+            assert isinstance(resp["imageIds"], list)
+        finally:
+            client.delete_repository(repositoryName=repo_name)
+
+    def test_describe_image_scan_findings_no_scan(self, client):
+        """DescribeImageScanFindings on a repo with no scan raises error."""
+        repo_name = _unique("scanfind-repo")
+        client.create_repository(repositoryName=repo_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.describe_image_scan_findings(
+                    repositoryName=repo_name,
+                    imageId={"imageTag": "latest"},
+                )
+            assert exc.value.response["Error"]["Code"] in (
+                "ImageNotFoundException",
+                "ScanNotFoundException",
+            )
+        finally:
+            client.delete_repository(repositoryName=repo_name)
+
+    def test_get_registry_policy_not_set(self, client):
+        """GetRegistryPolicy when no policy is set raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_registry_policy()
+        assert exc.value.response["Error"]["Code"] in (
+            "RegistryPolicyNotFoundException",
+            "PolicyNotFoundException",
+        )

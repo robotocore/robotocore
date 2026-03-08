@@ -71,3 +71,9 @@ class TestSecurityhubAutoCoverage:
             "ResourceNotFoundException",
             "AccessDeniedException",
         )
+
+    def test_get_members(self, client):
+        """GetMembers returns UnprocessedAccounts for unknown accounts."""
+        resp = client.get_members(AccountIds=["999999999999"])
+        assert "Members" in resp
+        assert "UnprocessedAccounts" in resp

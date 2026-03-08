@@ -2561,3 +2561,13 @@ class TestS3RenameAndEncryption:
             },
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3GetBucketLifecycle:
+    """Test GetBucketLifecycle (deprecated API, but still working)."""
+
+    def test_get_bucket_lifecycle_no_config(self, s3, bucket):
+        """GetBucketLifecycle on a bucket with no lifecycle returns error."""
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_lifecycle(Bucket=bucket)
+        assert exc.value.response["Error"]["Code"] == "NoSuchLifecycleConfiguration"

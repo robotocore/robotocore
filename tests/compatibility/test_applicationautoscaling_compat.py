@@ -212,3 +212,10 @@ class TestScalingPolicyOperations:
         )
         matching = [p for p in resp["ScalingPolicies"] if p["PolicyName"] == policy_name]
         assert len(matching) == 0
+
+
+class TestScheduledActionOperations:
+    def test_describe_scheduled_actions_empty(self, appas):
+        resp = appas.describe_scheduled_actions(ServiceNamespace="dynamodb")
+        assert "ScheduledActions" in resp
+        assert isinstance(resp["ScheduledActions"], list)

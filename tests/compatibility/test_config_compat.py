@@ -988,3 +988,17 @@ class TestOrganizationConformancePackDetailedStatus:
                 OrganizationConformancePackName="nonexistent-pack-xyz",
             )
         assert "NoSuchOrganizationConformancePackException" in exc.value.response["Error"]["Code"]
+
+
+class TestConfigStoredQuery:
+    """Test GetStoredQuery operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_get_stored_query_nonexistent(self, client):
+        """GetStoredQuery for a nonexistent query returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_stored_query(QueryName="nonexistent-query-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

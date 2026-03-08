@@ -894,3 +894,22 @@ class TestSesAutoCoverage:
             assert "RenderedTemplate" in resp
         finally:
             client.delete_template(TemplateName=template_name)
+
+
+class TestSESCustomVerificationEmail:
+    """Test GetCustomVerificationEmailTemplate."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("ses")
+
+    def test_get_custom_verification_email_template_nonexistent(self, client):
+        """GetCustomVerificationEmailTemplate for nonexistent returns error or empty."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_custom_verification_email_template(TemplateName="nonexistent-template-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "CustomVerificationEmailTemplateDoesNotExist",
+            "CustomVerificationEmailTemplateDoesNotExistException",
+        )
