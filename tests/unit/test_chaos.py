@@ -57,6 +57,15 @@ class TestFaultRule:
         rule.matches("s3", "PutObject", "us-east-1")
         assert rule.match_count == 1
 
+    def test_from_dict_preserves_created_at_and_match_count(self):
+        rule = FaultRule(service="s3", error_code="InternalError")
+        rule.match_count = 42
+        original_created = rule.created_at
+        d = rule.to_dict()
+        restored = FaultRule.from_dict(d)
+        assert restored.created_at == original_created
+        assert restored.match_count == 42
+
 
 class TestFaultRuleStore:
     def test_add_and_list(self):

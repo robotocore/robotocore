@@ -27,8 +27,83 @@ class TestChaosEndpoints:
             content=b"not json",
             headers={"content-type": "application/json"},
         )
-        # Should not be 500
-        assert resp.status_code in (400, 422, 500)
+        assert resp.status_code == 400
+        assert resp.json()["error"] == "Invalid JSON"
+
+    def test_add_rule_binary_garbage(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b"\x80\x81\x82\xff",
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["error"]
+
+    def test_add_rule_truncated_json(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'{"service": "s3"',
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    def test_add_rule_valid_creates_rule(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'{"service": "s3", "error_code": "InternalError"}',
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "created"
+        assert "rule_id" in data
+        # Clean up
+        client.delete(f"/_robotocore/chaos/rules/{data['rule_id']}")
+
+    def test_add_rule_empty_json_object(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b"{}",
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 201
+        # Clean up
+        client.delete(f"/_robotocore/chaos/rules/{resp.json()['rule_id']}")
+
+    def test_list_rules_returns_rules_array(self, client):
+        resp = client.get("/_robotocore/chaos/rules")
+        assert resp.status_code == 200
+        assert "rules" in resp.json()
+        assert isinstance(resp.json()["rules"], list)
+
+    def test_clear_rules(self, client):
+        resp = client.post("/_robotocore/chaos/rules/clear")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cleared"
+
+    def test_add_then_list_then_delete(self, client):
+        """Full lifecycle: add, verify listed, delete, verify gone."""
+        # Add
+        add_resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'{"service": "sqs", "error_code": "QueueDoesNotExist"}',
+        )
+        assert add_resp.status_code == 201
+        rule_id = add_resp.json()["rule_id"]
+
+        # List
+        list_resp = client.get("/_robotocore/chaos/rules")
+        rule_ids = [r["rule_id"] for r in list_resp.json()["rules"]]
+        assert rule_id in rule_ids
+
+        # Delete
+        del_resp = client.delete(f"/_robotocore/chaos/rules/{rule_id}")
+        assert del_resp.status_code == 200
+
+        # Verify gone
+        list_resp2 = client.get("/_robotocore/chaos/rules")
+        rule_ids2 = [r["rule_id"] for r in list_resp2.json()["rules"]]
+        assert rule_id not in rule_ids2
 
     def test_delete_nonexistent_rule(self, client):
         resp = client.delete("/_robotocore/chaos/rules/nonexistent-id")
@@ -55,6 +130,7 @@ class TestStateEndpoints:
             content=b"not json",
             headers={"content-type": "application/json"},
         )
+        # TODO: state/import also needs json.loads error handling
         assert resp.status_code in (400, 422, 500)
 
 

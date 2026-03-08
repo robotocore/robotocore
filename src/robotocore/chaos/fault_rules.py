@@ -74,7 +74,7 @@ class FaultRule:
 
     @classmethod
     def from_dict(cls, data: dict) -> "FaultRule":
-        return cls(
+        rule = cls(
             rule_id=data.get("rule_id"),
             service=data.get("service"),
             operation=data.get("operation"),
@@ -86,6 +86,11 @@ class FaultRule:
             probability=data.get("probability", 1.0),
             enabled=data.get("enabled", True),
         )
+        if "created_at" in data:
+            rule.created_at = data["created_at"]
+        if "match_count" in data:
+            rule.match_count = data["match_count"]
+        return rule
 
 
 class FaultRuleStore:

@@ -25,7 +25,9 @@ def chaos_handler(context: RequestContext) -> None:
     if rule is None:
         return
 
-    # Apply latency injection
+    # NOTE: time.sleep blocks the event loop since the handler chain runs
+    # synchronously inside an async request handler. To fix properly, the
+    # handler chain needs async support (asyncio.to_thread or async handlers).
     if rule.latency_ms > 0:
         time.sleep(rule.latency_ms / 1000.0)
 
