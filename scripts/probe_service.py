@@ -3,40 +3,31 @@
 
 Usage:
     uv run python scripts/probe_service.py --service sqs
-    uv run python scripts/probe_service.py --service ec2 --endpoint http://localhost:4566
+    uv run python scripts/probe_service.py --service ec2 --all
     uv run python scripts/probe_service.py --service s3 --json
+    uv run python scripts/probe_service.py --service sns --all --json
 
-Calls each operation with minimal valid parameters and reports which ones
-return success vs error. Use this BEFORE writing compat tests to avoid
-writing tests for operations that aren't implemented.
+Calls each operation with auto-filled parameters from botocore shapes.
+Classifies operations as:
+  - working: returned 200 or a "resource not found" error (proves implementation)
+  - needs_params: couldn't auto-fill params, client-side validation blocked
+  - not_implemented: server returned 501 or "not implemented"
+  - 500_error: server crashed
 
-Output: list of working operations that are safe to write tests for.
+Use this BEFORE writing compat tests. Only write tests for "working" ops.
 """
 
 import argparse
 import json
+import re
 import sys
 
 import boto3
 import botocore.exceptions
 import botocore.loaders
+import botocore.session
 
-# Minimal valid parameters for common parameter types.
-# These are enough to make the API call succeed syntactically,
-# even if the referenced resources don't exist.
-PARAM_DEFAULTS = {
-    "string": "test-probe-value",
-    "integer": 1,
-    "long": 1,
-    "boolean": False,
-    "timestamp": "2024-01-01T00:00:00Z",
-    "blob": b"test",
-    "list": [],
-    "map": {},
-    "structure": {},
-}
-
-# Operations that are destructive or have side effects we don't want during probing.
+# Operations that are destructive or have side effects we don't want.
 SKIP_OPERATIONS = {
     "DeleteBucket",
     "DeleteQueue",
@@ -49,174 +40,265 @@ SKIP_OPERATIONS = {
     "PurgeQueue",
     "TerminateInstances",
     "DeleteCluster",
+    "DeleteDBInstance",
+    "DeleteDBCluster",
+    "DeleteCacheCluster",
+    "TerminateEnvironment",
+    "DeleteVpc",
+    "DeleteSubnet",
+    "DeleteSecurityGroup",
 }
 
-# Operations that require specific parameters we can provide.
+# Error codes that prove the operation IS implemented (just bad params)
+IMPLEMENTED_ERROR_CODES = {
+    "AccessDeniedException",
+    "CertificateNotFoundException",
+    "ConflictException",
+    "EntityAlreadyExistsException",
+    "FunctionNotFound",
+    "HostedZoneNotFound",
+    "InvalidInput",
+    "InvalidParameter",
+    "InvalidParameterException",
+    "InvalidParameterValue",
+    "InvalidParameterValueException",
+    "InvalidRequestException",
+    "MalformedPolicyDocument",
+    "MissingParameter",
+    "NoSuchBucket",
+    "NoSuchEntity",
+    "NoSuchHostedZone",
+    "NoSuchObjectLockConfiguration",
+    "NotFoundException",
+    "ParameterNotFound",
+    "QueueDoesNotExist",
+    "RepositoryNotFoundException",
+    "ResourceNotFoundFault",
+    "ResourceNotFoundException",
+    "SecretNotFoundException",
+    "ServiceNotFoundException",
+    "StreamNotFoundException",
+    "TableNotFoundException",
+    "TopicNotFoundException",
+    "ValidationError",
+    "ValidationException",
+}
+
+# Hand-tuned params for operations where auto-fill isn't good enough.
+# These override auto-filled params.
 KNOWN_PARAMS = {
     "sqs": {
         "CreateQueue": {"QueueName": "probe-test-queue"},
-        "ListQueues": {},
         "GetQueueUrl": {"QueueName": "probe-test-queue"},
     },
     "s3": {
-        "ListBuckets": {},
         "CreateBucket": {"Bucket": "probe-test-bucket"},
     },
-    "dynamodb": {
-        "ListTables": {},
-    },
     "sns": {
-        "ListTopics": {},
         "CreateTopic": {"Name": "probe-test-topic"},
-    },
-    "iam": {
-        "ListRoles": {},
-        "ListUsers": {},
-        "ListPolicies": {},
-    },
-    "lambda": {
-        "ListFunctions": {},
     },
     "sts": {
         "GetCallerIdentity": {},
     },
-    "cloudformation": {
-        "ListStacks": {},
-    },
-    "events": {
-        "ListEventBuses": {},
-        "ListRules": {},
-    },
-    "logs": {
-        "DescribeLogGroups": {},
-    },
-    "kinesis": {
-        "ListStreams": {},
-    },
-    "secretsmanager": {
-        "ListSecrets": {},
-    },
-    "ssm": {
-        "DescribeParameters": {},
-    },
-    "kms": {
-        "ListKeys": {},
-        "ListAliases": {},
-    },
-    "ec2": {
-        "DescribeInstances": {},
-        "DescribeVpcs": {},
-        "DescribeSubnets": {},
-        "DescribeSecurityGroups": {},
-        "DescribeKeyPairs": {},
-        "DescribeImages": {},
-        "DescribeRegions": {},
-        "DescribeAvailabilityZones": {},
-    },
-    "route53": {
-        "ListHostedZones": {},
-    },
-    "acm": {
-        "ListCertificates": {},
-    },
-    "ecr": {
-        "DescribeRepositories": {},
-    },
-    "cloudwatch": {
-        "ListMetrics": {},
-        "ListDashboards": {},
-        "DescribeAlarms": {},
-    },
 }
 
 
-def get_list_operations(service_name: str) -> list[str]:
-    """Get all List/Describe/Get operations for a service from botocore."""
+def _to_snake_case(name: str) -> str:
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+
+def _build_fake_arn(service: str, resource_type: str = "thing") -> str:
+    """Build a syntactically valid fake ARN."""
+    return f"arn:aws:{service}:us-east-1:123456789012:{resource_type}/probe-test"
+
+
+def _auto_fill_params(service_name: str, operation_name: str) -> dict | None:
+    """Auto-fill required params from botocore shapes.
+
+    Returns a dict of params, or None if we can't fill them.
+    """
+    session = botocore.session.get_session()
+    try:
+        model = session.get_service_model(service_name)
+        op = model.operation_model(operation_name)
+    except Exception:
+        return None
+
+    if op.input_shape is None:
+        return {}
+
+    params = {}
+    required = set(getattr(op.input_shape, "required_members", []))
+
+    for name, shape in op.input_shape.members.items():
+        # Skip optional params
+        if name not in required:
+            continue
+
+        # Skip streaming body params
+        if hasattr(shape, "serialization") and shape.serialization.get("streaming"):
+            params[name] = b"probe-test-body"
+            continue
+
+        type_name = shape.type_name
+
+        if type_name == "string":
+            # Detect ARN-like params
+            name_lower = name.lower()
+            if "arn" in name_lower:
+                params[name] = _build_fake_arn(service_name)
+            elif name_lower in ("bucket", "bucketname"):
+                params[name] = "probe-test-bucket"
+            elif "name" in name_lower or "id" in name_lower:
+                params[name] = "probe-test-value"
+            elif "url" in name_lower:
+                params[name] = "http://localhost:4566/probe"
+            else:
+                params[name] = "probe-test-value"
+        elif type_name == "integer" or type_name == "long":
+            params[name] = 1
+        elif type_name == "boolean":
+            params[name] = False
+        elif type_name == "timestamp":
+            params[name] = "2024-01-01T00:00:00Z"
+        elif type_name == "blob":
+            params[name] = b"probe-test"
+        elif type_name == "list":
+            params[name] = []
+        elif type_name == "map":
+            params[name] = {}
+        elif type_name == "structure":
+            # Try to fill nested required structure
+            nested = _fill_structure(service_name, shape)
+            if nested is not None:
+                params[name] = nested
+            else:
+                return None  # Can't auto-fill this
+        else:
+            return None
+
+    return params
+
+
+def _fill_structure(service_name: str, shape) -> dict | None:
+    """Recursively fill a structure shape with minimal valid values."""
+    if not hasattr(shape, "members"):
+        return {}
+
+    result = {}
+    required = set(getattr(shape, "required_members", []))
+
+    for name, member in shape.members.items():
+        if name not in required:
+            continue
+
+        type_name = member.type_name
+        name_lower = name.lower()
+
+        if type_name == "string":
+            if "arn" in name_lower:
+                result[name] = _build_fake_arn(service_name)
+            else:
+                result[name] = "probe-test-value"
+        elif type_name in ("integer", "long"):
+            result[name] = 1
+        elif type_name == "boolean":
+            result[name] = False
+        elif type_name == "timestamp":
+            result[name] = "2024-01-01T00:00:00Z"
+        elif type_name == "blob":
+            result[name] = b"test"
+        elif type_name == "list":
+            result[name] = []
+        elif type_name == "map":
+            result[name] = {}
+        elif type_name == "structure":
+            nested = _fill_structure(service_name, member)
+            if nested is not None:
+                result[name] = nested
+            else:
+                return None
+        else:
+            return None
+
+    return result
+
+
+def probe_operation(
+    client, service_name: str, operation_name: str, params: dict
+) -> tuple[str, str]:
+    """Try to call an operation.
+
+    Returns (status, message) where status is one of:
+      working, needs_params, not_implemented, 500_error
+    """
+    try:
+        method = getattr(client, _to_snake_case(operation_name))
+        method(**params)
+        return "working", "OK"
+    except client.exceptions.ClientError as e:
+        code = e.response["Error"]["Code"]
+        msg = e.response["Error"]["Message"]
+        status_code = e.response["ResponseMetadata"]["HTTPStatusCode"]
+
+        if code in IMPLEMENTED_ERROR_CODES:
+            return "working", f"implemented ({code})"
+
+        # Check diagnostic header
+        diag = (
+            e.response.get("ResponseMetadata", {})
+            .get("HTTPHeaders", {})
+            .get("x-robotocore-diag", "")
+        )
+
+        if status_code == 500:
+            if diag and "NotImplementedError" in diag:
+                return "not_implemented", "not implemented (500+diag)"
+            return "500_error", f"server crash ({code}: {msg[:60]})"
+
+        if status_code == 501:
+            return "not_implemented", "not implemented (501)"
+
+        if "not implemented" in msg.lower() or "unknown" in msg.lower():
+            return "not_implemented", f"not implemented ({code})"
+
+        # Other 4xx errors generally mean it IS implemented
+        return "working", f"likely implemented ({code}: {msg[:60]})"
+
+    except botocore.exceptions.ParamValidationError:
+        return "needs_params", "client-side validation (never contacted server)"
+    except Exception as e:
+        return "500_error", f"exception: {str(e)[:60]}"
+
+
+def get_operations(service_name: str, all_ops: bool) -> list[str]:
+    """Get operation names to probe."""
     loader = botocore.loaders.Loader()
     try:
         api = loader.load_service_model(service_name, "service-2")
     except Exception:
         return []
     operations = api.get("operations", {})
-    # Focus on read operations that are safe to call
+    if all_ops:
+        return sorted(n for n in operations if n not in SKIP_OPERATIONS)
     safe_prefixes = ("List", "Describe", "Get")
-    return sorted(
-        name
-        for name in operations
-        if name.startswith(safe_prefixes) and name not in SKIP_OPERATIONS
-    )
-
-
-def probe_operation(client, operation_name: str, params: dict) -> tuple[bool, str]:
-    """Try to call an operation. Returns (success, message)."""
-    try:
-        method = getattr(client, _to_snake_case(operation_name))
-        method(**params)
-        return True, "OK"
-    except client.exceptions.ClientError as e:
-        code = e.response["Error"]["Code"]
-        msg = e.response["Error"]["Message"]
-        # These error codes mean the operation IS implemented but we gave bad params
-        implemented_errors = {
-            "ResourceNotFoundException",
-            "ValidationException",
-            "NotFoundException",
-            "NoSuchEntity",
-            "InvalidParameterValue",
-            "MissingParameter",
-            "InvalidParameter",
-            "MalformedPolicyDocument",
-            "NoSuchBucket",
-            "QueueDoesNotExist",
-            "ResourceNotFoundFault",
-            "HostedZoneNotFound",
-            "InvalidInput",
-            "FunctionNotFound",
-            "RepositoryNotFoundException",
-            "ResourceNotFoundException",
-            "ParameterNotFound",
-            "SecretNotFoundException",
-        }
-        if code in implemented_errors:
-            return True, f"implemented ({code})"
-        status_code = e.response["ResponseMetadata"]["HTTPStatusCode"]
-        # Check x-robotocore-diag header for precise classification
-        diag = (
-            e.response.get("ResponseMetadata", {})
-            .get("HTTPHeaders", {})
-            .get("x-robotocore-diag", "")
-        )
-        if diag and "NotImplementedError" in diag:
-            return False, f"not implemented (diag: {diag[:80]})"
-        # 501 or "not implemented" message = not supported
-        if status_code == 501:
-            return False, f"not implemented (501: {code})"
-        if "not implemented" in msg.lower() or "unknown" in msg.lower():
-            return False, f"not implemented ({code}: {msg})"
-        # Other errors likely mean it IS implemented
-        return True, f"likely implemented ({code})"
-    except botocore.exceptions.ParamValidationError:
-        # Missing required params — can't probe without them, but the operation exists in botocore
-        return True, "needs params (skipped)"
-    except Exception as e:
-        return False, f"error: {e}"
-
-
-def _to_snake_case(name: str) -> str:
-    """Convert PascalCase to snake_case."""
-    import re
-
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+    return sorted(n for n in operations if n.startswith(safe_prefixes) and n not in SKIP_OPERATIONS)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Probe AWS service operations")
-    parser.add_argument("--service", required=True, help="AWS service name (e.g., sqs, s3)")
-    parser.add_argument("--endpoint", default="http://localhost:4566", help="Endpoint URL")
+    parser.add_argument("--service", required=True, help="AWS service name")
+    parser.add_argument(
+        "--endpoint",
+        default="http://localhost:4566",
+        help="Endpoint URL",
+    )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument(
-        "--all", action="store_true", help="Probe all operations, not just List/Describe/Get"
+        "--all",
+        action="store_true",
+        help="Probe all ops, not just List/Describe/Get",
     )
     args = parser.parse_args()
 
@@ -228,42 +310,73 @@ def main():
         aws_secret_access_key="testing",
     )
 
-    if args.all:
-        loader = botocore.loaders.Loader()
-        api = loader.load_service_model(args.service, "service-2")
-        operations = sorted(
-            name for name in api.get("operations", {}) if name not in SKIP_OPERATIONS
-        )
-    else:
-        operations = get_list_operations(args.service)
-
+    operations = get_operations(args.service, args.all)
     known = KNOWN_PARAMS.get(args.service, {})
-    results = {"working": [], "broken": [], "service": args.service}
+
+    counts = {
+        "working": 0,
+        "needs_params": 0,
+        "not_implemented": 0,
+        "500_error": 0,
+    }
+    results = []
 
     for op in operations:
-        params = known.get(op, {})
-        ok, msg = probe_operation(client, op, params)
-        if ok:
-            results["working"].append({"operation": op, "message": msg})
+        # Priority: known params > auto-filled > empty
+        if op in known:
+            params = known[op]
         else:
-            results["broken"].append({"operation": op, "message": msg})
+            auto = _auto_fill_params(args.service, op)
+            params = auto if auto is not None else {}
+
+        status, msg = probe_operation(client, args.service, op, params)
+        counts[status] += 1
+        results.append({"operation": op, "status": status, "message": msg})
 
     if args.json:
-        print(json.dumps(results, indent=2))
-    else:
         print(
-            f"\n{args.service}: {len(results['working'])} working, {len(results['broken'])} broken"
+            json.dumps(
+                {
+                    "service": args.service,
+                    "counts": counts,
+                    "operations": results,
+                },
+                indent=2,
+            )
         )
-        print(f"\nWorking operations ({len(results['working'])}):")
-        for r in results["working"]:
-            print(f"  + {r['operation']}: {r['message']}")
-        if results["broken"]:
-            print(f"\nBroken operations ({len(results['broken'])}):")
-            for r in results["broken"]:
-                print(f"  - {r['operation']}: {r['message']}")
-        print(f"\nSafe to write tests for: {', '.join(r['operation'] for r in results['working'])}")
+    else:
+        total = sum(counts.values())
+        print(f"\n{args.service}: {total} operations probed")
+        print(f"  working:         {counts['working']}")
+        print(f"  needs_params:    {counts['needs_params']}")
+        print(f"  not_implemented: {counts['not_implemented']}")
+        print(f"  500_error:       {counts['500_error']}")
 
-    return 0 if not results["broken"] else 1
+        if counts["working"]:
+            print(f"\nWorking ({counts['working']}):")
+            for r in results:
+                if r["status"] == "working":
+                    print(f"  + {r['operation']}: {r['message']}")
+
+        if counts["needs_params"]:
+            print(f"\nNeeds params ({counts['needs_params']}):")
+            for r in results:
+                if r["status"] == "needs_params":
+                    print(f"  ? {r['operation']}: {r['message']}")
+
+        if counts["not_implemented"]:
+            print(f"\nNot implemented ({counts['not_implemented']}):")
+            for r in results:
+                if r["status"] == "not_implemented":
+                    print(f"  - {r['operation']}: {r['message']}")
+
+        if counts["500_error"]:
+            print(f"\n500 errors ({counts['500_error']}):")
+            for r in results:
+                if r["status"] == "500_error":
+                    print(f"  ! {r['operation']}: {r['message']}")
+
+    return 0 if counts["500_error"] == 0 else 1
 
 
 if __name__ == "__main__":
