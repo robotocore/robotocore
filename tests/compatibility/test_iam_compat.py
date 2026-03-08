@@ -2006,6 +2006,41 @@ class TestIAMOIDCProviderExtended:
         finally:
             iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
 
+    def test_tag_open_id_connect_provider(self, iam):
+        """TagOpenIDConnectProvider."""
+        url = f"https://oidc-tag-{uuid.uuid4().hex[:8]}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["a" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.tag_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "platform"}],
+            )
+            tag_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+            assert tags["env"] == "test"
+            assert tags["team"] == "platform"
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_untag_open_id_connect_provider(self, iam):
+        """UntagOpenIDConnectProvider."""
+        url = f"https://oidc-untag-{uuid.uuid4().hex[:8]}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["a" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.tag_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "remove-me", "Value": "bye"}],
+            )
+            iam.untag_open_id_connect_provider(OpenIDConnectProviderArn=arn, TagKeys=["remove-me"])
+            tag_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            keys = [t["Key"] for t in tag_resp["Tags"]]
+            assert "env" in keys
+            assert "remove-me" not in keys
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
 
 # ---------------------------------------------------------------------------
 # SAML provider extended operations
