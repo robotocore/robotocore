@@ -164,7 +164,7 @@ class TestInspector2UpdateOrgConfigOperation:
 
 
 class TestInspector2TagOperations:
-    """Tests for TagResource and ListTagsForResource."""
+    """Tests for TagResource, UntagResource, and ListTagsForResource."""
 
     @pytest.fixture
     def client(self):
@@ -194,3 +194,138 @@ class TestInspector2TagOperations:
         arn = create_resp["arn"]
         resp = client.list_tags_for_resource(resourceArn=arn)
         assert "tags" in resp
+
+    def test_untag_resource(self, client):
+        """UntagResource removes a tag from a filter."""
+        name = _unique("filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        client.tag_resource(resourceArn=arn, tags={"env": "test", "team": "backend"})
+        resp = client.untag_resource(resourceArn=arn, tagKeys=["env"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestInspector2EnableDisableOperations:
+    """Tests for Enable and Disable operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_enable_ec2_scanning(self, client):
+        """Enable EC2 scanning for an account."""
+        resp = client.enable(resourceTypes=["EC2"], accountIds=["123456789012"])
+        assert "accounts" in resp
+        assert "failedAccounts" in resp
+        assert isinstance(resp["accounts"], list)
+        if resp["accounts"]:
+            acct = resp["accounts"][0]
+            assert acct["accountId"] == "123456789012"
+            assert acct["status"] == "ENABLED"
+            assert "resourceStatus" in acct
+            assert acct["resourceStatus"]["ec2"] == "ENABLED"
+
+    def test_disable_ec2_scanning(self, client):
+        """Disable EC2 scanning for an account."""
+        # Disable all resource types first to get a clean state
+        try:
+            client.disable(
+                resourceTypes=["EC2", "ECR", "LAMBDA"],
+                accountIds=["123456789012"],
+            )
+        except Exception:
+            pass
+        client.enable(resourceTypes=["EC2"], accountIds=["123456789012"])
+        resp = client.disable(resourceTypes=["EC2"], accountIds=["123456789012"])
+        assert "accounts" in resp
+        assert isinstance(resp["accounts"], list)
+        if resp["accounts"]:
+            acct = resp["accounts"][0]
+            assert acct["accountId"] == "123456789012"
+            assert acct["resourceStatus"]["ec2"] == "DISABLED"
+
+    def test_enable_multiple_resource_types(self, client):
+        """Enable scanning for multiple resource types."""
+        resp = client.enable(
+            resourceTypes=["EC2", "ECR"],
+            accountIds=["123456789012"],
+        )
+        assert "accounts" in resp
+        assert "failedAccounts" in resp
+        if resp["accounts"]:
+            status = resp["accounts"][0]["resourceStatus"]
+            assert status["ec2"] == "ENABLED"
+            assert status["ecr"] == "ENABLED"
+
+    def test_enable_returns_empty_failed_accounts(self, client):
+        """Enable returns empty failedAccounts when operation succeeds."""
+        resp = client.enable(resourceTypes=["EC2"], accountIds=["123456789012"])
+        assert resp["failedAccounts"] == []
+
+    def test_disable_returns_empty_failed_accounts(self, client):
+        """Disable returns empty failedAccounts when operation succeeds."""
+        client.enable(resourceTypes=["EC2"], accountIds=["123456789012"])
+        resp = client.disable(resourceTypes=["EC2"], accountIds=["123456789012"])
+        assert resp["failedAccounts"] == []
+
+
+class TestInspector2FilterAdvanced:
+    """Advanced filter operation tests."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_create_filter_returns_arn(self, client):
+        """CreateFilter returns a valid-looking ARN."""
+        name = _unique("filter")
+        resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = resp["arn"]
+        assert "arn:" in arn
+        assert "inspector2" in arn.lower() or "filter" in arn.lower()
+
+    def test_list_filters_includes_created(self, client):
+        """ListFilters includes a newly created filter."""
+        name = _unique("filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        resp = client.list_filters()
+        arns = [f["arn"] for f in resp["filters"]]
+        assert arn in arns
+
+    def test_create_filter_with_suppress_action(self, client):
+        """CreateFilter with SUPPRESS action."""
+        name = _unique("filter")
+        resp = client.create_filter(
+            action="SUPPRESS",
+            filterCriteria={},
+            name=name,
+        )
+        assert "arn" in resp
+        assert resp["arn"]
+
+    def test_delete_filter_removes_from_list(self, client):
+        """DeleteFilter removes the filter from ListFilters results."""
+        name = _unique("filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        client.delete_filter(arn=arn)
+        resp = client.list_filters()
+        arns = [f["arn"] for f in resp["filters"]]
+        assert arn not in arns

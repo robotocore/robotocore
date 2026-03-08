@@ -403,6 +403,28 @@ class TestOpenSearchExtended:
             opensearch.delete_domain(DomainName=name)
 
 
+class TestOpenSearchCompatibleVersions:
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_get_compatible_versions_no_domain(self, opensearch):
+        """GetCompatibleVersions without a domain returns all version mappings."""
+        resp = opensearch.get_compatible_versions()
+        assert "CompatibleVersions" in resp
+        versions = resp["CompatibleVersions"]
+        assert len(versions) > 0
+        # Each entry should have SourceVersion and TargetVersions
+        for entry in versions:
+            assert "SourceVersion" in entry
+            assert "TargetVersions" in entry
+
+    def test_list_tags_nonexistent_domain(self, opensearch):
+        """ListTags on a non-existent domain ARN returns empty tag list."""
+        resp = opensearch.list_tags(ARN="arn:aws:es:us-east-1:123456789012:domain/nonexistent")
+        assert "TagList" in resp
+
+
 class TestOpenSearchGapStubs:
     """Tests for gap operations: list_domain_names, list_versions, list_vpc_endpoints."""
 

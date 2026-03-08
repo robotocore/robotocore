@@ -133,6 +133,38 @@ class TestElastiCacheReplicationGroupOperations:
         )
 
 
+class TestElastiCacheUserOperations:
+    def test_create_and_describe_user(self, elasticache):
+        user_id = _unique("user")
+        resp = elasticache.create_user(
+            UserId=user_id,
+            UserName="testuser",
+            Engine="redis",
+            AccessString="on ~* +@all",
+            NoPasswordRequired=True,
+        )
+        assert resp["UserId"] == user_id
+        assert resp["UserName"] == "testuser"
+
+        desc = elasticache.describe_users(UserId=user_id)
+        assert len(desc["Users"]) == 1
+        assert desc["Users"][0]["UserId"] == user_id
+
+        elasticache.delete_user(UserId=user_id)
+
+    def test_delete_user(self, elasticache):
+        user_id = _unique("user")
+        elasticache.create_user(
+            UserId=user_id,
+            UserName="testuser3",
+            Engine="redis",
+            AccessString="on ~* +@all",
+            NoPasswordRequired=True,
+        )
+        resp = elasticache.delete_user(UserId=user_id)
+        assert resp["UserId"] == user_id
+
+
 class TestElasticacheAutoCoverage:
     """Auto-generated coverage tests for elasticache."""
 

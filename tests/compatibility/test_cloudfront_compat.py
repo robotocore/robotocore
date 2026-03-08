@@ -340,14 +340,47 @@ class TestCloudFrontOriginAccessControlUpdate:
         assert updated["Description"] == "updated"
 
 
-class TestCloudfrontAutoCoverage:
-    """Auto-generated coverage tests for cloudfront."""
+class TestCloudFrontKeyGroupOperations:
+    def _create_public_key(self, cf):
+        name = _unique("pk")
+        pub_pem = _generate_public_key_pem()
+        resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": name,
+                "EncodedKey": pub_pem,
+            }
+        )
+        return resp["PublicKey"]["Id"]
 
-    @pytest.fixture
-    def client(self):
-        return make_client("cloudfront")
+    def test_create_key_group(self, cf):
+        pk_id = self._create_public_key(cf)
+        name = _unique("kg")
+        resp = cf.create_key_group(KeyGroupConfig={"Name": name, "Items": [pk_id]})
+        kg = resp["KeyGroup"]
+        assert "Id" in kg
+        assert kg["KeyGroupConfig"]["Name"] == name
+        assert pk_id in kg["KeyGroupConfig"]["Items"]
 
-    def test_list_key_groups(self, client):
-        """ListKeyGroups returns a response."""
-        resp = client.list_key_groups()
-        assert "KeyGroupList" in resp
+    def test_get_key_group(self, cf):
+        pk_id = self._create_public_key(cf)
+        name = _unique("kg")
+        create_resp = cf.create_key_group(KeyGroupConfig={"Name": name, "Items": [pk_id]})
+        kg_id = create_resp["KeyGroup"]["Id"]
+
+        get_resp = cf.get_key_group(Id=kg_id)
+        assert get_resp["KeyGroup"]["Id"] == kg_id
+        assert get_resp["KeyGroup"]["KeyGroupConfig"]["Name"] == name
+        assert "ETag" in get_resp
+
+    def test_list_key_groups_contains_created(self, cf):
+        pk_id = self._create_public_key(cf)
+        name = _unique("kg")
+        create_resp = cf.create_key_group(KeyGroupConfig={"Name": name, "Items": [pk_id]})
+        kg_id = create_resp["KeyGroup"]["Id"]
+
+        resp = cf.list_key_groups()
+        kg_list = resp["KeyGroupList"]
+        assert kg_list["Quantity"] >= 1
+        ids = [item["KeyGroup"]["Id"] for item in kg_list["Items"]]
+        assert kg_id in ids
