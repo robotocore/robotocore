@@ -161,18 +161,29 @@ def find_enterprise_features() -> dict[str, dict]:
     return enterprise
 
 
+def _pascal_to_snake(name: str) -> str:
+    """Convert PascalCase to snake_case (e.g. 'CreateQueue' -> 'create_queue')."""
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+    return s.lower()
+
+
 def extract_robotocore_operations(filepath: Path) -> list[str]:
     """Extract implemented operations from a robotocore provider.py using AST.
 
-    Robotocore providers use a module-level ``_ACTION_MAP`` dict that maps
-    PascalCase operation names to handler functions, e.g.::
+    Robotocore providers use two dispatch patterns:
+
+    1. Module-level ``_ACTION_MAP`` dict (most providers)::
 
         _ACTION_MAP: dict[str, Callable] = {
             "CreateQueue": _create_queue,
             ...
         }
 
-    This function finds that dict and returns the string keys.
+    2. ``if action == "X":`` / ``elif action == "X":`` chains (some providers).
+
+    Returns operation names normalised to snake_case so they can be compared
+    against LocalStack's snake_case method names.
     """
     try:
         source = filepath.read_text()
@@ -180,31 +191,39 @@ def extract_robotocore_operations(filepath: Path) -> list[str]:
     except Exception:
         return []
 
+    ops: list[str] = []
+
     for node in ast.walk(tree):
-        # _ACTION_MAP may be a plain Assign or an annotated AnnAssign
-        # (e.g. ``_ACTION_MAP: dict[str, Callable] = {...}``)
-        if isinstance(node, ast.Assign):
-            targets = node.targets
+        # Pattern 1: _ACTION_MAP dict (plain Assign or annotated AnnAssign)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             value = node.value
-        elif isinstance(node, ast.AnnAssign):
-            targets = [node.target]
-            value = node.value
-        else:
-            continue
-
-        if value is None or not isinstance(value, ast.Dict):
-            continue
-
-        for target in targets:
-            if not (isinstance(target, ast.Name) and target.id == "_ACTION_MAP"):
+            if value is None or not isinstance(value, ast.Dict):
                 continue
-            ops = []
-            for key in value.keys:
-                if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                    ops.append(key.value)
-            return ops
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id == "_ACTION_MAP":
+                    for key in value.keys:
+                        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                            ops.append(_pascal_to_snake(key.value))
+                    return ops  # found the map, done
 
-    return []
+        # Pattern 2: if/elif action == "OperationName"
+        if isinstance(node, (ast.If,)):
+            test = node.test
+            if (
+                isinstance(test, ast.Compare)
+                and len(test.ops) == 1
+                and isinstance(test.ops[0], ast.Eq)
+                and len(test.comparators) == 1
+                and isinstance(test.comparators[0], ast.Constant)
+                and isinstance(test.comparators[0].value, str)
+            ):
+                val = test.comparators[0].value
+                # Only capture PascalCase strings (AWS operation names)
+                if val and val[0].isupper():
+                    ops.append(_pascal_to_snake(val))
+
+    return list(dict.fromkeys(ops))  # dedupe, preserve order
 
 
 def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]:
@@ -232,7 +251,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
                 "missing_ops": sorted(missing_ops),
                 "enterprise_only": sorted(enterprise_ops - community_ops),
                 "coverage_pct": (
-                    round(len(robotocore_ops) / len(all_ops) * 100) if all_ops else 100
+                    min(100, round(len(robotocore_ops) / len(all_ops) * 100)) if all_ops else 100
                 ),
             }
 
