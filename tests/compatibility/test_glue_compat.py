@@ -521,6 +521,101 @@ class TestGluePartitionOperations:
             self._cleanup(glue, db_name, tbl_name)
 
 
+class TestGlueSchemaOperations:
+    """Tests for Glue Schema Registry schema operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("glue")
+
+    @pytest.fixture
+    def registry(self, client):
+        name = _unique("reg")
+        resp = client.create_registry(RegistryName=name, Description="test registry")
+        yield {"name": name, "arn": resp["RegistryArn"]}
+        try:
+            client.delete_registry(RegistryId={"RegistryName": name})
+        except Exception:
+            pass
+
+    def test_create_schema(self, client, registry):
+        """CreateSchema creates a schema in a registry."""
+        schema_name = _unique("schema")
+        resp = client.create_schema(
+            RegistryId={"RegistryName": registry["name"]},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+        )
+        assert resp["SchemaName"] == schema_name
+        assert resp["DataFormat"] == "AVRO"
+        client.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]})
+
+    def test_get_schema(self, client, registry):
+        """GetSchema retrieves schema details."""
+        schema_name = _unique("schema")
+        client.create_schema(
+            RegistryId={"RegistryName": registry["name"]},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            resp = client.get_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
+            )
+            assert resp["SchemaName"] == schema_name
+            assert resp["DataFormat"] == "AVRO"
+        finally:
+            client.delete_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
+            )
+
+    def test_delete_schema(self, client, registry):
+        """DeleteSchema removes a schema."""
+        schema_name = _unique("schema")
+        client.create_schema(
+            RegistryId={"RegistryName": registry["name"]},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+        )
+        resp = client.delete_schema(
+            SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
+        )
+        assert resp["SchemaName"] == schema_name
+
+        with pytest.raises(ClientError) as exc:
+            client.get_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_schema(self, client, registry):
+        """UpdateSchema modifies schema properties."""
+        schema_name = _unique("schema")
+        client.create_schema(
+            RegistryId={"RegistryName": registry["name"]},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            resp = client.update_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]},
+                Compatibility="BACKWARD",
+            )
+            assert resp["SchemaName"] == schema_name
+        finally:
+            client.delete_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
+            )
+
+
 class TestGlueAutoCoverage:
     """Auto-generated coverage tests for glue."""
 
