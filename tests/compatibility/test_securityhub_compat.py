@@ -1,6 +1,7 @@
 """Security Hub compatibility tests."""
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -55,3 +56,18 @@ class TestSecurityhubAutoCoverage:
     def test_get_master_account(self, client):
         """GetMasterAccount returns a response."""
         client.get_master_account()
+
+    def test_describe_organization_configuration(self, client):
+        """DescribeOrganizationConfiguration requires org admin access."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_organization_configuration()
+        assert exc.value.response["Error"]["Code"] == "AccessDeniedException"
+
+    def test_update_organization_configuration(self, client):
+        """UpdateOrganizationConfiguration without hub returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.update_organization_configuration(AutoEnable=True)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "AccessDeniedException",
+        )
