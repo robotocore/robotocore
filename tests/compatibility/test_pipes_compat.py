@@ -98,3 +98,28 @@ class TestPipesCompat:
         # Use a prefix that should match nothing
         resp = pipes_client.list_pipes(NamePrefix="nonexistent-prefix-xyz")
         assert len(resp["Pipes"]) == 0
+
+    def test_tag_resource(self, pipes_client, created_pipe):
+        """tag_resource adds tags to a pipe."""
+        arn = created_pipe["Arn"]
+        pipes_client.tag_resource(
+            resourceArn=arn,
+            tags={"env": "test", "project": "robotocore"},
+        )
+        resp = pipes_client.list_tags_for_resource(resourceArn=arn)
+        tags = resp["tags"]
+        assert tags["env"] == "test"
+        assert tags["project"] == "robotocore"
+
+    def test_untag_resource(self, pipes_client, created_pipe):
+        """untag_resource removes tags from a pipe."""
+        arn = created_pipe["Arn"]
+        pipes_client.tag_resource(
+            resourceArn=arn,
+            tags={"env": "test", "remove-me": "yes"},
+        )
+        pipes_client.untag_resource(resourceArn=arn, tagKeys=["remove-me"])
+        resp = pipes_client.list_tags_for_resource(resourceArn=arn)
+        tags = resp["tags"]
+        assert "remove-me" not in tags
+        assert tags["env"] == "test"
