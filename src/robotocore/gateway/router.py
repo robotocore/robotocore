@@ -149,6 +149,7 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
     "redshift-data": "redshiftdata",
     "timestream": "timestreamwrite",
     "timestream-influxdb": "timestreaminfluxdb",
+    "s3express": "s3",
     "vpc-lattice": "vpclattice",
     "workspaces-web": "workspacesweb",
 }
