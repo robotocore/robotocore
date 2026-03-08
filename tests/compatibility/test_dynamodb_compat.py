@@ -1,5 +1,6 @@
 """DynamoDB compatibility tests."""
 
+import json
 import uuid
 
 import pytest
@@ -2647,3 +2648,92 @@ class TestDynamodbAutoCoverage:
         """ListImports returns a response."""
         resp = client.list_imports()
         assert "ImportSummaryList" in resp
+
+
+class TestDynamoDBResourcePolicy:
+    """Tests for DynamoDB ResourcePolicy and ContinuousBackups operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, client):
+        table_name = f"test-rp-{uuid.uuid4().hex[:8]}"
+        client.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield table_name
+        client.delete_table(TableName=table_name)
+
+    def test_get_resource_policy_no_policy(self, client, table):
+        """GetResourcePolicy on table with no policy returns empty or error."""
+        table_arn = client.describe_table(TableName=table)["Table"]["TableArn"]
+        try:
+            resp = client.get_resource_policy(ResourceArn=table_arn)
+            # May return empty policy
+            assert "Policy" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] in (
+                "PolicyNotFoundException",
+                "ResourceNotFoundException",
+            )
+
+    def test_put_resource_policy(self, client, table):
+        """PutResourcePolicy sets a resource-based policy on a table."""
+        table_arn = client.describe_table(TableName=table)["Table"]["TableArn"]
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "dynamodb:GetItem",
+                        "Resource": table_arn,
+                    }
+                ],
+            }
+        )
+        resp = client.put_resource_policy(ResourceArn=table_arn, Policy=policy)
+        assert "RevisionId" in resp
+
+    def test_delete_resource_policy(self, client, table):
+        """DeleteResourcePolicy removes a resource-based policy."""
+        table_arn = client.describe_table(TableName=table)["Table"]["TableArn"]
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "dynamodb:GetItem",
+                        "Resource": table_arn,
+                    }
+                ],
+            }
+        )
+        client.put_resource_policy(ResourceArn=table_arn, Policy=policy)
+        resp = client.delete_resource_policy(ResourceArn=table_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify policy is gone
+        try:
+            get_resp = client.get_resource_policy(ResourceArn=table_arn)
+            # Empty policy or null means deleted
+            assert get_resp.get("Policy") in (None, "", "{}")
+        except ClientError:
+            pass  # PolicyNotFoundException is also valid
+
+    def test_update_continuous_backups(self, client, table):
+        """UpdateContinuousBackups enables point-in-time recovery."""
+        resp = client.update_continuous_backups(
+            TableName=table,
+            PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": True},
+        )
+        desc = resp["ContinuousBackupsDescription"]
+        assert desc["ContinuousBackupsStatus"] == "ENABLED"
+        assert "PointInTimeRecoveryDescription" in desc
