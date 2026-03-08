@@ -124,6 +124,14 @@ class TestBedrockModelCustomizationJobs:
         job_names = [j["jobName"] for j in r["modelCustomizationJobSummaries"]]
         assert job_name in job_names
 
+    def test_stop_model_customization_job(self, bedrock):
+        job_arn, job_name, _ = _create_job(bedrock)
+
+        bedrock.stop_model_customization_job(jobIdentifier=job_arn)
+
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r["status"] in ("Stopping", "Stopped")
+
 
 class TestBedrockLoggingConfiguration:
     """Tests for model invocation logging configuration."""
