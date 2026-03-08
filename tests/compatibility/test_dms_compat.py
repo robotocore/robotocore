@@ -243,6 +243,234 @@ class TestDMSTags:
             dms.delete_endpoint(EndpointArn=arn)
 
 
+class TestDMSReplicationTaskOperations:
+    def _create_task_prereqs(self, dms):
+        """Create endpoints and replication instance needed for a replication task."""
+        src_id = _unique("src")
+        tgt_id = _unique("tgt")
+        ri_id = _unique("ri")
+
+        src = dms.create_endpoint(
+            EndpointIdentifier=src_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        tgt = dms.create_endpoint(
+            EndpointIdentifier=tgt_id,
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+
+        return {
+            "source_arn": src["Endpoint"]["EndpointArn"],
+            "target_arn": tgt["Endpoint"]["EndpointArn"],
+            "ri_arn": ri["ReplicationInstance"]["ReplicationInstanceArn"],
+        }
+
+    def _cleanup_prereqs(self, dms, prereqs):
+        dms.delete_endpoint(EndpointArn=prereqs["source_arn"])
+        dms.delete_endpoint(EndpointArn=prereqs["target_arn"])
+        dms.delete_replication_instance(ReplicationInstanceArn=prereqs["ri_arn"])
+
+    def test_create_replication_task(self, dms):
+        """CreateReplicationTask creates a task and returns its details."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            resp = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task = resp["ReplicationTask"]
+            assert task["ReplicationTaskIdentifier"] == task_id
+            assert task["MigrationType"] == "full-load"
+            assert "ReplicationTaskArn" in task
+            # Cleanup task
+            dms.delete_replication_task(ReplicationTaskArn=task["ReplicationTaskArn"])
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_delete_replication_task(self, dms):
+        """DeleteReplicationTask removes the task."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            resp = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task_arn = resp["ReplicationTask"]["ReplicationTaskArn"]
+            del_resp = dms.delete_replication_task(ReplicationTaskArn=task_arn)
+            assert del_resp["ReplicationTask"]["ReplicationTaskIdentifier"] == task_id
+            # Verify it's gone by trying to delete again
+            with pytest.raises(ClientError) as exc:
+                dms.delete_replication_task(ReplicationTaskArn=task_arn)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_delete_nonexistent_replication_task(self, dms):
+        """DeleteReplicationTask raises ResourceNotFoundFault for missing task."""
+        with pytest.raises(ClientError) as exc:
+            dms.delete_replication_task(
+                ReplicationTaskArn="arn:aws:dms:us-east-1:123456789012:task:nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_start_replication_task(self, dms):
+        """StartReplicationTask changes task status."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            resp = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task_arn = resp["ReplicationTask"]["ReplicationTaskArn"]
+            start_resp = dms.start_replication_task(
+                ReplicationTaskArn=task_arn,
+                StartReplicationTaskType="start-replication",
+            )
+            assert start_resp["ReplicationTask"]["Status"] == "running"
+            # Cleanup
+            dms.stop_replication_task(ReplicationTaskArn=task_arn)
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_stop_replication_task(self, dms):
+        """StopReplicationTask stops a running task."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            resp = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task_arn = resp["ReplicationTask"]["ReplicationTaskArn"]
+            dms.start_replication_task(
+                ReplicationTaskArn=task_arn,
+                StartReplicationTaskType="start-replication",
+            )
+            stop_resp = dms.stop_replication_task(ReplicationTaskArn=task_arn)
+            assert stop_resp["ReplicationTask"]["Status"] == "stopped"
+            # Cleanup
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_start_nonexistent_replication_task(self, dms):
+        """StartReplicationTask raises ResourceNotFoundFault for missing task."""
+        with pytest.raises(ClientError) as exc:
+            dms.start_replication_task(
+                ReplicationTaskArn="arn:aws:dms:us-east-1:123456789012:task:nonexistent",
+                StartReplicationTaskType="start-replication",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_stop_nonexistent_replication_task(self, dms):
+        """StopReplicationTask raises ResourceNotFoundFault for missing task."""
+        with pytest.raises(ClientError) as exc:
+            dms.stop_replication_task(
+                ReplicationTaskArn="arn:aws:dms:us-east-1:123456789012:task:nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+
+class TestDMSReplicationInstanceCreateDelete:
+    def test_create_replication_instance(self, dms):
+        """CreateReplicationInstance creates an instance and returns its details."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri = resp["ReplicationInstance"]
+        assert ri["ReplicationInstanceIdentifier"] == ri_id
+        assert ri["ReplicationInstanceClass"] == "dms.t3.micro"
+        assert "ReplicationInstanceArn" in ri
+        # Cleanup
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_delete_replication_instance(self, dms):
+        """DeleteReplicationInstance removes the instance."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        del_resp = dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+        assert del_resp["ReplicationInstance"]["ReplicationInstanceIdentifier"] == ri_id
+
+        # Verify it's gone
+        instances = dms.describe_replication_instances()
+        arns = [i["ReplicationInstanceArn"] for i in instances["ReplicationInstances"]]
+        assert ri_arn not in arns
+
+
+class TestDMSTestConnection:
+    def test_test_connection(self, dms):
+        """TestConnection returns a connection object."""
+        ri_id = _unique("ri")
+        ep_id = _unique("ep")
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = ri["ReplicationInstance"]["ReplicationInstanceArn"]
+        ep = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        ep_arn = ep["Endpoint"]["EndpointArn"]
+        try:
+            resp = dms.test_connection(
+                ReplicationInstanceArn=ri_arn,
+                EndpointArn=ep_arn,
+            )
+            conn = resp["Connection"]
+            assert "Status" in conn
+            assert conn["EndpointArn"] == ep_arn
+            assert conn["ReplicationInstanceArn"] == ri_arn
+        finally:
+            dms.delete_endpoint(EndpointArn=ep_arn)
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+
 class TestDMSDescribeOperations:
     def test_describe_endpoints_has_response_metadata(self, dms):
         """DescribeEndpoints returns proper ResponseMetadata."""
