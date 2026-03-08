@@ -8,6 +8,7 @@ import os
 from functools import lru_cache
 from xml.sax.saxutils import escape as _xml_escape
 
+import botocore.model
 import moto.backends as moto_backends
 from moto.core.base_backend import BackendDict
 from starlette.requests import Request
@@ -148,6 +149,24 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             status_code=status,
             headers=clean_headers,
         )
+    except botocore.model.OperationNotFoundError as e:
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=400,
+        )
+        return Response(
+            content=(
+                f"<ErrorResponse><Error><Code>InvalidAction</Code>"
+                f"<Message>Could not find operation {_xml_escape(str(e))}</Message>"
+                f"</Error></ErrorResponse>"
+            ),
+            status_code=400,
+            media_type="application/xml",
+            headers={"x-robotocore-diag": _diag_header(e)},
+        )
     except NotImplementedError as e:
         _diag_record(
             exc=e,
@@ -224,6 +243,24 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             content=response_body,
             status_code=status,
             headers=clean_headers,
+        )
+    except botocore.model.OperationNotFoundError as e:
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=400,
+        )
+        return Response(
+            content=(
+                f"<ErrorResponse><Error><Code>InvalidAction</Code>"
+                f"<Message>Could not find operation {_xml_escape(str(e))}</Message>"
+                f"</Error></ErrorResponse>"
+            ),
+            status_code=400,
+            media_type="application/xml",
+            headers={"x-robotocore-diag": _diag_header(e)},
         )
     except NotImplementedError as e:
         _diag_record(

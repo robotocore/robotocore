@@ -45,7 +45,10 @@ class TestResourceGroupsTaggingAPIOperations:
             )
             assert "FailedResourcesMap" in resp
         finally:
-            s3.delete_bucket(Bucket=bucket)
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass
 
     def test_untag_resources(self, tagging, s3):
         bucket = f"untagres-{_uid()}"
@@ -62,4 +65,7 @@ class TestResourceGroupsTaggingAPIOperations:
             )
             assert "FailedResourcesMap" in resp
         finally:
-            s3.delete_bucket(Bucket=bucket)
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass

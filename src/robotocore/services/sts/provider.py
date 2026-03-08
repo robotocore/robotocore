@@ -17,7 +17,7 @@ from urllib.parse import parse_qs
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.providers.moto_bridge import forward_to_moto_with_body
 
 DEFAULT_ACCOUNT_ID = "123456789012"
 MAX_PACKED_POLICY_SIZE = 2048
@@ -51,7 +51,7 @@ async def handle_sts_request(request: Request, region: str, account_id: str) -> 
     if action == "AssumeRoleWithSAML":
         return _assume_role_with_saml(params, account_id)
 
-    return await forward_to_moto(request, "sts")
+    return await forward_to_moto_with_body(request, "sts", body)
 
 
 def _decode_authorization_message(params: dict) -> Response:
