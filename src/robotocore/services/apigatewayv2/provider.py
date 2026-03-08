@@ -9,6 +9,7 @@ import re
 import threading
 import time
 import uuid
+from urllib.parse import unquote
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -295,11 +296,16 @@ async def handle_apigatewayv2_request(
         # Tags
         m = _TAGS_PATH.match(path)
         if m:
+            resource_arn = unquote(m.group(1))
             if method == "GET":
-                return _json_response({"tags": {}})
+                return _json_response({"Tags": _list_tags_v2(resource_arn, region)})
             if method == "POST":
+                new_tags = params.get("Tags", {})
+                _tag_resource_v2(resource_arn, new_tags, region)
                 return _json_response({})
             if method == "DELETE":
+                tag_keys = request.query_params.getlist("tagKeys")
+                _untag_resource_v2(resource_arn, tag_keys, region)
                 return Response(status_code=204)
 
         return _error("NotFoundException", f"Unknown path: {method} {path}", 404)
@@ -1140,6 +1146,43 @@ def _iso_time() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _find_resource_by_arn_v2(resource_arn: str, region: str) -> dict | None:
+    """Find any v2 resource by ARN. Searches APIs, stages, routes, etc."""
+    apis = _store(_apis, region)
+    with _lock:
+        for api in apis.values():
+            if f"/apis/{api.get('ApiId', '')}" in resource_arn:
+                return api
+    return None
+
+
+def _list_tags_v2(resource_arn: str, region: str) -> dict:
+    resource = _find_resource_by_arn_v2(resource_arn, region)
+    if resource is None:
+        return {}
+    with _lock:
+        return dict(resource.get("Tags", {}))
+
+
+def _tag_resource_v2(resource_arn: str, new_tags: dict, region: str) -> None:
+    resource = _find_resource_by_arn_v2(resource_arn, region)
+    if resource is None:
+        return
+    with _lock:
+        existing = resource.setdefault("Tags", {})
+        existing.update(new_tags)
+
+
+def _untag_resource_v2(resource_arn: str, tag_keys: list[str], region: str) -> None:
+    resource = _find_resource_by_arn_v2(resource_arn, region)
+    if resource is None:
+        return
+    with _lock:
+        tags = resource.get("Tags", {})
+        for key in tag_keys:
+            tags.pop(key, None)
+
+
 def _to_camel(key: str) -> str:
     """Convert PascalCase to camelCase (e.g., ApiId -> apiId)."""
     if not key:
@@ -1154,21 +1197,41 @@ def _to_pascal(key: str) -> str:
     return key[0].upper() + key[1:]
 
 
-def _camel_keys(obj):
+# Keys whose values are user-defined dicts/content and should NOT have
+# their sub-keys case-converted.
+_PASSTHROUGH_KEYS = frozenset(
+    {
+        "Tags",
+        "tags",
+        "StageVariables",
+        "stageVariables",
+        "ResponseParameters",
+        "responseParameters",
+        "RequestParameters",
+        "requestParameters",
+    }
+)
+
+
+def _camel_keys(obj, _parent_key=None):
     """Recursively convert all dict keys from PascalCase to camelCase."""
     if isinstance(obj, dict):
-        return {_to_camel(k): _camel_keys(v) for k, v in obj.items()}
+        if _parent_key in _PASSTHROUGH_KEYS:
+            return obj
+        return {_to_camel(k): _camel_keys(v, _parent_key=k) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_camel_keys(item) for item in obj]
+        return [_camel_keys(item, _parent_key=_parent_key) for item in obj]
     return obj
 
 
-def _pascal_keys(obj):
+def _pascal_keys(obj, _parent_key=None):
     """Recursively convert all dict keys from camelCase to PascalCase."""
     if isinstance(obj, dict):
-        return {_to_pascal(k): _pascal_keys(v) for k, v in obj.items()}
+        if _parent_key in _PASSTHROUGH_KEYS:
+            return obj
+        return {_to_pascal(k): _pascal_keys(v, _parent_key=_to_pascal(k)) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_pascal_keys(item) for item in obj]
+        return [_pascal_keys(item, _parent_key=_parent_key) for item in obj]
     return obj
 
 

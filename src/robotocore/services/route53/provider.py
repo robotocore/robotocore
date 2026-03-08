@@ -371,6 +371,19 @@ def _handle_create_query_logging_config(body: bytes, region: str, account_id: st
     )
 
 
+def _no_such_hosted_zone_response(zone_id: str) -> Response:
+    """Return a 404 NoSuchHostedZone XML error response."""
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<ErrorResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <Error>
+    <Type>Sender</Type>
+    <Code>NoSuchHostedZone</Code>
+    <Message>No hosted zone found with ID: {zone_id}</Message>
+  </Error>
+</ErrorResponse>"""
+    return Response(content=xml, status_code=404, media_type="text/xml")
+
+
 def _handle_associate_vpc(zone_id: str, body: bytes, region: str, account_id: str) -> Response:
     """AssociateVPCWithHostedZone — store VPC association."""
     from moto.backends import get_backend
@@ -378,17 +391,17 @@ def _handle_associate_vpc(zone_id: str, body: bytes, region: str, account_id: st
     try:
         backend = get_backend("route53")[account_id]["global"]
         zone = backend.get_hosted_zone(zone_id)
-        if zone:
-            parsed = xmltodict.parse(body)
-            req = parsed.get("AssociateVPCWithHostedZoneRequest", {})
-            vpc = req.get("VPC", {})
-            vpc_id = vpc.get("VPCId", "")
-            vpc_region = vpc.get("VPCRegion", region)
-            if not hasattr(zone, "vpcs"):
-                zone.vpcs = []
-            zone.vpcs.append({"VPCId": vpc_id, "VPCRegion": vpc_region})
     except Exception:
-        pass
+        return _no_such_hosted_zone_response(zone_id)
+
+    parsed = xmltodict.parse(body)
+    req = parsed.get("AssociateVPCWithHostedZoneRequest", {})
+    vpc = req.get("VPC", {})
+    vpc_id = vpc.get("VPCId", "")
+    vpc_region = vpc.get("VPCRegion", region)
+    if not hasattr(zone, "vpcs"):
+        zone.vpcs = []
+    zone.vpcs.append({"VPCId": vpc_id, "VPCRegion": vpc_region})
 
     change_id = f"/change/{uuid.uuid4().hex[:14].upper()}"
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -409,14 +422,15 @@ def _handle_disassociate_vpc(zone_id: str, body: bytes, region: str, account_id:
     try:
         backend = get_backend("route53")[account_id]["global"]
         zone = backend.get_hosted_zone(zone_id)
-        if zone and hasattr(zone, "vpcs"):
-            parsed = xmltodict.parse(body)
-            req = parsed.get("DisassociateVPCFromHostedZoneRequest", {})
-            vpc = req.get("VPC", {})
-            vpc_id = vpc.get("VPCId", "")
-            zone.vpcs = [v for v in zone.vpcs if v.get("VPCId") != vpc_id]
     except Exception:
-        pass
+        return _no_such_hosted_zone_response(zone_id)
+
+    if hasattr(zone, "vpcs"):
+        parsed = xmltodict.parse(body)
+        req = parsed.get("DisassociateVPCFromHostedZoneRequest", {})
+        vpc = req.get("VPC", {})
+        vpc_id = vpc.get("VPCId", "")
+        zone.vpcs = [v for v in zone.vpcs if v.get("VPCId") != vpc_id]
 
     change_id = f"/change/{uuid.uuid4().hex[:14].upper()}"
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>

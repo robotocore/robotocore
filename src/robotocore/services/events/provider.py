@@ -58,9 +58,10 @@ def _log_invocation(
 
 def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> EventsStore:
     with _store_lock:
-        if region not in _stores:
-            _stores[region] = EventsStore()
-        store = _stores[region]
+        key = f"{account_id}:{region}"
+        if key not in _stores:
+            _stores[key] = EventsStore()
+        store = _stores[key]
         store.ensure_default_bus(region, account_id)
         return store
 
@@ -128,6 +129,10 @@ def _put_rule(store: EventsStore, params: dict, region: str, account_id: str) ->
 def _delete_rule(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
     bus_name = params.get("EventBusName", "default")
+    # Get rule ARN before deletion so we can clean up tags
+    rule = store.get_rule(name, bus_name)
+    if rule:
+        store.clean_up_tags(rule.arn)
     store.delete_rule(name, bus_name)
     return {}
 
@@ -156,8 +161,9 @@ def _enable_rule(store: EventsStore, params: dict, region: str, account_id: str)
     name = params.get("Name", "")
     bus_name = params.get("EventBusName", "default")
     rule = store.get_rule(name, bus_name)
-    if rule:
-        rule.state = "ENABLED"
+    if not rule:
+        raise EventsError("ResourceNotFoundException", f"Rule {name} does not exist.", 400)
+    rule.state = "ENABLED"
     return {}
 
 
@@ -165,8 +171,9 @@ def _disable_rule(store: EventsStore, params: dict, region: str, account_id: str
     name = params.get("Name", "")
     bus_name = params.get("EventBusName", "default")
     rule = store.get_rule(name, bus_name)
-    if rule:
-        rule.state = "DISABLED"
+    if not rule:
+        raise EventsError("ResourceNotFoundException", f"Rule {name} does not exist.", 400)
+    rule.state = "DISABLED"
     return {}
 
 
@@ -286,7 +293,7 @@ def _create_event_bus(store: EventsStore, params: dict, region: str, account_id:
 
 def _delete_event_bus(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    store.delete_bus(name)
+    store.delete_bus_cascade(name)
     return {}
 
 
@@ -406,6 +413,10 @@ def _list_archives(store: EventsStore, params: dict, region: str, account_id: st
 
 def _delete_archive(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("ArchiveName", "")
+    # Get archive ARN before deletion so we can clean up tags
+    archive = store.get_archive(name)
+    if archive:
+        store.clean_up_tags(archive.arn)
     if not store.delete_archive(name):
         raise EventsError(
             "ResourceNotFoundException",
@@ -1017,7 +1028,7 @@ def _describe_connection(store: EventsStore, params: dict, region: str, account_
     name = params.get("Name", "")
     conn = _connections.get(name)
     if not conn:
-        raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 404)
+        raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 400)
     return conn
 
 
@@ -1025,7 +1036,7 @@ def _delete_connection(store: EventsStore, params: dict, region: str, account_id
     name = params.get("Name", "")
     conn = _connections.pop(name, None)
     if not conn:
-        raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 404)
+        raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 400)
     return {"ConnectionArn": conn["ConnectionArn"], "ConnectionState": "DELETING"}
 
 
@@ -1066,7 +1077,7 @@ def _describe_api_destination(
     name = params.get("Name", "")
     dest = _api_destinations.get(name)
     if not dest:
-        raise EventsError("ResourceNotFoundException", f"ApiDestination {name} not found", 404)
+        raise EventsError("ResourceNotFoundException", f"ApiDestination {name} not found", 400)
     return dest
 
 
@@ -1092,7 +1103,7 @@ def _update_archive(store: EventsStore, params: dict, region: str, account_id: s
     with store.mutex:
         archive = store.archives.get(name)
         if not archive:
-            raise EventsError("ResourceNotFoundException", f"Archive {name} not found", 404)
+            raise EventsError("ResourceNotFoundException", f"Archive {name} not found", 400)
         if "Description" in params:
             archive.description = params["Description"]
         if "EventPattern" in params:

@@ -364,7 +364,18 @@ class SnsStore:
 
     def delete_platform_application(self, arn: str) -> bool:
         with self.mutex:
-            return self.platform_applications.pop(arn, None) is not None
+            app = self.platform_applications.pop(arn, None)
+            if app:
+                # Cascade: remove all endpoints belonging to this application
+                orphaned = [
+                    ep_arn
+                    for ep_arn, ep in self.platform_endpoints.items()
+                    if ep.application_arn == arn
+                ]
+                for ep_arn in orphaned:
+                    del self.platform_endpoints[ep_arn]
+                return True
+            return False
 
     def list_platform_applications(self) -> list[PlatformApplication]:
         return list(self.platform_applications.values())

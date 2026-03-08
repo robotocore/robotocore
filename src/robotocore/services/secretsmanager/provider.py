@@ -51,6 +51,16 @@ class _SMError(Exception):
         self.status = status
 
 
+def _resolve_secret(backend, secret_id: str):
+    """Look up a secret by name, ARN, or partial ARN. Returns None if not found.
+
+    Uses Moto's SecretsStore which already handles name/ARN/partial-ARN resolution.
+    """
+    if not backend._is_valid_identifier(secret_id):
+        return None
+    return backend.secrets.get(secret_id)
+
+
 def _rotate_secret(params: dict, region: str, account_id: str) -> dict:
     """RotateSecret — handle without Lambda validation."""
     from moto.backends import get_backend
@@ -61,22 +71,27 @@ def _rotate_secret(params: dict, region: str, account_id: str) -> dict:
     rotation_rules = params.get("RotationRules", {})
     client_request_token = params.get("ClientRequestToken")
 
-    if not backend._is_valid_identifier(secret_id):
+    secret = _resolve_secret(backend, secret_id)
+    if secret is None:
         raise _SMError(
             "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
         )
 
-    secret = backend.secrets.get(secret_id)
-    if secret is None:
-        # Try by ARN
-        for s in backend.secrets.values():
-            if s.arn == secret_id:
-                secret = s
-                break
-    if secret is None:
+    # Soft-deleted secrets cannot be rotated
+    if secret.is_deleted():
         raise _SMError(
-            "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
+            "InvalidRequestException",
+            "You tried to perform the operation on a secret that's currently marked deleted.",
         )
+
+    # Validate ClientRequestToken length (32-64 chars) per AWS API spec
+    if client_request_token:
+        token_len = len(client_request_token)
+        if token_len < 32 or token_len > 64:
+            raise _SMError(
+                "InvalidParameterException",
+                "ClientRequestToken must be 32-64 characters long.",
+            )
 
     if rotation_lambda_arn:
         secret.rotation_lambda_arn = rotation_lambda_arn
@@ -126,20 +141,17 @@ def _replicate_secret_to_regions(params: dict, region: str, account_id: str) -> 
     secret_id = params.get("SecretId", "")
     add_regions = params.get("AddReplicaRegions", [])
 
-    if not backend._is_valid_identifier(secret_id):
+    secret = _resolve_secret(backend, secret_id)
+    if secret is None:
         raise _SMError(
             "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
         )
 
-    secret = backend.secrets.get(secret_id)
-    if secret is None:
-        for s in backend.secrets.values():
-            if s.arn == secret_id:
-                secret = s
-                break
-    if secret is None:
+    # Soft-deleted secrets cannot be replicated
+    if secret.is_deleted():
         raise _SMError(
-            "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
+            "InvalidRequestException",
+            "You tried to perform the operation on a secret that's currently marked deleted.",
         )
 
     replication_status = []

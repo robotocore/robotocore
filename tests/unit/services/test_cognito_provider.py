@@ -10,6 +10,7 @@ from robotocore.services.cognito.provider import (
     CognitoError,
     _error,
     _generate_jwt,
+    _get_store,
     _json_response,
     _stores,
     handle_cognito_request,
@@ -854,3 +855,279 @@ class TestEdgeCases:
         req = Request(scope, receive)
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Tag operations stubbed/missing
+# ---------------------------------------------------------------------------
+
+
+class TestTagOperations:
+    """Tags should be stored and retrieved, not silently dropped."""
+
+    @pytest.mark.asyncio
+    async def test_tag_resource_and_list_tags(self):
+        """TagResource should persist tags, ListTagsForResource should return them."""
+        pool_id = await _create_pool()
+        # Get the pool ARN
+        req = _make_request("DescribeUserPool", {"UserPoolId": pool_id})
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        arn = json.loads(resp.body)["UserPool"]["Arn"]
+
+        # Tag the resource
+        req = _make_request(
+            "TagResource",
+            {"ResourceArn": arn, "Tags": {"env": "test", "team": "platform"}},
+        )
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+
+        # List tags
+        req = _make_request("ListTagsForResource", {"ResourceArn": arn})
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["Tags"]["env"] == "test"
+        assert data["Tags"]["team"] == "platform"
+
+    @pytest.mark.asyncio
+    async def test_untag_resource(self):
+        """UntagResource should remove specific tags."""
+        pool_id = await _create_pool()
+        req = _make_request("DescribeUserPool", {"UserPoolId": pool_id})
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        arn = json.loads(resp.body)["UserPool"]["Arn"]
+
+        # Tag
+        req = _make_request(
+            "TagResource",
+            {"ResourceArn": arn, "Tags": {"env": "test", "team": "platform"}},
+        )
+        await handle_cognito_request(req, "us-east-1", "123456789012")
+
+        # Untag one key
+        req = _make_request("UntagResource", {"ResourceArn": arn, "TagKeys": ["env"]})
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+
+        # Verify only "team" remains
+        req = _make_request("ListTagsForResource", {"ResourceArn": arn})
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        data = json.loads(resp.body)
+        assert "env" not in data["Tags"]
+        assert data["Tags"]["team"] == "platform"
+
+    @pytest.mark.asyncio
+    async def test_list_tags_nonexistent_resource(self):
+        """ListTagsForResource on a bad ARN should return 404."""
+        req = _make_request(
+            "ListTagsForResource",
+            {"ResourceArn": "arn:aws:cognito-idp:us-east-1:123456789012:userpool/nope"},
+        )
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Parent-child cascade — delete group leaves stale memberships
+# ---------------------------------------------------------------------------
+
+
+class TestParentChildCascade:
+    @pytest.mark.asyncio
+    async def test_delete_group_cleans_up_user_memberships(self):
+        """Deleting a group should remove it from all users' membership lists."""
+        pool_id = await _create_pool()
+        await handle_cognito_request(
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
+        )
+        await handle_cognito_request(
+            _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
+        )
+        await handle_cognito_request(
+            _make_request(
+                "AdminAddUserToGroup",
+                {"UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"},
+            ),
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Delete the group
+        await handle_cognito_request(
+            _make_request("DeleteGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
+        )
+
+        # user_groups should no longer reference the deleted group
+        store = _get_store("us-east-1")
+        user_groups = store.user_groups.get(pool_id, {}).get("user1", [])
+        assert "admins" not in user_groups, (
+            "Deleted group still present in user_groups — stale membership data"
+        )
+
+    @pytest.mark.asyncio
+    async def test_delete_user_cleans_up_group_memberships(self):
+        """Deleting a user should remove them from user_groups store."""
+        pool_id = await _create_pool()
+        await handle_cognito_request(
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
+        )
+        await handle_cognito_request(
+            _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
+        )
+        await handle_cognito_request(
+            _make_request(
+                "AdminAddUserToGroup",
+                {"UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"},
+            ),
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Delete the user
+        await handle_cognito_request(
+            _make_request("AdminDeleteUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
+        )
+
+        # ListUsersInGroup should not include deleted user
+        req = _make_request("ListUsersInGroup", {"UserPoolId": pool_id, "GroupName": "admins"})
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        data = json.loads(resp.body)
+        usernames = [u["Username"] for u in data["Users"]]
+        assert "user1" not in usernames
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Lock inconsistency (_lock vs store.lock)
+# ---------------------------------------------------------------------------
+
+
+class TestLockConsistency:
+    """_get_user and _change_password use module-level _lock instead of store.lock.
+    This test verifies the operations work correctly across regions (which would
+    fail with wrong lock if stores were truly isolated)."""
+
+    @pytest.mark.asyncio
+    async def test_get_user_uses_store_lock(self):
+        """GetUser should use store.lock, not the module-level _lock."""
+        from robotocore.services.cognito import provider
+
+        pool_id, client_id = await _create_pool_and_client()
+        await handle_cognito_request(
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
+        )
+        await handle_cognito_request(
+            _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
+        )
+        auth_resp = await handle_cognito_request(
+            _make_request(
+                "InitiateAuth",
+                {
+                    "AuthFlow": "USER_PASSWORD_AUTH",
+                    "ClientId": client_id,
+                    "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
+                },
+            ),
+            "us-east-1",
+            "123456789012",
+        )
+        json.loads(auth_resp.body)["AuthenticationResult"]["AccessToken"]
+
+        # Verify _get_user function uses store.lock (not _lock)
+        # We check by inspecting the source — the bug is that _get_user uses `with _lock:`
+        import inspect
+
+        source = inspect.getsource(provider._get_user)
+        assert "with store.lock" in source or "store.lock" in source, (
+            "_get_user uses module-level _lock instead of store.lock — lock inconsistency"
+        )
+
+    @pytest.mark.asyncio
+    async def test_change_password_uses_store_lock(self):
+        """ChangePassword should use store.lock, not the module-level _lock."""
+        import inspect
+
+        from robotocore.services.cognito import provider
+
+        source = inspect.getsource(provider._change_password)
+        assert "with store.lock" in source or "store.lock" in source, (
+            "_change_password uses module-level _lock instead of store.lock — lock inconsistency"
+        )
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: AdminUpdateUserAttributes writes wrong field name
+# ---------------------------------------------------------------------------
+
+
+class TestAttributeUpdateTimestamp:
+    @pytest.mark.asyncio
+    async def test_admin_update_user_attributes_updates_last_modified(self):
+        """AdminUpdateUserAttributes should update LastModifiedDate (not UserLastModifiedDate)."""
+        pool_id = await _create_pool()
+        await handle_cognito_request(
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
+        )
+
+        # Get initial LastModifiedDate
+        store = _get_store("us-east-1")
+        initial_ts = store.users[pool_id]["user1"]["LastModifiedDate"]
+
+        import time as _time
+
+        _time.sleep(0.01)
+
+        # Update attributes
+        req = _make_request(
+            "AdminUpdateUserAttributes",
+            {
+                "UserPoolId": pool_id,
+                "Username": "user1",
+                "UserAttributes": [{"Name": "email", "Value": "new@test.com"}],
+            },
+        )
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+
+        # LastModifiedDate (the canonical field) should be updated
+        updated_ts = store.users[pool_id]["user1"]["LastModifiedDate"]
+        assert updated_ts > initial_ts, (
+            "AdminUpdateUserAttributes writes to UserLastModifiedDate instead of LastModifiedDate"
+        )
+
+    @pytest.mark.asyncio
+    async def test_admin_update_attributes_on_nonexistent_pool_returns_pool_not_found(self):
+        """AdminUpdateUserAttributes on a nonexistent pool should return ResourceNotFoundException,
+        not UserNotFoundException."""
+        req = _make_request(
+            "AdminUpdateUserAttributes",
+            {
+                "UserPoolId": "nonexistent",
+                "Username": "user1",
+                "UserAttributes": [{"Name": "email", "Value": "x@test.com"}],
+            },
+        )
+        resp = await handle_cognito_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        data = json.loads(resp.body)
+        assert data["__type"] == "ResourceNotFoundException"

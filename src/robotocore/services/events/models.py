@@ -138,6 +138,29 @@ class EventsStore:
                 return False  # Can't delete default bus
             return self.buses.pop(name, None) is not None
 
+    def delete_bus_cascade(self, name: str) -> bool:
+        """Delete a bus and clean up all associated resources (rules, archives, tags)."""
+        with self.mutex:
+            if name == "default":
+                return False
+            bus = self.buses.pop(name, None)
+            if not bus:
+                return False
+            # Clean up tags on the bus itself
+            self.tags.pop(bus.arn, None)
+            # Clean up tags on all rules within the bus
+            for rule in bus.rules.values():
+                self.tags.pop(rule.arn, None)
+            # Clean up archives sourced from this bus
+            bus_arn = bus.arn
+            archives_to_remove = [
+                aname for aname, a in self.archives.items() if a.source_arn == bus_arn
+            ]
+            for aname in archives_to_remove:
+                archive = self.archives.pop(aname)
+                self.tags.pop(archive.arn, None)
+            return True
+
     def list_buses(self) -> list[EventBus]:
         return list(self.buses.values())
 
@@ -354,6 +377,11 @@ class EventsStore:
     def list_tags_for_resource(self, resource_arn: str) -> list[dict]:
         """Return tags for a resource ARN."""
         return list(self.tags.get(resource_arn, []))
+
+    def clean_up_tags(self, resource_arn: str) -> None:
+        """Remove all tags for a resource ARN (called on resource deletion)."""
+        with self.mutex:
+            self.tags.pop(resource_arn, None)
 
 
 def _match_pattern(pattern: dict, event: dict) -> bool:

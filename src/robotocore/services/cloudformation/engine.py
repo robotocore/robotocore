@@ -78,7 +78,8 @@ class CfnStore:
             return deleted
 
     def list_stacks(self) -> list[CfnStack]:
-        return list(self.stacks.values())
+        with self.mutex:
+            return list(self.stacks.values())
 
     def put_stack(self, stack: CfnStack) -> None:
         with self.mutex:

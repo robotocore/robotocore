@@ -140,6 +140,9 @@ async def _handle_functions(
         elif method == "DELETE":
             qualifier = request.query_params.get("Qualifier")
             backend.delete_function(func_name, qualifier)
+            # Cascade: clean up native stores for this function
+            if qualifier is None:
+                _cascade_delete_function(func_name, region, account_id)
             return _json(204, None)
 
     if len(parts) >= 3:
@@ -520,6 +523,38 @@ def _handle_account_settings(region: str, account_id: str) -> Response:
             },
         },
     )
+
+
+def _cascade_delete_function(func_name: str, region: str, account_id: str) -> None:
+    """Clean up all native stores when a function is deleted.
+
+    This handles parent-child cascade for resources stored outside Moto:
+    event source mappings, provisioned concurrency configs, and DLQ configs.
+    """
+    func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+
+    # Remove ESMs referencing this function
+    with _esm_lock:
+        to_remove = [
+            uuid for uuid, config in _esm_store.items() if config.get("FunctionArn") == func_arn
+        ]
+        for uuid in to_remove:
+            del _esm_store[uuid]
+
+    # Remove provisioned concurrency configs for this function
+    with _provisioned_lock:
+        to_remove = [
+            key
+            for key in _provisioned_concurrency
+            if key[0] == account_id and key[1] == region and key[2] == func_name
+        ]
+        for key in to_remove:
+            del _provisioned_concurrency[key]
+
+    # Remove DLQ config for this function
+    dlq_key = (account_id, region, func_name)
+    with _dlq_lock:
+        _dlq_configs.pop(dlq_key, None)
 
 
 async def _handle_event_source_mappings(

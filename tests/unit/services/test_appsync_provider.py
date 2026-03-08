@@ -93,6 +93,12 @@ class TestGraphqlApiCrud:
         data = json.loads(resp.body)
         assert data["graphqlApi"]["name"] == "MyAPI"
         assert "apiId" in data["graphqlApi"]
+        assert data["graphqlApi"]["authenticationType"] == "API_KEY"
+        assert "arn" in data["graphqlApi"]
+        assert "GRAPHQL" in data["graphqlApi"]["uris"]
+        assert "REALTIME" in data["graphqlApi"]["uris"]
+        assert data["graphqlApi"]["xrayEnabled"] is False
+        assert data["graphqlApi"]["tags"] == {}
 
     @pytest.mark.asyncio
     async def test_create_api_missing_name(self):
@@ -108,6 +114,9 @@ class TestGraphqlApiCrud:
         assert resp.status_code == 200
         data = json.loads(resp.body)
         assert data["graphqlApi"]["apiId"] == api_id
+        assert data["graphqlApi"]["name"] == "TestAPI"
+        assert "arn" in data["graphqlApi"]
+        assert "uris" in data["graphqlApi"]
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_api(self):
@@ -123,6 +132,8 @@ class TestGraphqlApiCrud:
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["graphqlApis"]) == 2
+        names = {a["name"] for a in data["graphqlApis"]}
+        assert names == {"API1", "API2"}
 
     @pytest.mark.asyncio
     async def test_update_api(self):
@@ -132,6 +143,8 @@ class TestGraphqlApiCrud:
         assert resp.status_code == 200
         data = json.loads(resp.body)
         assert data["graphqlApi"]["name"] == "Updated"
+        assert data["graphqlApi"]["apiId"] == api_id
+        assert "arn" in data["graphqlApi"]
 
     @pytest.mark.asyncio
     async def test_delete_api(self):
@@ -165,6 +178,8 @@ class TestApiKeys:
         assert resp.status_code == 200
         data = json.loads(resp.body)
         assert "id" in data["apiKey"]
+        assert "expires" in data["apiKey"]
+        assert "description" in data["apiKey"]
 
     @pytest.mark.asyncio
     async def test_list_api_keys(self):
@@ -188,6 +203,11 @@ class TestApiKeys:
         req = _make_request("DELETE", f"/v1/apis/{api_id}/apikeys/{key_id}")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
+
+        list_req = _make_request("GET", f"/v1/apis/{api_id}/apikeys")
+        list_resp = await handle_appsync_request(list_req, REGION, ACCOUNT)
+        list_data = json.loads(list_resp.body)
+        assert len(list_data["apiKeys"]) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +272,8 @@ class TestResolvers:
         assert resp.status_code == 200
         data = json.loads(resp.body)
         assert data["resolver"]["fieldName"] == "hello"
+        assert data["resolver"]["typeName"] == "Query"
+        assert "resolverArn" in data["resolver"]
 
     @pytest.mark.asyncio
     async def test_get_resolver(self):
@@ -268,6 +290,11 @@ class TestResolvers:
         req = _make_request("GET", f"/v1/apis/{api_id}/types/Query/resolvers/hello")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["resolver"]["fieldName"] == "hello"
+        assert data["resolver"]["typeName"] == "Query"
+        assert "resolverArn" in data["resolver"]
+        assert "kind" in data["resolver"]
 
     @pytest.mark.asyncio
     async def test_list_resolvers(self):
@@ -303,6 +330,11 @@ class TestResolvers:
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
+        list_req = _make_request("GET", f"/v1/apis/{api_id}/types/Query/resolvers")
+        list_resp = await handle_appsync_request(list_req, REGION, ACCOUNT)
+        list_data = json.loads(list_resp.body)
+        assert len(list_data["resolvers"]) == 0
+
 
 # ---------------------------------------------------------------------------
 # Data Sources
@@ -322,6 +354,8 @@ class TestDataSources:
         assert resp.status_code == 200
         data = json.loads(resp.body)
         assert data["dataSource"]["name"] == "myds"
+        assert data["dataSource"]["type"] == "AMAZON_DYNAMODB"
+        assert "dataSourceArn" in data["dataSource"]
 
     @pytest.mark.asyncio
     async def test_create_duplicate_data_source(self):
@@ -346,6 +380,10 @@ class TestDataSources:
         req = _make_request("GET", f"/v1/apis/{api_id}/datasources/myds")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["dataSource"]["name"] == "myds"
+        assert "dataSourceArn" in data["dataSource"]
+        assert "type" in data["dataSource"]
 
     @pytest.mark.asyncio
     async def test_list_data_sources(self):
@@ -373,6 +411,11 @@ class TestDataSources:
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
+        list_req = _make_request("GET", f"/v1/apis/{api_id}/datasources")
+        list_resp = await handle_appsync_request(list_req, REGION, ACCOUNT)
+        list_data = json.loads(list_resp.body)
+        assert len(list_data["dataSources"]) == 0
+
 
 # ---------------------------------------------------------------------------
 # Types
@@ -392,6 +435,9 @@ class TestTypes:
         assert resp.status_code == 200
         data = json.loads(resp.body)
         assert data["type"]["name"] == "Query"
+        assert data["type"]["format"] == "SDL"
+        assert "arn" in data["type"]
+        assert "definition" in data["type"]
 
     @pytest.mark.asyncio
     async def test_get_type(self):
@@ -408,6 +454,9 @@ class TestTypes:
         req = _make_request("GET", f"/v1/apis/{api_id}/types/Mutation")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["type"]["name"] == "Mutation"
+        assert "arn" in data["type"]
 
     @pytest.mark.asyncio
     async def test_list_types(self):
@@ -431,10 +480,20 @@ class TestTypes:
 
 class TestEdgeCases:
     @pytest.mark.asyncio
-    async def test_tags_get(self):
+    async def test_tags_get_nonexistent(self):
         req = _make_request("GET", "/v1/tags/arn:aws:appsync:us-east-1:123:apis/test")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_tags_get_existing_api(self):
+        api_id = await _create_api("TaggedAPI")
+        arn = f"arn:aws:appsync:{REGION}:{ACCOUNT}:apis/{api_id}"
+        req = _make_request("GET", f"/v1/tags/{arn}")
+        resp = await handle_appsync_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["tags"] == {}
 
     @pytest.mark.asyncio
     async def test_unknown_path(self):

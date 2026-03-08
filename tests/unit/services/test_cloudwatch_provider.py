@@ -887,3 +887,158 @@ class TestCloudWatchJsonProtocol:
             req = self._make_json_request("ListMetrics", {})
             await app(req, "us-east-1", "123456789012")
             mock_moto.assert_called_once()
+
+
+# ===================================================================
+# CATEGORICAL BUG TESTS
+# These test patterns that likely exist across many providers.
+# ===================================================================
+
+
+class TestCompositeAlarmTags:
+    """Bug category: Tag operations silently dropped.
+
+    Many providers accept Tags on create but never store or return them.
+    """
+
+    def test_put_composite_alarm_stores_tags(self):
+        """Tags passed at creation should be stored."""
+        put_composite_alarm(
+            {
+                "AlarmName": "tagged-alarm",
+                "AlarmRule": 'ALARM("a1")',
+                "Tags": [
+                    {"Key": "env", "Value": "prod"},
+                    {"Key": "team", "Value": "infra"},
+                ],
+            },
+            REGION,
+            ACCOUNT,
+        )
+        alarms = describe_composite_alarms({"AlarmNames": ["tagged-alarm"]}, REGION, ACCOUNT)
+        assert len(alarms) == 1
+        assert "Tags" in alarms[0], "Tags should be returned by describe"
+        assert len(alarms[0]["Tags"]) == 2
+        tags_dict = {t["Key"]: t["Value"] for t in alarms[0]["Tags"]}
+        assert tags_dict == {"env": "prod", "team": "infra"}
+
+    def test_put_composite_alarm_default_empty_tags(self):
+        """Alarms without tags should return empty tags list."""
+        put_composite_alarm(
+            {
+                "AlarmName": "no-tags",
+                "AlarmRule": 'ALARM("a1")',
+            },
+            REGION,
+            ACCOUNT,
+        )
+        alarms = describe_composite_alarms({"AlarmNames": ["no-tags"]}, REGION, ACCOUNT)
+        assert alarms[0].get("Tags") == []
+
+
+class TestDeleteDashboardsAtomicity:
+    """Bug category: Non-atomic batch deletes.
+
+    AWS batch-delete operations should be atomic: if any item fails,
+    none should be deleted. This is a common pattern across services.
+    """
+
+    def _valid_body(self) -> str:
+        return json.dumps({"widgets": [{"type": "metric", "properties": {}}]})
+
+    def test_delete_dashboards_atomic_on_missing(self):
+        """If one dashboard doesn't exist, none should be deleted."""
+        put_dashboard(
+            {"DashboardName": "keep-me", "DashboardBody": self._valid_body()},
+            REGION,
+            ACCOUNT,
+        )
+        with pytest.raises(CloudWatchError, match="does not exist"):
+            delete_dashboards(
+                {"DashboardNames": ["keep-me", "nonexistent"]},
+                REGION,
+                ACCOUNT,
+            )
+        # "keep-me" should still exist because the operation should be atomic
+        result = get_dashboard({"DashboardName": "keep-me"}, REGION, ACCOUNT)
+        assert result["DashboardName"] == "keep-me"
+
+
+class TestErrorCodeFormat:
+    """Bug category: Wrong error codes.
+
+    AWS uses specific error code strings (e.g. ResourceNotFoundException vs
+    ResourceNotFound). Incorrect codes break SDK error matching.
+    """
+
+    def test_get_dashboard_not_found_error_code(self):
+        """Dashboard not found should use 'ResourceNotFound' error code matching AWS."""
+        try:
+            get_dashboard({"DashboardName": "nope"}, REGION, ACCOUNT)
+            assert False, "Should have raised"
+        except CloudWatchError as e:
+            assert e.code == "ResourceNotFound", f"Expected ResourceNotFound, got {e.code}"
+            assert e.status == 404, f"Expected 404 status, got {e.status}"
+
+    def test_delete_dashboard_not_found_error_code(self):
+        """Delete nonexistent dashboard should use ResourceNotFound with 404."""
+        try:
+            delete_dashboards({"DashboardNames": ["nope"]}, REGION, ACCOUNT)
+            assert False, "Should have raised"
+        except CloudWatchError as e:
+            assert e.code == "ResourceNotFound", f"Expected ResourceNotFound, got {e.code}"
+            assert e.status == 404, f"Expected 404 status, got {e.status}"
+
+
+class TestEnableDisableCompositeAlarms:
+    """Bug category: Operations that only update one store.
+
+    When data lives in two stores (native + Moto), operations must update both.
+    Enable/DisableAlarmActions only update Moto alarms, not composites.
+    """
+
+    def test_enable_alarm_actions_on_composite(self):
+        """EnableAlarmActions should work on composite alarms too."""
+        from robotocore.services.cloudwatch.provider import _handle_enable_alarm_actions
+
+        put_composite_alarm(
+            {
+                "AlarmName": "comp-alarm",
+                "AlarmRule": 'ALARM("a1")',
+                "ActionsEnabled": False,
+            },
+            REGION,
+            ACCOUNT,
+        )
+
+        with patch("moto.backends.get_backend") as mock_gb:
+            mock_backend = MagicMock()
+            mock_backend.alarms = {}
+            mock_gb.return_value = {ACCOUNT: {REGION: mock_backend}}
+            _handle_enable_alarm_actions({"AlarmNames": ["comp-alarm"]}, REGION, ACCOUNT)
+
+        alarms = describe_composite_alarms({"AlarmNames": ["comp-alarm"]}, REGION, ACCOUNT)
+        assert alarms[0]["ActionsEnabled"] is True
+
+    def test_disable_alarm_actions_on_composite(self):
+        """DisableAlarmActions should work on composite alarms too."""
+        from robotocore.services.cloudwatch.provider import _handle_disable_alarm_actions
+
+        put_composite_alarm(
+            {
+                "AlarmName": "comp-alarm",
+                "AlarmRule": 'ALARM("a1")',
+                "ActionsEnabled": True,
+            },
+            REGION,
+            ACCOUNT,
+        )
+
+        with patch("moto.backends.get_backend") as mock_gb:
+            mock_backend = MagicMock()
+            mock_backend.alarms = {}
+            mock_gb.return_value = {ACCOUNT: {REGION: mock_backend}}
+            _handle_disable_alarm_actions({"AlarmNames": ["comp-alarm"]}, REGION, ACCOUNT)
+
+        alarms = describe_composite_alarms({"AlarmNames": ["comp-alarm"]}, REGION, ACCOUNT)
+        assert alarms[0]["ActionsEnabled"] is False

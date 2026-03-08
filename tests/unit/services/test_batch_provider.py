@@ -457,7 +457,7 @@ class TestJobs:
         )
         job_id = json.loads(submit_resp.body)["jobId"]
         # Set status back to SUBMITTED for cancel test
-        store = _stores.get(REGION)
+        store = _stores.get(f"{ACCOUNT}:{REGION}")
         with store.lock:
             store.jobs[job_id]["status"] = "SUBMITTED"
 
@@ -536,3 +536,287 @@ class TestEdgeCases:
         )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: creation tags visible via ListTags
+# ---------------------------------------------------------------------------
+
+
+class TestCreationTagsVisibleViaListTags:
+    """BUG: Tags set during resource creation must be queryable via ListTagsForResource."""
+
+    @pytest.mark.asyncio
+    async def test_compute_env_creation_tags_visible(self):
+        req = _make_request(
+            "POST",
+            "/v1/createcomputeenvironment",
+            {
+                "computeEnvironmentName": "tagged-ce",
+                "type": "MANAGED",
+                "tags": {"env": "prod", "team": "platform"},
+            },
+        )
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        arn = json.loads(resp.body)["computeEnvironmentArn"]
+
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        tags = json.loads(list_resp.body)["tags"]
+        assert tags == {"env": "prod", "team": "platform"}
+
+    @pytest.mark.asyncio
+    async def test_job_queue_creation_tags_visible(self):
+        req = _make_request(
+            "POST",
+            "/v1/createjobqueue",
+            {
+                "jobQueueName": "tagged-queue",
+                "priority": 1,
+                "tags": {"env": "staging"},
+            },
+        )
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        arn = json.loads(resp.body)["jobQueueArn"]
+
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        tags = json.loads(list_resp.body)["tags"]
+        assert tags == {"env": "staging"}
+
+    @pytest.mark.asyncio
+    async def test_job_definition_creation_tags_visible(self):
+        req = _make_request(
+            "POST",
+            "/v1/registerjobdefinition",
+            {
+                "jobDefinitionName": "tagged-def",
+                "type": "container",
+                "containerProperties": {"image": "busybox", "vcpus": 1, "memory": 512},
+                "tags": {"version": "1.0"},
+            },
+        )
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        arn = json.loads(resp.body)["jobDefinitionArn"]
+
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        tags = json.loads(list_resp.body)["tags"]
+        assert tags == {"version": "1.0"}
+
+    @pytest.mark.asyncio
+    async def test_job_creation_tags_visible(self):
+        await _create_job_queue("q1")
+        await _register_job_def("mydef")
+        req = _make_request(
+            "POST",
+            "/v1/submitjob",
+            {
+                "jobName": "tagged-job",
+                "jobQueue": "q1",
+                "jobDefinition": "mydef",
+                "tags": {"priority": "high"},
+            },
+        )
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        arn = json.loads(resp.body)["jobArn"]
+
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        tags = json.loads(list_resp.body)["tags"]
+        assert tags == {"priority": "high"}
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: delete cleans up tags
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteCleansUpTags:
+    """BUG: Deleting a resource must remove its tags from the tag store."""
+
+    @pytest.mark.asyncio
+    async def test_delete_compute_env_cleans_tags(self):
+        req = _make_request(
+            "POST",
+            "/v1/createcomputeenvironment",
+            {
+                "computeEnvironmentName": "doomed-ce",
+                "type": "MANAGED",
+                "tags": {"env": "test"},
+            },
+        )
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        arn = json.loads(resp.body)["computeEnvironmentArn"]
+
+        # Verify tags exist before delete
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        assert list_resp.status_code == 200
+        assert json.loads(list_resp.body)["tags"] == {"env": "test"}
+
+        # Delete the CE
+        await handle_batch_request(
+            _make_request(
+                "POST", "/v1/deletecomputeenvironment", {"computeEnvironment": "doomed-ce"}
+            ),
+            REGION,
+            ACCOUNT,
+        )
+
+        # Resource gone => ListTags returns 404
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        assert list_resp.status_code == 404
+
+        # Verify the ARN is not in the tag store (no stale data)
+        from robotocore.services.batch.provider import _get_store
+
+        store = _get_store(REGION, ACCOUNT)
+        assert arn not in store.tags
+
+    @pytest.mark.asyncio
+    async def test_delete_job_queue_cleans_tags(self):
+        req = _make_request(
+            "POST",
+            "/v1/createjobqueue",
+            {
+                "jobQueueName": "doomed-queue",
+                "priority": 1,
+                "tags": {"env": "test"},
+            },
+        )
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        arn = json.loads(resp.body)["jobQueueArn"]
+
+        # Verify tags exist before delete
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        assert list_resp.status_code == 200
+        assert json.loads(list_resp.body)["tags"] == {"env": "test"}
+
+        await handle_batch_request(
+            _make_request("POST", "/v1/deletejobqueue", {"jobQueue": "doomed-queue"}),
+            REGION,
+            ACCOUNT,
+        )
+
+        # Resource gone => ListTags returns 404
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        assert list_resp.status_code == 404
+
+        # Verify no stale tag data
+        from robotocore.services.batch.provider import _get_store
+
+        store = _get_store(REGION, ACCOUNT)
+        assert arn not in store.tags
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: tag operations on nonexistent resources
+# ---------------------------------------------------------------------------
+
+
+class TestTagNonexistentResource:
+    """BUG: TagResource/UntagResource on nonexistent ARN should return error."""
+
+    @pytest.mark.asyncio
+    async def test_tag_nonexistent_resource_errors(self):
+        fake_arn = f"arn:aws:batch:{REGION}:{ACCOUNT}:compute-environment/nope"
+        req = _make_request("POST", f"/v1/tags/{fake_arn}", {"tags": {"k": "v"}})
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_list_tags_nonexistent_resource_errors(self):
+        fake_arn = f"arn:aws:batch:{REGION}:{ACCOUNT}:compute-environment/nope"
+        req = _make_request("GET", f"/v1/tags/{fake_arn}")
+        resp = await handle_batch_request(req, REGION, ACCOUNT)
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: store keyed by region only (ignores account_id)
+# ---------------------------------------------------------------------------
+
+
+class TestAccountIsolation:
+    """BUG: Different AWS accounts should have isolated state."""
+
+    @pytest.mark.asyncio
+    async def test_different_accounts_isolated(self):
+        # Create CE in account A
+        req = _make_request(
+            "POST",
+            "/v1/createcomputeenvironment",
+            {"computeEnvironmentName": "shared-name", "type": "MANAGED"},
+        )
+        resp = await handle_batch_request(req, REGION, "111111111111")
+        assert resp.status_code == 200
+
+        # Create CE with same name in account B -- should succeed (different account)
+        req2 = _make_request(
+            "POST",
+            "/v1/createcomputeenvironment",
+            {"computeEnvironmentName": "shared-name", "type": "MANAGED"},
+        )
+        resp2 = await handle_batch_request(req2, REGION, "222222222222")
+        assert resp2.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: job definition TOCTOU race in register
+# ---------------------------------------------------------------------------
+
+
+class TestJobDefinitionRevisionAtomicity:
+    """BUG: _register_job_definition releases lock between computing revision and appending."""
+
+    @pytest.mark.asyncio
+    async def test_revision_computed_atomically(self):
+        """Register two definitions sequentially; revisions should be 1 and 2."""
+        arn1 = await _register_job_def("atomicdef")
+        arn2 = await _register_job_def("atomicdef")
+        # If the TOCTOU is fixed, these should have revisions 1 and 2
+        assert arn1.endswith(":1")
+        assert arn2.endswith(":2")
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: untag then list verifies removal
+# ---------------------------------------------------------------------------
+
+
+class TestUntagVerifiesRemoval:
+    """Untag should actually remove the key, verified by subsequent ListTags."""
+
+    @pytest.mark.asyncio
+    async def test_untag_then_list_shows_removal(self):
+        arn = await _create_compute_env("untag-ce")
+        # Add two tags
+        await handle_batch_request(
+            _make_request("POST", f"/v1/tags/{arn}", {"tags": {"a": "1", "b": "2"}}),
+            REGION,
+            ACCOUNT,
+        )
+        # Remove one
+        await handle_batch_request(
+            _make_request("DELETE", f"/v1/tags/{arn}", query="tagKeys=a"),
+            REGION,
+            ACCOUNT,
+        )
+        # Verify only b remains
+        list_resp = await handle_batch_request(
+            _make_request("GET", f"/v1/tags/{arn}"), REGION, ACCOUNT
+        )
+        tags = json.loads(list_resp.body)["tags"]
+        assert tags == {"b": "2"}

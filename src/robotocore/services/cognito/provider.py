@@ -538,7 +538,7 @@ def _get_user(store: CognitoStore, params: dict, region: str, account_id: str) -
     sub = payload.get("sub", "")
 
     # Find user by sub across all pools
-    with _lock:
+    with store.lock:
         for pool_id, users in store.users.items():
             for username, user in users.items():
                 if user["UserSub"] == sub:
@@ -713,7 +713,7 @@ def _change_password(store: CognitoStore, params: dict, region: str, account_id:
 
     sub = payload.get("sub", "")
 
-    with _lock:
+    with store.lock:
         for pool_id, users in store.users.items():
             for username, user in users.items():
                 if user["UserSub"] == sub:
@@ -825,6 +825,10 @@ def _delete_group(store: CognitoStore, params: dict, region: str, account_id: st
                 404,
             )
         del groups[group_name]
+        # Cascade: remove group from all user memberships
+        for username, user_group_list in store.user_groups.get(pool_id, {}).items():
+            if group_name in user_group_list:
+                user_group_list.remove(group_name)
     return {}
 
 
@@ -1077,6 +1081,7 @@ def _admin_update_user_attributes(
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     user_attributes = params.get("UserAttributes", [])
+    _require_pool(store, pool_id)
     with store.lock:
         users = store.users.get(pool_id, {})
         user = users.get(username)
@@ -1087,7 +1092,7 @@ def _admin_update_user_attributes(
         for attr in user_attributes:
             existing[attr["Name"]] = attr["Value"]
         user["Attributes"] = [{"Name": k, "Value": v} for k, v in existing.items()]
-        user["UserLastModifiedDate"] = time.time()
+        user["LastModifiedDate"] = time.time()
     return {}
 
 
@@ -1171,6 +1176,60 @@ def _list_users_in_group(store: CognitoStore, params: dict, region: str, account
     return {"Users": result}
 
 
+# ---------------------------------------------------------------------------
+# Tag operations
+# ---------------------------------------------------------------------------
+
+
+def _tag_resource(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
+    resource_arn = params.get("ResourceArn", "")
+    tags = params.get("Tags", {})
+    pool_id = _pool_id_from_arn(resource_arn)
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        pool = store.pools[pool_id]
+        existing_tags = pool.setdefault("Tags", {})
+        existing_tags.update(tags)
+    return {}
+
+
+def _untag_resource(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
+    resource_arn = params.get("ResourceArn", "")
+    tag_keys = params.get("TagKeys", [])
+    pool_id = _pool_id_from_arn(resource_arn)
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        pool = store.pools[pool_id]
+        existing_tags = pool.get("Tags", {})
+        for key in tag_keys:
+            existing_tags.pop(key, None)
+    return {}
+
+
+def _list_tags_for_resource(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    resource_arn = params.get("ResourceArn", "")
+    pool_id = _pool_id_from_arn(resource_arn)
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        pool = store.pools[pool_id]
+        tags = pool.get("Tags", {})
+    return {"Tags": dict(tags)}
+
+
+def _pool_id_from_arn(arn: str) -> str:
+    """Extract pool_id from an ARN like arn:aws:cognito-idp:REGION:ACCT:userpool/POOL_ID."""
+    if "/userpool/" in arn:
+        return arn.split("/userpool/")[-1]
+    if "/" in arn:
+        return arn.rsplit("/", 1)[-1]
+    return arn
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
@@ -1219,4 +1278,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "AddCustomAttributes": _add_custom_attributes,
     "SetUserPoolMfaConfig": _set_user_pool_mfa_config,
     "ListUsersInGroup": _list_users_in_group,
+    "TagResource": _tag_resource,
+    "UntagResource": _untag_resource,
+    "ListTagsForResource": _list_tags_for_resource,
 }

@@ -6,6 +6,8 @@ import pytest
 
 from robotocore.services.events.provider import (
     EventsError,
+    _api_destinations,
+    _connections,
     _error,
     _json,
     _stores,
@@ -43,9 +45,13 @@ def _make_request(operation: str, body: dict):
 def _clear_stores():
     """Reset global stores between tests."""
     _stores.clear()
+    _connections.clear()
+    _api_destinations.clear()
     clear_invocation_log()
     yield
     _stores.clear()
+    _connections.clear()
+    _api_destinations.clear()
     clear_invocation_log()
 
 
@@ -366,3 +372,285 @@ class TestInvocationLog:
         assert len(get_invocation_log()) == 1
         clear_invocation_log()
         assert get_invocation_log() == []
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug: Store isolation by account_id
+# ---------------------------------------------------------------------------
+
+
+class TestStoreIsolationByAccount:
+    """_get_store() must key on (region, account_id), not just region.
+    Two AWS accounts in the same region must not share state."""
+
+    @pytest.mark.asyncio
+    async def test_different_accounts_have_separate_buses(self):
+        req1 = _make_request("CreateEventBus", {"Name": "acct-bus"})
+        await handle_events_request(req1, "us-east-1", "111111111111")
+
+        req2 = _make_request("DescribeEventBus", {"Name": "acct-bus"})
+        resp2 = await handle_events_request(req2, "us-east-1", "222222222222")
+        # Account 222 should NOT see account 111's bus
+        assert resp2.status_code == 400
+        data = json.loads(resp2.body)
+        assert data["__type"] == "ResourceNotFoundException"
+
+    @pytest.mark.asyncio
+    async def test_different_accounts_have_separate_rules(self):
+        req1 = _make_request("PutRule", {"Name": "acct-rule"})
+        await handle_events_request(req1, "us-east-1", "111111111111")
+
+        req2 = _make_request("DescribeRule", {"Name": "acct-rule"})
+        resp2 = await handle_events_request(req2, "us-east-1", "222222222222")
+        assert resp2.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug: Parent-child cascade on deletion
+# ---------------------------------------------------------------------------
+
+
+class TestCascadeDeletion:
+    """Deleting a bus should clean up rules, targets, archives, and tags."""
+
+    @pytest.mark.asyncio
+    async def test_delete_bus_cleans_up_rules(self):
+        # Create bus with a rule
+        req1 = _make_request("CreateEventBus", {"Name": "cascade-bus"})
+        await handle_events_request(req1, "us-east-1", "123456789012")
+
+        req2 = _make_request("PutRule", {"Name": "cascade-rule", "EventBusName": "cascade-bus"})
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Delete bus
+        req3 = _make_request("DeleteEventBus", {"Name": "cascade-bus"})
+        await handle_events_request(req3, "us-east-1", "123456789012")
+
+        # Rule should not be findable after bus deletion
+        req4 = _make_request(
+            "DescribeRule", {"Name": "cascade-rule", "EventBusName": "cascade-bus"}
+        )
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        assert resp4.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_delete_bus_cleans_up_archives(self):
+        """Archives sourced from a deleted bus should also be cleaned up."""
+        req1 = _make_request("CreateEventBus", {"Name": "arch-bus"})
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        bus_arn = json.loads(resp1.body)["EventBusArn"]
+
+        req2 = _make_request(
+            "CreateArchive",
+            {"ArchiveName": "bus-archive", "EventSourceArn": bus_arn},
+        )
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Delete bus
+        req3 = _make_request("DeleteEventBus", {"Name": "arch-bus"})
+        await handle_events_request(req3, "us-east-1", "123456789012")
+
+        # Archive sourced from deleted bus should be gone
+        req4 = _make_request("DescribeArchive", {"ArchiveName": "bus-archive"})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        assert resp4.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_delete_bus_cleans_up_tags(self):
+        """Tags on a deleted bus ARN should be cleaned up."""
+        req1 = _make_request("CreateEventBus", {"Name": "tag-bus"})
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        bus_arn = json.loads(resp1.body)["EventBusArn"]
+
+        # Tag the bus
+        req2 = _make_request(
+            "TagResource",
+            {"ResourceARN": bus_arn, "Tags": [{"Key": "env", "Value": "test"}]},
+        )
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Delete bus
+        req3 = _make_request("DeleteEventBus", {"Name": "tag-bus"})
+        await handle_events_request(req3, "us-east-1", "123456789012")
+
+        # Tags should be gone
+        req4 = _make_request("ListTagsForResource", {"ResourceARN": bus_arn})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        data = json.loads(resp4.body)
+        assert data["Tags"] == []
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug: Tags not cleaned up on resource deletion
+# ---------------------------------------------------------------------------
+
+
+class TestTagCleanupOnDeletion:
+    """Tags must be removed when the tagged resource is deleted."""
+
+    @pytest.mark.asyncio
+    async def test_delete_rule_cleans_up_tags(self):
+        req1 = _make_request("PutRule", {"Name": "tagged-rule"})
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        rule_arn = json.loads(resp1.body)["RuleArn"]
+
+        req2 = _make_request(
+            "TagResource",
+            {"ResourceARN": rule_arn, "Tags": [{"Key": "k", "Value": "v"}]},
+        )
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Delete rule
+        req3 = _make_request("DeleteRule", {"Name": "tagged-rule"})
+        await handle_events_request(req3, "us-east-1", "123456789012")
+
+        # Tags should be gone
+        req4 = _make_request("ListTagsForResource", {"ResourceARN": rule_arn})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        data = json.loads(resp4.body)
+        assert data["Tags"] == []
+
+    @pytest.mark.asyncio
+    async def test_delete_archive_cleans_up_tags(self):
+        bus_arn = "arn:aws:events:us-east-1:123456789012:event-bus/default"
+        req1 = _make_request(
+            "CreateArchive",
+            {"ArchiveName": "tagged-archive", "EventSourceArn": bus_arn},
+        )
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        archive_arn = json.loads(resp1.body)["ArchiveArn"]
+
+        req2 = _make_request(
+            "TagResource",
+            {"ResourceARN": archive_arn, "Tags": [{"Key": "k", "Value": "v"}]},
+        )
+        await handle_events_request(req2, "us-east-1", "123456789012")
+
+        # Delete archive
+        req3 = _make_request("DeleteArchive", {"ArchiveName": "tagged-archive"})
+        await handle_events_request(req3, "us-east-1", "123456789012")
+
+        # Tags should be gone
+        req4 = _make_request("ListTagsForResource", {"ResourceARN": archive_arn})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        data = json.loads(resp4.body)
+        assert data["Tags"] == []
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug: Enable/disable nonexistent rule silently succeeds
+# ---------------------------------------------------------------------------
+
+
+class TestEnableDisableNonexistentRule:
+    """EnableRule and DisableRule should raise ResourceNotFoundException for missing rules."""
+
+    @pytest.mark.asyncio
+    async def test_enable_nonexistent_rule_returns_error(self):
+        req = _make_request("EnableRule", {"Name": "ghost-rule"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        data = json.loads(resp.body)
+        assert data["__type"] == "ResourceNotFoundException"
+
+    @pytest.mark.asyncio
+    async def test_disable_nonexistent_rule_returns_error(self):
+        req = _make_request("DisableRule", {"Name": "ghost-rule"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        data = json.loads(resp.body)
+        assert data["__type"] == "ResourceNotFoundException"
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug: Connections/API destinations not cleared between tests
+# ---------------------------------------------------------------------------
+
+
+class TestConnectionsApiDestinationsIsolation:
+    """Connections and API destinations are module-level globals. They must be
+    cleared between tests (the fixture handles this) and the operations must work."""
+
+    @pytest.mark.asyncio
+    async def test_connection_lifecycle(self):
+        req1 = _make_request(
+            "CreateConnection",
+            {"Name": "my-conn", "AuthorizationType": "API_KEY", "AuthParameters": {}},
+        )
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        assert resp1.status_code == 200
+
+        req2 = _make_request("DescribeConnection", {"Name": "my-conn"})
+        resp2 = await handle_events_request(req2, "us-east-1", "123456789012")
+        assert resp2.status_code == 200
+        assert json.loads(resp2.body)["Name"] == "my-conn"
+
+        req3 = _make_request("DeleteConnection", {"Name": "my-conn"})
+        resp3 = await handle_events_request(req3, "us-east-1", "123456789012")
+        assert resp3.status_code == 200
+
+        # Should be gone now
+        req4 = _make_request("DescribeConnection", {"Name": "my-conn"})
+        resp4 = await handle_events_request(req4, "us-east-1", "123456789012")
+        assert resp4.status_code == 400  # AWS uses 400 for ResourceNotFoundException
+
+    @pytest.mark.asyncio
+    async def test_api_destination_lifecycle(self):
+        req1 = _make_request(
+            "CreateApiDestination",
+            {
+                "Name": "my-dest",
+                "ConnectionArn": "arn:aws:events:us-east-1:123:connection/c",
+                "InvocationEndpoint": "https://example.com",
+                "HttpMethod": "POST",
+            },
+        )
+        resp1 = await handle_events_request(req1, "us-east-1", "123456789012")
+        assert resp1.status_code == 200
+
+        req2 = _make_request("DescribeApiDestination", {"Name": "my-dest"})
+        resp2 = await handle_events_request(req2, "us-east-1", "123456789012")
+        assert resp2.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_connections_isolated_between_tests(self):
+        """This test verifies the fixture clears _connections.
+        If run after test_connection_lifecycle, 'my-conn' should not exist."""
+        req = _make_request("DescribeConnection", {"Name": "my-conn"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400  # Should be gone (fixture clears)
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug: Inconsistent error status codes
+# ---------------------------------------------------------------------------
+
+
+class TestConsistentErrorCodes:
+    """AWS EventBridge uses HTTP 400 for ResourceNotFoundException (not 404).
+    All operations must be consistent."""
+
+    @pytest.mark.asyncio
+    async def test_describe_connection_not_found_is_400(self):
+        req = _make_request("DescribeConnection", {"Name": "nope"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        # AWS EventBridge JSON protocol returns 400 for ResourceNotFoundException
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_delete_connection_not_found_is_400(self):
+        req = _make_request("DeleteConnection", {"Name": "nope"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_describe_api_destination_not_found_is_400(self):
+        req = _make_request("DescribeApiDestination", {"Name": "nope"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_update_archive_not_found_is_400(self):
+        req = _make_request("UpdateArchive", {"ArchiveName": "nope"})
+        resp = await handle_events_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400

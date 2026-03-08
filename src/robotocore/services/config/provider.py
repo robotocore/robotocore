@@ -11,6 +11,7 @@ Delegates everything else to Moto via forward_to_moto.
 Uses JSON protocol (X-Amz-Target: StarlingDoveService.*).
 """
 
+import copy
 import json
 import logging
 import time
@@ -80,7 +81,8 @@ class ConfigError(Exception):
 def _put_config_rule(params: dict, region: str, account_id: str) -> dict:
     """PutConfigRule - delegates to Moto but ensures InputParameters is preserved."""
     backend = _get_config_backend(account_id, region)
-    config_rule = params.get("ConfigRule", {})
+    # Work on a deep copy so we never mutate the caller's params
+    config_rule = copy.deepcopy(params.get("ConfigRule", {}))
     tags = params.get("Tags", [])
 
     rule_name = config_rule.get("ConfigRuleName", "")
@@ -103,7 +105,7 @@ def _put_config_rule(params: dict, region: str, account_id: str) -> dict:
     # Let Moto handle the core creation
     rule_arn = backend.put_config_rule(config_rule, tags)
 
-    # Restore CUSTOM_LAMBDA source info
+    # Restore CUSTOM_LAMBDA source info on the Moto rule object
     if original_owner == "CUSTOM_LAMBDA" and rule_name in backend.config_rules:
         rule = backend.config_rules[rule_name]
         rule.source = {
@@ -289,6 +291,30 @@ def _error_response(code: str, message: str, status: int) -> Response:
 # ---------------------------------------------------------------------------
 
 
+def _delete_config_rule(params: dict, region: str, account_id: str) -> dict:
+    """DeleteConfigRule - delegates to Moto and cleans up our in-memory stores."""
+    backend = _get_config_backend(account_id, region)
+    rule_name = params.get("ConfigRuleName", "")
+
+    if rule_name not in backend.config_rules:
+        raise ConfigError(
+            "NoSuchConfigRuleException",
+            "The ConfigRule provided in the request is invalid. Please check the configRule name",
+        )
+
+    # Delete from Moto
+    backend.delete_config_rule(rule_name)
+
+    # Clean up our in-memory evaluation status and evaluations
+    key = (account_id, region)
+    if key in _evaluation_statuses:
+        _evaluation_statuses[key].pop(rule_name, None)
+    if key in _evaluations:
+        _evaluations[key].pop(rule_name, None)
+
+    return {}
+
+
 def _describe_compliance_by_resource(params: dict, region: str, account_id: str) -> dict:
     """DescribeComplianceByResource — return empty compliance list."""
     return {"ComplianceByResources": []}
@@ -301,6 +327,7 @@ def _get_compliance_details_by_config_rule(params: dict, region: str, account_id
 
 _ACTION_MAP = {
     "PutConfigRule": _put_config_rule,
+    "DeleteConfigRule": _delete_config_rule,
     "DescribeConfigRules": _describe_config_rules,
     "DescribeComplianceByConfigRule": _describe_compliance_by_config_rule,
     "DescribeComplianceByResource": _describe_compliance_by_resource,

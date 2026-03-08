@@ -6,6 +6,7 @@ Intercepts operations that Moto doesn't implement or has bugs in:
 - DeleteVpcEndpoints: Moto crashes with NoneType.lower() error
 """
 
+import threading
 import uuid
 from urllib.parse import parse_qs
 from xml.sax.saxutils import escape as xml_escape
@@ -17,6 +18,9 @@ from robotocore.providers.moto_bridge import forward_to_moto
 
 # In-memory placement group store: {account_id: {region: {name: group}}}
 _placement_groups: dict[str, dict[str, dict[str, dict]]] = {}
+_placement_groups_lock = threading.Lock()
+
+VALID_STRATEGIES = {"cluster", "spread", "partition"}
 
 
 async def handle_ec2_request(request: Request, region: str, account_id: str) -> Response:
@@ -56,21 +60,52 @@ def _get_param(params: dict, key: str) -> str:
     return vals[0] if vals else ""
 
 
+def _ec2_error(code: str, message: str, status_code: int = 400) -> Response:
+    """Return a standard EC2 XML error response."""
+    xml = (
+        f'<?xml version="1.0" encoding="UTF-8"?>'
+        f"<Response><Errors><Error><Code>{xml_escape(code)}</Code>"
+        f"<Message>{xml_escape(message)}</Message></Error></Errors>"
+        f"<RequestID>{uuid.uuid4()}</RequestID></Response>"
+    )
+    return Response(content=xml, status_code=status_code, media_type="text/xml")
+
+
 def _create_placement_group(params: dict, region: str, account_id: str) -> Response:
     name = _get_param(params, "GroupName")
     strategy = _get_param(params, "Strategy") or "cluster"
     partition_count = _get_param(params, "PartitionCount")
 
-    store = _placement_groups.setdefault(account_id, {}).setdefault(region, {})
-    group_id = f"pg-{uuid.uuid4().hex[:17]}"
-    group = {
-        "groupName": name,
-        "strategy": strategy,
-        "state": "available",
-        "groupId": group_id,
-        "partitionCount": partition_count or ("7" if strategy == "partition" else ""),
-    }
-    store[name] = group
+    if not name:
+        return _ec2_error(
+            "MissingParameter",
+            "The request must contain the parameter GroupName.",
+        )
+
+    if strategy not in VALID_STRATEGIES:
+        return _ec2_error(
+            "InvalidParameterValue",
+            f"Value ({strategy}) for parameter strategy is invalid. "
+            f"Unknown placement group strategy.",
+        )
+
+    with _placement_groups_lock:
+        store = _placement_groups.setdefault(account_id, {}).setdefault(region, {})
+        if name in store:
+            return _ec2_error(
+                "InvalidPlacementGroup.Duplicate",
+                f"Placement group '{name}' already exists.",
+            )
+
+        group_id = f"pg-{uuid.uuid4().hex[:17]}"
+        group = {
+            "groupName": name,
+            "strategy": strategy,
+            "state": "available",
+            "groupId": group_id,
+            "partitionCount": partition_count or ("7" if strategy == "partition" else ""),
+        }
+        store[name] = group
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <CreatePlacementGroupResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
@@ -87,22 +122,30 @@ def _create_placement_group(params: dict, region: str, account_id: str) -> Respo
 
 
 def _describe_placement_groups(params: dict, region: str, account_id: str) -> Response:
-    store = _placement_groups.get(account_id, {}).get(region, {})
+    with _placement_groups_lock:
+        store = _placement_groups.get(account_id, {}).get(region, {})
 
-    # Filter by GroupName.N
-    names = []
-    i = 1
-    while True:
-        name = _get_param(params, f"GroupName.{i}")
-        if not name:
-            break
-        names.append(name)
-        i += 1
+        # Filter by GroupName.N
+        names = []
+        i = 1
+        while True:
+            name = _get_param(params, f"GroupName.{i}")
+            if not name:
+                break
+            names.append(name)
+            i += 1
 
-    if names:
-        groups = [store[n] for n in names if n in store]
-    else:
-        groups = list(store.values())
+        if names:
+            # AWS returns an error if any requested name doesn't exist
+            for n in names:
+                if n not in store:
+                    return _ec2_error(
+                        "InvalidPlacementGroup.Unknown",
+                        f"The placement group '{n}' is unknown.",
+                    )
+            groups = [store[n] for n in names]
+        else:
+            groups = list(store.values())
 
     items = ""
     for g in groups:
@@ -125,8 +168,21 @@ def _describe_placement_groups(params: dict, region: str, account_id: str) -> Re
 
 def _delete_placement_group(params: dict, region: str, account_id: str) -> Response:
     name = _get_param(params, "GroupName")
-    store = _placement_groups.get(account_id, {}).get(region, {})
-    store.pop(name, None)
+
+    if not name:
+        return _ec2_error(
+            "MissingParameter",
+            "The request must contain the parameter GroupName.",
+        )
+
+    with _placement_groups_lock:
+        store = _placement_groups.get(account_id, {}).get(region, {})
+        if name not in store:
+            return _ec2_error(
+                "InvalidPlacementGroup.Unknown",
+                f"The placement group '{name}' is unknown.",
+            )
+        store.pop(name)
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <DeletePlacementGroupResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">

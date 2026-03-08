@@ -264,6 +264,10 @@ def _delete_stack_action(store: CfnStore, params: dict, region: str, account_id:
         except Exception:
             pass
 
+    # Clean up exports from the global store (categorical: deletion must cascade)
+    for export_name in list(stack.exports.keys()):
+        store.exports.pop(export_name, None)
+
     stack.status = "DELETE_COMPLETE"
     # Keep stack in store for list_stacks DELETE_COMPLETE queries
     return {}
@@ -387,7 +391,20 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         cfn_params[key] = value
         i += 1
 
+    # Parse tags (categorical: every mutating action must parse tags)
+    tags = []
+    i = 1
+    while f"Tags.member.{i}.Key" in params:
+        tags.append(
+            {
+                "Key": params[f"Tags.member.{i}.Key"],
+                "Value": params.get(f"Tags.member.{i}.Value", ""),
+            }
+        )
+        i += 1
+
     stack.status = "UPDATE_IN_PROGRESS"
+    _add_event(stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_IN_PROGRESS")
 
     try:
         # Delete old resources in reverse order
@@ -405,13 +422,19 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         # Update stack fields
         stack.template_body = template_body
         stack.parameters = cfn_params
+        if tags:
+            stack.tags = tags
 
         # Deploy new resources
         _deploy_stack(stack, region, account_id, store)
         stack.status = "UPDATE_COMPLETE"
+        _add_event(stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_COMPLETE")
     except Exception as e:
         stack.status = "UPDATE_FAILED"
         stack.status_reason = str(e)
+        _add_event(
+            stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_FAILED", str(e)
+        )
 
     store.put_stack(stack)
     return {"StackId": stack.stack_id}

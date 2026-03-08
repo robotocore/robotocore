@@ -177,6 +177,14 @@ def _set_identity_notification_topic(params: dict, region: str, account_id: str)
     notification_type = params.get("NotificationType", "")
     sns_topic = params.get("SnsTopic")
 
+    # Validate that the identity exists (email or domain)
+    identity_exists = identity in backend.email_identities or identity in backend.domains
+    if not identity_exists:
+        raise SesError(
+            "InvalidParameterValue",
+            f"Identity '{identity}' does not exist.",
+        )
+
     identity_sns_topics = backend.sns_topics.get(identity, {})
     if sns_topic is None or sns_topic == "":
         # Clear the topic — Moto raises KeyError if it doesn't exist
@@ -225,9 +233,9 @@ def _error_response(code: str, message: str, status: int) -> Response:
 # ---------------------------------------------------------------------------
 
 
-def _set_identity_dkim_enabled(params: dict, region: str, account_id: str) -> dict:
+def _set_identity_dkim_enabled(params: dict, region: str, account_id: str) -> str:
     """SetIdentityDkimEnabled — acknowledge the request (no-op in mock)."""
-    return {}
+    return ""
 
 
 _ACTION_MAP = {

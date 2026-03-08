@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -19,8 +20,9 @@ _MUTATION_OPS = {
     "DynamoDB_20120810.TransactWriteItems",
 }
 
-# In-memory global tables store
-_global_tables: dict[str, dict] = {}
+# In-memory global tables store, keyed by (account_id, name) for proper isolation
+_global_tables: dict[tuple[str, str], dict] = {}
+_global_tables_lock = threading.Lock()
 
 
 async def handle_dynamodb_request(request: Request, region: str, account_id: str) -> Response:
@@ -222,44 +224,108 @@ class _DynamoDBError(Exception):
 def _create_global_table(params: dict, region: str, account_id: str) -> dict:
     name = params.get("GlobalTableName", "")
     replication_group = params.get("ReplicationGroup", [])
-    if name in _global_tables:
-        raise _DynamoDBError(
-            "GlobalTableAlreadyExistsException",
-            f"Global table with name '{name}' already exists",
-        )
-    import time
+    key = (account_id, name)
+    with _global_tables_lock:
+        if key in _global_tables:
+            raise _DynamoDBError(
+                "GlobalTableAlreadyExistsException",
+                f"Global table with name '{name}' already exists",
+            )
+        import time
 
-    desc = {
-        "GlobalTableName": name,
-        "ReplicationGroup": replication_group,
-        "GlobalTableArn": f"arn:aws:dynamodb::{account_id}:global-table/{name}",
-        "CreationDateTime": time.time(),
-        "GlobalTableStatus": "ACTIVE",
-    }
-    _global_tables[name] = desc
+        desc = {
+            "GlobalTableName": name,
+            "ReplicationGroup": replication_group,
+            "GlobalTableArn": f"arn:aws:dynamodb::{account_id}:global-table/{name}",
+            "CreationDateTime": time.time(),
+            "GlobalTableStatus": "ACTIVE",
+        }
+        _global_tables[key] = desc
     return {"GlobalTableDescription": desc}
 
 
 def _describe_global_table(params: dict, region: str, account_id: str) -> dict:
     name = params.get("GlobalTableName", "")
-    if name not in _global_tables:
-        raise _DynamoDBError(
-            "GlobalTableNotFoundException",
-            f"Global table with name '{name}' does not exist",
-        )
-    return {"GlobalTableDescription": _global_tables[name]}
+    key = (account_id, name)
+    with _global_tables_lock:
+        if key not in _global_tables:
+            raise _DynamoDBError(
+                "GlobalTableNotFoundException",
+                f"Global table with name '{name}' does not exist",
+            )
+        return {"GlobalTableDescription": _global_tables[key]}
 
 
 def _list_global_tables(params: dict, region: str, account_id: str) -> dict:
-    tables = [
-        {"GlobalTableName": gt["GlobalTableName"], "ReplicationGroup": gt["ReplicationGroup"]}
-        for gt in _global_tables.values()
-    ]
-    return {"GlobalTables": tables}
+    region_filter = params.get("RegionName")
+    limit = params.get("Limit", 100)
+    last_evaluated = params.get("LastEvaluatedGlobalTableName")
+
+    with _global_tables_lock:
+        # Filter to this account's tables only
+        account_tables = [
+            gt for (acct, _name), gt in sorted(_global_tables.items()) if acct == account_id
+        ]
+
+    # Filter by region if requested
+    if region_filter:
+        account_tables = [
+            gt
+            for gt in account_tables
+            if any(r.get("RegionName") == region_filter for r in gt.get("ReplicationGroup", []))
+        ]
+
+    # Pagination: skip past last_evaluated
+    if last_evaluated:
+        found = False
+        filtered = []
+        for gt in account_tables:
+            if found:
+                filtered.append(gt)
+            if gt["GlobalTableName"] == last_evaluated:
+                found = True
+        account_tables = filtered
+
+    # Apply limit
+    account_tables = account_tables[:limit]
+
+    result: dict = {
+        "GlobalTables": [
+            {"GlobalTableName": gt["GlobalTableName"], "ReplicationGroup": gt["ReplicationGroup"]}
+            for gt in account_tables
+        ]
+    }
+
+    # Add pagination token if there are more results
+    if len(account_tables) == limit and limit < len(account_tables):
+        result["LastEvaluatedGlobalTableName"] = account_tables[-1]["GlobalTableName"]
+
+    return result
+
+
+def _table_exists(table_name: str, region: str, account_id: str) -> bool:
+    """Check if a DynamoDB table exists in Moto's backend."""
+    if not table_name:
+        return False
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
+        backend = get_backend("dynamodb")[acct][region]
+        table = backend.get_table(table_name)
+        return table is not None
+    except Exception:
+        return False
 
 
 def _describe_table_replica_auto_scaling(params: dict, region: str, account_id: str) -> dict:
     table_name = params.get("TableName", "")
+    if not _table_exists(table_name, region, account_id):
+        raise _DynamoDBError(
+            "ResourceNotFoundException",
+            f"Requested resource not found: Table: {table_name} not found",
+        )
     return {
         "TableAutoScalingDescription": {
             "TableName": table_name,

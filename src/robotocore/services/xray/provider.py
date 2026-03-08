@@ -17,8 +17,12 @@ from robotocore.providers.moto_bridge import forward_to_moto
 # In-memory stores (per-account not needed for local dev)
 _sampling_rules: dict[str, dict[str, Any]] = {}
 _groups: dict[str, dict[str, Any]] = {}
-_encryption_config: dict[str, Any] = {"Type": "NONE", "Status": "ACTIVE"}
+_encryption_config: dict[str, dict[str, Any]] = {}  # region -> config
 _tags: dict[str, list[dict[str, str]]] = {}  # ARN -> tags
+
+
+def _default_encryption_config() -> dict[str, Any]:
+    return {"Type": "NONE", "Status": "ACTIVE"}
 
 
 def _json_response(data: dict, status_code: int = 200) -> Response:
@@ -90,10 +94,14 @@ def _delete_sampling_rule(params: dict, region: str, account_id: str) -> dict:
     record = None
     if rule_name and rule_name in _sampling_rules:
         record = _sampling_rules.pop(rule_name)
+        # Clean up tags for the deleted rule
+        deleted_arn = record["SamplingRule"].get("RuleARN", "")
+        _tags.pop(deleted_arn, None)
     elif rule_arn:
         for name, rec in list(_sampling_rules.items()):
             if rec["SamplingRule"].get("RuleARN") == rule_arn:
                 record = _sampling_rules.pop(name)
+                _tags.pop(rule_arn, None)
                 break
 
     if record is None:
@@ -169,19 +177,21 @@ def _delete_group(params: dict, region: str, account_id: str) -> dict:
 
 
 def _get_encryption_config(params: dict, region: str, account_id: str) -> dict:
-    return {"EncryptionConfig": dict(_encryption_config)}
+    config = _encryption_config.get(region, _default_encryption_config())
+    return {"EncryptionConfig": dict(config)}
 
 
 def _put_encryption_config(params: dict, region: str, account_id: str) -> dict:
+    config = _encryption_config.setdefault(region, _default_encryption_config())
     enc_type = params.get("Type", "NONE")
     key_id = params.get("KeyId", "")
-    _encryption_config["Type"] = enc_type
-    _encryption_config["Status"] = "ACTIVE"
+    config["Type"] = enc_type
+    config["Status"] = "ACTIVE"
     if key_id:
-        _encryption_config["KeyId"] = key_id
-    elif "KeyId" in _encryption_config and enc_type == "NONE":
-        _encryption_config.pop("KeyId", None)
-    return {"EncryptionConfig": dict(_encryption_config)}
+        config["KeyId"] = key_id
+    elif "KeyId" in config and enc_type == "NONE":
+        config.pop("KeyId", None)
+    return {"EncryptionConfig": dict(config)}
 
 
 def _tag_resource(params: dict, region: str, account_id: str) -> dict:

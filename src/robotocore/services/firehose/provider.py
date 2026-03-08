@@ -10,14 +10,19 @@ from collections.abc import Callable
 from starlette.requests import Request
 from starlette.responses import Response
 
-_delivery_streams: dict[str, dict] = {}
-_stream_buffers: dict[str, list[bytes]] = {}
+_delivery_streams: dict[tuple[str, str, str], dict] = {}  # (account_id, region, name) -> stream
+_stream_buffers: dict[tuple[str, str, str], list[bytes]] = {}  # same key -> records
 _lock = threading.Lock()
 _worker_started = False
 _worker_lock = threading.Lock()
 
 BUFFER_SIZE = 1 * 1024 * 1024  # 1MB buffer before flushing
 BUFFER_INTERVAL = 60  # seconds
+
+
+def _key(name: str, region: str, account_id: str) -> tuple[str, str, str]:
+    """Build a scoped key for the global dicts."""
+    return (account_id, region, name)
 
 
 class FirehoseError(Exception):
@@ -41,17 +46,17 @@ def _flush_worker():
     while True:
         time.sleep(5)
         with _lock:
-            for name in list(_stream_buffers.keys()):
-                _flush_buffer(name)
+            for k in list(_stream_buffers.keys()):
+                _flush_buffer(k)
 
 
-def _flush_buffer(stream_name: str) -> None:
+def _flush_buffer(stream_key: tuple[str, str, str]) -> None:
     """Flush buffered records to S3. Must be called with _lock held."""
-    records = _stream_buffers.get(stream_name, [])
+    records = _stream_buffers.get(stream_key, [])
     if not records:
         return
 
-    stream = _delivery_streams.get(stream_name)
+    stream = _delivery_streams.get(stream_key)
     if not stream:
         return
 
@@ -67,17 +72,18 @@ def _flush_buffer(stream_name: str) -> None:
     # Build the S3 key with timestamp-based partitioning
     now = time.gmtime()
     uid = uuid.uuid4().hex[:8]
-    key = (
+    stream_name = stream["name"]
+    s3_key = (
         f"{prefix}{now.tm_year}/{now.tm_mon:02d}/"
         f"{now.tm_mday:02d}/{now.tm_hour:02d}/{stream_name}-{uid}"
     )
 
     # Concatenate all records
     data = b"".join(records)
-    _stream_buffers[stream_name] = []
+    _stream_buffers[stream_key] = []
 
     # Write to S3 via Moto's internal API
-    _write_to_s3(bucket, key, data, stream.get("region", "us-east-1"))
+    _write_to_s3(bucket, s3_key, data, stream.get("region", "us-east-1"))
 
 
 def _write_to_s3(bucket: str, key: str, data: bytes, region: str) -> None:
@@ -128,8 +134,9 @@ def _create_delivery_stream(params: dict, region: str, account_id: str) -> dict:
     if not name:
         raise FirehoseError("ValidationException", "DeliveryStreamName is required")
 
+    k = _key(name, region, account_id)
     with _lock:
-        if name in _delivery_streams:
+        if k in _delivery_streams:
             raise FirehoseError("ResourceInUseException", f"Stream {name} already exists")
 
         s3_config = (
@@ -154,68 +161,75 @@ def _create_delivery_stream(params: dict, region: str, account_id: str) -> dict:
         initial_tags = params.get("Tags", [])
         for tag in initial_tags:
             stream["tags"][tag["Key"]] = tag.get("Value", "")
-        _delivery_streams[name] = stream
-        _stream_buffers[name] = []
+        _delivery_streams[k] = stream
+        _stream_buffers[k] = []
 
     return {"DeliveryStreamARN": stream["arn"]}
 
 
 def _delete_delivery_stream(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
+    k = _key(name, region, account_id)
     with _lock:
-        if name not in _delivery_streams:
+        if k not in _delivery_streams:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
-        del _delivery_streams[name]
-        _stream_buffers.pop(name, None)
+        del _delivery_streams[k]
+        _stream_buffers.pop(k, None)
     return {}
 
 
 def _describe_delivery_stream(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
 
-    destinations = []
-    if stream.get("s3_config"):
-        s3_desc = {
-            "BucketARN": stream["s3_config"].get("BucketARN", ""),
-            "Prefix": stream["s3_config"].get("Prefix", ""),
-            "RoleARN": stream["s3_config"].get("RoleARN", ""),
-            "BufferingHints": stream["s3_config"].get("BufferingHints", {}),
-            "CompressionFormat": stream["s3_config"].get("CompressionFormat", "UNCOMPRESSED"),
-        }
-        if "ErrorOutputPrefix" in stream["s3_config"]:
-            s3_desc["ErrorOutputPrefix"] = stream["s3_config"]["ErrorOutputPrefix"]
-        destinations.append(
-            {
-                "DestinationId": "dest-1",
-                "ExtendedS3DestinationDescription": s3_desc,
+        # Build the full response inside the lock to avoid TOCTOU races
+        destinations = []
+        if stream.get("s3_config"):
+            s3_desc = {
+                "BucketARN": stream["s3_config"].get("BucketARN", ""),
+                "Prefix": stream["s3_config"].get("Prefix", ""),
+                "RoleARN": stream["s3_config"].get("RoleARN", ""),
+                "BufferingHints": stream["s3_config"].get("BufferingHints", {}),
+                "CompressionFormat": stream["s3_config"].get("CompressionFormat", "UNCOMPRESSED"),
             }
-        )
+            if "ErrorOutputPrefix" in stream["s3_config"]:
+                s3_desc["ErrorOutputPrefix"] = stream["s3_config"]["ErrorOutputPrefix"]
+            destinations.append(
+                {
+                    "DestinationId": "dest-1",
+                    "ExtendedS3DestinationDescription": s3_desc,
+                }
+            )
 
-    desc = {
-        "DeliveryStreamName": name,
-        "DeliveryStreamARN": stream["arn"],
-        "DeliveryStreamStatus": stream["status"],
-        "DeliveryStreamType": stream["type"],
-        "VersionId": str(stream.get("version_id", 1)),
-        "Destinations": destinations,
-        "HasMoreDestinations": False,
-        "CreateTimestamp": stream["created"],
-    }
+        desc = {
+            "DeliveryStreamName": name,
+            "DeliveryStreamARN": stream["arn"],
+            "DeliveryStreamStatus": stream["status"],
+            "DeliveryStreamType": stream["type"],
+            "VersionId": str(stream.get("version_id", 1)),
+            "Destinations": destinations,
+            "HasMoreDestinations": False,
+            "CreateTimestamp": stream["created"],
+        }
 
-    encryption = stream.get("encryption")
-    if encryption:
-        desc["DeliveryStreamEncryptionConfiguration"] = encryption
+        encryption = stream.get("encryption")
+        if encryption:
+            desc["DeliveryStreamEncryptionConfiguration"] = encryption
 
     return {"DeliveryStreamDescription": desc}
 
 
 def _list_delivery_streams(params: dict, region: str, account_id: str) -> dict:
     with _lock:
-        names = sorted(_delivery_streams.keys())
+        names = sorted(
+            stream_key[2]
+            for stream_key in _delivery_streams
+            if stream_key[0] == account_id and stream_key[1] == region
+        )
     limit = params.get("Limit", 100)
     start = params.get("ExclusiveStartDeliveryStreamName")
     if start:
@@ -237,16 +251,17 @@ def _put_record(params: dict, region: str, account_id: str) -> dict:
     record = params.get("Record", {})
     data_b64 = record.get("Data", "")
 
+    k = _key(name, region, account_id)
     with _lock:
-        if name not in _delivery_streams:
+        if k not in _delivery_streams:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
         data = base64.b64decode(data_b64) if data_b64 else b""
-        _stream_buffers.setdefault(name, []).append(data)
+        _stream_buffers.setdefault(k, []).append(data)
 
         # Flush if buffer exceeds threshold
-        total = sum(len(r) for r in _stream_buffers[name])
+        total = sum(len(r) for r in _stream_buffers[k])
         if total >= BUFFER_SIZE:
-            _flush_buffer(name)
+            _flush_buffer(k)
 
     return {
         "RecordId": uuid.uuid4().hex,
@@ -258,20 +273,21 @@ def _put_record_batch(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
     records = params.get("Records", [])
 
+    k = _key(name, region, account_id)
     with _lock:
-        if name not in _delivery_streams:
+        if k not in _delivery_streams:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
 
         request_responses = []
         for rec in records:
             data_b64 = rec.get("Data", "")
             data = base64.b64decode(data_b64) if data_b64 else b""
-            _stream_buffers.setdefault(name, []).append(data)
+            _stream_buffers.setdefault(k, []).append(data)
             request_responses.append({"RecordId": uuid.uuid4().hex})
 
-        total = sum(len(r) for r in _stream_buffers[name])
+        total = sum(len(r) for r in _stream_buffers[k])
         if total >= BUFFER_SIZE:
-            _flush_buffer(name)
+            _flush_buffer(k)
 
     return {
         "FailedPutCount": 0,
@@ -286,8 +302,9 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
 
     current_version = params.get("CurrentDeliveryStreamVersionId")
 
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
 
@@ -309,11 +326,11 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
         )
         if s3_update:
             s3_config = stream.get("s3_config", {})
-            for key, value in s3_update.items():
-                if isinstance(value, dict) and isinstance(s3_config.get(key), dict):
-                    s3_config[key].update(value)
+            for s3_field, value in s3_update.items():
+                if isinstance(value, dict) and isinstance(s3_config.get(s3_field), dict):
+                    s3_config[s3_field].update(value)
                 else:
-                    s3_config[key] = value
+                    s3_config[s3_field] = value
             stream["s3_config"] = s3_config
 
         stream["version_id"] = stream.get("version_id", 1) + 1
@@ -324,8 +341,9 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
 def _start_delivery_stream_encryption(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
 
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
 
@@ -346,8 +364,9 @@ def _start_delivery_stream_encryption(params: dict, region: str, account_id: str
 def _stop_delivery_stream_encryption(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
 
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
 
@@ -361,8 +380,9 @@ def _stop_delivery_stream_encryption(params: dict, region: str, account_id: str)
 def _tag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
     tags = params.get("Tags", [])
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
         for tag in tags:
@@ -373,12 +393,13 @@ def _tag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
 def _untag_delivery_stream(params: dict, region: str, account_id: str) -> dict:
     name = params.get("DeliveryStreamName", "")
     tag_keys = params.get("TagKeys", [])
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
-        for key in tag_keys:
-            stream["tags"].pop(key, None)
+        for tag_key in tag_keys:
+            stream["tags"].pop(tag_key, None)
     return {}
 
 
@@ -386,11 +407,12 @@ def _list_tags_for_delivery_stream(params: dict, region: str, account_id: str) -
     name = params.get("DeliveryStreamName", "")
     limit = params.get("Limit", 50)
     exclusive_start = params.get("ExclusiveStartTagKey")
+    k = _key(name, region, account_id)
     with _lock:
-        stream = _delivery_streams.get(name)
+        stream = _delivery_streams.get(k)
         if not stream:
             raise FirehoseError("ResourceNotFoundException", f"Stream {name} not found")
-        all_tags = [{"Key": k, "Value": v} for k, v in sorted(stream["tags"].items())]
+        all_tags = [{"Key": tag_k, "Value": v} for tag_k, v in sorted(stream["tags"].items())]
 
     # Apply ExclusiveStartTagKey filter
     if exclusive_start:

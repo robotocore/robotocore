@@ -11,6 +11,7 @@ from robotocore.services.sqs.models import SqsStore
 from robotocore.services.sqs.provider import (
     SqsError,
     _add_permission,
+    _change_message_visibility,
     _create_queue,
     _delete_queue,
     _error,
@@ -18,12 +19,16 @@ from robotocore.services.sqs.provider import (
     _get_queue_url,
     _json_response,
     _list_dead_letter_source_queues,
+    _list_queue_tags,
     _list_queues,
     _md5,
     _parse_message_attributes,
+    _purge_queue,
     _resolve_queue,
     _send_message,
     _send_message_batch,
+    _tag_queue,
+    _untag_queue,
     _xml_response,
     handle_sqs_request,
 )
@@ -461,3 +466,303 @@ class TestBugDeleteQueueNonExistent:
                 "123456789012",
                 mock_req,
             )
+
+
+class TestBugCreateQueueTagsCasing:
+    """Bug: _create_queue uses params.get('tags') (lowercase) but botocore JSON
+    protocol sends 'Tags' (PascalCase). Tags passed via JSON protocol are silently dropped."""
+
+    def test_create_queue_with_pascal_case_tags(self):
+        store = SqsStore()
+        mock_req = MagicMock()
+        _create_queue(
+            store,
+            {"QueueName": "tagged-q", "Tags": {"env": "prod", "team": "core"}},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        queue = store.get_queue("tagged-q")
+        assert queue.tags == {"env": "prod", "team": "core"}, (
+            f"Tags should be set via PascalCase 'Tags' key but got: {queue.tags}"
+        )
+
+    def test_create_queue_tags_lowercase_still_works(self):
+        """Verify lowercase 'tags' still works for backward compat."""
+        store = SqsStore()
+        mock_req = MagicMock()
+        _create_queue(
+            store,
+            {"QueueName": "tagged-q2", "tags": {"env": "dev"}},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        queue = store.get_queue("tagged-q2")
+        assert queue.tags == {"env": "dev"}
+
+
+class TestBugTagQueueRoundTrip:
+    """Categorical: Tag operations (Tag/Untag/List) should round-trip correctly."""
+
+    def test_tag_then_list(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        _tag_queue(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "Tags": {"k1": "v1", "k2": "v2"},
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        result = _list_queue_tags(
+            store,
+            {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        assert result["Tags"] == {"k1": "v1", "k2": "v2"}
+
+    def test_tag_then_untag_then_list(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        _tag_queue(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "Tags": {"k1": "v1", "k2": "v2"},
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        _untag_queue(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "TagKeys": ["k1"],
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        result = _list_queue_tags(
+            store,
+            {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        assert result["Tags"] == {"k2": "v2"}
+
+    def test_tag_overwrites_existing(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        _tag_queue(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "Tags": {"k1": "v1"},
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        _tag_queue(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "Tags": {"k1": "v2"},
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        result = _list_queue_tags(
+            store,
+            {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        assert result["Tags"]["k1"] == "v2"
+
+    def test_untag_nonexistent_key_is_noop(self):
+        """AWS silently ignores untagging keys that don't exist."""
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        _untag_queue(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "TagKeys": ["nonexistent"],
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        result = _list_queue_tags(
+            store,
+            {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        assert result["Tags"] == {}
+
+    def test_list_tags_on_nonexistent_queue_raises(self):
+        store = SqsStore()
+        mock_req = MagicMock()
+        mock_req.url.path = "/"
+        with pytest.raises(SqsError) as exc_info:
+            _list_queue_tags(
+                store,
+                {"QueueUrl": "http://localhost:4566/123456789012/nope"},
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+        assert "NonExistentQueue" in exc_info.value.code
+
+
+class TestBugFifoValidation:
+    """Categorical: FIFO queues require MessageGroupId. Sending without it
+    should raise MissingParameter, not silently succeed."""
+
+    def test_send_to_fifo_without_group_id_raises(self):
+        store = SqsStore()
+        store.create_queue("my.fifo", "us-east-1", "123456789012")
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/my.fifo"
+        with pytest.raises(SqsError) as exc_info:
+            _send_message(
+                store,
+                {
+                    "QueueUrl": "http://localhost:4566/123456789012/my.fifo",
+                    "MessageBody": "hello",
+                },
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+        code = exc_info.value.code
+        assert "MissingParameter" in code or "InvalidParameter" in code
+
+    def test_send_to_fifo_without_dedup_id_and_no_content_dedup_raises(self):
+        """FIFO queues without ContentBasedDeduplication require explicit dedup ID."""
+        store = SqsStore()
+        store.create_queue("strict.fifo", "us-east-1", "123456789012")
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/strict.fifo"
+        with pytest.raises(SqsError) as exc_info:
+            _send_message(
+                store,
+                {
+                    "QueueUrl": "http://localhost:4566/123456789012/strict.fifo",
+                    "MessageBody": "hello",
+                    "MessageGroupId": "g1",
+                },
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+        code = exc_info.value.code
+        assert "InvalidParameter" in code or "MissingParameter" in code
+
+    def test_send_to_fifo_with_content_based_dedup_ok(self):
+        """With ContentBasedDeduplication, no explicit dedup ID needed."""
+        store = SqsStore()
+        store.create_queue(
+            "cbd.fifo",
+            "us-east-1",
+            "123456789012",
+            {"ContentBasedDeduplication": "true"},
+        )
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/cbd.fifo"
+        result = _send_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/cbd.fifo",
+                "MessageBody": "hello",
+                "MessageGroupId": "g1",
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        assert "MessageId" in result
+
+
+class TestBugChangeVisibilityInvalidReceipt:
+    """Categorical: ChangeMessageVisibility with an invalid receipt handle
+    should raise ReceiptHandleIsInvalid, not silently return {}."""
+
+    def test_change_visibility_invalid_receipt_raises(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        with pytest.raises(SqsError) as exc_info:
+            _change_message_visibility(
+                store,
+                {
+                    "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                    "ReceiptHandle": "bogus-receipt-handle",
+                    "VisibilityTimeout": "60",
+                },
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+        assert "ReceiptHandleIsInvalid" in exc_info.value.code
+
+
+class TestBugDeleteQueueCleansUpMessages:
+    """Categorical: After deleting a queue, its messages should not be accessible."""
+
+    def test_delete_queue_then_send_raises(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        # Delete the queue
+        _delete_queue(
+            store,
+            {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        # Sending to deleted queue should fail
+        with pytest.raises(SqsError) as exc_info:
+            _send_message(
+                store,
+                {
+                    "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                    "MessageBody": "hello",
+                },
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+        assert "NonExistentQueue" in exc_info.value.code
+
+
+class TestBugPurgeQueueNonExistent:
+    """Categorical: PurgeQueue on nonexistent queue should raise error."""
+
+    def test_purge_nonexistent_queue_raises(self):
+        store = SqsStore()
+        mock_req = MagicMock()
+        mock_req.url.path = "/"
+        with pytest.raises(SqsError) as exc_info:
+            _purge_queue(
+                store,
+                {"QueueUrl": "http://localhost:4566/123456789012/nope"},
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+        assert "NonExistentQueue" in exc_info.value.code

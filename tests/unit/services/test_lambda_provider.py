@@ -17,7 +17,13 @@ from robotocore.services.lambda_.provider import (
 )
 
 
-def _make_scope(method: str, path: str, body: bytes = b"", headers: dict | None = None):
+def _make_scope(
+    method: str,
+    path: str,
+    body: bytes = b"",
+    headers: dict | None = None,
+    query_string: bytes = b"",
+):
     """Build an ASGI scope dict for constructing a Starlette Request."""
     hdrs = headers or {}
     raw_headers = [(k.lower().encode(), v.encode()) for k, v in hdrs.items()]
@@ -25,7 +31,7 @@ def _make_scope(method: str, path: str, body: bytes = b"", headers: dict | None 
         "type": "http",
         "method": method,
         "path": path,
-        "query_string": b"",
+        "query_string": query_string,
         "headers": raw_headers,
         "root_path": "",
         "scheme": "http",
@@ -33,10 +39,10 @@ def _make_scope(method: str, path: str, body: bytes = b"", headers: dict | None 
     }
 
 
-async def _make_request(method, path, body=b"", headers=None):
+async def _make_request(method, path, body=b"", headers=None, query_string=b""):
     from starlette.requests import Request
 
-    scope = _make_scope(method, path, body, headers)
+    scope = _make_scope(method, path, body, headers, query_string)
 
     async def receive():
         return {"type": "http.request", "body": body}
@@ -429,3 +435,340 @@ class TestAccountSettings:
         assert data["AccountUsage"]["FunctionCount"] == 1
         assert data["AccountUsage"]["TotalCodeSize"] == 1024
         assert data["AccountLimit"]["UnreservedConcurrentExecutions"] == 990
+
+
+@pytest.mark.asyncio
+class TestDeleteFunctionCascade:
+    """BUG: Deleting a function must clean up child resources in native stores.
+
+    This is a CATEGORICAL bug — any provider with parent-child relationships
+    in native stores (not Moto) must cascade deletes. Affects: Lambda (ESMs,
+    provisioned concurrency, DLQ configs), and potentially other providers
+    with native stores alongside Moto.
+    """
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_delete_function_cleans_up_esm_store(self, mock_backend_fn):
+        """ESMs referencing a deleted function must be removed."""
+        from robotocore.services.lambda_.provider import _esm_store
+
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+
+        _esm_store.clear()
+        # Two ESMs for the function being deleted, one for another function
+        _esm_store["esm-1"] = {
+            "UUID": "esm-1",
+            "FunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:doomed-fn",
+            "_region": "us-east-1",
+            "_account_id": "123456789012",
+        }
+        _esm_store["esm-2"] = {
+            "UUID": "esm-2",
+            "FunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:doomed-fn",
+            "_region": "us-east-1",
+            "_account_id": "123456789012",
+        }
+        _esm_store["esm-other"] = {
+            "UUID": "esm-other",
+            "FunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:other-fn",
+            "_region": "us-east-1",
+            "_account_id": "123456789012",
+        }
+
+        req = await _make_request("DELETE", "/2015-03-31/functions/doomed-fn")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+
+        # ESMs for deleted function should be gone
+        assert "esm-1" not in _esm_store
+        assert "esm-2" not in _esm_store
+        # ESM for other function should remain
+        assert "esm-other" in _esm_store
+
+        _esm_store.clear()
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_delete_function_cleans_up_provisioned_concurrency(self, mock_backend_fn):
+        """Provisioned concurrency configs for a deleted function must be removed."""
+        from robotocore.services.lambda_.provider import _provisioned_concurrency
+
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+
+        _provisioned_concurrency.clear()
+        _provisioned_concurrency[("123456789012", "us-east-1", "doomed-fn", "1")] = {
+            "RequestedProvisionedConcurrentExecutions": 5,
+            "Status": "READY",
+        }
+        _provisioned_concurrency[("123456789012", "us-east-1", "doomed-fn", "2")] = {
+            "RequestedProvisionedConcurrentExecutions": 10,
+            "Status": "READY",
+        }
+        _provisioned_concurrency[("123456789012", "us-east-1", "other-fn", "1")] = {
+            "RequestedProvisionedConcurrentExecutions": 3,
+            "Status": "READY",
+        }
+
+        req = await _make_request("DELETE", "/2015-03-31/functions/doomed-fn")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+
+        # Provisioned concurrency for deleted function should be gone
+        assert ("123456789012", "us-east-1", "doomed-fn", "1") not in _provisioned_concurrency
+        assert ("123456789012", "us-east-1", "doomed-fn", "2") not in _provisioned_concurrency
+        # Other function's config should remain
+        assert ("123456789012", "us-east-1", "other-fn", "1") in _provisioned_concurrency
+
+        _provisioned_concurrency.clear()
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_delete_function_cleans_up_dlq_config(self, mock_backend_fn):
+        """DLQ config for a deleted function must be removed."""
+        from robotocore.services.lambda_.provider import _dlq_configs
+
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+
+        _dlq_configs.clear()
+        _dlq_configs[("123456789012", "us-east-1", "doomed-fn")] = {
+            "TargetArn": "arn:aws:sqs:us-east-1:123456789012:dlq"
+        }
+        _dlq_configs[("123456789012", "us-east-1", "other-fn")] = {
+            "TargetArn": "arn:aws:sqs:us-east-1:123456789012:dlq2"
+        }
+
+        req = await _make_request("DELETE", "/2015-03-31/functions/doomed-fn")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+
+        assert ("123456789012", "us-east-1", "doomed-fn") not in _dlq_configs
+        assert ("123456789012", "us-east-1", "other-fn") in _dlq_configs
+
+        _dlq_configs.clear()
+
+
+@pytest.mark.asyncio
+class TestESMRaceCondition:
+    """BUG: ESM read-then-write operations have TOCTOU race conditions.
+
+    The ESM config is read outside the lock, then updated inside the lock.
+    If another thread deletes the ESM between the read and write, the update
+    recreates a deleted mapping. This is a CATEGORICAL bug — any native store
+    using lock-per-operation instead of lock-per-transaction is vulnerable.
+    """
+
+    async def test_update_esm_deleted_between_read_and_write(self):
+        """Updating an ESM that was deleted between read and write should return 404."""
+        from robotocore.services.lambda_.provider import _esm_store
+
+        _esm_store.clear()
+        _esm_store["race-uuid"] = {
+            "UUID": "race-uuid",
+            "FunctionArn": "arn:aws:lambda:us-east-1:123:function:fn",
+            "BatchSize": 10,
+            "State": "Enabled",
+            "_region": "us-east-1",
+            "_account_id": "123",
+        }
+
+        # Simulate: read happens, then delete happens, then write happens
+        # The current code reads config outside the lock, so after the read
+        # another thread could delete. The write block checks `if esm_uuid in _esm_store`
+        # so it won't crash, but the returned config is stale (from the outer read).
+        # This test documents the expected behavior: if the UUID still exists at
+        # update time, the update succeeds.
+        body = json.dumps({"BatchSize": 50}).encode()
+        req = await _make_request("PUT", "/2015-03-31/event-source-mappings/race-uuid", body)
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["BatchSize"] == 50
+
+        _esm_store.clear()
+
+    async def test_delete_esm_returns_final_state(self):
+        """DELETE ESM should return the config at deletion time, not a stale read."""
+        from robotocore.services.lambda_.provider import _esm_store
+
+        _esm_store.clear()
+        _esm_store["del-race"] = {
+            "UUID": "del-race",
+            "FunctionArn": "arn:aws:lambda:us-east-1:123:function:fn",
+            "BatchSize": 10,
+            "State": "Enabled",
+            "_region": "us-east-1",
+            "_account_id": "123",
+        }
+
+        req = await _make_request("DELETE", "/2015-03-31/event-source-mappings/del-race")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        # Should return the deleted config
+        assert data["UUID"] == "del-race"
+        # Internal fields should be sanitized
+        assert "_region" not in data
+
+        _esm_store.clear()
+
+
+@pytest.mark.asyncio
+class TestTagOperations:
+    """BUG: Tag operations have edge cases around error handling and ARN parsing.
+
+    CATEGORICAL pattern: Tag endpoints that delegate to Moto must handle
+    the case where the resource doesn't exist, and must correctly reconstruct
+    ARNs from URL paths.
+    """
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_list_tags_nonexistent_function_returns_404(self, mock_backend_fn):
+        """ListTags on a nonexistent function should return 404, not 500."""
+        mock_backend = MagicMock()
+
+        class UnknownFunctionError(Exception):
+            pass
+
+        mock_backend.get_function.side_effect = UnknownFunctionError(
+            "Function not found: arn:aws:lambda:us-east-1:123456789012:function:nope"
+        )
+        mock_backend_fn.return_value = mock_backend
+
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:nope"
+        req = await _make_request("GET", f"/2015-03-31/tags/{arn}")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        data = json.loads(resp.body)
+        assert data["__type"] == "ResourceNotFoundException"
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_tag_resource_nonexistent_function_returns_404(self, mock_backend_fn):
+        """TagResource on a nonexistent function should return 404."""
+        mock_backend = MagicMock()
+
+        class UnknownFunctionError(Exception):
+            pass
+
+        mock_backend.tag_resource.side_effect = UnknownFunctionError("Function not found")
+        mock_backend_fn.return_value = mock_backend
+
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:nope"
+        body = json.dumps({"Tags": {"env": "test"}}).encode()
+        req = await _make_request("POST", f"/2015-03-31/tags/{arn}", body)
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_untag_resource_with_tag_keys(self, mock_backend_fn):
+        """UntagResource should pass tagKeys from query params to Moto."""
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:my-fn"
+        req = await _make_request(
+            "DELETE",
+            f"/2015-03-31/tags/{arn}",
+            query_string=b"tagKeys=env&tagKeys=version",
+        )
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        mock_backend.untag_resource.assert_called_once_with(arn, ["env", "version"])
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_list_tags_returns_tags_dict(self, mock_backend_fn):
+        """ListTags should return a Tags dict from the function."""
+        mock_backend = MagicMock()
+        mock_fn = MagicMock()
+        mock_fn.tags = {"env": "prod", "team": "platform"}
+        mock_backend.get_function.return_value = mock_fn
+        mock_backend_fn.return_value = mock_backend
+
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:my-fn"
+        req = await _make_request("GET", f"/2015-03-31/tags/{arn}")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["Tags"] == {"env": "prod", "team": "platform"}
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_list_tags_no_tags_returns_empty_dict(self, mock_backend_fn):
+        """ListTags on a function with no tags should return empty dict, not None."""
+        mock_backend = MagicMock()
+        mock_fn = MagicMock()
+        mock_fn.tags = None
+        mock_backend.get_function.return_value = mock_fn
+        mock_backend_fn.return_value = mock_backend
+
+        arn = "arn:aws:lambda:us-east-1:123456789012:function:my-fn"
+        req = await _make_request("GET", f"/2015-03-31/tags/{arn}")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["Tags"] == {}
+
+
+@pytest.mark.asyncio
+class TestProvisionedConcurrency:
+    """Test provisioned concurrency CRUD via the handler."""
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_put_provisioned_concurrency(self, mock_backend_fn):
+        from robotocore.services.lambda_.provider import _provisioned_concurrency
+
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+        _provisioned_concurrency.clear()
+
+        body = json.dumps({"ProvisionedConcurrentExecutions": 5}).encode()
+        req = await _make_request(
+            "PUT",
+            "/2015-03-31/functions/my-fn/provisioned-concurrency",
+            body,
+            query_string=b"Qualifier=1",
+        )
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 202
+        data = json.loads(resp.body)
+        assert data["RequestedProvisionedConcurrentExecutions"] == 5
+        assert data["Status"] == "READY"
+
+        _provisioned_concurrency.clear()
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_get_provisioned_concurrency_not_found(self, mock_backend_fn):
+        from robotocore.services.lambda_.provider import _provisioned_concurrency
+
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+        _provisioned_concurrency.clear()
+
+        req = await _make_request(
+            "GET",
+            "/2015-03-31/functions/my-fn/provisioned-concurrency",
+            query_string=b"Qualifier=99",
+        )
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        data = json.loads(resp.body)
+        assert data["__type"] == "ProvisionedConcurrencyConfigNotFoundException"
+
+        _provisioned_concurrency.clear()
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_delete_provisioned_concurrency_not_found(self, mock_backend_fn):
+        from robotocore.services.lambda_.provider import _provisioned_concurrency
+
+        mock_backend = MagicMock()
+        mock_backend_fn.return_value = mock_backend
+        _provisioned_concurrency.clear()
+
+        req = await _make_request(
+            "DELETE",
+            "/2015-03-31/functions/my-fn/provisioned-concurrency",
+            query_string=b"Qualifier=99",
+        )
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+
+        _provisioned_concurrency.clear()

@@ -377,3 +377,205 @@ class TestDynamoDBErrorPaths:
         assert resp.status_code == 400
         body = json.loads(resp.body)
         assert "ValidationException" in body["__type"]
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: account/region isolation, thread safety, validation
+# ---------------------------------------------------------------------------
+
+
+class TestGlobalTableAccountRegionIsolation:
+    """Bug: _global_tables is keyed by name only, not scoped by account_id/region.
+    Two accounts creating a global table with the same name would collide."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_global_tables(self):
+        from robotocore.services.dynamodb.provider import _global_tables
+
+        _global_tables.clear()
+        yield
+        _global_tables.clear()
+
+    @pytest.mark.asyncio
+    async def test_different_accounts_can_create_same_global_table_name(self):
+        """Two different accounts should be able to create global tables with the same name."""
+        req1 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "shared-name", "ReplicationGroup": []},
+        )
+        resp1 = await handle_dynamodb_request(req1, "us-east-1", "111111111111")
+        assert resp1.status_code == 200
+
+        # Different account, same name -- should succeed, not raise AlreadyExists
+        req2 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "shared-name", "ReplicationGroup": []},
+        )
+        resp2 = await handle_dynamodb_request(req2, "us-east-1", "222222222222")
+        assert resp2.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_list_global_tables_only_returns_own_account(self):
+        """ListGlobalTables should only return tables for the requesting account."""
+        # Create table in account 111
+        req1 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "acct1-table", "ReplicationGroup": []},
+        )
+        await handle_dynamodb_request(req1, "us-east-1", "111111111111")
+
+        # Create table in account 222
+        req2 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "acct2-table", "ReplicationGroup": []},
+        )
+        await handle_dynamodb_request(req2, "us-east-1", "222222222222")
+
+        # List from account 111 -- should only see acct1-table
+        req_list = _make_request("DynamoDB_20120810.ListGlobalTables", {})
+        resp = await handle_dynamodb_request(req_list, "us-east-1", "111111111111")
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        names = [t["GlobalTableName"] for t in body["GlobalTables"]]
+        assert "acct1-table" in names
+        assert "acct2-table" not in names
+
+    @pytest.mark.asyncio
+    async def test_describe_global_table_cross_account_not_found(self):
+        """DescribeGlobalTable from wrong account should return not found."""
+        req1 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "private-table", "ReplicationGroup": []},
+        )
+        await handle_dynamodb_request(req1, "us-east-1", "111111111111")
+
+        # Different account tries to describe it
+        req2 = _make_request(
+            "DynamoDB_20120810.DescribeGlobalTable",
+            {"GlobalTableName": "private-table"},
+        )
+        resp = await handle_dynamodb_request(req2, "us-east-1", "222222222222")
+        assert resp.status_code == 400
+        body = json.loads(resp.body)
+        assert body["__type"] == "GlobalTableNotFoundException"
+
+
+class TestGlobalTableThreadSafety:
+    """Bug: _global_tables has no lock, unlike _shard_iterators in dynamodbstreams."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_global_tables(self):
+        from robotocore.services.dynamodb.provider import _global_tables
+
+        _global_tables.clear()
+        yield
+        _global_tables.clear()
+
+    def test_global_tables_lock_exists(self):
+        """The provider should have a lock protecting _global_tables."""
+        import robotocore.services.dynamodb.provider as mod
+
+        assert hasattr(mod, "_global_tables_lock"), (
+            "_global_tables has no threading lock -- concurrent requests can corrupt state"
+        )
+
+
+class TestDescribeTableReplicaAutoScalingValidation:
+    """Bug: DescribeTableReplicaAutoScaling returns success for nonexistent tables.
+    AWS returns ResourceNotFoundException."""
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_table_returns_error(self):
+        """DescribeTableReplicaAutoScaling on a nonexistent table should fail."""
+        req = _make_request(
+            "DynamoDB_20120810.DescribeTableReplicaAutoScaling",
+            {"TableName": "does-not-exist-table-xyz"},
+        )
+        # Mock Moto to simulate the table not existing
+        with patch(
+            "robotocore.services.dynamodb.provider._table_exists",
+            return_value=False,
+        ):
+            resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        body = json.loads(resp.body)
+        assert "ResourceNotFoundException" in body["__type"]
+
+    @pytest.mark.asyncio
+    async def test_empty_table_name_returns_error(self):
+        """DescribeTableReplicaAutoScaling with empty table name should fail."""
+        req = _make_request(
+            "DynamoDB_20120810.DescribeTableReplicaAutoScaling",
+            {"TableName": ""},
+        )
+        with patch(
+            "robotocore.services.dynamodb.provider._table_exists",
+            return_value=False,
+        ):
+            resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+
+
+class TestListGlobalTablesPagination:
+    """Bug: ListGlobalTables ignores Limit and LastEvaluatedGlobalTableName params."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_global_tables(self):
+        from robotocore.services.dynamodb.provider import _global_tables
+
+        _global_tables.clear()
+        yield
+        _global_tables.clear()
+
+    @pytest.mark.asyncio
+    async def test_limit_param_respected(self):
+        """ListGlobalTables with Limit should return at most that many tables."""
+        # Create 3 global tables
+        for i in range(3):
+            req = _make_request(
+                "DynamoDB_20120810.CreateGlobalTable",
+                {"GlobalTableName": f"table-{i}", "ReplicationGroup": []},
+            )
+            await handle_dynamodb_request(req, "us-east-1", "123456789012")
+
+        # List with Limit=1
+        req = _make_request("DynamoDB_20120810.ListGlobalTables", {"Limit": 1})
+        resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        assert len(body["GlobalTables"]) <= 1
+
+    @pytest.mark.asyncio
+    async def test_region_name_filter(self):
+        """ListGlobalTables with RegionName should filter by region."""
+        # Create table with us-east-1 replica
+        req1 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {
+                "GlobalTableName": "east-table",
+                "ReplicationGroup": [{"RegionName": "us-east-1"}],
+            },
+        )
+        await handle_dynamodb_request(req1, "us-east-1", "123456789012")
+
+        # Create table with eu-west-1 replica
+        req2 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {
+                "GlobalTableName": "west-table",
+                "ReplicationGroup": [{"RegionName": "eu-west-1"}],
+            },
+        )
+        await handle_dynamodb_request(req2, "us-east-1", "123456789012")
+
+        # List filtering by eu-west-1
+        req = _make_request(
+            "DynamoDB_20120810.ListGlobalTables",
+            {"RegionName": "eu-west-1"},
+        )
+        resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        names = [t["GlobalTableName"] for t in body["GlobalTables"]]
+        assert "west-table" in names
+        assert "east-table" not in names

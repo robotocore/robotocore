@@ -23,6 +23,7 @@ from robotocore.services.cloudformation.provider import (
     _list_exports,
     _list_stack_resources,
     _list_stacks,
+    _update_stack,
     _validate_template,
     _xml_response,
     handle_cloudformation_request,
@@ -698,3 +699,194 @@ class TestCrossStackExports:
             "123",
         )
         assert "my-export" in store.exports
+
+
+class TestUpdateStack:
+    """Tests for _update_stack — categorical bug class: state preservation during updates."""
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_update_stack_preserves_tags(self, mock_deploy):
+        """BUG: _update_stack ignores tags from the update request and drops existing tags.
+        Categorical pattern: tag operations must be parsed and stored on every mutating call."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {
+                "StackName": "tag-stack",
+                "TemplateBody": _SIMPLE_TEMPLATE,
+                "Tags.member.1.Key": "env",
+                "Tags.member.1.Value": "dev",
+            },
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("tag-stack")
+        assert stack.tags == [{"Key": "env", "Value": "dev"}]
+
+        # Update with new tags
+        _update_stack(
+            store,
+            {
+                "StackName": "tag-stack",
+                "TemplateBody": _SIMPLE_TEMPLATE,
+                "Tags.member.1.Key": "env",
+                "Tags.member.1.Value": "prod",
+                "Tags.member.2.Key": "team",
+                "Tags.member.2.Value": "platform",
+            },
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("tag-stack")
+        assert len(stack.tags) == 2
+        tag_dict = {t["Key"]: t["Value"] for t in stack.tags}
+        assert tag_dict["env"] == "prod"
+        assert tag_dict["team"] == "platform"
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_update_stack_records_events(self, mock_deploy):
+        """BUG: _update_stack doesn't record any events.
+        Categorical pattern: every state transition must emit events."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "ev-update", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("ev-update")
+        events_before = len(stack.events)
+
+        _update_stack(
+            store,
+            {"StackName": "ev-update", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        stack = store.get_stack("ev-update")
+        assert len(stack.events) > events_before
+        statuses = [e["ResourceStatus"] for e in stack.events]
+        assert "UPDATE_IN_PROGRESS" in statuses
+        assert "UPDATE_COMPLETE" in statuses
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_update_nonexistent_stack(self, mock_deploy):
+        """Update a stack that doesn't exist should raise ValidationError."""
+        store = CfnStore()
+        with pytest.raises(CfnError) as exc_info:
+            _update_stack(
+                store,
+                {"StackName": "ghost", "TemplateBody": _SIMPLE_TEMPLATE},
+                "us-east-1",
+                "123",
+            )
+        assert exc_info.value.code == "ValidationError"
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_update_returns_stack_id(self, mock_deploy):
+        """Update should return the stack ID."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "upd-id", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        result = _update_stack(
+            store,
+            {"StackName": "upd-id", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        assert "StackId" in result
+
+
+class TestDeleteStackCascade:
+    """Tests for deletion cascade — categorical bug class: cleanup of dependent state."""
+
+    @patch("robotocore.services.cloudformation.resources.create_resource")
+    def test_delete_cleans_up_exports(self, mock_create):
+        """BUG: _delete_stack_action doesn't remove exports from store.exports.
+        Categorical pattern: deleting a parent must cascade to all dependent state."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "export-del", "TemplateBody": _EXPORT_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        assert "my-export" in store.exports
+
+        _delete_stack_action(store, {"StackName": "export-del"}, "us-east-1", "123")
+        # Exports from deleted stack should be cleaned up
+        assert "my-export" not in store.exports
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_delete_stack_sets_status(self, mock_deploy):
+        """After deletion, stack status should be DELETE_COMPLETE."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "del-status", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        _delete_stack_action(store, {"StackName": "del-status"}, "us-east-1", "123")
+        stack = store.get_stack("del-status")
+        assert stack.status == "DELETE_COMPLETE"
+
+
+class TestDescribeDeletedStack:
+    """Tests for error codes on deleted stacks — categorical bug class: correct error codes."""
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_describe_deleted_stack_by_name_excludes_from_list(self, mock_deploy):
+        """DescribeStacks without StackName should exclude DELETE_COMPLETE stacks."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "will-delete", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        _delete_stack_action(store, {"StackName": "will-delete"}, "us-east-1", "123")
+
+        result = _describe_stacks(store, {}, "us-east-1", "123")
+        names = [s["StackName"] for s in result["Stacks"]]
+        assert "will-delete" not in names
+
+    @patch("robotocore.services.cloudformation.provider._deploy_stack")
+    def test_recreate_after_delete(self, mock_deploy):
+        """Should be able to create a new stack with the same name after deletion."""
+        store = CfnStore()
+        _create_stack(
+            store,
+            {"StackName": "reuse", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        _delete_stack_action(store, {"StackName": "reuse"}, "us-east-1", "123")
+        # Creating again should succeed
+        result = _create_stack(
+            store,
+            {"StackName": "reuse", "TemplateBody": _SIMPLE_TEMPLATE},
+            "us-east-1",
+            "123",
+        )
+        assert "StackId" in result
+
+
+class TestListStacksThreadSafety:
+    """Tests for thread safety — categorical bug class: missing locks on read paths."""
+
+    def test_list_stacks_returns_snapshot(self):
+        """CfnStore.list_stacks() should use the mutex for a consistent snapshot."""
+        store = CfnStore()
+        from robotocore.services.cloudformation.engine import CfnStack
+
+        stack = CfnStack(stack_id="arn:test", stack_name="test", template_body="{}")
+        store.put_stack(stack)
+        # list_stacks should return data even under concurrent access
+        result = store.list_stacks()
+        assert len(result) == 1
+        assert result[0].stack_name == "test"

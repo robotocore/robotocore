@@ -448,9 +448,9 @@ def _list_tags_for_resource(
 ) -> dict:
     arn = params.get("ResourceArn", "")
     topic = store.get_topic(arn)
-    tags = []
-    if topic:
-        tags = [{"Key": k, "Value": v} for k, v in topic.tags.items()]
+    if not topic:
+        raise SnsError("ResourceNotFound", f"Resource {arn} not found", 404)
+    tags = [{"Key": k, "Value": v} for k, v in topic.tags.items()]
     return {"Tags": tags}
 
 

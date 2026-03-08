@@ -8,6 +8,7 @@ import re
 import threading
 import time
 import uuid
+from urllib.parse import unquote
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -199,11 +200,16 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
         # Tags
         m = _TAGS.match(path)
         if m:
+            resource_arn = unquote(m.group(1))
             if method == "GET":
-                return _json_response({"tags": {}})
+                return _json_response({"tags": _list_tags(store, resource_arn)})
             elif method == "POST":
+                new_tags = params.get("tags", {})
+                _tag_resource(store, resource_arn, new_tags)
                 return _json_response({})
             elif method == "DELETE":
+                tag_keys = request.query_params.getlist("tagKeys")
+                _untag_resource(store, resource_arn, tag_keys)
                 return _json_response({})
 
         # v2 Event APIs
@@ -623,6 +629,48 @@ def _require_api(store: AppSyncStore, api_id: str) -> None:
     with store.lock:
         if api_id not in store.apis:
             raise AppSyncError("NotFoundException", f"GraphQL API {api_id} not found.", 404)
+
+
+def _find_resource_by_arn(store: AppSyncStore, arn: str) -> dict | None:
+    """Find any resource (API, event API, channel namespace) by ARN."""
+    with store.lock:
+        for api in store.apis.values():
+            if api.get("arn") == arn:
+                return api
+        for api in store.event_apis.values():
+            if api.get("apiArn") == arn:
+                return api
+        for ns_map in store.channel_namespaces.values():
+            for ns in ns_map.values():
+                if ns.get("channelNamespaceArn") == arn:
+                    return ns
+    return None
+
+
+def _list_tags(store: AppSyncStore, arn: str) -> dict:
+    resource = _find_resource_by_arn(store, arn)
+    if resource is None:
+        raise AppSyncError("NotFoundException", f"Resource {arn} not found.", 404)
+    return dict(resource.get("tags", {}))
+
+
+def _tag_resource(store: AppSyncStore, arn: str, new_tags: dict) -> None:
+    resource = _find_resource_by_arn(store, arn)
+    if resource is None:
+        raise AppSyncError("NotFoundException", f"Resource {arn} not found.", 404)
+    with store.lock:
+        existing = resource.setdefault("tags", {})
+        existing.update(new_tags)
+
+
+def _untag_resource(store: AppSyncStore, arn: str, tag_keys: list[str]) -> None:
+    resource = _find_resource_by_arn(store, arn)
+    if resource is None:
+        raise AppSyncError("NotFoundException", f"Resource {arn} not found.", 404)
+    with store.lock:
+        tags = resource.get("tags", {})
+        for key in tag_keys:
+            tags.pop(key, None)
 
 
 def _json_response(data: dict, status: int = 200) -> Response:

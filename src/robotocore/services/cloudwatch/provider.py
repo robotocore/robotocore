@@ -266,6 +266,7 @@ def put_composite_alarm(params: dict, region: str, account_id: str) -> dict:
         "AlarmActions": params.get("AlarmActions", []),
         "OKActions": params.get("OKActions", []),
         "InsufficientDataActions": params.get("InsufficientDataActions", []),
+        "Tags": params.get("Tags", []),
         "StateValue": "INSUFFICIENT_DATA",
         "StateReason": "Unchecked: Initial state",
         "rule_ast": rule_ast,
@@ -371,7 +372,7 @@ def get_dashboard(params: dict, region: str, account_id: str) -> dict:
         dash = store.get(name)
 
     if not dash:
-        raise CloudWatchError("ResourceNotFound", f"Dashboard {name} does not exist")
+        raise CloudWatchError("ResourceNotFound", f"Dashboard {name} does not exist", status=404)
 
     return {
         "DashboardName": dash["DashboardName"],
@@ -402,17 +403,24 @@ def list_dashboards(params: dict, region: str, account_id: str) -> list[dict]:
 
 
 def delete_dashboards(params: dict, region: str, account_id: str) -> dict:
-    """Delete dashboards by name."""
+    """Delete dashboards by name.
+
+    This operation is atomic: if any dashboard doesn't exist, none are deleted.
+    """
     names = params.get("DashboardNames", [])
     store = _get_dashboard_store(region)
 
     with _dashboard_lock:
+        # Validate all names exist before deleting any (atomic)
         for name in names:
             if name not in store:
                 raise CloudWatchError(
                     "ResourceNotFound",
                     f"Dashboard {name} does not exist",
+                    status=404,
                 )
+        # All validated — now delete
+        for name in names:
             store.pop(name, None)
 
     return {}
@@ -897,6 +905,15 @@ def _handle_enable_alarm_actions(params: dict, region: str, account_id: str) -> 
     alarm_names = params.get("AlarmNames", [])
     if isinstance(alarm_names, str):
         alarm_names = [alarm_names]
+
+    # Update composite alarms
+    store = _get_composite_store(region)
+    with _composite_lock:
+        for name in alarm_names:
+            if name in store:
+                store[name]["ActionsEnabled"] = True
+
+    # Update Moto metric alarms
     from moto.backends import get_backend
 
     backend = get_backend("cloudwatch")[account_id][region]
@@ -911,6 +928,15 @@ def _handle_disable_alarm_actions(params: dict, region: str, account_id: str) ->
     alarm_names = params.get("AlarmNames", [])
     if isinstance(alarm_names, str):
         alarm_names = [alarm_names]
+
+    # Update composite alarms
+    store = _get_composite_store(region)
+    with _composite_lock:
+        for name in alarm_names:
+            if name in store:
+                store[name]["ActionsEnabled"] = False
+
+    # Update Moto metric alarms
     from moto.backends import get_backend
 
     backend = get_backend("cloudwatch")[account_id][region]

@@ -452,3 +452,277 @@ class TestEdgeCases:
         req = Request(scope, receive)
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: tag dual-storage inconsistency
+# ---------------------------------------------------------------------------
+
+
+class TestTagDualStorageConsistency:
+    """Tags stored inline in resources AND in store.tags must stay in sync.
+
+    Categorical pattern: any provider that stores tags both inline and in a
+    separate tags dict will have stale inline copies after TagResource.
+    """
+
+    @pytest.mark.asyncio
+    async def test_tag_resource_updates_inline_cluster_tags(self):
+        """After TagResource, DescribeClusters should reflect the new tags."""
+        arn = await _create_cluster("c1")
+        # Add a tag via TagResource
+        await handle_ecs_request(
+            _make_request(
+                "TagResource",
+                {"resourceArn": arn, "tags": [{"key": "env", "value": "prod"}]},
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        # DescribeClusters returns inline cluster["tags"]
+        resp = await handle_ecs_request(
+            _make_request("DescribeClusters", {"clusters": ["c1"]}),
+            REGION,
+            ACCOUNT,
+        )
+        data = json.loads(resp.body)
+        cluster_tags = data["clusters"][0]["tags"]
+        assert any(t["key"] == "env" and t["value"] == "prod" for t in cluster_tags), (
+            f"Inline cluster tags not updated after TagResource: {cluster_tags}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_untag_resource_updates_inline_cluster_tags(self):
+        """After UntagResource, inline cluster tags should reflect removal."""
+        await handle_ecs_request(
+            _make_request(
+                "CreateCluster",
+                {
+                    "clusterName": "c1",
+                    "tags": [{"key": "env", "value": "test"}],
+                },
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        arn = f"arn:aws:ecs:{REGION}:{ACCOUNT}:cluster/c1"
+        await handle_ecs_request(
+            _make_request("UntagResource", {"resourceArn": arn, "tagKeys": ["env"]}),
+            REGION,
+            ACCOUNT,
+        )
+        resp = await handle_ecs_request(
+            _make_request("DescribeClusters", {"clusters": ["c1"]}),
+            REGION,
+            ACCOUNT,
+        )
+        data = json.loads(resp.body)
+        cluster_tags = data["clusters"][0]["tags"]
+        assert len(cluster_tags) == 0, (
+            f"Inline cluster tags not cleared after UntagResource: {cluster_tags}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_tag_resource_updates_inline_service_tags(self):
+        """After TagResource on a service, DescribeServices should show new tags."""
+        await _create_cluster("c1")
+        await _register_task_def("web")
+        resp = await handle_ecs_request(
+            _make_request(
+                "CreateService",
+                {"cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"},
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        svc_arn = json.loads(resp.body)["service"]["serviceArn"]
+
+        await handle_ecs_request(
+            _make_request(
+                "TagResource",
+                {"resourceArn": svc_arn, "tags": [{"key": "team", "value": "backend"}]},
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        resp = await handle_ecs_request(
+            _make_request("DescribeServices", {"cluster": "c1", "services": ["svc1"]}),
+            REGION,
+            ACCOUNT,
+        )
+        data = json.loads(resp.body)
+        svc_tags = data["services"][0]["tags"]
+        assert any(t["key"] == "team" for t in svc_tags), (
+            f"Inline service tags not updated after TagResource: {svc_tags}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: parent-child cascade on delete
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteCascade:
+    """Deleting a cluster should clean up child services, tasks, and tags.
+
+    Categorical pattern: parent-child resources where delete of parent
+    leaves orphaned children in the store.
+    """
+
+    @pytest.mark.asyncio
+    async def test_delete_cluster_cleans_up_services(self):
+        """After deleting a cluster, its services should not be listable."""
+        await _create_cluster("c1")
+        await _register_task_def("web")
+        await handle_ecs_request(
+            _make_request(
+                "CreateService",
+                {"cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"},
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        # Delete cluster
+        await handle_ecs_request(
+            _make_request("DeleteCluster", {"cluster": "c1"}),
+            REGION,
+            ACCOUNT,
+        )
+        # Services dict for this cluster should be cleaned up
+        from robotocore.services.ecs.provider import _get_store
+
+        store = _get_store(REGION, ACCOUNT)
+        assert "c1" not in store.services or len(store.services.get("c1", {})) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_cluster_cleans_up_tasks(self):
+        """After deleting a cluster, its tasks should be cleaned up."""
+        await _create_cluster("c1")
+        await _register_task_def("web")
+        await handle_ecs_request(
+            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}),
+            REGION,
+            ACCOUNT,
+        )
+        await handle_ecs_request(
+            _make_request("DeleteCluster", {"cluster": "c1"}),
+            REGION,
+            ACCOUNT,
+        )
+        from robotocore.services.ecs.provider import _get_store
+
+        store = _get_store(REGION, ACCOUNT)
+        assert "c1" not in store.tasks or len(store.tasks.get("c1", {})) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_cluster_cleans_up_tags(self):
+        """After deleting a cluster, its tags should be removed from store.tags."""
+        arn = await _create_cluster("c1")
+        await handle_ecs_request(
+            _make_request(
+                "TagResource",
+                {"resourceArn": arn, "tags": [{"key": "env", "value": "test"}]},
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        await handle_ecs_request(
+            _make_request("DeleteCluster", {"cluster": "c1"}),
+            REGION,
+            ACCOUNT,
+        )
+        from robotocore.services.ecs.provider import _get_store
+
+        store = _get_store(REGION, ACCOUNT)
+        assert arn not in store.tags or len(store.tags.get(arn, [])) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_service_cleans_up_tags(self):
+        """After deleting a service, its tags should be removed from store.tags."""
+        await _create_cluster("c1")
+        await _register_task_def("web")
+        resp = await handle_ecs_request(
+            _make_request(
+                "CreateService",
+                {
+                    "cluster": "c1",
+                    "serviceName": "svc1",
+                    "taskDefinition": "web",
+                    "tags": [{"key": "team", "value": "backend"}],
+                },
+            ),
+            REGION,
+            ACCOUNT,
+        )
+        svc_arn = json.loads(resp.body)["service"]["serviceArn"]
+
+        await handle_ecs_request(
+            _make_request("DeleteService", {"cluster": "c1", "service": "svc1"}),
+            REGION,
+            ACCOUNT,
+        )
+        from robotocore.services.ecs.provider import _get_store
+
+        store = _get_store(REGION, ACCOUNT)
+        assert svc_arn not in store.tags or len(store.tags.get(svc_arn, [])) == 0
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: task definition registration race condition
+# ---------------------------------------------------------------------------
+
+
+class TestTaskDefinitionRevisionAtomicity:
+    """Revision number computation and append must be atomic.
+
+    Categorical pattern: computing an index in one lock scope and using it
+    in another allows interleaving.
+    """
+
+    @pytest.mark.asyncio
+    async def test_sequential_registrations_get_unique_revisions(self):
+        """Register 5 task defs for the same family, all revisions must be unique."""
+        revisions = []
+        for _ in range(5):
+            resp = await handle_ecs_request(
+                _make_request(
+                    "RegisterTaskDefinition",
+                    {
+                        "family": "web",
+                        "containerDefinitions": [{"name": "app", "image": "nginx"}],
+                    },
+                ),
+                REGION,
+                ACCOUNT,
+            )
+            data = json.loads(resp.body)
+            revisions.append(data["taskDefinition"]["revision"])
+        assert revisions == [1, 2, 3, 4, 5], f"Revisions not sequential: {revisions}"
+
+
+# ---------------------------------------------------------------------------
+# Categorical bug tests: store keying by (account, region) not just region
+# ---------------------------------------------------------------------------
+
+
+class TestStoreAccountIsolation:
+    """Different accounts in the same region must get separate stores.
+
+    Categorical pattern: store keyed only by region ignores account_id,
+    so multi-account scenarios share state.
+    """
+
+    @pytest.mark.asyncio
+    async def test_different_accounts_see_different_clusters(self):
+        """Two accounts in the same region should not share clusters."""
+        # Create cluster in account A
+        req_a = _make_request("CreateCluster", {"clusterName": "shared-name"})
+        await handle_ecs_request(req_a, REGION, "111111111111")
+
+        # List clusters in account B
+        req_b = _make_request("ListClusters", {})
+        resp_b = await handle_ecs_request(req_b, REGION, "222222222222")
+        data_b = json.loads(resp_b.body)
+        assert len(data_b["clusterArns"]) == 0, (
+            f"Account B sees account A's clusters: {data_b['clusterArns']}"
+        )

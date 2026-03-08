@@ -15,16 +15,30 @@ from robotocore.services.firehose.provider import (
     _describe_delivery_stream,
     _error,
     _flush_buffer,
+    _key,
     _list_delivery_streams,
+    _list_tags_for_delivery_stream,
     _put_record,
     _put_record_batch,
     _start_delivery_stream_encryption,
     _stop_delivery_stream_encryption,
     _stream_buffers,
+    _tag_delivery_stream,
+    _untag_delivery_stream,
     _update_destination,
     _write_to_s3,
     handle_firehose_request,
 )
+
+# Default test account/region
+_ACCT = "123456789012"
+_REGION = "us-east-1"
+
+
+def _k(name: str, region: str = _REGION, account_id: str = _ACCT) -> tuple[str, str, str]:
+    """Shorthand for building a scoped key in tests."""
+    return _key(name, region, account_id)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -137,7 +151,7 @@ class TestCreateDeliveryStream:
     def test_creates_stream(self):
         result = _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
         assert "DeliveryStreamARN" in result
-        assert "s1" in _delivery_streams
+        assert _k("s1") in _delivery_streams
 
     def test_empty_name_raises(self):
         with pytest.raises(FirehoseError) as exc:
@@ -162,7 +176,7 @@ class TestCreateDeliveryStream:
             "us-east-1",
             "123456789012",
         )
-        assert _delivery_streams["s1"]["s3_config"]["BucketARN"] == ("arn:aws:s3:::mybucket")
+        assert _delivery_streams[_k("s1")]["s3_config"]["BucketARN"] == ("arn:aws:s3:::mybucket")
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +189,7 @@ class TestDeleteDeliveryStream:
         _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
         result = _delete_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
         assert result == {}
-        assert "s1" not in _delivery_streams
+        assert _k("s1") not in _delivery_streams
 
     def test_not_found_raises(self):
         with pytest.raises(FirehoseError) as exc:
@@ -243,7 +257,7 @@ class TestPutRecord:
             "123456789012",
         )
         assert "RecordId" in result
-        assert len(_stream_buffers["s1"]) == 1
+        assert len(_stream_buffers[_k("s1")]) == 1
 
     def test_not_found_raises(self):
         with pytest.raises(FirehoseError):
@@ -268,7 +282,7 @@ class TestPutRecordBatch:
         )
         assert result["FailedPutCount"] == 0
         assert len(result["RequestResponses"]) == 2
-        assert len(_stream_buffers["s1"]) == 2
+        assert len(_stream_buffers[_k("s1")]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +292,7 @@ class TestPutRecordBatch:
 
 class TestFlushBuffer:
     def test_flush_empty_buffer_is_noop(self):
-        _flush_buffer("nonexistent")
+        _flush_buffer(_k("nonexistent"))
 
     def test_flush_writes_to_s3(self):
         _create_delivery_stream(
@@ -292,12 +306,12 @@ class TestFlushBuffer:
             "us-east-1",
             "123456789012",
         )
-        _stream_buffers["s1"] = [b"data1", b"data2"]
+        _stream_buffers[_k("s1")] = [b"data1", b"data2"]
 
         with patch("robotocore.services.firehose.provider._write_to_s3") as mock_write:
-            _flush_buffer("s1")
+            _flush_buffer(_k("s1"))
         mock_write.assert_called_once()
-        assert _stream_buffers["s1"] == []
+        assert _stream_buffers[_k("s1")] == []
 
 
 class TestWriteToS3:
@@ -346,9 +360,9 @@ class TestUpdateDestination:
             "123456789012",
         )
         assert result == {}
-        assert _delivery_streams["s1"]["s3_config"]["Prefix"] == "updated/"
+        assert _delivery_streams[_k("s1")]["s3_config"]["Prefix"] == "updated/"
         # Original fields preserved
-        assert _delivery_streams["s1"]["s3_config"]["BucketARN"] == "arn:aws:s3:::mybucket"
+        assert _delivery_streams[_k("s1")]["s3_config"]["BucketARN"] == "arn:aws:s3:::mybucket"
 
     def test_updates_buffering_hints(self):
         _create_delivery_stream(
@@ -373,7 +387,7 @@ class TestUpdateDestination:
             "us-east-1",
             "123456789012",
         )
-        hints = _delivery_streams["s1"]["s3_config"]["BufferingHints"]
+        hints = _delivery_streams[_k("s1")]["s3_config"]["BufferingHints"]
         assert hints == {"SizeInMBs": 10, "IntervalInSeconds": 300}
 
     def test_not_found_raises(self):
@@ -448,8 +462,8 @@ class TestDeliveryStreamEncryption:
             "123456789012",
         )
         assert result == {}
-        assert _delivery_streams["s1"]["encryption"]["Status"] == "ENABLED"
-        assert _delivery_streams["s1"]["encryption"]["KeyType"] == "AWS_OWNED_CMK"
+        assert _delivery_streams[_k("s1")]["encryption"]["Status"] == "ENABLED"
+        assert _delivery_streams[_k("s1")]["encryption"]["KeyType"] == "AWS_OWNED_CMK"
 
     def test_stop_encryption(self):
         _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
@@ -465,7 +479,7 @@ class TestDeliveryStreamEncryption:
             {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
         )
         assert result == {}
-        assert _delivery_streams["s1"]["encryption"]["Status"] == "DISABLED"
+        assert _delivery_streams[_k("s1")]["encryption"]["Status"] == "DISABLED"
 
     def test_start_not_found_raises(self):
         with pytest.raises(FirehoseError) as exc:
@@ -597,7 +611,7 @@ class TestUpdateDestinationVersionMismatch:
                     "AWS accepts both int and string for CurrentDeliveryStreamVersionId."
                 )
             raise
-        assert _delivery_streams["s1"]["s3_config"]["Prefix"] == "updated/"
+        assert _delivery_streams[_k("s1")]["s3_config"]["Prefix"] == "updated/"
 
 
 # ---------------------------------------------------------------------------
@@ -660,3 +674,367 @@ class TestDescribeDeliveryStreamVersionId:
         assert desc["VersionId"] == "3", (
             f"Expected VersionId '3' after two updates, got '{desc['VersionId']}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Tag round-trip — create with tags, list tags, tag, untag
+#
+# Tags set during CreateDeliveryStream must be visible via
+# ListTagsForDeliveryStream. TagDeliveryStream and UntagDeliveryStream must
+# modify the tag set correctly. This pattern applies to ALL native providers
+# that support tagging.
+# ---------------------------------------------------------------------------
+
+
+class TestTagRoundTrip:
+    def test_create_with_tags_visible_in_list_tags(self):
+        """Tags provided at creation time must appear in ListTagsForDeliveryStream."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "tagged",
+                "Tags": [
+                    {"Key": "env", "Value": "prod"},
+                    {"Key": "team", "Value": "infra"},
+                ],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "tagged"}, "us-east-1", "123456789012"
+        )
+        tags = {t["Key"]: t["Value"] for t in result["Tags"]}
+        assert tags == {"env": "prod", "team": "infra"}
+
+    def test_tag_delivery_stream_adds_tags(self):
+        """TagDeliveryStream must add tags visible in ListTags."""
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _tag_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "Tags": [{"Key": "color", "Value": "blue"}],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        tags = {t["Key"]: t["Value"] for t in result["Tags"]}
+        assert tags == {"color": "blue"}
+
+    def test_tag_delivery_stream_overwrites_existing_key(self):
+        """TagDeliveryStream with an existing key should overwrite the value."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "Tags": [{"Key": "env", "Value": "dev"}],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        _tag_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "Tags": [{"Key": "env", "Value": "prod"}],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        tags = {t["Key"]: t["Value"] for t in result["Tags"]}
+        assert tags["env"] == "prod"
+
+    def test_untag_delivery_stream_removes_tags(self):
+        """UntagDeliveryStream must remove specified keys."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "Tags": [
+                    {"Key": "a", "Value": "1"},
+                    {"Key": "b", "Value": "2"},
+                    {"Key": "c", "Value": "3"},
+                ],
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        _untag_delivery_stream(
+            {"DeliveryStreamName": "s1", "TagKeys": ["a", "c"]},
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        tags = {t["Key"]: t["Value"] for t in result["Tags"]}
+        assert tags == {"b": "2"}
+
+    def test_untag_nonexistent_key_is_noop(self):
+        """Removing a key that doesn't exist should not raise."""
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _untag_delivery_stream(
+            {"DeliveryStreamName": "s1", "TagKeys": ["nonexistent"]},
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        assert result["Tags"] == []
+
+    def test_tag_nonexistent_stream_raises(self):
+        """TagDeliveryStream on a nonexistent stream must raise ResourceNotFoundException."""
+        with pytest.raises(FirehoseError) as exc:
+            _tag_delivery_stream(
+                {
+                    "DeliveryStreamName": "nope",
+                    "Tags": [{"Key": "k", "Value": "v"}],
+                },
+                "us-east-1",
+                "123456789012",
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_untag_nonexistent_stream_raises(self):
+        """UntagDeliveryStream on a nonexistent stream must raise ResourceNotFoundException."""
+        with pytest.raises(FirehoseError) as exc:
+            _untag_delivery_stream(
+                {"DeliveryStreamName": "nope", "TagKeys": ["k"]},
+                "us-east-1",
+                "123456789012",
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_list_tags_nonexistent_stream_raises(self):
+        """ListTagsForDeliveryStream on nonexistent stream must raise."""
+        with pytest.raises(FirehoseError) as exc:
+            _list_tags_for_delivery_stream(
+                {"DeliveryStreamName": "nope"}, "us-east-1", "123456789012"
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_list_tags_pagination(self):
+        """ListTagsForDeliveryStream should paginate with ExclusiveStartTagKey."""
+        tags = [{"Key": f"key-{i:02d}", "Value": f"val-{i}"} for i in range(10)]
+        _create_delivery_stream(
+            {"DeliveryStreamName": "s1", "Tags": tags},
+            "us-east-1",
+            "123456789012",
+        )
+        result = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1", "Limit": 3},
+            "us-east-1",
+            "123456789012",
+        )
+        assert len(result["Tags"]) == 3
+        assert result["HasMoreTags"] is True
+
+        # Page 2 starting after the third key
+        last_key = result["Tags"][-1]["Key"]
+        result2 = _list_tags_for_delivery_stream(
+            {"DeliveryStreamName": "s1", "Limit": 3, "ExclusiveStartTagKey": last_key},
+            "us-east-1",
+            "123456789012",
+        )
+        assert len(result2["Tags"]) == 3
+        # Keys should not overlap
+        page1_keys = {t["Key"] for t in result["Tags"]}
+        page2_keys = {t["Key"] for t in result2["Tags"]}
+        assert page1_keys.isdisjoint(page2_keys)
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Cross-account/cross-region isolation
+#
+# Native providers using a single global dict (like _delivery_streams) must
+# scope by (account_id, region). Otherwise streams from different accounts
+# or regions collide. This is a common pattern across many providers.
+# ---------------------------------------------------------------------------
+
+
+class TestCrossAccountRegionIsolation:
+    def test_same_name_different_accounts(self):
+        """Two accounts should each be able to create a stream with the same name."""
+        _create_delivery_stream(
+            {"DeliveryStreamName": "shared-name"},
+            "us-east-1",
+            "111111111111",
+        )
+        # This should NOT raise ResourceInUseException
+        _create_delivery_stream(
+            {"DeliveryStreamName": "shared-name"},
+            "us-east-1",
+            "222222222222",
+        )
+        # Both should be describable
+        r1 = _describe_delivery_stream(
+            {"DeliveryStreamName": "shared-name"}, "us-east-1", "111111111111"
+        )
+        r2 = _describe_delivery_stream(
+            {"DeliveryStreamName": "shared-name"}, "us-east-1", "222222222222"
+        )
+        assert (
+            r1["DeliveryStreamDescription"]["DeliveryStreamARN"]
+            != (r2["DeliveryStreamDescription"]["DeliveryStreamARN"])
+        )
+
+    def test_same_name_different_regions(self):
+        """Two regions should each be able to create a stream with the same name."""
+        _create_delivery_stream(
+            {"DeliveryStreamName": "shared-name"},
+            "us-east-1",
+            "123456789012",
+        )
+        # This should NOT raise ResourceInUseException
+        _create_delivery_stream(
+            {"DeliveryStreamName": "shared-name"},
+            "eu-west-1",
+            "123456789012",
+        )
+
+    def test_list_streams_scoped_to_account_and_region(self):
+        """ListDeliveryStreams should only return streams for the given account/region."""
+        _create_delivery_stream(
+            {"DeliveryStreamName": "stream-a"},
+            "us-east-1",
+            "111111111111",
+        )
+        _create_delivery_stream(
+            {"DeliveryStreamName": "stream-b"},
+            "us-east-1",
+            "222222222222",
+        )
+        _create_delivery_stream(
+            {"DeliveryStreamName": "stream-c"},
+            "eu-west-1",
+            "111111111111",
+        )
+
+        result = _list_delivery_streams({}, "us-east-1", "111111111111")
+        assert result["DeliveryStreamNames"] == ["stream-a"]
+
+    def test_delete_does_not_affect_other_accounts(self):
+        """Deleting a stream in one account should not affect the same-named stream in another."""
+        _create_delivery_stream(
+            {"DeliveryStreamName": "shared"},
+            "us-east-1",
+            "111111111111",
+        )
+        _create_delivery_stream(
+            {"DeliveryStreamName": "shared"},
+            "us-east-1",
+            "222222222222",
+        )
+        _delete_delivery_stream({"DeliveryStreamName": "shared"}, "us-east-1", "111111111111")
+        # Other account's stream should still exist
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "shared"}, "us-east-1", "222222222222"
+        )
+        assert result["DeliveryStreamDescription"]["DeliveryStreamName"] == "shared"
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Describe reads stream dict outside the lock
+#
+# _describe_delivery_stream acquires _lock only to look up the stream,
+# then reads all fields outside the lock. This is a TOCTOU race. The fix
+# is to do all reads inside the lock (or copy the dict under the lock).
+# This test verifies correctness by checking all expected fields are present.
+# ---------------------------------------------------------------------------
+
+
+class TestDescribeFieldsUnderLock:
+    def test_describe_returns_all_expected_fields(self):
+        """DescribeDeliveryStream response must contain all required fields."""
+        _create_delivery_stream(
+            {
+                "DeliveryStreamName": "s1",
+                "DeliveryStreamType": "DirectPut",
+                "ExtendedS3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::mybucket",
+                    "Prefix": "logs/",
+                    "RoleARN": "arn:aws:iam::123456789012:role/test",
+                },
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        result = _describe_delivery_stream(
+            {"DeliveryStreamName": "s1"}, "us-east-1", "123456789012"
+        )
+        desc = result["DeliveryStreamDescription"]
+        # All these fields must be present
+        assert "DeliveryStreamName" in desc
+        assert "DeliveryStreamARN" in desc
+        assert "DeliveryStreamStatus" in desc
+        assert "DeliveryStreamType" in desc
+        assert "VersionId" in desc
+        assert "Destinations" in desc
+        assert "HasMoreDestinations" in desc
+        assert "CreateTimestamp" in desc
+
+
+# ---------------------------------------------------------------------------
+# CATEGORICAL BUG: Delete does not clean up all child state
+#
+# When a delivery stream is deleted, the buffer is cleaned but we should
+# verify that put_record on the deleted stream raises ResourceNotFoundException.
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteCascade:
+    def test_put_record_after_delete_raises(self):
+        """PutRecord on a deleted stream must raise ResourceNotFoundException."""
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _delete_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        with pytest.raises(FirehoseError) as exc:
+            _put_record(
+                {
+                    "DeliveryStreamName": "s1",
+                    "Record": {"Data": base64.b64encode(b"hello").decode()},
+                },
+                "us-east-1",
+                "123456789012",
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_describe_after_delete_raises(self):
+        """DescribeDeliveryStream on deleted stream must raise ResourceNotFoundException."""
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _delete_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        with pytest.raises(FirehoseError) as exc:
+            _describe_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_tag_after_delete_raises(self):
+        """TagDeliveryStream on a deleted stream must raise ResourceNotFoundException."""
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _delete_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        with pytest.raises(FirehoseError) as exc:
+            _tag_delivery_stream(
+                {
+                    "DeliveryStreamName": "s1",
+                    "Tags": [{"Key": "k", "Value": "v"}],
+                },
+                "us-east-1",
+                "123456789012",
+            )
+        assert exc.value.code == "ResourceNotFoundException"
+
+    def test_buffers_cleaned_after_delete(self):
+        """Stream buffers must be cleaned up after deletion."""
+        _create_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        _put_record(
+            {
+                "DeliveryStreamName": "s1",
+                "Record": {"Data": base64.b64encode(b"data").decode()},
+            },
+            "us-east-1",
+            "123456789012",
+        )
+        assert len(_stream_buffers.get(_k("s1"), [])) == 1
+        _delete_delivery_stream({"DeliveryStreamName": "s1"}, "us-east-1", "123456789012")
+        assert _k("s1") not in _stream_buffers

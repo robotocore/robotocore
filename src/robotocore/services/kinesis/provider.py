@@ -106,10 +106,18 @@ def _create_stream(store: KinesisStore, params: dict, region: str, account_id: s
 
 def _delete_stream(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
-    if not store.delete_stream(name):
+    # Look up stream first to get ARN for resource policy cleanup
+    stream = store.get_stream(name)
+    if not stream:
         raise KinesisError(
             "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
         )
+    # Clean up resource policies for this stream and its consumers
+    stream_arn = stream.arn
+    keys_to_remove = [k for k in store.resource_policies if k.startswith(stream_arn)]
+    for k in keys_to_remove:
+        del store.resource_policies[k]
+    store.delete_stream(name)
     return {}
 
 
@@ -469,7 +477,7 @@ def _describe_stream_summary(
             "StreamCreationTimestamp": stream.created,
             "EnhancedMonitoring": [{"ShardLevelMetrics": []}],
             "OpenShardCount": open_shard_count,
-            "ConsumerCount": 0,
+            "ConsumerCount": len(stream.consumers),
         }
     }
 
@@ -532,8 +540,21 @@ def _list_tags(store: KinesisStore, params: dict, region: str, account_id: str) 
             "ResourceNotFoundException", f"Stream {name} under account {account_id} not found."
         )
 
-    tags = [{"Key": k, "Value": v} for k, v in stream.tags.items()]
-    return {"Tags": tags, "HasMoreTags": False}
+    # Sort tags by key for deterministic pagination (AWS returns sorted by key)
+    all_tags = sorted(stream.tags.items(), key=lambda x: x[0])
+
+    # Apply ExclusiveStartTagKey — skip tags up to and including this key
+    exclusive_start = params.get("ExclusiveStartTagKey")
+    if exclusive_start:
+        all_tags = [(k, v) for k, v in all_tags if k > exclusive_start]
+
+    # Apply Limit (AWS default is 10)
+    limit = params.get("Limit", 10)
+    has_more = len(all_tags) > limit
+    all_tags = all_tags[:limit]
+
+    tags = [{"Key": k, "Value": v} for k, v in all_tags]
+    return {"Tags": tags, "HasMoreTags": has_more}
 
 
 def _start_stream_encryption(
@@ -633,7 +654,12 @@ def _deregister_stream_consumer(
     consumer_name = params.get("ConsumerName", "")
     for s in store.streams.values():
         if s.arn == stream_arn:
-            s.consumers.pop(consumer_name, None)
+            if consumer_name not in s.consumers:
+                raise KinesisError(
+                    "ResourceNotFoundException",
+                    f"Consumer {consumer_name} not found on stream {stream_arn}",
+                )
+            del s.consumers[consumer_name]
             return {}
     raise KinesisError("ResourceNotFoundException", f"Stream not found: {stream_arn}")
 
@@ -697,11 +723,27 @@ def _merge_shards(store: KinesisStore, params: dict, region: str, account_id: st
     return {}
 
 
+def _extract_stream_name_from_arn(resource_arn: str) -> str:
+    """Extract stream name from a stream or consumer ARN.
+
+    Stream ARN:   arn:aws:kinesis:us-east-1:123:stream/mystream
+    Consumer ARN: arn:aws:kinesis:us-east-1:123:stream/mystream/consumer/myconsumer:12345
+    """
+    # Find "stream/" and extract the next path segment
+    parts = resource_arn.split("/")
+    for i, part in enumerate(parts):
+        if part.endswith(":stream") or part == "stream":
+            if i + 1 < len(parts):
+                return parts[i + 1]
+    # Fallback: last segment (original behavior)
+    return parts[-1]
+
+
 def _put_resource_policy(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     resource_arn = params.get("ResourceARN", "")
     policy = params.get("Policy", "")
-    # Validate stream exists
-    stream_name = resource_arn.split("/")[-1]
+    # Validate stream exists (works for both stream and consumer ARNs)
+    stream_name = _extract_stream_name_from_arn(resource_arn)
     stream = store.get_stream(stream_name)
     if not stream:
         raise KinesisError(
@@ -714,7 +756,7 @@ def _put_resource_policy(store: KinesisStore, params: dict, region: str, account
 
 def _get_resource_policy(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     resource_arn = params.get("ResourceARN", "")
-    stream_name = resource_arn.split("/")[-1]
+    stream_name = _extract_stream_name_from_arn(resource_arn)
     stream = store.get_stream(stream_name)
     if not stream:
         raise KinesisError(
@@ -729,7 +771,7 @@ def _delete_resource_policy(
     store: KinesisStore, params: dict, region: str, account_id: str
 ) -> dict:
     resource_arn = params.get("ResourceARN", "")
-    stream_name = resource_arn.split("/")[-1]
+    stream_name = _extract_stream_name_from_arn(resource_arn)
     stream = store.get_stream(stream_name)
     if not stream:
         raise KinesisError(

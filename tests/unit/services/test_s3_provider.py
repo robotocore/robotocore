@@ -9,11 +9,27 @@ from starlette.responses import Response
 
 from robotocore.services.s3.notifications import NotificationConfig
 from robotocore.services.s3.provider import (
+    _cors_store,
     _is_presigned_url,
+    _lifecycle_store,
+    _logging_store,
     _notification_config_to_xml,
+    _object_legal_hold_store,
+    _object_lock_store,
     _parse_notification_config_xml,
+    _store_lock,
     _strip_presigned_params,
+    delete_bucket_cors,
+    delete_bucket_lifecycle,
+    get_bucket_cors,
+    get_bucket_lifecycle,
+    get_object_legal_hold,
+    get_object_lock_config,
     handle_s3_request,
+    set_bucket_cors,
+    set_bucket_lifecycle,
+    set_object_legal_hold,
+    set_object_lock_config,
 )
 
 
@@ -386,3 +402,153 @@ class TestHandleS3Request:
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 404
         assert b"ObjectLockConfigurationNotFoundError" in resp.body
+
+
+class TestStoreHelpers:
+    """Test that the in-memory store CRUD helpers work correctly."""
+
+    def setup_method(self):
+        """Clean up all stores before each test."""
+        with _store_lock:
+            _cors_store.clear()
+            _lifecycle_store.clear()
+            _object_lock_store.clear()
+            _object_legal_hold_store.clear()
+            _logging_store.clear()
+
+    def test_cors_store_roundtrip(self):
+        rules = [{"AllowedOrigins": ["*"], "AllowedMethods": ["GET"]}]
+        set_bucket_cors("test-bucket", rules)
+        assert get_bucket_cors("test-bucket") == rules
+        delete_bucket_cors("test-bucket")
+        assert get_bucket_cors("test-bucket") is None
+
+    def test_lifecycle_store_roundtrip(self):
+        rules = [{"ID": "rule1", "Status": "Enabled"}]
+        set_bucket_lifecycle("test-bucket", rules)
+        assert get_bucket_lifecycle("test-bucket") == rules
+        delete_bucket_lifecycle("test-bucket")
+        assert get_bucket_lifecycle("test-bucket") is None
+
+    def test_object_lock_store_roundtrip(self):
+        config = {"ObjectLockEnabled": "Enabled"}
+        set_object_lock_config("test-bucket", config)
+        assert get_object_lock_config("test-bucket") == config
+
+    def test_legal_hold_store_roundtrip(self):
+        set_object_legal_hold("test-bucket", "my-key", "ON")
+        assert get_object_legal_hold("test-bucket", "my-key") == "ON"
+
+    def test_legal_hold_nonexistent_returns_none(self):
+        assert get_object_legal_hold("no-bucket", "no-key") is None
+
+    def test_delete_cors_on_nonexistent_is_noop(self):
+        """Deleting CORS for a bucket that has no CORS config should not error."""
+        delete_bucket_cors("no-such-bucket")  # should not raise
+
+    def test_delete_lifecycle_on_nonexistent_is_noop(self):
+        """Deleting lifecycle for a bucket that has no lifecycle config should not error."""
+        delete_bucket_lifecycle("no-such-bucket")  # should not raise
+
+
+@pytest.mark.asyncio
+class TestDeleteBucketStoreCleanup:
+    """CATEGORICAL BUG: When a bucket is deleted via Moto, all module-level
+    stores (_cors_store, _lifecycle_store, _object_lock_store,
+    _object_legal_hold_store, _logging_store, notifications) must be cleaned up.
+
+    Without cleanup, deleted buckets leave orphaned data in memory, and
+    recreating a bucket with the same name would inherit stale configs.
+    """
+
+    def setup_method(self):
+        """Populate all stores for a bucket that will be deleted."""
+        with _store_lock:
+            _cors_store["cleanup-bucket"] = [{"AllowedOrigins": ["*"]}]
+            _lifecycle_store["cleanup-bucket"] = [{"ID": "r1"}]
+            _object_lock_store["cleanup-bucket"] = {"ObjectLockEnabled": "Enabled"}
+            _object_legal_hold_store["cleanup-bucket/key1"] = "ON"
+            _object_legal_hold_store["cleanup-bucket/key2"] = "ON"
+            _logging_store["cleanup-bucket"] = {"TargetBucket": "log-bucket"}
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_delete_bucket_cleans_cors_store(self, mock_forward):
+        """After successful DELETE /<bucket>, CORS config should be removed."""
+        mock_forward.return_value = Response(content=b"", status_code=204)
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        assert get_bucket_cors("cleanup-bucket") is None
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_delete_bucket_cleans_lifecycle_store(self, mock_forward):
+        """After successful DELETE /<bucket>, lifecycle config should be removed."""
+        mock_forward.return_value = Response(content=b"", status_code=204)
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        assert get_bucket_lifecycle("cleanup-bucket") is None
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_delete_bucket_cleans_object_lock_store(self, mock_forward):
+        """After successful DELETE /<bucket>, object lock config should be removed."""
+        mock_forward.return_value = Response(content=b"", status_code=204)
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        assert get_object_lock_config("cleanup-bucket") is None
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_delete_bucket_cleans_legal_hold_store(self, mock_forward):
+        """After successful DELETE /<bucket>, legal hold entries for that bucket
+        should be removed (they use 'bucket/key' compound keys)."""
+        mock_forward.return_value = Response(content=b"", status_code=204)
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        assert get_object_legal_hold("cleanup-bucket", "key1") is None
+        assert get_object_legal_hold("cleanup-bucket", "key2") is None
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_delete_bucket_cleans_logging_store(self, mock_forward):
+        """After successful DELETE /<bucket>, logging config should be removed."""
+        mock_forward.return_value = Response(content=b"", status_code=204)
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        with _store_lock:
+            assert "cleanup-bucket" not in _logging_store
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    @patch("robotocore.services.s3.notifications.set_notification_config")
+    async def test_delete_bucket_cleans_notification_store(self, mock_set_notif, mock_forward):
+        """After successful DELETE /<bucket>, notification config should be removed."""
+        from robotocore.services.s3.notifications import _bucket_notifications
+
+        _bucket_notifications["cleanup-bucket"] = NotificationConfig(
+            queue_configs=[{"QueueArn": "arn:aws:sqs:us-east-1:123:q", "Events": ["s3:*"]}]
+        )
+        mock_forward.return_value = Response(content=b"", status_code=204)
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 204
+        # The cleanup should have cleared the notification config
+        from robotocore.services.s3.notifications import get_notification_config
+
+        config = get_notification_config("cleanup-bucket")
+        assert len(config.queue_configs) == 0
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_failed_delete_does_not_clean_stores(self, mock_forward):
+        """If Moto returns an error (e.g., BucketNotEmpty), stores should NOT be cleaned."""
+        mock_forward.return_value = Response(
+            content=b"<Error><Code>BucketNotEmpty</Code></Error>", status_code=409
+        )
+        req = _make_request("DELETE", "/cleanup-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 409
+        # All stores should still have their data
+        assert get_bucket_cors("cleanup-bucket") is not None
+        assert get_bucket_lifecycle("cleanup-bucket") is not None
+        assert get_object_lock_config("cleanup-bucket") is not None
+        assert get_object_legal_hold("cleanup-bucket", "key1") == "ON"

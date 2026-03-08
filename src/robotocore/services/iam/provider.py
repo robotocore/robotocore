@@ -6,6 +6,7 @@ Intercepts operations that Moto doesn't implement:
 - ChangePassword: No-op (requires user session in real AWS)
 """
 
+import logging
 import uuid
 from urllib.parse import parse_qs
 
@@ -13,6 +14,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_iam_request(request: Request, region: str, account_id: str) -> Response:
@@ -50,6 +53,7 @@ def _inject_user_permissions_boundary(
     """Inject PermissionsBoundary into GetUser response if set on the user."""
     try:
         from moto.backends import get_backend
+        from moto.iam.exceptions import NoSuchEntity
 
         backend = get_backend("iam")[account_id]["global"]
         user = backend.get_user(user_name)
@@ -71,9 +75,28 @@ def _inject_user_permissions_boundary(
                 headers=headers,
                 media_type="text/xml",
             )
-    except Exception:
+    except NoSuchEntity:
+        # User not found in Moto backend — this is expected when GetUser
+        # returns a default_user from access key lookup. Leave response as-is.
         pass
+    except Exception:
+        logger.warning("Failed to inject PermissionsBoundary into GetUser response", exc_info=True)
     return response
+
+
+def _iam_error_response(code: str, message: str, status_code: int = 400) -> Response:
+    """Return a properly formatted IAM XML error response."""
+    xml = (
+        f'<ErrorResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">'
+        f"<Error>"
+        f"<Type>Sender</Type>"
+        f"<Code>{code}</Code>"
+        f"<Message>{message}</Message>"
+        f"</Error>"
+        f"<RequestId>{uuid.uuid4()}</RequestId>"
+        f"</ErrorResponse>"
+    )
+    return Response(content=xml, status_code=status_code, media_type="text/xml")
 
 
 def _get_list_param(params: dict, prefix: str) -> list[str]:
@@ -149,12 +172,20 @@ def _simulate_principal_policy(params: dict, region: str, account_id: str) -> Re
 
 def _put_user_permissions_boundary(params: dict, region: str, account_id: str) -> Response:
     from moto.backends import get_backend
+    from moto.iam.exceptions import NoSuchEntity
 
     user_name = _get_param(params, "UserName")
     boundary_arn = _get_param(params, "PermissionsBoundary")
 
     backend = get_backend("iam")[account_id]["global"]
-    user = backend.get_user(user_name)
+    try:
+        user = backend.get_user(user_name)
+    except NoSuchEntity:
+        return _iam_error_response(
+            "NoSuchEntity",
+            f"The user with name {user_name} cannot be found.",
+            404,
+        )
     user.permissions_boundary_arn = boundary_arn
 
     xml = f"""<PutUserPermissionsBoundaryResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
@@ -167,11 +198,19 @@ def _put_user_permissions_boundary(params: dict, region: str, account_id: str) -
 
 def _delete_user_permissions_boundary(params: dict, region: str, account_id: str) -> Response:
     from moto.backends import get_backend
+    from moto.iam.exceptions import NoSuchEntity
 
     user_name = _get_param(params, "UserName")
 
     backend = get_backend("iam")[account_id]["global"]
-    user = backend.get_user(user_name)
+    try:
+        user = backend.get_user(user_name)
+    except NoSuchEntity:
+        return _iam_error_response(
+            "NoSuchEntity",
+            f"The user with name {user_name} cannot be found.",
+            404,
+        )
     user.permissions_boundary_arn = None
 
     xml = f"""<DeleteUserPermissionsBoundaryResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">

@@ -1778,3 +1778,116 @@ class TestIAMProviderErrorPaths:
         )
         assert resp.status_code == 200
         assert b"ChangePasswordResponse" in resp.body
+
+
+# ===========================================================================
+# Categorical bug tests: error handling on nonexistent entities
+# These test patterns apply to ANY native provider that calls Moto backend
+# methods directly — the provider must catch Moto exceptions and return
+# proper AWS error responses instead of crashing with HTTP 500.
+# ===========================================================================
+
+
+class TestIAMProviderNoSuchEntityHandling:
+    """Bug category: Native providers calling Moto backend.get_user() (or similar)
+    without catching NoSuchEntity. The provider crashes with 500 instead of
+    returning a proper NoSuchEntity XML error response (404)."""
+
+    def test_put_permissions_boundary_nonexistent_user(self):
+        """PutUserPermissionsBoundary on a nonexistent user must return NoSuchEntity, not 500."""
+        body = (
+            b"Action=PutUserPermissionsBoundary"
+            b"&UserName=no-such-user"
+            b"&PermissionsBoundary=arn:aws:iam::123456789012:policy/SomeBoundary"
+        )
+        request = _make_iam_request(body)
+        resp = asyncio.get_event_loop().run_until_complete(
+            handle_iam_request(request, "us-east-1", "123456789012")
+        )
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
+        assert b"NoSuchEntity" in resp.body
+
+    def test_delete_permissions_boundary_nonexistent_user(self):
+        """DeleteUserPermissionsBoundary on a nonexistent user must return NoSuchEntity, not 500."""
+        body = b"Action=DeleteUserPermissionsBoundary&UserName=no-such-user"
+        request = _make_iam_request(body)
+        resp = asyncio.get_event_loop().run_until_complete(
+            handle_iam_request(request, "us-east-1", "123456789012")
+        )
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
+        assert b"NoSuchEntity" in resp.body
+
+    def test_put_permissions_boundary_missing_username(self):
+        """PutUserPermissionsBoundary with empty UserName must return error, not crash."""
+        body = (
+            b"Action=PutUserPermissionsBoundary"
+            b"&PermissionsBoundary=arn:aws:iam::123456789012:policy/SomeBoundary"
+        )
+        request = _make_iam_request(body)
+        resp = asyncio.get_event_loop().run_until_complete(
+            handle_iam_request(request, "us-east-1", "123456789012")
+        )
+        # Empty username: Moto raises NoSuchEntity for empty string lookup
+        assert resp.status_code in (400, 404), f"Expected 400 or 404, got {resp.status_code}"
+
+    def test_delete_permissions_boundary_missing_username(self):
+        """DeleteUserPermissionsBoundary with empty UserName must return error, not crash."""
+        body = b"Action=DeleteUserPermissionsBoundary"
+        request = _make_iam_request(body)
+        resp = asyncio.get_event_loop().run_until_complete(
+            handle_iam_request(request, "us-east-1", "123456789012")
+        )
+        assert resp.status_code in (400, 404), f"Expected 400 or 404, got {resp.status_code}"
+
+
+class TestIAMProviderPermissionsBoundaryInjection:
+    """Bug category: Post-processing response injection with overly broad exception
+    handling. The bare `except Exception: pass` silently swallows real bugs."""
+
+    def test_getuser_boundary_injection_nonexistent_user(self):
+        """GetUser for nonexistent user forwards Moto's 404, doesn't crash in boundary injection."""
+        error_xml = (
+            b"<ErrorResponse>"
+            b"<Error><Code>NoSuchEntity</Code>"
+            b"<Message>The user with name ghost cannot be found.</Message>"
+            b"</Error></ErrorResponse>"
+        )
+        with patch(
+            "robotocore.services.iam.provider.forward_to_moto",
+            new_callable=AsyncMock,
+        ) as mock_forward:
+            mock_forward.return_value = Response(
+                content=error_xml, status_code=404, media_type="text/xml"
+            )
+            body = b"Action=GetUser&UserName=ghost"
+            request = _make_iam_request(body)
+            resp = asyncio.get_event_loop().run_until_complete(
+                handle_iam_request(request, "us-east-1", "123456789012")
+            )
+        # The boundary injection code should NOT modify error responses
+        assert resp.status_code == 404
+        assert b"NoSuchEntity" in resp.body
+
+    def test_getuser_boundary_injection_only_runs_on_200(self):
+        """Boundary injection should only apply to successful GetUser responses."""
+        error_xml = (
+            b"<ErrorResponse>"
+            b"<Error><Code>ServiceFailure</Code>"
+            b"<Message>Internal error</Message>"
+            b"</Error></ErrorResponse>"
+        )
+        with patch(
+            "robotocore.services.iam.provider.forward_to_moto",
+            new_callable=AsyncMock,
+        ) as mock_forward:
+            mock_forward.return_value = Response(
+                content=error_xml, status_code=500, media_type="text/xml"
+            )
+            body = b"Action=GetUser&UserName=someone"
+            request = _make_iam_request(body)
+            resp = asyncio.get_event_loop().run_until_complete(
+                handle_iam_request(request, "us-east-1", "123456789012")
+            )
+        # 500 from Moto should pass through unchanged
+        assert resp.status_code == 500
+        assert b"ServiceFailure" in resp.body

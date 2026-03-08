@@ -11,7 +11,9 @@ from robotocore.services.stepfunctions.provider import (
     _delete_state_machine,
     _describe_execution,
     _describe_state_machine,
+    _describe_state_machine_for_execution,
     _error,
+    _execution_histories,
     _executions,
     _get_execution_history,
     _json,
@@ -52,6 +54,8 @@ def _make_request(body=b"", headers=None):
 def _clear_state():
     _state_machines.clear()
     _executions.clear()
+    _execution_histories.clear()
+    _tags.clear()
 
 
 _SIMPLE_DEFINITION = json.dumps(
@@ -319,10 +323,21 @@ class TestStepFunctionsTags:
     """Test tag operations for Step Functions."""
 
     def setup_method(self):
-        _tags.clear()
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def _create_sm(self, name="test"):
+        _create_state_machine(
+            {"name": name, "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
+            "us-east-1",
+            "123456789012",
+        )
+        return f"arn:aws:states:us-east-1:123456789012:stateMachine:{name}"
 
     def test_tag_resource(self):
-        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
+        arn = self._create_sm()
         result = _tag_resource(
             {"resourceArn": arn, "tags": [{"key": "env", "value": "test"}]},
             "us-east-1",
@@ -333,7 +348,7 @@ class TestStepFunctionsTags:
         assert _tags[arn][0] == {"key": "env", "value": "test"}
 
     def test_tag_resource_merge(self):
-        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
+        arn = self._create_sm()
         _tag_resource(
             {"resourceArn": arn, "tags": [{"key": "env", "value": "dev"}]},
             "us-east-1",
@@ -355,8 +370,15 @@ class TestStepFunctionsTags:
         assert tag_map["team"] == "eng"
 
     def test_untag_resource(self):
-        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
-        _tags[arn] = [{"key": "env", "value": "test"}, {"key": "team", "value": "eng"}]
+        arn = self._create_sm()
+        _tag_resource(
+            {
+                "resourceArn": arn,
+                "tags": [{"key": "env", "value": "test"}, {"key": "team", "value": "eng"}],
+            },
+            "us-east-1",
+            "123456789012",
+        )
         _untag_resource(
             {"resourceArn": arn, "tagKeys": ["env"]},
             "us-east-1",
@@ -366,8 +388,12 @@ class TestStepFunctionsTags:
         assert _tags[arn][0]["key"] == "team"
 
     def test_list_tags_for_resource(self):
-        arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
-        _tags[arn] = [{"key": "env", "value": "test"}]
+        arn = self._create_sm()
+        _tag_resource(
+            {"resourceArn": arn, "tags": [{"key": "env", "value": "test"}]},
+            "us-east-1",
+            "123456789012",
+        )
         result = _list_tags_for_resource({"resourceArn": arn}, "us-east-1", "123456789012")
         assert result == {"tags": [{"key": "env", "value": "test"}]}
 
@@ -376,3 +402,175 @@ class TestStepFunctionsTags:
             {"resourceArn": "arn:nonexistent"}, "us-east-1", "123456789012"
         )
         assert result == {"tags": []}
+
+
+class TestDeleteCascade:
+    """BUG: Deleting a state machine should clean up executions, histories, and tags."""
+
+    def setup_method(self):
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def test_delete_cleans_up_executions(self):
+        """When a state machine is deleted, its executions should be cleaned up."""
+        _create_state_machine(
+            {"name": "sm1", "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
+            "us-east-1",
+            "123",
+        )
+        sm_arn = "arn:aws:states:us-east-1:123:stateMachine:sm1"
+        start = _start_execution(
+            {"stateMachineArn": sm_arn, "name": "exec1", "input": "{}"},
+            "us-east-1",
+            "123",
+        )
+        exec_arn = start["executionArn"]
+        # Execution exists before delete
+        assert exec_arn in _executions
+
+        _delete_state_machine({"stateMachineArn": sm_arn}, "us-east-1", "123")
+
+        # Executions for deleted SM should be cleaned up
+        assert exec_arn not in _executions
+
+    def test_delete_cleans_up_tags(self):
+        """When a state machine is deleted, its tags should be cleaned up."""
+        _create_state_machine(
+            {"name": "sm1", "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
+            "us-east-1",
+            "123",
+        )
+        sm_arn = "arn:aws:states:us-east-1:123:stateMachine:sm1"
+        _tag_resource(
+            {"resourceArn": sm_arn, "tags": [{"key": "env", "value": "test"}]},
+            "us-east-1",
+            "123",
+        )
+        assert sm_arn in _tags
+
+        _delete_state_machine({"stateMachineArn": sm_arn}, "us-east-1", "123")
+
+        # Tags for deleted SM should be cleaned up
+        assert sm_arn not in _tags
+
+    def test_delete_cleans_up_execution_histories(self):
+        """When a state machine is deleted, execution histories should be cleaned up."""
+        _create_state_machine(
+            {"name": "sm1", "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
+            "us-east-1",
+            "123",
+        )
+        sm_arn = "arn:aws:states:us-east-1:123:stateMachine:sm1"
+        start = _start_execution(
+            {"stateMachineArn": sm_arn, "name": "exec1", "input": "{}"},
+            "us-east-1",
+            "123",
+        )
+        exec_arn = start["executionArn"]
+
+        _delete_state_machine({"stateMachineArn": sm_arn}, "us-east-1", "123")
+
+        # Execution histories should be cleaned up
+        assert exec_arn not in _execution_histories
+
+
+class TestStopExecutionErrorHandling:
+    """BUG: StopExecution should raise ExecutionDoesNotExist for nonexistent execution."""
+
+    def setup_method(self):
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def test_stop_nonexistent_execution_raises_error(self):
+        """AWS returns ExecutionDoesNotExist when stopping a nonexistent execution."""
+        with pytest.raises(SfnError) as exc_info:
+            _stop_execution({"executionArn": "arn:nope"}, "us-east-1", "123")
+        assert exc_info.value.code == "ExecutionDoesNotExist"
+
+
+class TestTagResourceValidation:
+    """BUG: Tag operations should validate the resource ARN exists."""
+
+    def setup_method(self):
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def test_tag_nonexistent_resource_raises_error(self):
+        """AWS returns ResourceNotFound when tagging a nonexistent state machine."""
+        with pytest.raises(SfnError) as exc_info:
+            _tag_resource(
+                {
+                    "resourceArn": "arn:aws:states:us-east-1:123:stateMachine:nope",
+                    "tags": [{"key": "k", "value": "v"}],
+                },
+                "us-east-1",
+                "123",
+            )
+        assert exc_info.value.code == "ResourceNotFound"
+
+    def test_untag_nonexistent_resource_raises_error(self):
+        """AWS returns ResourceNotFound when untagging a nonexistent state machine."""
+        with pytest.raises(SfnError) as exc_info:
+            _untag_resource(
+                {
+                    "resourceArn": "arn:aws:states:us-east-1:123:stateMachine:nope",
+                    "tagKeys": ["k"],
+                },
+                "us-east-1",
+                "123",
+            )
+        assert exc_info.value.code == "ResourceNotFound"
+
+    def test_tag_existing_resource_succeeds(self):
+        """Tags work fine when the resource exists."""
+        _create_state_machine(
+            {"name": "sm1", "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
+            "us-east-1",
+            "123",
+        )
+        sm_arn = "arn:aws:states:us-east-1:123:stateMachine:sm1"
+        _tag_resource(
+            {"resourceArn": sm_arn, "tags": [{"key": "k", "value": "v"}]},
+            "us-east-1",
+            "123",
+        )
+        result = _list_tags_for_resource({"resourceArn": sm_arn}, "us-east-1", "123")
+        assert len(result["tags"]) == 1
+
+
+class TestDescribeStateMachineForExecution:
+    """BUG: definition field should be a string, not a parsed dict."""
+
+    def setup_method(self):
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def test_definition_is_string(self):
+        """DescribeStateMachineForExecution should return definition as a JSON string."""
+        _create_state_machine(
+            {"name": "sm1", "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
+            "us-east-1",
+            "123",
+        )
+        sm_arn = "arn:aws:states:us-east-1:123:stateMachine:sm1"
+        start = _start_execution(
+            {"stateMachineArn": sm_arn, "name": "exec1", "input": "{}"},
+            "us-east-1",
+            "123",
+        )
+        result = _describe_state_machine_for_execution(
+            {"executionArn": start["executionArn"]}, "us-east-1", "123"
+        )
+        # definition must be a string, not a dict
+        assert isinstance(result["definition"], str)
+        # And it should be valid JSON
+        parsed = json.loads(result["definition"])
+        assert "States" in parsed

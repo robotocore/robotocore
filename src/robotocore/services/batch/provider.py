@@ -36,10 +36,11 @@ class BatchStore:
 
 
 def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> BatchStore:
+    key = f"{account_id}:{region}"
     with _lock:
-        if region not in _stores:
-            _stores[region] = BatchStore(region, account_id)
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = BatchStore(region, account_id)
+        return _stores[key]
 
 
 def _new_id() -> str:
@@ -207,11 +208,13 @@ def _delete_compute_environment(
     name = name.split("/")[-1] if "/" in name else name
 
     with store.lock:
-        if name not in store.compute_envs:
+        ce = store.compute_envs.get(name)
+        if not ce:
             raise BatchError(
                 "ClientException",
                 f"Compute environment {name} not found.",
             )
+        store.tags.pop(ce["computeEnvironmentArn"], None)
         del store.compute_envs[name]
     return {}
 
@@ -292,8 +295,10 @@ def _delete_job_queue(store: BatchStore, params: dict, region: str, account_id: 
     name = name.split("/")[-1] if "/" in name else name
 
     with store.lock:
-        if name not in store.job_queues:
+        queue = store.job_queues.get(name)
+        if not queue:
             raise BatchError("ClientException", f"Job queue {name} not found.")
+        store.tags.pop(queue["jobQueueArn"], None)
         del store.job_queues[name]
     return {}
 
@@ -312,22 +317,21 @@ def _register_job_definition(store: BatchStore, params: dict, region: str, accou
         revisions = store.job_definitions.setdefault(name, [])
         revision = len(revisions) + 1
 
-    jd_arn = f"arn:aws:batch:{region}:{account_id}:job-definition/{name}:{revision}"
+        jd_arn = f"arn:aws:batch:{region}:{account_id}:job-definition/{name}:{revision}"
 
-    jd = {
-        "jobDefinitionArn": jd_arn,
-        "jobDefinitionName": name,
-        "revision": revision,
-        "status": "ACTIVE",
-        "type": params.get("type", "container"),
-        "containerProperties": params.get("containerProperties", {}),
-        "parameters": params.get("parameters", {}),
-        "retryStrategy": params.get("retryStrategy", {"attempts": 1}),
-        "timeout": params.get("timeout", {}),
-        "tags": params.get("tags", {}),
-    }
+        jd = {
+            "jobDefinitionArn": jd_arn,
+            "jobDefinitionName": name,
+            "revision": revision,
+            "status": "ACTIVE",
+            "type": params.get("type", "container"),
+            "containerProperties": params.get("containerProperties", {}),
+            "parameters": params.get("parameters", {}),
+            "retryStrategy": params.get("retryStrategy", {"attempts": 1}),
+            "timeout": params.get("timeout", {}),
+            "tags": params.get("tags", {}),
+        }
 
-    with store.lock:
         revisions.append(jd)
         if jd["tags"]:
             store.tags[jd_arn] = jd["tags"]
@@ -507,9 +511,37 @@ def _cancel_job(store: BatchStore, params: dict, region: str, account_id: str) -
 # ---------------------------------------------------------------------------
 
 
+def _arn_exists(store: BatchStore, arn: str) -> bool:
+    """Check if a resource ARN exists in the store."""
+    # Check compute environments
+    for ce in store.compute_envs.values():
+        if ce["computeEnvironmentArn"] == arn:
+            return True
+    # Check job queues
+    for q in store.job_queues.values():
+        if q["jobQueueArn"] == arn:
+            return True
+    # Check job definitions
+    for revisions in store.job_definitions.values():
+        for jd in revisions:
+            if jd["jobDefinitionArn"] == arn:
+                return True
+    # Check jobs
+    for job in store.jobs.values():
+        if job["jobArn"] == arn:
+            return True
+    return False
+
+
 def _tag_resource(store: BatchStore, arn: str, params: dict) -> dict:
     new_tags = params.get("tags", {})
     with store.lock:
+        if not _arn_exists(store, arn):
+            raise BatchError(
+                "ClientException",
+                f"Resource not found: {arn}",
+                404,
+            )
         existing = store.tags.setdefault(arn, {})
         existing.update(new_tags)
     return {}
@@ -517,6 +549,12 @@ def _tag_resource(store: BatchStore, arn: str, params: dict) -> dict:
 
 def _untag_resource(store: BatchStore, arn: str, tag_keys: list[str]) -> dict:
     with store.lock:
+        if not _arn_exists(store, arn):
+            raise BatchError(
+                "ClientException",
+                f"Resource not found: {arn}",
+                404,
+            )
         existing = store.tags.get(arn, {})
         for key in tag_keys:
             existing.pop(key, None)
@@ -525,6 +563,12 @@ def _untag_resource(store: BatchStore, arn: str, tag_keys: list[str]) -> dict:
 
 def _list_tags_for_resource(store: BatchStore, arn: str) -> dict:
     with store.lock:
+        if not _arn_exists(store, arn):
+            raise BatchError(
+                "ClientException",
+                f"Resource not found: {arn}",
+                404,
+            )
         tags = store.tags.get(arn, {})
     return {"tags": dict(tags)}
 

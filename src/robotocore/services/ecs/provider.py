@@ -35,10 +35,11 @@ class EcsStore:
 
 
 def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> EcsStore:
+    key = f"{account_id}:{region}"
     with _lock:
-        if region not in _stores:
-            _stores[region] = EcsStore(region, account_id)
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = EcsStore(region, account_id)
+        return _stores[key]
 
 
 def _new_id() -> str:
@@ -168,6 +169,18 @@ def _delete_cluster(store: EcsStore, params: dict, region: str, account_id: str)
                 404,
             )
         cluster["status"] = "INACTIVE"
+
+        # Cascade: clean up child service/task tags, then remove children
+        for svc in store.services.get(name, {}).values():
+            store.tags.pop(svc.get("serviceArn", ""), None)
+        for task in store.tasks.get(name, {}).values():
+            store.tags.pop(task.get("taskArn", ""), None)
+        store.services.pop(name, None)
+        store.tasks.pop(name, None)
+
+        # Clean up cluster's own tags
+        store.tags.pop(cluster["clusterArn"], None)
+
         del store.clusters[name]
 
     return {"cluster": cluster}
@@ -187,25 +200,24 @@ def _register_task_definition(store: EcsStore, params: dict, region: str, accoun
         revisions = store.task_definitions.setdefault(family, [])
         revision = len(revisions) + 1
 
-    td_arn = f"arn:aws:ecs:{region}:{account_id}:task-definition/{family}:{revision}"
+        td_arn = f"arn:aws:ecs:{region}:{account_id}:task-definition/{family}:{revision}"
 
-    td = {
-        "taskDefinitionArn": td_arn,
-        "family": family,
-        "revision": revision,
-        "status": "ACTIVE",
-        "containerDefinitions": params.get("containerDefinitions", []),
-        "cpu": params.get("cpu", "256"),
-        "memory": params.get("memory", "512"),
-        "networkMode": params.get("networkMode", "awsvpc"),
-        "requiresCompatibilities": params.get("requiresCompatibilities", ["FARGATE"]),
-        "executionRoleArn": params.get("executionRoleArn", ""),
-        "taskRoleArn": params.get("taskRoleArn", ""),
-        "volumes": params.get("volumes", []),
-        "tags": params.get("tags", []),
-    }
+        td = {
+            "taskDefinitionArn": td_arn,
+            "family": family,
+            "revision": revision,
+            "status": "ACTIVE",
+            "containerDefinitions": params.get("containerDefinitions", []),
+            "cpu": params.get("cpu", "256"),
+            "memory": params.get("memory", "512"),
+            "networkMode": params.get("networkMode", "awsvpc"),
+            "requiresCompatibilities": params.get("requiresCompatibilities", ["FARGATE"]),
+            "executionRoleArn": params.get("executionRoleArn", ""),
+            "taskRoleArn": params.get("taskRoleArn", ""),
+            "volumes": params.get("volumes", []),
+            "tags": params.get("tags", []),
+        }
 
-    with store.lock:
         revisions.append(td)
         if td["tags"]:
             store.tags[td_arn] = td["tags"]
@@ -388,6 +400,7 @@ def _delete_service(store: EcsStore, params: dict, region: str, account_id: str)
             )
         svc["status"] = "INACTIVE"
         svc["desiredCount"] = 0
+        store.tags.pop(svc.get("serviceArn", ""), None)
         del services[svc_name]
 
     return {"service": svc}
@@ -525,15 +538,23 @@ def _tag_resource(store: EcsStore, params: dict, region: str, account_id: str) -
                 existing[existing_keys[tag["key"]]] = tag
             else:
                 existing.append(tag)
+        # Sync inline resource tags
+        resource = _find_resource_by_arn(store, arn)
+        if resource is not None:
+            resource["tags"] = list(existing)
     return {}
 
 
 def _untag_resource(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     arn = params.get("resourceArn", "")
-    keys_to_remove = params.get("tagKeys", [])
+    keys_to_remove = set(params.get("tagKeys", []))
     with store.lock:
         existing = store.tags.get(arn, [])
         store.tags[arn] = [t for t in existing if t["key"] not in keys_to_remove]
+        # Sync inline resource tags
+        resource = _find_resource_by_arn(store, arn)
+        if resource is not None:
+            resource["tags"] = list(store.tags[arn])
     return {}
 
 
@@ -547,6 +568,33 @@ def _list_tags_for_resource(store: EcsStore, params: dict, region: str, account_
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _find_resource_by_arn(store: EcsStore, arn: str) -> dict | None:
+    """Find a resource dict by ARN so inline tags can be synced.
+
+    Must be called while holding store.lock.
+    """
+    # Cluster
+    for cluster in store.clusters.values():
+        if cluster.get("clusterArn") == arn:
+            return cluster
+    # Service
+    for svc_map in store.services.values():
+        for svc in svc_map.values():
+            if svc.get("serviceArn") == arn:
+                return svc
+    # Task
+    for task_map in store.tasks.values():
+        for task in task_map.values():
+            if task.get("taskArn") == arn:
+                return task
+    # Task definition
+    for revisions in store.task_definitions.values():
+        for td in revisions:
+            if td.get("taskDefinitionArn") == arn:
+                return td
+    return None
 
 
 def _resolve_cluster_name(cluster_ref: str) -> str:

@@ -8,6 +8,7 @@ import json
 import re
 import threading
 import time
+from urllib.parse import unquote
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -97,11 +98,16 @@ async def handle_scheduler_request(request: Request, region: str, account_id: st
         # Tags
         m = _TAGS_PATH.match(path)
         if m:
+            resource_arn = unquote(m.group(1))
             if method == "GET":
-                return _json_response({"Tags": []})
+                return _json_response({"Tags": _list_tags_scheduler(resource_arn, region)})
             elif method == "POST":
+                new_tags = params.get("Tags", [])
+                _tag_resource_scheduler(resource_arn, new_tags, region)
                 return _json_response({})
             elif method == "DELETE":
+                tag_keys = request.query_params.getlist("TagKeys")
+                _untag_resource_scheduler(resource_arn, tag_keys, region)
                 return _json_response({})
 
         return _error("InvalidAction", f"Unknown path: {method} {path}", 400)
@@ -133,6 +139,7 @@ def _create_schedule(name: str, params: dict, region: str, account_id: str) -> d
         "KmsKeyArn": params.get("KmsKeyArn"),
         "CreationDate": time.time(),
         "LastModificationDate": time.time(),
+        "_tags": {t["Key"]: t["Value"] for t in params.get("Tags", [])},
     }
 
     with _lock:
@@ -284,6 +291,49 @@ def _list_schedule_groups(query_params, region: str) -> dict:
             for g in items
         ]
     }
+
+
+def _find_resource_by_arn_scheduler(resource_arn: str, region: str) -> dict | None:
+    """Find a schedule or group by ARN."""
+    schedules = _get_schedules(region)
+    with _lock:
+        for s in schedules.values():
+            if s.get("Arn") == resource_arn:
+                return s
+    groups = _get_groups(region)
+    with _lock:
+        for g in groups.values():
+            if g.get("Arn") == resource_arn:
+                return g
+    return None
+
+
+def _list_tags_scheduler(resource_arn: str, region: str) -> list[dict]:
+    resource = _find_resource_by_arn_scheduler(resource_arn, region)
+    if resource is None:
+        return []
+    tags = resource.get("_tags", {})
+    return [{"Key": k, "Value": v} for k, v in tags.items()]
+
+
+def _tag_resource_scheduler(resource_arn: str, new_tags: list[dict], region: str) -> None:
+    resource = _find_resource_by_arn_scheduler(resource_arn, region)
+    if resource is None:
+        return
+    with _lock:
+        existing = resource.setdefault("_tags", {})
+        for t in new_tags:
+            existing[t["Key"]] = t["Value"]
+
+
+def _untag_resource_scheduler(resource_arn: str, tag_keys: list[str], region: str) -> None:
+    resource = _find_resource_by_arn_scheduler(resource_arn, region)
+    if resource is None:
+        return
+    with _lock:
+        tags = resource.get("_tags", {})
+        for key in tag_keys:
+            tags.pop(key, None)
 
 
 def _json_response(data: dict, status: int = 200) -> Response:

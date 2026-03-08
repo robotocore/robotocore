@@ -449,3 +449,252 @@ class TestAfterSequenceNumberNonNumeric:
         assert data["__type"] == "InvalidArgumentException", (
             f"Expected InvalidArgumentException but got {data['__type']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Categorical Bug: Delete stream does not clean up resource policies
+#
+# When a stream is deleted, any resource policies stored at the store level
+# (keyed by the stream ARN) are orphaned. This is a parent-child cascade bug
+# that likely exists across all providers with resource policies.
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteStreamCleansUpResourcePolicies:
+    @pytest.mark.asyncio
+    async def test_resource_policy_cleaned_up_on_stream_delete(self):
+        """Deleting a stream should remove its resource policy from the store."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        # Create stream
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        # Put a resource policy on it
+        stream_arn = f"arn:aws:kinesis:{region}:{account}:stream/s1"
+        req = _make_request(
+            "PutResourcePolicy",
+            {"ResourceARN": stream_arn, "Policy": '{"Version":"2012-10-17"}'},
+        )
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+
+        # Verify policy exists
+        req = _make_request("GetResourcePolicy", {"ResourceARN": stream_arn})
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["Policy"] == '{"Version":"2012-10-17"}'
+
+        # Delete the stream
+        req = _make_request("DeleteStream", {"StreamName": "s1"})
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+
+        # The resource policy should be gone — GetResourcePolicy on a deleted
+        # stream should return ResourceNotFoundException, not stale data
+        req = _make_request("GetResourcePolicy", {"ResourceARN": stream_arn})
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 400
+        assert "ResourceNotFoundException" in resp.body.decode()
+
+
+# ---------------------------------------------------------------------------
+# Categorical Bug: DescribeStreamSummary hardcodes ConsumerCount to 0
+#
+# The provider returns ConsumerCount: 0 instead of counting actual registered
+# consumers. This is a stale-hardcoded-value bug pattern.
+# ---------------------------------------------------------------------------
+
+
+class TestDescribeStreamSummaryConsumerCount:
+    @pytest.mark.asyncio
+    async def test_consumer_count_reflects_registered_consumers(self):
+        """DescribeStreamSummary ConsumerCount should reflect actual consumers."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        stream_arn = f"arn:aws:kinesis:{region}:{account}:stream/s1"
+
+        # Register two consumers
+        for name in ("consumer-1", "consumer-2"):
+            req = _make_request(
+                "RegisterStreamConsumer",
+                {"StreamARN": stream_arn, "ConsumerName": name},
+            )
+            resp = await handle_kinesis_request(req, region, account)
+            assert resp.status_code == 200
+
+        # DescribeStreamSummary should show ConsumerCount == 2
+        req = _make_request("DescribeStreamSummary", {"StreamName": "s1"})
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["StreamDescriptionSummary"]["ConsumerCount"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Categorical Bug: DeregisterStreamConsumer silently succeeds for non-existent
+# consumer
+#
+# Uses dict.pop(key, None) which silently succeeds. AWS returns
+# ResourceNotFoundException when the consumer doesn't exist.
+# ---------------------------------------------------------------------------
+
+
+class TestDeregisterNonexistentConsumer:
+    @pytest.mark.asyncio
+    async def test_deregister_nonexistent_consumer_returns_error(self):
+        """Deregistering a non-existent consumer should return ResourceNotFoundException."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        stream_arn = f"arn:aws:kinesis:{region}:{account}:stream/s1"
+        req = _make_request(
+            "DeregisterStreamConsumer",
+            {"StreamARN": stream_arn, "ConsumerName": "does-not-exist"},
+        )
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 400, (
+            f"Expected 400 ResourceNotFoundException but got {resp.status_code}"
+        )
+        assert "ResourceNotFoundException" in resp.body.decode()
+
+
+# ---------------------------------------------------------------------------
+# Categorical Bug: Resource policy operations parse stream name from ARN
+# incorrectly for consumer ARNs
+#
+# Consumer ARNs look like:
+#   arn:aws:kinesis:us-east-1:123:stream/mystream/consumer/myconsumer:12345
+# Using split("/")[-1] returns "myconsumer:12345" instead of "mystream".
+# Resource policies can apply to both streams and consumers.
+# ---------------------------------------------------------------------------
+
+
+class TestResourcePolicyConsumerArn:
+    @pytest.mark.asyncio
+    async def test_put_resource_policy_with_consumer_arn(self):
+        """PutResourcePolicy should work with a consumer ARN (not just stream ARN)."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        stream_arn = f"arn:aws:kinesis:{region}:{account}:stream/s1"
+        # Register a consumer
+        req = _make_request(
+            "RegisterStreamConsumer",
+            {"StreamARN": stream_arn, "ConsumerName": "my-consumer"},
+        )
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+        consumer_arn = json.loads(resp.body)["Consumer"]["ConsumerARN"]
+
+        # Put a resource policy on the consumer ARN
+        req = _make_request(
+            "PutResourcePolicy",
+            {"ResourceARN": consumer_arn, "Policy": '{"Version":"2012-10-17"}'},
+        )
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200, (
+            f"PutResourcePolicy with consumer ARN should succeed but got "
+            f"{resp.status_code}: {resp.body.decode()}"
+        )
+
+        # Get it back
+        req = _make_request("GetResourcePolicy", {"ResourceARN": consumer_arn})
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["Policy"] == '{"Version":"2012-10-17"}'
+
+
+# ---------------------------------------------------------------------------
+# Categorical Bug: ListTagsForStream ignores ExclusiveStartTagKey/Limit
+#
+# AWS's ListTagsForStream supports pagination via ExclusiveStartTagKey and
+# Limit parameters. The implementation ignores them entirely.
+# ---------------------------------------------------------------------------
+
+
+class TestListTagsPagination:
+    @pytest.mark.asyncio
+    async def test_list_tags_with_limit(self):
+        """ListTagsForStream should respect Limit parameter."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        # Add several tags
+        tags = {f"key{i}": f"val{i}" for i in range(5)}
+        req = _make_request("AddTagsToStream", {"StreamName": "s1", "Tags": tags})
+        await handle_kinesis_request(req, region, account)
+
+        # List with limit of 2
+        req = _make_request("ListTagsForStream", {"StreamName": "s1", "Limit": 2})
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert len(data["Tags"]) == 2
+        assert data["HasMoreTags"] is True
+
+    @pytest.mark.asyncio
+    async def test_list_tags_with_exclusive_start(self):
+        """ListTagsForStream should respect ExclusiveStartTagKey."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        tags = {"aaa": "1", "bbb": "2", "ccc": "3"}
+        req = _make_request("AddTagsToStream", {"StreamName": "s1", "Tags": tags})
+        await handle_kinesis_request(req, region, account)
+
+        # List starting after "aaa"
+        req = _make_request(
+            "ListTagsForStream",
+            {"StreamName": "s1", "ExclusiveStartTagKey": "aaa"},
+        )
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        tag_keys = [t["Key"] for t in data["Tags"]]
+        assert "aaa" not in tag_keys
+        assert "bbb" in tag_keys
+        assert "ccc" in tag_keys
+
+
+# ---------------------------------------------------------------------------
+# Categorical Bug: RemoveTagsFromStream with nonexistent tag keys silently
+# succeeds — which is actually correct AWS behavior. But verify it.
+# ---------------------------------------------------------------------------
+
+
+class TestRemoveNonexistentTags:
+    @pytest.mark.asyncio
+    async def test_remove_nonexistent_tags_succeeds(self):
+        """RemoveTagsFromStream with non-existent keys should succeed (AWS behavior)."""
+        region = "us-east-1"
+        account = "123456789012"
+
+        req = _make_request("CreateStream", {"StreamName": "s1", "ShardCount": 1})
+        await handle_kinesis_request(req, region, account)
+
+        req = _make_request(
+            "RemoveTagsFromStream",
+            {"StreamName": "s1", "TagKeys": ["nonexistent"]},
+        )
+        resp = await handle_kinesis_request(req, region, account)
+        assert resp.status_code == 200

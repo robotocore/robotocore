@@ -139,7 +139,7 @@ def _create_queue(
 ) -> dict:
     name = params.get("QueueName", "")
     attributes = params.get("Attributes", {})
-    tags = params.get("tags", {})
+    tags = params.get("Tags", params.get("tags", {}))
     # Query protocol: Attribute.N.Name/Value
     for key, value in params.items():
         if key.startswith("Attribute.") and key.endswith(".Name"):
@@ -204,6 +204,19 @@ def _send_message(
     _parse_system_attributes(params, msg)
 
     if queue.is_fifo:
+        if not params.get("MessageGroupId"):
+            raise SqsError(
+                "MissingParameter",
+                "The request must contain the parameter MessageGroupId.",
+            )
+        if not params.get("MessageDeduplicationId") and not getattr(
+            queue, "content_based_dedup", False
+        ):
+            raise SqsError(
+                "InvalidParameterValue",
+                "The queue should either have ContentBasedDeduplication enabled or "
+                "MessageDeduplicationId provided explicitly.",
+            )
         result = queue.put(msg)
         message_id = result.message_id
         md5_body = result.md5_of_body
@@ -311,7 +324,12 @@ def _change_message_visibility(
     queue = _resolve_queue(store, params, request)
     receipt = params.get("ReceiptHandle", "")
     timeout = int(params.get("VisibilityTimeout", "30"))
-    queue.change_visibility(receipt, timeout)
+    ok = queue.change_visibility(receipt, timeout)
+    if not ok:
+        raise SqsError(
+            "ReceiptHandleIsInvalid",
+            "The input receipt handle is invalid.",
+        )
     return {}
 
 

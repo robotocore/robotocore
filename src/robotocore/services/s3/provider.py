@@ -496,6 +496,37 @@ _S3_SUBRESOURCES = {
 
 
 # ---------------------------------------------------------------------------
+# Bucket deletion cleanup
+# ---------------------------------------------------------------------------
+
+
+def _cleanup_bucket_stores(bucket: str) -> None:
+    """Remove all module-level store entries for a deleted bucket.
+
+    Called after Moto successfully deletes a bucket (204). Without this,
+    recreating a bucket with the same name would inherit stale CORS,
+    lifecycle, object lock, legal hold, logging, and notification configs.
+    """
+    with _store_lock:
+        _cors_store.pop(bucket, None)
+        _lifecycle_store.pop(bucket, None)
+        _object_lock_store.pop(bucket, None)
+        _logging_store.pop(bucket, None)
+        # Legal hold uses compound keys "bucket/key" — remove all for this bucket
+        prefix = f"{bucket}/"
+        keys_to_remove = [k for k in _object_legal_hold_store if k.startswith(prefix)]
+        for k in keys_to_remove:
+            del _object_legal_hold_store[k]
+
+    # Clean up notification config (separate module, separate lock)
+    from robotocore.services.s3.notifications import _bucket_notifications
+    from robotocore.services.s3.notifications import _lock as _notif_lock
+
+    with _notif_lock:
+        _bucket_notifications.pop(bucket, None)
+
+
+# ---------------------------------------------------------------------------
 # Main request handler
 # ---------------------------------------------------------------------------
 
@@ -569,12 +600,16 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
     # Forward to Moto for actual S3 operation
     response = await forward_to_moto(request, "s3")
 
-    # Fire notifications on successful mutations
+    # Post-response cleanup and event firing
     if response.status_code in (200, 204):
         match = _PATH_RE.match(path)
         if match:
             bucket = match.group(1)
             key = match.group(2) or ""
+
+            # Clean up all module-level stores when a bucket is deleted
+            if method == "DELETE" and not key and not query:
+                _cleanup_bucket_stores(bucket)
 
             if method == "PUT" and key:
                 content_length = 0

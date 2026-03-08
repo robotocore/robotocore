@@ -216,6 +216,12 @@ def route_to_service(request: Request) -> str | None:
 
     for pattern, service in PATH_PATTERNS:
         if pattern.match(path):
+            # /v1/tags is shared between Batch and AppSync — disambiguate via auth
+            if service == "batch" and path.startswith("/v1/tags"):
+                auth = request.headers.get("authorization", "")
+                auth_match = AUTH_SERVICE_RE.search(auth)
+                if auth_match and auth_match.group(1) == "appsync":
+                    return "appsync"
             return service
 
     # 3. Check Authorization header for service name in credential scope
@@ -223,7 +229,14 @@ def route_to_service(request: Request) -> str | None:
     match = AUTH_SERVICE_RE.search(auth)
     if match:
         service = match.group(1)
-        return SERVICE_NAME_ALIASES.get(service, service)
+        resolved = SERVICE_NAME_ALIASES.get(service, service)
+        # ELB Classic and ELBv2 share the signing name 'elasticloadbalancing'.
+        # Disambiguate by the API Version query parameter.
+        if resolved == "elbv2":
+            version = request.query_params.get("Version", "")
+            if version == "2012-06-01":
+                return "elb"
+        return resolved
 
     # 4. Check X-Amz-Credential query parameter (SigV4 presigned URLs)
     credential = request.query_params.get("X-Amz-Credential", "")

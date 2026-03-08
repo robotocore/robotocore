@@ -118,7 +118,7 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     # DescribeInboundCrossClusterSearchConnections (POST)
     if _ES_INBOUND_CCS_RE.match(path) and request.method == "POST":
         return Response(
-            content=json.dumps({"CrossClusterSearchConnections": [], "NextToken": None}),
+            content=json.dumps({"CrossClusterSearchConnections": []}),
             status_code=200,
             media_type="application/json",
         )
@@ -126,7 +126,7 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     # DescribeOutboundCrossClusterSearchConnections (POST)
     if _ES_OUTBOUND_CCS_RE.match(path) and request.method == "POST":
         return Response(
-            content=json.dumps({"CrossClusterSearchConnections": [], "NextToken": None}),
+            content=json.dumps({"CrossClusterSearchConnections": []}),
             status_code=200,
             media_type="application/json",
         )
@@ -134,7 +134,7 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     # DescribePackages (POST /2015-01-01/packages/describe)
     if _ES_PACKAGES_RE.match(path) and request.method == "POST":
         return Response(
-            content=json.dumps({"PackageDetailsList": [], "NextToken": None}),
+            content=json.dumps({"PackageDetailsList": []}),
             status_code=200,
             media_type="application/json",
         )
@@ -142,7 +142,7 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     # DescribeReservedElasticsearchInstanceOfferings (GET)
     if _ES_RESERVED_OFFERINGS_RE.match(path) and request.method == "GET":
         return Response(
-            content=json.dumps({"ReservedElasticsearchInstanceOfferings": [], "NextToken": None}),
+            content=json.dumps({"ReservedElasticsearchInstanceOfferings": []}),
             status_code=200,
             media_type="application/json",
         )
@@ -150,14 +150,18 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     # DescribeReservedElasticsearchInstances (GET)
     if _ES_RESERVED_INSTANCES_RE.match(path) and request.method == "GET":
         return Response(
-            content=json.dumps({"ReservedElasticsearchInstances": [], "NextToken": None}),
+            content=json.dumps({"ReservedElasticsearchInstances": []}),
             status_code=200,
             media_type="application/json",
         )
 
     # ListElasticsearchVersions (GET /2015-01-01/es/versions)
     if _ES_VERSIONS_RE.match(path) and request.method == "GET":
-        es_versions = [v for v in _OPENSEARCH_VERSIONS if v.startswith("Elasticsearch_")]
+        es_versions = [
+            v.removeprefix("Elasticsearch_")
+            for v in _OPENSEARCH_VERSIONS
+            if v.startswith("Elasticsearch_")
+        ]
         return Response(
             content=json.dumps({"ElasticsearchVersions": es_versions}),
             status_code=200,
@@ -167,7 +171,7 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
     # ListVpcEndpoints (GET /2015-01-01/es/vpcEndpoints)
     if _ES_VPC_ENDPOINTS_RE.match(path) and request.method == "GET":
         return Response(
-            content=json.dumps({"VpcEndpointSummaryList": [], "NextToken": None}),
+            content=json.dumps({"VpcEndpointSummaryList": []}),
             status_code=200,
             media_type="application/json",
         )

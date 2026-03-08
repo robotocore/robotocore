@@ -80,7 +80,7 @@ def _create_collection(params: dict, region: str, account_id: str) -> dict:
         "FaceCount": 0,
         "FaceModelVersion": "6.0",
     }
-    _tags[arn] = {}
+    _tags[arn] = dict(params.get("Tags", {}))
 
     return {
         "StatusCode": 200,

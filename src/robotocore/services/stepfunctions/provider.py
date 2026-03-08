@@ -99,6 +99,12 @@ def _delete_state_machine(params: dict, region: str, account_id: str) -> dict:
     arn = params.get("stateMachineArn", "")
     with _exec_lock:
         _state_machines.pop(arn, None)
+        # Cascade: clean up executions, histories, and tags for this state machine
+        exec_arns_to_remove = [k for k, v in _executions.items() if v["stateMachineArn"] == arn]
+        for exec_arn in exec_arns_to_remove:
+            _executions.pop(exec_arn, None)
+            _execution_histories.pop(exec_arn, None)
+        _tags.pop(arn, None)
     return {}
 
 
@@ -327,13 +333,14 @@ def _stop_execution(params: dict, region: str, account_id: str) -> dict:
     exec_arn = params.get("executionArn", "")
     with _exec_lock:
         execution = _executions.get(exec_arn)
-        if execution:
-            execution["status"] = "ABORTED"
-            execution["stopDate"] = time.time()
-            # Record abort in history
-            history = _execution_histories.get(exec_arn)
-            if history:
-                history.execution_aborted()
+        if not execution:
+            raise SfnError("ExecutionDoesNotExist", f"Execution not found: {exec_arn}")
+        execution["status"] = "ABORTED"
+        execution["stopDate"] = time.time()
+        # Record abort in history
+        history = _execution_histories.get(exec_arn)
+        if history:
+            history.execution_aborted()
     return {"stopDate": time.time()}
 
 
@@ -413,10 +420,23 @@ def _send_task_heartbeat_op(params: dict, region: str, account_id: str) -> dict:
     return {}
 
 
+def _validate_resource_arn(arn: str) -> None:
+    """Validate that a resource ARN refers to an existing resource.
+
+    Must be called under _exec_lock.
+    """
+    if arn in _state_machines:
+        return
+    if arn in _executions:
+        return
+    raise SfnError("ResourceNotFound", f"Resource not found: {arn}")
+
+
 def _tag_resource(params: dict, region: str, account_id: str) -> dict:
     arn = params.get("resourceArn", "")
     new_tags = params.get("tags", [])
     with _exec_lock:
+        _validate_resource_arn(arn)
         existing = _tags.get(arn, [])
         # Merge: new tags overwrite existing with same key
         tag_map = {t["key"]: t["value"] for t in existing}
@@ -430,6 +450,7 @@ def _untag_resource(params: dict, region: str, account_id: str) -> dict:
     arn = params.get("resourceArn", "")
     keys_to_remove = params.get("tagKeys", [])
     with _exec_lock:
+        _validate_resource_arn(arn)
         existing = _tags.get(arn, [])
         _tags[arn] = [t for t in existing if t["key"] not in keys_to_remove]
     return {}
@@ -467,7 +488,7 @@ def _describe_state_machine_for_execution(params: dict, region: str, account_id:
     return {
         "stateMachineArn": sm_arn,
         "name": sm.get("name", ""),
-        "definition": sm.get("definition", "{}"),
+        "definition": sm.get("definition_str", "{}"),
         "roleArn": sm.get("roleArn", ""),
         "updateDate": sm.get("creationDate", 0),
     }
