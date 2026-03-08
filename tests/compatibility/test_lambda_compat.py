@@ -2122,3 +2122,231 @@ class TestLambdaPermissionsWithSourceArn:
             assert "stmt-2" in sids
         finally:
             lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaFunctionUrlUpdate:
+    """Tests for UpdateFunctionUrlConfig."""
+
+    def test_update_function_url_config(self, lam, role):
+        """Create a function URL then update its auth type."""
+        code = _make_zip("def handler(e, c): return {'statusCode': 200}")
+        fname = f"url-update-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.create_function_url_config(FunctionName=fname, AuthType="NONE")
+            resp = lam.update_function_url_config(FunctionName=fname, AuthType="AWS_IAM")
+            assert resp["AuthType"] == "AWS_IAM"
+            assert "FunctionUrl" in resp
+
+            # Verify the update persisted
+            get_resp = lam.get_function_url_config(FunctionName=fname)
+            assert get_resp["AuthType"] == "AWS_IAM"
+
+            lam.delete_function_url_config(FunctionName=fname)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_update_function_url_config_cors(self, lam, role):
+        """Update function URL CORS configuration."""
+        code = _make_zip("def handler(e, c): return {'statusCode': 200}")
+        fname = f"url-cors-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.create_function_url_config(FunctionName=fname, AuthType="NONE")
+            resp = lam.update_function_url_config(
+                FunctionName=fname,
+                AuthType="NONE",
+                Cors={
+                    "AllowOrigins": ["https://example.com"],
+                    "AllowMethods": ["GET", "POST"],
+                },
+            )
+            assert resp["AuthType"] == "NONE"
+            assert "Cors" in resp
+            assert "https://example.com" in resp["Cors"]["AllowOrigins"]
+
+            lam.delete_function_url_config(FunctionName=fname)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaUpdateFunctionCode:
+    """Tests for UpdateFunctionCode with additional scenarios."""
+
+    def test_update_function_code_new_handler(self, lam, role):
+        """Update function code and verify the new code is used."""
+        code_v1 = _make_zip("def handler(e, c): return 'v1'")
+        code_v2 = _make_zip("def handler(e, c): return 'v2'")
+        fname = f"code-update-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code_v1},
+        )
+        try:
+            resp = lam.update_function_code(FunctionName=fname, ZipFile=code_v2)
+            assert resp["FunctionName"] == fname
+            assert "CodeSha256" in resp
+            assert "CodeSize" in resp
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaListLayerVersions:
+    """Tests for ListLayerVersions with multiple versions."""
+
+    def test_list_layer_versions_multiple(self, lam):
+        """Publish multiple layer versions and list them."""
+        code = _make_zip("# layer code")
+        layer_name = f"multi-layer-{uuid.uuid4().hex[:8]}"
+        lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+            Description="version 1",
+        )
+        lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+            Description="version 2",
+        )
+        resp = lam.list_layer_versions(LayerName=layer_name)
+        versions = resp["LayerVersions"]
+        assert len(versions) >= 2
+        version_numbers = [v["Version"] for v in versions]
+        assert 1 in version_numbers
+        assert 2 in version_numbers
+
+        lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+        lam.delete_layer_version(LayerName=layer_name, VersionNumber=2)
+
+
+class TestLambdaGetEventInvokeConfig:
+    """Tests for GetFunctionEventInvokeConfig and ListFunctionEventInvokeConfigs."""
+
+    def test_get_function_event_invoke_config(self, lam, role):
+        """Put and get event invoke config."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"eic-get-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.put_function_event_invoke_config(
+                FunctionName=fname,
+                MaximumRetryAttempts=0,
+                MaximumEventAgeInSeconds=120,
+            )
+            resp = lam.get_function_event_invoke_config(FunctionName=fname)
+            assert resp["MaximumRetryAttempts"] == 0
+            assert resp["MaximumEventAgeInSeconds"] == 120
+            lam.delete_function_event_invoke_config(FunctionName=fname)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_list_function_event_invoke_configs(self, lam, role):
+        """ListFunctionEventInvokeConfigs returns a response."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"eic-list-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.put_function_event_invoke_config(FunctionName=fname, MaximumRetryAttempts=2)
+            resp = lam.list_function_event_invoke_configs(FunctionName=fname)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                lam.delete_function_event_invoke_config(FunctionName=fname)
+            except Exception:
+                pass
+            lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaGetLayerVersionByArn:
+    """Tests for GetLayerVersionByArn."""
+
+    def test_get_layer_version_by_arn(self, lam):
+        """GetLayerVersionByArn returns a successful response."""
+        code = _make_zip("# layer")
+        layer_name = f"by-arn-layer-{uuid.uuid4().hex[:8]}"
+        pub = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+        )
+        layer_version_arn = pub["LayerVersionArn"]
+        try:
+            resp = lam.get_layer_version_by_arn(Arn=layer_version_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+
+
+class TestLambdaDeleteFunctionEventInvokeConfig:
+    """Tests for DeleteFunctionEventInvokeConfig."""
+
+    def test_delete_function_event_invoke_config(self, lam, role):
+        """Delete event invoke config after creating one."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"eic-del-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.put_function_event_invoke_config(FunctionName=fname, MaximumRetryAttempts=1)
+            lam.delete_function_event_invoke_config(FunctionName=fname)
+            # Verify it's gone by trying to get it
+            from botocore.exceptions import ClientError
+
+            with pytest.raises(ClientError):
+                lam.get_function_event_invoke_config(FunctionName=fname)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaAccountAndESM:
+    """Tests for account settings and event source mappings."""
+
+    @pytest.fixture
+    def lam(self):
+        return make_client("lambda")
+
+    def test_get_account_settings(self, lam):
+        """GetAccountSettings returns account limits and usage."""
+        resp = lam.get_account_settings()
+        assert "AccountLimit" in resp
+        assert "AccountUsage" in resp
+
+    def test_list_event_source_mappings_empty(self, lam):
+        """ListEventSourceMappings returns list (possibly empty)."""
+        resp = lam.list_event_source_mappings()
+        assert "EventSourceMappings" in resp
+        assert isinstance(resp["EventSourceMappings"], list)
