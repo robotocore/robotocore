@@ -176,7 +176,7 @@ All LocalStack Community services are implemented. 38 have native providers with
 
 **Native providers** (38): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
 
-**Test coverage**: 12,914+ tests (2,652 unit + 10,262 compat + 42 integration), 0 new failures, 0 xfails. **147/147 registered services have compat tests — every working probed operation is tested.**
+**Test coverage**: 6,284+ tests (2,791 unit + 3,451 compat + 42 integration), 0 failures, 0 xfails. Effective compat test rate: 94.0% (3,245 contact server + assert). **147/147 registered services have compat tests.**
 
 ## Adding a New Moto-Backed Service (Checklist)
 
@@ -221,7 +221,7 @@ When using Claude Code agents on this project:
 - Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
 - Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
 - Run `uv run python scripts/<tool>.py` to analyze, then spawn agents to act on the results
-- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`
+- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`, `validate_test_quality.py`, `validate_tests_runtime.py`, `lint_project.py`
 
 ### Subagent patterns
 - **Research first**: Use Explore agents (parallel, no worktree) to understand the problem, then code agents to implement
@@ -239,8 +239,10 @@ When we discover a Moto bug or missing feature:
 6. Do NOT open PRs to `getmoto/moto` yet — we'll batch upstream contributions later in a structured push
 7. For gaps that CANNOT be fixed in Moto (e.g., behavioral fidelity that conflicts with Moto's design), implement a native provider in `src/robotocore/services/<service>/provider.py` instead
 
-### Commit cadence & prompt logging (IMPORTANT)
-- **Commit as you go** — don't accumulate a massive diff. Commit after each logical phase of work (e.g., "registered 100 services", "added chaos module", "extended smoke tests").
+### Commit cadence (CRITICAL — do this proactively)
+- **Commit after every logical phase** — don't accumulate a massive diff. After writing tests: commit. After fixing lint: commit. After changing CI: commit. Each commit should be self-contained and green.
+- **Maximum ~200 lines between commits.** If you've written 200+ lines of new code, stop and commit before continuing.
+- **Run tests before committing.** `uv run pytest <changed files> -q --tb=short` to verify, then `git add` + `git commit`.
 - **Never stop to summarize** — if the plan has more steps, keep executing. A summary is only appropriate when the plan is fully complete.
 - **Prompt log**: Every commit includes a prompt log entry in `prompts/`. Follow the format in `prompts/PROMPTLOG.md` (the spec lives in this repo). One file per session phase, named `prompts/{timestamp}-{slug}.md` with YAML frontmatter. Include both human prompts and assistant reasoning for non-obvious decisions.
 
