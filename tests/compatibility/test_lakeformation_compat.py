@@ -143,3 +143,25 @@ class TestLakeformationAutoCoverage:
         """ListLFTags returns a response."""
         resp = client.list_lf_tags()
         assert "LFTags" in resp
+
+    def test_get_lf_tag(self, client):
+        """GetLFTag returns tag details after creation."""
+        tag_key = f"tag-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["val1", "val2"])
+        try:
+            resp = client.get_lf_tag(TagKey=tag_key)
+            assert resp["TagKey"] == tag_key
+            assert "TagValues" in resp
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_delete_lf_tag(self, client):
+        """DeleteLFTag removes a tag."""
+        tag_key = f"tag-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1"])
+        resp = client.delete_lf_tag(TagKey=tag_key)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        resp = client.list_lf_tags()
+        tag_keys = [t["TagKey"] for t in resp.get("LFTags", [])]
+        assert tag_key not in tag_keys
