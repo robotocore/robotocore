@@ -163,22 +163,26 @@ PROMPT
     fi
 
     if ! uv run pytest "$TEST_FILE" -q --tb=short 2>&1 | tail -3; then
-        echo "  TESTS FAILED — reverting"
-        git checkout tests/compatibility/ 2>/dev/null
+        echo "  TESTS FAILED — reverting $TEST_FILE only"
+        git checkout "$TEST_FILE" 2>/dev/null
         continue
     fi
+
+    # Fix lint/format before committing (pre-commit hook requires this)
+    uv run ruff check "$TEST_FILE" --fix --quiet 2>/dev/null || true
+    uv run ruff format "$TEST_FILE" --quiet 2>/dev/null || true
 
     # Commit, push, restart server (code may have changed)
     AFTER=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
         | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d[0]['covered']}/{d[0]['total_ops']}\")" 2>/dev/null) || AFTER="?"
 
-    git add tests/compatibility/ vendor/moto
+    git add "$TEST_FILE" vendor/moto
     git commit -m "$(cat <<EOF
 Expand ${SERVICE} compat tests: ${AFTER} operations covered
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
-)" 2>/dev/null || continue
+)" 2>/dev/null || { echo "  COMMIT FAILED for $SERVICE"; continue; }
     git push 2>/dev/null || true
 
     echo "  Committed: $SERVICE $BEFORE → $AFTER"
