@@ -52,6 +52,181 @@ class TestRoute53ResolverOperations:
         # Cleanup
         resolver.delete_resolver_endpoint(ResolverEndpointId=endpoint_id)
 
+    def test_get_resolver_endpoint(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.92.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.92.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.92.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sg = ec2.create_security_group(
+            GroupName=f"get-ep-sg-{_uid()}", Description="test", VpcId=vpc_id
+        )
+        create_resp = resolver.create_resolver_endpoint(
+            CreatorRequestId=_uid(),
+            Name=f"get-ep-{_uid()}",
+            SecurityGroupIds=[sg["GroupId"]],
+            Direction="INBOUND",
+            IpAddresses=[
+                {"SubnetId": subnet1["Subnet"]["SubnetId"]},
+                {"SubnetId": subnet2["Subnet"]["SubnetId"]},
+            ],
+        )
+        endpoint_id = create_resp["ResolverEndpoint"]["Id"]
+        try:
+            resp = resolver.get_resolver_endpoint(ResolverEndpointId=endpoint_id)
+            assert resp["ResolverEndpoint"]["Id"] == endpoint_id
+            assert resp["ResolverEndpoint"]["Direction"] == "INBOUND"
+        finally:
+            resolver.delete_resolver_endpoint(ResolverEndpointId=endpoint_id)
+
+    def test_update_resolver_endpoint(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.93.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.93.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.93.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sg = ec2.create_security_group(
+            GroupName=f"upd-ep-sg-{_uid()}", Description="test", VpcId=vpc_id
+        )
+        create_resp = resolver.create_resolver_endpoint(
+            CreatorRequestId=_uid(),
+            Name=f"upd-ep-{_uid()}",
+            SecurityGroupIds=[sg["GroupId"]],
+            Direction="INBOUND",
+            IpAddresses=[
+                {"SubnetId": subnet1["Subnet"]["SubnetId"]},
+                {"SubnetId": subnet2["Subnet"]["SubnetId"]},
+            ],
+        )
+        endpoint_id = create_resp["ResolverEndpoint"]["Id"]
+        new_name = f"updated-ep-{_uid()}"
+        try:
+            resp = resolver.update_resolver_endpoint(ResolverEndpointId=endpoint_id, Name=new_name)
+            assert resp["ResolverEndpoint"]["Name"] == new_name
+        finally:
+            resolver.delete_resolver_endpoint(ResolverEndpointId=endpoint_id)
+
+    def test_list_resolver_endpoint_ip_addresses(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.94.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.94.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.94.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sg = ec2.create_security_group(
+            GroupName=f"list-ip-sg-{_uid()}", Description="test", VpcId=vpc_id
+        )
+        create_resp = resolver.create_resolver_endpoint(
+            CreatorRequestId=_uid(),
+            Name=f"list-ip-ep-{_uid()}",
+            SecurityGroupIds=[sg["GroupId"]],
+            Direction="INBOUND",
+            IpAddresses=[
+                {"SubnetId": subnet1["Subnet"]["SubnetId"]},
+                {"SubnetId": subnet2["Subnet"]["SubnetId"]},
+            ],
+        )
+        endpoint_id = create_resp["ResolverEndpoint"]["Id"]
+        try:
+            resp = resolver.list_resolver_endpoint_ip_addresses(ResolverEndpointId=endpoint_id)
+            assert "IpAddresses" in resp
+            assert len(resp["IpAddresses"]) >= 2
+        finally:
+            resolver.delete_resolver_endpoint(ResolverEndpointId=endpoint_id)
+
+    def test_associate_resolver_endpoint_ip_address(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.95.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.95.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.95.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet3 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.95.3.0/24", AvailabilityZone="us-east-1c"
+        )
+        sg = ec2.create_security_group(
+            GroupName=f"assoc-ip-sg-{_uid()}", Description="test", VpcId=vpc_id
+        )
+        create_resp = resolver.create_resolver_endpoint(
+            CreatorRequestId=_uid(),
+            Name=f"assoc-ip-ep-{_uid()}",
+            SecurityGroupIds=[sg["GroupId"]],
+            Direction="INBOUND",
+            IpAddresses=[
+                {"SubnetId": subnet1["Subnet"]["SubnetId"]},
+                {"SubnetId": subnet2["Subnet"]["SubnetId"]},
+            ],
+        )
+        endpoint_id = create_resp["ResolverEndpoint"]["Id"]
+        try:
+            resp = resolver.associate_resolver_endpoint_ip_address(
+                ResolverEndpointId=endpoint_id,
+                IpAddress={"SubnetId": subnet3["Subnet"]["SubnetId"]},
+            )
+            assert resp["ResolverEndpoint"]["Id"] == endpoint_id
+            # Verify it was added
+            ips = resolver.list_resolver_endpoint_ip_addresses(ResolverEndpointId=endpoint_id)
+            assert len(ips["IpAddresses"]) >= 3
+        finally:
+            resolver.delete_resolver_endpoint(ResolverEndpointId=endpoint_id)
+
+    def test_disassociate_resolver_endpoint_ip_address(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.96.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.96.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.96.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet3 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.96.3.0/24", AvailabilityZone="us-east-1c"
+        )
+        sg = ec2.create_security_group(
+            GroupName=f"disassoc-ip-sg-{_uid()}", Description="test", VpcId=vpc_id
+        )
+        create_resp = resolver.create_resolver_endpoint(
+            CreatorRequestId=_uid(),
+            Name=f"disassoc-ip-ep-{_uid()}",
+            SecurityGroupIds=[sg["GroupId"]],
+            Direction="INBOUND",
+            IpAddresses=[
+                {"SubnetId": subnet1["Subnet"]["SubnetId"]},
+                {"SubnetId": subnet2["Subnet"]["SubnetId"]},
+                {"SubnetId": subnet3["Subnet"]["SubnetId"]},
+            ],
+        )
+        endpoint_id = create_resp["ResolverEndpoint"]["Id"]
+        try:
+            # Get the IP address ID for the third subnet
+            ips = resolver.list_resolver_endpoint_ip_addresses(ResolverEndpointId=endpoint_id)
+            # Find the IP in subnet3
+            subnet3_id = subnet3["Subnet"]["SubnetId"]
+            ip_to_remove = None
+            for ip in ips["IpAddresses"]:
+                if ip["SubnetId"] == subnet3_id:
+                    ip_to_remove = ip["IpId"]
+                    break
+            assert ip_to_remove is not None, "Could not find IP for subnet3"
+
+            resp = resolver.disassociate_resolver_endpoint_ip_address(
+                ResolverEndpointId=endpoint_id,
+                IpAddress={"IpId": ip_to_remove},
+            )
+            assert resp["ResolverEndpoint"]["Id"] == endpoint_id
+        finally:
+            resolver.delete_resolver_endpoint(ResolverEndpointId=endpoint_id)
+
     def test_list_resolver_endpoints(self, resolver):
         response = resolver.list_resolver_endpoints()
         assert "ResolverEndpoints" in response
@@ -313,6 +488,27 @@ class TestRoute53ResolverOperations:
     def test_list_resolver_dnssec_configs(self, resolver):
         resp = resolver.list_resolver_dnssec_configs()
         assert "ResolverDnssecConfigs" in resp
+
+    def test_get_resolver_dnssec_config(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        # Must enable DNSSEC first to create the config
+        resolver.update_resolver_dnssec_config(ResourceId=vpc_id, Validation="ENABLE")
+        resp = resolver.get_resolver_dnssec_config(ResourceId=vpc_id)
+        assert "ResolverDNSSECConfig" in resp
+        config = resp["ResolverDNSSECConfig"]
+        assert config["ResourceId"] == vpc_id
+
+    def test_update_resolver_dnssec_config(self, resolver, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.91.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        resp = resolver.update_resolver_dnssec_config(
+            ResourceId=vpc_id,
+            Validation="ENABLE",
+        )
+        assert "ResolverDNSSECConfig" in resp
+        config = resp["ResolverDNSSECConfig"]
+        assert config["ResourceId"] == vpc_id
 
 
 class TestRoute53ResolverGapStubs:
