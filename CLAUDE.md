@@ -259,30 +259,36 @@ When we discover a Moto bug or missing feature:
 - **Run `make test-quality` before committing tests.** The `validate_test_quality.py` script catches tests that never contact the server. CI enforces <5% no-contact rate.
 - **Test count is not a metric.** Never report test count as progress without also reporting effective test rate from `validate_test_quality.py`. 100 tests that verify behavior > 10,000 tests that catch exceptions and pass.
 
-### Headless overnight workflow (the proven S3 pattern)
-When running headlessly to expand coverage for a service, follow this exact sequence:
+### Headless overnight workflow (chunk-based with feedback)
 
-1. **Ensure server is running**: `make status || make start`
-2. **Probe the service**: `uv run python scripts/probe_service.py --service <name> --all --json` to get the allowlist of working operations
-3. **Check current coverage**: `uv run python scripts/compat_coverage.py --service <name> -v` to see which working ops lack tests
-4. **Read the existing test file**: understand fixtures, naming conventions, imports before editing
-5. **For each untested-but-working operation**:
-   a. Determine what parameters the operation needs (check botocore model)
-   b. Write a test with valid parameters that will actually contact the server
-   c. Run JUST that test: `uv run pytest tests/compatibility/test_<name>_compat.py -k "test_<op>" -q --tb=short`
-   d. If it fails, debug and fix. If the operation doesn't work server-side, skip it.
-   e. Ensure the test has at least one assertion on a response field
-6. **For 500-error operations**: check Moto source, fix if simple (add stub handler), skip if complex
-7. **Validate quality**: `uv run python scripts/validate_test_quality.py --file tests/compatibility/test_<name>_compat.py`
-8. **Run full service tests**: `uv run pytest tests/compatibility/test_<name>_compat.py -q --tb=short`
-9. **Run unit tests** (quick sanity): `uv run pytest tests/unit/ -q -n12 --tb=short`
-10. **Commit & push**: include coverage stats in commit message
-11. **Check CI**: `gh run list --limit 3` — if CI fails, fix before moving on
+The overnight script (`scripts/overnight.sh`) uses a tight feedback loop:
+
+**Architecture**: service → probe → chunk by resource noun → per-chunk Claude session → verify → commit
+
+**Chunking**: `scripts/chunk_service.py` breaks any service (even EC2 with 756 ops) into resource-group chunks of 3-8 operations each (e.g., "Vpc", "SecurityGroup", "Instance"). Each chunk is a single Claude session.
+
+**Feedback loop** (runs after every chunk):
+1. Each test is run immediately after being written (pass → keep, fail → fix or delete)
+2. Quality gate after chunk: `validate_test_quality.py` (no junk tests)
+3. Coverage delta after service: did `compat_coverage.py` numbers actually go up?
+4. 3 consecutive failed chunks → move to next service (don't waste time)
+5. Every 5 services: overall progress check
+
+**Tools in the pipeline**:
+- `probe_service.py --all --json` — auto-fills params from botocore, classifies ops as working/not_implemented/500_error/needs_params
+- `chunk_service.py --with-probe --untested-only` — groups untested-but-working ops by resource noun
+- `compat_coverage.py --service X --json` — before/after coverage comparison
+- `validate_test_quality.py --file X` — ensures tests actually contact server
+
+**Three test patterns that work**:
+1. **Create → use → cleanup** (for CRUD ops needing a resource)
+2. **Call with fake ID → assert ResourceNotFoundException** (proves implementation without setup)
+3. **Call list/describe with no args → assert response key** (for list operations)
 
 **Critical rules for headless mode:**
-- NEVER write a test that catches an exception and passes without contacting the server
-- If you can't figure out valid params for an operation in ~2 minutes, skip it and move on
-- Commit after every service (not after every test)
-- If CI is red, fix it before starting the next service
-- Maximum 1 Moto fix per service — don't go down rabbit holes
-- The goal is breadth: cover many services, not depth on one service
+- NEVER catch ParamValidationError — that's client-side, proves nothing about the server
+- Every test MUST assert on a response field
+- Run each test RIGHT AFTER writing it — don't batch
+- If stuck on params for >2 minutes, skip the operation
+- If an operation returns 501, DELETE the test and move on
+- The goal is reliable coverage, not speed
