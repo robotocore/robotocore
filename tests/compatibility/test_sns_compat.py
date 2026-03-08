@@ -1075,3 +1075,56 @@ class TestSnsAutoCoverage:
         """ListSMSSandboxPhoneNumbers returns a response."""
         resp = client.list_sms_sandbox_phone_numbers()
         assert "PhoneNumbers" in resp
+
+
+class TestSNSSMSAttributes:
+    """Tests for GetSMSAttributes and SetSMSAttributes operations."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_get_sms_attributes_returns_dict(self, sns):
+        """GetSMSAttributes returns attributes as a dict."""
+        resp = sns.get_sms_attributes()
+        assert "attributes" in resp
+        assert isinstance(resp["attributes"], dict)
+
+    def test_set_and_get_sms_attributes_default_sms_type(self, sns):
+        """SetSMSAttributes sets DefaultSMSType and GetSMSAttributes retrieves it."""
+        sns.set_sms_attributes(
+            attributes={"DefaultSMSType": "Transactional"},
+        )
+        resp = sns.get_sms_attributes(attributes=["DefaultSMSType"])
+        assert resp["attributes"]["DefaultSMSType"] == "Transactional"
+
+    def test_set_and_get_sms_attributes_sender_id(self, sns):
+        """SetSMSAttributes sets DefaultSenderID and GetSMSAttributes retrieves it."""
+        sns.set_sms_attributes(
+            attributes={"DefaultSenderID": "MyApp"},
+        )
+        resp = sns.get_sms_attributes(attributes=["DefaultSenderID"])
+        assert resp["attributes"]["DefaultSenderID"] == "MyApp"
+
+    def test_get_sms_attributes_filtered(self, sns):
+        """GetSMSAttributes with specific attribute names filters results."""
+        sns.set_sms_attributes(
+            attributes={
+                "DefaultSMSType": "Promotional",
+                "DefaultSenderID": "TestSender",
+            },
+        )
+        # Request only one attribute
+        resp = sns.get_sms_attributes(attributes=["DefaultSMSType"])
+        assert "DefaultSMSType" in resp["attributes"]
+
+    def test_set_sms_attributes_overwrite(self, sns):
+        """SetSMSAttributes overwrites previous values."""
+        sns.set_sms_attributes(
+            attributes={"DefaultSMSType": "Transactional"},
+        )
+        sns.set_sms_attributes(
+            attributes={"DefaultSMSType": "Promotional"},
+        )
+        resp = sns.get_sms_attributes(attributes=["DefaultSMSType"])
+        assert resp["attributes"]["DefaultSMSType"] == "Promotional"

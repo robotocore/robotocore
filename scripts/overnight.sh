@@ -11,6 +11,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Allow claude to be launched from within another claude session
+unset CLAUDE_CODE 2>/dev/null || true
+unset CLAUDECODE 2>/dev/null || true
+
 mkdir -p logs/overnight
 
 restart_server() {
@@ -66,7 +70,9 @@ for c in ready:
         CHUNK_LOG="logs/overnight/${TIMESTAMP}-${SERVICE}-${NOUN}.log"
         echo "  chunk: $SERVICE / $NOUN"
 
-        claude --print -p "$(cat <<PROMPT
+        # Stream to chunk log and a "latest" symlink for easy tailing
+        ln -sf "$(basename "$CHUNK_LOG")" logs/overnight/latest.log
+        claude --output-format stream-json --verbose --permission-mode bypassPermissions -p "$(cat <<PROMPT
 Write compat tests for the **${NOUN}** operations in **${SERVICE}**. These all work on the server (port 4566).
 
 Operations to test:
