@@ -269,7 +269,7 @@ class TestS3EventNotifications:
         assert len(msgs) == 1
         body = json.loads(msgs[0]["Body"])
         record = body["Records"][0]
-        assert record["eventName"] == "Put"
+        assert record["eventName"] == "ObjectCreated:Put"
         assert record["s3"]["bucket"]["name"] == bucket_name
         assert record["s3"]["object"]["key"] == "notify.txt"
 
@@ -305,7 +305,7 @@ class TestS3EventNotifications:
         msgs = recv.get("Messages", [])
         assert len(msgs) == 1
         body = json.loads(msgs[0]["Body"])
-        assert body["Records"][0]["eventName"] == "Delete"
+        assert body["Records"][0]["eventName"] == "ObjectRemoved:Delete"
 
         s3.delete_bucket(Bucket=bucket_name)
         sqs.delete_queue(QueueUrl=q_url)
@@ -2342,6 +2342,58 @@ class TestS3ObjectRetentionAndTorrent:
                     "RetainUntilDate": "2030-01-01T00:00:00Z",
                 },
             )
+
+    def _cleanup_lock_bucket(self, s3, bucket_name):
+        """Delete all object versions and the bucket."""
+        try:
+            versions = s3.list_object_versions(Bucket=bucket_name)
+            for v in versions.get("Versions", []):
+                s3.delete_object(
+                    Bucket=bucket_name,
+                    Key=v["Key"],
+                    VersionId=v["VersionId"],
+                    BypassGovernanceRetention=True,
+                )
+            for dm in versions.get("DeleteMarkers", []):
+                s3.delete_object(
+                    Bucket=bucket_name,
+                    Key=dm["Key"],
+                    VersionId=dm["VersionId"],
+                )
+            s3.delete_bucket(Bucket=bucket_name)
+        except Exception:
+            pass
+
+    def test_put_get_object_retention(self, s3):
+        """PutObjectRetention + GetObjectRetention on lock-enabled bucket."""
+        lock_bucket = "test-lock-retention-bucket"
+        s3.create_bucket(Bucket=lock_bucket, ObjectLockEnabledForBucket=True)
+        try:
+            s3.put_object(Bucket=lock_bucket, Key="ret-key", Body=b"data")
+            s3.put_object_retention(
+                Bucket=lock_bucket,
+                Key="ret-key",
+                Retention={
+                    "Mode": "GOVERNANCE",
+                    "RetainUntilDate": "2030-01-01T00:00:00Z",
+                },
+            )
+            resp = s3.get_object_retention(Bucket=lock_bucket, Key="ret-key")
+            assert resp["Retention"]["Mode"] == "GOVERNANCE"
+        finally:
+            self._cleanup_lock_bucket(s3, lock_bucket)
+
+    def test_get_object_retention_not_set(self, s3):
+        """GetObjectRetention on object without retention returns error."""
+        lock_bucket = "test-lock-no-retention"
+        s3.create_bucket(Bucket=lock_bucket, ObjectLockEnabledForBucket=True)
+        try:
+            s3.put_object(Bucket=lock_bucket, Key="no-ret-key", Body=b"data")
+            with pytest.raises(ClientError) as exc:
+                s3.get_object_retention(Bucket=lock_bucket, Key="no-ret-key")
+            assert "NoSuch" in exc.value.response["Error"]["Code"]
+        finally:
+            self._cleanup_lock_bucket(s3, lock_bucket)
 
     def test_get_object_torrent(self, s3, bucket):
         """GetObjectTorrent returns a response body."""
