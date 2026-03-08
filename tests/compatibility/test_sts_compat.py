@@ -551,3 +551,90 @@ class TestSTSExtended:
             assert "Credentials" in response
         finally:
             iam.delete_role(RoleName=role_name)
+
+    def test_assume_role_with_saml_credential_fields(self, sts):
+        """AssumeRoleWithSAML returns all required credential fields."""
+        import datetime
+        import uuid
+
+        iam = make_client("iam")
+        role_name = f"samlcf-role-{uuid.uuid4().hex[:8]}"
+        role_arn = self._create_role(iam, role_name)
+        try:
+            response = sts.assume_role_with_saml(
+                RoleArn=role_arn,
+                PrincipalArn="arn:aws:iam::123456789012:saml-provider/MyProvider",
+                SAMLAssertion="PHNhbWw+ZHVtbXk8L3NhbWw+",
+            )
+            creds = response["Credentials"]
+            assert "AccessKeyId" in creds
+            assert "SecretAccessKey" in creds
+            assert "SessionToken" in creds
+            assert "Expiration" in creds
+            assert isinstance(creds["Expiration"], datetime.datetime)
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_assume_role_with_saml_assumed_role_user(self, sts):
+        """AssumeRoleWithSAML returns AssumedRoleUser with Arn and AssumedRoleId."""
+        import uuid
+
+        iam = make_client("iam")
+        role_name = f"samlaru-role-{uuid.uuid4().hex[:8]}"
+        role_arn = self._create_role(iam, role_name)
+        try:
+            response = sts.assume_role_with_saml(
+                RoleArn=role_arn,
+                PrincipalArn="arn:aws:iam::123456789012:saml-provider/MyProvider",
+                SAMLAssertion="PHNhbWw+ZHVtbXk8L3NhbWw+",
+            )
+            assert "AssumedRoleUser" in response
+            aru = response["AssumedRoleUser"]
+            assert "Arn" in aru
+            assert "AssumedRoleId" in aru
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_assume_role_with_saml_with_policy(self, sts):
+        """AssumeRoleWithSAML with an inline session policy."""
+        import uuid
+
+        iam = make_client("iam")
+        role_name = f"samlpol-role-{uuid.uuid4().hex[:8]}"
+        role_arn = self._create_role(iam, role_name)
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+            }
+        )
+        try:
+            response = sts.assume_role_with_saml(
+                RoleArn=role_arn,
+                PrincipalArn="arn:aws:iam::123456789012:saml-provider/MyProvider",
+                SAMLAssertion="PHNhbWw+ZHVtbXk8L3NhbWw+",
+                Policy=policy,
+            )
+            assert "Credentials" in response
+            assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_assume_role_with_saml_with_duration(self, sts):
+        """AssumeRoleWithSAML with DurationSeconds."""
+        import uuid
+
+        iam = make_client("iam")
+        role_name = f"samldur-role-{uuid.uuid4().hex[:8]}"
+        role_arn = self._create_role(iam, role_name)
+        try:
+            response = sts.assume_role_with_saml(
+                RoleArn=role_arn,
+                PrincipalArn="arn:aws:iam::123456789012:saml-provider/MyProvider",
+                SAMLAssertion="PHNhbWw+ZHVtbXk8L3NhbWw+",
+                DurationSeconds=3600,
+            )
+            assert "Credentials" in response
+            assert "AccessKeyId" in response["Credentials"]
+        finally:
+            iam.delete_role(RoleName=role_name)
