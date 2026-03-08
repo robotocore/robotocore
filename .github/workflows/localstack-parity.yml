@@ -1,0 +1,58 @@
+name: LocalStack Parity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  parity-tests-robotocore:
+    name: "Parity tests against robotocore"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+      - name: Run parity tests
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+        run: uv run pytest tests/localstack_parity/ -v --tb=short
+
+  parity-tests-localstack:
+    name: "Parity tests against LocalStack"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Run for comparison but don't block
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start LocalStack
+        run: |
+          pip install localstack
+          localstack start -d
+          localstack wait -t 60
+      - name: Run parity tests against LocalStack
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+        run: uv run pytest tests/localstack_parity/ -v --tb=short
+      - name: Stop LocalStack
+        if: always()
+        run: localstack stop
