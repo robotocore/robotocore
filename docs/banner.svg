@@ -153,12 +153,12 @@
     <!-- Services badge -->
     <rect x="0" y="0" width="104" height="24" rx="5" fill="#a19e6a" opacity="0.15"/>
     <rect x="0" y="0" width="104" height="24" rx="5" fill="none" stroke="#a19e6a" stroke-width="0.8" opacity="0.4"/>
-    <text x="52" y="16.5" font-family="monospace" font-size="11" fill="#7d8258" text-anchor="middle" font-weight="bold">42 services</text>
+    <text x="52" y="16.5" font-family="monospace" font-size="11" fill="#7d8258" text-anchor="middle" font-weight="bold">147 services</text>
 
     <!-- Tests badge -->
     <rect x="112" y="0" width="110" height="24" rx="5" fill="#d69e63" opacity="0.15"/>
     <rect x="112" y="0" width="110" height="24" rx="5" fill="none" stroke="#d69e63" stroke-width="0.8" opacity="0.4"/>
-    <text x="167" y="16.5" font-family="monospace" font-size="11" fill="#ca7b55" text-anchor="middle" font-weight="bold">3600+ tests</text>
+    <text x="167" y="16.5" font-family="monospace" font-size="11" fill="#ca7b55" text-anchor="middle" font-weight="bold">6600+ tests</text>
 
     <!-- MIT badge -->
     <rect x="230" y="0" width="66" height="24" rx="5" fill="#7d8258" opacity="0.15"/>

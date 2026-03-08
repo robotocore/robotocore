@@ -11,7 +11,7 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#accounts--regions">Accounts & Regions</a> ·
   <a href="#for-ai-agents">For AI Agents</a> ·
-  <a href="#supported-services">42 Services</a> ·
+  <a href="#supported-services">147 Services</a> ·
   <a href="#why-robotocore">Why robotocore</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="AGENTS.md">AGENTS.md</a>
@@ -23,7 +23,7 @@
 
 robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
-- **42 AWS services** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and more
+- **147 AWS services** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and more
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
 - **Multi-account** — unlimited isolated AWS accounts, all in one container
 - **Single container** — one `docker run` command, no config, no cloud
@@ -375,7 +375,7 @@ LocalStack Community Edition was discontinued in February 2026. robotocore is th
 
 ## Supported Services
 
-All **42 services** are available. **Native** providers go beyond Moto with full behavioral fidelity.
+All **147 services** are available. **Native** providers go beyond Moto with full behavioral fidelity.
 
 | Service | Provider | Notes |
 |---------|----------|-------|
@@ -444,7 +444,7 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 │  │   │                         │               │  │
 │  │   ▼                         ▼               │  │
 │  │  Native Providers         Moto Bridge        │  │
-│  │  (25 services —           (~17 services —   │  │
+│  │  (38 services —           (~109 services —  │  │
 │  │   full fidelity)           Moto backends)   │  │
 │  │                                             │  │
 │  │  In-Memory State (per-account, per-region)  │  │
@@ -488,9 +488,9 @@ uv run python -m robotocore.main
 ### Tests
 
 ```bash
-uv run pytest tests/unit/           # 2500+ unit tests
-uv run pytest tests/compatibility/  # 1180+ compatibility tests (requires running server)
-uv run pytest tests/integration/    # 42 integration tests (requires Docker)
+uv run pytest tests/unit/           # 3100+ unit tests
+uv run pytest tests/compatibility/  # 3400+ compatibility tests (requires running server)
+uv run pytest tests/integration/    # 58 integration tests (requires Docker)
 ```
 
 ### Useful scripts
