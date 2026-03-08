@@ -2409,3 +2409,266 @@ class TestIamAutoCoverage:
         """ListVirtualMFADevices returns a response."""
         resp = client.list_virtual_mfa_devices()
         assert "VirtualMFADevices" in resp
+
+
+# ---------------------------------------------------------------------------
+# Instance profile tagging
+# ---------------------------------------------------------------------------
+
+
+class TestIAMInstanceProfileTags:
+    def test_tag_instance_profile(self, iam):
+        """TagInstanceProfile adds tags to an instance profile."""
+        name = _unique("ip-tag")
+        iam.create_instance_profile(InstanceProfileName=name)
+        try:
+            resp = iam.tag_instance_profile(
+                InstanceProfileName=name,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "platform"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            iam.delete_instance_profile(InstanceProfileName=name)
+
+    def test_untag_instance_profile(self, iam):
+        """UntagInstanceProfile removes tags from an instance profile."""
+        name = _unique("ip-untag")
+        iam.create_instance_profile(InstanceProfileName=name)
+        try:
+            iam.tag_instance_profile(
+                InstanceProfileName=name,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "remove-me", "Value": "bye"}],
+            )
+            resp = iam.untag_instance_profile(InstanceProfileName=name, TagKeys=["remove-me"])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            iam.delete_instance_profile(InstanceProfileName=name)
+
+
+# ---------------------------------------------------------------------------
+# Policy tagging
+# ---------------------------------------------------------------------------
+
+
+class TestIAMPolicyTags:
+    def test_tag_policy(self, iam):
+        """TagPolicy adds tags to a managed policy."""
+        pol_name = _unique("pol-tag")
+        resp = iam.create_policy(PolicyName=pol_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = resp["Policy"]["Arn"]
+        try:
+            iam.tag_policy(
+                PolicyArn=arn,
+                Tags=[{"Key": "env", "Value": "staging"}, {"Key": "cost", "Value": "free"}],
+            )
+            tag_resp = iam.list_policy_tags(PolicyArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+            assert tags["env"] == "staging"
+            assert tags["cost"] == "free"
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+    def test_untag_policy(self, iam):
+        """UntagPolicy removes tags from a managed policy."""
+        pol_name = _unique("pol-untag")
+        resp = iam.create_policy(PolicyName=pol_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = resp["Policy"]["Arn"]
+        try:
+            iam.tag_policy(
+                PolicyArn=arn,
+                Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "drop", "Value": "bye"}],
+            )
+            iam.untag_policy(PolicyArn=arn, TagKeys=["drop"])
+            tag_resp = iam.list_policy_tags(PolicyArn=arn)
+            keys = [t["Key"] for t in tag_resp["Tags"]]
+            assert "keep" in keys
+            assert "drop" not in keys
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+    def test_list_policy_tags(self, iam):
+        """ListPolicyTags returns tags for a policy."""
+        pol_name = _unique("pol-listtag")
+        resp = iam.create_policy(PolicyName=pol_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = resp["Policy"]["Arn"]
+        try:
+            tag_resp = iam.list_policy_tags(PolicyArn=arn)
+            assert "Tags" in tag_resp
+            assert isinstance(tag_resp["Tags"], list)
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Access key last used
+# ---------------------------------------------------------------------------
+
+
+class TestIAMAccessKeyLastUsed:
+    def test_get_access_key_last_used(self, iam):
+        """GetAccessKeyLastUsed returns info about an access key."""
+        user_name = _unique("ak-lu")
+        iam.create_user(UserName=user_name)
+        try:
+            key_resp = iam.create_access_key(UserName=user_name)
+            access_key_id = key_resp["AccessKey"]["AccessKeyId"]
+            resp = iam.get_access_key_last_used(AccessKeyId=access_key_id)
+            assert "AccessKeyLastUsed" in resp
+            assert "UserName" in resp
+        finally:
+            iam.delete_access_key(UserName=user_name, AccessKeyId=access_key_id)
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Update assume role policy
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateAssumeRolePolicy:
+    def test_update_assume_role_policy(self, iam):
+        """UpdateAssumeRolePolicy changes the trust policy of a role."""
+        role_name = _unique("uarp")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            new_trust = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "ec2.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            )
+            iam.update_assume_role_policy(RoleName=role_name, PolicyDocument=new_trust)
+            resp = iam.get_role(RoleName=role_name)
+            # The trust policy should be updated
+            assert "AssumeRolePolicyDocument" in resp["Role"]
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# MFA device operations
+# ---------------------------------------------------------------------------
+
+
+class TestIAMMFADeviceOps:
+    def test_enable_and_deactivate_mfa_device(self, iam):
+        """EnableMFADevice / DeactivateMFADevice lifecycle."""
+        user_name = _unique("mfa-user")
+        vmfa_name = _unique("vmfa-en")
+        iam.create_user(UserName=user_name)
+        vmfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=vmfa_name)
+        serial = vmfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            # Enable requires two consecutive TOTP codes; use 123456/654321 which Moto accepts
+            iam.enable_mfa_device(
+                UserName=user_name,
+                SerialNumber=serial,
+                AuthenticationCode1="123456",
+                AuthenticationCode2="654321",
+            )
+            # Verify MFA device is listed for the user
+            listed = iam.list_mfa_devices(UserName=user_name)
+            serials = [d["SerialNumber"] for d in listed["MFADevices"]]
+            assert serial in serials
+            # Deactivate it
+            iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            listed2 = iam.list_mfa_devices(UserName=user_name)
+            serials2 = [d["SerialNumber"] for d in listed2["MFADevices"]]
+            assert serial not in serials2
+        finally:
+            try:
+                iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            except Exception:
+                pass
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# SSH public key upload
+# ---------------------------------------------------------------------------
+
+_SSH_PUBLIC_KEY = (
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCz8Dk176Uh4bPmFosfHGQQwJj5ejGnlf"
+    "0RmTbVBjDaBCO/x4D98DhtVIBHdIUVOhfFkKG3cAfpJo2rWB7RkDzV2OywOa0Nlb5PXhR"
+    "hGJsXBGLGEOGp5HoAiIeUJGZ0GZ7Ly7PGbKMe2OjhKfSHn9UkER6A+BxMp7J1w9ZMPX2j"
+    "bHuXnuBErjUCr3LGXNN9p2gaQQ3nGxw4sFMq3bJWKW7R2Dz1VJfBjEqFMk5LYqP1n5M+1"
+    "HQYPJEFbKAHDN3OL3F4D3QPDJneMCOLI3EcsJJDPVpFaGp1qP5vQJ5yf0ABXk0EJ1fH8F"
+    "hIzFNJdNq+LVMIHChSxFIpfdmh test-key"
+)
+
+
+class TestIAMSSHPublicKeyUpload:
+    def test_upload_ssh_public_key(self, iam):
+        """UploadSSHPublicKey uploads an SSH key for a user."""
+        user_name = _unique("ssh-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_ssh_public_key(UserName=user_name, SSHPublicKeyBody=_SSH_PUBLIC_KEY)
+            assert "SSHPublicKey" in resp
+            key_id = resp["SSHPublicKey"]["SSHPublicKeyId"]
+            assert key_id is not None
+            # Verify it shows up in list
+            listed = iam.list_ssh_public_keys(UserName=user_name)
+            ids = [k["SSHPublicKeyId"] for k in listed["SSHPublicKeys"]]
+            assert key_id in ids
+        finally:
+            try:
+                iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Signing certificate upload
+# ---------------------------------------------------------------------------
+
+
+_SIGNING_CERT = (
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIICrjCCAZagAwIBAgIUTPWk8SRG5QxyO0DJgq/Umg480sswDQYJKoZIhvcNAQEL\n"
+    "BQAwETEPMA0GA1UEAwwGdGVzdGNhMB4XDTIzMDEwMTAwMDAwMFoXDTMzMDEwMTAw\n"
+    "MDAwMFowETEPMA0GA1UEAwwGdGVzdGNhMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\n"
+    "MIIBCgKCAQEAz323fnNbq6P9+Wf5wzk7l3Z3ouYJ3DKlL3ae3hWK7P4i+lFucumq\n"
+    "RGn4O7cKae3GtSlm+gfIk0+0nAU1nj2z6E9q7O5pRPlqilGGPQcY3D3mvZcu/Jup\n"
+    "DVQCM mn8iPwPo4b/Ch6Z2vP7+5b2dQal4L3fyHbf4yTx1xNczN4xEu8HyV8+5+MS\n"
+    "xH/LrNyKRsOERNeCi+Fvi452ZD4l7Hn3lnPY/kvx5iUEISXAr5X2GKzPsSN4hBWx\n"
+    "66pqNIQwz08zZYRunrxnSatShnlUtdL9YhinRuL9VPR1Ahy+NQSOD5U1AsOeywdF\n"
+    "o9UaJ0kxaPXTNnr21P1Qw3inh5+mFo6FewIDAQABMA0GCSqGSIb3DQEBCwUAA4IB\n"
+    "AQBpBPAhB1WmAIURhM65OoAC83qxMyRk3rGW4oSagXVxB3o7njAg2PXA9Sd7XqFy\n"
+    "5UHCfOu9vZkW9sSDtWXrRKRIcdD8C6CH1x/AQZrqNzw1SGERW2ojqtf5tXFPOsg9\n"
+    "j4YgrSBXhpoaDfQq5mazRYpUh+5qv+loiq0tGT2eJolG4RpKVw/MwKGvaMLxF502\n"
+    "UlXukjLy9XFH2t5Ef7L5oX8BlRykhRObhYk/P4WAGUyf4Yprd+41XajzPqjEjJ1w\n"
+    "XDy3aJO9t2E8TtL4uUzFY01bZGRNOW8uyW8+CT2drQQ7bR3x+TuYZwj0AicyJRV+\n"
+    "QpPkw4Fr0WMLYoxPCAlsLvoc\n"
+    "-----END CERTIFICATE-----"
+)
+
+
+class TestIAMSigningCertificateUpload:
+    def test_upload_signing_certificate(self, iam):
+        """UploadSigningCertificate uploads a signing certificate for a user."""
+        user_name = _unique("sigcert-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_signing_certificate(UserName=user_name, CertificateBody=_SIGNING_CERT)
+            assert "Certificate" in resp
+            cert_id = resp["Certificate"]["CertificateId"]
+            assert cert_id is not None
+            # Verify it shows up in list
+            listed = iam.list_signing_certificates(UserName=user_name)
+            ids = [c["CertificateId"] for c in listed["Certificates"]]
+            assert cert_id in ids
+        finally:
+            try:
+                iam.delete_signing_certificate(UserName=user_name, CertificateId=cert_id)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
