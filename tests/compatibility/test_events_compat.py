@@ -1380,3 +1380,43 @@ class TestEventsAutoCoverage:
         """UpdateEventBus returns a response."""
         resp = client.update_event_bus()
         assert "Arn" in resp
+
+
+class TestEventBridgePartnerEventSource:
+    """Tests for PartnerEventSource CRUD operations."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_create_describe_delete_partner_event_source(self, events):
+        """CreatePartnerEventSource, DescribePartnerEventSource, DeletePartnerEventSource."""
+        suffix = uuid.uuid4().hex[:8]
+        source_name = f"aws.partner/example.com/{suffix}/test"
+        account = "123456789012"
+        try:
+            events.create_partner_event_source(Name=source_name, Account=account)
+            desc = events.describe_partner_event_source(Name=source_name)
+            assert desc["Name"] == source_name
+            assert "Arn" in desc
+        finally:
+            try:
+                events.delete_partner_event_source(Name=source_name, Account=account)
+            except Exception:
+                pass
+
+
+class TestEventBridgeCancelReplay:
+    """Test CancelReplay operation."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_cancel_replay_nonexistent(self, events):
+        """CancelReplay on a nonexistent replay returns ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            events.cancel_replay(ReplayName="does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
