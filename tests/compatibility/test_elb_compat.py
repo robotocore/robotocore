@@ -194,6 +194,72 @@ class TestELBClassicTags:
         assert "team" in tag_keys
 
 
+class TestELBClassicInstanceHealth:
+    def test_describe_instance_health_empty(self, elb, load_balancer):
+        resp = elb.describe_instance_health(LoadBalancerName=load_balancer)
+        assert "InstanceStates" in resp
+        assert resp["InstanceStates"] == []
+
+    def test_describe_instance_health_nonexistent_lb(self, elb):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            elb.describe_instance_health(LoadBalancerName="does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "LoadBalancerNotFound"
+
+
+class TestELBClassicListenerSSLCertificate:
+    def test_set_load_balancer_listener_ssl_certificate(self, elb):
+        name = _unique("clb")
+        elb.create_load_balancer(
+            LoadBalancerName=name,
+            Listeners=[
+                {
+                    "Protocol": "HTTPS",
+                    "LoadBalancerPort": 443,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 80,
+                    "SSLCertificateId": "arn:aws:iam::123456789012:server-certificate/old-cert",
+                }
+            ],
+            AvailabilityZones=["us-east-1a"],
+        )
+        try:
+            new_cert = "arn:aws:iam::123456789012:server-certificate/new-cert"
+            elb.set_load_balancer_listener_ssl_certificate(
+                LoadBalancerName=name,
+                LoadBalancerPort=443,
+                SSLCertificateId=new_cert,
+            )
+            desc = elb.describe_load_balancers(LoadBalancerNames=[name])
+            listener = desc["LoadBalancerDescriptions"][0]["ListenerDescriptions"][0]["Listener"]
+            assert listener["SSLCertificateId"] == new_cert
+        finally:
+            elb.delete_load_balancer(LoadBalancerName=name)
+
+
+class TestELBClassicListeners:
+    def test_create_load_balancer_listeners(self, elb, load_balancer):
+        elb.create_load_balancer_listeners(
+            LoadBalancerName=load_balancer,
+            Listeners=[
+                {
+                    "Protocol": "HTTP",
+                    "LoadBalancerPort": 8080,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 8080,
+                }
+            ],
+        )
+        desc = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
+        ports = [
+            ld["Listener"]["LoadBalancerPort"]
+            for ld in desc["LoadBalancerDescriptions"][0]["ListenerDescriptions"]
+        ]
+        assert 80 in ports
+        assert 8080 in ports
+
+
 class TestELBClassicPolicies:
     def test_create_lb_cookie_stickiness_policy(self, elb, load_balancer):
         policy_name = _unique("sticky")
@@ -208,6 +274,32 @@ class TestELBClassicPolicies:
         policies = desc["LoadBalancerDescriptions"][0]["Policies"]["LBCookieStickinessPolicies"]
         policy_names = [p["PolicyName"] for p in policies]
         assert policy_name in policy_names
+
+    def test_describe_load_balancer_policies(self, elb, load_balancer):
+        policy_name = _unique("sticky")
+        elb.create_lb_cookie_stickiness_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+            CookieExpirationPeriod=60,
+        )
+        resp = elb.describe_load_balancer_policies(LoadBalancerName=load_balancer)
+        assert "PolicyDescriptions" in resp
+        names = [p["PolicyName"] for p in resp["PolicyDescriptions"]]
+        assert policy_name in names
+
+    def test_describe_load_balancer_policies_by_name(self, elb, load_balancer):
+        policy_name = _unique("sticky")
+        elb.create_lb_cookie_stickiness_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+            CookieExpirationPeriod=60,
+        )
+        resp = elb.describe_load_balancer_policies(
+            LoadBalancerName=load_balancer,
+            PolicyNames=[policy_name],
+        )
+        assert len(resp["PolicyDescriptions"]) == 1
+        assert resp["PolicyDescriptions"][0]["PolicyName"] == policy_name
 
     def test_set_load_balancer_policies_of_listener(self, elb, load_balancer):
         policy_name = _unique("sticky")
