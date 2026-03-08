@@ -1,75 +1,94 @@
-.PHONY: test test-all unit-test integration-test compat-test lint format docker-build docker-run parity-report clean start stop status smoke
+.PHONY: test test-all unit-test integration-test compat-test compat-test-hot lint format \
+        docker-build docker-run docker-compare parity-report gap-analysis clean \
+        start stop status smoke help
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
 
 # Default: parallel unit tests (fast, no server needed)
-test: unit-test
+test: unit-test ## Run unit tests (default)
 
-# Unit tests — parallel across $(N) cores
-unit-test:
+## ── Testing ──────────────────────────────────────────────────────────────────
+
+unit-test: ## Run unit tests in parallel (no server needed)
 	uv run pytest tests/unit/ -n$(N) -q --tb=short
 
-# Compat tests — auto-starts/stops server, parallel
-compat-test:
+compat-test: ## Run compatibility tests (auto-starts/stops server)
 	$(DEV) test-compat
 
-# Compat tests — assumes server already running, parallel by file
-compat-test-hot:
+compat-test-hot: ## Run compatibility tests (assumes server already running)
 	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
 
-# Integration tests
-integration-test:
+integration-test: ## Run integration tests (auto-manages server)
 	$(DEV) test-integration
 
-# All tests: unit (parallel) + server + compat + integration
-test-all:
+test-all: ## Run all tests: unit + compat + integration
 	$(DEV) test-all
 
-# Server lifecycle
-start:
+## ── Server ───────────────────────────────────────────────────────────────────
+
+start: ## Start dev server in background (port 4566)
 	$(DEV) server-start
 
-stop:
+stop: ## Stop dev server
 	$(DEV) server-stop
 
-status:
+status: ## Show dev server status
 	$(DEV) server-status
 
-# Smoke test (requires running server)
-smoke:
+smoke: ## Run smoke tests (requires running server)
 	uv run python scripts/smoke_test.py
 
-# Lint and format check
-lint:
-	uv run ruff check src/ tests/
-	uv run ruff format --check src/ tests/
+## ── Code quality ─────────────────────────────────────────────────────────────
 
-# Auto-format
-format:
-	uv run ruff format src/ tests/
-	uv run ruff check --fix src/ tests/
+lint: ## Check code with ruff (lint + format)
+	uv run ruff check src/ tests/ scripts/
+	uv run ruff format --check src/ tests/ scripts/
 
-# Build Docker image
-docker-build:
-	docker build -t robotocore .
+format: ## Auto-format and fix code with ruff
+	uv run ruff format src/ tests/ scripts/
+	uv run ruff check --fix src/ tests/ scripts/
 
-# Run Docker container
-docker-run: docker-build
-	docker run -p 4566:4566 robotocore
+## ── Gap analysis ─────────────────────────────────────────────────────────────
 
-# Run with LocalStack for comparison
-docker-compare:
-	docker compose --profile localstack up
+gap-analysis: ## Full gap analysis: robotocore vs LocalStack AND vs 100% botocore
+	@echo ""
+	@echo "══════════════════════════════════════════════════════════════════"
+	@echo "  Gap 1: Robotocore vs LocalStack community operations"
+	@echo "══════════════════════════════════════════════════════════════════"
+	uv run python scripts/analyze_localstack.py --robotocore-gap
+	@echo ""
+	@echo "══════════════════════════════════════════════════════════════════"
+	@echo "  Gap 2: Robotocore vs 100% botocore AWS operation coverage"
+	@echo "══════════════════════════════════════════════════════════════════"
+	uv run python scripts/generate_parity_report.py
 
-# Generate parity report (auto-manages server)
-parity-report:
+parity-report: ## Generate full parity report to parity-report.json (auto-manages server)
 	$(DEV) server-start
 	ENDPOINT_URL=http://localhost:4566 uv run python scripts/generate_parity_report.py --output parity-report.json
 	$(DEV) server-stop
 
-# Clean build artifacts
-clean:
+## ── Docker ───────────────────────────────────────────────────────────────────
+
+docker-build: ## Build Docker image
+	docker build -t robotocore .
+
+docker-run: docker-build ## Build and run Docker container on port 4566
+	docker run -p 4566:4566 robotocore
+
+docker-compare: ## Run robotocore + LocalStack side-by-side for comparison
+	docker compose --profile localstack up
+
+## ── Misc ─────────────────────────────────────────────────────────────────────
+
+clean: ## Remove build artifacts, caches, and temp files
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .mypy_cache .ruff_cache dist build *.egg-info parity-report.json .robotocore.pid .robotocore.log
+
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*##"} \
+	    /^## ── / { printf "\n\033[1m%s\033[0m\n", substr($$0, 4) } \
+	    /^[a-zA-Z_-]+:.*## / { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' \
+	    $(MAKEFILE_LIST)
+	@echo ""
