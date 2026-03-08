@@ -258,3 +258,31 @@ When we discover a Moto bug or missing feature:
 - **Every test MUST assert something.** A test that calls an operation and doesn't check the response is barely better than a smoke test. At minimum assert on a response key.
 - **Run `make test-quality` before committing tests.** The `validate_test_quality.py` script catches tests that never contact the server. CI enforces <5% no-contact rate.
 - **Test count is not a metric.** Never report test count as progress without also reporting effective test rate from `validate_test_quality.py`. 100 tests that verify behavior > 10,000 tests that catch exceptions and pass.
+
+### Headless overnight workflow (the proven S3 pattern)
+When running headlessly to expand coverage for a service, follow this exact sequence:
+
+1. **Ensure server is running**: `make status || make start`
+2. **Probe the service**: `uv run python scripts/probe_service.py --service <name> --all --json` to get the allowlist of working operations
+3. **Check current coverage**: `uv run python scripts/compat_coverage.py --service <name> -v` to see which working ops lack tests
+4. **Read the existing test file**: understand fixtures, naming conventions, imports before editing
+5. **For each untested-but-working operation**:
+   a. Determine what parameters the operation needs (check botocore model)
+   b. Write a test with valid parameters that will actually contact the server
+   c. Run JUST that test: `uv run pytest tests/compatibility/test_<name>_compat.py -k "test_<op>" -q --tb=short`
+   d. If it fails, debug and fix. If the operation doesn't work server-side, skip it.
+   e. Ensure the test has at least one assertion on a response field
+6. **For 500-error operations**: check Moto source, fix if simple (add stub handler), skip if complex
+7. **Validate quality**: `uv run python scripts/validate_test_quality.py --file tests/compatibility/test_<name>_compat.py`
+8. **Run full service tests**: `uv run pytest tests/compatibility/test_<name>_compat.py -q --tb=short`
+9. **Run unit tests** (quick sanity): `uv run pytest tests/unit/ -q -n12 --tb=short`
+10. **Commit & push**: include coverage stats in commit message
+11. **Check CI**: `gh run list --limit 3` — if CI fails, fix before moving on
+
+**Critical rules for headless mode:**
+- NEVER write a test that catches an exception and passes without contacting the server
+- If you can't figure out valid params for an operation in ~2 minutes, skip it and move on
+- Commit after every service (not after every test)
+- If CI is red, fix it before starting the next service
+- Maximum 1 Moto fix per service — don't go down rabbit holes
+- The goal is breadth: cover many services, not depth on one service
