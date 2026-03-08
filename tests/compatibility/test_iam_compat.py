@@ -2189,6 +2189,13 @@ class TestIAMVirtualMFADevice:
         finally:
             iam.delete_virtual_mfa_device(SerialNumber=serial)
 
+    def test_delete_virtual_mfa_device_nonexistent(self, iam):
+        """DeleteVirtualMFADevice with a non-existent serial number."""
+        fake_serial = "arn:aws:iam::123456789012:mfa/nonexistent-device"
+        with pytest.raises(Exception) as exc_info:
+            iam.delete_virtual_mfa_device(SerialNumber=fake_serial)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchEntity"
+
     def test_list_virtual_mfa_devices(self, iam):
         """ListVirtualMFADevices."""
         name = _unique("vmfa-list")
