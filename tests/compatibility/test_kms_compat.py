@@ -787,3 +787,41 @@ class TestKMSGapStubs:
         )
         assert "Grants" in resp
         assert isinstance(resp["Grants"], list)
+
+    def test_rotate_key_on_demand(self, kms):
+        """RotateKeyOnDemand triggers an on-demand rotation."""
+        key = kms.create_key(Description="rotate-on-demand-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.rotate_key_on_demand(KeyId=key_id)
+            assert "KeyId" in resp
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_list_key_rotations(self, kms):
+        """ListKeyRotations returns rotation history for a key."""
+        key = kms.create_key(Description="list-rotations-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.list_key_rotations(KeyId=key_id)
+            assert "Rotations" in resp
+            assert isinstance(resp["Rotations"], list)
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_replicate_key(self, kms):
+        """ReplicateKey replicates a multi-region key to another region."""
+        key = kms.create_key(
+            Description="replicate-test",
+            MultiRegion=True,
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.replicate_key(
+                KeyId=key_id,
+                ReplicaRegion="eu-west-1",
+            )
+            assert "ReplicaKeyMetadata" in resp
+            assert resp["ReplicaKeyMetadata"]["MultiRegion"] is True
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
