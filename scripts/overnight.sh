@@ -2,7 +2,7 @@
 # Overnight headless loop: expand compat test coverage one service at a time.
 #
 # Usage:
-#   ./scripts/overnight.sh              # run until all services done
+#   ./scripts/overnight.sh              # run all manageable services
 #   ./scripts/overnight.sh --max 5      # run at most 5 iterations
 #   ./scripts/overnight.sh --skip ec2   # skip specific services
 #
@@ -11,11 +11,11 @@
 #   - claude CLI installed and authenticated
 #
 # Each iteration:
-#   1. Picks the service with the biggest test gap
-#   2. Launches claude-code headless with a detailed prompt
-#   3. Claude probes, writes tests, fixes Moto if needed, commits & pushes
-#   4. Logs output to logs/overnight/
-#   5. Moves to next service
+#   1. Picks the service with the biggest test gap (≤200 total ops)
+#   2. Probes it to get working/not-implemented classification
+#   3. Launches claude-code headless with probe results baked into prompt
+#   4. Claude writes tests, validates quality, commits & pushes
+#   5. Logs output to logs/overnight/
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -63,83 +63,152 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo "=== [$i] Starting $SERVICE at $(date) ==="
     echo "    Log: $LOGFILE"
 
-    # Run claude headless
+    # Pre-probe: get the real server status for this service
+    PROBE_FILE="logs/overnight/${TIMESTAMP}-${SERVICE}-probe.json"
+    echo "    Probing ${SERVICE}..."
+    uv run python scripts/probe_service.py \
+        --service "$SERVICE" --all --json > "$PROBE_FILE" 2>&1 || true
+
+    # Get current coverage gaps
+    COVERAGE_OUTPUT=$(uv run python scripts/compat_coverage.py \
+        --service "$SERVICE" -v 2>&1) || true
+
+    # Extract working ops from probe
+    WORKING_OPS=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('$PROBE_FILE'))
+    working = [op['operation'] for op in data.get('operations', [])
+               if op['status'] == 'working']
+    print('\n'.join(working))
+except: pass
+" 2>/dev/null) || true
+
+    NOT_IMPL=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('$PROBE_FILE'))
+    broken = [op['operation'] for op in data.get('operations', [])
+              if op['status'] in ('not_implemented', '500_error')]
+    print('\n'.join(broken))
+except: pass
+" 2>/dev/null) || true
+
+    NEEDS_PARAMS=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('$PROBE_FILE'))
+    need = [op['operation'] for op in data.get('operations', [])
+            if op['status'] == 'needs_params']
+    print('\n'.join(need))
+except: pass
+" 2>/dev/null) || true
+
+    # Run claude headless with probe results baked in
     claude --print -p "$(cat <<PROMPT
-You are expanding compat test coverage for the **${SERVICE}** service in robotocore. Follow the headless overnight workflow from CLAUDE.md exactly. Here is your step-by-step plan:
+You are expanding compat test coverage for **${SERVICE}** in robotocore.
 
-## Step 1: Verify server is running
-Run: \`make status\`
-If not running, run: \`make start\`
+## Pre-computed probe results (from running server on port 4566)
 
-## Step 2: Probe the service
-Run: \`uv run python scripts/probe_service.py --service ${SERVICE} --all --json\`
-This gives you the allowlist. Save the output mentally — you'll need it.
-
-## Step 3: Check current coverage
-Run: \`uv run python scripts/compat_coverage.py --service ${SERVICE} -v\`
-This tells you which operations are already tested and which are gaps.
-
-## Step 4: Identify the work
-Cross-reference Steps 2 and 3. The work items are operations that:
-- Probe shows as "working" or "needs_params" (server can handle them)
-- compat_coverage shows as untested (no test exists)
-Skip operations where probe shows "not_implemented" or "500_error" unless it's an easy Moto fix.
-
-## Step 5: Read the existing test file
-Read: \`tests/compatibility/test_${SERVICE}_compat.py\`
-Understand: fixtures, imports, class structure, naming conventions, endpoint URL.
-
-## Step 6: Write tests for each gap operation
-For EACH untested-but-working operation:
-a) Check botocore for required parameters: \`python3 -c "import botocore.session; s=botocore.session.get_session(); m=s.get_service_model('${SERVICE}'); op=m.operation_model('<OpName>'); print([(k,v) for k,v in op.input_shape.members.items()])"\`
-b) Write a test with valid parameters that contacts the server
-c) Every test MUST have at least one assert on a response field (HTTPStatusCode, or a domain field)
-d) Run JUST that test immediately: \`uv run pytest tests/compatibility/test_${SERVICE}_compat.py -k "test_<name>" -q --tb=short\`
-e) If it fails because the operation isn't implemented server-side, DELETE the test and move on
-f) If it fails because of bad params, fix the params and retry
-
-CRITICAL RULES:
-- NEVER catch ParamValidationError and call it a passing test
-- NEVER write a test without an assertion
-- If you can't figure out valid params in ~2 minutes, skip the operation
-- Run each test individually as you write it — don't batch
-
-## Step 7: Handle 500-error operations (OPTIONAL, max 1 per service)
-If probe showed a 500_error for an important operation, check the Moto source:
-- \`vendor/moto/moto/${SERVICE}/responses.py\` and \`models.py\`
-- If it's a simple missing handler (like the S3 metadata tables fix), add a stub
-- Restart server: \`make stop && make start\`
-- Write a test for the fixed operation
-- If the fix is complex, skip it entirely
-
-## Step 8: Validate quality
-Run: \`uv run python scripts/validate_test_quality.py --file tests/compatibility/test_${SERVICE}_compat.py\`
-If no-contact rate > 5%, find and fix or delete the bad tests.
-
-## Step 9: Run full test suite
-Run: \`uv run pytest tests/compatibility/test_${SERVICE}_compat.py -q --tb=short\`
-ALL tests must pass. Fix any regressions.
-
-## Step 10: Run unit tests (sanity check)
-Run: \`uv run pytest tests/unit/ -q -n12 --tb=short 2>&1 | tail -5\`
-Must still pass.
-
-## Step 11: Commit and push
-Run: \`uv run python scripts/compat_coverage.py --service ${SERVICE}\` to get final stats.
-Stage and commit:
+These operations WORK (server responded, either 200 or a "resource not found" error proving implementation):
 \`\`\`
-git add tests/compatibility/test_${SERVICE}_compat.py vendor/moto
-git commit -m "Expand ${SERVICE} compat tests: X/Y operations (Z%)"
-git push
+${WORKING_OPS}
 \`\`\`
-Include actual numbers in the commit message.
 
-## Step 12: Check CI
-Run: \`gh run list --limit 1\`
-If the latest run failed, investigate briefly. If it's your fault, fix and push again.
+These operations are NOT IMPLEMENTED (server returned 501 or crashed):
+\`\`\`
+${NOT_IMPL}
+\`\`\`
 
-## Final output
-Print a summary line: "DONE: ${SERVICE} — X/Y operations tested (Z%), added N new tests"
+These operations need complex params the probe couldn't auto-fill:
+\`\`\`
+${NEEDS_PARAMS}
+\`\`\`
+
+## Current coverage gaps
+
+${COVERAGE_OUTPUT}
+
+## Your task
+
+Write compat tests ONLY for operations in the "WORK" list above that are NOT already tested (shown as missing in the coverage output). Do NOT write tests for not-implemented operations.
+
+For the "needs complex params" operations: try to figure out the params by checking botocore shapes, but skip any that would take more than 2 minutes to figure out.
+
+### How to write each test
+
+1. Read the existing test file: \`tests/compatibility/test_${SERVICE}_compat.py\`
+   (If the file uses hyphens differently, check: \`ls tests/compatibility/test_*${SERVICE}*\`)
+2. Understand the fixtures, class structure, and import pattern
+3. For each untested working operation:
+
+   a) Many operations need a pre-existing resource. Create it in the test or use an existing fixture:
+      - If the service has a "create" fixture (e.g., create_topic, create_stream), USE IT
+      - If not, create the resource at the start of the test, use it, then clean up
+      - Example pattern:
+        \`\`\`python
+        def test_get_topic_attributes(self, sns_client):
+            # Setup: create the resource
+            resp = sns_client.create_topic(Name="test-topic-attrs")
+            topic_arn = resp["TopicArn"]
+            try:
+                # Test the actual operation
+                result = sns_client.get_topic_attributes(TopicArn=topic_arn)
+                assert "Attributes" in result
+                assert result["Attributes"]["TopicArn"] == topic_arn
+            finally:
+                sns_client.delete_topic(TopicArn=topic_arn)
+        \`\`\`
+
+   b) For operations that take an ARN/ID of a non-existent resource, it's OK if they return
+      ResourceNotFoundException — that PROVES the operation is implemented. Test like:
+      \`\`\`python
+      def test_describe_nonexistent(self, client):
+          with pytest.raises(ClientError) as exc:
+              client.describe_thing(ThingId="nonexistent")
+          assert exc.value.response["Error"]["Code"] in (
+              "ResourceNotFoundException", "NotFoundException"
+          )
+      \`\`\`
+      This is a VALID test because the error comes from the SERVER, not boto3.
+
+   c) Run each test immediately after writing it:
+      \`uv run pytest tests/compatibility/test_${SERVICE}_compat.py -k "test_<name>" -q --tb=short\`
+
+   d) If it fails, debug and fix. If the server returns 501/not-implemented, DELETE the test.
+
+### Critical quality rules
+
+- NEVER catch ParamValidationError — that's boto3 client-side, proves nothing
+- NEVER write a test without an assertion on the response
+- NEVER write a test for an operation in the "NOT IMPLEMENTED" list
+- Every test must actually contact the server at localhost:4566
+- If you're stuck on params for >2 minutes, skip the operation and move on
+
+### After writing all tests
+
+1. Validate quality:
+   \`uv run python scripts/validate_test_quality.py --file tests/compatibility/test_${SERVICE}_compat.py\`
+   Delete any tests with no-server-contact.
+
+2. Run the full file:
+   \`uv run pytest tests/compatibility/test_${SERVICE}_compat.py -q --tb=short\`
+   All tests must pass.
+
+3. Quick unit test check:
+   \`uv run pytest tests/unit/ -q -n12 --tb=short 2>&1 | tail -5\`
+
+4. Get final coverage:
+   \`uv run python scripts/compat_coverage.py --service ${SERVICE}\`
+
+5. Commit and push:
+   \`\`\`
+   git add tests/compatibility/test_${SERVICE}_compat.py
+   git commit -m "Expand ${SERVICE} compat tests: X/Y operations (Z%)"
+   git push
+   \`\`\`
+
+6. Print: "DONE: ${SERVICE} — X/Y operations tested (Z%), added N new tests"
 PROMPT
 )" > "$LOGFILE" 2>&1
 

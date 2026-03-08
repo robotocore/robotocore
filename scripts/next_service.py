@@ -37,6 +37,12 @@ def main():
     parser.add_argument("--all", action="store_true", help="Show full ranked queue")
     parser.add_argument("--skip", nargs="*", default=[], help="Services to skip")
     parser.add_argument("--min-gap", type=int, default=2, help="Min gap to include")
+    parser.add_argument(
+        "--max-total",
+        type=int,
+        default=200,
+        help="Skip services with more total ops than this",
+    )
     args = parser.parse_args()
 
     coverage = get_coverage()
@@ -50,10 +56,12 @@ def main():
             continue
         if info["gap"] < args.min_gap:
             continue
+        if info["total"] > args.max_total:
+            continue
         ranked.append((svc, info))
 
-    # Sort: biggest gap first, but deprioritize EC2 (too massive for a single session)
-    ranked.sort(key=lambda x: (-x[1]["gap"] if x[0] != "ec2" else -1, x[0]))
+    # Sort: biggest gap first
+    ranked.sort(key=lambda x: (-x[1]["gap"], x[0]))
 
     if not ranked:
         print("ALL_DONE", file=sys.stderr)
