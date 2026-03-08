@@ -194,3 +194,91 @@ class TestEKSListOperations:
         finally:
             for n in names:
                 eks.delete_cluster(name=n)
+
+
+class TestEKSFargateProfileOperations:
+    """Tests for EKS Fargate profile create, describe, and delete."""
+
+    def test_create_and_describe_fargate_profile(self, eks):
+        cluster_name = _unique("cluster")
+        profile_name = _unique("fargate")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.create_fargate_profile(
+                fargateProfileName=profile_name,
+                clusterName=cluster_name,
+                podExecutionRoleArn="arn:aws:iam::123456789012:role/fargate-role",
+                selectors=[{"namespace": "default"}],
+            )
+            fp = resp["fargateProfile"]
+            assert fp["fargateProfileName"] == profile_name
+            assert fp["clusterName"] == cluster_name
+            assert "fargateProfileArn" in fp
+
+            desc = eks.describe_fargate_profile(
+                fargateProfileName=profile_name,
+                clusterName=cluster_name,
+            )
+            dfp = desc["fargateProfile"]
+            assert dfp["fargateProfileName"] == profile_name
+            assert dfp["clusterName"] == cluster_name
+            assert dfp["fargateProfileArn"] == fp["fargateProfileArn"]
+        finally:
+            eks.delete_fargate_profile(
+                fargateProfileName=profile_name,
+                clusterName=cluster_name,
+            )
+            eks.delete_cluster(name=cluster_name)
+
+    def test_delete_fargate_profile(self, eks):
+        cluster_name = _unique("cluster")
+        profile_name = _unique("fargate")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.create_fargate_profile(
+                fargateProfileName=profile_name,
+                clusterName=cluster_name,
+                podExecutionRoleArn="arn:aws:iam::123456789012:role/fargate-role",
+                selectors=[{"namespace": "default"}],
+            )
+            resp = eks.delete_fargate_profile(
+                fargateProfileName=profile_name,
+                clusterName=cluster_name,
+            )
+            assert resp["fargateProfile"]["fargateProfileName"] == profile_name
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_describe_nonexistent_fargate_profile(self, eks):
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.describe_fargate_profile(
+                    fargateProfileName="nonexistent",
+                    clusterName=cluster_name,
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            eks.delete_cluster(name=cluster_name)
