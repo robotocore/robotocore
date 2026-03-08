@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -30,6 +31,39 @@ class TestFSxDescribeOperations:
         resp = fsx.describe_backups()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(resp["Backups"], list)
+
+
+class TestFSxBackupOperations:
+    """Tests for FSx backup operations."""
+
+    def test_create_and_delete_backup(self, fsx):
+        """create_backup creates a backup, delete_backup removes it."""
+        # Create a file system to back up
+        fs_resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            # Create backup
+            backup_resp = fsx.create_backup(FileSystemId=fs_id)
+            assert "Backup" in backup_resp
+            backup_id = backup_resp["Backup"]["BackupId"]
+            assert backup_id.startswith("backup-")
+
+            # Delete backup
+            del_resp = fsx.delete_backup(BackupId=backup_id)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_delete_backup_nonexistent(self, fsx):
+        """delete_backup raises error for nonexistent backup."""
+        with pytest.raises(ClientError) as exc:
+            fsx.delete_backup(BackupId="backup-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestFSxListOperations:
