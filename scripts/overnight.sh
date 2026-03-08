@@ -171,6 +171,14 @@ PROMPT
     # Fix lint/format before committing (pre-commit hook requires this)
     uv run ruff check "$TEST_FILE" --fix --quiet 2>/dev/null || true
     uv run ruff format "$TEST_FILE" --quiet 2>/dev/null || true
+    # Fix E741 (ambiguous variable names) which ruff can't auto-fix
+    sed -i '' 's/\[l\[/[lnk[/g; s/ l\[/ lnk[/g; s/for l in/for lnk in/g' "$TEST_FILE" 2>/dev/null || true
+    # Verify lint passes; if not, revert
+    if ! uv run ruff check "$TEST_FILE" --quiet 2>/dev/null; then
+        echo "  LINT FAILED after fixes — reverting $TEST_FILE"
+        git checkout "$TEST_FILE" 2>/dev/null
+        continue
+    fi
 
     # Commit, push, restart server (code may have changed)
     AFTER=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
