@@ -64,7 +64,31 @@ jobs:
       - run: uv run mypy src/robotocore/ --ignore-missing-imports
         continue-on-error: true  # Non-blocking during transition
 
-  unit-tests:
+  # ── Unit test shards (run in parallel) ─────────────────────────────────────
+
+  unit-gateway:
+    name: "unit: gateway + protocols + providers"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: >
+          uv run pytest
+          tests/unit/gateway/
+          tests/unit/protocols/
+          tests/unit/providers/
+          tests/unit/test_handler_chain_unit.py
+          tests/unit/test_iam_middleware.py
+          tests/unit/test_moto_patches.py
+          -n4 -q --tb=short
+
+  unit-services:
+    name: "unit: service providers"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,7 +104,38 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
-      - run: uv run pytest tests/unit/ -v --tb=short -x
+      - run: uv run pytest tests/unit/services/ -n4 -q --tb=short
+
+  unit-infra:
+    name: "unit: infra (chaos, audit, state, extensions, observability)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: >
+          uv run pytest
+          tests/unit/observability/
+          tests/unit/test_fault_rules.py
+          tests/unit/test_chaos_middleware.py
+          tests/unit/test_audit_log.py
+          tests/unit/test_audit_log_unit.py
+          tests/unit/test_chaos.py
+          tests/unit/test_extensions.py
+          tests/unit/test_extensions_unit.py
+          tests/unit/test_state_manager.py
+          tests/unit/test_state_persistence.py
+          tests/unit/test_state_snapshots.py
+          tests/unit/test_state_manager_unit.py
+          tests/unit/test_resource_browser.py
+          tests/unit/test_main.py
+          -n4 -q --tb=short
+
+  # ── Integration + compatibility ────────────────────────────────────────────
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -112,7 +167,10 @@ jobs:
       - name: Run compatibility tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/compatibility/ -v --tb=short
+          uv run pytest tests/compatibility/
+          -n4 --dist=loadfile -q --tb=short
+
+  # ── Security ───────────────────────────────────────────────────────────────
 
   security-scan:
     runs-on: ubuntu-latest
@@ -129,9 +187,18 @@ jobs:
       - name: Dependency audit
         run: uv pip audit || true
 
+  # ── Docker + final gates ───────────────────────────────────────────────────
+
   docker-build:
     runs-on: ubuntu-latest
-    needs: [lint, test-quality, unit-tests, integration-tests, compatibility-tests]
+    needs:
+      - lint
+      - test-quality
+      - unit-gateway
+      - unit-services
+      - unit-infra
+      - integration-tests
+      - compatibility-tests
     steps:
       - uses: actions/checkout@v4
         with:
