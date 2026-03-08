@@ -35,7 +35,7 @@ class TestSTSProvider:
         )
         assert b"<Account>999888777666</Account>" in response.body
 
-    @patch("robotocore.services.sts.provider.forward_to_moto")
+    @patch("robotocore.services.sts.provider.forward_to_moto_with_body")
     def test_non_intercepted_action_forwards_to_moto(self, mock_forward):
         mock_forward.return_value = MagicMock(status_code=200)
         body = b"Action=GetCallerIdentity"
@@ -43,9 +43,9 @@ class TestSTSProvider:
         asyncio.get_event_loop().run_until_complete(
             handle_sts_request(request, "us-east-1", "123456789012")
         )
-        mock_forward.assert_called_once_with(request, "sts")
+        mock_forward.assert_called_once_with(request, "sts", body)
 
-    @patch("robotocore.services.sts.provider.forward_to_moto")
+    @patch("robotocore.services.sts.provider.forward_to_moto_with_body")
     def test_assume_role_forwards_to_moto(self, mock_forward):
         mock_forward.return_value = MagicMock(status_code=200)
         body = b"Action=AssumeRole&RoleArn=arn:aws:iam::123456789012:role/test&RoleSessionName=s"
@@ -111,7 +111,7 @@ class TestSTSProvider:
     def test_empty_action_forwards_to_moto(self):
         """A request with no Action parameter forwards to Moto."""
         with patch(
-            "robotocore.services.sts.provider.forward_to_moto",
+            "robotocore.services.sts.provider.forward_to_moto_with_body",
             new_callable=AsyncMock,
         ) as mock_forward:
             mock_forward.return_value = MagicMock(status_code=200)
