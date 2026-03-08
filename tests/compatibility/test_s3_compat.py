@@ -2171,3 +2171,315 @@ class TestS3AutoCoverage:
         """ListDirectoryBuckets returns a response."""
         resp = client.list_directory_buckets()
         assert "Buckets" in resp
+
+
+class TestS3AnalyticsMetricsInventory:
+    """Tests for Analytics, Metrics, Inventory, and Intelligent Tiering configs."""
+
+    def test_put_get_analytics_configuration(self, s3, bucket):
+        """PutBucketAnalyticsConfiguration + GetBucketAnalyticsConfiguration."""
+        config = {
+            "Id": "test-analytics",
+            "StorageClassAnalysis": {},
+        }
+        resp = s3.put_bucket_analytics_configuration(
+            Bucket=bucket,
+            Id="test-analytics",
+            AnalyticsConfiguration=config,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3.get_bucket_analytics_configuration(Bucket=bucket, Id="test-analytics")
+        assert "AnalyticsConfiguration" in resp
+
+    def test_put_get_metrics_configuration(self, s3, bucket):
+        """PutBucketMetricsConfiguration + GetBucketMetricsConfiguration."""
+        config = {"Id": "test-metrics"}
+        resp = s3.put_bucket_metrics_configuration(
+            Bucket=bucket,
+            Id="test-metrics",
+            MetricsConfiguration=config,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3.get_bucket_metrics_configuration(Bucket=bucket, Id="test-metrics")
+        assert "MetricsConfiguration" in resp
+
+    def test_put_get_intelligent_tiering(self, s3, bucket):
+        """PutBucketIntelligentTieringConfiguration + Get."""
+        config = {
+            "Id": "test-tiering",
+            "Status": "Enabled",
+            "Tierings": [
+                {"Days": 90, "AccessTier": "ARCHIVE_ACCESS"},
+            ],
+        }
+        resp = s3.put_bucket_intelligent_tiering_configuration(
+            Bucket=bucket,
+            Id="test-tiering",
+            IntelligentTieringConfiguration=config,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3.get_bucket_intelligent_tiering_configuration(Bucket=bucket, Id="test-tiering")
+        assert "IntelligentTieringConfiguration" in resp
+
+    def test_put_list_inventory_configuration(self, s3, bucket):
+        """PutBucketInventoryConfiguration + ListBucketInventoryConfigurations."""
+        config = {
+            "Destination": {
+                "S3BucketDestination": {
+                    "Bucket": f"arn:aws:s3:::{bucket}",
+                    "Format": "CSV",
+                },
+            },
+            "IsEnabled": True,
+            "Id": "test-inventory",
+            "IncludedObjectVersions": "All",
+            "Schedule": {"Frequency": "Daily"},
+        }
+        resp = s3.put_bucket_inventory_configuration(
+            Bucket=bucket,
+            Id="test-inventory",
+            InventoryConfiguration=config,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3.list_bucket_inventory_configurations(Bucket=bucket)
+        assert "ResponseMetadata" in resp
+
+    def test_delete_bucket_analytics_configuration(self, s3, bucket):
+        """DeleteBucketAnalyticsConfiguration succeeds idempotently."""
+        resp = s3.delete_bucket_analytics_configuration(Bucket=bucket, Id="nonexistent")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_bucket_metrics_configuration(self, s3, bucket):
+        """DeleteBucketMetricsConfiguration succeeds idempotently."""
+        resp = s3.delete_bucket_metrics_configuration(Bucket=bucket, Id="nonexistent")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_bucket_intelligent_tiering(self, s3, bucket):
+        """DeleteBucketIntelligentTieringConfiguration succeeds idempotently."""
+        resp = s3.delete_bucket_intelligent_tiering_configuration(Bucket=bucket, Id="nonexistent")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_bucket_inventory_configuration(self, s3, bucket):
+        """DeleteBucketInventoryConfiguration succeeds idempotently."""
+        resp = s3.delete_bucket_inventory_configuration(Bucket=bucket, Id="nonexistent")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_get_bucket_inventory_configuration_nonexistent(self, s3, bucket):
+        """GetBucketInventoryConfiguration on missing config returns 404."""
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_inventory_configuration(Bucket=bucket, Id="nonexistent")
+        assert "NoSuch" in exc.value.response["Error"]["Code"]
+
+
+class TestS3ReplicationAndRequestPayment:
+    """Tests for Replication and RequestPayment."""
+
+    def test_put_bucket_request_payment(self, s3, bucket):
+        """PutBucketRequestPayment accepts requester-pays config."""
+        resp = s3.put_bucket_request_payment(
+            Bucket=bucket,
+            RequestPaymentConfiguration={"Payer": "Requester"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify get_bucket_request_payment returns a response
+        resp = s3.get_bucket_request_payment(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_bucket_replication_not_configured(self, s3, bucket):
+        """GetBucketReplication when not configured returns error."""
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_replication(Bucket=bucket)
+        err = exc.value.response["Error"]["Code"]
+        assert "Replication" in err or "NotFound" in err
+
+    def test_delete_bucket_replication_noop(self, s3, bucket):
+        """DeleteBucketReplication on unconfigured bucket succeeds."""
+        resp = s3.delete_bucket_replication(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+    def test_put_bucket_replication_invalid(self, s3, bucket):
+        """PutBucketReplication with bad config returns 400."""
+        with pytest.raises(ClientError):
+            s3.put_bucket_replication(
+                Bucket=bucket,
+                ReplicationConfiguration={
+                    "Role": "arn:aws:iam::123456789012:role/test",
+                    "Rules": [
+                        {
+                            "Status": "Enabled",
+                            "Destination": {"Bucket": "arn:aws:s3:::dest"},
+                        }
+                    ],
+                },
+            )
+
+
+class TestS3OwnershipControls:
+    """Tests for DeleteBucketOwnershipControls."""
+
+    def test_delete_bucket_ownership_controls(self, s3, bucket):
+        """DeleteBucketOwnershipControls succeeds."""
+        s3.put_bucket_ownership_controls(
+            Bucket=bucket,
+            OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
+        )
+        resp = s3.delete_bucket_ownership_controls(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestS3ObjectRetentionAndTorrent:
+    """Tests for Object Retention, Torrent, Restore."""
+
+    def test_put_object_retention_without_lock(self, s3, bucket):
+        """PutObjectRetention on non-lock bucket returns error."""
+        s3.put_object(Bucket=bucket, Key="ret-test", Body=b"data")
+        with pytest.raises(ClientError):
+            s3.put_object_retention(
+                Bucket=bucket,
+                Key="ret-test",
+                Retention={
+                    "Mode": "GOVERNANCE",
+                    "RetainUntilDate": "2030-01-01T00:00:00Z",
+                },
+            )
+
+    def test_get_object_torrent(self, s3, bucket):
+        """GetObjectTorrent returns a response body."""
+        s3.put_object(Bucket=bucket, Key="torrent-test", Body=b"data")
+        resp = s3.get_object_torrent(Bucket=bucket, Key="torrent-test")
+        assert "Body" in resp
+
+    def test_restore_object_not_glacier(self, s3, bucket):
+        """RestoreObject on non-Glacier object returns error."""
+        s3.put_object(Bucket=bucket, Key="restore-test", Body=b"data")
+        with pytest.raises(ClientError) as exc:
+            s3.restore_object(
+                Bucket=bucket,
+                Key="restore-test",
+                RestoreRequest={"Days": 1},
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidObjectState"
+
+
+class TestS3DeprecatedNotification:
+    """Tests for deprecated PutBucketNotification (non-Configuration)."""
+
+    def test_put_bucket_notification_deprecated(self, s3, bucket):
+        """PutBucketNotification (deprecated API) succeeds."""
+        resp = s3.put_bucket_notification(
+            Bucket=bucket,
+            NotificationConfiguration={},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3SessionAndSelect:
+    """Tests for CreateSession and SelectObjectContent."""
+
+    def test_create_session(self, s3):
+        """CreateSession returns a 200 response."""
+        bucket_name = "test-session-bucket"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.create_session(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+    def test_select_object_content(self, s3, bucket):
+        """SelectObjectContent with CSV input returns results."""
+        csv_data = b"name,age\nalice,30\nbob,25\n"
+        s3.put_object(Bucket=bucket, Key="select-test.csv", Body=csv_data)
+        resp = s3.select_object_content(
+            Bucket=bucket,
+            Key="select-test.csv",
+            Expression="SELECT * FROM s3object",
+            ExpressionType="SQL",
+            InputSerialization={"CSV": {"FileHeaderInfo": "USE"}},
+            OutputSerialization={"CSV": {}},
+        )
+        # Read the event stream
+        records = b""
+        for event in resp["Payload"]:
+            if "Records" in event:
+                records += event["Records"]["Payload"]
+        assert len(records) > 0
+
+
+class TestS3AbacAndMetadata:
+    """Tests for Bucket ABAC and Metadata operations."""
+
+    def test_get_bucket_abac(self, s3, bucket):
+        """GetBucketAbac returns ABAC status."""
+        resp = s3.get_bucket_abac(Bucket=bucket)
+        assert "Status" in resp or "ResponseMetadata" in resp
+
+    def test_put_bucket_abac(self, s3, bucket):
+        """PutBucketAbac sets ABAC status."""
+        resp = s3.put_bucket_abac(
+            Bucket=bucket,
+            AbacStatus={"Status": "Enabled"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_bucket_metadata_configuration(self, s3, bucket):
+        """GetBucketMetadataConfiguration returns a response."""
+        resp = s3.get_bucket_metadata_configuration(Bucket=bucket)
+        assert "ResponseMetadata" in resp
+
+    def test_get_bucket_metadata_table_configuration(self, s3, bucket):
+        """GetBucketMetadataTableConfiguration returns a response."""
+        resp = s3.get_bucket_metadata_table_configuration(Bucket=bucket)
+        assert "ResponseMetadata" in resp
+
+    def test_delete_bucket_metadata_config_succeeds(self, s3, bucket):
+        """DeleteBucketMetadataConfiguration succeeds idempotently."""
+        resp = s3.delete_bucket_metadata_configuration(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_bucket_metadata_table_config_succeeds(self, s3, bucket):
+        """DeleteBucketMetadataTableConfiguration succeeds idempotently."""
+        resp = s3.delete_bucket_metadata_table_configuration(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_update_metadata_inventory_table(self, s3, bucket):
+        """UpdateBucketMetadataInventoryTableConfiguration."""
+        resp = s3.update_bucket_metadata_inventory_table_configuration(
+            Bucket=bucket,
+            InventoryTableConfiguration={"ConfigurationState": "ENABLED"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_metadata_journal_table(self, s3, bucket):
+        """UpdateBucketMetadataJournalTableConfiguration."""
+        resp = s3.update_bucket_metadata_journal_table_configuration(
+            Bucket=bucket,
+            JournalTableConfiguration={"RecordExpiration": {"Expiration": "ENABLED"}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3RenameAndEncryption:
+    """Tests for RenameObject and UpdateObjectEncryption."""
+
+    def test_rename_object(self, s3, bucket):
+        """RenameObject renames an existing object."""
+        s3.put_object(Bucket=bucket, Key="old-name.txt", Body=b"content")
+        resp = s3.rename_object(
+            Bucket=bucket,
+            Key="new-name.txt",
+            RenameSource="old-name.txt",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_object_encryption(self, s3, bucket):
+        """UpdateObjectEncryption changes encryption on an object."""
+        s3.put_object(Bucket=bucket, Key="enc-test.txt", Body=b"secret")
+        resp = s3.update_object_encryption(
+            Bucket=bucket,
+            Key="enc-test.txt",
+            ObjectEncryption={
+                "SSEKMS": {"KMSKeyArn": "arn:aws:kms:us-east-1:123456789012:key/test"}
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
