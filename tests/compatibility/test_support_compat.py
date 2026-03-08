@@ -92,3 +92,54 @@ class TestSupportAutoCoverage:
         """ResolveCase returns a response."""
         resp = client.resolve_case()
         assert "initialCaseStatus" in resp
+
+    def test_add_communication_to_case(self, client):
+        """AddCommunicationToCase adds a message to an existing case."""
+        create_resp = client.create_case(
+            subject="Communication test",
+            communicationBody="Initial message",
+            serviceCode="general-info",
+            categoryCode="using-aws",
+            severityCode="low",
+        )
+        case_id = create_resp["caseId"]
+        resp = client.add_communication_to_case(
+            caseId=case_id,
+            communicationBody="Follow-up message",
+        )
+        assert resp["result"] is True
+
+    def test_describe_communications(self, client):
+        """DescribeCommunications returns communications for a case."""
+        create_resp = client.create_case(
+            subject="Describe comms test",
+            communicationBody="Hello from compat test",
+            serviceCode="general-info",
+            categoryCode="using-aws",
+            severityCode="low",
+        )
+        case_id = create_resp["caseId"]
+        resp = client.describe_communications(caseId=case_id)
+        assert "communications" in resp
+        assert len(resp["communications"]) > 0
+
+    def test_refresh_trusted_advisor_check(self, client):
+        """RefreshTrustedAdvisorCheck refreshes a check."""
+        checks_resp = client.describe_trusted_advisor_checks(language="en")
+        check_id = checks_resp["checks"][0]["id"]
+        resp = client.refresh_trusted_advisor_check(checkId=check_id)
+        assert "status" in resp
+
+    def test_describe_trusted_advisor_check_result(self, client):
+        """DescribeTrustedAdvisorCheckResult returns check result."""
+        checks_resp = client.describe_trusted_advisor_checks(language="en")
+        check_id = checks_resp["checks"][0]["id"]
+        resp = client.describe_trusted_advisor_check_result(checkId=check_id)
+        assert "result" in resp
+
+    def test_describe_trusted_advisor_check_summaries(self, client):
+        """DescribeTrustedAdvisorCheckSummaries returns summaries."""
+        checks_resp = client.describe_trusted_advisor_checks(language="en")
+        check_id = checks_resp["checks"][0]["id"]
+        resp = client.describe_trusted_advisor_check_summaries(checkIds=[check_id])
+        assert "summaries" in resp
