@@ -45,7 +45,10 @@ class TestDAXClusterOperations:
         assert cluster["ClusterName"] == name
         assert cluster["Status"] == "creating"
         assert "ClusterArn" in cluster
-        dax.delete_cluster(ClusterName=name)
+        try:
+            dax.delete_cluster(ClusterName=name)
+        except Exception:
+            pass  # cluster may have advanced past "deleting" before delete returns
 
     def test_describe_clusters_filtered(self, dax, cluster):
         resp = dax.describe_clusters(ClusterNames=[cluster["name"]])
