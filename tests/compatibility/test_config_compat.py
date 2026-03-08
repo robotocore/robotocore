@@ -990,15 +990,132 @@ class TestOrganizationConformancePackDetailedStatus:
         assert "NoSuchOrganizationConformancePackException" in exc.value.response["Error"]["Code"]
 
 
-class TestConfigStoredQuery:
-    """Test GetStoredQuery operation."""
+class TestConformancePackCRUD:
+    """Test ConformancePack create/describe/delete lifecycle."""
 
     @pytest.fixture
     def client(self):
         return make_client("config")
 
-    def test_get_stored_query_nonexistent(self, client):
-        """GetStoredQuery for a nonexistent query returns error."""
-        with pytest.raises(ClientError) as exc:
-            client.get_stored_query(QueryName="nonexistent-query-xyz")
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    def test_put_conformance_pack(self, client):
+        """PutConformancePack creates a conformance pack and returns an ARN."""
+        import uuid
+
+        name = f"cp-put-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = client.put_conformance_pack(
+                ConformancePackName=name,
+                TemplateBody='AWSTemplateFormatVersion: "2010-09-09"\nResources: []',
+            )
+            assert "ConformancePackArn" in resp
+            assert name in resp["ConformancePackArn"]
+        finally:
+            client.delete_conformance_pack(ConformancePackName=name)
+
+    def test_describe_conformance_packs_by_name(self, client):
+        """DescribeConformancePacks returns details for a named pack."""
+        import uuid
+
+        name = f"cp-desc-{uuid.uuid4().hex[:8]}"
+        client.put_conformance_pack(
+            ConformancePackName=name,
+            TemplateBody='AWSTemplateFormatVersion: "2010-09-09"\nResources: []',
+        )
+        try:
+            resp = client.describe_conformance_packs(ConformancePackNames=[name])
+            assert len(resp["ConformancePackDetails"]) == 1
+            assert resp["ConformancePackDetails"][0]["ConformancePackName"] == name
+            assert "ConformancePackArn" in resp["ConformancePackDetails"][0]
+        finally:
+            client.delete_conformance_pack(ConformancePackName=name)
+
+    def test_delete_conformance_pack(self, client):
+        """DeleteConformancePack removes the pack."""
+        import uuid
+
+        name = f"cp-del-{uuid.uuid4().hex[:8]}"
+        client.put_conformance_pack(
+            ConformancePackName=name,
+            TemplateBody='AWSTemplateFormatVersion: "2010-09-09"\nResources: []',
+        )
+        client.delete_conformance_pack(ConformancePackName=name)
+        resp = client.describe_conformance_packs()
+        names = [p["ConformancePackName"] for p in resp["ConformancePackDetails"]]
+        assert name not in names
+
+
+class TestStoredQueryCRUD:
+    """Test StoredQuery create/get/list/delete lifecycle."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_put_stored_query(self, client):
+        """PutStoredQuery creates a query and returns an ARN."""
+        import uuid
+
+        name = f"sq-put-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = client.put_stored_query(
+                StoredQuery={
+                    "QueryName": name,
+                    "Expression": "SELECT resourceId WHERE resourceType = 'AWS::S3::Bucket'",
+                },
+            )
+            assert "QueryArn" in resp
+            assert name in resp["QueryArn"]
+        finally:
+            client.delete_stored_query(QueryName=name)
+
+    def test_get_stored_query(self, client):
+        """GetStoredQuery returns the query details."""
+        import uuid
+
+        name = f"sq-get-{uuid.uuid4().hex[:8]}"
+        client.put_stored_query(
+            StoredQuery={
+                "QueryName": name,
+                "Expression": "SELECT resourceId WHERE resourceType = 'AWS::EC2::Instance'",
+            },
+        )
+        try:
+            resp = client.get_stored_query(QueryName=name)
+            assert resp["StoredQuery"]["QueryName"] == name
+            assert "Expression" in resp["StoredQuery"]
+        finally:
+            client.delete_stored_query(QueryName=name)
+
+    def test_list_stored_queries_includes_created(self, client):
+        """ListStoredQueries includes a created query."""
+        import uuid
+
+        name = f"sq-list-{uuid.uuid4().hex[:8]}"
+        client.put_stored_query(
+            StoredQuery={
+                "QueryName": name,
+                "Expression": "SELECT resourceId",
+            },
+        )
+        try:
+            resp = client.list_stored_queries()
+            query_names = [q["QueryName"] for q in resp["StoredQueryMetadata"]]
+            assert name in query_names
+        finally:
+            client.delete_stored_query(QueryName=name)
+
+    def test_delete_stored_query(self, client):
+        """DeleteStoredQuery removes the query."""
+        import uuid
+
+        name = f"sq-del-{uuid.uuid4().hex[:8]}"
+        client.put_stored_query(
+            StoredQuery={
+                "QueryName": name,
+                "Expression": "SELECT resourceId",
+            },
+        )
+        client.delete_stored_query(QueryName=name)
+        resp = client.list_stored_queries()
+        query_names = [q["QueryName"] for q in resp["StoredQueryMetadata"]]
+        assert name not in query_names
