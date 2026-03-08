@@ -8,7 +8,7 @@ from starlette.responses import Response
 
 from robotocore.gateway.handler_chain import RequestContext
 from robotocore.gateway.router import route_to_service
-from robotocore.protocols.service_info import get_service_protocol
+from robotocore.protocols.service_info import get_service_json_version, get_service_protocol
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +126,8 @@ def logging_response_handler(context: RequestContext) -> None:
 
 def error_normalizer(context: RequestContext, exc: Exception) -> None:
     """Convert exceptions to properly formatted AWS error responses."""
+    from xml.sax.saxutils import escape as xml_escape
+
     protocol = context.protocol or "query"
 
     if protocol in ("json", "rest-json"):
@@ -135,17 +137,21 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
                 "message": str(exc),
             }
         )
+        # Use the correct JSON version from botocore metadata (1.0 or 1.1)
+        json_version = get_service_json_version(context.service_name) or "1.0"
         context.response = Response(
             content=body,
             status_code=500,
-            media_type="application/x-amz-json-1.0",
+            media_type=f"application/x-amz-json-{json_version}",
         )
     else:
         # XML format for query, rest-xml, ec2
+        # Escape the exception message to prevent XML injection
+        safe_message = xml_escape(str(exc))
         body = (
             f"<ErrorResponse><Error>"
             f"<Code>InternalError</Code>"
-            f"<Message>{exc}</Message>"
+            f"<Message>{safe_message}</Message>"
             f"</Error></ErrorResponse>"
         )
         context.response = Response(

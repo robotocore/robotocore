@@ -14,7 +14,6 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.observability.logging import log_request, log_response
-from robotocore.observability.metrics import request_counter
 
 logger = logging.getLogger(__name__)
 
@@ -101,14 +100,6 @@ class TracingMiddleware(BaseHTTPMiddleware):
         # Add standard headers
         response.headers["X-Amz-Request-Id"] = request_id
         response.headers["X-Robotocore-Request-Id"] = request_id
-
-        # Track request count per service (for health endpoint)
-        if not request.url.path.startswith("/_robotocore/"):
-            from robotocore.gateway.router import route_to_service
-
-            service = route_to_service(request)
-            if service:
-                request_counter.increment(service)
 
         # Determine body size from content-length or 0
         body_size = int(response.headers.get("content-length", "0"))

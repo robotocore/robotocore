@@ -145,7 +145,7 @@ def _extract_account_id(request: Request) -> str:
     credential = request.query_params.get("X-Amz-Credential", "")
     if credential:
         parts = credential.split("/")
-        if parts and parts[0].isdigit():
+        if parts and len(parts[0]) == 12 and parts[0].isdigit():
             return parts[0]
     return DEFAULT_ACCOUNT_ID
 
