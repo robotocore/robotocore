@@ -2563,11 +2563,115 @@ class TestS3RenameAndEncryption:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
-class TestS3GetBucketLifecycle:
-    """Test GetBucketLifecycle (deprecated API, but still working)."""
+class TestS3DeprecatedLifecycle:
+    """Tests for deprecated GetBucketLifecycle API."""
 
-    def test_get_bucket_lifecycle_no_config(self, s3, bucket):
-        """GetBucketLifecycle on a bucket with no lifecycle returns error."""
-        with pytest.raises(ClientError) as exc:
-            s3.get_bucket_lifecycle(Bucket=bucket)
-        assert exc.value.response["Error"]["Code"] == "NoSuchLifecycleConfiguration"
+    def test_get_bucket_lifecycle_deprecated(self, s3, bucket):
+        """GetBucketLifecycle (deprecated) returns rules after PutBucketLifecycleConfiguration."""
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "expire-logs",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "logs/"},
+                        "Expiration": {"Days": 30},
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_lifecycle(Bucket=bucket)
+        assert "Rules" in resp
+        assert len(resp["Rules"]) >= 1
+        assert resp["Rules"][0]["ID"] == "expire-logs"
+
+
+class TestS3ReplicationLifecycle:
+    """Tests for PutBucketReplication + GetBucketReplication + DeleteBucketReplication."""
+
+    def test_put_get_delete_bucket_replication(self, s3):
+        """Full replication configuration lifecycle with versioned buckets."""
+        src = "test-repl-src-lifecycle"
+        dst = "test-repl-dst-lifecycle"
+        s3.create_bucket(Bucket=src)
+        s3.create_bucket(Bucket=dst)
+        s3.put_bucket_versioning(Bucket=src, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_bucket_versioning(Bucket=dst, VersioningConfiguration={"Status": "Enabled"})
+        try:
+            s3.put_bucket_replication(
+                Bucket=src,
+                ReplicationConfiguration={
+                    "Role": "arn:aws:iam::123456789012:role/replication-role",
+                    "Rules": [
+                        {
+                            "ID": "replicate-all",
+                            "Status": "Enabled",
+                            "Prefix": "",
+                            "Destination": {
+                                "Bucket": f"arn:aws:s3:::{dst}",
+                            },
+                        }
+                    ],
+                },
+            )
+            resp = s3.get_bucket_replication(Bucket=src)
+            assert "ReplicationConfiguration" in resp
+            rules = resp["ReplicationConfiguration"]["Rules"]
+            assert len(rules) >= 1
+            assert rules[0]["ID"] == "replicate-all"
+
+            s3.delete_bucket_replication(Bucket=src)
+            with pytest.raises(ClientError):
+                s3.get_bucket_replication(Bucket=src)
+        finally:
+            s3.delete_bucket(Bucket=src)
+            s3.delete_bucket(Bucket=dst)
+
+
+class TestS3InventoryGetAfterPut:
+    """Test GetBucketInventoryConfiguration on an existing configuration."""
+
+    def test_get_bucket_inventory_configuration_existing(self, s3, bucket):
+        """GetBucketInventoryConfiguration returns the config after put."""
+        config = {
+            "Destination": {
+                "S3BucketDestination": {
+                    "Bucket": f"arn:aws:s3:::{bucket}",
+                    "Format": "CSV",
+                },
+            },
+            "IsEnabled": True,
+            "Id": "inv-get-test",
+            "IncludedObjectVersions": "All",
+            "Schedule": {"Frequency": "Daily"},
+        }
+        s3.put_bucket_inventory_configuration(
+            Bucket=bucket, Id="inv-get-test", InventoryConfiguration=config
+        )
+        resp = s3.get_bucket_inventory_configuration(Bucket=bucket, Id="inv-get-test")
+        assert "InventoryConfiguration" in resp
+        assert resp["InventoryConfiguration"]["Id"] == "inv-get-test"
+        assert resp["InventoryConfiguration"]["IsEnabled"] is True
+
+
+class TestS3NotificationWithTopic:
+    """Test PutBucketNotificationConfiguration with SNS topic."""
+
+    def test_put_get_notification_configuration_with_topic(self, s3, bucket):
+        """PutBucketNotificationConfiguration with TopicConfigurations."""
+        s3.put_bucket_notification_configuration(
+            Bucket=bucket,
+            NotificationConfiguration={
+                "TopicConfigurations": [
+                    {
+                        "TopicArn": "arn:aws:sns:us-east-1:123456789012:test-topic",
+                        "Events": ["s3:ObjectCreated:*"],
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_notification_configuration(Bucket=bucket)
+        assert "TopicConfigurations" in resp
+        assert len(resp["TopicConfigurations"]) >= 1
+        assert resp["TopicConfigurations"][0]["Events"] == ["s3:ObjectCreated:*"]

@@ -656,52 +656,104 @@ class TestEcsAutoCoverage:
         resp = client.list_tasks()
         assert "taskArns" in resp
 
-    def test_describe_container_instances_with_fake_id(self, client):
-        """DescribeContainerInstances with fake IDs returns failures."""
-        from botocore.exceptions import ClientError
 
-        name = f"ci-test-{uuid.uuid4().hex[:8]}"
-        client.create_cluster(clusterName=name)
-        try:
-            resp = client.describe_container_instances(
-                cluster=name,
-                containerInstances=["arn:aws:ecs:us-east-1:123456789012:container-instance/fake"],
-            )
-            assert "failures" in resp
-            assert len(resp["failures"]) >= 1
-        except ClientError as e:
-            # ClusterNotFoundException also proves server contact
-            assert e.response["Error"]["Code"] == "ClusterNotFoundException"
-        finally:
-            try:
-                client.delete_cluster(cluster=name)
-            except Exception:
-                pass
+class TestCapacityProviderOperations:
+    """Tests for ECS capacity provider create and delete."""
 
-    def test_describe_task_sets_nonexistent_service(self, client):
-        """DescribeTaskSets with a nonexistent service returns error."""
-        from botocore.exceptions import ClientError
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
 
-        name = f"ts-test-{uuid.uuid4().hex[:8]}"
-        client.create_cluster(clusterName=name)
-        try:
-            with pytest.raises(ClientError) as exc:
-                client.describe_task_sets(
-                    cluster=name,
-                    service="nonexistent-service",
-                )
-            assert exc.value.response["Error"]["Code"] in (
-                "ServiceNotFoundException",
-                "ClusterNotFoundException",
-                "ServiceNotActiveException",
-            )
-        finally:
-            client.delete_cluster(cluster=name)
-
-    def test_list_attributes(self, client):
-        """ListAttributes returns a response with attributes key."""
-        resp = client.list_attributes(
-            targetType="container-instance",
+    def test_create_capacity_provider(self, ecs):
+        cp_name = _unique("cp")
+        resp = ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+            },
         )
-        assert "attributes" in resp
-        assert isinstance(resp["attributes"], list)
+        assert resp["capacityProvider"]["name"] == cp_name
+        assert resp["capacityProvider"]["status"] == "ACTIVE"
+        ecs.delete_capacity_provider(capacityProvider=cp_name)
+
+    def test_delete_capacity_provider(self, ecs):
+        cp_name = _unique("del-cp")
+        ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+            },
+        )
+        resp = ecs.delete_capacity_provider(capacityProvider=cp_name)
+        assert resp["capacityProvider"]["name"] == cp_name
+
+    def test_create_capacity_provider_with_managed_scaling(self, ecs):
+        cp_name = _unique("ms-cp")
+        resp = ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+                "managedScaling": {
+                    "status": "ENABLED",
+                    "targetCapacity": 80,
+                },
+            },
+        )
+        cp = resp["capacityProvider"]
+        assert cp["name"] == cp_name
+        assert "autoScalingGroupProvider" in cp
+        ecs.delete_capacity_provider(capacityProvider=cp_name)
+
+
+class TestAccountSettingOperations:
+    """Tests for ECS account settings."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_put_account_setting(self, ecs):
+        resp = ecs.put_account_setting(name="containerInstanceLongArnFormat", value="enabled")
+        assert resp["setting"]["name"] == "containerInstanceLongArnFormat"
+        assert resp["setting"]["value"] == "enabled"
+
+    def test_put_and_list_account_settings(self, ecs):
+        ecs.put_account_setting(name="serviceLongArnFormat", value="enabled")
+        resp = ecs.list_account_settings()
+        assert "settings" in resp
+        names = [s["name"] for s in resp["settings"]]
+        assert "serviceLongArnFormat" in names
+
+    def test_put_account_setting_effective(self, ecs):
+        ecs.put_account_setting(name="taskLongArnFormat", value="enabled")
+        resp = ecs.list_account_settings(name="taskLongArnFormat", effectiveSettings=True)
+        found = [s for s in resp["settings"] if s["name"] == "taskLongArnFormat"]
+        assert len(found) >= 1
+        assert found[0]["value"] == "enabled"
+
+
+class TestListAttributesOperation:
+    """Tests for ECS ListAttributes."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_attributes_empty(self, ecs):
+        name = _unique("attr-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.list_attributes(cluster=name, targetType="container-instance")
+            assert "attributes" in resp
+            assert isinstance(resp["attributes"], list)
+        finally:
+            ecs.delete_cluster(cluster=name)

@@ -533,3 +533,27 @@ class TestACMExtended:
                 ValidationDomain="example.com",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_certificate_on_imported_cert(self, acm):
+        """GetCertificate on an imported certificate returns the cert PEM."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        resp = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)
+        arn = resp["CertificateArn"]
+        try:
+            got = acm.get_certificate(CertificateArn=arn)
+            assert "Certificate" in got
+            assert "BEGIN CERTIFICATE" in got["Certificate"]
+        finally:
+            acm.delete_certificate(CertificateArn=arn)
+
+    def test_export_certificate_non_private_raises(self, acm):
+        """ExportCertificate on a non-private cert raises ValidationException."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        resp = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)
+        arn = resp["CertificateArn"]
+        try:
+            with pytest.raises(ClientError) as exc:
+                acm.export_certificate(CertificateArn=arn, Passphrase=b"test-pass")
+            assert exc.value.response["Error"]["Code"] == "ValidationException"
+        finally:
+            acm.delete_certificate(CertificateArn=arn)

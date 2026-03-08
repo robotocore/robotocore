@@ -1700,3 +1700,140 @@ class TestRoute53HostedZonesByVPC:
         finally:
             ec2.delete_vpc(VpcId=vpc1_id)
             ec2.delete_vpc(VpcId=vpc2_id)
+
+
+class TestRoute53HealthCheckTypes:
+    """Tests for different health check types and lifecycle operations."""
+
+    def test_health_check_http_str_match(self, route53):
+        """CreateHealthCheck with HTTP_STR_MATCH type includes SearchString."""
+        resp = route53.create_health_check(
+            CallerReference=_unique("hc-str"),
+            HealthCheckConfig={
+                "Type": "HTTP_STR_MATCH",
+                "FullyQualifiedDomainName": "example.com",
+                "Port": 80,
+                "ResourcePath": "/health",
+                "SearchString": "OK",
+            },
+        )
+        hc_id = resp["HealthCheck"]["Id"]
+        try:
+            config = resp["HealthCheck"]["HealthCheckConfig"]
+            assert config["Type"] == "HTTP_STR_MATCH"
+            assert config["SearchString"] == "OK"
+
+            # Verify via GetHealthCheck
+            get_resp = route53.get_health_check(HealthCheckId=hc_id)
+            assert get_resp["HealthCheck"]["HealthCheckConfig"]["SearchString"] == "OK"
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+    def test_health_check_calculated(self, route53):
+        """CreateHealthCheck CALCULATED type aggregates child health checks."""
+        child1 = route53.create_health_check(
+            CallerReference=_unique("calc-c1"),
+            HealthCheckConfig={
+                "Type": "HTTP",
+                "FullyQualifiedDomainName": "example.com",
+                "Port": 80,
+            },
+        )
+        child2 = route53.create_health_check(
+            CallerReference=_unique("calc-c2"),
+            HealthCheckConfig={
+                "Type": "HTTP",
+                "FullyQualifiedDomainName": "example.com",
+                "Port": 8080,
+            },
+        )
+        c1_id = child1["HealthCheck"]["Id"]
+        c2_id = child2["HealthCheck"]["Id"]
+        try:
+            calc = route53.create_health_check(
+                CallerReference=_unique("calc-parent"),
+                HealthCheckConfig={
+                    "Type": "CALCULATED",
+                    "ChildHealthChecks": [c1_id, c2_id],
+                    "HealthThreshold": 1,
+                },
+            )
+            calc_id = calc["HealthCheck"]["Id"]
+            try:
+                config = calc["HealthCheck"]["HealthCheckConfig"]
+                assert config["Type"] == "CALCULATED"
+                assert set(config["ChildHealthChecks"]) == {c1_id, c2_id}
+                assert config["HealthThreshold"] == 1
+            finally:
+                route53.delete_health_check(HealthCheckId=calc_id)
+        finally:
+            route53.delete_health_check(HealthCheckId=c1_id)
+            route53.delete_health_check(HealthCheckId=c2_id)
+
+    def test_health_check_update_failure_threshold(self, route53):
+        """UpdateHealthCheck changes FailureThreshold."""
+        resp = route53.create_health_check(
+            CallerReference=_unique("hc-ft"),
+            HealthCheckConfig={
+                "Type": "HTTP",
+                "FullyQualifiedDomainName": "example.com",
+                "Port": 80,
+                "FailureThreshold": 3,
+            },
+        )
+        hc_id = resp["HealthCheck"]["Id"]
+        try:
+            update = route53.update_health_check(
+                HealthCheckId=hc_id,
+                FailureThreshold=5,
+            )
+            assert update["HealthCheck"]["HealthCheckConfig"]["FailureThreshold"] == 5
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+    def test_health_check_count_reflects_creates(self, route53):
+        """GetHealthCheckCount increments when health checks are created."""
+        initial = route53.get_health_check_count()["HealthCheckCount"]
+        hc = route53.create_health_check(
+            CallerReference=_unique("hc-cnt"),
+            HealthCheckConfig={
+                "Type": "TCP",
+                "IPAddress": "10.0.0.1",
+                "Port": 443,
+            },
+        )
+        hc_id = hc["HealthCheck"]["Id"]
+        try:
+            after = route53.get_health_check_count()["HealthCheckCount"]
+            assert after > initial
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+    def test_get_geo_location_with_country_code(self, route53):
+        """GetGeoLocation with CountryCode returns matching details."""
+        resp = route53.get_geo_location(CountryCode="US")
+        details = resp["GeoLocationDetails"]
+        assert details["CountryCode"] == "US"
+
+    def test_reusable_delegation_set_used_in_hosted_zone(self, route53):
+        """Create a hosted zone using a reusable delegation set."""
+        ds = route53.create_reusable_delegation_set(
+            CallerReference=_unique("ds-use"),
+        )
+        ds_id = ds["DelegationSet"]["Id"].split("/")[-1]
+        try:
+            zone = route53.create_hosted_zone(
+                Name="ds-zone.example.com",
+                CallerReference=_unique("ds-zone-ref"),
+                DelegationSetId=ds_id,
+            )
+            zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+            try:
+                get = route53.get_hosted_zone(Id=zone_id)
+                assert "DelegationSet" in get
+                ns = get["DelegationSet"]["NameServers"]
+                assert len(ns) >= 1
+            finally:
+                route53.delete_hosted_zone(Id=zone_id)
+        finally:
+            route53.delete_reusable_delegation_set(Id=ds_id)

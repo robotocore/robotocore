@@ -396,3 +396,41 @@ class TestSesv2AutoCoverage:
             assert isinstance(resp["Tags"], list)
         finally:
             client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_untag_resource(self, client):
+        """UntagResource removes tags from a configuration set."""
+        name = _uid("cfgset")
+        client.create_configuration_set(ConfigurationSetName=name)
+        arn = f"arn:aws:ses:us-east-1:123456789012:configuration-set/{name}"
+        try:
+            client.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "remove-me", "Value": "yes"}, {"Key": "keep-me", "Value": "yes"}],
+            )
+            client.untag_resource(ResourceArn=arn, TagKeys=["remove-me"])
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "remove-me" not in tag_keys
+            assert "keep-me" in tag_keys
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_send_email(self, client):
+        """SendEmail sends a simple email and returns a MessageId."""
+        email = f"{_uid('send')}@example.com"
+        client.create_email_identity(EmailIdentity=email)
+        try:
+            resp = client.send_email(
+                FromEmailAddress=email,
+                Destination={"ToAddresses": ["recipient@example.com"]},
+                Content={
+                    "Simple": {
+                        "Subject": {"Data": "Test Subject"},
+                        "Body": {"Text": {"Data": "Test body content"}},
+                    }
+                },
+            )
+            assert "MessageId" in resp
+            assert len(resp["MessageId"]) > 0
+        finally:
+            client.delete_email_identity(EmailIdentity=email)
