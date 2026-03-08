@@ -122,3 +122,33 @@ class TestEnvironmentOperations:
             SolutionStackName=solution_stack,
         )
         assert "Status" in resp
+
+
+class TestTagsForResource:
+    @pytest.fixture
+    def env_arn(self, eb):
+        app_name = _unique("tag-app")
+        env_name = _unique("tag-env")
+        eb.create_application(ApplicationName=app_name)
+        stacks = eb.list_available_solution_stacks()["SolutionStacks"]
+        resp = eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=stacks[0],
+        )
+        arn = resp["EnvironmentArn"]
+        yield arn
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_list_tags_for_resource(self, eb, env_arn):
+        resp = eb.list_tags_for_resource(ResourceArn=env_arn)
+        assert "ResourceTags" in resp
+
+    def test_update_tags_for_resource(self, eb, env_arn):
+        eb.update_tags_for_resource(
+            ResourceArn=env_arn,
+            TagsToAdd=[{"Key": "env", "Value": "test"}],
+        )
+        resp = eb.list_tags_for_resource(ResourceArn=env_arn)
+        tags = {t["Key"]: t["Value"] for t in resp["ResourceTags"]}
+        assert tags["env"] == "test"
