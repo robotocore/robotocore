@@ -127,3 +127,27 @@ class TestMediaStoreMetricPolicy:
 
         get_resp = mediastore_client.get_metric_policy(ContainerName=container["Name"])
         assert get_resp["MetricPolicy"]["ContainerLevelMetrics"] == "ENABLED"
+
+
+class TestMediaStoreTagsForResource:
+    def test_list_tags_for_resource(self, mediastore_client, container):
+        resp = mediastore_client.list_tags_for_resource(Resource=container["ARN"])
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], list)
+
+    def test_list_tags_for_resource_with_tags(self, mediastore_client):
+        name = f"tagged-{uuid.uuid4().hex[:8]}"
+        tags = [{"Key": "env", "Value": "test"}, {"Key": "project", "Value": "compat"}]
+        try:
+            resp = mediastore_client.create_container(ContainerName=name, Tags=tags)
+            arn = resp["Container"]["ARN"]
+            tag_resp = mediastore_client.list_tags_for_resource(Resource=arn)
+            assert "Tags" in tag_resp
+            returned_keys = {t["Key"] for t in tag_resp["Tags"]}
+            assert "env" in returned_keys
+            assert "project" in returned_keys
+        finally:
+            try:
+                mediastore_client.delete_container(ContainerName=name)
+            except Exception:
+                pass

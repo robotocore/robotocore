@@ -498,3 +498,38 @@ class TestACMExtended:
         with pytest.raises(ClientError) as exc:
             acm.delete_certificate(CertificateArn=arn)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_resend_validation_email(self, acm):
+        """ResendValidationEmail on a pending certificate succeeds or raises expected error."""
+        arn = acm.request_certificate(
+            DomainName="resend.example.com",
+            ValidationMethod="EMAIL",
+        )["CertificateArn"]
+        try:
+            resp = acm.resend_validation_email(
+                CertificateArn=arn,
+                Domain="resend.example.com",
+                ValidationDomain="example.com",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            # InvalidStateException is acceptable if cert state doesn't allow resend
+            assert e.response["Error"]["Code"] in (
+                "InvalidStateException",
+                "InvalidDomainValidationOptionsException",
+            )
+        finally:
+            acm.delete_certificate(CertificateArn=arn)
+
+    def test_resend_validation_email_nonexistent_cert(self, acm):
+        """ResendValidationEmail on a non-existent certificate raises error."""
+        fake_arn = (
+            "arn:aws:acm:us-east-1:123456789012:certificate/99999999-9999-9999-9999-999999999999"
+        )
+        with pytest.raises(ClientError) as exc:
+            acm.resend_validation_email(
+                CertificateArn=fake_arn,
+                Domain="nonexistent.example.com",
+                ValidationDomain="example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

@@ -28,6 +28,31 @@ _provisioned_lock = threading.Lock()
 _dlq_configs: dict[tuple[str, str, str], dict] = {}
 _dlq_lock = threading.Lock()
 
+# Native recursion config store
+# key: (account_id, region, func_name)
+_recursion_configs: dict[tuple[str, str, str], str] = {}
+_recursion_lock = threading.Lock()
+
+# Native scaling config store
+# key: (account_id, region, func_name, qualifier)
+_scaling_configs: dict[tuple[str, str, str, str], dict] = {}
+_scaling_lock = threading.Lock()
+
+# Native code signing config store
+# key: (account_id, region, func_name)
+_code_signing_configs: dict[tuple[str, str, str], str] = {}  # func -> csc ARN
+_code_signing_lock = threading.Lock()
+
+# Native runtime management config store
+# key: (account_id, region, func_name)
+_runtime_mgmt_configs: dict[tuple[str, str, str], dict] = {}
+_runtime_mgmt_lock = threading.Lock()
+
+# Native layer version permissions store
+# key: (account_id, region, layer_name, version_number)
+_layer_permissions: dict[tuple[str, str, str, int], dict[str, dict]] = {}  # -> {sid: statement}
+_layer_perm_lock = threading.Lock()
+
 
 def get_event_source_mappings() -> list[dict]:
     """Return all event source mappings (used by the event source engine)."""
@@ -266,17 +291,292 @@ async def _handle_functions(
         if sub == "url":
             return _handle_function_url(func_name, method, body, region, account_id)
 
+        # /functions/{name}/urls — ListFunctionUrlConfigs (plural)
+        if sub == "urls" and method == "GET":
+            from robotocore.services.lambda_.urls import list_function_url_configs
+
+            configs = list_function_url_configs(func_name, region, account_id)
+            return _json(200, {"FunctionUrlConfigs": configs})
+
         # /functions/{name}/event-invoke-config — Event invoke config
         if sub == "event-invoke-config":
             return _handle_event_invoke_config(func_name, method, body, backend, region, account_id)
 
         # /functions/{name}/provisioned-concurrency — Provisioned concurrency
         if sub == "provisioned-concurrency":
+            # ListProvisionedConcurrencyConfigs uses ?List=ALL
+            if method == "GET" and request.query_params.get("List") == "ALL":
+                configs = list_provisioned_concurrency_configs(func_name, region, account_id)
+                return _json(200, {"ProvisionedConcurrencyConfigs": configs})
             return _handle_provisioned_concurrency(
                 func_name, method, body, request, region, account_id
             )
 
+        # /functions/{name}/recursion-config — Recursion config
+        if sub == "recursion-config":
+            return _handle_recursion_config(func_name, method, body, region, account_id)
+
+        # /functions/{name}/function-scaling-config — Scaling config
+        if sub == "function-scaling-config":
+            return _handle_scaling_config(func_name, method, body, request, region, account_id)
+
+        # /functions/{name}/code-signing-config — Code signing config
+        if sub == "code-signing-config":
+            return _handle_code_signing_config(func_name, method, body, region, account_id)
+
+        # /functions/{name}/runtime-management-config — Runtime management
+        if sub == "runtime-management-config":
+            return _handle_runtime_management_config(
+                func_name,
+                method,
+                body,
+                request,
+                region,
+                account_id,
+            )
+
+        # /functions/{name}/durable-executions — ListDurableExecutionsByFunction
+        if sub == "durable-executions" and method == "GET":
+            return _json(200, {"DurableExecutions": []})
+
+        # /functions/{name}/response-streaming-invocations — InvokeWithResponseStream
+        if sub == "response-streaming-invocations" and method == "POST":
+            return await _invoke_with_response_stream(func_name, body, request, region, account_id)
+
     return _error("InvalidRequest", f"Unhandled Lambda path: {'/'.join(parts)}", 400)
+
+
+def _handle_recursion_config(
+    func_name: str, method: str, body: bytes, region: str, account_id: str
+) -> Response:
+    """Handle GET/PUT for function recursion config."""
+    from moto.backends import get_backend
+
+    backend = get_backend("lambda")[account_id][region]
+    # Verify function exists
+    try:
+        backend.get_function(func_name)
+    except Exception:
+        return _error(
+            "ResourceNotFoundException",
+            f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
+            404,
+        )
+
+    key = (account_id, region, func_name)
+    if method == "GET":
+        with _recursion_lock:
+            value = _recursion_configs.get(key, "Terminate")
+        return _json(200, {"RecursiveLoop": value})
+    elif method == "PUT":
+        spec = json.loads(body) if body else {}
+        value = spec.get("RecursiveLoop", "Terminate")
+        if value not in ("Allow", "Terminate"):
+            return _error(
+                "InvalidParameterValueException",
+                f"Invalid value for RecursiveLoop: {value}. Must be Allow or Terminate.",
+                400,
+            )
+        with _recursion_lock:
+            _recursion_configs[key] = value
+        return _json(200, {"RecursiveLoop": value})
+    return _error("InvalidRequest", "Method not allowed", 405)
+
+
+def _handle_scaling_config(
+    func_name: str,
+    method: str,
+    body: bytes,
+    request: Request,
+    region: str,
+    account_id: str,
+) -> Response:
+    """Handle GET/PUT/DELETE for function scaling config."""
+    backend = _get_moto_backend(account_id, region)
+    try:
+        backend.get_function(func_name)
+    except Exception:
+        return _error(
+            "ResourceNotFoundException",
+            f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
+            404,
+        )
+
+    qualifier = request.query_params.get("Qualifier", "$LATEST")
+    key = (account_id, region, func_name, qualifier)
+
+    func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+
+    if method == "GET":
+        with _scaling_lock:
+            config = _scaling_configs.get(key, {})
+        return _json(
+            200,
+            {
+                "FunctionArn": func_arn,
+                "AppliedFunctionScalingConfig": config,
+                "RequestedFunctionScalingConfig": config,
+            },
+        )
+    elif method == "PUT":
+        spec = json.loads(body) if body else {}
+        sc = spec.get("FunctionScalingConfig", {})
+        with _scaling_lock:
+            _scaling_configs[key] = sc
+        return _json(200, {"FunctionState": "Active"})
+    elif method == "DELETE":
+        with _scaling_lock:
+            _scaling_configs.pop(key, None)
+        return _json(204, None)
+    return _error("InvalidRequest", "Method not allowed", 405)
+
+
+def _handle_code_signing_config(
+    func_name: str, method: str, body: bytes, region: str, account_id: str
+) -> Response:
+    """Handle GET/PUT/DELETE for function code signing config."""
+    backend = _get_moto_backend(account_id, region)
+    try:
+        backend.get_function(func_name)
+    except Exception:
+        return _error(
+            "ResourceNotFoundException",
+            f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
+            404,
+        )
+
+    key = (account_id, region, func_name)
+    func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+
+    if method == "GET":
+        with _code_signing_lock:
+            csc_arn = _code_signing_configs.get(key)
+        if csc_arn is None:
+            return _error(
+                "ResourceNotFoundException",
+                f"Code signing configuration not found for function: {func_arn}",
+                404,
+            )
+        return _json(200, {"CodeSigningConfigArn": csc_arn, "FunctionName": func_name})
+    elif method == "PUT":
+        spec = json.loads(body) if body else {}
+        csc_arn = spec.get("CodeSigningConfigArn", "")
+        with _code_signing_lock:
+            _code_signing_configs[key] = csc_arn
+        return _json(200, {"CodeSigningConfigArn": csc_arn, "FunctionName": func_name})
+    elif method == "DELETE":
+        with _code_signing_lock:
+            _code_signing_configs.pop(key, None)
+        return _json(204, None)
+    return _error("InvalidRequest", "Method not allowed", 405)
+
+
+def _handle_runtime_management_config(
+    func_name: str,
+    method: str,
+    body: bytes,
+    request: Request,
+    region: str,
+    account_id: str,
+) -> Response:
+    """Handle GET/PUT for runtime management config."""
+    backend = _get_moto_backend(account_id, region)
+    try:
+        backend.get_function(func_name)
+    except Exception:
+        return _error(
+            "ResourceNotFoundException",
+            f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
+            404,
+        )
+
+    key = (account_id, region, func_name)
+    func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+
+    if method == "GET":
+        with _runtime_mgmt_lock:
+            config = _runtime_mgmt_configs.get(key)
+        if config is None:
+            return _json(200, {"UpdateRuntimeOn": "Auto", "FunctionArn": func_arn})
+        return _json(200, {**config, "FunctionArn": func_arn})
+    elif method == "PUT":
+        spec = json.loads(body) if body else {}
+        update_on = spec.get("UpdateRuntimeOn", "Auto")
+        config = {"UpdateRuntimeOn": update_on}
+        if update_on == "Manual" and "RuntimeVersionArn" in spec:
+            config["RuntimeVersionArn"] = spec["RuntimeVersionArn"]
+        with _runtime_mgmt_lock:
+            _runtime_mgmt_configs[key] = config
+        return _json(200, {**config, "FunctionArn": func_arn})
+    return _error("InvalidRequest", "Method not allowed", 405)
+
+
+def _handle_layer_version_permission(
+    layer_name: str,
+    version_num: int,
+    parts: list[str],
+    method: str,
+    body: bytes,
+    request: Request,
+    region: str,
+    account_id: str,
+) -> Response:
+    """Handle layer version permission CRUD."""
+    key = (account_id, region, layer_name, version_num)
+
+    if method == "GET" and len(parts) == 5:
+        # GetLayerVersionPolicy
+        with _layer_perm_lock:
+            stmts = _layer_permissions.get(key, {})
+        if not stmts:
+            return _error(
+                "ResourceNotFoundException",
+                f"No policy is associated with layer {layer_name} version {version_num}",
+                404,
+            )
+        policy = {
+            "Version": "2012-10-17",
+            "Id": "default",
+            "Statement": list(stmts.values()),
+        }
+        return _json(200, {"Policy": json.dumps(policy), "RevisionId": str(uuid.uuid4())})
+    elif method == "POST" and len(parts) == 5:
+        # AddLayerVersionPermission
+        spec = json.loads(body) if body else {}
+        sid = spec.get("StatementId", "")
+        statement = {
+            "Sid": sid,
+            "Effect": "Allow",
+            "Principal": spec.get("Principal", "*"),
+            "Action": spec.get("Action", "lambda:GetLayerVersion"),
+            "Resource": f"arn:aws:lambda:{region}:{account_id}:layer:{layer_name}:{version_num}",
+        }
+        if spec.get("OrganizationId"):
+            statement["Condition"] = {
+                "StringEquals": {"aws:PrincipalOrgID": spec["OrganizationId"]}
+            }
+        with _layer_perm_lock:
+            if key not in _layer_permissions:
+                _layer_permissions[key] = {}
+            _layer_permissions[key][sid] = statement
+        return _json(201, {"Statement": json.dumps(statement), "RevisionId": str(uuid.uuid4())})
+    elif method == "DELETE" and len(parts) == 6:
+        # RemoveLayerVersionPermission — /layers/{name}/versions/{num}/policy/{sid}
+        sid = parts[5]
+        with _layer_perm_lock:
+            stmts = _layer_permissions.get(key, {})
+            if sid not in stmts:
+                return _error(
+                    "ResourceNotFoundException",
+                    f"Permission statement {sid} not found",
+                    404,
+                )
+            del stmts[sid]
+            if not stmts:
+                _layer_permissions.pop(key, None)
+        return _json(204, None)
+
+    return _error("InvalidRequest", "Unhandled layer version policy path", 400)
 
 
 def _handle_function_url(
@@ -556,6 +856,26 @@ def _cascade_delete_function(func_name: str, region: str, account_id: str) -> No
     with _dlq_lock:
         _dlq_configs.pop(dlq_key, None)
 
+    # Remove scaling configs for this function
+    with _scaling_lock:
+        to_remove = [
+            key
+            for key in _scaling_configs
+            if key[0] == account_id and key[1] == region and key[2] == func_name
+        ]
+        for key in to_remove:
+            del _scaling_configs[key]
+
+    # Remove code signing config for this function
+    csc_key = (account_id, region, func_name)
+    with _code_signing_lock:
+        _code_signing_configs.pop(csc_key, None)
+
+    # Remove runtime management config for this function
+    rmc_key = (account_id, region, func_name)
+    with _runtime_mgmt_lock:
+        _runtime_mgmt_configs.pop(rmc_key, None)
+
 
 async def _handle_event_source_mappings(
     parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
@@ -689,6 +1009,12 @@ async def _handle_layers(
                 elif method == "DELETE":
                     backend.delete_layer_version(layer_name, version_num)
                     return _json(204, None)
+            # /layers/{name}/versions/{num}/policy[/{sid}]
+            elif len(parts) >= 5 and parts[4] == "policy":
+                version_num = int(parts[3])
+                return _handle_layer_version_permission(
+                    layer_name, version_num, parts, method, body, request, region, account_id
+                )
 
     return _error("InvalidRequest", "Unhandled layers path", 400)
 
@@ -805,6 +1131,69 @@ async def _invoke(
 
     return Response(
         content=payload, status_code=200, headers=headers, media_type="application/json"
+    )
+
+
+async def _invoke_with_response_stream(
+    func_name: str, body: bytes, request: Request, region: str, account_id: str
+) -> Response:
+    """InvokeWithResponseStream — execute and return result.
+
+    Real AWS returns an event stream; we return the result as a simple JSON response
+    which boto3 will parse into the EventStream shape.
+    """
+    backend = _get_moto_backend(account_id, region)
+    fn = backend.get_function(func_name)
+
+    event = json.loads(body) if body else {}
+    runtime = getattr(fn, "run_time", "") or ""
+    code_zip = None
+    if hasattr(fn, "code") and fn.code:
+        code_zip = fn.code.get("ZipFile")
+        if isinstance(code_zip, str):
+            code_zip = base64.b64decode(code_zip)
+    if not code_zip:
+        code_zip = getattr(fn, "code_bytes", None)
+
+    env_vars = getattr(fn, "environment_vars", {}) or {}
+    handler_name = getattr(fn, "handler", "lambda_function.handler")
+    timeout = int(getattr(fn, "timeout", 3) or 3)
+    memory_size = int(getattr(fn, "memory_size", 128) or 128)
+
+    result = None
+    if code_zip:
+        executor = get_executor_for_runtime(runtime)
+        result, error_type, logs = executor.execute(
+            code_zip=code_zip,
+            handler=handler_name,
+            event=event,
+            function_name=func_name,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+        )
+
+    if result is None:
+        payload = b"null"
+    elif isinstance(result, (dict, list)):
+        payload = json.dumps(result).encode()
+    elif isinstance(result, str):
+        payload = json.dumps(result).encode()
+    else:
+        payload = str(result).encode()
+
+    headers = {
+        "x-amz-request-id": str(uuid.uuid4()),
+        "x-amz-executed-version": "$LATEST",
+        "content-type": "application/json",
+    }
+    return Response(
+        content=payload,
+        status_code=200,
+        headers=headers,
+        media_type="application/json",
     )
 
 

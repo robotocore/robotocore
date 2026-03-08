@@ -868,3 +868,123 @@ class TestConfigAutoCoverage:
     def test_start_config_rules_evaluation(self, client):
         """StartConfigRulesEvaluation returns a response."""
         client.start_config_rules_evaluation()
+
+
+class TestOrganizationConformancePack:
+    """Test OrganizationConformancePack operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_delete_organization_conformance_pack_nonexistent(self, client):
+        """DeleteOrganizationConformancePack for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_organization_conformance_pack(
+                OrganizationConformancePackName="nonexistent-pack-xyz",
+            )
+        assert "NoSuchOrganizationConformancePackException" in exc.value.response["Error"]["Code"]
+
+
+class TestRetentionConfiguration:
+    """Test RetentionConfiguration operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_delete_retention_configuration(self, client):
+        """DeleteRetentionConfiguration removes the retention config."""
+        put_resp = client.put_retention_configuration(RetentionPeriodInDays=365)
+        ret_name = put_resp["RetentionConfiguration"]["Name"]
+        client.delete_retention_configuration(RetentionConfigurationName=ret_name)
+        resp = client.describe_retention_configurations()
+        names = [r["Name"] for r in resp["RetentionConfigurations"]]
+        assert ret_name not in names
+
+
+class TestSelectResourceConfig:
+    """Test SelectResourceConfig operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_select_resource_config(self, client):
+        """SelectResourceConfig executes a query."""
+        resp = client.select_resource_config(
+            Expression="SELECT resourceId WHERE resourceType = 'AWS::S3::Bucket'",
+        )
+        assert "Results" in resp
+
+
+class TestAggregateDiscoveredResources:
+    """Test ListAggregateDiscoveredResources operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_list_aggregate_discovered_resources(self, client):
+        """ListAggregateDiscoveredResources returns resources."""
+        agg_name = "test-agg-disc-res"
+        client.put_configuration_aggregator(
+            ConfigurationAggregatorName=agg_name,
+            AccountAggregationSources=[{"AccountIds": ["123456789012"], "AllAwsRegions": True}],
+        )
+        try:
+            resp = client.list_aggregate_discovered_resources(
+                ConfigurationAggregatorName=agg_name,
+                ResourceType="AWS::S3::Bucket",
+            )
+            assert "ResourceIdentifiers" in resp
+        finally:
+            client.delete_configuration_aggregator(ConfigurationAggregatorName=agg_name)
+
+
+class TestResourceConfig:
+    """Test ResourceConfig operations (PutResourceConfig, DeleteResourceConfig)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_put_resource_config(self, client):
+        """PutResourceConfig records a third-party resource."""
+        resp = client.put_resource_config(
+            ResourceType="MyCustom::Resource::Type",
+            SchemaVersionId="1",
+            ResourceId="res-001",
+            Configuration=json.dumps({"key": "value"}),
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_resource_config(self, client):
+        """DeleteResourceConfig removes a recorded third-party resource."""
+        client.put_resource_config(
+            ResourceType="MyCustom::Resource::Type",
+            SchemaVersionId="1",
+            ResourceId="res-del-001",
+            Configuration=json.dumps({"key": "value"}),
+        )
+        resp = client.delete_resource_config(
+            ResourceType="MyCustom::Resource::Type",
+            ResourceId="res-del-001",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestOrganizationConformancePackDetailedStatus:
+    """Test GetOrganizationConformancePackDetailedStatus."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_get_organization_conformance_pack_detailed_status_nonexistent(self, client):
+        """GetOrganizationConformancePackDetailedStatus for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_organization_conformance_pack_detailed_status(
+                OrganizationConformancePackName="nonexistent-pack-xyz",
+            )
+        assert "NoSuchOrganizationConformancePackException" in exc.value.response["Error"]["Code"]

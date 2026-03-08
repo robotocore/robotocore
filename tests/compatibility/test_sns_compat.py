@@ -1179,3 +1179,188 @@ class TestSNSEndpointAttributes:
         finally:
             sns.delete_endpoint(EndpointArn=ep_arn)
             sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+
+class TestSNSPermissions:
+    """Tests for AddPermission and RemovePermission operations."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_add_permission(self, sns):
+        """AddPermission adds a permission statement to a topic policy."""
+        topic_arn = sns.create_topic(Name=f"perm-topic-{uuid.uuid4().hex[:8]}")["TopicArn"]
+        try:
+            sns.add_permission(
+                TopicArn=topic_arn,
+                Label="test-statement",
+                AWSAccountId=["123456789012"],
+                ActionName=["Publish"],
+            )
+            attrs = sns.get_topic_attributes(TopicArn=topic_arn)["Attributes"]
+            policy = json.loads(attrs["Policy"])
+            labels = [s.get("Sid") for s in policy.get("Statement", [])]
+            assert "test-statement" in labels
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+
+    def test_add_permission_multiple_actions(self, sns):
+        """AddPermission with multiple actions and accounts."""
+        topic_arn = sns.create_topic(Name=f"perm-multi-{uuid.uuid4().hex[:8]}")["TopicArn"]
+        try:
+            sns.add_permission(
+                TopicArn=topic_arn,
+                Label="multi-action",
+                AWSAccountId=["111111111111", "222222222222"],
+                ActionName=["Publish", "Subscribe"],
+            )
+            attrs = sns.get_topic_attributes(TopicArn=topic_arn)["Attributes"]
+            policy = json.loads(attrs["Policy"])
+            stmt = [s for s in policy["Statement"] if s.get("Sid") == "multi-action"]
+            assert len(stmt) == 1
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+
+    def test_remove_permission(self, sns):
+        """RemovePermission removes a previously added permission statement."""
+        topic_arn = sns.create_topic(Name=f"perm-rm-{uuid.uuid4().hex[:8]}")["TopicArn"]
+        try:
+            sns.add_permission(
+                TopicArn=topic_arn,
+                Label="to-remove",
+                AWSAccountId=["123456789012"],
+                ActionName=["Publish"],
+            )
+            sns.remove_permission(TopicArn=topic_arn, Label="to-remove")
+            attrs = sns.get_topic_attributes(TopicArn=topic_arn)["Attributes"]
+            policy = json.loads(attrs["Policy"])
+            labels = [s.get("Sid") for s in policy.get("Statement", [])]
+            assert "to-remove" not in labels
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+
+    def test_add_permission_nonexistent_topic(self, sns):
+        """AddPermission on non-existent topic raises NotFoundException."""
+        fake_arn = "arn:aws:sns:us-east-1:123456789012:nonexistent-topic"
+        with pytest.raises(ClientError) as exc:
+            sns.add_permission(
+                TopicArn=fake_arn,
+                Label="nope",
+                AWSAccountId=["123456789012"],
+                ActionName=["Publish"],
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFound"
+
+
+class TestSNSPlatformApplicationAttributes:
+    """Tests for GetPlatformApplicationAttributes and SetPlatformApplicationAttributes."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def _create_app(self, sns):
+        suffix = uuid.uuid4().hex[:8]
+        resp = sns.create_platform_application(
+            Name=f"attr-app-{suffix}",
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        return resp["PlatformApplicationArn"]
+
+    def test_get_platform_application_attributes(self, sns):
+        """GetPlatformApplicationAttributes returns attributes dict."""
+        app_arn = self._create_app(sns)
+        try:
+            resp = sns.get_platform_application_attributes(PlatformApplicationArn=app_arn)
+            assert "Attributes" in resp
+            assert isinstance(resp["Attributes"], dict)
+        finally:
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+    def test_set_platform_application_attributes(self, sns):
+        """SetPlatformApplicationAttributes updates and persists attributes."""
+        app_arn = self._create_app(sns)
+        try:
+            sns.set_platform_application_attributes(
+                PlatformApplicationArn=app_arn,
+                Attributes={"PlatformCredential": "new-api-key"},
+            )
+            resp = sns.get_platform_application_attributes(PlatformApplicationArn=app_arn)
+            assert resp["Attributes"]["PlatformCredential"] == "new-api-key"
+        finally:
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+
+class TestSNSCheckIfPhoneNumberIsOptedOut:
+    """Tests for CheckIfPhoneNumberIsOptedOut."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_check_if_phone_number_is_opted_out(self, sns):
+        """CheckIfPhoneNumberIsOptedOut returns isOptedOut boolean."""
+        resp = sns.check_if_phone_number_is_opted_out(phoneNumber="+15555550100")
+        assert "isOptedOut" in resp
+        assert isinstance(resp["isOptedOut"], bool)
+
+
+class TestSNSEndpointsByPlatformApplication:
+    """Tests for ListEndpointsByPlatformApplication."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_list_endpoints_by_platform_application(self, sns):
+        """ListEndpointsByPlatformApplication returns endpoints list."""
+        suffix = uuid.uuid4().hex[:8]
+        app_resp = sns.create_platform_application(
+            Name=f"ep-list-app-{suffix}",
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        app_arn = app_resp["PlatformApplicationArn"]
+        ep_resp = sns.create_platform_endpoint(
+            PlatformApplicationArn=app_arn,
+            Token=f"token-{suffix}",
+        )
+        ep_arn = ep_resp["EndpointArn"]
+        try:
+            resp = sns.list_endpoints_by_platform_application(PlatformApplicationArn=app_arn)
+            assert "Endpoints" in resp
+            arns = [e["EndpointArn"] for e in resp["Endpoints"]]
+            assert ep_arn in arns
+        finally:
+            sns.delete_endpoint(EndpointArn=ep_arn)
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+    def test_list_endpoints_empty(self, sns):
+        """ListEndpointsByPlatformApplication with no endpoints returns empty list."""
+        suffix = uuid.uuid4().hex[:8]
+        app_resp = sns.create_platform_application(
+            Name=f"ep-empty-app-{suffix}",
+            Platform="GCM",
+            Attributes={"PlatformCredential": "test-api-key"},
+        )
+        app_arn = app_resp["PlatformApplicationArn"]
+        try:
+            resp = sns.list_endpoints_by_platform_application(PlatformApplicationArn=app_arn)
+            assert resp["Endpoints"] == []
+        finally:
+            sns.delete_platform_application(PlatformApplicationArn=app_arn)
+
+
+class TestSNSOptInPhoneNumber:
+    """Tests for OptInPhoneNumber."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_opt_in_phone_number(self, sns):
+        """OptInPhoneNumber returns successfully."""
+        resp = sns.opt_in_phone_number(phoneNumber="+15555550100")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
