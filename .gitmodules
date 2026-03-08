@@ -1,6 +1,6 @@
 [submodule "vendor/moto"]
 	path = vendor/moto
-	url = https://github.com/getmoto/moto.git
+	url = https://github.com/JackDanger/moto.git
 [submodule "vendor/localstack"]
 	path = vendor/localstack
 	url = https://github.com/localstack/localstack.git
