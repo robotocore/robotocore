@@ -285,12 +285,13 @@ def generate_test_class(
     lines.append(f'        return make_client("{boto_name}")')
     lines.append("")
 
+    skipped_ops = []
     for op in ops:
         snake = _to_snake_case(op)
         resp_key = get_response_key(service, op)
 
         if op in parameterless:
-            # Simple parameterless test
+            # Parameterless — actually calls the server and verifies response
             if resp_key:
                 lines.append(f"    def test_{snake}(self, client):")
                 lines.append(f'        """{op} returns a response."""')
@@ -300,21 +301,16 @@ def generate_test_class(
             else:
                 lines.append(f"    def test_{snake}(self, client):")
                 lines.append(f'        """{op} returns a response."""')
-                lines.append(f"        client.{snake}()")
+                lines.append(f"        resp = client.{snake}()")
+                lines.append('        assert "ResponseMetadata" in resp')
                 lines.append("")
         else:
-            # Operation needs params — test that it exists (expect param error)
-            lines.append(f"    def test_{snake}(self, client):")
-            lines.append(f'        """{op} is implemented (may need params)."""')
-            lines.append("        try:")
-            lines.append(f"            client.{snake}()")
-            lines.append("        except client.exceptions.ClientError:")
-            lines.append("            pass  # Expected — operation exists but needs params")
-            lines.append("        except ParamValidationError:")
-            lines.append("            pass  # Expected — operation exists but needs params")
-            lines.append("")
+            # Operation needs params — skip it, can't generate a meaningful test.
+            # Tests that catch ParamValidationError never hit the server and
+            # would pass even against a completely broken backend.
+            skipped_ops.append(op)
 
-    return "\n".join(lines)
+    return "\n".join(lines), skipped_ops
 
 
 def generate_full_file(service: str, ops: list[str], parameterless: set[str]) -> str:
@@ -328,8 +324,8 @@ def generate_full_file(service: str, ops: list[str], parameterless: set[str]) ->
         "import pytest\n\n"
         "from tests.compatibility.conftest import make_client\n"
     )
-    body = generate_test_class(service, ops, parameterless)
-    return header + body
+    body, skipped = generate_test_class(service, ops, parameterless)
+    return header + body, skipped
 
 
 def analyze_service(service: str, probe_results: dict) -> tuple[list[str], set[str], Path]:
@@ -375,6 +371,8 @@ def main():
 
     total_generated = 0
     total_gap = 0
+    total_skipped = 0
+    all_skipped: dict[str, list[str]] = {}
 
     for service in services:
         untested, parameterless, test_file = analyze_service(service, probe_results)
@@ -385,39 +383,59 @@ def main():
         total_gap += len(untested)
 
         if args.summary:
-            if untested:
-                print(f"{service}: {len(untested)} untested working ops")
+            parameterless_untested = [op for op in untested if op in parameterless]
+            needs_params = [op for op in untested if op not in parameterless]
+            if parameterless_untested or needs_params:
+                print(
+                    f"{service}: {len(parameterless_untested)} auto-testable, "
+                    f"{len(needs_params)} need hand-written tests"
+                )
             continue
 
         if not untested:
             continue
 
         if test_file.exists():
-            # Append to existing file
-            code = generate_test_class(service, untested, parameterless)
+            code, skipped = generate_test_class(service, untested, parameterless)
         else:
-            # Create new file
-            code = generate_full_file(service, untested, parameterless)
+            code, skipped = generate_full_file(service, untested, parameterless)
+
+        generated_count = len(untested) - len(skipped)
+        total_skipped += len(skipped)
+        if skipped:
+            all_skipped[service] = skipped
+
+        if generated_count == 0:
+            continue
 
         if args.write:
             if test_file.exists():
                 with open(test_file, "a") as f:
                     f.write(code)
-                print(f"{service}: appended {len(untested)} tests to {test_file}")
+                print(f"{service}: appended {generated_count} tests to {test_file}")
             else:
                 with open(test_file, "w") as f:
                     f.write(code)
-                print(f"{service}: created {test_file} with {len(untested)} tests")
-            total_generated += len(untested)
+                print(f"{service}: created {test_file} with {generated_count} tests")
+            if skipped:
+                print(f"  (skipped {len(skipped)} ops needing params — write these by hand)")
+            total_generated += generated_count
         else:
-            print(f"\n# === {service} ({len(untested)} tests) → {test_file} ===")
+            print(f"\n# === {service} ({generated_count} tests) → {test_file} ===")
             print(code)
-            total_generated += len(untested)
+            if skipped:
+                print(f"# Skipped {len(skipped)} ops (need params): {', '.join(skipped[:5])}")
+                if len(skipped) > 5:
+                    print(f"#   ... and {len(skipped) - 5} more")
+            total_generated += generated_count
 
     if args.summary:
         print(f"\nTotal untested working ops: {total_gap}")
-    elif total_generated:
-        print(f"\nTotal tests generated: {total_generated}")
+    else:
+        if total_generated:
+            print(f"\nTotal tests generated: {total_generated}")
+        if total_skipped:
+            print(f"Total skipped (need params, hand-write these): {total_skipped}")
 
 
 if __name__ == "__main__":

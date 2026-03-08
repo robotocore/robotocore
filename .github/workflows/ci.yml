@@ -20,6 +20,30 @@ jobs:
       - run: uv run ruff check src/ tests/ scripts/
       - run: uv run ruff format --check src/ tests/ scripts/
 
+  test-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Check test quality (static analysis)
+        run: >
+          uv run python scripts/validate_test_quality.py
+          --max-no-contact-pct 5
+          --max-no-assertion-pct 5
+      - name: Upload quality report
+        if: always()
+        run: uv run python scripts/validate_test_quality.py --json > test-quality.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-quality-report
+          path: test-quality.json
+
   type-check:
     runs-on: ubuntu-latest
     steps:
@@ -100,7 +124,7 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: [lint, unit-tests, integration-tests, compatibility-tests]
+    needs: [lint, test-quality, unit-tests, integration-tests, compatibility-tests]
     steps:
       - uses: actions/checkout@v4
         with:

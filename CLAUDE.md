@@ -251,3 +251,7 @@ When we discover a Moto bug or missing feature:
 - **Agent prompts for test writing MUST include**: "Run each test against the running server (port 4566) before including it. If it fails because the operation isn't implemented, do NOT include that test — skip it entirely."
 - **Fix-then-test > test-then-xfail**. The correct order is: (1) discover gap, (2) implement fix, (3) write test that proves fix works. Never: (1) write test, (2) discover it fails, (3) mark xfail.
 - **Probe script**: `uv run python scripts/probe_service.py --service <name>` reports which operations work. Give agents this output as their allowlist.
+- **Every test MUST contact the server.** A test that catches `ParamValidationError` and passes is worthless — boto3 validates params client-side before the request is sent. The server is never contacted, so the test proves nothing about the server. For ops requiring params, either provide valid params or don't write the test.
+- **Every test MUST assert something.** A test that calls an operation and doesn't check the response is barely better than a smoke test. At minimum assert on a response key.
+- **Run `make test-quality` before committing tests.** The `validate_test_quality.py` script catches tests that never contact the server. CI enforces <5% no-contact rate.
+- **Test count is not a metric.** Never report test count as progress without also reporting effective test rate from `validate_test_quality.py`. 100 tests that verify behavior > 10,000 tests that catch exceptions and pass.

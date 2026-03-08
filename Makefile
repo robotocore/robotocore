@@ -1,6 +1,6 @@
 .PHONY: test test-all unit-test integration-test compat-test compat-test-hot lint format \
         docker-build docker-run docker-compare parity-report gap-analysis clean \
-        start stop status smoke help
+        start stop status smoke help test-quality validate-tests
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
@@ -48,6 +48,12 @@ lint: ## Check code with ruff (lint + format)
 format: ## Auto-format and fix code with ruff
 	uv run ruff format src/ tests/ scripts/
 	uv run ruff check --fix src/ tests/ scripts/
+
+test-quality: ## Static analysis: report compat test quality (no server needed)
+	uv run python scripts/validate_test_quality.py
+
+validate-tests: ## Runtime check: verify tests actually contact server (requires make start)
+	uv run python scripts/validate_tests_runtime.py --all --sample 10
 
 ## ── Gap analysis ─────────────────────────────────────────────────────────────
 
