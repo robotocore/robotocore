@@ -260,6 +260,69 @@ class TestAppSyncExtended:
         assert "temp" not in tags_resp.get("tags", {})
 
 
+class TestChannelNamespace:
+    """ChannelNamespace CRUD operations (Event API)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def event_api(self, client):
+        auth_mode = {"authType": "API_KEY"}
+        resp = client.create_api(
+            name=_unique("evt-api"),
+            eventConfig={
+                "authProviders": [auth_mode],
+                "connectionAuthModes": [auth_mode],
+                "defaultPublishAuthModes": [auth_mode],
+                "defaultSubscribeAuthModes": [auth_mode],
+            },
+        )
+        api_id = resp["api"]["apiId"]
+        yield api_id
+        client.delete_api(apiId=api_id)
+
+    def test_create_channel_namespace(self, client, event_api):
+        name = _unique("chan")
+        resp = client.create_channel_namespace(apiId=event_api, name=name)
+        assert "channelNamespace" in resp
+        assert resp["channelNamespace"]["name"] == name
+        client.delete_channel_namespace(apiId=event_api, name=name)
+
+    def test_get_channel_namespace(self, client, event_api):
+        name = _unique("chan-get")
+        client.create_channel_namespace(apiId=event_api, name=name)
+        try:
+            resp = client.get_channel_namespace(apiId=event_api, name=name)
+            assert resp["channelNamespace"]["name"] == name
+            assert "apiId" in resp["channelNamespace"]
+        finally:
+            client.delete_channel_namespace(apiId=event_api, name=name)
+
+    def test_update_channel_namespace(self, client, event_api):
+        name = _unique("chan-upd")
+        client.create_channel_namespace(apiId=event_api, name=name)
+        try:
+            resp = client.update_channel_namespace(
+                apiId=event_api,
+                name=name,
+                subscribeAuthModes=[{"authType": "API_KEY"}],
+            )
+            assert "channelNamespace" in resp
+            assert resp["channelNamespace"]["name"] == name
+        finally:
+            client.delete_channel_namespace(apiId=event_api, name=name)
+
+    def test_delete_channel_namespace(self, client, event_api):
+        name = _unique("chan-del")
+        client.create_channel_namespace(apiId=event_api, name=name)
+        client.delete_channel_namespace(apiId=event_api, name=name)
+        # Verify it's gone by trying to get it
+        with pytest.raises(Exception):
+            client.get_channel_namespace(apiId=event_api, name=name)
+
+
 class TestAppsyncAutoCoverage:
     """Auto-generated coverage tests for appsync."""
 
