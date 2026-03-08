@@ -216,12 +216,16 @@ def route_to_service(request: Request) -> str | None:
 
     for pattern, service in PATH_PATTERNS:
         if pattern.match(path):
-            # /v1/tags is shared between Batch and AppSync — disambiguate via auth
-            if service == "batch" and path.startswith("/v1/tags"):
+            # /v1/tags and /v1/untag are shared by Batch, AppSync, Kafka, MQ, and Pinpoint
+            # — disambiguate via the service name in the auth credential scope
+            if service == "batch" and (path.startswith("/v1/tags") or path.startswith("/v1/untag")):
                 auth = request.headers.get("authorization", "")
                 auth_match = AUTH_SERVICE_RE.search(auth)
-                if auth_match and auth_match.group(1) == "appsync":
-                    return "appsync"
+                if auth_match:
+                    auth_service = auth_match.group(1)
+                    resolved = SERVICE_NAME_ALIASES.get(auth_service, auth_service)
+                    if resolved in ("appsync", "kafka", "mq", "pinpoint"):
+                        return resolved
             return service
 
     # 3. Check Authorization header for service name in credential scope
