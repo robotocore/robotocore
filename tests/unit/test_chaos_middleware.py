@@ -167,6 +167,110 @@ class TestChaosHandler:
                 chaos_handler(ctx)
                 assert ctx.response is None
 
+    def test_error_body_has_exactly_three_keys(self):
+        """Error body should have __type, message, and Message — nothing extra."""
+        import json
+
+        store = FaultRuleStore()
+        store.add(FaultRule(service="s3", error_code="InternalError", error_message="boom"))
+        with patch("robotocore.chaos.middleware.get_fault_store", return_value=store):
+            ctx = _make_context()
+            chaos_handler(ctx)
+            body = json.loads(ctx.response.body.decode())
+            assert set(body.keys()) == {"__type", "message", "Message"}
+
+    def test_error_for_query_protocol_service_still_json(self):
+        """SQS uses query protocol but chaos returns JSON, not XML.
+
+        This documents a known limitation: SDK XML parsers may fail on this.
+        """
+        store = FaultRuleStore()
+        store.add(FaultRule(service="sqs", error_code="ThrottlingException"))
+        with patch("robotocore.chaos.middleware.get_fault_store", return_value=store):
+            ctx = _make_context(service="sqs", operation="SendMessage")
+            chaos_handler(ctx)
+            assert ctx.response.media_type == "application/json"
+            # Should arguably be text/xml for query protocol services
+            assert b"<Error>" not in ctx.response.body
+
+    def test_error_for_rest_xml_service_still_json(self):
+        """S3 uses rest-xml but chaos returns JSON."""
+        store = FaultRuleStore()
+        store.add(FaultRule(service="s3", error_code="SlowDown"))
+        with patch("robotocore.chaos.middleware.get_fault_store", return_value=store):
+            ctx = _make_context(service="s3", operation="PutObject")
+            chaos_handler(ctx)
+            assert ctx.response.media_type == "application/json"
+
+    def test_error_for_rest_json_service_is_json(self):
+        """DynamoDB uses json protocol — JSON error is correct."""
+        store = FaultRuleStore()
+        store.add(FaultRule(service="dynamodb", error_code="ThrottlingException"))
+        with patch("robotocore.chaos.middleware.get_fault_store", return_value=store):
+            ctx = _make_context(service="dynamodb", operation="PutItem")
+            chaos_handler(ctx)
+            assert ctx.response.media_type == "application/json"
+
+    def test_chaos_handler_sets_response_which_stops_chain(self):
+        """When chaos sets context.response, the handler chain should stop."""
+        from robotocore.gateway.handler_chain import HandlerChain
+
+        store = FaultRuleStore()
+        store.add(FaultRule(service="s3", error_code="InternalError"))
+
+        subsequent_called = False
+
+        def subsequent_handler(ctx):
+            nonlocal subsequent_called
+            subsequent_called = True
+
+        chain = HandlerChain()
+        with patch("robotocore.chaos.middleware.get_fault_store", return_value=store):
+            chain.request_handlers.append(chaos_handler)
+            chain.request_handlers.append(subsequent_handler)
+            ctx = _make_context()
+            chain.handle(ctx)
+            assert ctx.response is not None
+            assert subsequent_called is False
+
+    def test_chaos_handler_position_in_real_chain(self):
+        """chaos_handler should be in the handler chain, after populate_context."""
+        from robotocore.gateway.app import _handler_chain
+
+        handler_names = [h.__name__ for h in _handler_chain.request_handlers]
+        assert "chaos_handler" in handler_names
+        chaos_idx = handler_names.index("chaos_handler")
+        # Should come after populate_context_handler
+        assert "populate_context_handler" in handler_names
+        populate_idx = handler_names.index("populate_context_handler")
+        assert chaos_idx > populate_idx
+
+    def test_chaos_handler_is_sync_function(self):
+        """chaos_handler is sync (not async), called directly in sync handler chain.
+
+        This means time.sleep() blocks the calling thread. If the handler chain
+        runs in the event loop thread, this blocks all concurrent requests.
+        """
+        import inspect
+
+        assert not inspect.iscoroutinefunction(chaos_handler)
+        # And the chain's handle method is also sync
+        from robotocore.gateway.handler_chain import HandlerChain
+
+        assert not inspect.iscoroutinefunction(HandlerChain.handle)
+
+    @patch("robotocore.chaos.middleware.time.sleep")
+    def test_negative_latency_treated_as_zero(self, mock_sleep):
+        """FaultRule clamps latency_ms to its input; negative triggers no sleep."""
+        store = FaultRuleStore()
+        # latency_ms is stored as-is (no clamping in FaultRule), so -100 stored
+        store.add(FaultRule(service="s3", latency_ms=-100, error_code="InternalError"))
+        with patch("robotocore.chaos.middleware.get_fault_store", return_value=store):
+            ctx = _make_context()
+            chaos_handler(ctx)
+            # -100 > 0 is False, so sleep should not be called
+            mock_sleep.assert_not_called()
+
     # --- Singleton isolation tests (Bug 4) ---
 
     def test_uses_global_store_by_default(self):

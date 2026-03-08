@@ -105,6 +105,106 @@ class TestChaosEndpoints:
         rule_ids2 = [r["rule_id"] for r in list_resp2.json()["rules"]]
         assert rule_id not in rule_ids2
 
+    def test_add_rule_json_array_body(self, client):
+        """A JSON array is valid JSON but not a valid rule dict."""
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'[{"service": "s3"}]',
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"] == "Expected JSON object"
+
+    def test_add_rule_json_string_body(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'"just a string"',
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"] == "Expected JSON object"
+
+    def test_add_rule_json_number_body(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b"42",
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"] == "Expected JSON object"
+
+    def test_add_rule_unicode_bom(self, client):
+        """JSON with UTF-8 BOM should parse correctly."""
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'\xef\xbb\xbf{"service": "s3", "error_code": "Test"}',
+            headers={"content-type": "application/json"},
+        )
+        # BOM may cause JSONDecodeError or succeed — either way, not 500
+        assert resp.status_code != 500
+        if resp.status_code == 201:
+            client.delete(f"/_robotocore/chaos/rules/{resp.json()['rule_id']}")
+
+    def test_add_rule_response_includes_rule_id(self, client):
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'{"service": "s3", "error_code": "Test"}',
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert isinstance(data["rule_id"], str)
+        assert len(data["rule_id"]) > 0
+        client.delete(f"/_robotocore/chaos/rules/{data['rule_id']}")
+
+    def test_listed_rule_has_all_fields(self, client):
+        """Listed rules should include all to_dict() fields."""
+        add_resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'{"service": "s3", "error_code": "InternalError"}',
+        )
+        rule_id = add_resp.json()["rule_id"]
+        try:
+            list_resp = client.get("/_robotocore/chaos/rules")
+            rules = list_resp.json()["rules"]
+            our_rule = [r for r in rules if r["rule_id"] == rule_id][0]
+            expected_keys = {
+                "rule_id",
+                "service",
+                "operation",
+                "region",
+                "error_code",
+                "error_message",
+                "status_code",
+                "latency_ms",
+                "probability",
+                "enabled",
+                "created_at",
+                "match_count",
+            }
+            assert set(our_rule.keys()) == expected_keys
+        finally:
+            client.delete(f"/_robotocore/chaos/rules/{rule_id}")
+
+    def test_delete_response_includes_rule_id(self, client):
+        add_resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=b'{"service": "s3", "error_code": "Test"}',
+        )
+        rule_id = add_resp.json()["rule_id"]
+        del_resp = client.delete(f"/_robotocore/chaos/rules/{rule_id}")
+        assert del_resp.json()["rule_id"] == rule_id
+
+    def test_clear_returns_count(self, client):
+        # Add 2 rules
+        client.post("/_robotocore/chaos/rules", content=b'{"service": "s3"}')
+        client.post("/_robotocore/chaos/rules", content=b'{"service": "sqs"}')
+        resp = client.post("/_robotocore/chaos/rules/clear")
+        assert resp.json()["count"] >= 2
+
+    def test_wrong_method_on_rules_endpoint(self, client):
+        resp = client.put("/_robotocore/chaos/rules", content=b'{"service": "s3"}')
+        assert resp.status_code == 405
+
     def test_delete_nonexistent_rule(self, client):
         resp = client.delete("/_robotocore/chaos/rules/nonexistent-id")
         assert resp.status_code == 404

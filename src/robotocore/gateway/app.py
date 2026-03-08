@@ -337,6 +337,8 @@ async def chaos_add_rule(request: Request) -> JSONResponse:
         data = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    if not isinstance(data, dict):
+        return JSONResponse({"error": "Expected JSON object"}, status_code=400)
     rule = FaultRule.from_dict(data)
     rule_id = get_fault_store().add(rule)
     return JSONResponse({"status": "created", "rule_id": rule_id}, status_code=201)
