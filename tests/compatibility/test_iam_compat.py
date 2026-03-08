@@ -2720,3 +2720,22 @@ class TestIAMSigningCertificateUpload:
             except Exception:
                 pass
             iam.delete_user(UserName=user_name)
+
+
+class TestIAMOpenIDConnectProviderThumbprint:
+    def test_update_openid_connect_provider_thumbprint(self, iam):
+        """UpdateOpenIDConnectProviderThumbprint updates the thumbprint list."""
+        url = f"https://oidc-thumb-{uuid.uuid4().hex[:8]}.example.com"
+        original_thumb = "a" * 40
+        new_thumb = "b" * 40
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=[original_thumb])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.update_open_id_connect_provider_thumbprint(
+                OpenIDConnectProviderArn=arn, ThumbprintList=[new_thumb]
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert new_thumb in get_resp["ThumbprintList"]
+            assert original_thumb not in get_resp["ThumbprintList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
