@@ -14,7 +14,7 @@ class AuditLog:
     """Thread-safe ring buffer of API request audit entries."""
 
     def __init__(self, max_size: int | None = None):
-        size = max_size or int(os.environ.get("AUDIT_LOG_SIZE", "1000"))
+        size = max_size if max_size is not None else int(os.environ.get("AUDIT_LOG_SIZE", "1000"))
         self._entries: deque[dict] = deque(maxlen=size)
         self._lock = threading.Lock()
 

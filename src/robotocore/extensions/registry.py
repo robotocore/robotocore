@@ -93,7 +93,7 @@ class ExtensionRegistry:
                     request = result
             except Exception:
                 logger.exception(f"Error in {plugin.name}.on_request()")
-        return None
+        return request
 
     def on_response(self, request, response, context: dict):
         """Run all plugin response hooks."""
@@ -235,10 +235,15 @@ def _discover_from_env() -> list[RobotocorePlugin]:
             # Look for a `plugin` attribute or RobotocorePlugin subclass
             if hasattr(mod, "plugin"):
                 obj = mod.plugin
-                if isinstance(obj, type):
+                if isinstance(obj, type) and issubclass(obj, RobotocorePlugin):
                     plugins.append(obj())
-                else:
+                elif isinstance(obj, RobotocorePlugin):
                     plugins.append(obj)
+                else:
+                    logger.warning(
+                        f"Module {module_path} has 'plugin' attribute "
+                        f"that is not a RobotocorePlugin: {type(obj)}"
+                    )
             else:
                 # Scan module for RobotocorePlugin subclasses
                 for attr_name in dir(mod):
@@ -249,7 +254,6 @@ def _discover_from_env() -> list[RobotocorePlugin]:
                         and attr is not RobotocorePlugin
                     ):
                         plugins.append(attr())
-                        break
         except Exception:
             logger.exception(f"Failed to load extension module: {module_path}")
 

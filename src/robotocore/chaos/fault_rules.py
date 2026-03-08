@@ -30,13 +30,20 @@ class FaultRule:
         self.region = region  # None = match all
         self.error_code = error_code  # e.g. "ThrottlingException"
         self.error_message = error_message or f"Injected by chaos rule {self.rule_id}"
-        self.status_code = status_code or (429 if error_code == "ThrottlingException" else 500)
+        self.status_code = (
+            status_code
+            if status_code is not None
+            else (429 if error_code == "ThrottlingException" else 500)
+        )
         self.latency_ms = latency_ms
         self.probability = max(0.0, min(1.0, probability))
         self.enabled = enabled
         self.created_at = time.time()
         self.match_count = 0
-        self._op_pattern = re.compile(operation) if operation else None
+        try:
+            self._op_pattern = re.compile(operation) if operation else None
+        except re.error as exc:
+            raise ValueError(f"Invalid regex in operation filter: {operation!r}: {exc}") from exc
 
     def matches(self, service: str, operation: str | None, region: str) -> bool:
         """Check if this rule matches the given request."""

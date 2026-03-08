@@ -35,6 +35,7 @@ class LocalStackExtensionAdapter(RobotocorePlugin):
                 self._ext.on_platform_start()
             except Exception:
                 logger.exception(f"Error in LS extension {self.name}.on_platform_start()")
+                return  # Don't call on_platform_ready if start failed
         if hasattr(self._ext, "on_platform_ready"):
             try:
                 self._ext.on_platform_ready()
@@ -101,7 +102,7 @@ def load_localstack_extension_module(
         mod = importlib.import_module(module_path)
         for attr_name in dir(mod):
             attr = getattr(mod, attr_name)
-            if isinstance(attr, type) and attr_name != "Extension":
+            if isinstance(attr, type) and attr_name not in ("__class__",):
                 # Check if it looks like a LocalStack Extension
                 if hasattr(attr, "on_platform_start") or hasattr(attr, "on_platform_ready"):
                     ext = attr()

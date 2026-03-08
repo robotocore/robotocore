@@ -58,6 +58,9 @@ class StateManager:
             if not base:
                 raise ValueError("No state directory configured")
             save_dir = base / "snapshots" / name
+            # Prevent path traversal
+            if not save_dir.resolve().is_relative_to((base / "snapshots").resolve()):
+                raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
         else:
             save_dir = Path(path) if path else self.state_dir
         if not save_dir:
@@ -129,6 +132,7 @@ class StateManager:
                             "timestamp": meta.get("timestamp"),
                             "saved_at": meta.get("saved_at"),
                             "services": meta.get("moto_services", []),
+                            "native_services": meta.get("native_services", []),
                         }
                     )
                 else:
@@ -153,6 +157,9 @@ class StateManager:
             if not base:
                 return False
             load_dir = base / "snapshots" / name
+            # Prevent path traversal
+            if not load_dir.resolve().is_relative_to((base / "snapshots").resolve()):
+                raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
         else:
             load_dir = Path(path) if path else self.state_dir
         if not load_dir or not load_dir.exists():
@@ -174,12 +181,12 @@ class StateManager:
         # Load Moto backend state
         moto_path = load_dir / "moto_state.pkl"
         if moto_path.exists():
-            self._load_moto_state(moto_path)
+            self._load_moto_state(moto_path, services=services)
 
         # Load native provider state
         native_path = load_dir / "native_state.json"
         if native_path.exists():
-            self._load_native_state(native_path)
+            self._load_native_state(native_path, services=services)
 
         logger.info("State loaded successfully")
         return True
@@ -254,7 +261,7 @@ class StateManager:
         except Exception:
             logger.warning("Failed to save Moto state", exc_info=True)
 
-    def _load_moto_state(self, path: Path) -> None:
+    def _load_moto_state(self, path: Path, services: list[str] | None = None) -> None:
         """Restore Moto backends from pickle."""
         try:
             from moto.backends import get_backend
@@ -263,6 +270,8 @@ class StateManager:
                 state = pickle.load(f)  # noqa: S301
 
             for service_name, service_state in state.items():
+                if services and service_name not in services:
+                    continue
                 try:
                     backend_dict = get_backend(service_name)
                     for account_id, account_state in service_state.items():
@@ -295,10 +304,12 @@ class StateManager:
 
         path.write_text(json.dumps(state, indent=2, default=str))
 
-    def _load_native_state(self, path: Path) -> None:
+    def _load_native_state(self, path: Path, services: list[str] | None = None) -> None:
         """Load native provider state from JSON."""
         state = json.loads(path.read_text())
         for service, (_, load_fn) in self._native_handlers.items():
+            if services and service not in services:
+                continue
             if service in state:
                 try:
                     load_fn(state[service])
