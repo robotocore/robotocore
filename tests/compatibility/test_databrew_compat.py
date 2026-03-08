@@ -118,11 +118,196 @@ class TestDataBrewRecipes:
         assert "Steps" in resp
 
 
+@pytest.fixture
+def created_ruleset(databrew_client):
+    """Create a ruleset and clean up after the test."""
+    name = f"ruleset-{uuid.uuid4().hex[:8]}"
+    databrew_client.create_ruleset(
+        Name=name,
+        Description="test ruleset",
+        TargetArn="arn:aws:databrew:us-east-1:123456789012:dataset/dummy",
+        Rules=[
+            {
+                "Name": "rule1",
+                "Disabled": False,
+                "CheckExpression": "IS_NOT_NULL(:col)",
+                "SubstitutionMap": {":col": "col1"},
+            }
+        ],
+    )
+    yield name
+    try:
+        databrew_client.delete_ruleset(Name=name)
+    except Exception:
+        pass
+
+
 class TestDataBrewJobs:
     def test_list_jobs(self, databrew_client):
         resp = databrew_client.list_jobs()
         assert "Jobs" in resp
         assert isinstance(resp["Jobs"], list)
+
+
+class TestDataBrewJobOps:
+    def test_describe_job(self, databrew_client):
+        name = f"job-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = databrew_client.describe_job(Name=name)
+            assert resp["Name"] == name
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_delete_job(self, databrew_client):
+        name = f"job-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        resp = databrew_client.delete_job(Name=name)
+        assert resp["Name"] == name
+        with pytest.raises(Exception):
+            databrew_client.describe_job(Name=name)
+
+
+class TestDataBrewProfileJob:
+    def test_create_profile_job(self, databrew_client, created_dataset):
+        name = f"pjob-{uuid.uuid4().hex[:8]}"
+        resp = databrew_client.create_profile_job(
+            DatasetName=created_dataset,
+            Name=name,
+            OutputLocation={"Bucket": "my-bucket"},
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert resp["Name"] == name
+        databrew_client.delete_job(Name=name)
+
+    def test_update_profile_job(self, databrew_client, created_dataset):
+        name = f"pjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_profile_job(
+            DatasetName=created_dataset,
+            Name=name,
+            OutputLocation={"Bucket": "my-bucket"},
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = databrew_client.update_profile_job(
+                Name=name,
+                OutputLocation={"Bucket": "my-other-bucket"},
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+            )
+            assert resp["Name"] == name
+        finally:
+            databrew_client.delete_job(Name=name)
+
+
+class TestDataBrewRecipeJob:
+    def test_create_recipe_job(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        resp = databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert resp["Name"] == name
+        databrew_client.delete_job(Name=name)
+
+    def test_update_recipe_job(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = databrew_client.update_recipe_job(
+                Name=name,
+                RoleArn="arn:aws:iam::123456789012:role/updated-role",
+            )
+            assert resp["Name"] == name
+        finally:
+            databrew_client.delete_job(Name=name)
+
+
+class TestDataBrewRecipeOps:
+    def test_publish_recipe(self, databrew_client, created_recipe):
+        resp = databrew_client.publish_recipe(Name=created_recipe)
+        assert resp["Name"] == created_recipe
+
+    def test_update_recipe(self, databrew_client, created_recipe):
+        resp = databrew_client.update_recipe(
+            Name=created_recipe,
+            Steps=[
+                {
+                    "Action": {
+                        "Operation": "LOWER_CASE",
+                        "Parameters": {"sourceColumn": "col1"},
+                    }
+                }
+            ],
+        )
+        assert resp["Name"] == created_recipe
+
+    def test_list_recipe_versions(self, databrew_client, created_recipe):
+        # Publish to create a version
+        databrew_client.publish_recipe(Name=created_recipe)
+        resp = databrew_client.list_recipe_versions(Name=created_recipe)
+        assert "Recipes" in resp
+
+    def test_delete_recipe_version(self, databrew_client):
+        name = f"recipe-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe(
+            Name=name,
+            Steps=[
+                {
+                    "Action": {
+                        "Operation": "UPPER_CASE",
+                        "Parameters": {"sourceColumn": "col1"},
+                    }
+                }
+            ],
+        )
+        databrew_client.publish_recipe(Name=name)
+        resp = databrew_client.delete_recipe_version(Name=name, RecipeVersion="1.0")
+        assert resp["Name"] == name
+
+
+class TestDataBrewRuleset:
+    def test_describe_ruleset(self, databrew_client, created_ruleset):
+        resp = databrew_client.describe_ruleset(Name=created_ruleset)
+        assert resp["Name"] == created_ruleset
+        assert "Rules" in resp
+
+    def test_delete_ruleset(self, databrew_client):
+        name = f"ruleset-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_ruleset(
+            Name=name,
+            Description="test",
+            TargetArn="arn:aws:databrew:us-east-1:123456789012:dataset/dummy",
+            Rules=[
+                {
+                    "Name": "rule1",
+                    "Disabled": False,
+                    "CheckExpression": "IS_NOT_NULL(:col)",
+                    "SubstitutionMap": {":col": "col1"},
+                }
+            ],
+        )
+        resp = databrew_client.delete_ruleset(Name=name)
+        assert resp["Name"] == name
+        with pytest.raises(Exception):
+            databrew_client.describe_ruleset(Name=name)
+
+
+class TestDataBrewDatasetOps:
+    def test_update_dataset(self, databrew_client, created_dataset):
+        resp = databrew_client.update_dataset(
+            Name=created_dataset,
+            Input={"S3InputDefinition": {"Bucket": "other-bucket", "Key": "other.csv"}},
+        )
+        assert resp["Name"] == created_dataset
 
 
 class TestDatabrewAutoCoverage:
