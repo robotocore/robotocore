@@ -14,7 +14,7 @@ from starlette.requests import Request
 # Map of X-Amz-Target prefixes to service names
 TARGET_PREFIX_MAP: dict[str, str] = {
     "AWSCognitoIdentityProviderService": "cognito-idp",
-    "AWSCognitoIdentityService": "cognito-identity",
+    "AWSCognitoIdentityService": "cognitoidentity",
     "AWSStepFunctions": "stepfunctions",
     "AWSSupport": "support",
     "AmazonSSM": "ssm",
@@ -82,14 +82,21 @@ TARGET_PREFIX_MAP: dict[str, str] = {
     "Timestream_20181101": "timestreamwrite",
     "TransferService": "transfer",
     "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101": "cloudtrail",
+    "AmazonSQS": "sqs",
+    "AWSEvents": "events",
+    "GraniteServiceVersion20100801": "cloudwatch",
+    "SimpleWorkflowService": "swf",
+    "Route53Resolver": "route53resolver",
+    "Transcribe": "transcribe",
+    "ResourceGroupsTaggingAPI_20170126": "resourcegroupstaggingapi",
 }
 
 # URL path patterns to service names
 PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/2014-11-13/functions"), "lambda"),
     (re.compile(r"^/2015-03-31/functions"), "lambda"),
-    (re.compile(r"^/2021-01-01/"), "opensearch"),
     (re.compile(r"^/2021-\d{2}-\d{2}/functions/"), "lambda"),
+    (re.compile(r"^/2021-01-01/"), "opensearch"),
     (re.compile(r"^/restapis"), "apigateway"),
     (re.compile(r"^/v2/email/"), "sesv2"),
     (re.compile(r"^/v2/"), "apigatewayv2"),
@@ -152,6 +159,8 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
     "s3express": "s3",
     "vpc-lattice": "vpclattice",
     "workspaces-web": "workspacesweb",
+    "sso": "ssoadmin",
+    "execute-api": "apigatewaymanagementapi",
 }
 
 
