@@ -486,3 +486,169 @@ class TestDMSDescribeOperations:
         """DescribeConnections returns proper ResponseMetadata."""
         response = dms.describe_connections()
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDMSReplicationInstanceAdvanced:
+    """Tests for replication instance with extra parameters and filters."""
+
+    def test_create_replication_instance_with_allocated_storage(self, dms):
+        """CreateReplicationInstance with AllocatedStorage."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+            AllocatedStorage=50,
+        )
+        ri = resp["ReplicationInstance"]
+        assert ri["AllocatedStorage"] == 50
+        assert ri["ReplicationInstanceIdentifier"] == ri_id
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_create_replication_instance_multi_az(self, dms):
+        """CreateReplicationInstance with MultiAZ=False."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+            MultiAZ=False,
+        )
+        ri = resp["ReplicationInstance"]
+        assert ri["MultiAZ"] is False
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_describe_replication_instances_finds_created(self, dms):
+        """DescribeReplicationInstances includes a newly created instance."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        try:
+            desc = dms.describe_replication_instances()
+            ids = [i["ReplicationInstanceIdentifier"] for i in desc["ReplicationInstances"]]
+            assert ri_id in ids
+        finally:
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+    def test_describe_replication_instances_with_filter(self, dms):
+        """DescribeReplicationInstances filters by replication-instance-id."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        try:
+            desc = dms.describe_replication_instances(
+                Filters=[{"Name": "replication-instance-id", "Values": [ri_id]}]
+            )
+            assert len(desc["ReplicationInstances"]) == 1
+            assert desc["ReplicationInstances"][0]["ReplicationInstanceIdentifier"] == ri_id
+        finally:
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+    def test_replication_instance_status(self, dms):
+        """Created replication instance has a ReplicationInstanceStatus."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri = resp["ReplicationInstance"]
+        assert "ReplicationInstanceStatus" in ri
+        assert isinstance(ri["ReplicationInstanceStatus"], str)
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_replication_instance_arn_format(self, dms):
+        """Replication instance ARN has expected format."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        assert arn.startswith("arn:aws:dms:")
+        assert ":rep:" in arn or "replication-instance" in arn.lower() or ri_id in arn
+        dms.delete_replication_instance(ReplicationInstanceArn=arn)
+
+
+class TestDMSEndpointAdvanced:
+    """Tests for endpoint operations with filters and details."""
+
+    def test_describe_endpoints_with_filter(self, dms):
+        """DescribeEndpoints with endpoint-type filter."""
+        ep_id = _unique("ep")
+        create_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        arn = create_resp["Endpoint"]["EndpointArn"]
+        try:
+            resp = dms.describe_endpoints(Filters=[{"Name": "endpoint-type", "Values": ["source"]}])
+            types = [e["EndpointType"] for e in resp["Endpoints"]]
+            assert all(t == "source" for t in types)
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
+
+    def test_endpoint_arn_format(self, dms):
+        """Endpoint ARN has expected format."""
+        ep_id = _unique("ep")
+        create_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        arn = create_resp["Endpoint"]["EndpointArn"]
+        assert arn.startswith("arn:aws:dms:")
+        assert "endpoint" in arn.lower() or ep_id in arn
+        dms.delete_endpoint(EndpointArn=arn)
+
+    def test_endpoint_has_status(self, dms):
+        """Created endpoint has a Status field."""
+        ep_id = _unique("ep")
+        create_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        ep = create_resp["Endpoint"]
+        assert "Status" in ep
+        assert isinstance(ep["Status"], str)
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_s3_engine(self, dms):
+        """Create an endpoint with S3 engine type."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="target",
+            EngineName="s3",
+            S3Settings={
+                "BucketName": "my-bucket",
+                "ServiceAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        ep = resp["Endpoint"]
+        assert ep["EngineName"] == "s3"
+        assert ep["EndpointType"] == "target"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_describe_replication_subnet_groups_empty(self, dms):
+        """DescribeReplicationSubnetGroups returns list (may be empty)."""
+        resp = dms.describe_replication_subnet_groups()
+        assert "ReplicationSubnetGroups" in resp
+        assert isinstance(resp["ReplicationSubnetGroups"], list)

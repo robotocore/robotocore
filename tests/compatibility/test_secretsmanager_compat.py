@@ -578,3 +578,25 @@ class TestSecretsManagerExtended:
             assert get_resp["VersionId"] == v1_id
         finally:
             sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+
+    def test_remove_regions_from_replication(self, sm):
+        """RemoveRegionsFromReplication removes a replica region from a secret."""
+        import uuid
+
+        name = f"rm-region-{uuid.uuid4().hex[:8]}"
+        try:
+            sm.create_secret(Name=name, SecretString="val")
+            sm.replicate_secret_to_regions(
+                SecretId=name,
+                AddReplicaRegions=[{"Region": "eu-west-1"}],
+                ForceOverwriteReplicaSecret=True,
+            )
+            resp = sm.remove_regions_from_replication(
+                SecretId=name,
+                RemoveReplicaRegions=["eu-west-1"],
+            )
+            assert "ARN" in resp
+            assert "ReplicationStatus" in resp
+            assert isinstance(resp["ReplicationStatus"], list)
+        finally:
+            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)

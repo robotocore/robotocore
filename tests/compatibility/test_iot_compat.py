@@ -929,6 +929,95 @@ class TestIoTJobOperations:
         assert "executionSummaries" in resp
         iot.delete_thing(thingName=name)
 
+    def test_create_job(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        resp = iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=json.dumps({"action": "test"}),
+            description="test job",
+        )
+        assert resp["jobId"] == job_id
+        assert "jobArn" in resp
+        # Cleanup
+        iot.delete_job(jobId=job_id, force=True)
+        iot.delete_thing(thingName=thing)
+
+    def test_describe_job(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=json.dumps({"action": "test"}),
+            description="describe me",
+        )
+        resp = iot.describe_job(jobId=job_id)
+        assert resp["job"]["jobId"] == job_id
+        assert resp["job"]["description"] == "describe me"
+        assert resp["job"]["status"] in ("QUEUED", "IN_PROGRESS")
+        assert "jobArn" in resp["job"]
+        # Cleanup
+        iot.delete_job(jobId=job_id, force=True)
+        iot.delete_thing(thingName=thing)
+
+    def test_list_jobs_with_created_job(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=json.dumps({"action": "list"}),
+        )
+        resp = iot.list_jobs()
+        job_ids = [j["jobId"] for j in resp["jobs"]]
+        assert job_id in job_ids
+        # Cleanup
+        iot.delete_job(jobId=job_id, force=True)
+        iot.delete_thing(thingName=thing)
+
+    def test_cancel_job(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=json.dumps({"action": "cancel"}),
+        )
+        resp = iot.cancel_job(jobId=job_id)
+        assert resp["jobId"] == job_id
+        # Verify cancelled
+        desc = iot.describe_job(jobId=job_id)
+        assert desc["job"]["status"] == "CANCELED"
+        # Cleanup
+        iot.delete_job(jobId=job_id, force=True)
+        iot.delete_thing(thingName=thing)
+
+    def test_delete_job(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=json.dumps({"action": "delete"}),
+        )
+        iot.delete_job(jobId=job_id, force=True)
+        with pytest.raises(ClientError) as exc:
+            iot.describe_job(jobId=job_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        iot.delete_thing(thingName=thing)
+
 
 class TestIoTThingPrincipalsV2Operations:
     def test_list_thing_principals_v2(self, iot):

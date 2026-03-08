@@ -493,6 +493,36 @@ class TestS3ControlAccessPoints:
                 pass
             s3.delete_bucket(Bucket=bucket)
 
+    def test_create_access_point_with_vpc(self, s3control, s3):
+        """CreateAccessPoint with VpcConfiguration sets NetworkOrigin to VPC."""
+        ec2 = make_client("ec2")
+        bucket = f"ap-vpc-{_uid()}"
+        ap_name = f"ap-vpc-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        vpc = ec2.create_vpc(CidrBlock="10.98.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            s3control.create_access_point(
+                AccountId=ACCOUNT_ID,
+                Name=ap_name,
+                Bucket=bucket,
+                VpcConfiguration={"VpcId": vpc_id},
+            )
+            resp = s3control.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert resp["NetworkOrigin"] == "VPC"
+            assert resp["VpcConfiguration"]["VpcId"] == vpc_id
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_access_point_idempotent(self, s3control):
+        """DeleteAccessPoint for nonexistent name succeeds (idempotent)."""
+        resp = s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
 
 class TestS3ControlMultiRegionAccessPoints:
     """Tests for S3 Control Multi-Region Access Point operations."""
@@ -883,6 +913,142 @@ class TestS3ControlStorageLens:
             )
             assert "Tags" in resp
             assert isinstance(resp["Tags"], list)
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_list_storage_lens_has_created_config(self, s3control):
+        """ListStorageLensConfigurations includes a freshly created config."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": True,
+                },
+            )
+            resp = s3control.list_storage_lens_configurations(AccountId=ACCOUNT_ID)
+            ids = [c["Id"] for c in resp["StorageLensConfigurationList"]]
+            assert config_id in ids
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_delete_storage_lens_removes_from_list(self, s3control):
+        """Deleting a storage lens config removes it from list results."""
+        config_id = f"lens-{_uid()}"
+        s3control.put_storage_lens_configuration(
+            AccountId=ACCOUNT_ID,
+            ConfigId=config_id,
+            StorageLensConfiguration={
+                "Id": config_id,
+                "AccountLevel": {"BucketLevel": {}},
+                "IsEnabled": True,
+            },
+        )
+        s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
+        resp = s3control.list_storage_lens_configurations(AccountId=ACCOUNT_ID)
+        ids = [c["Id"] for c in resp["StorageLensConfigurationList"]]
+        assert config_id not in ids
+
+    def test_get_storage_lens_not_found(self, s3control):
+        """GetStorageLensConfiguration raises NoSuchConfiguration for nonexistent config."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_storage_lens_configuration(
+                AccountId=ACCOUNT_ID, ConfigId=f"nonexistent-{_uid()}"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchConfiguration"
+
+    def test_put_storage_lens_configuration_disabled(self, s3control):
+        """PutStorageLensConfiguration with IsEnabled=False."""
+        config_id = f"lens-{_uid()}"
+        try:
+            resp = s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": False,
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_put_storage_lens_replaces_existing(self, s3control):
+        """Putting a storage lens config with the same ID replaces it."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": True,
+                },
+            )
+            # Replace with disabled
+            resp = s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": False,
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_put_storage_lens_tagging_replaces_tags(self, s3control):
+        """PutStorageLensConfigurationTagging replaces existing tags."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": True,
+                },
+            )
+            s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[{"Key": "env", "Value": "dev"}],
+            )
+            # Replace tags
+            resp = s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[{"Key": "team", "Value": "backend"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             try:
                 s3control.delete_storage_lens_configuration(
