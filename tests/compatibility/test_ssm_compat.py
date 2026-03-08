@@ -709,6 +709,33 @@ class TestSSMDocumentExtended:
         finally:
             ssm.delete_document(Name=doc_name)
 
+    def test_update_document_default_version(self, ssm):
+        """UpdateDocumentDefaultVersion sets the default version."""
+        doc_name = _unique("defver-doc")
+        ssm.create_document(
+            Content=self._doc_content("v1"),
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            # Create version 2
+            ssm.update_document(
+                Content=self._doc_content("v2"),
+                Name=doc_name,
+                DocumentVersion="$LATEST",
+            )
+            # Set default version to 2
+            resp = ssm.update_document_default_version(Name=doc_name, DocumentVersion="2")
+            desc = resp["Description"]
+            assert desc["Name"] == doc_name
+            assert desc["DefaultVersion"] == "2"
+            # Verify via describe
+            info = ssm.describe_document(Name=doc_name)
+            assert info["Document"]["DefaultVersion"] == "2"
+        finally:
+            ssm.delete_document(Name=doc_name)
+
     def test_describe_document_permission(self, ssm):
         """DescribeDocumentPermission returns sharing info."""
         doc_name = _unique("perm-doc")
