@@ -96,7 +96,7 @@ docker-compare: ## Run robotocore + LocalStack side-by-side for comparison
 clean: ## Remove build artifacts, caches, and temp files
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .mypy_cache .ruff_cache dist build *.egg-info parity-report.json .robotocore.pid .robotocore.log
+	rm -rf .mypy_cache .ruff_cache dist build *.egg-info parity-report.json .robotocore.pid .robotocore.log .robotocore-diag.log
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} \

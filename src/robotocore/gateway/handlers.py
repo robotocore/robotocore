@@ -133,10 +133,23 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
     """
     from xml.sax.saxutils import escape as xml_escape
 
+    from robotocore.diagnostics import header_value as diag_header
+    from robotocore.diagnostics import record as diag_record
+
     protocol = context.protocol or "query"
     is_not_implemented = isinstance(exc, NotImplementedError)
     status_code = 501 if is_not_implemented else 500
     error_code = "NotImplemented" if is_not_implemented else type(exc).__name__
+
+    diag_record(
+        exc=exc,
+        service=context.service_name,
+        operation=context.operation or "",
+        method=context.request.method,
+        path=context.request.url.path,
+        status=status_code,
+    )
+    diag_hdr = {"x-robotocore-diag": diag_header(exc)}
 
     if protocol in ("json", "rest-json"):
         body = json.dumps(
@@ -151,6 +164,7 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
             content=body,
             status_code=status_code,
             media_type=f"application/x-amz-json-{json_version}",
+            headers=diag_hdr,
         )
     else:
         # XML format for query, rest-xml, ec2
@@ -166,4 +180,5 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
             content=body,
             status_code=status_code,
             media_type="application/xml",
+            headers=diag_hdr,
         )

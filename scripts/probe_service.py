@@ -179,8 +179,16 @@ def probe_operation(client, operation_name: str, params: dict) -> tuple[bool, st
         }
         if code in implemented_errors:
             return True, f"implemented ({code})"
-        # 501 or "not implemented" message = not supported
         status_code = e.response["ResponseMetadata"]["HTTPStatusCode"]
+        # Check x-robotocore-diag header for precise classification
+        diag = (
+            e.response.get("ResponseMetadata", {})
+            .get("HTTPHeaders", {})
+            .get("x-robotocore-diag", "")
+        )
+        if diag and "NotImplementedError" in diag:
+            return False, f"not implemented (diag: {diag[:80]})"
+        # 501 or "not implemented" message = not supported
         if status_code == 501:
             return False, f"not implemented (501: {code})"
         if "not implemented" in msg.lower() or "unknown" in msg.lower():

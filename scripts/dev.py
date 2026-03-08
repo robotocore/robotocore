@@ -78,6 +78,9 @@ def server_start(port=None):
     env = os.environ.copy()
     env["ROBOTOCORE_PORT"] = str(port)
     env["ROBOTOCORE_HOST"] = "0.0.0.0"
+    # Enable diagnostic logging by default for dev server — captures
+    # full tracebacks for all Moto errors to .robotocore-diag.log
+    env.setdefault("ROBOTOCORE_DIAG", "1")
 
     log_path = os.path.join(PROJECT_ROOT, ".robotocore.log")
     log_file = open(log_path, "w")
