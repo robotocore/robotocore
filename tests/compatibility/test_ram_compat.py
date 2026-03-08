@@ -99,6 +99,29 @@ class TestRAMResourceShareLifecycle:
         ram.delete_resource_share(resourceShareArn=arn2)
 
 
+class TestRAMResourceShareAssociations:
+    def test_get_resource_share_associations_principal(self, ram):
+        """GetResourceShareAssociations returns associations list for PRINCIPAL type."""
+        resp = ram.get_resource_share_associations(associationType="PRINCIPAL")
+        assert "resourceShareAssociations" in resp
+        assert isinstance(resp["resourceShareAssociations"], list)
+
+    def test_get_resource_share_associations_resource(self, ram):
+        """GetResourceShareAssociations returns associations list for RESOURCE type."""
+        resp = ram.get_resource_share_associations(associationType="RESOURCE")
+        assert "resourceShareAssociations" in resp
+        assert isinstance(resp["resourceShareAssociations"], list)
+
+    def test_get_resource_share_associations_with_share(self, ram, resource_share):
+        """GetResourceShareAssociations filtered by resource share ARN."""
+        resp = ram.get_resource_share_associations(
+            associationType="PRINCIPAL",
+            resourceShareArns=[resource_share["resourceShareArn"]],
+        )
+        assert "resourceShareAssociations" in resp
+        assert isinstance(resp["resourceShareAssociations"], list)
+
+
 class TestRamAutoCoverage:
     """Auto-generated coverage tests for ram."""
 

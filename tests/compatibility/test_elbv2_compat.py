@@ -388,7 +388,7 @@ class TestELBv2MetadataOperations:
 
 
 class TestELBv2ListenerCertificateOperations:
-    """Tests for AddListenerCertificates, DescribeListenerCertificates, RemoveListenerCertificates."""
+    """Tests for listener certificate operations."""
 
     @pytest.fixture
     def acm(self):
