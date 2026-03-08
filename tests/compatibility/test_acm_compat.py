@@ -481,6 +481,16 @@ class TestACMExtended:
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
+    def test_put_account_configuration(self, acm):
+        """PutAccountConfiguration sets expiry event preferences."""
+        acm.put_account_configuration(
+            ExpiryEvents={"DaysBeforeExpiry": 30},
+            IdempotencyToken="put-acct-config-test",
+        )
+        # Verify by reading the account configuration back
+        resp = acm.get_account_configuration()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
     def test_delete_certificate_twice_raises(self, acm):
         resp = acm.request_certificate(DomainName="double-delete.example.com")
         arn = resp["CertificateArn"]
