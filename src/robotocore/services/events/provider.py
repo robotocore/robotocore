@@ -1117,6 +1117,97 @@ def _update_archive(store: EventsStore, params: dict, region: str, account_id: s
     return {"ArchiveArn": archive.arn, "State": archive.state}
 
 
+def _update_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    conn = _connections.get(name)
+    if not conn:
+        raise EventsError("ResourceNotFoundException", f"Connection '{name}' does not exist.", 400)
+    if "Description" in params:
+        conn["Description"] = params["Description"]
+    if "AuthorizationType" in params:
+        conn["AuthorizationType"] = params["AuthorizationType"]
+    if "AuthParameters" in params:
+        conn["AuthParameters"] = params["AuthParameters"]
+    conn["LastModifiedTime"] = time.time()
+    return {
+        "ConnectionArn": conn["ConnectionArn"],
+        "ConnectionState": conn["ConnectionState"],
+        "LastModifiedTime": conn["LastModifiedTime"],
+    }
+
+
+def _update_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "")
+    dest = _api_destinations.get(name)
+    if not dest:
+        raise EventsError(
+            "ResourceNotFoundException", f"An api-destination '{name}' does not exist.", 400
+        )
+    if "ConnectionArn" in params:
+        dest["ConnectionArn"] = params["ConnectionArn"]
+    if "InvocationEndpoint" in params:
+        dest["InvocationEndpoint"] = params["InvocationEndpoint"]
+    if "HttpMethod" in params:
+        dest["HttpMethod"] = params["HttpMethod"]
+    if "InvocationRateLimitPerSecond" in params:
+        dest["InvocationRateLimitPerSecond"] = params["InvocationRateLimitPerSecond"]
+    if "Description" in params:
+        dest["Description"] = params["Description"]
+    dest["LastModifiedTime"] = time.time()
+    return {
+        "ApiDestinationArn": dest["ApiDestinationArn"],
+        "ApiDestinationState": dest["ApiDestinationState"],
+        "LastModifiedTime": dest["LastModifiedTime"],
+    }
+
+
+def _list_rule_names_by_target(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
+    target_arn = params.get("TargetArn", "")
+    bus_name = params.get("EventBusName", "default")
+    rule_names = []
+    bus = store.get_bus(bus_name)
+    if bus:
+        for rule in bus.rules.values():
+            for t in rule.targets.values():
+                if t.arn == target_arn:
+                    rule_names.append(rule.name)
+                    break
+    return {"RuleNames": rule_names}
+
+
+def _test_event_pattern(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    pattern_str = params.get("EventPattern", "{}")
+    event_str = params.get("Event", "{}")
+    pattern = json.loads(pattern_str) if isinstance(pattern_str, str) else pattern_str
+    event = json.loads(event_str) if isinstance(event_str, str) else event_str
+    result = _matches_pattern(pattern, event)
+    return {"Result": result}
+
+
+def _matches_pattern(pattern: dict, event: dict) -> bool:
+    """Check if an event matches an EventBridge event pattern."""
+    for key, expected in pattern.items():
+        value = event.get(key)
+        if isinstance(expected, list):
+            # List means "any of these values"
+            if isinstance(value, list):
+                if not any(v in expected for v in value):
+                    return False
+            elif value not in expected:
+                return False
+        elif isinstance(expected, dict):
+            if not isinstance(value, dict):
+                return False
+            if not _matches_pattern(expected, value):
+                return False
+        else:
+            if value != expected:
+                return False
+    return True
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(
@@ -1158,4 +1249,8 @@ _ACTION_MAP = {
     "DescribeApiDestination": _describe_api_destination,
     "DeleteApiDestination": _delete_api_destination,
     "UpdateArchive": _update_archive,
+    "UpdateConnection": _update_connection,
+    "UpdateApiDestination": _update_api_destination,
+    "ListRuleNamesByTarget": _list_rule_names_by_target,
+    "TestEventPattern": _test_event_pattern,
 }

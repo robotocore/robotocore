@@ -2350,3 +2350,383 @@ class TestLambdaAccountAndESM:
         resp = lam.list_event_source_mappings()
         assert "EventSourceMappings" in resp
         assert isinstance(resp["EventSourceMappings"], list)
+
+
+class TestLambdaFunctionRecursionConfig:
+    @pytest.fixture
+    def lam(self):
+        return make_client("lambda")
+
+    @pytest.fixture
+    def role(self):
+        iam = make_client("iam")
+        name = f"recursion-role-{uuid.uuid4().hex[:8]}"
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)
+        yield f"arn:aws:iam::123456789012:role/{name}"
+        iam.delete_role(RoleName=name)
+
+    @pytest.fixture
+    def func(self, lam, role):
+        name = f"recursion-func-{uuid.uuid4().hex[:8]}"
+        code = _make_zip("def handler(e, c): return 'ok'")
+        lam.create_function(
+            FunctionName=name,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield name
+        lam.delete_function(FunctionName=name)
+
+    def test_get_function_recursion_config(self, lam, func):
+        """GetFunctionRecursionConfig returns RecursiveLoop setting."""
+        resp = lam.get_function_recursion_config(FunctionName=func)
+        assert "RecursiveLoop" in resp
+        assert resp["RecursiveLoop"] in ("Allow", "Terminate")
+
+    def test_put_function_recursion_config(self, lam, func):
+        """PutFunctionRecursionConfig sets RecursiveLoop and returns it."""
+        resp = lam.put_function_recursion_config(FunctionName=func, RecursiveLoop="Terminate")
+        assert resp["RecursiveLoop"] == "Terminate"
+        # Verify via get
+        got = lam.get_function_recursion_config(FunctionName=func)
+        assert got["RecursiveLoop"] == "Terminate"
+
+    def test_get_function_recursion_config_nonexistent(self, lam):
+        """GetFunctionRecursionConfig on nonexistent function raises error."""
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_function_recursion_config(FunctionName="no-such-func-xyz")
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "FunctionNotFoundException",
+        )
+
+
+class TestLambdaFunctionScalingConfig:
+    """Tests for GetFunctionScalingConfig and PutFunctionScalingConfig."""
+
+    @pytest.fixture
+    def func(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"scaling-cfg-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield fname
+        lam.delete_function(FunctionName=fname)
+
+    def test_get_function_scaling_config_default(self, lam, func):
+        """GetFunctionScalingConfig returns config for new function."""
+        resp = lam.get_function_scaling_config(FunctionName=func, Qualifier="$LATEST")
+        assert "FunctionArn" in resp
+
+    def test_put_function_scaling_config(self, lam, func):
+        """PutFunctionScalingConfig sets scaling config and returns FunctionState."""
+        resp = lam.put_function_scaling_config(
+            FunctionName=func,
+            Qualifier="$LATEST",
+            FunctionScalingConfig={"MaxExecutionEnvironments": 10},
+        )
+        assert "FunctionState" in resp
+
+    def test_put_then_get_scaling_config(self, lam, func):
+        """PutFunctionScalingConfig is reflected by GetFunctionScalingConfig."""
+        lam.put_function_scaling_config(
+            FunctionName=func,
+            Qualifier="$LATEST",
+            FunctionScalingConfig={"MaxExecutionEnvironments": 5},
+        )
+        resp = lam.get_function_scaling_config(FunctionName=func, Qualifier="$LATEST")
+        assert resp["AppliedFunctionScalingConfig"]["MaxExecutionEnvironments"] == 5
+
+    def test_get_function_scaling_config_nonexistent(self, lam):
+        """GetFunctionScalingConfig on nonexistent function raises error."""
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_function_scaling_config(FunctionName="no-such-func-xyz", Qualifier="$LATEST")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestLambdaCodeSigningConfig:
+    """Tests for Get/Put/DeleteFunctionCodeSigningConfig."""
+
+    @pytest.fixture
+    def func(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"codesign-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield fname
+        lam.delete_function(FunctionName=fname)
+
+    def test_put_function_code_signing_config(self, lam, func):
+        """PutFunctionCodeSigningConfig sets code signing config ARN."""
+        csc_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-fake123"
+        resp = lam.put_function_code_signing_config(FunctionName=func, CodeSigningConfigArn=csc_arn)
+        assert resp["CodeSigningConfigArn"] == csc_arn
+        assert resp["FunctionName"] == func
+
+    def test_get_function_code_signing_config(self, lam, func):
+        """GetFunctionCodeSigningConfig returns the configured ARN."""
+        csc_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-fake456"
+        lam.put_function_code_signing_config(FunctionName=func, CodeSigningConfigArn=csc_arn)
+        resp = lam.get_function_code_signing_config(FunctionName=func)
+        assert resp["CodeSigningConfigArn"] == csc_arn
+
+    def test_delete_function_code_signing_config(self, lam, func):
+        """DeleteFunctionCodeSigningConfig removes the config."""
+        csc_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-del"
+        lam.put_function_code_signing_config(FunctionName=func, CodeSigningConfigArn=csc_arn)
+        lam.delete_function_code_signing_config(FunctionName=func)
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_function_code_signing_config(FunctionName=func)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_code_signing_config_nonexistent(self, lam):
+        """GetFunctionCodeSigningConfig on nonexistent function raises error."""
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_function_code_signing_config(FunctionName="no-such-func-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestLambdaRuntimeManagementConfig:
+    """Tests for GetRuntimeManagementConfig and PutRuntimeManagementConfig."""
+
+    @pytest.fixture
+    def func(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"rtmgmt-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield fname
+        lam.delete_function(FunctionName=fname)
+
+    def test_get_runtime_management_config_default(self, lam, func):
+        """GetRuntimeManagementConfig returns Auto by default."""
+        resp = lam.get_runtime_management_config(FunctionName=func)
+        assert resp["UpdateRuntimeOn"] == "Auto"
+
+    def test_put_runtime_management_config(self, lam, func):
+        """PutRuntimeManagementConfig sets UpdateRuntimeOn."""
+        resp = lam.put_runtime_management_config(
+            FunctionName=func, UpdateRuntimeOn="FunctionUpdate"
+        )
+        assert resp["UpdateRuntimeOn"] == "FunctionUpdate"
+
+    def test_put_then_get_runtime_management_config(self, lam, func):
+        """PutRuntimeManagementConfig is reflected by Get."""
+        lam.put_runtime_management_config(FunctionName=func, UpdateRuntimeOn="FunctionUpdate")
+        resp = lam.get_runtime_management_config(FunctionName=func)
+        assert resp["UpdateRuntimeOn"] == "FunctionUpdate"
+
+    def test_get_runtime_management_config_nonexistent(self, lam):
+        """GetRuntimeManagementConfig on nonexistent function raises error."""
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_runtime_management_config(FunctionName="no-such-func-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestLambdaLayerVersionPermission:
+    """Tests for AddLayerVersionPermission, RemoveLayerVersionPermission, GetLayerVersionPolicy."""
+
+    @pytest.fixture
+    def layer(self, lam):
+        code = _make_zip("# layer code")
+        layer_name = f"perm-layer-{uuid.uuid4().hex[:8]}"
+        resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+        )
+        version = resp["Version"]
+        yield layer_name, version
+        try:
+            lam.delete_layer_version(LayerName=layer_name, VersionNumber=version)
+        except Exception:
+            pass
+
+    def test_add_layer_version_permission(self, lam, layer):
+        """AddLayerVersionPermission adds a permission statement."""
+        layer_name, version = layer
+        resp = lam.add_layer_version_permission(
+            LayerName=layer_name,
+            VersionNumber=version,
+            StatementId="allow-all",
+            Action="lambda:GetLayerVersion",
+            Principal="*",
+        )
+        assert "Statement" in resp
+
+    def test_get_layer_version_policy(self, lam, layer):
+        """GetLayerVersionPolicy returns the policy after adding a permission."""
+        layer_name, version = layer
+        lam.add_layer_version_permission(
+            LayerName=layer_name,
+            VersionNumber=version,
+            StatementId="sid1",
+            Action="lambda:GetLayerVersion",
+            Principal="*",
+        )
+        resp = lam.get_layer_version_policy(LayerName=layer_name, VersionNumber=version)
+        assert "Policy" in resp
+        import json
+
+        policy = json.loads(resp["Policy"])
+        assert len(policy["Statement"]) >= 1
+
+    def test_remove_layer_version_permission(self, lam, layer):
+        """RemoveLayerVersionPermission removes a statement."""
+        layer_name, version = layer
+        lam.add_layer_version_permission(
+            LayerName=layer_name,
+            VersionNumber=version,
+            StatementId="to-remove",
+            Action="lambda:GetLayerVersion",
+            Principal="*",
+        )
+        lam.remove_layer_version_permission(
+            LayerName=layer_name,
+            VersionNumber=version,
+            StatementId="to-remove",
+        )
+        # After removing the only statement, policy should not exist
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_layer_version_policy(LayerName=layer_name, VersionNumber=version)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_layer_version_policy_nonexistent(self, lam):
+        """GetLayerVersionPolicy on nonexistent layer raises error."""
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_layer_version_policy(LayerName="no-such-layer-xyz", VersionNumber=1)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestLambdaListFunctionUrlConfigs:
+    """Tests for ListFunctionUrlConfigs."""
+
+    @pytest.fixture
+    def func(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"urls-list-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield fname
+        try:
+            lam.delete_function_url_config(FunctionName=fname)
+        except Exception:
+            pass
+        lam.delete_function(FunctionName=fname)
+
+    def test_list_function_url_configs_empty(self, lam, func):
+        """ListFunctionUrlConfigs returns empty list when no URL configured."""
+        resp = lam.list_function_url_configs(FunctionName=func)
+        assert resp["FunctionUrlConfigs"] == []
+
+    def test_list_function_url_configs_with_url(self, lam, func):
+        """ListFunctionUrlConfigs returns the URL config after creation."""
+        lam.create_function_url_config(FunctionName=func, AuthType="NONE")
+        resp = lam.list_function_url_configs(FunctionName=func)
+        assert len(resp["FunctionUrlConfigs"]) == 1
+        assert "FunctionUrl" in resp["FunctionUrlConfigs"][0]
+
+
+class TestLambdaListProvisionedConcurrencyConfigs:
+    """Tests for ListProvisionedConcurrencyConfigs."""
+
+    @pytest.fixture
+    def func(self, lam, role):
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"prov-list-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield fname
+        lam.delete_function(FunctionName=fname)
+
+    def test_list_provisioned_concurrency_configs_empty(self, lam, func):
+        """ListProvisionedConcurrencyConfigs returns empty list."""
+        resp = lam.list_provisioned_concurrency_configs(FunctionName=func)
+        assert resp["ProvisionedConcurrencyConfigs"] == []
+
+    def test_list_provisioned_concurrency_configs_with_config(self, lam, func):
+        """ListProvisionedConcurrencyConfigs includes set configs."""
+        # Publish a version first (provisioned concurrency needs qualifier)
+        ver = lam.publish_version(FunctionName=func)
+        version = ver["Version"]
+        lam.put_provisioned_concurrency_config(
+            FunctionName=func,
+            Qualifier=version,
+            ProvisionedConcurrentExecutions=5,
+        )
+        resp = lam.list_provisioned_concurrency_configs(FunctionName=func)
+        assert len(resp["ProvisionedConcurrencyConfigs"]) >= 1
+        # Clean up
+        lam.delete_provisioned_concurrency_config(FunctionName=func, Qualifier=version)
+
+
+class TestLambdaListDurableExecutions:
+    """Tests for ListDurableExecutionsByFunction."""
+
+    def test_list_durable_executions_empty(self, lam):
+        """ListDurableExecutionsByFunction returns empty list."""
+        resp = lam.list_durable_executions_by_function(FunctionName="any-func")
+        assert resp["DurableExecutions"] == []
+
+
+class TestLambdaInvokeWithResponseStream:
+    """Tests for InvokeWithResponseStream."""
+
+    @pytest.fixture
+    def func(self, lam, role):
+        code = _make_zip('def handler(event, ctx): return {"result": "streamed"}')
+        fname = f"stream-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        yield fname
+        lam.delete_function(FunctionName=fname)
+
+    def test_invoke_with_response_stream(self, lam, func):
+        """InvokeWithResponseStream returns a 200 with ExecutedVersion."""
+        resp = lam.invoke_with_response_stream(FunctionName=func)
+        assert resp["StatusCode"] == 200
+        assert resp["ExecutedVersion"] == "$LATEST"

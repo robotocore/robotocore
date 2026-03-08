@@ -1066,6 +1066,32 @@ class TestStepFunctionsMapRun:
         resp = sfn.update_map_run(mapRunArn=fake_arn, maxConcurrency=10)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+    def test_list_map_runs(self, sfn):
+        """ListMapRuns returns mapRuns list for an execution."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"map-runs-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps(
+            {
+                "StartAt": "PassState",
+                "States": {
+                    "PassState": {"Type": "Pass", "End": True},
+                },
+            }
+        )
+        sm = sfn.create_state_machine(name=sm_name, definition=definition, roleArn=role_arn)
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            exec_arn = exec_resp["executionArn"]
+            resp = sfn.list_map_runs(executionArn=exec_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # mapRuns key may be absent if no distributed map runs exist;
+            # the important thing is the server accepted the request
+            if "mapRuns" in resp:
+                assert isinstance(resp["mapRuns"], list)
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
 
 class TestStepFunctionsSendTask:
     """Tests for SendTask* operations (callback pattern)."""

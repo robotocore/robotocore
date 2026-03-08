@@ -116,6 +116,33 @@ def _create_topic(
                 "FIFO topic name must end with .fifo",
             )
     topic = store.create_topic(name, region, account_id, attributes)
+    # Set default policy if none provided
+    if "Policy" not in topic.attributes:
+        topic.attributes["Policy"] = json.dumps(
+            {
+                "Version": "2008-10-17",
+                "Id": "__default_policy_ID",
+                "Statement": [
+                    {
+                        "Sid": "__default_statement_ID",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": [
+                            "SNS:GetTopicAttributes",
+                            "SNS:SetTopicAttributes",
+                            "SNS:AddPermission",
+                            "SNS:RemovePermission",
+                            "SNS:DeleteTopic",
+                            "SNS:Subscribe",
+                            "SNS:ListSubscriptionsByTopic",
+                            "SNS:Publish",
+                        ],
+                        "Resource": topic.arn,
+                        "Condition": {"StringEquals": {"AWS:SourceOwner": account_id}},
+                    }
+                ],
+            }
+        )
     # Apply tags
     if tags:
         for tag in tags:
@@ -177,6 +204,78 @@ def _set_topic_attributes(
     if attr_name:
         topic.attributes[attr_name] = attr_value
     return {}
+
+
+VALID_POLICY_ACTIONS = [
+    "GetTopicAttributes",
+    "SetTopicAttributes",
+    "AddPermission",
+    "RemovePermission",
+    "DeleteTopic",
+    "Subscribe",
+    "ListSubscriptionsByTopic",
+    "Publish",
+    "Receive",
+]
+
+
+def _add_permission(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    arn = params.get("TopicArn", "")
+    topic = store.get_topic(arn)
+    if not topic:
+        raise SnsError("NotFound", "Topic does not exist", 404)
+    label = params.get("Label", "")
+    # Parse query-protocol list params
+    aws_account_ids = _parse_member_list(params, "AWSAccountId")
+    action_names = _parse_member_list(params, "ActionName")
+    for action in action_names:
+        if action not in VALID_POLICY_ACTIONS:
+            raise SnsError("InvalidParameter", "Policy statement action out of service scope!")
+    policy = json.loads(topic.attributes.get("Policy", '{"Version":"2008-10-17","Statement":[]}'))
+    if any(s.get("Sid") == label for s in policy.get("Statement", [])):
+        raise SnsError("InvalidParameter", "Statement already exists")
+    principals = [f"arn:aws:iam::{aid}:root" for aid in aws_account_ids]
+    actions = [f"SNS:{a}" for a in action_names]
+    policy.setdefault("Statement", []).append(
+        {
+            "Sid": label,
+            "Effect": "Allow",
+            "Principal": {"AWS": principals if len(principals) > 1 else principals[0]},
+            "Action": actions if len(actions) > 1 else actions[0],
+            "Resource": arn,
+        }
+    )
+    topic.attributes["Policy"] = json.dumps(policy)
+    return {}
+
+
+def _remove_permission(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    arn = params.get("TopicArn", "")
+    topic = store.get_topic(arn)
+    if not topic:
+        raise SnsError("NotFound", "Topic does not exist", 404)
+    label = params.get("Label", "")
+    policy = json.loads(topic.attributes.get("Policy", '{"Version":"2008-10-17","Statement":[]}'))
+    policy["Statement"] = [s for s in policy.get("Statement", []) if s.get("Sid") != label]
+    topic.attributes["Policy"] = json.dumps(policy)
+    return {}
+
+
+def _parse_member_list(params: dict, prefix: str) -> list[str]:
+    """Parse query-protocol member lists like AWSAccountId.member.1, etc."""
+    # Check for pre-parsed list first (JSON protocol)
+    if prefix in params and isinstance(params[prefix], list):
+        return params[prefix]
+    result = []
+    i = 1
+    while f"{prefix}.member.{i}" in params:
+        result.append(params[f"{prefix}.member.{i}"])
+        i += 1
+    return result
 
 
 def _subscribe(
@@ -1006,6 +1105,8 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListTopics": _list_topics,
     "GetTopicAttributes": _get_topic_attributes,
     "SetTopicAttributes": _set_topic_attributes,
+    "AddPermission": _add_permission,
+    "RemovePermission": _remove_permission,
     "Subscribe": _subscribe,
     "ConfirmSubscription": _confirm_subscription,
     "Unsubscribe": _unsubscribe,

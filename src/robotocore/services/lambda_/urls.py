@@ -93,6 +93,20 @@ def delete_function_url_config(
         del _url_configs[key]
 
 
+def list_function_url_configs(
+    func_name: str,
+    region: str,
+    account_id: str,
+) -> list[dict]:
+    """List all function URL configs for a function."""
+    key = (account_id, region, func_name)
+    with _url_lock:
+        config = _url_configs.get(key)
+    if config:
+        return [config]
+    return []
+
+
 def get_all_url_configs() -> list[dict]:
     """Return all function URL configs (for routing)."""
     with _url_lock:

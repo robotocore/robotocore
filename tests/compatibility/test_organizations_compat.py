@@ -410,14 +410,187 @@ class TestOrganizationsTags:
         assert tags["team"] == "platform"
 
 
-class TestOrganizationsAutoCoverage:
-    """Auto-generated coverage tests for organizations."""
+class TestOrganizationsServiceAccess:
+    """Tests for AWS service access operations."""
 
-    @pytest.fixture
-    def client(self):
-        return make_client("organizations")
+    def test_enable_aws_service_access(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        orgs.enable_aws_service_access(ServicePrincipal="ssm.amazonaws.com")
+        resp = orgs.list_aws_service_access_for_organization()
+        principals = [p["ServicePrincipal"] for p in resp["EnabledServicePrincipals"]]
+        assert "ssm.amazonaws.com" in principals
 
-    def test_list_aws_service_access_for_organization(self, client):
-        """ListAWSServiceAccessForOrganization returns a response."""
-        resp = client.list_aws_service_access_for_organization()
+    def test_disable_aws_service_access(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        orgs.enable_aws_service_access(ServicePrincipal="ssm.amazonaws.com")
+        orgs.disable_aws_service_access(ServicePrincipal="ssm.amazonaws.com")
+        resp = orgs.list_aws_service_access_for_organization()
+        principals = [p["ServicePrincipal"] for p in resp["EnabledServicePrincipals"]]
+        assert "ssm.amazonaws.com" not in principals
+
+    def test_list_aws_service_access_for_organization(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        resp = orgs.list_aws_service_access_for_organization()
         assert "EnabledServicePrincipals" in resp
+        assert isinstance(resp["EnabledServicePrincipals"], list)
+
+
+class TestOrganizationsDelegatedAdmin:
+    """Tests for delegated administrator operations."""
+
+    def test_register_delegated_administrator(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('deleg')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("DelegAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+        orgs.enable_aws_service_access(ServicePrincipal="ssm.amazonaws.com")
+        orgs.register_delegated_administrator(
+            AccountId=acct_id, ServicePrincipal="ssm.amazonaws.com"
+        )
+        resp = orgs.list_delegated_administrators(ServicePrincipal="ssm.amazonaws.com")
+        admin_ids = [a["Id"] for a in resp["DelegatedAdministrators"]]
+        assert acct_id in admin_ids
+
+    def test_deregister_delegated_administrator(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('deleg2')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("DeregAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+        orgs.enable_aws_service_access(ServicePrincipal="ssm.amazonaws.com")
+        orgs.register_delegated_administrator(
+            AccountId=acct_id, ServicePrincipal="ssm.amazonaws.com"
+        )
+        orgs.deregister_delegated_administrator(
+            AccountId=acct_id, ServicePrincipal="ssm.amazonaws.com"
+        )
+        resp = orgs.list_delegated_administrators(ServicePrincipal="ssm.amazonaws.com")
+        admin_ids = [a["Id"] for a in resp["DelegatedAdministrators"]]
+        assert acct_id not in admin_ids
+
+    def test_list_delegated_services_for_account(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('svc')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("SvcAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+        orgs.enable_aws_service_access(ServicePrincipal="ssm.amazonaws.com")
+        orgs.register_delegated_administrator(
+            AccountId=acct_id, ServicePrincipal="ssm.amazonaws.com"
+        )
+        resp = orgs.list_delegated_services_for_account(AccountId=acct_id)
+        assert "DelegatedServices" in resp
+        principals = [s["ServicePrincipal"] for s in resp["DelegatedServices"]]
+        assert "ssm.amazonaws.com" in principals
+
+
+class TestOrganizationsOUExtra:
+    """Tests for OU describe/update operations."""
+
+    def test_describe_organizational_unit(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        name = _unique("DescOU")
+        ou = orgs.create_organizational_unit(ParentId=root_id, Name=name)
+        ou_id = ou["OrganizationalUnit"]["Id"]
+        resp = orgs.describe_organizational_unit(OrganizationalUnitId=ou_id)
+        assert resp["OrganizationalUnit"]["Id"] == ou_id
+        assert resp["OrganizationalUnit"]["Name"] == name
+
+    def test_update_organizational_unit(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        ou = orgs.create_organizational_unit(ParentId=root_id, Name=_unique("OldOU"))
+        ou_id = ou["OrganizationalUnit"]["Id"]
+        new_name = _unique("NewOU")
+        resp = orgs.update_organizational_unit(OrganizationalUnitId=ou_id, Name=new_name)
+        assert resp["OrganizationalUnit"]["Name"] == new_name
+
+
+class TestOrganizationsAccountOps:
+    """Tests for account-related operations."""
+
+    def test_describe_account(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('desc')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("DescAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+        resp = orgs.describe_account(AccountId=acct_id)
+        assert resp["Account"]["Id"] == acct_id
+        assert resp["Account"]["Status"] == "ACTIVE"
+
+    def test_list_accounts_for_parent(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        resp = orgs.list_accounts_for_parent(ParentId=root_id)
+        assert "Accounts" in resp
+        assert len(resp["Accounts"]) >= 1  # at least master
+
+    def test_list_parents(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        accounts = orgs.list_accounts()["Accounts"]
+        master_id = accounts[0]["Id"]
+        resp = orgs.list_parents(ChildId=master_id)
+        assert "Parents" in resp
+        assert len(resp["Parents"]) == 1
+        assert resp["Parents"][0]["Type"] == "ROOT"
+
+    def test_describe_create_account_status(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('cas')}@example.com"
+        create_resp = orgs.create_account(Email=email, AccountName=_unique("CasAcct"))
+        request_id = create_resp["CreateAccountStatus"]["Id"]
+        resp = orgs.describe_create_account_status(CreateAccountRequestId=request_id)
+        assert resp["CreateAccountStatus"]["Id"] == request_id
+        assert resp["CreateAccountStatus"]["State"] in ("SUCCEEDED", "IN_PROGRESS")
+
+    def test_close_account(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('close')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("CloseAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+        orgs.close_account(AccountId=acct_id)
+        resp = orgs.describe_account(AccountId=acct_id)
+        assert resp["Account"]["Status"] in ("SUSPENDED", "PENDING_CLOSURE")
+
+
+class TestOrganizationsPolicyExtra:
+    """Tests for additional policy operations."""
+
+    def test_disable_policy_type(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="TAG_POLICY")
+        resp = orgs.disable_policy_type(RootId=root_id, PolicyType="TAG_POLICY")
+        assert resp["Root"]["Id"] == root_id
+        policy_types = [pt["Type"] for pt in resp["Root"].get("PolicyTypes", [])]
+        assert "TAG_POLICY" not in [
+            pt
+            for pt in policy_types
+            if any(
+                p.get("Status") == "ENABLED"
+                for p in resp["Root"].get("PolicyTypes", [])
+                if p["Type"] == "TAG_POLICY"
+            )
+        ]
+
+    def test_list_targets_for_policy(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Targets test",
+            Name=_unique("TgtPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+        orgs.attach_policy(PolicyId=policy_id, TargetId=root_id)
+        resp = orgs.list_targets_for_policy(PolicyId=policy_id)
+        assert "Targets" in resp
+        target_ids = [t["TargetId"] for t in resp["Targets"]]
+        assert root_id in target_ids

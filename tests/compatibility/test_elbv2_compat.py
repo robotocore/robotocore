@@ -535,6 +535,273 @@ class TestELBv2ListenerCertificateOperations:
         assert https_listener["extra_cert_arn"] not in cert_arns
 
 
+@pytest.fixture
+def lb_listener_tg(elbv2, ec2, vpc_with_subnets):
+    """Create an ALB + target group + HTTP listener for rule/listener tests."""
+    lb_name = _unique("alb")
+    tg_name = _unique("tg")
+
+    lb = elbv2.create_load_balancer(
+        Name=lb_name,
+        Subnets=vpc_with_subnets["subnet_ids"],
+        Type="application",
+    )
+    lb_arn = lb["LoadBalancers"][0]["LoadBalancerArn"]
+
+    tg = elbv2.create_target_group(
+        Name=tg_name,
+        Protocol="HTTP",
+        Port=80,
+        VpcId=vpc_with_subnets["vpc_id"],
+    )
+    tg_arn = tg["TargetGroups"][0]["TargetGroupArn"]
+
+    listener = elbv2.create_listener(
+        LoadBalancerArn=lb_arn,
+        Protocol="HTTP",
+        Port=80,
+        DefaultActions=[{"Type": "forward", "TargetGroupArn": tg_arn}],
+    )
+    listener_arn = listener["Listeners"][0]["ListenerArn"]
+
+    yield {
+        "lb_arn": lb_arn,
+        "tg_arn": tg_arn,
+        "listener_arn": listener_arn,
+        "vpc_id": vpc_with_subnets["vpc_id"],
+        "subnet_ids": vpc_with_subnets["subnet_ids"],
+    }
+
+    elbv2.delete_listener(ListenerArn=listener_arn)
+    elbv2.delete_target_group(TargetGroupArn=tg_arn)
+    elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+
+class TestELBv2RuleOperations:
+    def test_create_and_delete_rule(self, elbv2, lb_listener_tg):
+        """CreateRule creates a rule; DeleteRule removes it."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "path-pattern", "Values": ["/api/*"]}],
+            Priority=10,
+            Actions=[{"Type": "forward", "TargetGroupArn": lb_listener_tg["tg_arn"]}],
+        )
+        rule = resp["Rules"][0]
+        rule_arn = rule["RuleArn"]
+        try:
+            assert rule["Priority"] == "10"
+            assert rule_arn is not None
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+        # Verify deleted
+        rules = elbv2.describe_rules(ListenerArn=lb_listener_tg["listener_arn"])
+        rule_arns = [r["RuleArn"] for r in rules["Rules"]]
+        assert rule_arn not in rule_arns
+
+    def test_modify_rule(self, elbv2, lb_listener_tg):
+        """ModifyRule updates a rule's conditions."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "path-pattern", "Values": ["/api/*"]}],
+            Priority=20,
+            Actions=[{"Type": "forward", "TargetGroupArn": lb_listener_tg["tg_arn"]}],
+        )
+        rule_arn = resp["Rules"][0]["RuleArn"]
+        try:
+            mod = elbv2.modify_rule(
+                RuleArn=rule_arn,
+                Conditions=[{"Field": "path-pattern", "Values": ["/v2/*"]}],
+            )
+            modified = mod["Rules"][0]
+            values = modified["Conditions"][0]["Values"]
+            assert "/v2/*" in values
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+    def test_describe_rules(self, elbv2, lb_listener_tg):
+        """DescribeRules returns rules for a listener."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "path-pattern", "Values": ["/health"]}],
+            Priority=30,
+            Actions=[{"Type": "forward", "TargetGroupArn": lb_listener_tg["tg_arn"]}],
+        )
+        rule_arn = resp["Rules"][0]["RuleArn"]
+        try:
+            rules = elbv2.describe_rules(ListenerArn=lb_listener_tg["listener_arn"])
+            assert "Rules" in rules
+            # Should have the default rule + our rule
+            assert len(rules["Rules"]) >= 2
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+    def test_set_rule_priorities(self, elbv2, lb_listener_tg):
+        """SetRulePriorities changes rule priority."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "path-pattern", "Values": ["/old"]}],
+            Priority=40,
+            Actions=[{"Type": "forward", "TargetGroupArn": lb_listener_tg["tg_arn"]}],
+        )
+        rule_arn = resp["Rules"][0]["RuleArn"]
+        try:
+            pri_resp = elbv2.set_rule_priorities(
+                RulePriorities=[{"RuleArn": rule_arn, "Priority": 50}],
+            )
+            assert "Rules" in pri_resp
+            updated = [r for r in pri_resp["Rules"] if r["RuleArn"] == rule_arn]
+            assert len(updated) == 1
+            assert updated[0]["Priority"] == "50"
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+
+class TestELBv2ListenerModifyOperations:
+    def test_modify_listener(self, elbv2, lb_listener_tg):
+        """ModifyListener updates listener default actions."""
+        # Create a second target group to forward to
+        tg2_name = _unique("tg2")
+        tg2 = elbv2.create_target_group(
+            Name=tg2_name,
+            Protocol="HTTP",
+            Port=8080,
+            VpcId=lb_listener_tg["vpc_id"],
+        )
+        tg2_arn = tg2["TargetGroups"][0]["TargetGroupArn"]
+        try:
+            mod = elbv2.modify_listener(
+                ListenerArn=lb_listener_tg["listener_arn"],
+                DefaultActions=[{"Type": "forward", "TargetGroupArn": tg2_arn}],
+            )
+            listener = mod["Listeners"][0]
+            assert listener["DefaultActions"][0]["TargetGroupArn"] == tg2_arn
+
+            # Restore original TG so tg2 can be deleted
+            elbv2.modify_listener(
+                ListenerArn=lb_listener_tg["listener_arn"],
+                DefaultActions=[{"Type": "forward", "TargetGroupArn": lb_listener_tg["tg_arn"]}],
+            )
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg2_arn)
+
+
+class TestELBv2SSLPoliciesDetailed:
+    def test_describe_ssl_policies_with_names(self, elbv2):
+        """DescribeSSLPolicies can filter by policy name."""
+        # First get all to find a name
+        all_resp = elbv2.describe_ssl_policies()
+        assert len(all_resp["SslPolicies"]) > 0
+        first_name = all_resp["SslPolicies"][0]["Name"]
+
+        # Now filter by that name
+        filtered = elbv2.describe_ssl_policies(Names=[first_name])
+        assert len(filtered["SslPolicies"]) == 1
+        assert filtered["SslPolicies"][0]["Name"] == first_name
+
+
+class TestELBv2SubnetAndSecurityGroupOperations:
+    def test_set_subnets(self, elbv2, ec2, lb_listener_tg):
+        """SetSubnets updates the subnets on a load balancer."""
+        # Create a third subnet
+        sub3 = ec2.create_subnet(
+            VpcId=lb_listener_tg["vpc_id"],
+            CidrBlock="10.60.3.0/24",
+            AvailabilityZone="us-east-1c",
+        )
+        sub3_id = sub3["Subnet"]["SubnetId"]
+        try:
+            resp = elbv2.set_subnets(
+                LoadBalancerArn=lb_listener_tg["lb_arn"],
+                Subnets=lb_listener_tg["subnet_ids"] + [sub3_id],
+            )
+            assert "AvailabilityZones" in resp
+            azs = [az["ZoneName"] for az in resp["AvailabilityZones"]]
+            assert "us-east-1c" in azs
+        finally:
+            ec2.delete_subnet(SubnetId=sub3_id)
+
+    def test_set_security_groups(self, elbv2, ec2, lb_listener_tg):
+        """SetSecurityGroups updates the security groups on a load balancer."""
+        sg = ec2.create_security_group(
+            GroupName=_unique("sg"),
+            Description="test sg",
+            VpcId=lb_listener_tg["vpc_id"],
+        )
+        sg_id = sg["GroupId"]
+        try:
+            resp = elbv2.set_security_groups(
+                LoadBalancerArn=lb_listener_tg["lb_arn"],
+                SecurityGroups=[sg_id],
+            )
+            assert "SecurityGroupIds" in resp
+            assert sg_id in resp["SecurityGroupIds"]
+        finally:
+            ec2.delete_security_group(GroupId=sg_id)
+
+    def test_set_ip_address_type(self, elbv2, lb_listener_tg):
+        """SetIpAddressType sets the IP address type."""
+        resp = elbv2.set_ip_address_type(
+            LoadBalancerArn=lb_listener_tg["lb_arn"],
+            IpAddressType="ipv4",
+        )
+        assert "IpAddressType" in resp
+        assert resp["IpAddressType"] == "ipv4"
+
+
+class TestELBv2TargetGroupAttributeModify:
+    def test_modify_target_group_attributes(self, elbv2, vpc_with_subnets):
+        """ModifyTargetGroupAttributes updates attributes."""
+        tg_name = _unique("tg")
+        tg = elbv2.create_target_group(
+            Name=tg_name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+        )
+        tg_arn = tg["TargetGroups"][0]["TargetGroupArn"]
+        try:
+            resp = elbv2.modify_target_group_attributes(
+                TargetGroupArn=tg_arn,
+                Attributes=[
+                    {"Key": "deregistration_delay.timeout_seconds", "Value": "60"},
+                ],
+            )
+            assert "Attributes" in resp
+            attr_dict = {a["Key"]: a["Value"] for a in resp["Attributes"]}
+            assert attr_dict["deregistration_delay.timeout_seconds"] == "60"
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg_arn)
+
+
+class TestELBv2CapacityReservationOperations:
+    def test_describe_capacity_reservation(self, elbv2, lb_listener_tg):
+        """DescribeCapacityReservation returns state for a load balancer."""
+        resp = elbv2.describe_capacity_reservation(
+            LoadBalancerArn=lb_listener_tg["lb_arn"],
+        )
+        assert "CapacityReservationState" in resp
+
+
+class TestELBv2ListenerAttributeOperations:
+    def test_describe_listener_attributes(self, elbv2, lb_listener_tg):
+        """DescribeListenerAttributes returns attributes for a listener."""
+        resp = elbv2.describe_listener_attributes(
+            ListenerArn=lb_listener_tg["listener_arn"],
+        )
+        assert "Attributes" in resp
+
+    def test_modify_listener_attributes(self, elbv2, lb_listener_tg):
+        """ModifyListenerAttributes modifies attributes."""
+        resp = elbv2.modify_listener_attributes(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Attributes=[
+                {"Key": "routing.http.response.server.enabled", "Value": "false"},
+            ],
+        )
+        assert "Attributes" in resp
+
+
 class TestElbv2AutoCoverage:
     """Auto-generated coverage tests for elbv2."""
 

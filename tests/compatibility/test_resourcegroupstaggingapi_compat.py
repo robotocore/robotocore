@@ -54,6 +54,14 @@ class TestResourceGroupsTaggingAPIOperations:
         resp = tagging.get_compliance_summary()
         assert "SummaryList" in resp
 
+    def test_describe_report_creation(self, tagging):
+        resp = tagging.describe_report_creation()
+        assert "Status" in resp
+
+    def test_list_required_tags(self, tagging):
+        resp = tagging.list_required_tags()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
     def test_untag_resources(self, tagging, s3):
         bucket = f"untagres-{_uid()}"
         s3.create_bucket(Bucket=bucket)
