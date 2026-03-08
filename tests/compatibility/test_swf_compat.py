@@ -287,6 +287,148 @@ class TestSWFOperations:
         swf.deprecate_domain(name=domain)
 
 
+class TestSWFTaskOperations:
+    @pytest.fixture
+    def swf(self):
+        return make_client("swf")
+
+    def _setup_activity_task(self, swf):
+        """Set up domain, workflow, activity, start execution, schedule and poll activity task."""
+        uid = _uid()
+        domain = f"task-domain-{uid}"
+        task_list = f"task-list-{uid}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_workflow_type(
+            domain=domain,
+            name="task-wf",
+            version="1.0",
+            defaultExecutionStartToCloseTimeout="3600",
+            defaultTaskStartToCloseTimeout="300",
+            defaultTaskList={"name": task_list},
+            defaultChildPolicy="TERMINATE",
+        )
+        swf.register_activity_type(
+            domain=domain,
+            name="task-activity",
+            version="1.0",
+            defaultTaskStartToCloseTimeout="300",
+            defaultTaskHeartbeatTimeout="60",
+            defaultTaskList={"name": task_list},
+            defaultTaskScheduleToStartTimeout="300",
+            defaultTaskScheduleToCloseTimeout="600",
+        )
+        swf.start_workflow_execution(
+            domain=domain,
+            workflowId=f"wf-{uid}",
+            workflowType={"name": "task-wf", "version": "1.0"},
+            taskList={"name": task_list},
+        )
+        # Poll for decision task
+        decision = swf.poll_for_decision_task(domain=domain, taskList={"name": task_list})
+        decision_token = decision["taskToken"]
+        # Schedule activity task via decision
+        swf.respond_decision_task_completed(
+            taskToken=decision_token,
+            decisions=[
+                {
+                    "decisionType": "ScheduleActivityTask",
+                    "scheduleActivityTaskDecisionAttributes": {
+                        "activityType": {"name": "task-activity", "version": "1.0"},
+                        "activityId": f"activity-{uid}",
+                        "taskList": {"name": task_list},
+                    },
+                }
+            ],
+        )
+        # Poll for activity task
+        activity = swf.poll_for_activity_task(domain=domain, taskList={"name": task_list})
+        return domain, uid, task_list, activity["taskToken"]
+
+    def test_record_activity_task_heartbeat(self, swf):
+        domain, uid, task_list, task_token = self._setup_activity_task(swf)
+        try:
+            resp = swf.record_activity_task_heartbeat(taskToken=task_token)
+            assert "cancelRequested" in resp
+            assert resp["cancelRequested"] is False
+        finally:
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-{uid}")
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "task-activity", "version": "1.0"}
+            )
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "task-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_respond_activity_task_completed(self, swf):
+        domain, uid, task_list, task_token = self._setup_activity_task(swf)
+        try:
+            resp = swf.respond_activity_task_completed(
+                taskToken=task_token, result='{"status": "done"}'
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-{uid}")
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "task-activity", "version": "1.0"}
+            )
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "task-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_respond_activity_task_failed(self, swf):
+        domain, uid, task_list, task_token = self._setup_activity_task(swf)
+        try:
+            resp = swf.respond_activity_task_failed(
+                taskToken=task_token, reason="test failure", details="some details"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-{uid}")
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "task-activity", "version": "1.0"}
+            )
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "task-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_respond_decision_task_completed(self, swf):
+        uid = _uid()
+        domain = f"dectask-domain-{uid}"
+        task_list = f"dectask-list-{uid}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_workflow_type(
+            domain=domain,
+            name="dec-wf",
+            version="1.0",
+            defaultExecutionStartToCloseTimeout="3600",
+            defaultTaskStartToCloseTimeout="300",
+            defaultTaskList={"name": task_list},
+            defaultChildPolicy="TERMINATE",
+        )
+        swf.start_workflow_execution(
+            domain=domain,
+            workflowId=f"wf-dec-{uid}",
+            workflowType={"name": "dec-wf", "version": "1.0"},
+            taskList={"name": task_list},
+        )
+        try:
+            decision = swf.poll_for_decision_task(domain=domain, taskList={"name": task_list})
+            assert decision["taskToken"] != ""
+            resp = swf.respond_decision_task_completed(
+                taskToken=decision["taskToken"], decisions=[]
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-dec-{uid}")
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "dec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+
 class TestSWFWorkflowExecutions:
     @pytest.fixture
     def swf(self):
