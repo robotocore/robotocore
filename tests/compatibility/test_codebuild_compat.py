@@ -115,6 +115,54 @@ class TestCodeBuildProjectOperations:
         codebuild.delete_project(name=name)
 
 
+class TestCodeBuildBuildOperations:
+    """Tests for CodeBuild build start/stop operations."""
+
+    def _create_project(self, codebuild):
+        name = _unique("project")
+        codebuild.create_project(
+            name=name,
+            source={"type": "S3", "location": "my-bucket/source.zip"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+        )
+        return name
+
+    def test_start_build(self, codebuild):
+        name = self._create_project(codebuild)
+        try:
+            resp = codebuild.start_build(projectName=name)
+            build = resp["build"]
+            assert build["projectName"] == name
+            assert "id" in build
+            assert "arn" in build
+            assert build["buildStatus"] in (
+                "IN_PROGRESS",
+                "SUCCEEDED",
+                "FAILED",
+                "STOPPED",
+            )
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_stop_build(self, codebuild):
+        name = self._create_project(codebuild)
+        try:
+            start_resp = codebuild.start_build(projectName=name)
+            build_id = start_resp["build"]["id"]
+            stop_resp = codebuild.stop_build(id=build_id)
+            assert "build" in stop_resp
+            assert stop_resp["build"]["id"] == build_id
+            assert stop_resp["build"]["buildStatus"] in ("STOPPED", "SUCCEEDED", "FAILED")
+        finally:
+            codebuild.delete_project(name=name)
+
+
 class TestCodeBuildListOperations:
     """Tests for CodeBuild list operations that return empty results."""
 
