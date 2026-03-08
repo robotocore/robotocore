@@ -2494,6 +2494,32 @@ class TestS3AbacAndMetadata:
         resp = s3.delete_bucket_metadata_table_configuration(Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
 
+    def test_create_bucket_metadata_configuration(self, s3, bucket):
+        """CreateBucketMetadataConfiguration returns 200."""
+        resp = s3.create_bucket_metadata_configuration(
+            Bucket=bucket,
+            MetadataConfiguration={
+                "JournalTableConfiguration": {
+                    "RecordExpiration": {"Expiration": "ENABLED"},
+                },
+                "InventoryTableConfiguration": {"ConfigurationState": "ENABLED"},
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_bucket_metadata_table_configuration(self, s3, bucket):
+        """CreateBucketMetadataTableConfiguration returns 200."""
+        resp = s3.create_bucket_metadata_table_configuration(
+            Bucket=bucket,
+            MetadataTableConfiguration={
+                "S3TablesDestination": {
+                    "TableBucketArn": "arn:aws:s3tables:us-east-1:123456789012:bucket/test",
+                    "TableName": "test-table",
+                }
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
     def test_update_metadata_inventory_table(self, s3, bucket):
         """UpdateBucketMetadataInventoryTableConfiguration."""
         resp = s3.update_bucket_metadata_inventory_table_configuration(
