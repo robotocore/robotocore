@@ -1,5 +1,7 @@
 """API Gateway compatibility tests."""
 
+import json
+
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -1295,3 +1297,35 @@ class TestApigatewayAutoCoverage:
                 pass
             client.delete_api_key(apiKey=key["id"])
             client.delete_usage_plan(usagePlanId=plan["id"])
+
+    def test_import_rest_api(self, apigw):
+        """Import a REST API from a Swagger/OpenAPI definition."""
+        openapi_spec = {
+            "openapi": "3.0.1",
+            "info": {
+                "title": "ImportedAPI",
+                "description": "Imported test API",
+                "version": "1.0",
+            },
+            "paths": {
+                "/pets": {
+                    "get": {
+                        "summary": "List pets",
+                        "responses": {"200": {"description": "OK"}},
+                    }
+                }
+            },
+        }
+        body = json.dumps(openapi_spec).encode("utf-8")
+        response = apigw.import_rest_api(body=body)
+        api_id = response["id"]
+        try:
+            assert response["name"] == "ImportedAPI"
+            assert "id" in response
+            # Verify the API was actually created and has resources
+            resources = apigw.get_resources(restApiId=api_id)
+            paths = [r["path"] for r in resources["items"]]
+            assert "/" in paths
+            assert "/pets" in paths
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
