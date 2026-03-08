@@ -72,3 +72,125 @@ class TestInspector2AutoCoverage:
         """ListDelegatedAdminAccounts returns a response."""
         resp = client.list_delegated_admin_accounts()
         assert "delegatedAdminAccounts" in resp
+
+
+class TestInspector2MemberOperations:
+    """Tests for Member operations: AssociateMember, GetMember, DisassociateMember."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_associate_member(self, client):
+        """AssociateMember associates a member account."""
+        resp = client.associate_member(accountId="210987654321")
+        assert "accountId" in resp
+        assert resp["accountId"] == "210987654321"
+
+    def test_get_member(self, client):
+        """GetMember retrieves a member account after association."""
+        client.associate_member(accountId="210987654321")
+        resp = client.get_member(accountId="210987654321")
+        assert "member" in resp
+        member = resp["member"]
+        assert "accountId" in member
+
+    def test_disassociate_member(self, client):
+        """DisassociateMember removes a member account."""
+        client.associate_member(accountId="210987654321")
+        resp = client.disassociate_member(accountId="210987654321")
+        assert "accountId" in resp
+        assert resp["accountId"] == "210987654321"
+
+
+class TestInspector2DelegatedAdminOperations:
+    """Tests for EnableDelegatedAdminAccount, DisableDelegatedAdminAccount."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_enable_delegated_admin_account(self, client):
+        """EnableDelegatedAdminAccount enables a delegated admin."""
+        resp = client.enable_delegated_admin_account(delegatedAdminAccountId="210987654321")
+        assert "delegatedAdminAccountId" in resp
+        assert resp["delegatedAdminAccountId"] == "210987654321"
+
+    def test_disable_delegated_admin_account(self, client):
+        """DisableDelegatedAdminAccount disables a delegated admin."""
+        client.enable_delegated_admin_account(delegatedAdminAccountId="210987654321")
+        resp = client.disable_delegated_admin_account(delegatedAdminAccountId="210987654321")
+        assert "delegatedAdminAccountId" in resp
+        assert resp["delegatedAdminAccountId"] == "210987654321"
+
+
+class TestInspector2DeleteFilterOperation:
+    """Test for DeleteFilter."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_delete_filter(self, client):
+        """DeleteFilter removes a previously created filter."""
+        name = _unique("filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        resp = client.delete_filter(arn=arn)
+        assert "arn" in resp
+        assert resp["arn"] == arn
+
+
+class TestInspector2UpdateOrgConfigOperation:
+    """Test for UpdateOrganizationConfiguration."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_update_organization_configuration(self, client):
+        """UpdateOrganizationConfiguration updates auto-enable settings."""
+        resp = client.update_organization_configuration(
+            autoEnable={"ec2": True, "ecr": True, "lambda": False}
+        )
+        assert "autoEnable" in resp
+        auto_enable = resp["autoEnable"]
+        assert "ec2" in auto_enable
+        assert "ecr" in auto_enable
+
+
+class TestInspector2TagOperations:
+    """Tests for TagResource and ListTagsForResource."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_tag_resource_and_list_tags(self, client):
+        """TagResource adds tags, ListTagsForResource reads them."""
+        name = _unique("filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        client.tag_resource(resourceArn=arn, tags={"env": "test"})
+        resp = client.list_tags_for_resource(resourceArn=arn)
+        assert "tags" in resp
+
+    def test_list_tags_for_resource(self, client):
+        """ListTagsForResource on a filter with no extra tags."""
+        name = _unique("filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        resp = client.list_tags_for_resource(resourceArn=arn)
+        assert "tags" in resp
