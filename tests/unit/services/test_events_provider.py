@@ -95,14 +95,6 @@ class TestEventsError:
 
 class TestHandleEventsRequest:
     @pytest.mark.asyncio
-    async def test_unknown_operation_returns_400(self):
-        req = _make_request("NonExistentOp", {})
-        resp = await handle_events_request(req, "us-east-1", "123456789012")
-        assert resp.status_code == 400
-        data = json.loads(resp.body)
-        assert data["__type"] == "UnknownOperation"
-
-    @pytest.mark.asyncio
     async def test_put_rule_creates_rule(self):
         req = _make_request(
             "PutRule",

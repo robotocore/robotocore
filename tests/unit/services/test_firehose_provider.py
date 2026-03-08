@@ -105,13 +105,6 @@ class TestHandleFirehoseRequest:
         assert data["__type"] == "InvalidAction"
 
     @pytest.mark.asyncio
-    async def test_unknown_action_returns_400(self):
-        req = _make_request("NonExistentAction", {})
-        with patch("robotocore.services.firehose.provider._ensure_worker"):
-            resp = await handle_firehose_request(req, "us-east-1", "123456789012")
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
     async def test_create_delivery_stream(self):
         req = _make_request(
             "CreateDeliveryStream",

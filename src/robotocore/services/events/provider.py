@@ -78,7 +78,10 @@ async def handle_events_request(request: Request, region: str, account_id: str) 
 
     handler = _ACTION_MAP.get(operation)
     if handler is None:
-        return _error("UnknownOperation", f"Unknown operation: {operation}", 400)
+        # Fall back to Moto for operations we don't intercept
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "events")
 
     try:
         result = handler(store, params, region, account_id)

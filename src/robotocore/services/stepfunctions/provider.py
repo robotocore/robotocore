@@ -41,7 +41,9 @@ async def handle_stepfunctions_request(request: Request, region: str, account_id
 
     handler = _ACTION_MAP.get(operation)
     if handler is None:
-        return _error("UnknownOperation", f"Unknown operation: {operation}", 400)
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "stepfunctions")
 
     try:
         result = handler(params, region, account_id)

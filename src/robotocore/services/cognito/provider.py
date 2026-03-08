@@ -116,7 +116,9 @@ async def handle_cognito_request(request: Request, region: str, account_id: str)
     store = _get_store(region)
     handler = _ACTION_MAP.get(action)
     if handler is None:
-        return _error("InvalidAction", f"Unknown action: {action}", 400)
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "cognito-idp")
 
     try:
         result = handler(store, params, region, account_id)

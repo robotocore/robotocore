@@ -52,7 +52,9 @@ async def handle_dynamodbstreams_request(
 
     handler = _ACTION_MAP.get(operation)
     if handler is None:
-        return _error("UnknownOperationException", f"Unknown operation: {operation}", 400)
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "dynamodbstreams")
 
     try:
         result = handler(params, region, account_id)

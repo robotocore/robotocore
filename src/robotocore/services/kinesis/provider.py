@@ -66,7 +66,9 @@ async def handle_kinesis_request(request: Request, region: str, account_id: str)
 
     handler = _ACTION_MAP.get(action)
     if handler is None:
-        return _error("InvalidAction", f"Unknown action: {action}", 400)
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "kinesis")
 
     store = _get_store(region)
 
