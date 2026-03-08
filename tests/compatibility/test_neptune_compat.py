@@ -135,6 +135,76 @@ class TestNeptuneDescribeOperations:
         assert isinstance(resp["GlobalClusters"], list)
 
 
+class TestNeptuneDBClusterParameterGroupOperations:
+    def test_create_db_cluster_parameter_group(self, neptune):
+        name = _unique("nep-cpg")
+        resp = neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="test cluster param group",
+        )
+        assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == name
+        assert resp["DBClusterParameterGroup"]["Description"] == "test cluster param group"
+        neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+    def test_delete_db_cluster_parameter_group(self, neptune):
+        name = _unique("nep-cpg")
+        neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="to delete",
+        )
+        neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+        resp = neptune.describe_db_cluster_parameter_groups()
+        names = [g["DBClusterParameterGroupName"] for g in resp["DBClusterParameterGroups"]]
+        assert name not in names
+
+    def test_modify_db_cluster_parameter_group(self, neptune):
+        name = _unique("nep-cpg")
+        neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="to modify",
+        )
+        try:
+            resp = neptune.modify_db_cluster_parameter_group(
+                DBClusterParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "neptune_query_timeout",
+                        "ParameterValue": "240000",
+                        "ApplyMethod": "pending-reboot",
+                    }
+                ],
+            )
+            assert resp["DBClusterParameterGroupName"] == name
+        finally:
+            neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+    def test_copy_db_cluster_parameter_group(self, neptune):
+        src = _unique("nep-cpg-src")
+        tgt = _unique("nep-cpg-tgt")
+        neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=src,
+            DBParameterGroupFamily="neptune1",
+            Description="source group",
+        )
+        try:
+            resp = neptune.copy_db_cluster_parameter_group(
+                SourceDBClusterParameterGroupIdentifier=src,
+                TargetDBClusterParameterGroupIdentifier=tgt,
+                TargetDBClusterParameterGroupDescription="copied group",
+            )
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == tgt
+            assert resp["DBClusterParameterGroup"]["Description"] == "copied group"
+        finally:
+            neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=src)
+            try:
+                neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=tgt)
+            except Exception:
+                pass
+
+
 class TestNeptuneTags:
     def test_add_and_list_tags(self, neptune, subnet_ids):
         name = _unique("nep-tag")
