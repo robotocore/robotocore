@@ -17,3 +17,8 @@ venv/
 *.log
 .DS_Store
 .robotocore.pid
+.robotocore-diag.log
+full_probe_results.json
+gap_probe_results.json
+gap_untested_ops.json
+probe_stderr.log
