@@ -1443,6 +1443,33 @@ class TestSQSMessageMoveTasks:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)
 
+    def test_list_message_move_tasks(self, sqs):
+        suffix = uuid.uuid4().hex[:6]
+        src_name = f"mmt-list-src-{suffix}"
+        dlq_name = f"mmt-list-dlq-{suffix}"
+        dlq_resp = sqs.create_queue(QueueName=dlq_name)
+        dlq_url = dlq_resp["QueueUrl"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        src_resp = sqs.create_queue(
+            QueueName=src_name,
+            Attributes={
+                "RedrivePolicy": json.dumps(
+                    {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "1"}
+                )
+            },
+        )
+        src_url = src_resp["QueueUrl"]
+        try:
+            # List tasks on a queue with no active tasks
+            resp = sqs.list_message_move_tasks(SourceArn=dlq_arn)
+            assert "Results" in resp
+            assert isinstance(resp["Results"], list)
+        finally:
+            sqs.delete_queue(QueueUrl=src_url)
+            sqs.delete_queue(QueueUrl=dlq_url)
+
     def test_cancel_message_move_task(self, sqs):
         suffix = uuid.uuid4().hex[:6]
         src_name = f"mmt-cancel-src-{suffix}"
@@ -1471,19 +1498,4 @@ class TestSQSMessageMoveTasks:
             assert "ApproximateNumberOfMessagesMoved" in cancel_resp
         finally:
             sqs.delete_queue(QueueUrl=src_url)
-            sqs.delete_queue(QueueUrl=dlq_url)
-
-    def test_list_message_move_tasks(self, sqs):
-        suffix = uuid.uuid4().hex[:6]
-        dlq_name = f"mmt-list-dlq-{suffix}"
-        dlq_resp = sqs.create_queue(QueueName=dlq_name)
-        dlq_url = dlq_resp["QueueUrl"]
-        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
-        try:
-            resp = sqs.list_message_move_tasks(SourceArn=dlq_arn)
-            assert "Results" in resp
-            assert isinstance(resp["Results"], list)
-        finally:
             sqs.delete_queue(QueueUrl=dlq_url)

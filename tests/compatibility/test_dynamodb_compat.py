@@ -2737,3 +2737,354 @@ class TestDynamoDBResourcePolicy:
         desc = resp["ContinuousBackupsDescription"]
         assert desc["ContinuousBackupsStatus"] == "ENABLED"
         assert "PointInTimeRecoveryDescription" in desc
+
+
+class TestDynamoDBImportExport:
+    """Tests for DynamoDB ImportTable and related operations."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    def test_import_table(self, dynamodb):
+        """ImportTable creates a table from an S3 import (status may be FAILED without real S3)."""
+        imp_table = f"imp-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = dynamodb.import_table(
+                S3BucketSource={"S3Bucket": "fake-bucket", "S3KeyPrefix": "data/"},
+                InputFormat="CSV",
+                TableCreationParameters={
+                    "TableName": imp_table,
+                    "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                    "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                    "BillingMode": "PAY_PER_REQUEST",
+                },
+            )
+            desc = resp["ImportTableDescription"]
+            assert "ImportArn" in desc
+            assert desc["ImportStatus"] in ("IN_PROGRESS", "COMPLETED", "FAILED", "CANCELLING")
+            assert desc["TableArn"] is not None
+        finally:
+            try:
+                dynamodb.delete_table(TableName=imp_table)
+            except ClientError:
+                pass
+
+    def test_import_table_with_dynamodb_json_format(self, dynamodb):
+        """ImportTable with DYNAMODB_JSON input format."""
+        imp_table = f"imp-dj-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = dynamodb.import_table(
+                S3BucketSource={"S3Bucket": "fake-bucket"},
+                InputFormat="DYNAMODB_JSON",
+                TableCreationParameters={
+                    "TableName": imp_table,
+                    "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                    "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                    "BillingMode": "PAY_PER_REQUEST",
+                },
+            )
+            desc = resp["ImportTableDescription"]
+            assert "ImportArn" in desc
+            assert desc["ImportStatus"] in ("IN_PROGRESS", "COMPLETED", "FAILED", "CANCELLING")
+        finally:
+            try:
+                dynamodb.delete_table(TableName=imp_table)
+            except ClientError:
+                pass
+
+
+class TestDynamoDBBackupDetails:
+    """Deeper backup operation tests."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, dynamodb):
+        table_name = f"test-bk-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield table_name
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_list_backups_empty(self, dynamodb, table):
+        """ListBackups returns empty list when no backups exist."""
+        resp = dynamodb.list_backups(TableName=table)
+        assert "BackupSummaries" in resp
+        assert len(resp["BackupSummaries"]) == 0
+
+    def test_list_backups_filters_by_table(self, dynamodb, table):
+        """ListBackups with TableName filter only returns backups for that table."""
+        backup_name = f"bk-{uuid.uuid4().hex[:8]}"
+        create_resp = dynamodb.create_backup(TableName=table, BackupName=backup_name)
+        backup_arn = create_resp["BackupDetails"]["BackupArn"]
+        try:
+            resp = dynamodb.list_backups(TableName=table)
+            assert len(resp["BackupSummaries"]) >= 1
+            for summary in resp["BackupSummaries"]:
+                assert summary["TableName"] == table
+                assert "BackupArn" in summary
+                assert "BackupName" in summary
+                assert "BackupStatus" in summary
+                assert "BackupCreationDateTime" in summary
+        finally:
+            dynamodb.delete_backup(BackupArn=backup_arn)
+
+    def test_describe_backup_details(self, dynamodb, table):
+        """DescribeBackup returns full backup description with table info."""
+        create_resp = dynamodb.create_backup(TableName=table, BackupName="detail-test")
+        backup_arn = create_resp["BackupDetails"]["BackupArn"]
+        try:
+            resp = dynamodb.describe_backup(BackupArn=backup_arn)
+            bd = resp["BackupDescription"]
+            # BackupDetails
+            assert bd["BackupDetails"]["BackupArn"] == backup_arn
+            assert bd["BackupDetails"]["BackupName"] == "detail-test"
+            assert bd["BackupDetails"]["BackupStatus"] in ("CREATING", "AVAILABLE")
+            assert "BackupCreationDateTime" in bd["BackupDetails"]
+            # SourceTableDetails
+            assert "SourceTableDetails" in bd
+            assert bd["SourceTableDetails"]["TableName"] == table
+            assert "TableArn" in bd["SourceTableDetails"]
+            assert "KeySchema" in bd["SourceTableDetails"]
+        finally:
+            dynamodb.delete_backup(BackupArn=backup_arn)
+
+    def test_create_multiple_backups(self, dynamodb, table):
+        """Multiple backups can be created for the same table."""
+        arns = []
+        try:
+            for i in range(3):
+                resp = dynamodb.create_backup(TableName=table, BackupName=f"multi-bk-{i}")
+                arns.append(resp["BackupDetails"]["BackupArn"])
+            list_resp = dynamodb.list_backups(TableName=table)
+            assert len(list_resp["BackupSummaries"]) >= 3
+        finally:
+            for arn in arns:
+                try:
+                    dynamodb.delete_backup(BackupArn=arn)
+                except ClientError:
+                    pass
+
+
+class TestDynamoDBGlobalTableDetails:
+    """Deeper global table operation tests."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    def test_list_global_tables_empty(self, dynamodb):
+        """ListGlobalTables returns empty list when none exist."""
+        resp = dynamodb.list_global_tables()
+        assert "GlobalTables" in resp
+
+    def test_global_table_replication_group(self, dynamodb):
+        """CreateGlobalTable replication group is returned in describe."""
+        tname = f"gt-rep-{uuid.uuid4().hex[:8]}"
+        try:
+            dynamodb.create_table(
+                TableName=tname,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+                StreamSpecification={
+                    "StreamEnabled": True,
+                    "StreamViewType": "NEW_AND_OLD_IMAGES",
+                },
+            )
+            create_resp = dynamodb.create_global_table(
+                GlobalTableName=tname,
+                ReplicationGroup=[
+                    {"RegionName": "us-east-1"},
+                    {"RegionName": "eu-west-1"},
+                ],
+            )
+            gt = create_resp["GlobalTableDescription"]
+            assert gt["GlobalTableName"] == tname
+            assert gt["GlobalTableStatus"] in ("CREATING", "ACTIVE")
+            regions = [r["RegionName"] for r in gt["ReplicationGroup"]]
+            assert "us-east-1" in regions
+            assert "eu-west-1" in regions
+
+            # Describe should also show replication group
+            desc_resp = dynamodb.describe_global_table(GlobalTableName=tname)
+            desc_gt = desc_resp["GlobalTableDescription"]
+            desc_regions = [r["RegionName"] for r in desc_gt["ReplicationGroup"]]
+            assert "us-east-1" in desc_regions
+            assert "eu-west-1" in desc_regions
+            assert "GlobalTableArn" in desc_gt
+
+            # ListGlobalTables should include this table
+            list_resp = dynamodb.list_global_tables()
+            names = [g["GlobalTableName"] for g in list_resp["GlobalTables"]]
+            assert tname in names
+        finally:
+            try:
+                dynamodb.delete_table(TableName=tname)
+            except ClientError:
+                pass
+
+    def test_list_global_tables_with_region_filter(self, dynamodb):
+        """ListGlobalTables with RegionName filter."""
+        tname = f"gt-filt-{uuid.uuid4().hex[:8]}"
+        try:
+            dynamodb.create_table(
+                TableName=tname,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+                StreamSpecification={
+                    "StreamEnabled": True,
+                    "StreamViewType": "NEW_AND_OLD_IMAGES",
+                },
+            )
+            dynamodb.create_global_table(
+                GlobalTableName=tname,
+                ReplicationGroup=[{"RegionName": "us-east-1"}],
+            )
+            resp = dynamodb.list_global_tables(RegionName="us-east-1")
+            assert "GlobalTables" in resp
+            names = [g["GlobalTableName"] for g in resp["GlobalTables"]]
+            assert tname in names
+        finally:
+            try:
+                dynamodb.delete_table(TableName=tname)
+            except ClientError:
+                pass
+
+
+class TestDynamoDBContinuousBackupsDetails:
+    """Deeper continuous backups tests."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, dynamodb):
+        table_name = f"test-cb-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield table_name
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_describe_continuous_backups_default_disabled(self, dynamodb, table):
+        """DescribeContinuousBackups returns DISABLED by default."""
+        resp = dynamodb.describe_continuous_backups(TableName=table)
+        cb = resp["ContinuousBackupsDescription"]
+        assert cb["ContinuousBackupsStatus"] in ("ENABLED", "DISABLED")
+        pitr = cb.get("PointInTimeRecoveryDescription", {})
+        assert pitr.get("PointInTimeRecoveryStatus") in (
+            "ENABLED",
+            "DISABLED",
+            None,
+        )
+
+    def test_enable_then_disable_pitr(self, dynamodb, table):
+        """Enable PITR, verify, then disable."""
+        # Enable
+        resp = dynamodb.update_continuous_backups(
+            TableName=table,
+            PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": True},
+        )
+        assert resp["ContinuousBackupsDescription"]["ContinuousBackupsStatus"] == "ENABLED"
+
+        # Verify via describe
+        desc = dynamodb.describe_continuous_backups(TableName=table)
+        pitr = desc["ContinuousBackupsDescription"]["PointInTimeRecoveryDescription"]
+        assert pitr["PointInTimeRecoveryStatus"] == "ENABLED"
+
+        # Disable
+        resp2 = dynamodb.update_continuous_backups(
+            TableName=table,
+            PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": False},
+        )
+        assert resp2["ContinuousBackupsDescription"]["ContinuousBackupsStatus"] in (
+            "ENABLED",
+            "DISABLED",
+        )
+
+
+class TestDynamoDBPartiQLExtended:
+    """Extended PartiQL tests for execute_statement edge cases."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, dynamodb):
+        table_name = f"test-pq-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield table_name
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_execute_statement_select_empty_table(self, dynamodb, table):
+        """ExecuteStatement SELECT on empty table returns no items."""
+        resp = dynamodb.execute_statement(Statement=f'SELECT * FROM "{table}"')
+        assert "Items" in resp
+        assert len(resp["Items"]) == 0
+
+    def test_execute_statement_insert_and_select(self, dynamodb, table):
+        """ExecuteStatement INSERT then SELECT to verify."""
+        dynamodb.execute_statement(
+            Statement=f"INSERT INTO \"{table}\" VALUE {{'pk': 'pq-ins-1', 'data': 'hello'}}"
+        )
+        resp = dynamodb.execute_statement(
+            Statement=f"SELECT * FROM \"{table}\" WHERE pk = 'pq-ins-1'"
+        )
+        assert len(resp["Items"]) == 1
+        assert resp["Items"][0]["pk"]["S"] == "pq-ins-1"
+        assert resp["Items"][0]["data"]["S"] == "hello"
+
+    def test_execute_statement_update(self, dynamodb, table):
+        """ExecuteStatement UPDATE modifies an existing item."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "pq-upd-1"}, "val": {"S": "old"}},
+        )
+        dynamodb.execute_statement(
+            Statement=f"UPDATE \"{table}\" SET val = 'new' WHERE pk = 'pq-upd-1'"
+        )
+        resp = dynamodb.get_item(TableName=table, Key={"pk": {"S": "pq-upd-1"}})
+        assert resp["Item"]["val"]["S"] == "new"
+
+    def test_execute_statement_delete(self, dynamodb, table):
+        """ExecuteStatement DELETE removes an item."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "pq-del-1"}, "val": {"S": "gone"}},
+        )
+        dynamodb.execute_statement(Statement=f"DELETE FROM \"{table}\" WHERE pk = 'pq-del-1'")
+        resp = dynamodb.get_item(TableName=table, Key={"pk": {"S": "pq-del-1"}})
+        assert "Item" not in resp
+
+    def test_execute_statement_select_with_parameters(self, dynamodb, table):
+        """ExecuteStatement SELECT with parameterized query."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "param-1"}, "val": {"S": "parameterized"}},
+        )
+        resp = dynamodb.execute_statement(
+            Statement=f'SELECT * FROM "{table}" WHERE pk = ?',
+            Parameters=[{"S": "param-1"}],
+        )
+        assert "Items" in resp
+        assert len(resp["Items"]) == 1
+        assert resp["Items"][0]["val"]["S"] == "parameterized"

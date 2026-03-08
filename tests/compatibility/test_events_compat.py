@@ -886,6 +886,49 @@ class TestEventBridgeConnections:
                 pass
 
 
+class TestEventBridgeUpdateConnection:
+    """Test UpdateConnection operation."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_update_connection(self, events):
+        """UpdateConnection modifies an existing connection's auth parameters."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"upd-conn-{suffix}"
+        try:
+            events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "old-secret",
+                    }
+                },
+            )
+            resp = events.update_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "new-secret",
+                    }
+                },
+            )
+            assert "ConnectionArn" in resp
+            desc = events.describe_connection(Name=conn_name)
+            assert desc["Name"] == conn_name
+            assert desc["AuthorizationType"] == "API_KEY"
+        finally:
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
 class TestEventBridgeApiDestinations:
     def test_create_describe_api_destination(self, events):
         """Test CreateApiDestination and DescribeApiDestination."""
@@ -922,6 +965,89 @@ class TestEventBridgeApiDestinations:
                 pass
             try:
                 events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
+class TestEventBridgeUpdateApiDestination:
+    """Test UpdateApiDestination operation."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_update_api_destination(self, events):
+        """UpdateApiDestination changes endpoint and method."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"upd-dest-conn-{suffix}"
+        dest_name = f"upd-dest-{suffix}"
+        try:
+            conn_resp = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret",
+                    }
+                },
+            )
+            conn_arn = conn_resp["ConnectionArn"]
+            events.create_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/v1",
+                HttpMethod="POST",
+            )
+            resp = events.update_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/v2",
+                HttpMethod="PUT",
+            )
+            assert "ApiDestinationArn" in resp
+            desc = events.describe_api_destination(Name=dest_name)
+            assert desc["InvocationEndpoint"] == "https://example.com/v2"
+            assert desc["HttpMethod"] == "PUT"
+        finally:
+            try:
+                events.delete_api_destination(Name=dest_name)
+            except Exception:
+                pass
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
+class TestEventBridgeListRuleNamesByTarget:
+    """Test ListRuleNamesByTarget operation."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_list_rule_names_by_target(self, events):
+        """ListRuleNamesByTarget returns rules associated with a target ARN."""
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"lrnbt-rule-{suffix}"
+        target_arn = f"arn:aws:sqs:us-east-1:123456789012:lrnbt-queue-{suffix}"
+        try:
+            events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
+            events.put_targets(
+                Rule=rule_name,
+                Targets=[{"Id": "tgt1", "Arn": target_arn}],
+            )
+            resp = events.list_rule_names_by_target(TargetArn=target_arn)
+            assert "RuleNames" in resp
+            assert rule_name in resp["RuleNames"]
+        finally:
+            try:
+                events.remove_targets(Rule=rule_name, Ids=["tgt1"])
+            except Exception:
+                pass
+            try:
+                events.delete_rule(Name=rule_name)
             except Exception:
                 pass
 
@@ -1420,31 +1546,3 @@ class TestEventBridgeCancelReplay:
         with pytest.raises(ClientError) as exc:
             events.cancel_replay(ReplayName="does-not-exist")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-
-class TestEventBridgeListRuleNamesByTarget:
-    """Test ListRuleNamesByTarget operation."""
-
-    @pytest.fixture
-    def events(self):
-        return make_client("events")
-
-    def test_list_rule_names_by_target(self, events):
-        """ListRuleNamesByTarget returns matching rule names."""
-        target_arn = "arn:aws:lambda:us-east-1:123456789012:function:my-func"
-        rule_name = f"target-rule-{uuid.uuid4().hex[:8]}"
-        events.put_rule(Name=rule_name, ScheduleExpression="rate(1 hour)")
-        try:
-            events.put_targets(
-                Rule=rule_name,
-                Targets=[{"Id": "target1", "Arn": target_arn}],
-            )
-            resp = events.list_rule_names_by_target(TargetArn=target_arn)
-            assert "RuleNames" in resp
-            assert rule_name in resp["RuleNames"]
-        finally:
-            try:
-                events.remove_targets(Rule=rule_name, Ids=["target1"])
-            except Exception:
-                pass
-            events.delete_rule(Name=rule_name)

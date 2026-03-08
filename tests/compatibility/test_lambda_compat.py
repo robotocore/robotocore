@@ -2730,3 +2730,149 @@ class TestLambdaInvokeWithResponseStream:
         resp = lam.invoke_with_response_stream(FunctionName=func)
         assert resp["StatusCode"] == 200
         assert resp["ExecutedVersion"] == "$LATEST"
+
+
+# ---------------------------------------------------------------------------
+# Alias with RoutingConfig (weighted traffic shifting)
+# ---------------------------------------------------------------------------
+
+
+class TestLambdaAliasRoutingConfig:
+    """Tests for alias RoutingConfig (weighted traffic shifting)."""
+
+    @pytest.fixture
+    def func_with_version(self, lam, role):
+        code = _make_zip('def handler(e, c): return {"ok": True}')
+        fname = f"alias-rc-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        resp = lam.publish_version(FunctionName=fname)
+        version = resp["Version"]
+        yield fname, version
+        try:
+            lam.delete_alias(FunctionName=fname, Name="weighted")
+        except Exception:
+            pass
+        lam.delete_function(FunctionName=fname)
+
+    def test_create_alias_with_routing_config(self, lam, func_with_version):
+        """CreateAlias with RoutingConfig sets weighted traffic shifting."""
+        fname, version = func_with_version
+        resp = lam.create_alias(
+            FunctionName=fname,
+            Name="weighted",
+            FunctionVersion=version,
+            RoutingConfig={"AdditionalVersionWeights": {version: 0.1}},
+        )
+        assert resp["Name"] == "weighted"
+        assert resp["RoutingConfig"]["AdditionalVersionWeights"][version] == 0.1
+
+    def test_update_alias_routing_config(self, lam, func_with_version):
+        """UpdateAlias with RoutingConfig changes the weights."""
+        fname, version = func_with_version
+        lam.create_alias(
+            FunctionName=fname,
+            Name="weighted",
+            FunctionVersion=version,
+        )
+        resp = lam.update_alias(
+            FunctionName=fname,
+            Name="weighted",
+            RoutingConfig={"AdditionalVersionWeights": {version: 0.5}},
+        )
+        assert resp["RoutingConfig"]["AdditionalVersionWeights"][version] == 0.5
+
+
+# ---------------------------------------------------------------------------
+# PublishLayerVersion with Description, LicenseInfo, CompatibleArchitectures
+# ---------------------------------------------------------------------------
+
+
+class TestLambdaLayerExtras:
+    """Tests for layer attributes: Description, LicenseInfo, CompatibleArchitectures."""
+
+    def test_publish_layer_with_description_and_license(self, lam):
+        """PublishLayerVersion with Description and LicenseInfo."""
+        code = _make_zip("# layer code")
+        layer_name = f"desc-layer-{uuid.uuid4().hex[:8]}"
+        resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            Description="test layer description",
+            LicenseInfo="MIT",
+            CompatibleRuntimes=["python3.12"],
+        )
+        assert resp["Description"] == "test layer description"
+        assert resp["LicenseInfo"] == "MIT"
+        assert "python3.12" in resp["CompatibleRuntimes"]
+        lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+
+    def test_publish_layer_with_compatible_architectures(self, lam):
+        """PublishLayerVersion with CompatibleArchitectures."""
+        code = _make_zip("# layer code")
+        layer_name = f"arch-layer-{uuid.uuid4().hex[:8]}"
+        resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+            CompatibleArchitectures=["arm64"],
+        )
+        assert "arm64" in resp["CompatibleArchitectures"]
+        lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+
+    def test_list_layers_compatible_runtime_filter(self, lam):
+        """ListLayers with CompatibleRuntime filter returns matching layers."""
+        code = _make_zip("# layer code")
+        layer_name = f"filter-layer-{uuid.uuid4().hex[:8]}"
+        lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+        )
+        try:
+            resp = lam.list_layers(CompatibleRuntime="python3.12")
+            names = [layer["LayerName"] for layer in resp["Layers"]]
+            assert layer_name in names
+        finally:
+            lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+
+
+# ---------------------------------------------------------------------------
+# CreateFunction with Layers
+# ---------------------------------------------------------------------------
+
+
+class TestLambdaFunctionWithLayers:
+    """Tests for creating functions with layer attachments."""
+
+    def test_create_function_with_layers(self, lam, role):
+        """CreateFunction with Layers attaches the layer to the function."""
+        code = _make_zip("def handler(e, c): return {'ok': True}")
+        layer_name = f"fn-layer-{uuid.uuid4().hex[:8]}"
+        layer_resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": code},
+            CompatibleRuntimes=["python3.12"],
+        )
+        layer_arn = layer_resp["LayerVersionArn"]
+
+        fname = f"with-layer-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = lam.create_function(
+                FunctionName=fname,
+                Runtime="python3.12",
+                Role=role,
+                Handler="lambda_function.handler",
+                Code={"ZipFile": code},
+                Layers=[layer_arn],
+            )
+            assert len(resp["Layers"]) == 1
+            assert resp["Layers"][0]["Arn"] == layer_arn
+        finally:
+            lam.delete_function(FunctionName=fname)
+            lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)

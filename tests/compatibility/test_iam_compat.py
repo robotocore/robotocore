@@ -2739,3 +2739,139 @@ class TestIAMOpenIDConnectProviderThumbprint:
             assert original_thumb not in get_resp["ThumbprintList"]
         finally:
             iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# SSH public key full lifecycle: get, update status, delete with assertions
+# ---------------------------------------------------------------------------
+
+
+class TestIAMSSHPublicKeyLifecycle:
+    def test_get_ssh_public_key(self, iam):
+        """GetSSHPublicKey returns the uploaded key details."""
+        user_name = _unique("ssh-get")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_ssh_public_key(UserName=user_name, SSHPublicKeyBody=_SSH_PUBLIC_KEY)
+            key_id = resp["SSHPublicKey"]["SSHPublicKeyId"]
+            get_resp = iam.get_ssh_public_key(
+                UserName=user_name, SSHPublicKeyId=key_id, Encoding="SSH"
+            )
+            assert get_resp["SSHPublicKey"]["SSHPublicKeyId"] == key_id
+            assert get_resp["SSHPublicKey"]["UserName"] == user_name
+            assert get_resp["SSHPublicKey"]["Status"] == "Active"
+        finally:
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+            iam.delete_user(UserName=user_name)
+
+    def test_update_ssh_public_key_status(self, iam):
+        """UpdateSSHPublicKey changes key status to Inactive."""
+        user_name = _unique("ssh-upd")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_ssh_public_key(UserName=user_name, SSHPublicKeyBody=_SSH_PUBLIC_KEY)
+            key_id = resp["SSHPublicKey"]["SSHPublicKeyId"]
+            iam.update_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id, Status="Inactive")
+            get_resp = iam.get_ssh_public_key(
+                UserName=user_name, SSHPublicKeyId=key_id, Encoding="SSH"
+            )
+            assert get_resp["SSHPublicKey"]["Status"] == "Inactive"
+        finally:
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+            iam.delete_user(UserName=user_name)
+
+    def test_delete_ssh_public_key(self, iam):
+        """DeleteSSHPublicKey removes the key from the user."""
+        user_name = _unique("ssh-del")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_ssh_public_key(UserName=user_name, SSHPublicKeyBody=_SSH_PUBLIC_KEY)
+            key_id = resp["SSHPublicKey"]["SSHPublicKeyId"]
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+            listed = iam.list_ssh_public_keys(UserName=user_name)
+            ids = [k["SSHPublicKeyId"] for k in listed["SSHPublicKeys"]]
+            assert key_id not in ids
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Signing certificate update and delete with assertions
+# ---------------------------------------------------------------------------
+
+
+class TestIAMSigningCertificateLifecycle:
+    def test_update_signing_certificate_status(self, iam):
+        """UpdateSigningCertificate changes certificate status to Inactive."""
+        user_name = _unique("sigupd")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_signing_certificate(UserName=user_name, CertificateBody=_SIGNING_CERT)
+            cert_id = resp["Certificate"]["CertificateId"]
+            iam.update_signing_certificate(
+                UserName=user_name, CertificateId=cert_id, Status="Inactive"
+            )
+            listed = iam.list_signing_certificates(UserName=user_name)
+            cert = [c for c in listed["Certificates"] if c["CertificateId"] == cert_id][0]
+            assert cert["Status"] == "Inactive"
+        finally:
+            try:
+                iam.delete_signing_certificate(UserName=user_name, CertificateId=cert_id)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_delete_signing_certificate(self, iam):
+        """DeleteSigningCertificate removes the certificate from the user."""
+        user_name = _unique("sigdel")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_signing_certificate(UserName=user_name, CertificateBody=_SIGNING_CERT)
+            cert_id = resp["Certificate"]["CertificateId"]
+            iam.delete_signing_certificate(UserName=user_name, CertificateId=cert_id)
+            listed = iam.list_signing_certificates(UserName=user_name)
+            ids = [c["CertificateId"] for c in listed["Certificates"]]
+            assert cert_id not in ids
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# UpdateUser with NewPath
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateUserPath:
+    def test_update_user_path(self, iam):
+        """UpdateUser with NewPath changes the user's path."""
+        user_name = _unique("pathuser")
+        iam.create_user(UserName=user_name, Path="/original/")
+        try:
+            resp = iam.get_user(UserName=user_name)
+            assert resp["User"]["Path"] == "/original/"
+            iam.update_user(UserName=user_name, NewPath="/updated/")
+            resp2 = iam.get_user(UserName=user_name)
+            assert resp2["User"]["Path"] == "/updated/"
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# UpdateRole with MaxSessionDuration
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateRoleMaxSession:
+    def test_update_role_max_session_duration(self, iam):
+        """UpdateRole with MaxSessionDuration changes the role's max session."""
+        role_name = _unique("maxsess")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+        )
+        try:
+            iam.update_role(RoleName=role_name, MaxSessionDuration=7200)
+            get_resp = iam.get_role(RoleName=role_name)
+            assert get_resp["Role"]["MaxSessionDuration"] == 7200
+        finally:
+            iam.delete_role(RoleName=role_name)

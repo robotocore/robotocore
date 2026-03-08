@@ -1064,3 +1064,237 @@ class TestKinesisResourcePolicy:
         client.put_resource_policy(ResourceARN=stream_arn, Policy=policy)
         resp = client.delete_resource_policy(ResourceARN=stream_arn)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestKinesisConsumerEdgeCases:
+    """Edge case tests for Kinesis stream consumers."""
+
+    @pytest.fixture
+    def kinesis(self):
+        return make_client("kinesis")
+
+    @pytest.fixture
+    def stream_with_arn(self, kinesis):
+        name = f"cons-edge-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        arn = kinesis.describe_stream(StreamName=name)["StreamDescription"]["StreamARN"]
+        yield name, arn
+        kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_describe_stream_consumer_by_arn_only(self, kinesis, stream_with_arn):
+        """DescribeStreamConsumer using ConsumerARN without StreamARN."""
+        _, stream_arn = stream_with_arn
+        reg = kinesis.register_stream_consumer(
+            StreamARN=stream_arn, ConsumerName="arn-only-consumer"
+        )
+        consumer_arn = reg["Consumer"]["ConsumerARN"]
+        time.sleep(1)
+
+        desc = kinesis.describe_stream_consumer(ConsumerARN=consumer_arn)
+        assert desc["ConsumerDescription"]["ConsumerName"] == "arn-only-consumer"
+        assert desc["ConsumerDescription"]["ConsumerARN"] == consumer_arn
+        assert "ConsumerStatus" in desc["ConsumerDescription"]
+
+    def test_list_stream_consumers_multiple(self, kinesis, stream_with_arn):
+        """ListStreamConsumers returns all registered consumers."""
+        _, stream_arn = stream_with_arn
+        for i in range(3):
+            kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=f"multi-cons-{i}")
+        time.sleep(1)
+
+        resp = kinesis.list_stream_consumers(StreamARN=stream_arn)
+        names = [c["ConsumerName"] for c in resp["Consumers"]]
+        for i in range(3):
+            assert f"multi-cons-{i}" in names
+
+    def test_register_consumer_returns_creation_timestamp(self, kinesis, stream_with_arn):
+        """RegisterStreamConsumer response includes ConsumerCreationTimestamp."""
+        _, stream_arn = stream_with_arn
+        reg = kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName="ts-consumer")
+        consumer = reg["Consumer"]
+        assert "ConsumerCreationTimestamp" in consumer
+        assert consumer["ConsumerName"] == "ts-consumer"
+        assert consumer["ConsumerStatus"] in ("CREATING", "ACTIVE")
+
+    def test_deregister_consumer_by_name(self, kinesis, stream_with_arn):
+        """DeregisterStreamConsumer using StreamARN + ConsumerName."""
+        _, stream_arn = stream_with_arn
+        kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName="dereg-by-name")
+        time.sleep(1)
+
+        kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName="dereg-by-name")
+        time.sleep(1)
+
+        resp = kinesis.list_stream_consumers(StreamARN=stream_arn)
+        names = [c["ConsumerName"] for c in resp["Consumers"]]
+        assert "dereg-by-name" not in names
+
+
+class TestKinesisRecordDetails:
+    """Detailed tests for Kinesis record operations."""
+
+    @pytest.fixture
+    def kinesis(self):
+        return make_client("kinesis")
+
+    @pytest.fixture
+    def stream(self, kinesis):
+        name = f"rec-detail-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        yield name
+        kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_put_record_returns_shard_id_and_sequence(self, kinesis, stream):
+        """PutRecord response has ShardId, SequenceNumber, and EncryptionType."""
+        resp = kinesis.put_record(StreamName=stream, Data=b"detail-test", PartitionKey="pk1")
+        assert "ShardId" in resp
+        assert "SequenceNumber" in resp
+        assert resp["ShardId"].startswith("shardId-")
+        assert int(resp["SequenceNumber"]) >= 0
+
+    def test_get_records_returns_millis_behind_latest(self, kinesis, stream):
+        """GetRecords response includes MillisBehindLatest."""
+        kinesis.put_record(StreamName=stream, Data=b"millis-test", PartitionKey="pk1")
+        shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
+        iterator = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=shard_id,
+            ShardIteratorType="TRIM_HORIZON",
+        )["ShardIterator"]
+
+        resp = kinesis.get_records(ShardIterator=iterator)
+        assert "MillisBehindLatest" in resp
+        assert isinstance(resp["MillisBehindLatest"], int)
+        assert resp["MillisBehindLatest"] >= 0
+
+    def test_get_records_record_fields(self, kinesis, stream):
+        """Records have SequenceNumber, ArrivalTimestamp, Data, PartitionKey."""
+        kinesis.put_record(StreamName=stream, Data=b"field-test", PartitionKey="pk-fields")
+        shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
+        iterator = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=shard_id,
+            ShardIteratorType="TRIM_HORIZON",
+        )["ShardIterator"]
+
+        resp = kinesis.get_records(ShardIterator=iterator)
+        assert len(resp["Records"]) >= 1
+        record = resp["Records"][0]
+        assert "SequenceNumber" in record
+        assert "ApproximateArrivalTimestamp" in record
+        assert record["Data"] == b"field-test"
+        assert record["PartitionKey"] == "pk-fields"
+
+    def test_put_records_partial_failure_shape(self, kinesis, stream):
+        """PutRecords response shape includes FailedRecordCount and per-record results."""
+        records = [{"Data": f"batch-{i}".encode(), "PartitionKey": f"pk-{i}"} for i in range(5)]
+        resp = kinesis.put_records(StreamName=stream, Records=records)
+        assert "FailedRecordCount" in resp
+        assert isinstance(resp["FailedRecordCount"], int)
+        assert "Records" in resp
+        assert len(resp["Records"]) == 5
+        for rec in resp["Records"]:
+            assert "ShardId" in rec
+            assert "SequenceNumber" in rec
+
+    def test_get_shard_iterator_after_sequence_number(self, kinesis, stream):
+        """AFTER_SEQUENCE_NUMBER iterator starts after the given sequence."""
+        put1 = kinesis.put_record(StreamName=stream, Data=b"first", PartitionKey="pk1")
+        kinesis.put_record(StreamName=stream, Data=b"second", PartitionKey="pk1")
+
+        iterator = kinesis.get_shard_iterator(
+            StreamName=stream,
+            ShardId=put1["ShardId"],
+            ShardIteratorType="AFTER_SEQUENCE_NUMBER",
+            StartingSequenceNumber=put1["SequenceNumber"],
+        )["ShardIterator"]
+
+        resp = kinesis.get_records(ShardIterator=iterator)
+        # Should get the second record (after the first)
+        assert len(resp["Records"]) >= 1
+        assert resp["Records"][0]["Data"] == b"second"
+
+
+class TestKinesisStreamManagement:
+    """Tests for stream management operations."""
+
+    @pytest.fixture
+    def kinesis(self):
+        return make_client("kinesis")
+
+    def test_describe_stream_has_retention_period(self, kinesis):
+        """DescribeStream includes RetentionPeriodHours (default 24)."""
+        name = f"ret-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        try:
+            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            assert desc["RetentionPeriodHours"] == 24
+        finally:
+            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_describe_stream_summary_enhanced_monitoring(self, kinesis):
+        """DescribeStreamSummary includes EnhancedMonitoring field."""
+        name = f"enh-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        try:
+            resp = kinesis.describe_stream_summary(StreamName=name)
+            summary = resp["StreamDescriptionSummary"]
+            assert "EnhancedMonitoring" in summary
+            assert isinstance(summary["EnhancedMonitoring"], list)
+        finally:
+            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_list_shards_with_shard_filter(self, kinesis):
+        """ListShards with ShardFilter to get only open shards."""
+        name = f"filt-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=2)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        try:
+            resp = kinesis.list_shards(
+                StreamName=name,
+                ShardFilter={"Type": "AT_TRIM_HORIZON"},
+            )
+            assert "Shards" in resp
+            assert len(resp["Shards"]) == 2
+        finally:
+            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_update_shard_count_response_fields(self, kinesis):
+        """UpdateShardCount returns stream name and shard counts."""
+        name = f"upd-{uuid.uuid4().hex[:8]}"
+        kinesis.create_stream(StreamName=name, ShardCount=1)
+        kinesis.get_waiter("stream_exists").wait(StreamName=name)
+        try:
+            resp = kinesis.update_shard_count(
+                StreamName=name,
+                TargetShardCount=2,
+                ScalingType="UNIFORM_SCALING",
+            )
+            assert resp["StreamName"] == name
+            assert resp["CurrentShardCount"] == 1
+            assert resp["TargetShardCount"] == 2
+            assert "StreamARN" in resp
+        finally:
+            kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_create_stream_on_demand_mode(self, kinesis):
+        """CreateStream with StreamModeDetails ON_DEMAND."""
+        name = f"ondemand-{uuid.uuid4().hex[:8]}"
+        try:
+            kinesis.create_stream(
+                StreamName=name,
+                StreamModeDetails={"StreamMode": "ON_DEMAND"},
+            )
+            kinesis.get_waiter("stream_exists").wait(StreamName=name)
+            desc = kinesis.describe_stream(StreamName=name)["StreamDescription"]
+            assert desc["StreamName"] == name
+            assert desc["StreamStatus"] == "ACTIVE"
+        finally:
+            try:
+                kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+            except Exception:
+                pass
