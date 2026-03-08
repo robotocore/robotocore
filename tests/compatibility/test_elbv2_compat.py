@@ -802,14 +802,34 @@ class TestELBv2ListenerAttributeOperations:
         assert "Attributes" in resp
 
 
-class TestElbv2AutoCoverage:
-    """Auto-generated coverage tests for elbv2."""
+class TestELBv2SSLPolicies:
+    """Tests for ELBv2 SSL/TLS policy operations."""
 
-    @pytest.fixture
-    def client(self):
-        return make_client("elbv2")
-
-    def test_describe_ssl_policies(self, client):
-        """DescribeSSLPolicies returns a response."""
-        resp = client.describe_ssl_policies()
+    def test_describe_ssl_policies_lists_all(self, elbv2):
+        """DescribeSSLPolicies returns a list of SSL policies."""
+        resp = elbv2.describe_ssl_policies()
         assert "SslPolicies" in resp
+        policies = resp["SslPolicies"]
+        assert len(policies) > 0
+        # Each policy should have standard fields
+        policy = policies[0]
+        assert "Name" in policy
+        assert "SslProtocols" in policy
+        assert "Ciphers" in policy
+
+    def test_describe_ssl_policies_by_name(self, elbv2):
+        """DescribeSSLPolicies can filter by specific policy name."""
+        # First get all policies to find a valid name
+        all_resp = elbv2.describe_ssl_policies()
+        policy_name = all_resp["SslPolicies"][0]["Name"]
+
+        # Now filter by that name
+        resp = elbv2.describe_ssl_policies(Names=[policy_name])
+        assert len(resp["SslPolicies"]) == 1
+        assert resp["SslPolicies"][0]["Name"] == policy_name
+
+    def test_describe_ssl_policies_nonexistent_name(self, elbv2):
+        """DescribeSSLPolicies with a nonexistent policy name returns empty or error."""
+        resp = elbv2.describe_ssl_policies(Names=["ELBSecurityPolicy-FAKE-999"])
+        assert "SslPolicies" in resp
+        assert len(resp["SslPolicies"]) == 0
