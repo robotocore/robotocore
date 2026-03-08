@@ -224,10 +224,11 @@ def _list_delivery_streams(params: dict, region: str, account_id: str) -> dict:
             names = names[idx:]
         except ValueError:
             pass
+    has_more = len(names) > limit
     names = names[:limit]
     return {
         "DeliveryStreamNames": names,
-        "HasMoreDeliveryStreams": False,
+        "HasMoreDeliveryStreams": has_more,
     }
 
 
@@ -296,7 +297,7 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
         # Validate version ID if provided
         if current_version is not None:
             expected = str(stream.get("version_id", 1))
-            if current_version != expected:
+            if str(current_version) != expected:
                 raise FirehoseError(
                     "InvalidArgumentException",
                     f"Version mismatch: expected {expected}, got {current_version}",

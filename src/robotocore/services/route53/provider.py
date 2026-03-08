@@ -83,7 +83,9 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
     # DisassociateVPCFromHostedZone
     m = _DISASSOCIATE_VPC_RE.match(path)
     if m and request.method == "POST":
-        return _handle_disassociate_vpc(region, account_id)
+        zone_id = m.group(1)
+        body = await request.body()
+        return _handle_disassociate_vpc(zone_id, body, region, account_id)
 
     # GetCheckerIpRanges (GET /2013-04-01/checkeripranges)
     if _CHECKER_IP_RE.match(path) and request.method == "GET":
@@ -134,6 +136,42 @@ def _handle_checker_ip_ranges() -> Response:
     return Response(content=xml, status_code=200, media_type="text/xml")
 
 
+_CONTINENT_NAMES = {
+    "AF": "Africa",
+    "AN": "Antarctica",
+    "AS": "Asia",
+    "EU": "Europe",
+    "NA": "North America",
+    "OC": "Oceania",
+    "SA": "South America",
+}
+
+_COUNTRY_NAMES = {
+    "US": "United States",
+    "GB": "United Kingdom",
+    "CA": "Canada",
+    "DE": "Germany",
+    "FR": "France",
+    "JP": "Japan",
+    "AU": "Australia",
+    "BR": "Brazil",
+    "IN": "India",
+    "CN": "China",
+    "MX": "Mexico",
+    "IT": "Italy",
+    "ES": "Spain",
+    "KR": "Republic of Korea",
+    "NL": "Netherlands",
+    "SE": "Sweden",
+    "NO": "Norway",
+    "DK": "Denmark",
+    "FI": "Finland",
+    "IE": "Ireland",
+    "NZ": "New Zealand",
+    "SG": "Singapore",
+}
+
+
 def _handle_get_geo_location(request: Request) -> Response:
     """GetGeoLocation — return geo location details."""
     continent = request.query_params.get("continentcode", "")
@@ -142,11 +180,13 @@ def _handle_get_geo_location(request: Request) -> Response:
 
     parts = []
     if continent:
+        continent_name = _CONTINENT_NAMES.get(continent, continent)
         parts.append(f"    <ContinentCode>{continent}</ContinentCode>")
-        parts.append(f"    <ContinentName>{continent}</ContinentName>")
+        parts.append(f"    <ContinentName>{continent_name}</ContinentName>")
     if country:
+        country_name = _COUNTRY_NAMES.get(country, country)
         parts.append(f"    <CountryCode>{country}</CountryCode>")
-        parts.append(f"    <CountryName>{country}</CountryName>")
+        parts.append(f"    <CountryName>{country_name}</CountryName>")
     if subdivision:
         parts.append(f"    <SubdivisionCode>{subdivision}</SubdivisionCode>")
         parts.append(f"    <SubdivisionName>{subdivision}</SubdivisionName>")
@@ -294,9 +334,7 @@ def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> R
   <RecordType>{record_type}</RecordType>
   <ResponseCode>NOERROR</ResponseCode>
   <Protocol>UDP</Protocol>
-  <RecordData>
-{records_xml}  </RecordData>
-</TestDNSAnswerResponse>"""
+{records_xml}</TestDNSAnswerResponse>"""
     return Response(content=xml, status_code=200, media_type="text/xml")
 
 
@@ -364,8 +402,22 @@ def _handle_associate_vpc(zone_id: str, body: bytes, region: str, account_id: st
     return Response(content=xml, status_code=200, media_type="text/xml")
 
 
-def _handle_disassociate_vpc(region: str, account_id: str) -> Response:
+def _handle_disassociate_vpc(zone_id: str, body: bytes, region: str, account_id: str) -> Response:
     """DisassociateVPCFromHostedZone."""
+    from moto.backends import get_backend
+
+    try:
+        backend = get_backend("route53")[account_id]["global"]
+        zone = backend.get_hosted_zone(zone_id)
+        if zone and hasattr(zone, "vpcs"):
+            parsed = xmltodict.parse(body)
+            req = parsed.get("DisassociateVPCFromHostedZoneRequest", {})
+            vpc = req.get("VPC", {})
+            vpc_id = vpc.get("VPCId", "")
+            zone.vpcs = [v for v in zone.vpcs if v.get("VPCId") != vpc_id]
+    except Exception:
+        pass
+
     change_id = f"/change/{uuid.uuid4().hex[:14].upper()}"
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <DisassociateVPCFromHostedZoneResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">

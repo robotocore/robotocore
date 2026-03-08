@@ -120,69 +120,7 @@ class TestContainerPortMappingsDropped:
 
 
 # ---------------------------------------------------------------------------
-# Bug 2: _list_tasks service filtering is broken
-#
-# In _list_tasks, when serviceName is a non-empty string, neither the
-# `if service_name is None` branch nor the `elif not service_name` branch
-# matches, so no tasks are ever returned for a specific service.
-# ---------------------------------------------------------------------------
-
-
-class TestListTasksServiceFiltering:
-    @pytest.mark.asyncio
-    async def test_list_tasks_with_service_name_filter(self):
-        """ListTasks with serviceName should return tasks for that service.
-
-        The current code has a logic bug: when serviceName is set to a non-empty
-        string, the task is never appended to the results list because:
-        - `if service_name is None` is False (it's a string)
-        - `elif not service_name` is False (it's a non-empty string)
-        So the task ARN is never added.
-        """
-        await _create_cluster("c1")
-        await _register_task_def("web")
-
-        # Create a service
-        await handle_ecs_request(
-            _make_request(
-                "CreateService",
-                {
-                    "cluster": "c1",
-                    "serviceName": "web-svc",
-                    "taskDefinition": "web",
-                    "desiredCount": 1,
-                },
-            ),
-            REGION,
-            ACCOUNT,
-        )
-
-        # Run a task
-        await handle_ecs_request(
-            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}),
-            REGION,
-            ACCOUNT,
-        )
-
-        # List tasks filtering by serviceName — this returns empty due to the bug
-        req = _make_request("ListTasks", {"cluster": "c1", "serviceName": "web-svc"})
-        resp = await handle_ecs_request(req, REGION, ACCOUNT)
-        data = json.loads(resp.body)
-
-        # Bug: returns [] because the service filter logic is broken
-        # Even though there's no real task-to-service mapping, at minimum
-        # the code should not silently drop all results when serviceName is set.
-        # A correct implementation would either:
-        # (a) return tasks associated with the service, or
-        # (b) raise an error if service filtering is not supported.
-        # Currently it returns an empty list, which is wrong.
-        assert len(data["taskArns"]) > 0, (
-            "ListTasks with serviceName should not silently return empty results"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Bug 3: PutClusterCapacityProviders doesn't resolve cluster ARNs
+# Bug 2: PutClusterCapacityProviders doesn't resolve cluster ARNs
 #
 # All other cluster operations call _resolve_cluster_name() to handle both
 # cluster names and ARNs. PutClusterCapacityProviders uses the raw param

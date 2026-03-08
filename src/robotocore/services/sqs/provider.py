@@ -156,8 +156,12 @@ def _delete_queue(
 ) -> dict:
     url = params.get("QueueUrl", "")
     queue = store.get_queue_by_url(url)
-    if queue:
-        store.delete_queue(queue.name)
+    if not queue:
+        raise SqsError(
+            "AWS.SimpleQueueService.NonExistentQueue",
+            "The specified queue does not exist.",
+        )
+    store.delete_queue(queue.name)
     return {}
 
 
@@ -345,7 +349,10 @@ def _send_message_batch(
             message_group_id=entry.get("MessageGroupId"),
             message_deduplication_id=entry.get("MessageDeduplicationId"),
         )
-        queue.put(msg)
+        result = queue.put(msg)
+        if queue.is_fifo and result is not None:
+            msg_id = result.message_id
+            md5_body = result.md5_of_body
         successful.append(
             {
                 "Id": entry.get("Id", ""),
@@ -452,6 +459,8 @@ def _add_permission(
             "Statement": [],
         }
 
+    if not actions:
+        raise SqsError("MissingParameter", "Actions must contain at least one entry.")
     action_list = [f"SQS:{a}" for a in actions]
     statement = {
         "Sid": label,
@@ -490,7 +499,7 @@ def _list_dead_letter_source_queues(
         rp = q.redrive_policy
         if rp and rp.get("deadLetterTargetArn") == target_arn:
             source_urls.append(q.url)
-    return {"queueUrls": source_urls}
+    return {"QueueUrls": source_urls}
 
 
 def _tag_queue(

@@ -14,7 +14,8 @@ from starlette.responses import Response
 from robotocore.providers.moto_bridge import forward_to_moto
 
 # Store commands we create natively
-_commands: dict[str, dict[str, dict]] = {}  # account -> {command_id -> command}
+# (account_id, region) -> {command_id -> command}
+_commands: dict[str, dict[str, dict]] = {}
 
 
 async def handle_ssm_request(request: Request, region: str, account_id: str) -> Response:
@@ -34,8 +35,9 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
     if action == "ListCommands":
         params = json.loads(body) if body else {}
         command_id = params.get("CommandId")
-        if command_id and command_id in _commands.get(account_id, {}):
-            cmd = _commands[account_id][command_id]
+        store_key = f"{account_id}:{region}"
+        if command_id and command_id in _commands.get(store_key, {}):
+            cmd = _commands[store_key][command_id]
             return Response(
                 content=json.dumps({"Commands": [cmd]}),
                 status_code=200,
@@ -45,7 +47,8 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
     if action == "ListCommandInvocations":
         params = json.loads(body) if body else {}
         command_id = params.get("CommandId")
-        if command_id and command_id in _commands.get(account_id, {}):
+        store_key = f"{account_id}:{region}"
+        if command_id and command_id in _commands.get(store_key, {}):
             return Response(
                 content=json.dumps({"CommandInvocations": []}),
                 status_code=200,
@@ -86,7 +89,8 @@ def _send_command_native(params: dict, region: str, account_id: str) -> Response
         "DeliveryTimedOutCount": 0,
     }
 
-    _commands.setdefault(account_id, {})[command_id] = command
+    store_key = f"{account_id}:{region}"
+    _commands.setdefault(store_key, {})[command_id] = command
 
     return Response(
         content=json.dumps({"Command": command}),

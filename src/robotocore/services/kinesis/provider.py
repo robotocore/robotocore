@@ -274,7 +274,16 @@ def _get_shard_iterator(store: KinesisStore, params: dict, region: str, account_
     elif iterator_type == "AT_SEQUENCE_NUMBER":
         seq = starting_seq
     elif iterator_type == "AFTER_SEQUENCE_NUMBER":
-        seq = f"{int(starting_seq) + 1:020d}"
+        try:
+            seq = f"{int(starting_seq) + 1:020d}"
+        except (ValueError, TypeError):
+            raise KinesisError(
+                "InvalidArgumentException",
+                f"Invalid StartingSequenceNumber: {starting_seq}",
+            )
+    elif iterator_type == "AT_TIMESTAMP":
+        # AT_TIMESTAMP starts from the beginning and filters by timestamp
+        seq = "00000000000000000000"
     else:
         raise KinesisError(
             "InvalidArgumentException", f"Invalid ShardIteratorType: {iterator_type}"
