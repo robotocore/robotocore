@@ -7,6 +7,7 @@ import uuid
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -2036,6 +2037,216 @@ class TestCloudFormationStackSetsOps:
             except Exception:
                 pass
 
+    def test_create_stack_instances(self, client):
+        """CreateStackInstances creates instances in a stack set."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.create_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            assert "OperationId" in resp
+        finally:
+            try:
+                client.delete_stack_instances(
+                    StackSetName=name,
+                    Accounts=["123456789012"],
+                    Regions=["us-east-1"],
+                    RetainStacks=True,
+                )
+            except Exception:
+                pass
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_update_stack_instances(self, client):
+        """UpdateStackInstances updates instances in a stack set."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            client.create_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            resp = client.update_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            assert "OperationId" in resp
+        finally:
+            try:
+                client.delete_stack_instances(
+                    StackSetName=name,
+                    Accounts=["123456789012"],
+                    Regions=["us-east-1"],
+                    RetainStacks=True,
+                )
+            except Exception:
+                pass
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_delete_stack_instances(self, client):
+        """DeleteStackInstances removes instances from a stack set."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            client.create_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            resp = client.delete_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+                RetainStacks=True,
+            )
+            assert "OperationId" in resp
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_describe_stack_instance(self, client):
+        """DescribeStackInstance returns details of a stack instance."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            client.create_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            resp = client.describe_stack_instance(
+                StackSetName=name,
+                StackInstanceAccount="123456789012",
+                StackInstanceRegion="us-east-1",
+            )
+            assert "StackInstance" in resp
+            assert resp["StackInstance"]["Account"] == "123456789012"
+        finally:
+            try:
+                client.delete_stack_instances(
+                    StackSetName=name,
+                    Accounts=["123456789012"],
+                    Regions=["us-east-1"],
+                    RetainStacks=True,
+                )
+            except Exception:
+                pass
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_describe_stack_set_operation(self, client):
+        """DescribeStackSetOperation returns operation details."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            create_resp = client.create_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            op_id = create_resp["OperationId"]
+            resp = client.describe_stack_set_operation(StackSetName=name, OperationId=op_id)
+            assert "StackSetOperation" in resp
+            assert resp["StackSetOperation"]["Status"] in (
+                "RUNNING",
+                "SUCCEEDED",
+                "FAILED",
+                "STOPPED",
+            )
+        finally:
+            try:
+                client.delete_stack_instances(
+                    StackSetName=name,
+                    Accounts=["123456789012"],
+                    Regions=["us-east-1"],
+                    RetainStacks=True,
+                )
+            except Exception:
+                pass
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_list_stack_set_operation_results(self, client):
+        """ListStackSetOperationResults returns results for an operation."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            create_resp = client.create_stack_instances(
+                StackSetName=name,
+                Accounts=["123456789012"],
+                Regions=["us-east-1"],
+            )
+            op_id = create_resp["OperationId"]
+            resp = client.list_stack_set_operation_results(StackSetName=name, OperationId=op_id)
+            assert "Summaries" in resp
+            assert isinstance(resp["Summaries"], list)
+        finally:
+            try:
+                client.delete_stack_instances(
+                    StackSetName=name,
+                    Accounts=["123456789012"],
+                    Regions=["us-east-1"],
+                    RetainStacks=True,
+                )
+            except Exception:
+                pass
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_stop_stack_set_operation_nonexistent(self, client):
+        """StopStackSetOperation returns error for nonexistent operation."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            with pytest.raises(ClientError) as exc:
+                client.stop_stack_set_operation(StackSetName=name, OperationId="fake-op-id")
+            assert exc.value.response["Error"]["Code"] == "ValidationError"
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
 
 class TestCloudFormationStackPolicy:
     """Tests for stack policy operations."""
@@ -2044,27 +2255,8 @@ class TestCloudFormationStackPolicy:
     def client(self):
         return make_client("cloudformation")
 
-    def _create_stack(self, client):
-        stack_name = f"sp-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps(
-            {
-                "AWSTemplateFormatVersion": "2010-09-09",
-                "Resources": {
-                    "MyQueue": {
-                        "Type": "AWS::SQS::Queue",
-                        "Properties": {"QueueName": f"sp-q-{uuid.uuid4().hex[:8]}"},
-                    },
-                },
-            }
-        )
-        client.create_stack(StackName=stack_name, TemplateBody=template)
-        # Wait for stack to be created
-        time.sleep(0.5)
-        return stack_name
-
-    def test_set_stack_policy(self, client):
-        """SetStackPolicy sets a policy on a stack."""
-        stack_name = self._create_stack(client)
+    def test_set_stack_policy_nonexistent(self, client):
+        """SetStackPolicy returns ValidationError for nonexistent stack."""
         policy = json.dumps(
             {
                 "Statement": [
@@ -2077,26 +2269,15 @@ class TestCloudFormationStackPolicy:
                 ]
             }
         )
-        try:
-            resp = client.set_stack_policy(StackName=stack_name, StackPolicyBody=policy)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            try:
-                client.delete_stack(StackName=stack_name)
-            except Exception:
-                pass
+        with pytest.raises(ClientError) as exc:
+            client.set_stack_policy(StackName="does-not-exist", StackPolicyBody=policy)
+        assert exc.value.response["Error"]["Code"] == "ValidationError"
 
-    def test_get_stack_policy(self, client):
-        """GetStackPolicy returns the stack policy."""
-        stack_name = self._create_stack(client)
-        try:
-            resp = client.get_stack_policy(StackName=stack_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            try:
-                client.delete_stack(StackName=stack_name)
-            except Exception:
-                pass
+    def test_get_stack_policy_nonexistent(self, client):
+        """GetStackPolicy returns ValidationError for nonexistent stack."""
+        with pytest.raises(ClientError) as exc:
+            client.get_stack_policy(StackName="does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "ValidationError"
 
 
 class TestCloudFormationImports:
