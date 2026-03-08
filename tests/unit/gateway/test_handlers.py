@@ -3,6 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
+import pytest
 from starlette.responses import Response
 
 from robotocore.gateway.handler_chain import RequestContext
@@ -83,6 +84,49 @@ class TestPopulateContextHandler:
         populate_context_handler(ctx)
         assert ctx.operation == "GetCallerIdentity"
 
+    @pytest.mark.parametrize(
+        "service,form_data,expected_op",
+        [
+            ("sts", "Action=GetCallerIdentity&Version=2011-06-15", "GetCallerIdentity"),
+            ("sqs", "Action=SendMessage&QueueUrl=http://localhost/q&MessageBody=hi", "SendMessage"),
+            ("iam", "Action=ListRoles&Version=2010-05-08", "ListRoles"),
+            ("ec2", "Action=DescribeInstances&Version=2016-11-15", "DescribeInstances"),
+            ("cloudformation", "Action=ListStacks&Version=2010-05-15", "ListStacks"),
+            ("sns", "Action=ListTopics", "ListTopics"),
+            (
+                "autoscaling",
+                "Action=DescribeAutoScalingGroups&Version=2011-01-01",
+                "DescribeAutoScalingGroups",
+            ),
+            ("elb", "Action=DescribeLoadBalancers&Version=2012-06-01", "DescribeLoadBalancers"),
+        ],
+    )
+    def test_operation_from_form_body(self, service, form_data, expected_op):
+        """Query-protocol services send Action in the POST form body, not the
+        URL query string. The handler must parse the form body to extract the
+        operation name, otherwise audit logs and diagnostics show operation=None."""
+        from starlette.applications import Starlette
+        from starlette.responses import PlainTextResponse
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        captured = {}
+
+        async def handler(request):
+            ctx = RequestContext(request=request, service_name=service)
+            populate_context_handler(ctx)
+            captured["operation"] = ctx.operation
+            return PlainTextResponse("ok")
+
+        app = Starlette(routes=[Route("/", handler, methods=["POST"])])
+        client = TestClient(app)
+        client.post(
+            "/",
+            data=form_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert captured["operation"] == expected_op
+
     def test_operation_target_takes_precedence(self):
         ctx = _make_context(
             headers={"x-amz-target": "TrentService.Encrypt"},
@@ -116,6 +160,137 @@ class TestCorsResponseHandler:
     def test_skips_if_no_response(self):
         ctx = _make_context()
         cors_response_handler(ctx)  # Should not raise
+
+
+class TestAuditDoubleExecution:
+    """Response handlers run twice for normal requests: once inside
+    _handler_chain.handle() (where context.response is still None → status=0)
+    and again in handle_aws_request() after the provider response is set.
+    This produces phantom audit entries and double-counts every request."""
+
+    def test_single_request_produces_one_audit_entry(self):
+        """A single STS request should produce exactly one audit log entry."""
+        from starlette.testclient import TestClient
+
+        from robotocore.audit.log import get_audit_log
+        from robotocore.gateway.app import app
+
+        get_audit_log()._entries.clear()
+        client = TestClient(app)
+
+        client.post(
+            "/",
+            data="Action=GetCallerIdentity&Version=2011-06-15",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": (
+                    "AWS4-HMAC-SHA256 "
+                    "Credential=testing/20260305/us-east-1/sts/aws4_request, "
+                    "SignedHeaders=host, Signature=abc"
+                ),
+            },
+        )
+
+        entries = get_audit_log().recent(100)
+        sts_entries = [e for e in entries if e.get("service") == "sts"]
+        assert len(sts_entries) == 1, (
+            f"Expected 1 audit entry per request, got {len(sts_entries)}: {sts_entries}"
+        )
+
+    def test_no_audit_entries_with_status_zero(self):
+        """Audit entries should never have status_code=0 — that means
+        the response handler ran before any response was set."""
+        from starlette.testclient import TestClient
+
+        from robotocore.audit.log import get_audit_log
+        from robotocore.gateway.app import app
+
+        get_audit_log()._entries.clear()
+        client = TestClient(app)
+
+        # Make requests to several services
+        for svc in ("sts", "sqs", "iam"):
+            client.post(
+                "/",
+                data="Action=ListQueues&Version=2012-11-05",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Authorization": (
+                        f"AWS4-HMAC-SHA256 "
+                        f"Credential=testing/20260305/us-east-1/{svc}/aws4_request, "
+                        f"SignedHeaders=host, Signature=abc"
+                    ),
+                },
+            )
+
+        entries = get_audit_log().recent(100)
+        zero_entries = [e for e in entries if e.get("status_code") == 0]
+        assert len(zero_entries) == 0, (
+            f"Found {len(zero_entries)} audit entries with status=0 (phantom entries): "
+            f"{zero_entries}"
+        )
+
+    def test_three_requests_produce_three_audit_entries(self):
+        """N requests should produce exactly N audit log entries, not 2N."""
+        from starlette.testclient import TestClient
+
+        from robotocore.audit.log import get_audit_log
+        from robotocore.gateway.app import app
+
+        get_audit_log()._entries.clear()
+        client = TestClient(app)
+
+        for _ in range(3):
+            client.post(
+                "/",
+                data="Action=GetCallerIdentity&Version=2011-06-15",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Authorization": (
+                        "AWS4-HMAC-SHA256 "
+                        "Credential=testing/20260305/us-east-1/sts/aws4_request, "
+                        "SignedHeaders=host, Signature=abc"
+                    ),
+                },
+            )
+
+        entries = get_audit_log().recent(100)
+        sts_entries = [e for e in entries if e.get("service") == "sts"]
+        assert len(sts_entries) == 3, (
+            f"Expected 3 audit entries for 3 requests, got {len(sts_entries)}"
+        )
+
+    def test_audit_entry_has_real_status_code(self):
+        """The audit entry for a successful request should have status 200, not 0."""
+        from starlette.testclient import TestClient
+
+        from robotocore.audit.log import get_audit_log
+        from robotocore.gateway.app import app
+
+        get_audit_log()._entries.clear()
+        client = TestClient(app)
+
+        resp = client.post(
+            "/",
+            data="Action=GetCallerIdentity&Version=2011-06-15",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": (
+                    "AWS4-HMAC-SHA256 "
+                    "Credential=testing/20260305/us-east-1/sts/aws4_request, "
+                    "SignedHeaders=host, Signature=abc"
+                ),
+            },
+        )
+        assert resp.status_code == 200
+
+        entries = get_audit_log().recent(100)
+        sts_entries = [e for e in entries if e.get("service") == "sts"]
+        # Every entry should have the real status code
+        for entry in sts_entries:
+            assert entry["status_code"] == 200, (
+                f"Audit entry has status_code={entry['status_code']}, expected 200"
+            )
 
 
 class TestErrorNormalizer:
