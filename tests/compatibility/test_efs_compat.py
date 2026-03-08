@@ -322,6 +322,67 @@ class TestEFSLifecycleConfiguration:
         efs.delete_file_system(FileSystemId=fs_id)
 
 
+class TestEFSMountTargetOperations:
+    @pytest.fixture(autouse=True)
+    def setup_vpc(self, efs):
+        """Create a VPC and subnet for mount target tests."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        self.vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=self.vpc_id, CidrBlock="10.0.1.0/24")
+        self.subnet_id = subnet["Subnet"]["SubnetId"]
+        self.ec2 = ec2
+        yield
+        try:
+            ec2.delete_subnet(SubnetId=self.subnet_id)
+        except Exception:
+            pass
+        try:
+            ec2.delete_vpc(VpcId=self.vpc_id)
+        except Exception:
+            pass
+
+    def test_create_mount_target(self, efs):
+        fs_id = _create_fs(efs)
+        r = efs.create_mount_target(FileSystemId=fs_id, SubnetId=self.subnet_id)
+        mt_id = r["MountTargetId"]
+        assert mt_id.startswith("fsmt-")
+        assert r["FileSystemId"] == fs_id
+        assert r["SubnetId"] == self.subnet_id
+        assert "IpAddress" in r
+        assert "LifeCycleState" in r
+        efs.delete_mount_target(MountTargetId=mt_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_delete_mount_target(self, efs):
+        fs_id = _create_fs(efs)
+        r = efs.create_mount_target(FileSystemId=fs_id, SubnetId=self.subnet_id)
+        mt_id = r["MountTargetId"]
+        efs.delete_mount_target(MountTargetId=mt_id)
+        r = efs.describe_mount_targets(FileSystemId=fs_id)
+        mt_ids = [mt["MountTargetId"] for mt in r["MountTargets"]]
+        assert mt_id not in mt_ids
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_mount_targets(self, efs):
+        fs_id = _create_fs(efs)
+        r = efs.create_mount_target(FileSystemId=fs_id, SubnetId=self.subnet_id)
+        mt_id = r["MountTargetId"]
+        result = efs.describe_mount_targets(FileSystemId=fs_id)
+        assert "MountTargets" in result
+        assert len(result["MountTargets"]) == 1
+        assert result["MountTargets"][0]["MountTargetId"] == mt_id
+        efs.delete_mount_target(MountTargetId=mt_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_mount_targets_empty(self, efs):
+        fs_id = _create_fs(efs)
+        r = efs.describe_mount_targets(FileSystemId=fs_id)
+        assert "MountTargets" in r
+        assert len(r["MountTargets"]) == 0
+        efs.delete_file_system(FileSystemId=fs_id)
+
+
 class TestEFSBackupPolicy:
     def test_describe_backup_policy_not_found(self, efs):
         """DescribeBackupPolicy on a FS with no backup policy raises PolicyNotFound."""
