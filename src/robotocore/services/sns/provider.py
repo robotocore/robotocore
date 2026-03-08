@@ -517,6 +517,71 @@ def _set_platform_application_attributes(
     return {}
 
 
+# --- Platform Endpoints ---
+
+
+def _create_platform_endpoint(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    app_arn = params.get("PlatformApplicationArn", "")
+    token = params.get("Token", "")
+    custom_user_data = params.get("CustomUserData", "")
+    attributes = {}
+    for key, value in params.items():
+        if key.startswith("Attributes.entry.") and key.endswith(".key"):
+            idx = key.split(".")[2]
+            attributes[value] = params.get(f"Attributes.entry.{idx}.value", "")
+    ep = store.create_platform_endpoint(app_arn, token, custom_user_data, attributes)
+    if not ep:
+        raise SnsError("NotFound", "PlatformApplication does not exist", 404)
+    return {"EndpointArn": ep.arn}
+
+
+def _get_endpoint_attributes(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    arn = params.get("EndpointArn", "")
+    ep = store.get_platform_endpoint(arn)
+    if not ep:
+        raise SnsError("NotFound", f"Endpoint {arn} not found", 404)
+    return {"Attributes": ep.attributes}
+
+
+def _set_endpoint_attributes(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    arn = params.get("EndpointArn", "")
+    ep = store.get_platform_endpoint(arn)
+    if not ep:
+        raise SnsError("NotFound", f"Endpoint {arn} not found", 404)
+    attributes = {}
+    for key, value in params.items():
+        if key.startswith("Attributes.entry.") and key.endswith(".key"):
+            idx = key.split(".")[2]
+            attributes[value] = params.get(f"Attributes.entry.{idx}.value", "")
+    ep.attributes.update(attributes)
+    return {}
+
+
+def _delete_endpoint(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    arn = params.get("EndpointArn", "")
+    store.delete_platform_endpoint(arn)
+    return {}
+
+
+def _list_endpoints_by_platform_application(
+    store: SnsStore, params: dict, region: str, account_id: str, request: Request
+) -> dict:
+    app_arn = params.get("PlatformApplicationArn", "")
+    app = store.get_platform_application(app_arn)
+    if not app:
+        raise SnsError("NotFound", f"Platform application {app_arn} not found", 404)
+    endpoints = store.list_endpoints_by_platform_application(app_arn)
+    return {"Endpoints": [{"EndpointArn": ep.arn, "Attributes": ep.attributes} for ep in endpoints]}
+
+
 # --- Cross-service delivery ---
 
 
@@ -958,4 +1023,9 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListPlatformApplications": _list_platform_applications,
     "GetPlatformApplicationAttributes": _get_platform_application_attributes,
     "SetPlatformApplicationAttributes": _set_platform_application_attributes,
+    "CreatePlatformEndpoint": _create_platform_endpoint,
+    "GetEndpointAttributes": _get_endpoint_attributes,
+    "SetEndpointAttributes": _set_endpoint_attributes,
+    "DeleteEndpoint": _delete_endpoint,
+    "ListEndpointsByPlatformApplication": _list_endpoints_by_platform_application,
 }

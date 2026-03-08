@@ -207,6 +207,18 @@ class PlatformApplication:
     attributes: dict = field(default_factory=dict)
 
 
+@dataclass
+class PlatformEndpoint:
+    """SNS platform endpoint for push notifications."""
+
+    arn: str
+    application_arn: str
+    token: str
+    attributes: dict = field(default_factory=dict)
+    enabled: bool = True
+    custom_user_data: str = ""
+
+
 class SnsStore:
     """Per-region SNS store managing topics and subscriptions."""
 
@@ -214,6 +226,7 @@ class SnsStore:
         self.topics: dict[str, SnsTopic] = {}
         self.subscriptions: dict[str, SnsSubscription] = {}
         self.platform_applications: dict[str, PlatformApplication] = {}
+        self.platform_endpoints: dict[str, PlatformEndpoint] = {}
         self.mutex = threading.RLock()
 
     def create_topic(
@@ -355,3 +368,46 @@ class SnsStore:
 
     def list_platform_applications(self) -> list[PlatformApplication]:
         return list(self.platform_applications.values())
+
+    # --- Platform Endpoints ---
+
+    def create_platform_endpoint(
+        self,
+        application_arn: str,
+        token: str,
+        custom_user_data: str = "",
+        attributes: dict | None = None,
+    ) -> PlatformEndpoint | None:
+        app = self.platform_applications.get(application_arn)
+        if not app:
+            return None
+        endpoint_id = str(uuid.uuid4())
+        arn = application_arn.replace(":app/", ":endpoint/") + f"/{endpoint_id}"
+        with self.mutex:
+            ep = PlatformEndpoint(
+                arn=arn,
+                application_arn=application_arn,
+                token=token,
+                attributes=attributes or {},
+                custom_user_data=custom_user_data,
+            )
+            ep.attributes.setdefault("Enabled", "true")
+            ep.attributes.setdefault("Token", token)
+            if custom_user_data:
+                ep.attributes.setdefault("CustomUserData", custom_user_data)
+            self.platform_endpoints[arn] = ep
+            return ep
+
+    def get_platform_endpoint(self, arn: str) -> PlatformEndpoint | None:
+        return self.platform_endpoints.get(arn)
+
+    def delete_platform_endpoint(self, arn: str) -> bool:
+        with self.mutex:
+            return self.platform_endpoints.pop(arn, None) is not None
+
+    def list_endpoints_by_platform_application(
+        self, application_arn: str
+    ) -> list[PlatformEndpoint]:
+        return [
+            ep for ep in self.platform_endpoints.values() if ep.application_arn == application_arn
+        ]

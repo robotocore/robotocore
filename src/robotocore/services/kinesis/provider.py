@@ -697,6 +697,54 @@ def _merge_shards(store: KinesisStore, params: dict, region: str, account_id: st
     return {}
 
 
+def _put_resource_policy(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+    resource_arn = params.get("ResourceARN", "")
+    policy = params.get("Policy", "")
+    # Validate stream exists
+    stream_name = resource_arn.split("/")[-1]
+    stream = store.get_stream(stream_name)
+    if not stream:
+        raise KinesisError(
+            "ResourceNotFoundException",
+            f"Stream {resource_arn} under account {account_id} not found.",
+        )
+    store.resource_policies[resource_arn] = policy
+    return {}
+
+
+def _get_resource_policy(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+    resource_arn = params.get("ResourceARN", "")
+    stream_name = resource_arn.split("/")[-1]
+    stream = store.get_stream(stream_name)
+    if not stream:
+        raise KinesisError(
+            "ResourceNotFoundException",
+            f"Stream {resource_arn} under account {account_id} not found.",
+        )
+    policy = store.resource_policies.get(resource_arn, "{}")
+    return {"Policy": policy}
+
+
+def _delete_resource_policy(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
+    resource_arn = params.get("ResourceARN", "")
+    stream_name = resource_arn.split("/")[-1]
+    stream = store.get_stream(stream_name)
+    if not stream:
+        raise KinesisError(
+            "ResourceNotFoundException",
+            f"Stream {resource_arn} under account {account_id} not found.",
+        )
+    if resource_arn not in store.resource_policies:
+        raise KinesisError(
+            "ResourceNotFoundException",
+            f"No resource policy found for resource ARN {resource_arn}.",
+        )
+    del store.resource_policies[resource_arn]
+    return {}
+
+
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
@@ -727,4 +775,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "DeregisterStreamConsumer": _deregister_stream_consumer,
     "SplitShard": _split_shard,
     "MergeShards": _merge_shards,
+    "PutResourcePolicy": _put_resource_policy,
+    "GetResourcePolicy": _get_resource_policy,
+    "DeleteResourcePolicy": _delete_resource_policy,
 }

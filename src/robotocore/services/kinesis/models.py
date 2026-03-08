@@ -124,6 +124,7 @@ class KinesisStream:
 class KinesisStore:
     def __init__(self):
         self.streams: dict[str, KinesisStream] = {}
+        self.resource_policies: dict[str, str] = {}
         self.lock = threading.Lock()
 
     def create_stream(
