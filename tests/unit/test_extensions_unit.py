@@ -195,7 +195,8 @@ class TestExtensionRegistry:
 
     def test_on_request_no_plugins(self):
         reg = ExtensionRegistry()
-        assert reg.on_request(MagicMock(), {}) is None
+        req = MagicMock()
+        assert reg.on_request(req, {}) is req  # Returns original request
 
     def test_on_response_modifies(self):
         reg = ExtensionRegistry()
