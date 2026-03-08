@@ -174,3 +174,55 @@ class TestBackupAutoCoverage:
         """ListReportPlans returns a response."""
         resp = client.list_report_plans()
         assert "ReportPlans" in resp
+
+
+class TestBackupReportPlanOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("backup")
+
+    def _make_report_plan(self, client, name=None):
+        name = name or _unique("rplan")
+        resp = client.create_report_plan(
+            ReportPlanName=name,
+            ReportDeliveryChannel={
+                "S3BucketName": "my-report-bucket",
+                "Formats": ["CSV"],
+            },
+            ReportSetting={
+                "ReportTemplate": "BACKUP_JOB_REPORT",
+            },
+        )
+        return resp
+
+    def test_create_report_plan(self, client):
+        name = _unique("rplan")
+        resp = self._make_report_plan(client, name)
+        assert "ReportPlanArn" in resp
+        assert "ReportPlanName" in resp
+        assert resp["ReportPlanName"] == name
+        # cleanup
+        client.delete_report_plan(ReportPlanName=name)
+
+    def test_describe_report_plan(self, client):
+        name = _unique("rplan")
+        self._make_report_plan(client, name)
+        try:
+            resp = client.describe_report_plan(ReportPlanName=name)
+            assert "ReportPlan" in resp
+            assert resp["ReportPlan"]["ReportPlanName"] == name
+            assert "ReportPlanArn" in resp["ReportPlan"]
+        finally:
+            client.delete_report_plan(ReportPlanName=name)
+
+    def test_delete_report_plan(self, client):
+        name = _unique("rplan")
+        self._make_report_plan(client, name)
+        client.delete_report_plan(ReportPlanName=name)
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            client.describe_report_plan(ReportPlanName=name)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
