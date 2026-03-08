@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from starlette.responses import Response
 
 from robotocore.gateway.handler_chain import RequestContext
 from robotocore.gateway.iam_middleware import (
@@ -54,6 +57,7 @@ from robotocore.services.iam.policy_engine import (
     evaluate_resource_policy,
     evaluate_with_permission_boundary,
 )
+from robotocore.services.iam.provider import handle_iam_request
 
 # ===========================================================================
 # Policy evaluation basics
@@ -1678,14 +1682,6 @@ class TestAdditionalMiddlewareEdgeCases:
 # ===========================================================================
 # IAM native provider error-path tests
 # ===========================================================================
-
-import asyncio
-
-from starlette.responses import Response
-from unittest.mock import AsyncMock
-
-from robotocore.services.iam.provider import handle_iam_request
-
 
 def _make_iam_request(body: bytes = b"", headers: dict | None = None):
     request = MagicMock()

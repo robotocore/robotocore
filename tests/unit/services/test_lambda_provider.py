@@ -298,7 +298,7 @@ class TestHandleLambdaRequest:
         """InvalidParameterValue errors map to 400."""
         mock_backend = MagicMock()
 
-        class InvalidParameterValueException(Exception):
+        class InvalidParameterValueException(Exception):  # noqa: N818
             pass
 
         mock_backend.create_function.side_effect = InvalidParameterValueException(
@@ -318,7 +318,7 @@ class TestHandleLambdaRequest:
         """Creating a function that already exists returns ResourceConflictException (409)."""
         mock_backend = MagicMock()
 
-        class ResourceConflictException(Exception):
+        class ResourceConflictException(Exception):  # noqa: N818
             code = 409
 
         mock_backend.create_function.side_effect = ResourceConflictException(

@@ -327,7 +327,7 @@ class TestDynamoDBErrorPaths:
 
     @pytest.mark.asyncio
     async def test_moto_error_passthrough(self):
-        """When Moto returns an error (e.g., 400 ResourceNotFoundException), it is passed through."""
+        """When Moto returns an error (e.g., 400 ResourceNotFoundException), it is passed through."""  # noqa: E501
         error_body = json.dumps(
             {
                 "__type": "com.amazonaws.dynamodb.v20120810#ResourceNotFoundException",

@@ -17,7 +17,6 @@ import argparse
 import json
 import sys
 import time
-import traceback
 
 import boto3
 from botocore.config import Config
@@ -42,7 +41,7 @@ def _client(service: str, port: int):
 def _compare_structure(a, b, path="") -> list[str]:
     """Compare response structures recursively. Returns list of differences."""
     diffs = []
-    if type(a) != type(b):
+    if type(a) is not type(b):
         diffs.append(f"{path}: type mismatch: {type(a).__name__} vs {type(b).__name__}")
         return diffs
 
@@ -421,7 +420,7 @@ def main():
         print()
 
     total = total_match + total_diverged + total_error
-    print(f"Summary: {total_match}/{total} matched, {total_diverged} diverged, {total_error} errors")
+    print(f"Summary: {total_match}/{total} matched, {total_diverged} diverged, {total_error} errors")  # noqa: E501
 
     if total_diverged > 0 or total_error > 0:
         sys.exit(1)
