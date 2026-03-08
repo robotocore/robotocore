@@ -229,14 +229,15 @@ When using Claude Code agents on this project:
 - **Verify always**: Every code agent prompt must include "run tests after changes"
 - **Be specific**: Tell agents exactly which files to edit, what to change, and what NOT to change
 
-### Contributing fixes upstream to Moto
-When we discover a Moto bug or missing feature that SHOULD be fixed in Moto (not worked around in a native provider):
-1. Create a git worktree in `vendor/moto/` with a new branch: `git worktree add ../moto-fix-<name> -b fix/<name>`
-2. Implement the fix in the Moto worktree
+### Fixing gaps in Moto
+When we discover a Moto bug or missing feature:
+1. Create a feature branch in `vendor/moto/`: `cd vendor/moto && git checkout -b fix/<name>`
+2. Implement the fix directly in Moto's source
 3. Write a test for it in Moto's test suite
-4. Open a PR against `getmoto/moto` from the worktree branch
-5. In the meantime, use a native provider intercept in robotocore as the workaround
-6. Track the PR in the commit message so we know when to remove the workaround
+4. Merge the branch into `robotocore/all-fixes` (our single merged branch): `git checkout robotocore/all-fixes && git merge fix/<name>`
+5. The submodule in robotocore points at `robotocore/all-fixes` on Jack's fork (`jackdanger/moto`)
+6. Do NOT open PRs to `getmoto/moto` yet — we'll batch upstream contributions later in a structured push
+7. For gaps that CANNOT be fixed in Moto (e.g., behavioral fidelity that conflicts with Moto's design), implement a native provider in `src/robotocore/services/<service>/provider.py` instead
 
 ### Commit cadence & prompt logging (IMPORTANT)
 - **Commit as you go** — don't accumulate a massive diff. Commit after each logical phase of work (e.g., "registered 100 services", "added chaos module", "extended smoke tests").
