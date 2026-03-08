@@ -231,15 +231,15 @@ class TestUrlEncodingRoundTrip:
     def test_s3_key_with_percent_encoded_space_roundtrips(self, client):
         """An S3 key whose name is literally 'a%20b' (not 'a b') must be preserved.
 
-        URL: ``/bucket/a%252520b`` -> Starlette decodes to ``/bucket/a%2520b``
-        -> bridge must NOT decode again to ``/bucket/a%20b`` then ``/bucket/a b``.
+        URL: ``/bucket/a%2520b`` -> raw_path preserved -> Werkzeug decodes once
+        to ``/bucket/a%20b`` -> Moto stores key ``a%20b``.
         """
         bucket = "pct-space-bucket"
         client.put(f"/{bucket}", headers=self._auth_header("s3"))
 
-        # Key whose literal name is 'a%20b' (triple-encoded in URL: %25 -> %, 20 stays)
+        # Key whose literal name is 'a%20b' (double-encoded in URL: %25 -> %, 20 stays)
         client.put(
-            f"/{bucket}/a%252520b",
+            f"/{bucket}/a%2520b",
             content=b"percent-space",
             headers=self._auth_header("s3"),
         )
@@ -266,6 +266,8 @@ class TestUrlEncodingRoundTrip:
         mock_request.url.path = "/bucket/a%2Fb"
         mock_request.url.query = None
         mock_request.headers = {}
+        # raw_path preserves the wire encoding; Werkzeug decodes it once
+        mock_request.scope = {"raw_path": b"/bucket/a%252Fb"}
 
         werkzeug_req = _build_werkzeug_request(mock_request, b"")
         # PATH_INFO should preserve the percent-encoding
@@ -295,7 +297,7 @@ class TestEmptyBytesResponseBody:
         # Reproduce the exact logic from line 135 of moto_bridge.py
         def normalize_body(response_body):
             """Replicates the normalization logic from forward_to_moto line 135."""
-            if isinstance(response_body, str) and len(response_body) == 0:
+            if isinstance(response_body, (str, bytes)) and len(response_body) == 0:
                 response_body = None
             return response_body
 

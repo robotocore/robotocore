@@ -6,6 +6,7 @@ BaseResponse.dispatch endpoint, matching the pattern used by LocalStack.
 
 import os
 from functools import lru_cache
+from urllib.parse import quote
 from xml.sax.saxutils import escape as _xml_escape
 
 import botocore.model
@@ -81,9 +82,19 @@ def _get_dispatcher(service: str, path: str):
 
 def _build_werkzeug_request(request: Request, body: bytes) -> WerkzeugRequest:
     """Convert a Starlette Request to a Werkzeug Request for Moto."""
+    # Use raw_path from ASGI scope to preserve percent-encoding.  Starlette's
+    # request.url.path is already decoded, but Werkzeug's EnvironBuilder will
+    # decode again — causing double-decoding.  raw_path has the original wire
+    # encoding so Werkzeug's single decode produces the correct result.
+    raw_path = getattr(request, "scope", {}).get("raw_path", b"")
+    if raw_path:
+        path = raw_path.decode("latin-1")
+    else:
+        # Fallback: re-encode what Starlette decoded so Werkzeug's decode is a no-op.
+        path = quote(request.url.path, safe="/:@!$&'()*+,;=-._~")
     builder = EnvironBuilder(
         method=request.method,
-        path=request.url.path,
+        path=path,
         query_string=str(request.url.query) if request.url.query else "",
         data=body,
         headers=dict(request.headers),
@@ -132,7 +143,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
                 media_type="application/xml",
             )
         status, response_headers, response_body = result
-        if isinstance(response_body, str) and len(response_body) == 0:
+        if isinstance(response_body, (str, bytes)) and len(response_body) == 0:
             response_body = None
         headers_dict = dict(response_headers) if response_headers else {}
         is_head = request.method == "HEAD"
@@ -235,10 +246,15 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
                 media_type="application/xml",
             )
         status, response_headers, response_body = result
-        if isinstance(response_body, str) and len(response_body) == 0:
+        if isinstance(response_body, (str, bytes)) and len(response_body) == 0:
             response_body = None
         headers_dict = dict(response_headers) if response_headers else {}
-        clean_headers = {k: v for k, v in headers_dict.items() if k.lower() != "content-length"}
+        is_head = request.method == "HEAD"
+        if is_head:
+            clean_headers = headers_dict
+            response_body = None
+        else:
+            clean_headers = {k: v for k, v in headers_dict.items() if k.lower() != "content-length"}
         return Response(
             content=response_body,
             status_code=status,
