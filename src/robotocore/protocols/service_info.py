@@ -21,6 +21,16 @@ def get_service_protocol(service_name: str) -> str | None:
 
 
 @lru_cache
+def get_service_json_version(service_name: str) -> str | None:
+    """Return the JSON version for a service (e.g. '1.0', '1.1'), or None."""
+    try:
+        model = _get_session().get_service_model(service_name)
+        return model.metadata.get("jsonVersion")
+    except Exception:
+        return None
+
+
+@lru_cache
 def get_service_operations(service_name: str) -> frozenset[str]:
     """Return the set of operation names for a service."""
     try:

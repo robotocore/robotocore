@@ -654,7 +654,11 @@ def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
     from robotocore.services.sqs.provider import _get_store
 
     queue_name = arn.rsplit(":", 1)[-1]
-    store = _get_store(region)
+    # Parse region from the target SQS ARN (arn:aws:sqs:<region>:<account>:<name>)
+    # to support cross-region delivery
+    arn_parts = arn.split(":")
+    queue_region = arn_parts[3] if len(arn_parts) >= 6 else region
+    store = _get_store(queue_region)
     queue = store.get_queue(queue_name)
     if not queue:
         logger.error("EventBridge: SQS queue not found: %s", queue_name)

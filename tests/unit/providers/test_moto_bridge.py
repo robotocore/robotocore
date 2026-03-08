@@ -3,7 +3,6 @@
 import pytest
 
 from robotocore.providers.moto_bridge import (
-    _extract_region,
     _get_dispatcher,
     _get_moto_routing_table,
 )
@@ -51,24 +50,6 @@ class TestGetDispatcher:
     def test_s3_key_path(self):
         dispatch = _get_dispatcher("s3", "/my-bucket/my-key.txt")
         assert callable(dispatch)
-
-
-class TestExtractRegion:
-    def test_from_auth_header(self):
-        headers = {
-            "authorization": (
-                "AWS4-HMAC-SHA256 "
-                "Credential=AKID/20260305/eu-west-1/s3/aws4_request, "
-                "SignedHeaders=host, Signature=abc"
-            )
-        }
-        assert _extract_region(headers) == "eu-west-1"
-
-    def test_defaults_to_us_east_1(self):
-        assert _extract_region({}) == "us-east-1"
-
-    def test_no_auth_header(self):
-        assert _extract_region({"authorization": "Basic foo"}) == "us-east-1"
 
 
 class TestForwardToMoto:
@@ -192,3 +173,19 @@ class TestForwardToMoto:
             },
         )
         assert response.status_code == 501
+
+
+class TestXmlEscaping:
+    """Bug fix 1E: XML special chars in error messages must be escaped."""
+
+    def test_xml_escape_in_error_response(self):
+        from robotocore.providers.moto_bridge import _xml_escape
+
+        escaped = _xml_escape('<script>alert("xss")</script>')
+        assert "<script>" not in escaped
+        assert "&lt;script&gt;" in escaped
+
+    def test_ampersand_escaped(self):
+        from robotocore.providers.moto_bridge import _xml_escape
+
+        assert "&amp;" in _xml_escape("foo & bar")

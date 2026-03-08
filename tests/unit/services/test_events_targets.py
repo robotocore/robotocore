@@ -266,3 +266,33 @@ class TestEventMatchingAndDispatch:
         }
 
         assert rule.matches_event(event) is False
+
+
+class TestCrossRegionSqsTarget:
+    """Bug fix 1C: EventBridge→SQS delivery must use the queue's region from ARN."""
+
+    def test_cross_region_sqs_delivery_uses_queue_region(self):
+        from robotocore.services.events.provider import _invoke_sqs_target
+        from robotocore.services.sqs.models import StandardQueue
+        from robotocore.services.sqs.provider import _get_store
+
+        # Create a queue in eu-west-1
+        eu_store = _get_store("eu-west-1")
+        queue = StandardQueue(
+            name="eb-cross-region-queue",
+            region="eu-west-1",
+            account_id="123456789012",
+        )
+        eu_store.queues["eb-cross-region-queue"] = queue
+
+        # Invoke with us-east-1 as the rule's region, but target ARN is eu-west-1
+        _invoke_sqs_target(
+            "arn:aws:sqs:eu-west-1:123456789012:eb-cross-region-queue",
+            '{"test": "cross-region"}',
+            "us-east-1",
+            "123456789012",
+        )
+
+        messages = queue.receive(max_messages=1, wait_time_seconds=0)
+        assert len(messages) == 1
+        assert "cross-region" in messages[0][0].body

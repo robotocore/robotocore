@@ -237,3 +237,44 @@ class TestDeliverToSubscriberRouting:
         with patch("robotocore.services.sns.provider._deliver_to_sqs") as mock:
             _deliver_to_subscriber(sub, "msg", None, {}, "id", "topic-arn", "us-east-1")
             mock.assert_called_once()
+
+
+class TestCrossRegionSqsDelivery:
+    """Bug fix 1B: SNS→SQS delivery must use the queue's region, not the topic's."""
+
+    def test_cross_region_delivery_uses_queue_region(self):
+        from robotocore.services.sns.provider import _deliver_to_sqs
+        from robotocore.services.sqs.models import StandardQueue
+        from robotocore.services.sqs.provider import _get_store
+
+        # Create a queue in us-west-2
+        west_store = _get_store("us-west-2")
+        queue = StandardQueue(
+            name="cross-region-queue",
+            region="us-west-2",
+            account_id="123456789012",
+        )
+        west_store.queues["cross-region-queue"] = queue
+
+        # Subscribe with a us-west-2 queue ARN
+        sub = _make_subscription(
+            "sqs",
+            "arn:aws:sqs:us-west-2:123456789012:cross-region-queue",
+            "arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+
+        # Deliver from us-east-1 topic (region param is the topic's region)
+        _deliver_to_sqs(
+            sub,
+            "cross-region message",
+            None,
+            {},
+            "msg-cross",
+            "arn:aws:sns:us-east-1:123456789012:test-topic",
+            "us-east-1",
+        )
+
+        # Verify message landed in us-west-2 queue
+        messages = queue.receive(max_messages=1, wait_time_seconds=0)
+        assert len(messages) == 1
+        assert "cross-region message" in messages[0][0].body

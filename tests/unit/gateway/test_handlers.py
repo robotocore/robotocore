@@ -155,3 +155,33 @@ class TestErrorNormalizer:
         ctx.protocol = None
         error_normalizer(ctx, ValueError("default"))
         assert b"<ErrorResponse>" in ctx.response.body
+
+    def test_json_11_services_get_correct_content_type(self):
+        """Bug fix 1D: Kinesis, Logs, ECS use JSON 1.1, not 1.0."""
+        for service in ("kinesis", "logs", "ecs"):
+            ctx = _make_context(service_name=service)
+            ctx.protocol = "json"
+            error_normalizer(ctx, ValueError("test"))
+            ct = ctx.response.headers.get("content-type", "")
+            assert "1.1" in ct, f"{service} should use x-amz-json-1.1, got {ct}"
+
+    def test_json_10_services_get_correct_content_type(self):
+        """Bug fix 1D: DynamoDB uses JSON 1.0."""
+        ctx = _make_context(service_name="dynamodb")
+        ctx.protocol = "json"
+        error_normalizer(ctx, ValueError("test"))
+        ct = ctx.response.headers.get("content-type", "")
+        assert "1.0" in ct, f"dynamodb should use x-amz-json-1.0, got {ct}"
+
+    def test_xml_escaping_in_error_message(self):
+        """Bug fix 1E: XML special chars in exception messages must be escaped."""
+        ctx = _make_context(service_name="s3")
+        ctx.protocol = "rest-xml"
+        error_normalizer(ctx, ValueError('<script>alert("xss")</script>'))
+        body = ctx.response.body.decode()
+        assert "<script>" not in body
+        assert "&lt;script&gt;" in body
+        # Verify the XML is well-formed
+        import xml.etree.ElementTree as ET
+
+        ET.fromstring(body)

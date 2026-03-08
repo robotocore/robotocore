@@ -5,8 +5,8 @@ BaseResponse.dispatch endpoint, matching the pattern used by LocalStack.
 """
 
 import os
-import re
 from functools import lru_cache
+from xml.sax.saxutils import escape as _xml_escape
 
 import moto.backends as moto_backends
 from moto.core.base_backend import BackendDict
@@ -20,8 +20,6 @@ from werkzeug.wrappers import Request as WerkzeugRequest
 os.environ.setdefault("MOTO_ALLOW_NONEXISTENT_REGION", "true")
 
 DEFAULT_ACCOUNT_ID = "123456789012"
-
-_REGION_RE = re.compile(r"Credential=[^/]+/\d{8}/([^/]+)/")
 
 
 class _RegexConverter(BaseConverter):
@@ -77,14 +75,6 @@ def _get_dispatcher(service: str, path: str):
     return endpoint
 
 
-def _extract_region(headers: dict) -> str:
-    auth = headers.get("authorization", "")
-    match = _REGION_RE.search(auth)
-    if match:
-        return match.group(1)
-    return "us-east-1"
-
-
 def _build_werkzeug_request(request: Request, body: bytes) -> WerkzeugRequest:
     """Convert a Starlette Request to a Werkzeug Request for Moto."""
     builder = EnvironBuilder(
@@ -113,7 +103,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                f"<Message>Service {service_name} is not yet implemented</Message>"
+                f"<Message>Service {_xml_escape(service_name)} is not yet implemented</Message>"
                 f"</Error></ErrorResponse>"
             ),
             status_code=501,
@@ -151,7 +141,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>InternalError</Code>"
-                f"<Message>{e}</Message></Error></ErrorResponse>"
+                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
             ),
             status_code=500,
             media_type="application/xml",
@@ -167,7 +157,7 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                f"<Message>Service {service_name} is not yet implemented</Message>"
+                f"<Message>Service {_xml_escape(service_name)} is not yet implemented</Message>"
                 f"</Error></ErrorResponse>"
             ),
             status_code=501,
@@ -195,7 +185,7 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
         return Response(
             content=(
                 f"<ErrorResponse><Error><Code>InternalError</Code>"
-                f"<Message>{e}</Message></Error></ErrorResponse>"
+                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
             ),
             status_code=500,
             media_type="application/xml",

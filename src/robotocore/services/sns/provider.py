@@ -553,7 +553,11 @@ def _deliver_to_sqs(
     topic_arn: str,
     region: str,
 ) -> None:
-    sqs_store = get_sqs_store(region)
+    # Parse region from the SQS queue ARN (arn:aws:sqs:<region>:<account>:<name>)
+    # to support cross-region delivery
+    arn_parts = sub.endpoint.split(":")
+    queue_region = arn_parts[3] if len(arn_parts) >= 6 else region
+    sqs_store = get_sqs_store(queue_region)
     # Endpoint is queue ARN -- extract queue name
     queue_name = sub.endpoint.rsplit(":", 1)[-1]
     queue = sqs_store.get_queue(queue_name)
