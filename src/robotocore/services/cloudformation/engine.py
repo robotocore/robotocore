@@ -134,7 +134,7 @@ def resolve_intrinsics(
         else:
             parts = args
         logical_id = parts[0]
-        attr_name = parts[1] if len(parts) > 1 else ""
+        attr_name = ".".join(parts[1:]) if len(parts) > 1 else ""
         res = resources.get(logical_id)
         if res and attr_name in res.attributes:
             return res.attributes[attr_name]

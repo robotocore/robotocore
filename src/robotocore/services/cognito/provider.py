@@ -5,6 +5,7 @@ Uses JSON protocol via X-Amz-Target: AWSCognitoIdentityProviderService.{Action}.
 
 import base64
 import hashlib
+import hmac
 import json
 import threading
 import time
@@ -93,8 +94,10 @@ def _new_id() -> str:
 
 
 def _secret_hash(username: str, client_id: str, client_secret: str) -> str:
-    msg = username + client_id
-    return base64.b64encode(hashlib.sha256((msg + client_secret).encode()).digest()).decode()
+    msg = (username + client_id).encode("utf-8")
+    return base64.b64encode(
+        hmac.new(client_secret.encode("utf-8"), msg, hashlib.sha256).digest()
+    ).decode("utf-8")
 
 
 # ---------------------------------------------------------------------------

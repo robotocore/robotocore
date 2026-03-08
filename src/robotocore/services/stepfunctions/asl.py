@@ -649,7 +649,6 @@ def _is_ddb_typed(item: dict) -> bool:
             key = next(iter(v))
             if key in ("S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"):
                 return True
-        return False
     return False
 
 

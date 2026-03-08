@@ -53,14 +53,16 @@ async def handle_dynamodb_request(request: Request, region: str, account_id: str
     # Only fire hooks on successful mutations
     if target in _MUTATION_OPS and 200 <= response.status_code < 300:
         try:
-            _fire_stream_hooks(target, body_bytes, region, account_id)
+            _fire_stream_hooks(target, body_bytes, response, region, account_id)
         except Exception:
             logger.debug("Failed to fire stream hooks for %s", target, exc_info=True)
 
     return response
 
 
-def _fire_stream_hooks(target: str, body_bytes: bytes, region: str, account_id: str) -> None:
+def _fire_stream_hooks(
+    target: str, body_bytes: bytes, response: Response, region: str, account_id: str
+) -> None:
     """Parse the request and fire appropriate stream hooks."""
     from robotocore.services.dynamodbstreams.hooks import notify_table_change
 
@@ -71,12 +73,17 @@ def _fire_stream_hooks(target: str, body_bytes: bytes, region: str, account_id: 
         table_name = body.get("TableName", "")
         item = body.get("Item", {})
         keys = _extract_keys_from_item(table_name, item, region, account_id)
+        # Determine INSERT vs MODIFY: if the Moto response contains Attributes,
+        # an existing item was overwritten (MODIFY). Otherwise it's a new item (INSERT).
+        resp_body = json.loads(response.body) if response.body else {}
+        event_name = "MODIFY" if resp_body.get("Attributes") else "INSERT"
+        old_image = resp_body.get("Attributes")
         notify_table_change(
             table_name=table_name,
-            event_name="INSERT",  # Could be MODIFY if item existed, but INSERT is close enough
+            event_name=event_name,
             keys=keys,
             new_image=item,
-            old_image=None,
+            old_image=old_image,
             region=region,
             account_id=account_id,
         )
