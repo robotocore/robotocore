@@ -97,7 +97,83 @@ class TestDataSyncLocationOperations:
 
 
 class TestDataSyncTaskOperations:
+    def _create_location(self, client):
+        """Helper: create a location for task source/dest."""
+        resp = client.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{_unique('task-bucket')}",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/datasync-role"},
+        )
+        return resp["LocationArn"]
+
     def test_list_tasks_empty(self, datasync):
         response = datasync.list_tasks()
         assert "Tasks" in response
         assert isinstance(response["Tasks"], list)
+
+    def test_create_task(self, datasync):
+        src = self._create_location(datasync)
+        dst = self._create_location(datasync)
+        try:
+            resp = datasync.create_task(
+                SourceLocationArn=src,
+                DestinationLocationArn=dst,
+            )
+            task_arn = resp["TaskArn"]
+            assert task_arn.startswith("arn:aws:datasync:")
+            assert ":task/task-" in task_arn
+        finally:
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
+
+    def test_describe_task(self, datasync):
+        src = self._create_location(datasync)
+        dst = self._create_location(datasync)
+        try:
+            task_arn = datasync.create_task(
+                SourceLocationArn=src,
+                DestinationLocationArn=dst,
+            )["TaskArn"]
+            desc = datasync.describe_task(TaskArn=task_arn)
+            assert desc["TaskArn"] == task_arn
+            assert desc["SourceLocationArn"] == src
+            assert desc["DestinationLocationArn"] == dst
+            assert "Status" in desc
+        finally:
+            datasync.delete_task(TaskArn=task_arn)
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
+
+    def test_update_task(self, datasync):
+        src = self._create_location(datasync)
+        dst = self._create_location(datasync)
+        try:
+            task_arn = datasync.create_task(
+                SourceLocationArn=src,
+                DestinationLocationArn=dst,
+            )["TaskArn"]
+            datasync.update_task(
+                TaskArn=task_arn,
+                Name="updated-task-name",
+            )
+            desc = datasync.describe_task(TaskArn=task_arn)
+            assert desc["Name"] == "updated-task-name"
+        finally:
+            datasync.delete_task(TaskArn=task_arn)
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
+
+    def test_delete_task(self, datasync):
+        src = self._create_location(datasync)
+        dst = self._create_location(datasync)
+        try:
+            task_arn = datasync.create_task(
+                SourceLocationArn=src,
+                DestinationLocationArn=dst,
+            )["TaskArn"]
+            datasync.delete_task(TaskArn=task_arn)
+            with pytest.raises(ClientError) as exc:
+                datasync.describe_task(TaskArn=task_arn)
+            assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+        finally:
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
