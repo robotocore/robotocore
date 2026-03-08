@@ -1060,6 +1060,22 @@ class TestRoute53Extended:
         finally:
             logs.delete_log_group(logGroupName=log_group)
 
+    def test_get_query_logging_config_nonexistent(self, route53):
+        """GetQueryLoggingConfig returns error for nonexistent config."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            route53.get_query_logging_config(Id="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "NoSuchQueryLoggingConfig"
+
+    def test_delete_query_logging_config_nonexistent(self, route53):
+        """DeleteQueryLoggingConfig returns error for nonexistent config."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            route53.delete_query_logging_config(Id="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "NoSuchQueryLoggingConfig"
+
 
 class TestRoute53ExtendedV2:
     @pytest.fixture
