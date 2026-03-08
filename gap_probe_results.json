@@ -68,12 +68,12 @@
     },
     "cloudformation": {
       "ActivateOrganizationsAccess": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ActivateOrganizationsAccess"
+        "status": "500_error",
+        "detail": "InternalError: The activate_organizations_access action has not been implemented"
       },
       "ActivateType": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ActivateType"
+        "status": "500_error",
+        "detail": "InternalError: The activate_type action has not been implemented"
       },
       "BatchDescribeTypeConfigurations": {
         "status": "needs_params",
@@ -112,12 +112,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "DeactivateOrganizationsAccess": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DeactivateOrganizationsAccess"
+        "status": "500_error",
+        "detail": "InternalError: The deactivate_organizations_access action has not been implemented"
       },
       "DeactivateType": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DeactivateType"
+        "status": "500_error",
+        "detail": "InternalError: The deactivate_type action has not been implemented"
       },
       "DeleteChangeSet": {
         "status": "needs_params",
@@ -140,12 +140,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "DeregisterType": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DeregisterType"
+        "status": "500_error",
+        "detail": "InternalError: The deregister_type action has not been implemented"
       },
       "DescribeAccountLimits": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribeAccountLimits"
+        "status": "500_error",
+        "detail": "InternalError: The describe_account_limits action has not been implemented"
       },
       "DescribeChangeSet": {
         "status": "needs_params",
@@ -156,20 +156,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ChangeSetName"
       },
       "DescribeEvents": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribeEvents"
+        "status": "500_error",
+        "detail": "InternalError: The describe_events action has not been implemented"
       },
       "DescribeGeneratedTemplate": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"GeneratedTemp"
       },
       "DescribeOrganizationsAccess": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribeOrganizationsAccess"
+        "status": "500_error",
+        "detail": "InternalError: The describe_organizations_access action has not been implemented"
       },
       "DescribePublisher": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribePublisher"
+        "status": "500_error",
+        "detail": "InternalError: The describe_publisher action has not been implemented"
       },
       "DescribeResourceScan": {
         "status": "needs_params",
@@ -216,8 +216,8 @@
         "detail": "OK"
       },
       "DescribeType": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribeType"
+        "status": "500_error",
+        "detail": "InternalError: The describe_type action has not been implemented"
       },
       "DescribeTypeRegistration": {
         "status": "needs_params",
@@ -236,8 +236,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "EstimateTemplateCost": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: EstimateTemplateCost"
+        "status": "500_error",
+        "detail": "InternalError: The estimate_template_cost action has not been implemented"
       },
       "ExecuteChangeSet": {
         "status": "needs_params",
@@ -252,8 +252,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"GeneratedTemp"
       },
       "GetHookResult": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: GetHookResult"
+        "status": "500_error",
+        "detail": "InternalError: The get_hook_result action has not been implemented"
       },
       "GetStackPolicy": {
         "status": "needs_params",
@@ -264,32 +264,32 @@
         "detail": "ValidationError: Stack [test] does not exist"
       },
       "GetTemplateSummary": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: GetTemplateSummary"
+        "status": "500_error",
+        "detail": "InternalError: 'AWSTemplateFormatVersion'"
       },
       "ImportStacksToStackSet": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "ListChangeSets": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListChangeSets"
+        "status": "working",
+        "detail": "OK"
       },
       "ListExports": {
         "status": "working",
         "detail": "OK"
       },
       "ListGeneratedTemplates": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListGeneratedTemplates"
+        "status": "500_error",
+        "detail": "InternalError: The list_generated_templates action has not been implemented"
       },
       "ListHookResults": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListHookResults"
+        "status": "500_error",
+        "detail": "InternalError: The list_hook_results action has not been implemented"
       },
       "ListImports": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListImports"
+        "status": "500_error",
+        "detail": "InternalError: The list_imports action has not been implemented"
       },
       "ListResourceScanRelatedResources": {
         "status": "needs_params",
@@ -300,8 +300,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"ResourceScanI"
       },
       "ListResourceScans": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListResourceScans"
+        "status": "500_error",
+        "detail": "InternalError: The list_resource_scans action has not been implemented"
       },
       "ListStackInstanceResourceDrifts": {
         "status": "needs_params",
@@ -316,8 +316,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackRefactor"
       },
       "ListStackRefactors": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListStackRefactors"
+        "status": "500_error",
+        "detail": "InternalError: The list_stack_refactors action has not been implemented"
       },
       "ListStackResources": {
         "status": "working",
@@ -336,36 +336,36 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "ListStackSets": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListStackSets"
+        "status": "working",
+        "detail": "OK"
       },
       "ListStacks": {
         "status": "working",
         "detail": "OK"
       },
       "ListTypeRegistrations": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListTypeRegistrations"
+        "status": "500_error",
+        "detail": "InternalError: The list_type_registrations action has not been implemented"
       },
       "ListTypeVersions": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListTypeVersions"
+        "status": "500_error",
+        "detail": "InternalError: The list_type_versions action has not been implemented"
       },
       "ListTypes": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListTypes"
+        "status": "500_error",
+        "detail": "InternalError: The list_types action has not been implemented"
       },
       "PublishType": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: PublishType"
+        "status": "500_error",
+        "detail": "InternalError: The publish_type action has not been implemented"
       },
       "RecordHandlerProgress": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"BearerToken\"\n"
       },
       "RegisterPublisher": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: RegisterPublisher"
+        "status": "500_error",
+        "detail": "InternalError: The register_publisher action has not been implemented"
       },
       "RegisterType": {
         "status": "needs_params",
@@ -384,24 +384,24 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Configuration"
       },
       "SetTypeDefaultVersion": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: SetTypeDefaultVersion"
+        "status": "500_error",
+        "detail": "InternalError: The set_type_default_version action has not been implemented"
       },
       "SignalResource": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackName\"\nMi"
       },
       "StartResourceScan": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: StartResourceScan"
+        "status": "500_error",
+        "detail": "InternalError: The start_resource_scan action has not been implemented"
       },
       "StopStackSetOperation": {
         "status": "needs_params",
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"StackSetName\""
       },
       "TestType": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: TestType"
+        "status": "500_error",
+        "detail": "InternalError: The test_type action has not been implemented"
       },
       "UpdateGeneratedTemplate": {
         "status": "needs_params",
@@ -1527,7 +1527,7 @@
       },
       "CreateDefaultSubnet": {
         "status": "working",
-        "detail": "InvalidSubnet.Conflict: The CIDR '172.31.96.0/20' conflicts with another subnet"
+        "detail": "OK"
       },
       "CreateDefaultVpc": {
         "status": "working",
@@ -1619,7 +1619,7 @@
       },
       "CreateKeyPair": {
         "status": "working",
-        "detail": "InvalidKeyPair.Duplicate: The keypair 'probe-test' already exists."
+        "detail": "OK"
       },
       "CreateLaunchTemplate": {
         "status": "needs_params",
@@ -1739,7 +1739,7 @@
       },
       "CreateSecurityGroup": {
         "status": "working",
-        "detail": "InvalidGroup.Duplicate: The security group 'probe-test' already exists"
+        "detail": "OK"
       },
       "CreateSnapshot": {
         "status": "needs_params",
@@ -4586,28 +4586,28 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Name\""
       },
       "ListApiDestinations": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: ListApiDestinations"
+        "status": "working",
+        "detail": "OK"
       },
       "ListArchives": {
         "status": "working",
         "detail": "OK"
       },
       "ListConnections": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: ListConnections"
+        "status": "working",
+        "detail": "OK"
       },
       "ListEndpoints": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: ListEndpoints"
+        "status": "500_error",
+        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_endpoints acti"
       },
       "ListEventBuses": {
         "status": "working",
         "detail": "OK"
       },
       "ListEventSources": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: ListEventSources"
+        "status": "500_error",
+        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The list_event_sources "
       },
       "ListPartnerEventSourceAccounts": {
         "status": "needs_params",
@@ -4618,8 +4618,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"NamePrefix\""
       },
       "ListReplays": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: ListReplays"
+        "status": "working",
+        "detail": "OK"
       },
       "ListRuleNamesByTarget": {
         "status": "needs_params",
@@ -4646,8 +4646,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Entries\""
       },
       "PutPermission": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: PutPermission"
+        "status": "working",
+        "detail": "ValidationException: Parameter Principal must be specified."
       },
       "PutRule": {
         "status": "needs_params",
@@ -4658,8 +4658,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Rule\"\nMissing"
       },
       "RemovePermission": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: RemovePermission"
+        "status": "working",
+        "detail": "ResourceNotFoundException: EventBus does not have a policy."
       },
       "RemoveTargets": {
         "status": "needs_params",
@@ -4698,8 +4698,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"Name\""
       },
       "UpdateEventBus": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: UpdateEventBus"
+        "status": "500_error",
+        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The update_event_bus ac"
       }
     },
     "firehose": {
@@ -4863,7 +4863,7 @@
       },
       "DeleteAccountPasswordPolicy": {
         "status": "working",
-        "detail": "OK"
+        "detail": "NoSuchEntity: The account policy with name PasswordPolicy cannot be found."
       },
       "DeleteGroup": {
         "status": "needs_params",
@@ -5484,12 +5484,12 @@
         "detail": "destructive operation"
       },
       "DescribeAccountSettings": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribeAccountSettings"
+        "status": "500_error",
+        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_account_se"
       },
       "DescribeLimits": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: DescribeLimits"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribeStream": {
         "status": "working",
@@ -6267,7 +6267,7 @@
       },
       "DeleteMetricFilter": {
         "status": "working",
-        "detail": "OK"
+        "detail": "ResourceNotFoundException: Metric filter test not found"
       },
       "DeleteQueryDefinition": {
         "status": "needs_params",
@@ -6275,7 +6275,7 @@
       },
       "DeleteResourcePolicy": {
         "status": "working",
-        "detail": "OK"
+        "detail": "ResourceNotFoundException: Policy with name [test] does not exist"
       },
       "DeleteRetentionPolicy": {
         "status": "working",
@@ -6287,7 +6287,7 @@
       },
       "DeleteSubscriptionFilter": {
         "status": "working",
-        "detail": "OK"
+        "detail": "ResourceNotFoundException: Subscription filter test not found"
       },
       "DeleteTransformer": {
         "status": "needs_params",
@@ -7606,8 +7606,8 @@
         "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_compliance_summ"
       },
       "GetResources": {
-        "status": "500_error",
-        "detail": "500: Internal Server Error"
+        "status": "working",
+        "detail": "OK"
       },
       "GetTagKeys": {
         "status": "working",
@@ -9518,12 +9518,12 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"PlatformAppli"
       },
       "GetSMSAttributes": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: GetSMSAttributes"
+        "status": "working",
+        "detail": "OK"
       },
       "GetSMSSandboxAccountStatus": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: GetSMSSandboxAccountStatus"
+        "status": "500_error",
+        "detail": "InternalError: The get_sms_sandbox_account_status action has not been implemented"
       },
       "GetSubscriptionAttributes": {
         "status": "needs_params",
@@ -9538,20 +9538,20 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"PlatformAppli"
       },
       "ListOriginationNumbers": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListOriginationNumbers"
+        "status": "500_error",
+        "detail": "InternalError: The list_origination_numbers action has not been implemented"
       },
       "ListPhoneNumbersOptedOut": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListPhoneNumbersOptedOut"
+        "status": "working",
+        "detail": "OK"
       },
       "ListPlatformApplications": {
         "status": "working",
         "detail": "OK"
       },
       "ListSMSSandboxPhoneNumbers": {
-        "status": "not_implemented",
-        "detail": "InvalidAction: Unknown action: ListSMSSandboxPhoneNumbers"
+        "status": "500_error",
+        "detail": "InternalError: The list_sms_sandbox_phone_numbers action has not been implemented"
       },
       "ListSubscriptions": {
         "status": "working",
@@ -9726,8 +9726,8 @@
     },
     "ssm": {
       "AddTagsToResource": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>list index out of range"
+        "status": "working",
+        "detail": "InvalidResourceId: Invalid Resource Id"
       },
       "AssociateOpsItemRelatedItem": {
         "status": "needs_params",
@@ -9807,7 +9807,7 @@
       },
       "DeleteParameter": {
         "status": "working",
-        "detail": "OK"
+        "detail": "ParameterNotFound: Parameter probe-test-param not found."
       },
       "DeleteParameters": {
         "status": "working",
@@ -9950,8 +9950,8 @@
         "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The describe_ops_items "
       },
       "DescribeParameters": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>list index out of range"
+        "status": "working",
+        "detail": "OK"
       },
       "DescribePatchBaselines": {
         "status": "working",
@@ -10054,20 +10054,20 @@
         "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>The get_ops_summary act"
       },
       "GetParameter": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>list index out of range"
+        "status": "working",
+        "detail": "ParameterNotFound: Parameter test not found."
       },
       "GetParameterHistory": {
         "status": "working",
-        "detail": "OK"
+        "detail": "ParameterNotFound: Parameter test not found."
       },
       "GetParameters": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>list index out of range"
+        "status": "working",
+        "detail": "OK"
       },
       "GetParametersByPath": {
-        "status": "500_error",
-        "detail": "500: <ErrorResponse><Error><Code>InternalError</Code><Message>list index out of range"
+        "status": "working",
+        "detail": "OK"
       },
       "GetPatchBaseline": {
         "status": "needs_params",
@@ -10372,8 +10372,8 @@
         "detail": "param validation: Parameter validation failed:\nMissing required parameter in input: \"executionArn\""
       },
       "ListActivities": {
-        "status": "not_implemented",
-        "detail": "UnknownOperation: Unknown operation: ListActivities"
+        "status": "working",
+        "detail": "OK"
       },
       "ListExecutions": {
         "status": "working",
@@ -10908,10 +10908,10 @@
   "summary": {
     "total_services": 34,
     "total_ops": 2709,
-    "working": 313,
+    "working": 330,
     "needs_params": 2017,
-    "not_implemented": 70,
-    "500_error": 291,
+    "not_implemented": 26,
+    "500_error": 318,
     "skipped": 16,
     "error": 2,
     "per_service": {
@@ -10926,14 +10926,14 @@
         "effective_working": 16
       },
       "cloudformation": {
-        "working": 9,
+        "working": 11,
         "needs_params": 52,
-        "not_implemented": 28,
-        "500_error": 0,
+        "not_implemented": 0,
+        "500_error": 26,
         "skipped": 1,
         "error": 0,
         "total": 90,
-        "effective_working": 61
+        "effective_working": 63
       },
       "cloudwatch": {
         "working": 6,
@@ -10996,14 +10996,14 @@
         "effective_working": 40
       },
       "events": {
-        "working": 4,
+        "working": 9,
         "needs_params": 45,
-        "not_implemented": 8,
-        "500_error": 0,
+        "not_implemented": 0,
+        "500_error": 3,
         "skipped": 0,
         "error": 0,
         "total": 57,
-        "effective_working": 49
+        "effective_working": 54
       },
       "firehose": {
         "working": 1,
@@ -11026,14 +11026,14 @@
         "effective_working": 166
       },
       "kinesis": {
-        "working": 8,
+        "working": 9,
         "needs_params": 28,
-        "not_implemented": 2,
-        "500_error": 0,
+        "not_implemented": 0,
+        "500_error": 1,
         "skipped": 1,
         "error": 0,
         "total": 39,
-        "effective_working": 36
+        "effective_working": 37
       },
       "kms": {
         "working": 30,
@@ -11096,14 +11096,14 @@
         "effective_working": 17
       },
       "resourcegroupstaggingapi": {
-        "working": 2,
+        "working": 3,
         "needs_params": 3,
         "not_implemented": 0,
-        "500_error": 4,
+        "500_error": 3,
         "skipped": 0,
         "error": 0,
         "total": 9,
-        "effective_working": 5
+        "effective_working": 6
       },
       "route53": {
         "working": 6,
@@ -11176,14 +11176,14 @@
         "effective_working": 68
       },
       "sns": {
-        "working": 3,
+        "working": 5,
         "needs_params": 33,
-        "not_implemented": 5,
-        "500_error": 0,
+        "not_implemented": 0,
+        "500_error": 3,
         "skipped": 1,
         "error": 0,
         "total": 42,
-        "effective_working": 36
+        "effective_working": 38
       },
       "sqs": {
         "working": 1,
@@ -11196,24 +11196,24 @@
         "effective_working": 21
       },
       "ssm": {
-        "working": 10,
+        "working": 15,
         "needs_params": 103,
         "not_implemented": 0,
-        "500_error": 33,
+        "500_error": 28,
         "skipped": 0,
         "error": 0,
         "total": 146,
-        "effective_working": 113
+        "effective_working": 118
       },
       "stepfunctions": {
-        "working": 2,
+        "working": 3,
         "needs_params": 32,
-        "not_implemented": 1,
+        "not_implemented": 0,
         "500_error": 0,
         "skipped": 2,
         "error": 0,
         "total": 37,
-        "effective_working": 34
+        "effective_working": 35
       },
       "sts": {
         "working": 2,
@@ -11256,7 +11256,7 @@
         "effective_working": 38
       }
     },
-    "effective_working": 2330
+    "effective_working": 2347
   },
-  "elapsed_seconds": 158.7
+  "elapsed_seconds": 176.4
 }
