@@ -156,3 +156,99 @@ class TestAppConfigConfigProfileOperations:
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
         # cleanup
         appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigHostedConfigVersionOperations:
+    """Tests for HostedConfigurationVersion CRUD operations."""
+
+    def _create_app_and_profile(self, appconfig):
+        """Helper to create an application and hosted configuration profile."""
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        prof_resp = appconfig.create_configuration_profile(
+            ApplicationId=app_id,
+            Name=_unique("profile"),
+            LocationUri="hosted",
+        )
+        prof_id = prof_resp["Id"]
+        return app_id, prof_id
+
+    def test_create_hosted_configuration_version(self, appconfig):
+        app_id, prof_id = self._create_app_and_profile(appconfig)
+        try:
+            resp = appconfig.create_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Content=b'{"key": "value"}',
+                ContentType="application/json",
+            )
+            assert resp["VersionNumber"] == 1
+            assert resp["ApplicationId"] == app_id
+            assert resp["ConfigurationProfileId"] == prof_id
+            assert resp["ContentType"] == "application/json"
+            assert resp["Content"].read() == b'{"key": "value"}'
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_application(ApplicationId=app_id)
+
+    def test_get_hosted_configuration_version(self, appconfig):
+        app_id, prof_id = self._create_app_and_profile(appconfig)
+        try:
+            create_resp = appconfig.create_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Content=b'{"hello": "world"}',
+                ContentType="application/json",
+            )
+            version = create_resp["VersionNumber"]
+
+            resp = appconfig.get_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                VersionNumber=version,
+            )
+            assert resp["ApplicationId"] == app_id
+            assert resp["ConfigurationProfileId"] == prof_id
+            assert resp["VersionNumber"] == version
+            assert resp["Content"].read() == b'{"hello": "world"}'
+            assert resp["ContentType"] == "application/json"
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_application(ApplicationId=app_id)
+
+    def test_delete_hosted_configuration_version(self, appconfig):
+        app_id, prof_id = self._create_app_and_profile(appconfig)
+        try:
+            create_resp = appconfig.create_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Content=b'{"delete": "me"}',
+                ContentType="application/json",
+            )
+            version = create_resp["VersionNumber"]
+
+            appconfig.delete_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                VersionNumber=version,
+            )
+
+            with pytest.raises(ClientError) as exc_info:
+                appconfig.get_hosted_configuration_version(
+                    ApplicationId=app_id,
+                    ConfigurationProfileId=prof_id,
+                    VersionNumber=version,
+                )
+            assert exc_info.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "BadRequestException",
+            )
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_application(ApplicationId=app_id)

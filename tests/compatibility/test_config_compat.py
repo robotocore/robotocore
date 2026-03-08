@@ -247,6 +247,75 @@ class TestConfigurationRecorder:
         assert "default" not in names
         iam.delete_role(RoleName="config-del-rec-role")
 
+    def test_start_configuration_recorder(self, config, iam, s3):
+        role_arn = self._make_role(iam, "config-start-role")
+        s3.create_bucket(Bucket="config-start-bucket")
+        config.put_configuration_recorder(
+            ConfigurationRecorder={
+                "name": "default",
+                "roleARN": role_arn,
+                "recordingGroup": {"allSupported": True},
+            }
+        )
+        config.put_delivery_channel(
+            DeliveryChannel={"name": "default", "s3BucketName": "config-start-bucket"}
+        )
+        try:
+            config.start_configuration_recorder(ConfigurationRecorderName="default")
+            resp = config.describe_configuration_recorder_status(
+                ConfigurationRecorderNames=["default"]
+            )
+            assert len(resp["ConfigurationRecordersStatus"]) == 1
+            assert resp["ConfigurationRecordersStatus"][0]["recording"] is True
+        finally:
+            try:
+                config.stop_configuration_recorder(ConfigurationRecorderName="default")
+            except ClientError:
+                pass
+            try:
+                config.delete_delivery_channel(DeliveryChannelName="default")
+            except ClientError:
+                pass
+            try:
+                config.delete_configuration_recorder(ConfigurationRecorderName="default")
+            except ClientError:
+                pass
+            iam.delete_role(RoleName="config-start-role")
+            s3.delete_bucket(Bucket="config-start-bucket")
+
+    def test_stop_configuration_recorder(self, config, iam, s3):
+        role_arn = self._make_role(iam, "config-stop-role")
+        s3.create_bucket(Bucket="config-stop-bucket")
+        config.put_configuration_recorder(
+            ConfigurationRecorder={
+                "name": "default",
+                "roleARN": role_arn,
+                "recordingGroup": {"allSupported": True},
+            }
+        )
+        config.put_delivery_channel(
+            DeliveryChannel={"name": "default", "s3BucketName": "config-stop-bucket"}
+        )
+        try:
+            config.start_configuration_recorder(ConfigurationRecorderName="default")
+            config.stop_configuration_recorder(ConfigurationRecorderName="default")
+            resp = config.describe_configuration_recorder_status(
+                ConfigurationRecorderNames=["default"]
+            )
+            assert len(resp["ConfigurationRecordersStatus"]) == 1
+            assert resp["ConfigurationRecordersStatus"][0]["recording"] is False
+        finally:
+            try:
+                config.delete_delivery_channel(DeliveryChannelName="default")
+            except ClientError:
+                pass
+            try:
+                config.delete_configuration_recorder(ConfigurationRecorderName="default")
+            except ClientError:
+                pass
+            iam.delete_role(RoleName="config-stop-role")
+            s3.delete_bucket(Bucket="config-stop-bucket")
+
     def test_recorder_with_resource_types(self, config, iam):
         role_arn = self._make_role(iam, "config-rt-role")
         config.put_configuration_recorder(

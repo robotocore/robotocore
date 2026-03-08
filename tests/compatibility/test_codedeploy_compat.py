@@ -118,3 +118,143 @@ class TestCodedeployAutoCoverage:
         """ListDeployments returns a response."""
         resp = client.list_deployments()
         assert "deployments" in resp
+
+    def test_create_and_get_deployment(self, client):
+        """CreateDeployment + GetDeployment."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            dep_resp = client.create_deployment(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                revision={
+                    "revisionType": "GitHub",
+                    "gitHubLocation": {
+                        "repository": "test/repo",
+                        "commitId": "abc123",
+                    },
+                },
+            )
+            deployment_id = dep_resp["deploymentId"]
+            assert deployment_id
+
+            get_resp = client.get_deployment(deploymentId=deployment_id)
+            info = get_resp["deploymentInfo"]
+            assert info["deploymentId"] == deployment_id
+            assert info["applicationName"] == app_name
+        finally:
+            iam_client.delete_role(RoleName=role_name)
+
+    def test_batch_get_applications(self, client):
+        """BatchGetApplications returns application details."""
+        app_name = _unique("test-app")
+        client.create_application(applicationName=app_name, computePlatform="Server")
+        resp = client.batch_get_applications(applicationNames=[app_name])
+        assert "applicationsInfo" in resp
+        assert len(resp["applicationsInfo"]) == 1
+        assert resp["applicationsInfo"][0]["applicationName"] == app_name
+
+    def test_batch_get_deployments(self, client):
+        """BatchGetDeployments returns deployment details."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            dep_resp = client.create_deployment(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                revision={
+                    "revisionType": "GitHub",
+                    "gitHubLocation": {
+                        "repository": "test/repo",
+                        "commitId": "abc123",
+                    },
+                },
+            )
+            deployment_id = dep_resp["deploymentId"]
+            resp = client.batch_get_deployments(deploymentIds=[deployment_id])
+            assert "deploymentsInfo" in resp
+            assert len(resp["deploymentsInfo"]) == 1
+            assert resp["deploymentsInfo"][0]["deploymentId"] == deployment_id
+        finally:
+            iam_client.delete_role(RoleName=role_name)
+
+    def test_tag_and_list_tags_for_resource(self, client):
+        """TagResource + ListTagsForResource on an application."""
+        app_name = _unique("test-app")
+        client.create_application(applicationName=app_name, computePlatform="Server")
+        # CodeDeploy uses applicationId-based ARN; construct from known pattern
+        app_arn = f"arn:aws:codedeploy:us-east-1:123456789012:application:{app_name}"
+        client.tag_resource(
+            ResourceArn=app_arn,
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        resp = client.list_tags_for_resource(ResourceArn=app_arn)
+        assert "Tags" in resp
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags.get("env") == "test"
+
+        # UntagResource
+        client.untag_resource(
+            ResourceArn=app_arn,
+            TagKeys=["env"],
+        )
+        resp2 = client.list_tags_for_resource(ResourceArn=app_arn)
+        tags2 = {t["Key"]: t["Value"] for t in resp2.get("Tags", [])}
+        assert "env" not in tags2
+
+    def test_get_deployment_group(self, client):
+        """GetDeploymentGroup returns group details."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            resp = client.get_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+            )
+            info = resp["deploymentGroupInfo"]
+            assert info["deploymentGroupName"] == dg_name
+            assert info["applicationName"] == app_name
+        finally:
+            iam_client.delete_role(RoleName=role_name)

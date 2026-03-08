@@ -232,6 +232,121 @@ class TestOrganizationsPolicyOperations:
         policy_names = [p["Name"] for p in policies]
         assert name in policy_names
 
+    def test_describe_policy(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        name = _unique("DescPol")
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Describe test",
+            Name=name,
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        resp = orgs.describe_policy(PolicyId=policy_id)
+        assert resp["Policy"]["PolicySummary"]["Id"] == policy_id
+        assert resp["Policy"]["PolicySummary"]["Name"] == name
+        assert resp["Policy"]["Content"] is not None
+
+    def test_update_policy(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Original",
+            Name=_unique("UpdPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        new_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Deny", "Action": "iam:*", "Resource": "*"}],
+            }
+        )
+        resp = orgs.update_policy(
+            PolicyId=policy_id, Description="Updated", Content=new_doc, Name="RenamedPolicy"
+        )
+        assert resp["Policy"]["PolicySummary"]["Description"] == "Updated"
+        assert resp["Policy"]["PolicySummary"]["Name"] == "RenamedPolicy"
+
+    def test_attach_policy(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Attach test",
+            Name=_unique("AttPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        # Attach to the root
+        orgs.attach_policy(PolicyId=policy_id, TargetId=root_id)
+
+        # Verify it appears in policies for target
+        policies = orgs.list_policies_for_target(TargetId=root_id, Filter="SERVICE_CONTROL_POLICY")[
+            "Policies"
+        ]
+        policy_ids = [p["Id"] for p in policies]
+        assert policy_id in policy_ids
+
+    def test_detach_policy(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Detach test",
+            Name=_unique("DetPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        # Attach then detach from root
+        orgs.attach_policy(PolicyId=policy_id, TargetId=root_id)
+        orgs.detach_policy(PolicyId=policy_id, TargetId=root_id)
+
+        # Verify it no longer appears (except default FullAWSAccess)
+        policies = orgs.list_policies_for_target(TargetId=root_id, Filter="SERVICE_CONTROL_POLICY")[
+            "Policies"
+        ]
+        policy_ids = [p["Id"] for p in policies]
+        assert policy_id not in policy_ids
+
     def test_list_delegated_administrators(self, orgs):
         orgs.create_organization(FeatureSet="ALL")
         resp = orgs.list_delegated_administrators()
