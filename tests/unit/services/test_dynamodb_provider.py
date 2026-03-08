@@ -166,7 +166,9 @@ class TestFireStreamHooks:
     def test_put_item_calls_notify(self):
         body = json.dumps({"TableName": "t1", "Item": {"id": {"S": "x"}}}).encode()
         with patch("robotocore.services.dynamodbstreams.hooks.notify_table_change") as mock_notify:
-            _fire_stream_hooks("DynamoDB_20120810.PutItem", body, "us-east-1", "123456789012")
+            _fire_stream_hooks(
+                "DynamoDB_20120810.PutItem", body, Response(), "us-east-1", "123456789012"
+            )
         mock_notify.assert_called_once()
         call_kw = mock_notify.call_args[1]
         assert call_kw["table_name"] == "t1"
@@ -175,14 +177,18 @@ class TestFireStreamHooks:
     def test_delete_item_calls_notify(self):
         body = json.dumps({"TableName": "t1", "Key": {"id": {"S": "x"}}}).encode()
         with patch("robotocore.services.dynamodbstreams.hooks.notify_table_change") as mock_notify:
-            _fire_stream_hooks("DynamoDB_20120810.DeleteItem", body, "us-east-1", "123456789012")
+            _fire_stream_hooks(
+                "DynamoDB_20120810.DeleteItem", body, Response(), "us-east-1", "123456789012"
+            )
         mock_notify.assert_called_once()
         assert mock_notify.call_args[1]["event_name"] == "REMOVE"
 
     def test_update_item_calls_notify(self):
         body = json.dumps({"TableName": "t1", "Key": {"id": {"S": "x"}}}).encode()
         with patch("robotocore.services.dynamodbstreams.hooks.notify_table_change") as mock_notify:
-            _fire_stream_hooks("DynamoDB_20120810.UpdateItem", body, "us-east-1", "123456789012")
+            _fire_stream_hooks(
+                "DynamoDB_20120810.UpdateItem", body, Response(), "us-east-1", "123456789012"
+            )
         mock_notify.assert_called_once()
         assert mock_notify.call_args[1]["event_name"] == "MODIFY"
 
@@ -201,6 +207,7 @@ class TestFireStreamHooks:
             _fire_stream_hooks(
                 "DynamoDB_20120810.BatchWriteItem",
                 body,
+                Response(),
                 "us-east-1",
                 "123456789012",
             )
@@ -223,6 +230,7 @@ class TestFireStreamHooks:
             _fire_stream_hooks(
                 "DynamoDB_20120810.TransactWriteItems",
                 body,
+                Response(),
                 "us-east-1",
                 "123456789012",
             )

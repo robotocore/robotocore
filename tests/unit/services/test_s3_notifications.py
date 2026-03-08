@@ -159,7 +159,7 @@ class TestBuildEventRecord:
         assert rec["eventVersion"] == "2.1"
         assert rec["eventSource"] == "aws:s3"
         assert rec["awsRegion"] == "us-east-1"
-        assert rec["eventName"] == "Put"
+        assert rec["eventName"] == "ObjectCreated:Put"
         assert rec["s3"]["bucket"]["name"] == "my-bucket"
         assert rec["s3"]["bucket"]["arn"] == "arn:aws:s3:::my-bucket"
         assert rec["s3"]["object"]["key"] == "my-key"
@@ -167,9 +167,9 @@ class TestBuildEventRecord:
         assert rec["s3"]["object"]["eTag"] == "abc123"
         assert rec["userIdentity"]["principalId"] == "123456789012"
 
-    def test_event_name_strips_prefix(self):
+    def test_event_name_strips_s3_prefix(self):
         rec = _build_event_record("s3:ObjectRemoved:Delete", "b", "k", "r", "a", 0, "")
-        assert rec["eventName"] == "Delete"
+        assert rec["eventName"] == "ObjectRemoved:Delete"
 
 
 class TestFireEvent:

@@ -165,12 +165,15 @@ class TestInvokeMock:
         assert body == "{}"
 
     def test_mock_without_200_key(self):
-        integration = SimpleNamespace(integration_responses={"500": MagicMock()})
+        """When only a non-200 integration response exists, it is used."""
+        mock_resp = MagicMock()
+        mock_resp.response_templates = {}
+        integration = SimpleNamespace(integration_responses={"500": mock_resp})
         method_obj = MagicMock()
 
         status, headers, body = _invoke_mock(integration, method_obj)
-        assert status == 200
-        assert body == "{}"
+        assert status == 500
+        assert body == ""
 
 
 # ---------------------------------------------------------------------------

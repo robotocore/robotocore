@@ -130,19 +130,19 @@ class TestInputTransformer:
         result = _apply_input_transformer(transformer, SAMPLE_EVENT)
         assert result == "Amount: 99.5"
 
-    def test_missing_path_returns_empty(self):
+    def test_missing_path_returns_null(self):
         transformer = {
             "InputPathsMap": {"x": "$.nonexistent.path"},
             "InputTemplate": "val=<x>",
         }
         result = _apply_input_transformer(transformer, SAMPLE_EVENT)
-        assert result == "val="
+        assert result == "val=null"
 
     def test_input_transformer_used_by_invoke_target(self):
         """When target has input_transformer, _invoke_target uses it."""
         transformer = {
             "InputPathsMap": {"src": "$.source"},
-            "InputTemplate": '{"source": "<src>"}',
+            "InputTemplate": '{"source": <src>}',
         }
         target = EventTarget(
             target_id="t1",
@@ -152,7 +152,8 @@ class TestInputTransformer:
         with patch("robotocore.services.events.provider._invoke_lambda_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             payload = mock.call_args[0][1]
-            assert '"source": "myapp.orders"' in payload
+            parsed = json.loads(payload)
+            assert parsed["source"] == "myapp.orders"
 
     def test_input_transformer_takes_precedence_over_input(self):
         """InputTransformer should take precedence over target.input."""
@@ -187,7 +188,7 @@ class TestResolveJsonpath:
         assert result == "99.5"
 
     def test_missing_field(self):
-        assert _resolve_jsonpath("$.nope", SAMPLE_EVENT) == ""
+        assert _resolve_jsonpath("$.nope", SAMPLE_EVENT) == "null"
 
     def test_invalid_path(self):
         result = _resolve_jsonpath("invalid", {"a": 1})

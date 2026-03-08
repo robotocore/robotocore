@@ -1,5 +1,7 @@
 """Tests for robotocore.services.events.models."""
 
+import pytest
+
 from robotocore.services.events.models import (
     EventBus,
     EventRule,
@@ -66,8 +68,8 @@ class TestEventRule:
             account_id="123",
             schedule_expression="rate(5 minutes)",
         )
-        # No event_pattern, but has schedule -> True
-        assert r.matches_event({}) is True
+        # Schedule-based rules don't match events — they fire on schedule, not content
+        assert r.matches_event({}) is False
 
     def test_matches_event_no_pattern_no_schedule(self):
         r = EventRule(name="r", event_bus_name="default", region="us-east-1", account_id="123")
@@ -158,12 +160,11 @@ class TestEventsStore:
         assert rule.name == "r1"
         assert store.get_rule("r1") is rule
 
-    def test_put_rule_falls_back_to_default_bus(self):
+    def test_put_rule_nonexistent_bus_raises(self):
         store = self.make_store()
-        # Put rule on a bus that doesn't exist -> falls back to default bus
-        rule = store.put_rule("r1", "nonexistent", "us-east-1", "123")
-        # Rule is stored in the default bus
-        assert store.get_rule("r1", "default") is rule
+        # Put rule on a bus that doesn't exist -> raises KeyError
+        with pytest.raises(KeyError, match="nonexistent"):
+            store.put_rule("r1", "nonexistent", "us-east-1", "123")
 
     def test_delete_rule(self):
         store = self.make_store()
