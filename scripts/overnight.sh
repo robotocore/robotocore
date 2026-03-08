@@ -169,7 +169,7 @@ PROMPT
     fi
 
     # Fix lint/format before committing (pre-commit hook requires this)
-    uv run ruff check --fix --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
+    uv run ruff check --fix --unsafe-fixes --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
     uv run ruff format --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
     # Fix E741 (ambiguous variable names) which ruff can't auto-fix
     sed -i '' 's/\[l\[/[lnk[/g; s/ l\[/ lnk[/g; s/for l in/for lnk in/g' "$TEST_FILE" 2>/dev/null || true
