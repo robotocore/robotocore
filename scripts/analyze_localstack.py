@@ -227,31 +227,33 @@ def extract_robotocore_operations(filepath: Path) -> list[str]:
 
 
 def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]:
-    """Compare robotocore implementation against LocalStack Community + Enterprise."""
+    """Compare robotocore implementation against LocalStack Community.
+
+    Note: LocalStack Pro/Enterprise source is closed-source and not available in
+    the vendor submodule, so enterprise ops are always empty.  The comparison is
+    community-only.
+    """
     robotocore_providers = find_provider_files(ROBOTOCORE_DIR)
     gaps = {}
 
-    all_services = set(community.keys()) | set(enterprise.keys())
-    for service in sorted(all_services):
+    for service in sorted(community.keys()):
         community_ops = set(community.get(service, {}).get("operations", []))
-        enterprise_ops = set(enterprise.get(service, {}).get("operations", []))
-        all_ops = community_ops | enterprise_ops
 
         robotocore_ops = set()
         if service in robotocore_providers:
             robotocore_ops = set(extract_robotocore_operations(robotocore_providers[service]))
 
-        missing_ops = all_ops - robotocore_ops
+        missing_ops = community_ops - robotocore_ops
         if missing_ops or service not in robotocore_providers:
             gaps[service] = {
                 "has_provider": service in robotocore_providers,
                 "community_ops": len(community_ops),
-                "enterprise_ops": len(enterprise_ops),
                 "robotocore_ops": len(robotocore_ops),
                 "missing_ops": sorted(missing_ops),
-                "enterprise_only": sorted(enterprise_ops - community_ops),
                 "coverage_pct": (
-                    min(100, round(len(robotocore_ops) / len(all_ops) * 100)) if all_ops else 100
+                    min(100, round(len(robotocore_ops) / len(community_ops) * 100))
+                    if community_ops
+                    else 100
                 ),
             }
 
@@ -346,27 +348,24 @@ def main():
         if args.output == "json":
             print(json.dumps(gaps, indent=2))
         else:
-            print("\nRobotocore Coverage Gaps")
-            print("=" * 90)
+            print("\nRobotocore vs LocalStack Community — Coverage Gaps")
+            print("=" * 78)
             print(
                 f"{'Service':<25} {'Provider':>8} {'Community':>10} "
-                f"{'Enterprise':>11} {'Robotocore':>11} {'Coverage':>9}"
+                f"{'Robotocore':>11} {'Coverage':>9}"
             )
-            print("-" * 90)
+            print("-" * 78)
             for service, gap in sorted(gaps.items()):
                 prov = "YES" if gap["has_provider"] else "NO"
                 print(
                     f"{service:<25} {prov:>8} {gap['community_ops']:>10} "
-                    f"{gap['enterprise_ops']:>11} {gap['robotocore_ops']:>11} "
-                    f"{gap['coverage_pct']:>8}%"
+                    f"{gap['robotocore_ops']:>11} {gap['coverage_pct']:>8}%"
                 )
-                if gap["enterprise_only"]:
-                    for op in gap["enterprise_only"][:3]:
-                        print(f"  {'':25} [ENT] {op}")
-            print("-" * 90)
+            print("-" * 78)
             total_missing = sum(len(g["missing_ops"]) for g in gaps.values())
             print(f"Total services with gaps: {len(gaps)}")
             print(f"Total missing operations: {total_missing}")
+            print("(LocalStack Pro/Enterprise source is closed-source — community only)")
         return
 
     if args.service:
