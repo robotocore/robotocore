@@ -147,3 +147,41 @@ class TestRekognitionTags:
         assert resp["Tags"]["key"] == "new"
         # cleanup
         rekognition.delete_collection(CollectionId=col_id)
+
+
+class TestRekognitionFaceSearchOperations:
+    """Tests for StartFaceSearch and GetFaceSearch video analysis operations."""
+
+    def test_start_face_search(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            resp = rekognition.start_face_search(
+                Video={"S3Object": {"Bucket": "test-bucket", "Name": "test-video.mp4"}},
+                CollectionId=col_id,
+            )
+            assert "JobId" in resp
+            assert len(resp["JobId"]) > 0
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_get_face_search_with_valid_job(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            start_resp = rekognition.start_face_search(
+                Video={"S3Object": {"Bucket": "test-bucket", "Name": "test.mp4"}},
+                CollectionId=col_id,
+            )
+            job_id = start_resp["JobId"]
+            resp = rekognition.get_face_search(JobId=job_id)
+            assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+            assert "VideoMetadata" in resp
+            assert "Persons" in resp
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_get_face_search_with_fake_job_id(self, rekognition):
+        resp = rekognition.get_face_search(JobId="fake-nonexistent-job-id")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "Persons" in resp
