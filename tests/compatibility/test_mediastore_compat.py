@@ -87,3 +87,43 @@ class TestMediaStoreContainerPolicy:
         assert returned_policy["Version"] == "2012-10-17"
         assert len(returned_policy["Statement"]) == 1
         assert returned_policy["Statement"][0]["Sid"] == "CompatTest"
+
+
+class TestMediaStoreLifecyclePolicy:
+    def test_put_and_get_lifecycle_policy(self, mediastore_client, container):
+        policy = json.dumps(
+            {
+                "rules": [
+                    {
+                        "definition": {
+                            "path": [{"prefix": ""}],
+                            "days_since_create": [{"numeric": [">", 30]}],
+                        },
+                        "action": "EXPIRE",
+                    }
+                ]
+            }
+        )
+        put_resp = mediastore_client.put_lifecycle_policy(
+            ContainerName=container["Name"], LifecyclePolicy=policy
+        )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        get_resp = mediastore_client.get_lifecycle_policy(ContainerName=container["Name"])
+        returned = json.loads(get_resp["LifecyclePolicy"])
+        assert "rules" in returned
+        assert returned["rules"][0]["action"] == "EXPIRE"
+
+
+class TestMediaStoreMetricPolicy:
+    def test_put_and_get_metric_policy(self, mediastore_client, container):
+        put_resp = mediastore_client.put_metric_policy(
+            ContainerName=container["Name"],
+            MetricPolicy={
+                "ContainerLevelMetrics": "ENABLED",
+            },
+        )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        get_resp = mediastore_client.get_metric_policy(ContainerName=container["Name"])
+        assert get_resp["MetricPolicy"]["ContainerLevelMetrics"] == "ENABLED"
