@@ -55,3 +55,32 @@ class TestOSISOperations:
         resp = osis.list_tags_for_resource(Arn=pipeline["PipelineArn"])
         assert "Tags" in resp
         assert isinstance(resp["Tags"], list)
+
+    def test_delete_pipeline(self, osis):
+        name = f"test-{uuid.uuid4().hex[:8]}"
+        osis.create_pipeline(
+            PipelineName=name,
+            MinUnits=1,
+            MaxUnits=1,
+            PipelineConfigurationBody='version: "2"',
+        )
+        resp = osis.delete_pipeline(PipelineName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_pipeline(self, osis, pipeline):
+        resp = osis.stop_pipeline(PipelineName=pipeline["PipelineName"])
+        assert resp["Pipeline"]["PipelineName"] == pipeline["PipelineName"]
+
+    def test_start_pipeline_after_stop(self, osis, pipeline):
+        osis.stop_pipeline(PipelineName=pipeline["PipelineName"])
+        resp = osis.start_pipeline(PipelineName=pipeline["PipelineName"])
+        assert resp["Pipeline"]["PipelineName"] == pipeline["PipelineName"]
+
+    def test_update_pipeline(self, osis, pipeline):
+        resp = osis.update_pipeline(
+            PipelineName=pipeline["PipelineName"],
+            MinUnits=1,
+            MaxUnits=2,
+        )
+        assert resp["Pipeline"]["PipelineName"] == pipeline["PipelineName"]
+        assert resp["Pipeline"]["MaxUnits"] == 2
