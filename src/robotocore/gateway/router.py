@@ -205,6 +205,15 @@ def route_to_service(request: Request) -> str | None:
 
     # 2. Check URL path patterns (before auth, since some services share signing names)
     path = request.url.path
+
+    # /v2/apis is shared by appsync and apigatewayv2 — disambiguate by auth header
+    if path.startswith("/v2/apis"):
+        auth = request.headers.get("authorization", "")
+        match = AUTH_SERVICE_RE.search(auth)
+        if match and match.group(1) == "appsync":
+            return "appsync"
+        return "apigatewayv2"
+
     for pattern, service in PATH_PATTERNS:
         if pattern.match(path):
             return service

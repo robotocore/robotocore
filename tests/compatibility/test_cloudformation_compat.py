@@ -1776,3 +1776,364 @@ class TestCloudformationAutoCoverage:
         """TestType returns a response."""
         resp = client.test_type()
         assert "TypeVersionArn" in resp
+
+
+class TestCloudFormationChangeSets:
+    """Tests for ChangeSet operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def _unique_name(self, prefix):
+        return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+    def _simple_template(self, queue_name):
+        return json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": queue_name},
+                    },
+                },
+            }
+        )
+
+    def test_create_change_set(self, client):
+        """CreateChangeSet creates a change set for a new stack."""
+        stack_name = self._unique_name("cs-create")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        try:
+            resp = client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=self._simple_template(queue_name),
+                ChangeSetType="CREATE",
+            )
+            assert "Id" in resp
+            assert "StackId" in resp
+        finally:
+            try:
+                client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            except Exception:
+                pass
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_describe_change_set(self, client):
+        """DescribeChangeSet returns details of a change set."""
+        stack_name = self._unique_name("cs-desc")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        try:
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=self._simple_template(queue_name),
+                ChangeSetType="CREATE",
+            )
+            resp = client.describe_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            assert resp["ChangeSetName"] == cs_name
+            assert "Status" in resp
+        finally:
+            try:
+                client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            except Exception:
+                pass
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_execute_change_set(self, client):
+        """ExecuteChangeSet applies a change set."""
+        stack_name = self._unique_name("cs-exec")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        try:
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=self._simple_template(queue_name),
+                ChangeSetType="CREATE",
+            )
+            # Wait briefly for change set to be available
+            time.sleep(0.5)
+            resp = client.execute_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_delete_change_set(self, client):
+        """DeleteChangeSet removes a change set."""
+        stack_name = self._unique_name("cs-del")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        try:
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=self._simple_template(queue_name),
+                ChangeSetType="CREATE",
+            )
+            resp = client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_list_change_sets(self, client):
+        """ListChangeSets returns change sets for a stack."""
+        stack_name = self._unique_name("cs-list")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        try:
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=self._simple_template(queue_name),
+                ChangeSetType="CREATE",
+            )
+            resp = client.list_change_sets(StackName=stack_name)
+            assert "Summaries" in resp
+            assert isinstance(resp["Summaries"], list)
+        finally:
+            try:
+                client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            except Exception:
+                pass
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+
+class TestCloudFormationStackSetsOps:
+    """Tests for StackSet operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def _unique_name(self, prefix):
+        return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+    def _simple_template(self):
+        return json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": "ss-test-queue"},
+                    },
+                },
+            }
+        )
+
+    def test_create_stack_set(self, client):
+        """CreateStackSet creates a stack set."""
+        name = self._unique_name("ss")
+        try:
+            resp = client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            assert "StackSetId" in resp
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_describe_stack_set(self, client):
+        """DescribeStackSet returns stack set details."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.describe_stack_set(StackSetName=name)
+            assert "StackSet" in resp
+            assert resp["StackSet"]["StackSetName"] == name
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_update_stack_set(self, client):
+        """UpdateStackSet updates a stack set."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.update_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+                Description="Updated description",
+            )
+            assert "OperationId" in resp
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_delete_stack_set(self, client):
+        """DeleteStackSet removes a stack set."""
+        name = self._unique_name("ss")
+        client.create_stack_set(
+            StackSetName=name,
+            TemplateBody=self._simple_template(),
+        )
+        resp = client.delete_stack_set(StackSetName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_stack_instances_empty(self, client):
+        """ListStackInstances returns empty list for new stack set."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.list_stack_instances(StackSetName=name)
+            assert "Summaries" in resp
+            assert isinstance(resp["Summaries"], list)
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_list_stack_set_operations(self, client):
+        """ListStackSetOperations returns operations list."""
+        name = self._unique_name("ss")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.list_stack_set_operations(StackSetName=name)
+            assert "Summaries" in resp
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+
+class TestCloudFormationStackPolicy:
+    """Tests for stack policy operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def _create_stack(self, client):
+        stack_name = f"sp-test-{uuid.uuid4().hex[:8]}"
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"sp-q-{uuid.uuid4().hex[:8]}"},
+                    },
+                },
+            }
+        )
+        client.create_stack(StackName=stack_name, TemplateBody=template)
+        # Wait for stack to be created
+        time.sleep(0.5)
+        return stack_name
+
+    def test_set_stack_policy(self, client):
+        """SetStackPolicy sets a policy on a stack."""
+        stack_name = self._create_stack(client)
+        policy = json.dumps(
+            {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": "Update:*",
+                        "Principal": "*",
+                        "Resource": "*",
+                    }
+                ]
+            }
+        )
+        try:
+            resp = client.set_stack_policy(StackName=stack_name, StackPolicyBody=policy)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_get_stack_policy(self, client):
+        """GetStackPolicy returns the stack policy."""
+        stack_name = self._create_stack(client)
+        try:
+            resp = client.get_stack_policy(StackName=stack_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+
+class TestCloudFormationImports:
+    """Tests for ListImports."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_list_imports(self, client):
+        """ListImports returns imports for an export name."""
+        # First create a stack with an export
+        stack_name = f"imp-test-{uuid.uuid4().hex[:8]}"
+        export_name = f"exp-{uuid.uuid4().hex[:8]}"
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"imp-q-{uuid.uuid4().hex[:8]}"},
+                    },
+                },
+                "Outputs": {
+                    "QueueUrl": {
+                        "Value": {"Ref": "MyQueue"},
+                        "Export": {"Name": export_name},
+                    },
+                },
+            }
+        )
+        try:
+            client.create_stack(StackName=stack_name, TemplateBody=template)
+            resp = client.list_imports(ExportName=export_name)
+            assert "Imports" in resp
+        finally:
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass

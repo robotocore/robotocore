@@ -30,6 +30,8 @@ class AppSyncStore:
         self.resolvers: dict[str, dict[str, dict]] = {}  # api_id -> "type.field" -> resolver
         self.data_sources: dict[str, dict[str, dict]] = {}  # api_id -> name -> ds
         self.types: dict[str, dict[str, dict]] = {}  # api_id -> name -> type
+        self.event_apis: dict[str, dict] = {}  # api_id -> event api
+        self.channel_namespaces: dict[str, dict[str, dict]] = {}  # api_id -> name -> ns
         self.lock = threading.RLock()
 
 
@@ -72,6 +74,12 @@ _DATA_SOURCE_ITEM = re.compile(r"^/v1/apis/([^/]+)/datasources/([^/]+)/?$")
 _TYPES_LIST = re.compile(r"^/v1/apis/([^/]+)/types/?$")
 _TYPE_ITEM = re.compile(r"^/v1/apis/([^/]+)/types/([^/]+)/?$")
 _TAGS = re.compile(r"^/v1/tags/(.+)$")
+
+# v2 Event API paths
+_V2_APIS_LIST = re.compile(r"^/v2/apis/?$")
+_V2_API_ITEM = re.compile(r"^/v2/apis/([^/]+)/?$")
+_V2_CHANNEL_NS_LIST = re.compile(r"^/v2/apis/([^/]+)/channelNamespaces/?$")
+_V2_CHANNEL_NS_ITEM = re.compile(r"^/v2/apis/([^/]+)/channelNamespaces/([^/]+)/?$")
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +205,49 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
                 return _json_response({})
             elif method == "DELETE":
                 return _json_response({})
+
+        # v2 Event APIs
+        m = _V2_CHANNEL_NS_ITEM.match(path)
+        if m:
+            api_id, ns_name = m.group(1), m.group(2)
+            if method == "GET":
+                return _json_response(
+                    _get_channel_namespace(store, api_id, ns_name, region, account_id)
+                )
+            elif method in ("POST", "PUT", "PATCH"):
+                return _json_response(
+                    _update_channel_namespace(store, api_id, ns_name, params, region, account_id)
+                )
+            elif method == "DELETE":
+                return _json_response(_delete_channel_namespace(store, api_id, ns_name))
+
+        m = _V2_CHANNEL_NS_LIST.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "POST":
+                return _json_response(
+                    _create_channel_namespace(store, api_id, params, region, account_id)
+                )
+            elif method == "GET":
+                return _json_response(_list_channel_namespaces(store, api_id))
+
+        m = _V2_API_ITEM.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "GET":
+                return _json_response(_get_event_api(store, api_id, region, account_id))
+            elif method in ("POST", "PUT", "PATCH"):
+                return _json_response(_update_event_api(store, api_id, params, region, account_id))
+            elif method == "DELETE":
+                return _json_response(_delete_event_api(store, api_id))
+
+        if _V2_APIS_LIST.match(path):
+            if method == "POST":
+                return _json_response(
+                    _create_event_api(store, params, region, account_id), status=201
+                )
+            elif method == "GET":
+                return _json_response(_list_event_apis(store))
 
         return _error("InvalidAction", f"Unknown path: {method} {path}", 400)
 
@@ -585,3 +636,158 @@ def _json_response(data: dict, status: int = 200) -> Response:
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
     return Response(content=body, status_code=status, media_type="application/json")
+
+
+# ---------------------------------------------------------------------------
+# Event APIs (v2)
+# ---------------------------------------------------------------------------
+
+
+def _create_event_api(store: AppSyncStore, params: dict, region: str, account_id: str) -> dict:
+    api_id = _new_id()[:26]
+    name = params.get("name", "")
+    if not name:
+        raise AppSyncError("BadRequestException", "name is required.")
+
+    event_config = params.get("eventConfig", {})
+    api = {
+        "apiId": api_id,
+        "name": name,
+        "apiArn": f"arn:aws:appsync:{region}:{account_id}:apis/{api_id}",
+        "dns": {
+            "HTTP": f"https://{api_id}.appsync-api.{region}.amazonaws.com/event",
+            "REALTIME": f"wss://{api_id}.appsync-realtime-api.{region}.amazonaws.com/event/realtime",
+        },
+        "eventConfig": event_config,
+        "ownerContact": params.get("ownerContact", ""),
+        "tags": params.get("tags", {}),
+        "createdDate": time.time(),
+    }
+
+    with store.lock:
+        store.event_apis[api_id] = api
+        store.channel_namespaces[api_id] = {}
+    return {"api": api}
+
+
+def _get_event_api(store: AppSyncStore, api_id: str, region: str, account_id: str) -> dict:
+    with store.lock:
+        api = store.event_apis.get(api_id)
+    if not api:
+        raise AppSyncError("NotFoundException", f"Event API {api_id} not found.", 404)
+    return {"api": api}
+
+
+def _list_event_apis(store: AppSyncStore) -> dict:
+    with store.lock:
+        apis = list(store.event_apis.values())
+    return {"apis": apis}
+
+
+def _update_event_api(
+    store: AppSyncStore, api_id: str, params: dict, region: str, account_id: str
+) -> dict:
+    with store.lock:
+        api = store.event_apis.get(api_id)
+        if not api:
+            raise AppSyncError("NotFoundException", f"Event API {api_id} not found.", 404)
+        if "name" in params:
+            api["name"] = params["name"]
+        if "eventConfig" in params:
+            api["eventConfig"] = params["eventConfig"]
+        if "ownerContact" in params:
+            api["ownerContact"] = params["ownerContact"]
+    return {"api": api}
+
+
+def _delete_event_api(store: AppSyncStore, api_id: str) -> dict:
+    with store.lock:
+        if api_id not in store.event_apis:
+            raise AppSyncError("NotFoundException", f"Event API {api_id} not found.", 404)
+        del store.event_apis[api_id]
+        store.channel_namespaces.pop(api_id, None)
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Channel Namespaces
+# ---------------------------------------------------------------------------
+
+
+def _create_channel_namespace(
+    store: AppSyncStore, api_id: str, params: dict, region: str, account_id: str
+) -> dict:
+    _require_event_api(store, api_id)
+    name = params.get("name", "")
+    if not name:
+        raise AppSyncError("BadRequestException", "name is required.")
+
+    ns = {
+        "apiId": api_id,
+        "name": name,
+        "channelNamespaceArn": (
+            f"arn:aws:appsync:{region}:{account_id}:apis/{api_id}/channelNamespace/{name}"
+        ),
+        "subscribeAuthModes": params.get("subscribeAuthModes", []),
+        "publishAuthModes": params.get("publishAuthModes", []),
+        "codeHandlers": params.get("codeHandlers", ""),
+        "tags": params.get("tags", {}),
+        "created": time.time(),
+        "lastModified": time.time(),
+    }
+
+    with store.lock:
+        store.channel_namespaces[api_id][name] = ns
+    return {"channelNamespace": ns}
+
+
+def _get_channel_namespace(
+    store: AppSyncStore, api_id: str, name: str, region: str, account_id: str
+) -> dict:
+    _require_event_api(store, api_id)
+    with store.lock:
+        ns = store.channel_namespaces.get(api_id, {}).get(name)
+    if not ns:
+        raise AppSyncError("NotFoundException", f"Channel namespace {name} not found.", 404)
+    return {"channelNamespace": ns}
+
+
+def _list_channel_namespaces(store: AppSyncStore, api_id: str) -> dict:
+    _require_event_api(store, api_id)
+    with store.lock:
+        namespaces = list(store.channel_namespaces.get(api_id, {}).values())
+    return {"channelNamespaces": namespaces}
+
+
+def _update_channel_namespace(
+    store: AppSyncStore, api_id: str, name: str, params: dict, region: str, account_id: str
+) -> dict:
+    _require_event_api(store, api_id)
+    with store.lock:
+        ns = store.channel_namespaces.get(api_id, {}).get(name)
+        if not ns:
+            raise AppSyncError("NotFoundException", f"Channel namespace {name} not found.", 404)
+        if "subscribeAuthModes" in params:
+            ns["subscribeAuthModes"] = params["subscribeAuthModes"]
+        if "publishAuthModes" in params:
+            ns["publishAuthModes"] = params["publishAuthModes"]
+        if "codeHandlers" in params:
+            ns["codeHandlers"] = params["codeHandlers"]
+        ns["lastModified"] = time.time()
+    return {"channelNamespace": ns}
+
+
+def _delete_channel_namespace(store: AppSyncStore, api_id: str, name: str) -> dict:
+    _require_event_api(store, api_id)
+    with store.lock:
+        namespaces = store.channel_namespaces.get(api_id, {})
+        if name not in namespaces:
+            raise AppSyncError("NotFoundException", f"Channel namespace {name} not found.", 404)
+        del namespaces[name]
+    return {}
+
+
+def _require_event_api(store: AppSyncStore, api_id: str) -> None:
+    with store.lock:
+        if api_id not in store.event_apis:
+            raise AppSyncError("NotFoundException", f"Event API {api_id} not found.", 404)

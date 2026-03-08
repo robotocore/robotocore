@@ -323,3 +323,62 @@ class TestAutoScalingDescribeOperations:
     def test_describe_tags_all(self, autoscaling):
         resp = autoscaling.describe_tags()
         assert "Tags" in resp
+
+
+class TestAutoScalingLifecycleHookOperations:
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("lh-lc")
+        self.asg_name = _unique("lh-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_put_lifecycle_hook(self, autoscaling):
+        hook_name = _unique("hook")
+        autoscaling.put_lifecycle_hook(
+            LifecycleHookName=hook_name,
+            AutoScalingGroupName=self.asg_name,
+            LifecycleTransition="autoscaling:EC2_INSTANCE_LAUNCHING",
+            HeartbeatTimeout=300,
+            DefaultResult="ABANDON",
+        )
+        resp = autoscaling.describe_lifecycle_hooks(
+            AutoScalingGroupName=self.asg_name,
+            LifecycleHookNames=[hook_name],
+        )
+        hooks = resp["LifecycleHooks"]
+        assert len(hooks) == 1
+        assert hooks[0]["LifecycleHookName"] == hook_name
+        assert hooks[0]["LifecycleTransition"] == "autoscaling:EC2_INSTANCE_LAUNCHING"
+        assert hooks[0]["DefaultResult"] == "ABANDON"
+
+    def test_delete_lifecycle_hook(self, autoscaling):
+        hook_name = _unique("hook-del")
+        autoscaling.put_lifecycle_hook(
+            LifecycleHookName=hook_name,
+            AutoScalingGroupName=self.asg_name,
+            LifecycleTransition="autoscaling:EC2_INSTANCE_TERMINATING",
+            DefaultResult="CONTINUE",
+        )
+        autoscaling.delete_lifecycle_hook(
+            LifecycleHookName=hook_name,
+            AutoScalingGroupName=self.asg_name,
+        )
+        resp = autoscaling.describe_lifecycle_hooks(
+            AutoScalingGroupName=self.asg_name,
+            LifecycleHookNames=[hook_name],
+        )
+        assert len(resp["LifecycleHooks"]) == 0
