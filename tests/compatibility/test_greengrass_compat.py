@@ -51,6 +51,28 @@ RESOURCE_INITIAL_VERSION = {
     ]
 }
 
+CONNECTOR_INITIAL_VERSION = {
+    "Connectors": [
+        {
+            "ConnectorArn": "arn:aws:greengrass:us-east-1::/connectors/SNS/versions/1",
+            "Id": "conn1",
+            "Parameters": {},
+        }
+    ]
+}
+
+LOGGER_INITIAL_VERSION = {
+    "Loggers": [
+        {
+            "Component": "GreengrassSystem",
+            "Id": "logger1",
+            "Level": "INFO",
+            "Space": 1024,
+            "Type": "FileSystem",
+        }
+    ]
+}
+
 SUBSCRIPTION_INITIAL_VERSION = {
     "Subscriptions": [
         {
@@ -680,6 +702,102 @@ class TestGreengrassOperations:
             assert len(result["Versions"]) >= 1
         finally:
             greengrass.delete_subscription_definition(SubscriptionDefinitionId=resp["Id"])
+
+    # --- ConnectorDefinition ---
+
+    def test_list_connector_definitions(self, greengrass):
+        """ListConnectorDefinitions returns a list of definitions."""
+        response = greengrass.list_connector_definitions()
+        assert "Definitions" in response
+        assert isinstance(response["Definitions"], list)
+
+    def test_get_connector_definition(self, greengrass):
+        """GetConnectorDefinition returns a previously created connector definition."""
+        resp = greengrass.create_connector_definition(
+            Name="test-get-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        conn_id = resp["Id"]
+        try:
+            result = greengrass.get_connector_definition(ConnectorDefinitionId=conn_id)
+            assert result["Id"] == conn_id
+            assert result["Name"] == "test-get-conn"
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=conn_id)
+
+    def test_get_connector_definition_version(self, greengrass):
+        """GetConnectorDefinitionVersion returns a connector definition version."""
+        resp = greengrass.create_connector_definition(
+            Name="test-gcdv", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.get_connector_definition_version(
+                ConnectorDefinitionId=resp["Id"],
+                ConnectorDefinitionVersionId=resp["LatestVersion"],
+            )
+            assert "Definition" in result
+            assert "Connectors" in result["Definition"]
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=resp["Id"])
+
+    def test_list_connector_definition_versions(self, greengrass):
+        """ListConnectorDefinitionVersions returns versions."""
+        resp = greengrass.create_connector_definition(
+            Name="test-lcdv-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.list_connector_definition_versions(ConnectorDefinitionId=resp["Id"])
+            assert "Versions" in result
+            assert len(result["Versions"]) >= 1
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=resp["Id"])
+
+    # --- LoggerDefinition ---
+
+    def test_list_logger_definitions(self, greengrass):
+        """ListLoggerDefinitions returns a list of definitions."""
+        response = greengrass.list_logger_definitions()
+        assert "Definitions" in response
+        assert isinstance(response["Definitions"], list)
+
+    def test_get_logger_definition(self, greengrass):
+        """GetLoggerDefinition returns a previously created logger definition."""
+        resp = greengrass.create_logger_definition(
+            Name="test-get-logger", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        logger_id = resp["Id"]
+        try:
+            result = greengrass.get_logger_definition(LoggerDefinitionId=logger_id)
+            assert result["Id"] == logger_id
+            assert result["Name"] == "test-get-logger"
+        finally:
+            greengrass.delete_logger_definition(LoggerDefinitionId=logger_id)
+
+    def test_get_logger_definition_version(self, greengrass):
+        """GetLoggerDefinitionVersion returns a logger definition version."""
+        resp = greengrass.create_logger_definition(
+            Name="test-gldv", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.get_logger_definition_version(
+                LoggerDefinitionId=resp["Id"],
+                LoggerDefinitionVersionId=resp["LatestVersion"],
+            )
+            assert "Definition" in result
+            assert "Loggers" in result["Definition"]
+        finally:
+            greengrass.delete_logger_definition(LoggerDefinitionId=resp["Id"])
+
+    def test_list_logger_definition_versions(self, greengrass):
+        """ListLoggerDefinitionVersions returns versions."""
+        resp = greengrass.create_logger_definition(
+            Name="test-lldv", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.list_logger_definition_versions(LoggerDefinitionId=resp["Id"])
+            assert "Versions" in result
+            assert len(result["Versions"]) >= 1
+        finally:
+            greengrass.delete_logger_definition(LoggerDefinitionId=resp["Id"])
 
     # --- Deployment ---
 

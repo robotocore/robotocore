@@ -179,3 +179,92 @@ class TestComprehendAutoCoverage:
                 EndpointArn="arn:aws:comprehend:us-east-1:123456789012:endpoint/nonexistent"
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_document_classification_job(self, client):
+        """DescribeDocumentClassificationJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_document_classification_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_document_classifier(self, client):
+        """DescribeDocumentClassifier with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/fake-cls"
+        with pytest.raises(ClientError) as exc:
+            client.describe_document_classifier(DocumentClassifierArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_dominant_language_detection_job(self, client):
+        """DescribeDominantLanguageDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_dominant_language_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_entities_detection_job(self, client):
+        """DescribeEntitiesDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_entities_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_entity_recognizer(self, client):
+        """DescribeEntityRecognizer with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:entity-recognizer/fake-rec"
+        with pytest.raises(ClientError) as exc:
+            client.describe_entity_recognizer(EntityRecognizerArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_events_detection_job(self, client):
+        """DescribeEventsDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_events_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_flywheel(self, client):
+        """DescribeFlywheel with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-flywheel"
+        with pytest.raises(ClientError) as exc:
+            client.describe_flywheel(FlywheelArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_key_phrases_detection_job(self, client):
+        """DescribeKeyPhrasesDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_key_phrases_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_pii_entities_detection_job(self, client):
+        """DescribePiiEntitiesDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_pii_entities_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_resource_policy(self, client):
+        """DescribeResourcePolicy with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/fake-policy"
+        with pytest.raises(ClientError) as exc:
+            client.describe_resource_policy(ResourceArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_sentiment_detection_job(self, client):
+        """DescribeSentimentDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_sentiment_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_targeted_sentiment_detection_job(self, client):
+        """DescribeTargetedSentimentDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_targeted_sentiment_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_topics_detection_job(self, client):
+        """DescribeTopicsDetectionJob with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_topics_detection_job(JobId="fake-job-id-12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_tags_for_resource(self, client):
+        """ListTagsForResource with fake ARN returns empty tags list."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/fake-tags"
+        resp = client.list_tags_for_resource(ResourceArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp.get("Tags", []), list)

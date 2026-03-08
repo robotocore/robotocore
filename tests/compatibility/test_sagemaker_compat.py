@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -295,3 +296,110 @@ class TestSagemakerAutoCoverage:
         """ListTrials returns a response."""
         resp = client.list_trials()
         assert "TrialSummaries" in resp
+
+
+class TestSageMakerDescribeOperations:
+    """Tests for Describe operations with fake resource IDs."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_describe_auto_ml_job_v2_not_found(self, client):
+        """DescribeAutoMLJobV2 returns ResourceNotFound for fake job."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_auto_ml_job_v2(AutoMLJobName="fake-job-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_cluster_not_found(self, client):
+        """DescribeCluster returns error for fake cluster."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_cluster(ClusterName="fake-cluster-nonexistent")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_cluster_node_not_found(self, client):
+        """DescribeClusterNode returns error for fake cluster/node."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_cluster_node(
+                ClusterName="fake-cluster-nonexistent",
+                NodeId="fake-node-nonexistent",
+            )
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_compilation_job_not_found(self, client):
+        """DescribeCompilationJob returns ResourceNotFound for fake job."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_compilation_job(CompilationJobName="fake-job-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_data_quality_job_definition_not_found(self, client):
+        """DescribeDataQualityJobDefinition returns ResourceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_data_quality_job_definition(JobDefinitionName="fake-jobdef-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_domain_not_found(self, client):
+        """DescribeDomain returns error for fake domain."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_domain(DomainId="fake-domain-nonexistent")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_endpoint_not_found(self, client):
+        """DescribeEndpoint returns error for fake endpoint."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_endpoint(EndpointName="fake-endpoint-nonexistent")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_endpoint_config_not_found(self, client):
+        """DescribeEndpointConfig returns error for fake config."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_endpoint_config(EndpointConfigName="fake-config-nonexistent")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_hyper_parameter_tuning_job_not_found(self, client):
+        """DescribeHyperParameterTuningJob returns ResourceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_hyper_parameter_tuning_job(
+                HyperParameterTuningJobName="fake-job-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_model_bias_job_definition_not_found(self, client):
+        """DescribeModelBiasJobDefinition returns ResourceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_bias_job_definition(JobDefinitionName="fake-jobdef-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_model_card_not_found(self, client):
+        """DescribeModelCard returns ResourceNotFound for fake card."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_card(ModelCardName="fake-card-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_model_explainability_job_definition_not_found(self, client):
+        """DescribeModelExplainabilityJobDefinition returns ResourceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_explainability_job_definition(
+                JobDefinitionName="fake-jobdef-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_model_package_not_found(self, client):
+        """DescribeModelPackage returns error for fake package."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_package(ModelPackageName="fake-pkg-nonexistent")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_model_package_group_not_found(self, client):
+        """DescribeModelPackageGroup returns error for fake group."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_package_group(ModelPackageGroupName="fake-group-nonexistent")
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+    def test_describe_model_quality_job_definition_not_found(self, client):
+        """DescribeModelQualityJobDefinition returns ResourceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_quality_job_definition(
+                JobDefinitionName="fake-jobdef-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"

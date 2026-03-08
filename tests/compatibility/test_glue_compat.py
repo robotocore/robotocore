@@ -688,3 +688,228 @@ class TestGlueAutoCoverage:
         """ListWorkflows returns a response."""
         resp = client.list_workflows()
         assert "Workflows" in resp
+
+    def test_get_connection_nonexistent(self, client):
+        """GetConnection with fake name returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_connection(Name="fake-connection-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_dev_endpoint_nonexistent(self, client):
+        """GetDevEndpoint with fake name returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_dev_endpoint(EndpointName="fake-endpoint-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_job_run_nonexistent(self, client):
+        """GetJobRun with fake job/run returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_job_run(JobName="fake-job-xyz", RunId="jr_fake123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_job_runs_nonexistent(self, client):
+        """GetJobRuns with fake job returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_job_runs(JobName="fake-job-xyz-no-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_security_configuration_nonexistent(self, client):
+        """GetSecurityConfiguration with fake name returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_security_configuration(Name="fake-secconfig-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_session_nonexistent(self, client):
+        """GetSession with fake ID returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_session(Id="fake-session-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_workflow_nonexistent(self, client):
+        """GetWorkflow with fake name returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_workflow(Name="fake-workflow-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_workflow_run_nonexistent(self, client):
+        """GetWorkflowRun with fake name/run returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_workflow_run(Name="fake-workflow-xyz", RunId="wr_fake123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_workflow_run_properties_nonexistent(self, client):
+        """GetWorkflowRunProperties with fake name/run returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_workflow_run_properties(Name="fake-workflow-xyz", RunId="wr_fake123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_crawls_nonexistent(self, client):
+        """ListCrawls with fake crawler returns EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.list_crawls(CrawlerName="fake-crawler-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGluePartitionAndTableVersionOps:
+    """Tests for GetPartitions, GetPartitionIndexes, GetTableVersion, GetTableVersions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("glue")
+
+    def _make_db_and_table(self, client):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        client.create_database(DatabaseInput={"Name": db_name})
+        client.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "string"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def _cleanup(self, client, db_name, tbl_name):
+        client.delete_table(DatabaseName=db_name, Name=tbl_name)
+        client.delete_database(Name=db_name)
+
+    def test_get_partitions_empty(self, client):
+        """GetPartitions on a table with no partitions returns empty list."""
+        db_name, tbl_name = self._make_db_and_table(client)
+        try:
+            resp = client.get_partitions(DatabaseName=db_name, TableName=tbl_name)
+            assert "Partitions" in resp
+            assert resp["Partitions"] == []
+        finally:
+            self._cleanup(client, db_name, tbl_name)
+
+    def test_get_partitions_with_data(self, client):
+        """GetPartitions returns created partitions."""
+        db_name, tbl_name = self._make_db_and_table(client)
+        try:
+            client.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2024"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2024",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            resp = client.get_partitions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(resp["Partitions"]) == 1
+            assert resp["Partitions"][0]["Values"] == ["2024"]
+        finally:
+            self._cleanup(client, db_name, tbl_name)
+
+    def test_get_partition_indexes(self, client):
+        """GetPartitionIndexes returns index list (possibly empty)."""
+        db_name, tbl_name = self._make_db_and_table(client)
+        try:
+            resp = client.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
+            assert "PartitionIndexDescriptorList" in resp
+        finally:
+            self._cleanup(client, db_name, tbl_name)
+
+    def test_get_table_versions(self, client):
+        """GetTableVersions returns version list for a table."""
+        db_name, tbl_name = self._make_db_and_table(client)
+        try:
+            resp = client.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+            assert "TableVersions" in resp
+            assert len(resp["TableVersions"]) >= 1
+        finally:
+            self._cleanup(client, db_name, tbl_name)
+
+    def test_get_table_version(self, client):
+        """GetTableVersion returns a specific version of a table."""
+        db_name, tbl_name = self._make_db_and_table(client)
+        try:
+            # Get versions first to find a valid version ID
+            versions_resp = client.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+            version_id = versions_resp["TableVersions"][0]["VersionId"]
+
+            resp = client.get_table_version(
+                DatabaseName=db_name, TableName=tbl_name, VersionId=str(version_id)
+            )
+            assert "TableVersion" in resp
+            assert resp["TableVersion"]["Table"]["Name"] == tbl_name
+        finally:
+            self._cleanup(client, db_name, tbl_name)
+
+
+class TestGlueSchemaVersionOps:
+    """Tests for GetSchemaVersion and GetSchemaByDefinition."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("glue")
+
+    @pytest.fixture
+    def registry(self, client):
+        name = _unique("reg")
+        resp = client.create_registry(RegistryName=name, Description="test registry")
+        yield {"name": name, "arn": resp["RegistryArn"]}
+        try:
+            client.delete_registry(RegistryId={"RegistryName": name})
+        except Exception:
+            pass
+
+    @pytest.fixture
+    def schema(self, client, registry):
+        schema_name = _unique("schema")
+        definition = '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}'
+        resp = client.create_schema(
+            RegistryId={"RegistryName": registry["name"]},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=definition,
+        )
+        yield {
+            "name": schema_name,
+            "registry": registry["name"],
+            "arn": resp["SchemaArn"],
+            "definition": definition,
+        }
+        try:
+            client.delete_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
+            )
+        except Exception:
+            pass
+
+    def test_get_schema_version(self, client, schema):
+        """GetSchemaVersion retrieves schema version details."""
+        resp = client.get_schema_version(
+            SchemaId={"SchemaName": schema["name"], "RegistryName": schema["registry"]},
+            SchemaVersionNumber={"LatestVersion": True},
+        )
+        assert "SchemaDefinition" in resp
+        assert resp["DataFormat"] == "AVRO"
+
+    def test_get_schema_by_definition(self, client, schema):
+        """GetSchemaByDefinition finds a schema by its definition text."""
+        resp = client.get_schema_by_definition(
+            SchemaId={"SchemaName": schema["name"], "RegistryName": schema["registry"]},
+            SchemaDefinition=schema["definition"],
+        )
+        assert resp["SchemaArn"] == schema["arn"]
+        assert "SchemaVersionId" in resp

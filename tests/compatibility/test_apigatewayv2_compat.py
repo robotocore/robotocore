@@ -428,6 +428,119 @@ class TestModels:
             apigwv2.get_model(ApiId=api, ModelId=created["ModelId"])
 
 
+class TestGetApiMapping:
+    def test_get_api_mapping(self, apigwv2):
+        domain_name = _unique("dom") + ".example.com"
+        api = apigwv2.create_api(Name=_unique("map-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        apigwv2.create_stage(ApiId=api_id, StageName="prod")
+        apigwv2.create_domain_name(
+            DomainName=domain_name,
+            DomainNameConfigurations=[
+                {"CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/abc123"}
+            ],
+        )
+        mapping = apigwv2.create_api_mapping(
+            ApiId=api_id,
+            DomainName=domain_name,
+            Stage="prod",
+        )
+        resp = apigwv2.get_api_mapping(
+            ApiMappingId=mapping["ApiMappingId"],
+            DomainName=domain_name,
+        )
+        assert resp["ApiMappingId"] == mapping["ApiMappingId"]
+        assert resp["ApiId"] == api_id
+        assert resp["Stage"] == "prod"
+
+        # Clean up
+        apigwv2.delete_api_mapping(ApiMappingId=mapping["ApiMappingId"], DomainName=domain_name)
+        apigwv2.delete_domain_name(DomainName=domain_name)
+        apigwv2.delete_api(ApiId=api_id)
+
+
+class TestGetDomainName:
+    def test_get_domain_name(self, apigwv2):
+        domain_name = _unique("getdom") + ".example.com"
+        apigwv2.create_domain_name(
+            DomainName=domain_name,
+            DomainNameConfigurations=[
+                {"CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/abc123"}
+            ],
+        )
+        resp = apigwv2.get_domain_name(DomainName=domain_name)
+        assert resp["DomainName"] == domain_name
+
+        apigwv2.delete_domain_name(DomainName=domain_name)
+
+
+class TestGetModels:
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("models-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_get_models(self, apigwv2, api):
+        import json
+
+        schema = json.dumps({"type": "object"})
+        name = _unique("listmodel")
+        apigwv2.create_model(
+            ApiId=api,
+            ContentType="application/json",
+            Name=name,
+            Schema=schema,
+        )
+        resp = apigwv2.get_models(ApiId=api)
+        assert "Items" in resp
+        names = [m["Name"] for m in resp["Items"]]
+        assert name in names
+
+
+class TestGetTags:
+    def test_get_tags(self, apigwv2):
+        name = _unique("tag-api")
+        api = apigwv2.create_api(
+            Name=name,
+            ProtocolType="HTTP",
+            Tags={"env": "test", "project": "robotocore"},
+        )
+        api_id = api["ApiId"]
+        api_arn = f"arn:aws:apigateway:us-east-1::/apis/{api_id}"
+        resp = apigwv2.get_tags(ResourceArn=api_arn)
+        assert "Tags" in resp
+        assert resp["Tags"].get("env") == "test"
+        assert resp["Tags"].get("project") == "robotocore"
+
+        apigwv2.delete_api(ApiId=api_id)
+
+
+class TestVpcLinkOperations:
+    def test_update_vpc_link(self, apigwv2):
+        name = _unique("upd-vpcl")
+        created = apigwv2.create_vpc_link(
+            Name=name,
+            SubnetIds=["subnet-12345678"],
+        )
+        vpc_link_id = created["VpcLinkId"]
+        new_name = _unique("upd-vpcl2")
+        resp = apigwv2.update_vpc_link(VpcLinkId=vpc_link_id, Name=new_name)
+        assert resp["Name"] == new_name
+
+        apigwv2.delete_vpc_link(VpcLinkId=vpc_link_id)
+
+    def test_delete_and_verify_vpc_link(self, apigwv2):
+        created = apigwv2.create_vpc_link(
+            Name=_unique("delvpc"),
+            SubnetIds=["subnet-12345678"],
+        )
+        vpc_link_id = created["VpcLinkId"]
+        apigwv2.delete_vpc_link(VpcLinkId=vpc_link_id)
+        with pytest.raises(Exception):
+            apigwv2.get_vpc_link(VpcLinkId=vpc_link_id)
+
+
 class TestApigatewayv2AutoCoverage:
     """Auto-generated coverage tests for apigatewayv2."""
 

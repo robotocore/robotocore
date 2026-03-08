@@ -878,3 +878,44 @@ class TestCognitoExtendedV2:
             assert user2 in usernames
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoAdditionalOps:
+    """Tests for additional cognito-idp operations."""
+
+    @pytest.fixture
+    def cognito(self):
+        from tests.compatibility.conftest import make_client
+
+        return make_client("cognito-idp")
+
+    @pytest.fixture
+    def pool(self, cognito):
+        """Create a user pool for tests and clean up after."""
+        pool_name = _unique("addlops-pool")
+        response = cognito.create_user_pool(PoolName=pool_name)
+        pool_id = response["UserPool"]["Id"]
+        yield {"id": pool_id, "name": pool_name, "arn": response["UserPool"]["Arn"]}
+        cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_list_tags_for_resource(self, cognito, pool):
+        response = cognito.list_tags_for_resource(ResourceArn=pool["arn"])
+        assert "Tags" in response
+        assert isinstance(response["Tags"], dict)
+
+    def test_list_tags_for_resource_with_tags(self, cognito, pool):
+        cognito.tag_resource(ResourceArn=pool["arn"], Tags={"env": "test", "team": "backend"})
+        response = cognito.list_tags_for_resource(ResourceArn=pool["arn"])
+        assert response["Tags"]["env"] == "test"
+        assert response["Tags"]["team"] == "backend"
+
+    def test_describe_user_pool_domain_not_found(self, cognito):
+        response = cognito.describe_user_pool_domain(Domain="nonexistent-domain-xyz-12345")
+        assert "DomainDescription" in response
+
+    def test_get_user_requires_auth(self, cognito):
+        """GetUser requires an access token; calling with a fake token should error."""
+        with pytest.raises(Exception) as exc_info:
+            cognito.get_user(AccessToken="fake-access-token-12345")
+        err_str = str(type(exc_info.value).__name__) + str(exc_info.value)
+        assert "NotAuthorizedException" in err_str

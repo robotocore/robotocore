@@ -323,6 +323,134 @@ class TestChannelNamespace:
             client.get_channel_namespace(apiId=event_api, name=name)
 
 
+class TestResolversAndTypes:
+    """Tests for resolver and type operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_schema(self, client):
+        import base64
+
+        created = client.create_graphql_api(
+            name=_unique("resolver-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        # Create a NONE data source for resolvers
+        client.create_data_source(apiId=api_id, name="noneds", type="NONE")
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_get_resolver_not_found(self, client, api_with_schema):
+        """GetResolver with a non-existent field returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_resolver(apiId=api_with_schema, typeName="Query", fieldName="nonexistent")
+
+    def test_create_and_get_resolver(self, client, api_with_schema):
+        """Create a resolver then retrieve it with GetResolver."""
+        resp = client.create_resolver(
+            apiId=api_with_schema,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds",
+        )
+        assert resp["resolver"]["fieldName"] == "hello"
+        get_resp = client.get_resolver(apiId=api_with_schema, typeName="Query", fieldName="hello")
+        assert get_resp["resolver"]["fieldName"] == "hello"
+        assert get_resp["resolver"]["typeName"] == "Query"
+
+    def test_list_resolvers_empty(self, client, api_with_schema):
+        """ListResolvers on a type with no resolvers returns empty list."""
+        resp = client.list_resolvers(apiId=api_with_schema, typeName="Query")
+        assert "resolvers" in resp
+        assert isinstance(resp["resolvers"], list)
+
+    def test_list_resolvers_with_resolver(self, client, api_with_schema):
+        """ListResolvers returns created resolvers."""
+        client.create_resolver(
+            apiId=api_with_schema,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds",
+        )
+        resp = client.list_resolvers(apiId=api_with_schema, typeName="Query")
+        fields = [r["fieldName"] for r in resp["resolvers"]]
+        assert "hello" in fields
+
+    def test_get_schema_creation_status(self, client, api_with_schema):
+        """GetSchemaCreationStatus returns status for API with schema."""
+        resp = client.get_schema_creation_status(apiId=api_with_schema)
+        assert "status" in resp
+        assert resp["status"] in ("ACTIVE", "SUCCESS", "PROCESSING", "NOT_APPLICABLE")
+
+    def test_get_type_not_found(self, client, api_with_schema):
+        """GetType with non-existent type returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_type(apiId=api_with_schema, typeName="NonExistentType", format="SDL")
+
+    def test_list_types(self, client, api_with_schema):
+        """ListTypes returns types defined in the schema."""
+        resp = client.list_types(apiId=api_with_schema, format="SDL")
+        assert "types" in resp
+        assert isinstance(resp["types"], list)
+
+
+class TestEventApiOps:
+    """Tests for Event API operations (GetApi, ListChannelNamespaces)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def event_api(self, client):
+        auth_mode = {"authType": "API_KEY"}
+        resp = client.create_api(
+            name=_unique("evt-ops"),
+            eventConfig={
+                "authProviders": [auth_mode],
+                "connectionAuthModes": [auth_mode],
+                "defaultPublishAuthModes": [auth_mode],
+                "defaultSubscribeAuthModes": [auth_mode],
+            },
+        )
+        api_id = resp["api"]["apiId"]
+        yield api_id
+        client.delete_api(apiId=api_id)
+
+    def test_get_api(self, client, event_api):
+        """GetApi retrieves an Event API by ID."""
+        resp = client.get_api(apiId=event_api)
+        assert "api" in resp
+        assert resp["api"]["apiId"] == event_api
+
+    def test_get_api_not_found(self, client):
+        """GetApi with a fake ID returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_api(apiId="fake-api-id-12345")
+
+    def test_list_channel_namespaces_empty(self, client, event_api):
+        """ListChannelNamespaces on API with no namespaces returns empty list."""
+        resp = client.list_channel_namespaces(apiId=event_api)
+        assert "channelNamespaces" in resp
+        assert isinstance(resp["channelNamespaces"], list)
+
+    def test_list_channel_namespaces_with_namespace(self, client, event_api):
+        """ListChannelNamespaces returns created namespaces."""
+        name = _unique("ns-list")
+        client.create_channel_namespace(apiId=event_api, name=name)
+        try:
+            resp = client.list_channel_namespaces(apiId=event_api)
+            names = [ns["name"] for ns in resp["channelNamespaces"]]
+            assert name in names
+        finally:
+            client.delete_channel_namespace(apiId=event_api, name=name)
+
+
 class TestAppsyncAutoCoverage:
     """Auto-generated coverage tests for appsync."""
 
@@ -331,5 +459,6 @@ class TestAppsyncAutoCoverage:
         return make_client("appsync")
 
     def test_list_apis(self, client):
-        """ListApis returns a response."""
-        client.list_apis()
+        """ListApis returns a response with apis key."""
+        resp = client.list_apis()
+        assert "apis" in resp
