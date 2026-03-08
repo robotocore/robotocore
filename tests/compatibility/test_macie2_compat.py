@@ -52,3 +52,43 @@ class TestMacie2AutoCoverage:
         """ListOrganizationAdminAccounts returns a response."""
         resp = client.list_organization_admin_accounts()
         assert "adminAccounts" in resp
+
+    def test_delete_member_nonexistent(self, client):
+        """DeleteMember returns ResourceNotFoundException for unknown member."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_member(id="111122223333")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_disassociate_member_nonexistent(self, client):
+        """DisassociateMember returns ResourceNotFoundException for unknown member."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.disassociate_member(id="222233334444")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_decline_invitations(self, client):
+        """DeclineInvitations returns unprocessedAccounts list."""
+        resp = client.decline_invitations(accountIds=["111122223333"])
+        assert "unprocessedAccounts" in resp
+        assert isinstance(resp["unprocessedAccounts"], list)
+
+    def test_accept_invitation(self, client):
+        """AcceptInvitation succeeds even with nonexistent invitation."""
+        resp = client.accept_invitation(
+            invitationId="inv-fake", administratorAccountId="111122223333"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_invitations(self, client):
+        """CreateInvitations returns unprocessedAccounts list."""
+        resp = client.create_invitations(accountIds=["111122223333"])
+        assert "unprocessedAccounts" in resp
+        assert isinstance(resp["unprocessedAccounts"], list)
+
+    def test_enable_organization_admin_account(self, client):
+        """EnableOrganizationAdminAccount succeeds."""
+        resp = client.enable_organization_admin_account(adminAccountId="111122223333")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
