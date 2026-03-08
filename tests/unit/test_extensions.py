@@ -183,8 +183,9 @@ class TestExtensionRegistry:
     def test_on_request_passthrough(self):
         plugin = SamplePlugin()
         self.registry.register(plugin)
-        result = self.registry.on_request(MagicMock(), {})
-        assert result is None
+        req = MagicMock()
+        result = self.registry.on_request(req, {})
+        assert result is req  # Returns original request when plugin returns None
         assert plugin.request_count == 1
 
     def test_on_request_short_circuit(self):
@@ -232,8 +233,9 @@ class TestExtensionRegistry:
         plugin = BrokenPlugin()
         self.registry.register(plugin)
         # Should not raise, just log the error
-        result = self.registry.on_request(MagicMock(), {})
-        assert result is None
+        req = MagicMock()
+        result = self.registry.on_request(req, {})
+        assert result is req  # Returns original request even when plugin errors
 
     def test_custom_routes(self):
         plugin = CustomRoutePlugin()
