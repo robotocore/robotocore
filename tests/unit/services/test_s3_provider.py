@@ -325,3 +325,64 @@ class TestHandleS3Request:
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_set_config.assert_called_once()
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_moto_nosuchbucket_error_passthrough(self, mock_forward):
+        """When Moto returns a NoSuchBucket error (404), it passes through."""
+        error_xml = (
+            b"<Error><Code>NoSuchBucket</Code>"
+            b"<Message>The specified bucket does not exist</Message>"
+            b"<BucketName>nonexistent-bucket</BucketName></Error>"
+        )
+        mock_forward.return_value = Response(content=error_xml, status_code=404)
+        req = _make_request("GET", "/nonexistent-bucket")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        assert b"NoSuchBucket" in resp.body
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    async def test_moto_nosuchkey_error_passthrough(self, mock_forward):
+        """When Moto returns a NoSuchKey error (404), it passes through."""
+        error_xml = (
+            b"<Error><Code>NoSuchKey</Code>"
+            b"<Message>The specified key does not exist.</Message>"
+            b"<Key>nonexistent-key</Key></Error>"
+        )
+        mock_forward.return_value = Response(content=error_xml, status_code=404)
+        req = _make_request("GET", "/mybucket/nonexistent-key")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        assert b"NoSuchKey" in resp.body
+
+    @patch("robotocore.services.s3.provider.forward_to_moto")
+    @patch("robotocore.services.s3.provider.fire_event")
+    async def test_no_event_on_put_error(self, mock_fire, mock_forward):
+        """Events should NOT fire when a PUT returns an error status."""
+        mock_forward.return_value = Response(content=b"<Error/>", status_code=403)
+        req = _make_request("PUT", "/mybucket/mykey")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 403
+        mock_fire.assert_not_called()
+
+    async def test_cors_preflight_no_cors_configured(self):
+        """OPTIONS on a bucket without CORS returns 403."""
+        from robotocore.services.s3.provider import _cors_store
+
+        _cors_store.pop("nocors-bucket", None)
+        req = _make_request(
+            "OPTIONS",
+            "/nocors-bucket/key",
+            headers={"Origin": "http://example.com"},
+        )
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 403
+
+    async def test_get_object_lock_not_configured(self):
+        """GET ?object-lock on bucket without config returns 404."""
+        from robotocore.services.s3.provider import _object_lock_store
+
+        _object_lock_store.pop("no-lock-bucket", None)
+        req = _make_request("GET", "/no-lock-bucket", query_string=b"object-lock")
+        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        assert b"ObjectLockConfigurationNotFoundError" in resp.body

@@ -275,3 +275,97 @@ class TestExtractKeysFromItem:
             item = {"id": {"S": "1"}, "name": {"S": "foo"}}
             keys = _extract_keys_from_item("t", item, "us-east-1", "123456789012")
         assert keys == item
+
+
+# ---------------------------------------------------------------------------
+# Error-path tests for intercepted operations
+# ---------------------------------------------------------------------------
+
+
+class TestDynamoDBErrorPaths:
+    @pytest.mark.asyncio
+    async def test_describe_nonexistent_global_table(self):
+        """DescribeGlobalTable on a non-existent table returns GlobalTableNotFoundException."""
+        from robotocore.services.dynamodb.provider import _global_tables
+
+        _global_tables.clear()
+        req = _make_request(
+            "DynamoDB_20120810.DescribeGlobalTable",
+            {"GlobalTableName": "does-not-exist"},
+        )
+        resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        body = json.loads(resp.body)
+        assert body["__type"] == "GlobalTableNotFoundException"
+        assert "does-not-exist" in body["message"]
+        _global_tables.clear()
+
+    @pytest.mark.asyncio
+    async def test_create_duplicate_global_table(self):
+        """CreateGlobalTable with an existing name returns GlobalTableAlreadyExistsException."""
+        from robotocore.services.dynamodb.provider import _global_tables
+
+        _global_tables.clear()
+        # Create the table first
+        req1 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "my-global", "ReplicationGroup": []},
+        )
+        resp1 = await handle_dynamodb_request(req1, "us-east-1", "123456789012")
+        assert resp1.status_code == 200
+
+        # Try to create again -- should fail
+        req2 = _make_request(
+            "DynamoDB_20120810.CreateGlobalTable",
+            {"GlobalTableName": "my-global", "ReplicationGroup": []},
+        )
+        resp2 = await handle_dynamodb_request(req2, "us-east-1", "123456789012")
+        assert resp2.status_code == 400
+        body = json.loads(resp2.body)
+        assert body["__type"] == "GlobalTableAlreadyExistsException"
+        _global_tables.clear()
+
+    @pytest.mark.asyncio
+    async def test_moto_error_passthrough(self):
+        """When Moto returns an error (e.g., 400 ResourceNotFoundException), it is passed through."""
+        error_body = json.dumps(
+            {
+                "__type": "com.amazonaws.dynamodb.v20120810#ResourceNotFoundException",
+                "message": "Requested resource not found: Table: nonexistent not found",
+            }
+        ).encode()
+        req = _make_request(
+            "DynamoDB_20120810.DescribeTable",
+            {"TableName": "nonexistent"},
+        )
+        mock_resp = _mock_moto_response(400, error_body)
+        with patch(
+            "robotocore.services.dynamodb.provider.forward_to_moto",
+            new_callable=AsyncMock,
+            return_value=mock_resp,
+        ):
+            resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        body = json.loads(resp.body)
+        assert "ResourceNotFoundException" in body["__type"]
+
+    @pytest.mark.asyncio
+    async def test_moto_validation_error_passthrough(self):
+        """Moto validation errors (e.g., missing required fields) pass through unchanged."""
+        error_body = json.dumps(
+            {
+                "__type": "com.amazonaws.dynamodb.v20120810#ValidationException",
+                "message": "1 validation error detected: Value null at 'tableName' failed",
+            }
+        ).encode()
+        req = _make_request("DynamoDB_20120810.DescribeTable", {})
+        mock_resp = _mock_moto_response(400, error_body)
+        with patch(
+            "robotocore.services.dynamodb.provider.forward_to_moto",
+            new_callable=AsyncMock,
+            return_value=mock_resp,
+        ):
+            resp = await handle_dynamodb_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        body = json.loads(resp.body)
+        assert "ValidationException" in body["__type"]

@@ -255,6 +255,82 @@ class TestHandleLambdaRequest:
         data = json.loads(resp.body)
         assert data["__type"] == "ServiceException"
 
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_get_nonexistent_function_returns_404(self, mock_backend_fn):
+        """Getting a non-existent function returns ResourceNotFoundException (404)."""
+        mock_backend = MagicMock()
+
+        class UnknownFunctionError(Exception):
+            pass
+
+        mock_backend.get_function.side_effect = UnknownFunctionError(
+            "Function not found: arn:aws:lambda:us-east-1:123456789012:function:no-such-fn"
+        )
+        mock_backend_fn.return_value = mock_backend
+
+        req = await _make_request("GET", "/2015-03-31/functions/no-such-fn")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        data = json.loads(resp.body)
+        assert data["__type"] == "ResourceNotFoundException"
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_delete_nonexistent_function_returns_404(self, mock_backend_fn):
+        """Deleting a non-existent function returns ResourceNotFoundException (404)."""
+        mock_backend = MagicMock()
+
+        class UnknownFunctionError(Exception):
+            pass
+
+        mock_backend.delete_function.side_effect = UnknownFunctionError(
+            "Function not found: no-such-fn"
+        )
+        mock_backend_fn.return_value = mock_backend
+
+        req = await _make_request("DELETE", "/2015-03-31/functions/no-such-fn")
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 404
+        data = json.loads(resp.body)
+        assert data["__type"] == "ResourceNotFoundException"
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_invalid_parameter_value_returns_400(self, mock_backend_fn):
+        """InvalidParameterValue errors map to 400."""
+        mock_backend = MagicMock()
+
+        class InvalidParameterValueException(Exception):
+            pass
+
+        mock_backend.create_function.side_effect = InvalidParameterValueException(
+            "The runtime parameter of python2.7 is not supported"
+        )
+        mock_backend_fn.return_value = mock_backend
+
+        body = json.dumps({"FunctionName": "fn", "Runtime": "python2.7"}).encode()
+        req = await _make_request("POST", "/2015-03-31/functions", body)
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 400
+        data = json.loads(resp.body)
+        assert data["__type"] == "InvalidParameterValueException"
+
+    @patch("robotocore.services.lambda_.provider._get_moto_backend")
+    async def test_resource_conflict_returns_409(self, mock_backend_fn):
+        """Creating a function that already exists returns ResourceConflictException (409)."""
+        mock_backend = MagicMock()
+
+        class ResourceConflictException(Exception):
+            code = 409
+
+        mock_backend.create_function.side_effect = ResourceConflictException(
+            "Function already exist: my-fn"
+        )
+        mock_backend_fn.return_value = mock_backend
+
+        body = json.dumps({"FunctionName": "my-fn"}).encode()
+        req = await _make_request("POST", "/2015-03-31/functions", body)
+        resp = await handle_lambda_request(req, "us-east-1", "123456789012")
+        assert resp.status_code == 409
+
 
 @pytest.mark.asyncio
 class TestEventSourceMappings:

@@ -1673,3 +1673,111 @@ class TestAdditionalMiddlewareEdgeCases:
         assert (
             build_iam_action("secretsmanager", "GetSecretValue") == "secretsmanager:GetSecretValue"
         )
+
+
+# ===========================================================================
+# IAM native provider error-path tests
+# ===========================================================================
+
+import asyncio
+
+from starlette.responses import Response
+from unittest.mock import AsyncMock
+
+from robotocore.services.iam.provider import handle_iam_request
+
+
+def _make_iam_request(body: bytes = b"", headers: dict | None = None):
+    request = MagicMock()
+    request.body = AsyncMock(return_value=body)
+    request.headers = headers or {}
+    request.method = "POST"
+    request.url = MagicMock()
+    request.url.path = "/"
+    request.url.query = None
+    request.query_params = {}
+    return request
+
+
+class TestIAMProviderErrorPaths:
+    def test_non_intercepted_action_forwards_to_moto(self):
+        """Actions not in _ACTION_MAP (e.g., GetUser) forward to Moto."""
+        with patch(
+            "robotocore.services.iam.provider.forward_to_moto",
+            new_callable=AsyncMock,
+        ) as mock_forward:
+            mock_forward.return_value = MagicMock(status_code=200, body=b"<ok/>")
+            body = b"Action=GetUser&UserName=testuser"
+            request = _make_iam_request(body)
+            asyncio.get_event_loop().run_until_complete(
+                handle_iam_request(request, "us-east-1", "123456789012")
+            )
+            mock_forward.assert_called_once_with(request, "iam")
+
+    def test_moto_nosuchentity_passthrough(self):
+        """When Moto returns NoSuchEntity for a non-existent user, it passes through."""
+        error_xml = (
+            b"<ErrorResponse>"
+            b"<Error><Code>NoSuchEntity</Code>"
+            b"<Message>The user with name nonexistent cannot be found.</Message>"
+            b"</Error></ErrorResponse>"
+        )
+        with patch(
+            "robotocore.services.iam.provider.forward_to_moto",
+            new_callable=AsyncMock,
+        ) as mock_forward:
+            mock_forward.return_value = Response(
+                content=error_xml, status_code=404, media_type="text/xml"
+            )
+            body = b"Action=GetUser&UserName=nonexistent"
+            request = _make_iam_request(body)
+            resp = asyncio.get_event_loop().run_until_complete(
+                handle_iam_request(request, "us-east-1", "123456789012")
+            )
+        assert resp.status_code == 404
+        assert b"NoSuchEntity" in resp.body
+
+    def test_moto_entity_already_exists_passthrough(self):
+        """When Moto returns EntityAlreadyExists for duplicate creation, it passes through."""
+        error_xml = (
+            b"<ErrorResponse>"
+            b"<Error><Code>EntityAlreadyExists</Code>"
+            b"<Message>User with name testuser already exists.</Message>"
+            b"</Error></ErrorResponse>"
+        )
+        with patch(
+            "robotocore.services.iam.provider.forward_to_moto",
+            new_callable=AsyncMock,
+        ) as mock_forward:
+            mock_forward.return_value = Response(
+                content=error_xml, status_code=409, media_type="text/xml"
+            )
+            body = b"Action=CreateUser&UserName=testuser"
+            request = _make_iam_request(body)
+            resp = asyncio.get_event_loop().run_until_complete(
+                handle_iam_request(request, "us-east-1", "123456789012")
+            )
+        assert resp.status_code == 409
+        assert b"EntityAlreadyExists" in resp.body
+
+    def test_simulate_custom_policy_empty_actions(self):
+        """SimulateCustomPolicy with no action names returns empty results."""
+        body = b"Action=SimulateCustomPolicy&PolicyInputList.member.1=%7B%7D"
+        request = _make_iam_request(body)
+        resp = asyncio.get_event_loop().run_until_complete(
+            handle_iam_request(request, "us-east-1", "123456789012")
+        )
+        assert resp.status_code == 200
+        assert b"<EvaluationResults>" in resp.body
+        # No ActionNames.member.N params → no <member> evaluation results
+        assert b"<EvalActionName>" not in resp.body
+
+    def test_change_password_always_succeeds(self):
+        """ChangePassword is a no-op that always returns 200."""
+        body = b"Action=ChangePassword&OldPassword=old&NewPassword=new"
+        request = _make_iam_request(body)
+        resp = asyncio.get_event_loop().run_until_complete(
+            handle_iam_request(request, "us-east-1", "123456789012")
+        )
+        assert resp.status_code == 200
+        assert b"ChangePasswordResponse" in resp.body
