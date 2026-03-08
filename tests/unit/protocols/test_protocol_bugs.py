@@ -148,17 +148,20 @@ class TestMotoBridgeErrorContentTypeBug:
 
     def test_moto_bridge_error_format_should_be_protocol_aware(self):
         """forward_to_moto error responses should use JSON format for JSON services."""
-        import inspect
+        from robotocore.providers.moto_bridge import _error_response
 
-        from robotocore.providers.moto_bridge import forward_to_moto
-
-        source = inspect.getsource(forward_to_moto)
-        # The function should produce JSON errors for JSON services
-        assert "application/x-amz-json" in source, (
-            "forward_to_moto must produce JSON-format errors for JSON-protocol services "
-            "(DynamoDB, Kinesis, etc.). Currently all error paths produce XML "
-            "(<ErrorResponse>) which breaks boto3 clients expecting JSON error responses."
+        # JSON-protocol service should get JSON error
+        resp = _error_response("dynamodb", "InternalError", "test", 500)
+        assert "application/x-amz-json" in resp.media_type, (
+            "Error responses for JSON-protocol services must use JSON format, "
+            f"got {resp.media_type}"
         )
+        body = json.loads(resp.body.decode())
+        assert body["__type"] == "InternalError"
+
+        # XML-protocol service should get XML error
+        resp_xml = _error_response("sts", "InternalError", "test", 500)
+        assert resp_xml.media_type == "application/xml"
 
 
 class TestSqsXmlEscapingBug:

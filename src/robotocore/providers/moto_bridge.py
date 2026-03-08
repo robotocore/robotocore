@@ -27,6 +27,44 @@ os.environ.setdefault("MOTO_ALLOW_NONEXISTENT_REGION", "true")
 DEFAULT_ACCOUNT_ID = "123456789012"
 
 
+def _error_response(
+    service_name: str,
+    error_code: str,
+    message: str,
+    status_code: int,
+    extra_headers: dict | None = None,
+) -> Response:
+    """Build a protocol-aware error response (JSON for JSON services, XML otherwise)."""
+    import json
+
+    from robotocore.protocols.service_info import get_service_json_version, get_service_protocol
+
+    protocol = get_service_protocol(service_name) or "query"
+    headers = extra_headers or {}
+
+    if protocol in ("json", "rest-json", "smithy-rpc-v2-cbor"):
+        body = json.dumps({"__type": error_code, "message": message})
+        json_version = get_service_json_version(service_name) or "1.0"
+        return Response(
+            content=body,
+            status_code=status_code,
+            media_type=f"application/x-amz-json-{json_version}",
+            headers=headers,
+        )
+    else:
+        safe_message = _xml_escape(message)
+        body = (
+            f"<ErrorResponse><Error><Code>{error_code}</Code>"
+            f"<Message>{safe_message}</Message></Error></ErrorResponse>"
+        )
+        return Response(
+            content=body,
+            status_code=status_code,
+            media_type="application/xml",
+            headers=headers,
+        )
+
+
 class _RegexConverter(BaseConverter):
     """Werkzeug converter that allows regex patterns to match across path segments."""
 
@@ -115,14 +153,11 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
     except Exception:
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                f"<Message>Service {_xml_escape(service_name)} is not yet implemented</Message>"
-                f"</Error></ErrorResponse>"
-            ),
-            status_code=501,
-            media_type="application/xml",
+        return _error_response(
+            service_name,
+            "NotImplemented",
+            f"Service {service_name} is not yet implemented",
+            501,
         )
 
     werkzeug_request = _build_werkzeug_request(request, body)
@@ -133,14 +168,11 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
     try:
         result = dispatch(werkzeug_request, full_url, werkzeug_request.headers)
         if not result:
-            return Response(
-                content=(
-                    f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                    f"<Message>Operation not implemented for {_xml_escape(service_name)}</Message>"
-                    f"</Error></ErrorResponse>"
-                ),
-                status_code=501,
-                media_type="application/xml",
+            return _error_response(
+                service_name,
+                "NotImplemented",
+                f"Operation not implemented for {service_name}",
+                501,
             )
         status, response_headers, response_body = result
         if isinstance(response_body, (str, bytes)) and len(response_body) == 0:
@@ -168,15 +200,12 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             path=raw_path,
             status=400,
         )
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>InvalidAction</Code>"
-                f"<Message>Could not find operation {_xml_escape(str(e))}</Message>"
-                f"</Error></ErrorResponse>"
-            ),
-            status_code=400,
-            media_type="application/xml",
-            headers={"x-robotocore-diag": _diag_header(e)},
+        return _error_response(
+            service_name,
+            "InvalidAction",
+            f"Could not find operation {e}",
+            400,
+            {"x-robotocore-diag": _diag_header(e)},
         )
     except NotImplementedError as e:
         _diag_record(
@@ -186,14 +215,12 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             path=raw_path,
             status=501,
         )
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
-            ),
-            status_code=501,
-            media_type="application/xml",
-            headers={"x-robotocore-diag": _diag_header(e)},
+        return _error_response(
+            service_name,
+            "NotImplemented",
+            str(e),
+            501,
+            {"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:
         _diag_record(
@@ -203,14 +230,12 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             path=raw_path,
             status=500,
         )
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>InternalError</Code>"
-                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
-            ),
-            status_code=500,
-            media_type="application/xml",
-            headers={"x-robotocore-diag": _diag_header(e)},
+        return _error_response(
+            service_name,
+            "InternalError",
+            str(e),
+            500,
+            {"x-robotocore-diag": _diag_header(e)},
         )
 
 
@@ -220,14 +245,11 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
     except Exception:
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                f"<Message>Service {_xml_escape(service_name)} is not yet implemented</Message>"
-                f"</Error></ErrorResponse>"
-            ),
-            status_code=501,
-            media_type="application/xml",
+        return _error_response(
+            service_name,
+            "NotImplemented",
+            f"Service {service_name} is not yet implemented",
+            501,
         )
 
     werkzeug_request = _build_werkzeug_request(request, body)
@@ -236,14 +258,11 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
     try:
         result = dispatch(werkzeug_request, full_url, werkzeug_request.headers)
         if not result:
-            return Response(
-                content=(
-                    f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                    f"<Message>Operation not implemented for {_xml_escape(service_name)}</Message>"
-                    f"</Error></ErrorResponse>"
-                ),
-                status_code=501,
-                media_type="application/xml",
+            return _error_response(
+                service_name,
+                "NotImplemented",
+                f"Operation not implemented for {service_name}",
+                501,
             )
         status, response_headers, response_body = result
         if isinstance(response_body, (str, bytes)) and len(response_body) == 0:
@@ -268,15 +287,12 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             path=raw_path,
             status=400,
         )
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>InvalidAction</Code>"
-                f"<Message>Could not find operation {_xml_escape(str(e))}</Message>"
-                f"</Error></ErrorResponse>"
-            ),
-            status_code=400,
-            media_type="application/xml",
-            headers={"x-robotocore-diag": _diag_header(e)},
+        return _error_response(
+            service_name,
+            "InvalidAction",
+            f"Could not find operation {e}",
+            400,
+            {"x-robotocore-diag": _diag_header(e)},
         )
     except NotImplementedError as e:
         _diag_record(
@@ -286,14 +302,12 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             path=raw_path,
             status=501,
         )
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>NotImplemented</Code>"
-                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
-            ),
-            status_code=501,
-            media_type="application/xml",
-            headers={"x-robotocore-diag": _diag_header(e)},
+        return _error_response(
+            service_name,
+            "NotImplemented",
+            str(e),
+            501,
+            {"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:
         _diag_record(
@@ -303,12 +317,10 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             path=raw_path,
             status=500,
         )
-        return Response(
-            content=(
-                f"<ErrorResponse><Error><Code>InternalError</Code>"
-                f"<Message>{_xml_escape(str(e))}</Message></Error></ErrorResponse>"
-            ),
-            status_code=500,
-            media_type="application/xml",
-            headers={"x-robotocore-diag": _diag_header(e)},
+        return _error_response(
+            service_name,
+            "InternalError",
+            str(e),
+            500,
+            {"x-robotocore-diag": _diag_header(e)},
         )

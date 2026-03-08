@@ -22,50 +22,49 @@ class TestRegexConverter:
         assert _RegexConverter.part_isolating is False
 
 
+def _mock_request(method="GET", path="/", query=None, headers=None):
+    """Create a mock Starlette Request with proper scope for _build_werkzeug_request."""
+    request = MagicMock()
+    request.method = method
+    request.url.path = path
+    request.url.query = query
+    request.headers = headers or {}
+    # Provide ASGI scope with raw_path for correct percent-encoding handling
+    request.scope = {"raw_path": path.encode("latin-1")}
+    return request
+
+
 class TestBuildWerkzeugRequest:
     def test_basic_get(self):
-        request = MagicMock()
-        request.method = "GET"
-        request.url.path = "/test-bucket"
-        request.url.query = "list-type=2"
-        request.headers = {"Host": "localhost:4566"}
+        request = _mock_request("GET", "/test-bucket", "list-type=2", {"Host": "localhost:4566"})
         wz_req = _build_werkzeug_request(request, b"")
         assert wz_req.method == "GET"
         assert wz_req.path == "/test-bucket"
 
     def test_post_with_body(self):
-        request = MagicMock()
-        request.method = "POST"
-        request.url.path = "/"
-        request.url.query = ""
-        request.headers = {
-            "Host": "localhost:4566",
-            "Content-Type": "application/x-amz-json-1.0",
-        }
+        request = _mock_request(
+            "POST",
+            "/",
+            "",
+            {"Host": "localhost:4566", "Content-Type": "application/x-amz-json-1.0"},
+        )
         body = b'{"TableName": "test"}'
         wz_req = _build_werkzeug_request(request, body)
         assert wz_req.method == "POST"
         assert wz_req.get_data() == body
 
     def test_preserves_content_length(self):
-        request = MagicMock()
-        request.method = "PUT"
-        request.url.path = "/bucket/key"
-        request.url.query = None
-        request.headers = {
-            "Host": "localhost:4566",
-            "Content-Length": "0",
-        }
+        request = _mock_request(
+            "PUT",
+            "/bucket/key",
+            None,
+            {"Host": "localhost:4566", "Content-Length": "0"},
+        )
         wz_req = _build_werkzeug_request(request, b"")
-        # Content-Length should be preserved even with empty body
         assert wz_req.content_length is not None
 
     def test_no_query_string(self):
-        request = MagicMock()
-        request.method = "GET"
-        request.url.path = "/"
-        request.url.query = None
-        request.headers = {}
+        request = _mock_request("GET", "/", None, {})
         wz_req = _build_werkzeug_request(request, b"")
         assert wz_req.query_string == b""
 

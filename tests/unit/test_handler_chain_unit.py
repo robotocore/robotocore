@@ -65,7 +65,9 @@ class TestHandlerChain:
         assert order == ["handler1"]
         assert ctx.response.body == b"early"
 
-    def test_response_handlers_always_run(self):
+    def test_response_handlers_not_run_inside_handle(self):
+        """Response handlers should NOT run inside handle() — they are called
+        explicitly by app.py after the provider returns a response."""
         called = []
 
         def set_resp(ctx):
@@ -78,15 +80,13 @@ class TestHandlerChain:
         chain.request_handlers = [set_resp]
         chain.response_handlers = [resp_handler]
         chain.handle(_make_context())
-        assert called == [True]
+        assert called == [], "response handlers must not run inside handle()"
 
-    def test_response_handlers_run_after_request_handlers(self):
-        order = []
+    def test_response_handlers_available_after_handle(self):
+        """Response handlers should be accessible for external callers to run."""
         chain = HandlerChain()
-        chain.request_handlers = [lambda ctx: order.append("request")]
-        chain.response_handlers = [lambda ctx: order.append("response")]
-        chain.handle(_make_context())
-        assert order == ["request", "response"]
+        chain.response_handlers = [lambda ctx: None]
+        assert len(chain.response_handlers) == 1
 
     def test_exception_handler_called(self):
         handled = []
@@ -118,13 +118,15 @@ class TestHandlerChain:
         except RuntimeError as e:
             assert str(e) == "unhandled"
 
-    def test_response_handler_error_doesnt_crash(self):
+    def test_response_handlers_stored_on_chain(self):
+        """Response handlers are stored on the chain for external callers."""
+
         def bad_resp_handler(ctx):
             raise RuntimeError("resp error")
 
         chain = HandlerChain()
         chain.response_handlers = [bad_resp_handler]
-        # Should not raise
+        # handle() should not invoke response handlers at all
         chain.handle(_make_context())
 
     def test_multiple_exception_handlers(self):

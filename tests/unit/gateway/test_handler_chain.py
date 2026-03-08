@@ -53,13 +53,15 @@ class TestHandlerChain:
         chain.handle(_make_context())
         assert order == [1, 2, 3]
 
-    def test_runs_response_handlers(self):
+    def test_response_handlers_not_run_in_handle(self):
+        """Response handlers should NOT run inside handle() — they are called
+        explicitly by app.py after the provider returns a response."""
         chain = HandlerChain()
         called = []
         chain.response_handlers.append(lambda ctx: called.append("response"))
 
         chain.handle(_make_context())
-        assert called == ["response"]
+        assert called == [], "response handlers must not run inside handle()"
 
     def test_stops_on_response_set(self):
         chain = HandlerChain()
@@ -103,7 +105,9 @@ class TestHandlerChain:
         with pytest.raises(ValueError, match="unhandled"):
             chain.handle(_make_context())
 
-    def test_response_handlers_run_after_exception(self):
+    def test_response_handlers_not_run_after_exception(self):
+        """After an exception is handled, response handlers should NOT run
+        inside handle() — they're run by app.py."""
         chain = HandlerChain()
         called = []
 
@@ -115,14 +119,16 @@ class TestHandlerChain:
         chain.response_handlers.append(lambda ctx: called.append("response"))
 
         chain.handle(_make_context())
-        assert called == ["response"]
+        assert called == [], "response handlers must not run inside handle()"
 
-    def test_response_handler_errors_dont_propagate(self):
+    def test_response_handlers_stored_on_chain(self):
+        """Response handlers are stored and available for external callers."""
         chain = HandlerChain()
 
         def bad_response_handler(ctx):
             raise RuntimeError("response handler crash")
 
         chain.response_handlers.append(bad_response_handler)
-        # Should not raise
+        # handle() should not invoke response handlers at all
         chain.handle(_make_context())
+        assert len(chain.response_handlers) == 1
