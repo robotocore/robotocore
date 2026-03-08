@@ -35,14 +35,21 @@ jobs:
           uv run python scripts/validate_test_quality.py
           --max-no-contact-pct 5
           --max-no-assertion-pct 5
+      - name: Project structural lint
+        run: uv run python scripts/lint_project.py --fail
       - name: Upload quality report
         if: always()
         run: uv run python scripts/validate_test_quality.py --json > test-quality.json
+      - name: Upload structural lint report
+        if: always()
+        run: uv run python scripts/lint_project.py --json > lint-project.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-quality-report
-          path: test-quality.json
+          path: |
+            test-quality.json
+            lint-project.json
 
   type-check:
     runs-on: ubuntu-latest
