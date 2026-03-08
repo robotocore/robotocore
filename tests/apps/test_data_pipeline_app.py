@@ -16,6 +16,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+# Counter for generating unique timestamps within a test run
+_ts_counter = 0
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -134,11 +137,22 @@ def audit_log(logs, unique_name):
 # ---------------------------------------------------------------------------
 
 
-def make_reading(sensor_id: str, sensor_type: str, value: float) -> dict:
+def make_reading(sensor_id: str, sensor_type: str, value: float, *, seq: int | None = None) -> dict:
+    """Create a sensor reading with a guaranteed-unique timestamp.
+
+    Uses a module-level counter to ensure no two readings share a timestamp,
+    avoiding DynamoDB PK+SK collisions in tight loops.
+    """
+    global _ts_counter  # noqa: PLW0603
+    if seq is not None:
+        ts = f"2026-03-08T10:{seq:02d}:{0:02d}Z"
+    else:
+        _ts_counter += 1
+        ts = f"2026-03-08T10:00:{_ts_counter:05d}Z"
     return {
         "sensor_id": sensor_id,
         "sensor_type": sensor_type,
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": ts,
         "value": value,
         "unit": {"temperature": "celsius", "pressure": "psi", "humidity": "percent"}.get(
             sensor_type, "unknown"
@@ -316,12 +330,12 @@ class TestPipelineIndexing:
             ("s4", "temperature", "71.5"),
             ("s5", "pressure", "15.0"),
         ]
-        for sid, stype, val in items:
+        for i, (sid, stype, val) in enumerate(items):
             dynamodb.put_item(
                 TableName=readings_table,
                 Item={
                     "sensor_id": {"S": sid},
-                    "timestamp": {"S": f"2026-03-08T10:00:{hash(sid) % 60:02d}Z"},
+                    "timestamp": {"S": f"2026-03-08T10:00:{i:02d}Z"},
                     "sensor_type": {"S": stype},
                     "value": {"N": val},
                 },
@@ -624,12 +638,10 @@ class TestPipelineEndToEnd:
         db_creds = json.loads(creds_resp["SecretString"])
         assert db_creds["host"] == "timescaledb.internal"
 
-        # Step 3: Ingest 5 sensor readings to Kinesis (unique timestamps to avoid PK+SK collisions)
-        readings = []
-        for i in range(5):
-            r = make_reading("factory-sensor-1", "temperature", 71.2 + i)
-            r["timestamp"] = f"2026-03-08T10:{i:02d}:00Z"
-            readings.append(r)
+        # Step 3: Ingest 5 sensor readings to Kinesis
+        readings = [
+            make_reading("factory-sensor-1", "temperature", 71.2 + i, seq=i) for i in range(5)
+        ]
         records_input = [
             {"Data": json.dumps(r).encode(), "PartitionKey": r["sensor_id"]} for r in readings
         ]
