@@ -3,7 +3,6 @@
 import base64
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -30,29 +29,3 @@ class TestEC2InstanceConnect:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert resp["Success"] is True
         assert "RequestId" in resp
-
-
-class TestEc2instanceconnectAutoCoverage:
-    """Auto-generated coverage tests for ec2instanceconnect."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("ec2-instance-connect")
-
-    def test_send_ssh_public_key(self, client):
-        """SendSSHPublicKey is implemented (may need params)."""
-        try:
-            client.send_ssh_public_key()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_send_serial_console_ssh_public_key(self, client):
-        """SendSerialConsoleSSHPublicKey is implemented (may need params)."""
-        try:
-            client.send_serial_console_ssh_public_key()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

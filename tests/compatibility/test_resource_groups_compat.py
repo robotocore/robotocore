@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -254,45 +253,9 @@ class TestResourceGroupsAutoCoverage:
     def client(self):
         return make_client("resource-groups")
 
-    def test_cancel_tag_sync_task(self, client):
-        """CancelTagSyncTask is implemented (may need params)."""
-        try:
-            client.cancel_tag_sync_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_tag_sync_task(self, client):
-        """GetTagSyncTask is implemented (may need params)."""
-        try:
-            client.get_tag_sync_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_group_resources(self, client):
-        """GroupResources is implemented (may need params)."""
-        try:
-            client.group_resources()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_list_group_resources(self, client):
         """ListGroupResources returns a response."""
         client.list_group_resources()
-
-    def test_list_grouping_statuses(self, client):
-        """ListGroupingStatuses is implemented (may need params)."""
-        try:
-            client.list_grouping_statuses()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_list_tag_sync_tasks(self, client):
         """ListTagSyncTasks returns a response."""
@@ -305,33 +268,6 @@ class TestResourceGroupsAutoCoverage:
             client.put_group_configuration()
         except client.exceptions.ClientError:
             pass  # Operation exists
-
-    def test_search_resources(self, client):
-        """SearchResources is implemented (may need params)."""
-        try:
-            client.search_resources()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_start_tag_sync_task(self, client):
-        """StartTagSyncTask is implemented (may need params)."""
-        try:
-            client.start_tag_sync_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_ungroup_resources(self, client):
-        """UngroupResources is implemented (may need params)."""
-        try:
-            client.ungroup_resources()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_update_account_settings(self, client):
         """UpdateAccountSettings returns a response."""

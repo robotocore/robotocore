@@ -3,7 +3,7 @@
 import datetime
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -488,47 +488,3 @@ class TestACMExtended:
         with pytest.raises(ClientError) as exc:
             acm.delete_certificate(CertificateArn=arn)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-
-class TestAcmAutoCoverage:
-    """Auto-generated coverage tests for acm."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("acm")
-
-    def test_put_account_configuration(self, client):
-        """PutAccountConfiguration is implemented (may need params)."""
-        try:
-            client.put_account_configuration()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_renew_certificate(self, client):
-        """RenewCertificate is implemented (may need params)."""
-        try:
-            client.renew_certificate()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_resend_validation_email(self, client):
-        """ResendValidationEmail is implemented (may need params)."""
-        try:
-            client.resend_validation_email()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_revoke_certificate(self, client):
-        """RevokeCertificate is implemented (may need params)."""
-        try:
-            client.revoke_certificate()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

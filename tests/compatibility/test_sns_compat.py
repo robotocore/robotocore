@@ -4,7 +4,7 @@ import json
 import uuid
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -1056,87 +1056,6 @@ class TestSnsAutoCoverage:
     def client(self):
         return make_client("sns")
 
-    def test_add_permission(self, client):
-        """AddPermission is implemented (may need params)."""
-        try:
-            client.add_permission()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_check_if_phone_number_is_opted_out(self, client):
-        """CheckIfPhoneNumberIsOptedOut is implemented (may need params)."""
-        try:
-            client.check_if_phone_number_is_opted_out()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_platform_endpoint(self, client):
-        """CreatePlatformEndpoint is implemented (may need params)."""
-        try:
-            client.create_platform_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_sms_sandbox_phone_number(self, client):
-        """CreateSMSSandboxPhoneNumber is implemented (may need params)."""
-        try:
-            client.create_sms_sandbox_phone_number()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_endpoint(self, client):
-        """DeleteEndpoint is implemented (may need params)."""
-        try:
-            client.delete_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_sms_sandbox_phone_number(self, client):
-        """DeleteSMSSandboxPhoneNumber is implemented (may need params)."""
-        try:
-            client.delete_sms_sandbox_phone_number()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_data_protection_policy(self, client):
-        """GetDataProtectionPolicy is implemented (may need params)."""
-        try:
-            client.get_data_protection_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_endpoint_attributes(self, client):
-        """GetEndpointAttributes is implemented (may need params)."""
-        try:
-            client.get_endpoint_attributes()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_platform_application_attributes(self, client):
-        """GetPlatformApplicationAttributes is implemented (may need params)."""
-        try:
-            client.get_platform_application_attributes()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_get_sms_attributes(self, client):
         """GetSMSAttributes returns a response."""
         resp = client.get_sms_attributes()
@@ -1147,15 +1066,6 @@ class TestSnsAutoCoverage:
         resp = client.get_sms_sandbox_account_status()
         assert "IsInSandbox" in resp
 
-    def test_list_endpoints_by_platform_application(self, client):
-        """ListEndpointsByPlatformApplication is implemented (may need params)."""
-        try:
-            client.list_endpoints_by_platform_application()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_list_phone_numbers_opted_out(self, client):
         """ListPhoneNumbersOptedOut returns a response."""
         resp = client.list_phone_numbers_opted_out()
@@ -1165,66 +1075,3 @@ class TestSnsAutoCoverage:
         """ListSMSSandboxPhoneNumbers returns a response."""
         resp = client.list_sms_sandbox_phone_numbers()
         assert "PhoneNumbers" in resp
-
-    def test_opt_in_phone_number(self, client):
-        """OptInPhoneNumber is implemented (may need params)."""
-        try:
-            client.opt_in_phone_number()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_put_data_protection_policy(self, client):
-        """PutDataProtectionPolicy is implemented (may need params)."""
-        try:
-            client.put_data_protection_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_remove_permission(self, client):
-        """RemovePermission is implemented (may need params)."""
-        try:
-            client.remove_permission()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_set_endpoint_attributes(self, client):
-        """SetEndpointAttributes is implemented (may need params)."""
-        try:
-            client.set_endpoint_attributes()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_set_platform_application_attributes(self, client):
-        """SetPlatformApplicationAttributes is implemented (may need params)."""
-        try:
-            client.set_platform_application_attributes()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_set_sms_attributes(self, client):
-        """SetSMSAttributes is implemented (may need params)."""
-        try:
-            client.set_sms_attributes()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_verify_sms_sandbox_phone_number(self, client):
-        """VerifySMSSandboxPhoneNumber is implemented (may need params)."""
-        try:
-            client.verify_sms_sandbox_phone_number()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

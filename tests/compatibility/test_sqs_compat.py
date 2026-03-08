@@ -7,9 +7,6 @@ import uuid
 
 import boto3
 import pytest
-from botocore.exceptions import ParamValidationError
-
-from tests.compatibility.conftest import make_client
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
@@ -1411,38 +1408,3 @@ class TestSQSFIFOExtended:
             assert "SequenceNumber" in resp
         finally:
             sqs.delete_queue(QueueUrl=url)
-
-
-class TestSqsAutoCoverage:
-    """Auto-generated coverage tests for sqs."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("sqs")
-
-    def test_cancel_message_move_task(self, client):
-        """CancelMessageMoveTask is implemented (may need params)."""
-        try:
-            client.cancel_message_move_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_message_move_tasks(self, client):
-        """ListMessageMoveTasks is implemented (may need params)."""
-        try:
-            client.list_message_move_tasks()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_start_message_move_task(self, client):
-        """StartMessageMoveTask is implemented (may need params)."""
-        try:
-            client.start_message_move_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

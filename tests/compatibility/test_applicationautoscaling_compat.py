@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -213,83 +212,3 @@ class TestScalingPolicyOperations:
         )
         matching = [p for p in resp["ScalingPolicies"] if p["PolicyName"] == policy_name]
         assert len(matching) == 0
-
-
-class TestApplicationautoscalingAutoCoverage:
-    """Auto-generated coverage tests for applicationautoscaling."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("application-autoscaling")
-
-    def test_delete_scheduled_action(self, client):
-        """DeleteScheduledAction is implemented (may need params)."""
-        try:
-            client.delete_scheduled_action()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_scaling_activities(self, client):
-        """DescribeScalingActivities is implemented (may need params)."""
-        try:
-            client.describe_scaling_activities()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_scheduled_actions(self, client):
-        """DescribeScheduledActions is implemented (may need params)."""
-        try:
-            client.describe_scheduled_actions()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_predictive_scaling_forecast(self, client):
-        """GetPredictiveScalingForecast is implemented (may need params)."""
-        try:
-            client.get_predictive_scaling_forecast()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_tags_for_resource(self, client):
-        """ListTagsForResource is implemented (may need params)."""
-        try:
-            client.list_tags_for_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_put_scheduled_action(self, client):
-        """PutScheduledAction is implemented (may need params)."""
-        try:
-            client.put_scheduled_action()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_tag_resource(self, client):
-        """TagResource is implemented (may need params)."""
-        try:
-            client.tag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_untag_resource(self, client):
-        """UntagResource is implemented (may need params)."""
-        try:
-            client.untag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

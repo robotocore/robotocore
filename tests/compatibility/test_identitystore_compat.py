@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -223,83 +222,3 @@ class TestIdentityStoreGroupMembership:
         )
         membership_ids = [m["MembershipId"] for m in response["GroupMemberships"]]
         assert mem["MembershipId"] not in membership_ids
-
-
-class TestIdentitystoreAutoCoverage:
-    """Auto-generated coverage tests for identitystore."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("identitystore")
-
-    def test_describe_group_membership(self, client):
-        """DescribeGroupMembership is implemented (may need params)."""
-        try:
-            client.describe_group_membership()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_group_id(self, client):
-        """GetGroupId is implemented (may need params)."""
-        try:
-            client.get_group_id()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_group_membership_id(self, client):
-        """GetGroupMembershipId is implemented (may need params)."""
-        try:
-            client.get_group_membership_id()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_user_id(self, client):
-        """GetUserId is implemented (may need params)."""
-        try:
-            client.get_user_id()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_is_member_in_groups(self, client):
-        """IsMemberInGroups is implemented (may need params)."""
-        try:
-            client.is_member_in_groups()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_group_memberships_for_member(self, client):
-        """ListGroupMembershipsForMember is implemented (may need params)."""
-        try:
-            client.list_group_memberships_for_member()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_group(self, client):
-        """UpdateGroup is implemented (may need params)."""
-        try:
-            client.update_group()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_user(self, client):
-        """UpdateUser is implemented (may need params)."""
-        try:
-            client.update_user()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

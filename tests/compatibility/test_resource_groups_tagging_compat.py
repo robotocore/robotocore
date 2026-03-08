@@ -1,7 +1,6 @@
 """Resource Groups Tagging API compatibility tests."""
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -206,12 +205,3 @@ class TestResourcegroupstaggingapiAutoCoverage:
     def test_list_required_tags(self, client):
         """ListRequiredTags returns a response."""
         client.list_required_tags()
-
-    def test_start_report_creation(self, client):
-        """StartReportCreation is implemented (may need params)."""
-        try:
-            client.start_report_creation()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

@@ -3,7 +3,6 @@
 import json
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -526,47 +525,3 @@ class TestSecretsManagerExtended:
         finally:
             for n in names:
                 sm.delete_secret(SecretId=n, ForceDeleteWithoutRecovery=True)
-
-
-class TestSecretsmanagerAutoCoverage:
-    """Auto-generated coverage tests for secretsmanager."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("secretsmanager")
-
-    def test_cancel_rotate_secret(self, client):
-        """CancelRotateSecret is implemented (may need params)."""
-        try:
-            client.cancel_rotate_secret()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_remove_regions_from_replication(self, client):
-        """RemoveRegionsFromReplication is implemented (may need params)."""
-        try:
-            client.remove_regions_from_replication()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_stop_replication_to_replica(self, client):
-        """StopReplicationToReplica is implemented (may need params)."""
-        try:
-            client.stop_replication_to_replica()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_secret_version_stage(self, client):
-        """UpdateSecretVersionStage is implemented (may need params)."""
-        try:
-            client.update_secret_version_stage()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

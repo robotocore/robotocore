@@ -5,7 +5,6 @@ import time
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -1353,141 +1352,15 @@ class TestEventsAutoCoverage:
     def client(self):
         return make_client("events")
 
-    def test_activate_event_source(self, client):
-        """ActivateEventSource is implemented (may need params)."""
-        try:
-            client.activate_event_source()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_cancel_replay(self, client):
-        """CancelReplay is implemented (may need params)."""
-        try:
-            client.cancel_replay()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_endpoint(self, client):
-        """CreateEndpoint is implemented (may need params)."""
-        try:
-            client.create_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_partner_event_source(self, client):
-        """CreatePartnerEventSource is implemented (may need params)."""
-        try:
-            client.create_partner_event_source()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_deactivate_event_source(self, client):
-        """DeactivateEventSource is implemented (may need params)."""
-        try:
-            client.deactivate_event_source()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_deauthorize_connection(self, client):
-        """DeauthorizeConnection is implemented (may need params)."""
-        try:
-            client.deauthorize_connection()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_endpoint(self, client):
-        """DeleteEndpoint is implemented (may need params)."""
-        try:
-            client.delete_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_partner_event_source(self, client):
-        """DeletePartnerEventSource is implemented (may need params)."""
-        try:
-            client.delete_partner_event_source()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_endpoint(self, client):
-        """DescribeEndpoint is implemented (may need params)."""
-        try:
-            client.describe_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_event_source(self, client):
-        """DescribeEventSource is implemented (may need params)."""
-        try:
-            client.describe_event_source()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_partner_event_source(self, client):
-        """DescribePartnerEventSource is implemented (may need params)."""
-        try:
-            client.describe_partner_event_source()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_list_event_sources(self, client):
         """ListEventSources returns a response."""
         resp = client.list_event_sources()
         assert "EventSources" in resp
 
-    def test_list_partner_event_source_accounts(self, client):
-        """ListPartnerEventSourceAccounts is implemented (may need params)."""
-        try:
-            client.list_partner_event_source_accounts()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_partner_event_sources(self, client):
-        """ListPartnerEventSources is implemented (may need params)."""
-        try:
-            client.list_partner_event_sources()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_list_replays(self, client):
         """ListReplays returns a response."""
         resp = client.list_replays()
         assert "Replays" in resp
-
-    def test_list_rule_names_by_target(self, client):
-        """ListRuleNamesByTarget is implemented (may need params)."""
-        try:
-            client.list_rule_names_by_target()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_put_permission(self, client):
         """PutPermission returns a response."""
@@ -1502,42 +1375,6 @@ class TestEventsAutoCoverage:
             client.remove_permission()
         except client.exceptions.ClientError:
             pass  # Operation exists
-
-    def test_test_event_pattern(self, client):
-        """TestEventPattern is implemented (may need params)."""
-        try:
-            client.test_event_pattern()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_api_destination(self, client):
-        """UpdateApiDestination is implemented (may need params)."""
-        try:
-            client.update_api_destination()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_connection(self, client):
-        """UpdateConnection is implemented (may need params)."""
-        try:
-            client.update_connection()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_endpoint(self, client):
-        """UpdateEndpoint is implemented (may need params)."""
-        try:
-            client.update_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_update_event_bus(self, client):
         """UpdateEventBus returns a response."""

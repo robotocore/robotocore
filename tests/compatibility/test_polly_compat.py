@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -119,29 +118,3 @@ class TestLexicons:
         resp = polly_client.list_lexicons()
         assert "Lexicons" in resp
         assert isinstance(resp["Lexicons"], list)
-
-
-class TestPollyAutoCoverage:
-    """Auto-generated coverage tests for polly."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("polly")
-
-    def test_get_speech_synthesis_task(self, client):
-        """GetSpeechSynthesisTask is implemented (may need params)."""
-        try:
-            client.get_speech_synthesis_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_start_speech_synthesis_task(self, client):
-        """StartSpeechSynthesisTask is implemented (may need params)."""
-        try:
-            client.start_speech_synthesis_task()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

@@ -1,7 +1,6 @@
 """CloudHSM V2 compatibility tests."""
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -59,114 +58,6 @@ class TestCloudhsmv2AutoCoverage:
     def client(self):
         return make_client("cloudhsmv2")
 
-    def test_copy_backup_to_region(self, client):
-        """CopyBackupToRegion is implemented (may need params)."""
-        try:
-            client.copy_backup_to_region()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_cluster(self, client):
-        """CreateCluster is implemented (may need params)."""
-        try:
-            client.create_cluster()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_hsm(self, client):
-        """CreateHsm is implemented (may need params)."""
-        try:
-            client.create_hsm()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_backup(self, client):
-        """DeleteBackup is implemented (may need params)."""
-        try:
-            client.delete_backup()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_hsm(self, client):
-        """DeleteHsm is implemented (may need params)."""
-        try:
-            client.delete_hsm()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_initialize_cluster(self, client):
-        """InitializeCluster is implemented (may need params)."""
-        try:
-            client.initialize_cluster()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_tags(self, client):
-        """ListTags is implemented (may need params)."""
-        try:
-            client.list_tags()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_modify_backup_attributes(self, client):
-        """ModifyBackupAttributes is implemented (may need params)."""
-        try:
-            client.modify_backup_attributes()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_modify_cluster(self, client):
-        """ModifyCluster is implemented (may need params)."""
-        try:
-            client.modify_cluster()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_put_resource_policy(self, client):
         """PutResourcePolicy returns a response."""
         client.put_resource_policy()
-
-    def test_restore_backup(self, client):
-        """RestoreBackup is implemented (may need params)."""
-        try:
-            client.restore_backup()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_tag_resource(self, client):
-        """TagResource is implemented (may need params)."""
-        try:
-            client.tag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_untag_resource(self, client):
-        """UntagResource is implemented (may need params)."""
-        try:
-            client.untag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

@@ -3,7 +3,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -1336,122 +1335,14 @@ class TestCloudwatchAutoCoverage:
     def client(self):
         return make_client("cloudwatch")
 
-    def test_delete_alarm_mute_rule(self, client):
-        """DeleteAlarmMuteRule is implemented (may need params)."""
-        try:
-            client.delete_alarm_mute_rule()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_delete_anomaly_detector(self, client):
         """DeleteAnomalyDetector returns a response."""
         client.delete_anomaly_detector()
-
-    def test_delete_metric_stream(self, client):
-        """DeleteMetricStream is implemented (may need params)."""
-        try:
-            client.delete_metric_stream()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_alarm_contributors(self, client):
-        """DescribeAlarmContributors is implemented (may need params)."""
-        try:
-            client.describe_alarm_contributors()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_alarm_mute_rule(self, client):
-        """GetAlarmMuteRule is implemented (may need params)."""
-        try:
-            client.get_alarm_mute_rule()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_insight_rule_report(self, client):
-        """GetInsightRuleReport is implemented (may need params)."""
-        try:
-            client.get_insight_rule_report()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_metric_stream(self, client):
-        """GetMetricStream is implemented (may need params)."""
-        try:
-            client.get_metric_stream()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_metric_widget_image(self, client):
-        """GetMetricWidgetImage is implemented (may need params)."""
-        try:
-            client.get_metric_widget_image()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_list_alarm_mute_rules(self, client):
         """ListAlarmMuteRules returns a response."""
         client.list_alarm_mute_rules()
 
-    def test_put_alarm_mute_rule(self, client):
-        """PutAlarmMuteRule is implemented (may need params)."""
-        try:
-            client.put_alarm_mute_rule()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_put_anomaly_detector(self, client):
         """PutAnomalyDetector returns a response."""
         client.put_anomaly_detector()
-
-    def test_put_managed_insight_rules(self, client):
-        """PutManagedInsightRules is implemented (may need params)."""
-        try:
-            client.put_managed_insight_rules()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_put_metric_stream(self, client):
-        """PutMetricStream is implemented (may need params)."""
-        try:
-            client.put_metric_stream()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_start_metric_streams(self, client):
-        """StartMetricStreams is implemented (may need params)."""
-        try:
-            client.start_metric_streams()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_stop_metric_streams(self, client):
-        """StopMetricStreams is implemented (may need params)."""
-        try:
-            client.stop_metric_streams()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

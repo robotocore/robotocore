@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -114,101 +113,3 @@ class TestMediaPackageOriginEndpoints:
         endpoint_ids = [ep["Id"] for ep in response["OriginEndpoints"]]
         assert ep1 in endpoint_ids
         assert ep2 in endpoint_ids
-
-
-class TestMediapackageAutoCoverage:
-    """Auto-generated coverage tests for mediapackage."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("mediapackage")
-
-    def test_configure_logs(self, client):
-        """ConfigureLogs is implemented (may need params)."""
-        try:
-            client.configure_logs()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_harvest_job(self, client):
-        """CreateHarvestJob is implemented (may need params)."""
-        try:
-            client.create_harvest_job()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_harvest_job(self, client):
-        """DescribeHarvestJob is implemented (may need params)."""
-        try:
-            client.describe_harvest_job()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_tags_for_resource(self, client):
-        """ListTagsForResource is implemented (may need params)."""
-        try:
-            client.list_tags_for_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_rotate_channel_credentials(self, client):
-        """RotateChannelCredentials is implemented (may need params)."""
-        try:
-            client.rotate_channel_credentials()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_rotate_ingest_endpoint_credentials(self, client):
-        """RotateIngestEndpointCredentials is implemented (may need params)."""
-        try:
-            client.rotate_ingest_endpoint_credentials()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_tag_resource(self, client):
-        """TagResource is implemented (may need params)."""
-        try:
-            client.tag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_untag_resource(self, client):
-        """UntagResource is implemented (may need params)."""
-        try:
-            client.untag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_channel(self, client):
-        """UpdateChannel is implemented (may need params)."""
-        try:
-            client.update_channel()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_origin_endpoint(self, client):
-        """UpdateOriginEndpoint is implemented (may need params)."""
-        try:
-            client.update_origin_endpoint()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

@@ -4,7 +4,6 @@ import json
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -552,47 +551,3 @@ class TestSTSExtended:
             assert "Credentials" in response
         finally:
             iam.delete_role(RoleName=role_name)
-
-
-class TestStsAutoCoverage:
-    """Auto-generated coverage tests for sts."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("sts")
-
-    def test_assume_role_with_saml(self, client):
-        """AssumeRoleWithSAML is implemented (may need params)."""
-        try:
-            client.assume_role_with_saml()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_assume_root(self, client):
-        """AssumeRoot is implemented (may need params)."""
-        try:
-            client.assume_root()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_delegated_access_token(self, client):
-        """GetDelegatedAccessToken is implemented (may need params)."""
-        try:
-            client.get_delegated_access_token()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_web_identity_token(self, client):
-        """GetWebIdentityToken is implemented (may need params)."""
-        try:
-            client.get_web_identity_token()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

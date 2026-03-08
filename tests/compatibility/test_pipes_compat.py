@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -99,65 +98,3 @@ class TestPipesCompat:
         # Use a prefix that should match nothing
         resp = pipes_client.list_pipes(NamePrefix="nonexistent-prefix-xyz")
         assert len(resp["Pipes"]) == 0
-
-
-class TestPipesAutoCoverage:
-    """Auto-generated coverage tests for pipes."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("pipes")
-
-    def test_list_tags_for_resource(self, client):
-        """ListTagsForResource is implemented (may need params)."""
-        try:
-            client.list_tags_for_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_start_pipe(self, client):
-        """StartPipe is implemented (may need params)."""
-        try:
-            client.start_pipe()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_stop_pipe(self, client):
-        """StopPipe is implemented (may need params)."""
-        try:
-            client.stop_pipe()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_tag_resource(self, client):
-        """TagResource is implemented (may need params)."""
-        try:
-            client.tag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_untag_resource(self, client):
-        """UntagResource is implemented (may need params)."""
-        try:
-            client.untag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_pipe(self, client):
-        """UpdatePipe is implemented (may need params)."""
-        try:
-            client.update_pipe()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

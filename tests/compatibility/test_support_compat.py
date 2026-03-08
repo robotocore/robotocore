@@ -1,7 +1,6 @@
 """AWS Support compatibility tests."""
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -88,96 +87,6 @@ class TestSupportAutoCoverage:
     @pytest.fixture
     def client(self):
         return make_client("support")
-
-    def test_add_attachments_to_set(self, client):
-        """AddAttachmentsToSet is implemented (may need params)."""
-        try:
-            client.add_attachments_to_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_add_communication_to_case(self, client):
-        """AddCommunicationToCase is implemented (may need params)."""
-        try:
-            client.add_communication_to_case()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_attachment(self, client):
-        """DescribeAttachment is implemented (may need params)."""
-        try:
-            client.describe_attachment()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_communications(self, client):
-        """DescribeCommunications is implemented (may need params)."""
-        try:
-            client.describe_communications()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_create_case_options(self, client):
-        """DescribeCreateCaseOptions is implemented (may need params)."""
-        try:
-            client.describe_create_case_options()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_supported_languages(self, client):
-        """DescribeSupportedLanguages is implemented (may need params)."""
-        try:
-            client.describe_supported_languages()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_trusted_advisor_check_refresh_statuses(self, client):
-        """DescribeTrustedAdvisorCheckRefreshStatuses is implemented (may need params)."""
-        try:
-            client.describe_trusted_advisor_check_refresh_statuses()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_trusted_advisor_check_result(self, client):
-        """DescribeTrustedAdvisorCheckResult is implemented (may need params)."""
-        try:
-            client.describe_trusted_advisor_check_result()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_trusted_advisor_check_summaries(self, client):
-        """DescribeTrustedAdvisorCheckSummaries is implemented (may need params)."""
-        try:
-            client.describe_trusted_advisor_check_summaries()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_refresh_trusted_advisor_check(self, client):
-        """RefreshTrustedAdvisorCheck is implemented (may need params)."""
-        try:
-            client.refresh_trusted_advisor_check()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_resolve_case(self, client):
         """ResolveCase returns a response."""

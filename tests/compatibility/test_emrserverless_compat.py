@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -158,74 +157,3 @@ class TestEMRServerlessJobRuns:
         assert jr["applicationId"] == application
         assert "state" in jr
         assert "executionRole" in jr
-
-
-class TestEmrserverlessAutoCoverage:
-    """Auto-generated coverage tests for emrserverless."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("emr-serverless")
-
-    def test_cancel_job_run(self, client):
-        """CancelJobRun is implemented (may need params)."""
-        try:
-            client.cancel_job_run()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_dashboard_for_job_run(self, client):
-        """GetDashboardForJobRun is implemented (may need params)."""
-        try:
-            client.get_dashboard_for_job_run()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_job_run_attempts(self, client):
-        """ListJobRunAttempts is implemented (may need params)."""
-        try:
-            client.list_job_run_attempts()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_tags_for_resource(self, client):
-        """ListTagsForResource is implemented (may need params)."""
-        try:
-            client.list_tags_for_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_start_application(self, client):
-        """StartApplication is implemented (may need params)."""
-        try:
-            client.start_application()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_tag_resource(self, client):
-        """TagResource is implemented (may need params)."""
-        try:
-            client.tag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_untag_resource(self, client):
-        """UntagResource is implemented (may need params)."""
-        try:
-            client.untag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

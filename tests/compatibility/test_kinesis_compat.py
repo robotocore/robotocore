@@ -4,7 +4,7 @@ import time
 import uuid
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -981,123 +981,6 @@ class TestKinesisAutoCoverage:
     def client(self):
         return make_client("kinesis")
 
-    def test_delete_resource_policy(self, client):
-        """DeleteResourcePolicy is implemented (may need params)."""
-        try:
-            client.delete_resource_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_describe_account_settings(self, client):
         """DescribeAccountSettings returns a response."""
         client.describe_account_settings()
-
-    def test_disable_enhanced_monitoring(self, client):
-        """DisableEnhancedMonitoring is implemented (may need params)."""
-        try:
-            client.disable_enhanced_monitoring()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_enable_enhanced_monitoring(self, client):
-        """EnableEnhancedMonitoring is implemented (may need params)."""
-        try:
-            client.enable_enhanced_monitoring()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_resource_policy(self, client):
-        """GetResourcePolicy is implemented (may need params)."""
-        try:
-            client.get_resource_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_tags_for_resource(self, client):
-        """ListTagsForResource is implemented (may need params)."""
-        try:
-            client.list_tags_for_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_put_resource_policy(self, client):
-        """PutResourcePolicy is implemented (may need params)."""
-        try:
-            client.put_resource_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_subscribe_to_shard(self, client):
-        """SubscribeToShard is implemented (may need params)."""
-        try:
-            client.subscribe_to_shard()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_tag_resource(self, client):
-        """TagResource is implemented (may need params)."""
-        try:
-            client.tag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_untag_resource(self, client):
-        """UntagResource is implemented (may need params)."""
-        try:
-            client.untag_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_account_settings(self, client):
-        """UpdateAccountSettings is implemented (may need params)."""
-        try:
-            client.update_account_settings()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_max_record_size(self, client):
-        """UpdateMaxRecordSize is implemented (may need params)."""
-        try:
-            client.update_max_record_size()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_stream_mode(self, client):
-        """UpdateStreamMode is implemented (may need params)."""
-        try:
-            client.update_stream_mode()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_stream_warm_throughput(self, client):
-        """UpdateStreamWarmThroughput is implemented (may need params)."""
-        try:
-            client.update_stream_warm_throughput()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params

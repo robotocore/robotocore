@@ -7,7 +7,6 @@ import uuid
 
 import boto3
 import pytest
-from botocore.exceptions import ParamValidationError
 
 from tests.compatibility.conftest import make_client
 
@@ -1725,78 +1724,6 @@ class TestCloudformationAutoCoverage:
         resp = client.activate_type()
         assert "Arn" in resp
 
-    def test_batch_describe_type_configurations(self, client):
-        """BatchDescribeTypeConfigurations is implemented (may need params)."""
-        try:
-            client.batch_describe_type_configurations()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_cancel_update_stack(self, client):
-        """CancelUpdateStack is implemented (may need params)."""
-        try:
-            client.cancel_update_stack()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_continue_update_rollback(self, client):
-        """ContinueUpdateRollback is implemented (may need params)."""
-        try:
-            client.continue_update_rollback()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_change_set(self, client):
-        """CreateChangeSet is implemented (may need params)."""
-        try:
-            client.create_change_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_generated_template(self, client):
-        """CreateGeneratedTemplate is implemented (may need params)."""
-        try:
-            client.create_generated_template()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_stack_instances(self, client):
-        """CreateStackInstances is implemented (may need params)."""
-        try:
-            client.create_stack_instances()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_stack_refactor(self, client):
-        """CreateStackRefactor is implemented (may need params)."""
-        try:
-            client.create_stack_refactor()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_create_stack_set(self, client):
-        """CreateStackSet is implemented (may need params)."""
-        try:
-            client.create_stack_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_deactivate_organizations_access(self, client):
         """DeactivateOrganizationsAccess returns a response."""
         client.deactivate_organizations_access()
@@ -1805,443 +1732,47 @@ class TestCloudformationAutoCoverage:
         """DeactivateType returns a response."""
         client.deactivate_type()
 
-    def test_delete_change_set(self, client):
-        """DeleteChangeSet is implemented (may need params)."""
-        try:
-            client.delete_change_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_generated_template(self, client):
-        """DeleteGeneratedTemplate is implemented (may need params)."""
-        try:
-            client.delete_generated_template()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_stack_instances(self, client):
-        """DeleteStackInstances is implemented (may need params)."""
-        try:
-            client.delete_stack_instances()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_delete_stack_set(self, client):
-        """DeleteStackSet is implemented (may need params)."""
-        try:
-            client.delete_stack_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_deregister_type(self, client):
         """DeregisterType returns a response."""
         client.deregister_type()
-
-    def test_describe_change_set(self, client):
-        """DescribeChangeSet is implemented (may need params)."""
-        try:
-            client.describe_change_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_change_set_hooks(self, client):
-        """DescribeChangeSetHooks is implemented (may need params)."""
-        try:
-            client.describe_change_set_hooks()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_describe_events(self, client):
         """DescribeEvents returns a response."""
         client.describe_events()
 
-    def test_describe_generated_template(self, client):
-        """DescribeGeneratedTemplate is implemented (may need params)."""
-        try:
-            client.describe_generated_template()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_resource_scan(self, client):
-        """DescribeResourceScan is implemented (may need params)."""
-        try:
-            client.describe_resource_scan()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_stack_drift_detection_status(self, client):
-        """DescribeStackDriftDetectionStatus is implemented (may need params)."""
-        try:
-            client.describe_stack_drift_detection_status()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_stack_instance(self, client):
-        """DescribeStackInstance is implemented (may need params)."""
-        try:
-            client.describe_stack_instance()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_stack_refactor(self, client):
-        """DescribeStackRefactor is implemented (may need params)."""
-        try:
-            client.describe_stack_refactor()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_stack_resource_drifts(self, client):
-        """DescribeStackResourceDrifts is implemented (may need params)."""
-        try:
-            client.describe_stack_resource_drifts()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_stack_set(self, client):
-        """DescribeStackSet is implemented (may need params)."""
-        try:
-            client.describe_stack_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_stack_set_operation(self, client):
-        """DescribeStackSetOperation is implemented (may need params)."""
-        try:
-            client.describe_stack_set_operation()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_describe_type_registration(self, client):
-        """DescribeTypeRegistration is implemented (may need params)."""
-        try:
-            client.describe_type_registration()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_detect_stack_drift(self, client):
-        """DetectStackDrift is implemented (may need params)."""
-        try:
-            client.detect_stack_drift()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_detect_stack_resource_drift(self, client):
-        """DetectStackResourceDrift is implemented (may need params)."""
-        try:
-            client.detect_stack_resource_drift()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_detect_stack_set_drift(self, client):
-        """DetectStackSetDrift is implemented (may need params)."""
-        try:
-            client.detect_stack_set_drift()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_execute_change_set(self, client):
-        """ExecuteChangeSet is implemented (may need params)."""
-        try:
-            client.execute_change_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_execute_stack_refactor(self, client):
-        """ExecuteStackRefactor is implemented (may need params)."""
-        try:
-            client.execute_stack_refactor()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_get_generated_template(self, client):
-        """GetGeneratedTemplate is implemented (may need params)."""
-        try:
-            client.get_generated_template()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_get_hook_result(self, client):
         """GetHookResult returns a response."""
         client.get_hook_result()
 
-    def test_get_stack_policy(self, client):
-        """GetStackPolicy is implemented (may need params)."""
-        try:
-            client.get_stack_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_import_stacks_to_stack_set(self, client):
-        """ImportStacksToStackSet is implemented (may need params)."""
-        try:
-            client.import_stacks_to_stack_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_change_sets(self, client):
-        """ListChangeSets is implemented (may need params)."""
-        try:
-            client.list_change_sets()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_list_hook_results(self, client):
         """ListHookResults returns a response."""
         client.list_hook_results()
-
-    def test_list_imports(self, client):
-        """ListImports is implemented (may need params)."""
-        try:
-            client.list_imports()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_resource_scan_related_resources(self, client):
-        """ListResourceScanRelatedResources is implemented (may need params)."""
-        try:
-            client.list_resource_scan_related_resources()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_resource_scan_resources(self, client):
-        """ListResourceScanResources is implemented (may need params)."""
-        try:
-            client.list_resource_scan_resources()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_stack_instance_resource_drifts(self, client):
-        """ListStackInstanceResourceDrifts is implemented (may need params)."""
-        try:
-            client.list_stack_instance_resource_drifts()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_stack_instances(self, client):
-        """ListStackInstances is implemented (may need params)."""
-        try:
-            client.list_stack_instances()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_stack_refactor_actions(self, client):
-        """ListStackRefactorActions is implemented (may need params)."""
-        try:
-            client.list_stack_refactor_actions()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_list_stack_refactors(self, client):
         """ListStackRefactors returns a response."""
         resp = client.list_stack_refactors()
         assert "StackRefactorSummaries" in resp
 
-    def test_list_stack_set_auto_deployment_targets(self, client):
-        """ListStackSetAutoDeploymentTargets is implemented (may need params)."""
-        try:
-            client.list_stack_set_auto_deployment_targets()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_stack_set_operation_results(self, client):
-        """ListStackSetOperationResults is implemented (may need params)."""
-        try:
-            client.list_stack_set_operation_results()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_list_stack_set_operations(self, client):
-        """ListStackSetOperations is implemented (may need params)."""
-        try:
-            client.list_stack_set_operations()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_publish_type(self, client):
         """PublishType returns a response."""
         resp = client.publish_type()
         assert "PublicTypeArn" in resp
-
-    def test_record_handler_progress(self, client):
-        """RecordHandlerProgress is implemented (may need params)."""
-        try:
-            client.record_handler_progress()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_register_publisher(self, client):
         """RegisterPublisher returns a response."""
         resp = client.register_publisher()
         assert "PublisherId" in resp
 
-    def test_register_type(self, client):
-        """RegisterType is implemented (may need params)."""
-        try:
-            client.register_type()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_rollback_stack(self, client):
-        """RollbackStack is implemented (may need params)."""
-        try:
-            client.rollback_stack()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_set_stack_policy(self, client):
-        """SetStackPolicy is implemented (may need params)."""
-        try:
-            client.set_stack_policy()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_set_type_configuration(self, client):
-        """SetTypeConfiguration is implemented (may need params)."""
-        try:
-            client.set_type_configuration()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_set_type_default_version(self, client):
         """SetTypeDefaultVersion returns a response."""
         client.set_type_default_version()
-
-    def test_signal_resource(self, client):
-        """SignalResource is implemented (may need params)."""
-        try:
-            client.signal_resource()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
 
     def test_start_resource_scan(self, client):
         """StartResourceScan returns a response."""
         resp = client.start_resource_scan()
         assert "ResourceScanId" in resp
 
-    def test_stop_stack_set_operation(self, client):
-        """StopStackSetOperation is implemented (may need params)."""
-        try:
-            client.stop_stack_set_operation()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
     def test_test_type(self, client):
         """TestType returns a response."""
         resp = client.test_type()
         assert "TypeVersionArn" in resp
-
-    def test_update_generated_template(self, client):
-        """UpdateGeneratedTemplate is implemented (may need params)."""
-        try:
-            client.update_generated_template()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_stack_instances(self, client):
-        """UpdateStackInstances is implemented (may need params)."""
-        try:
-            client.update_stack_instances()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_stack_set(self, client):
-        """UpdateStackSet is implemented (may need params)."""
-        try:
-            client.update_stack_set()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
-
-    def test_update_termination_protection(self, client):
-        """UpdateTerminationProtection is implemented (may need params)."""
-        try:
-            client.update_termination_protection()
-        except client.exceptions.ClientError:
-            pass  # Expected — operation exists but needs params
-        except ParamValidationError:
-            pass  # Expected — operation exists but needs params
