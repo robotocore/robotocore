@@ -203,3 +203,9 @@ class TestDsLDAPSSettings:
         with pytest.raises(ClientError) as exc_info:
             ds.disable_ldaps(DirectoryId=directory, Type="Client")
         assert exc_info.value.response["Error"]["Code"] == "UnsupportedOperationException"
+
+    def test_describe_ldaps_settings(self, ds, directory):
+        """DescribeLDAPSSettings on a SimpleAD directory raises UnsupportedOperationException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.describe_ldaps_settings(DirectoryId=directory, Type="Client")
+        assert exc_info.value.response["Error"]["Code"] == "UnsupportedOperationException"
