@@ -1408,3 +1408,67 @@ class TestSQSFIFOExtended:
             assert "SequenceNumber" in resp
         finally:
             sqs.delete_queue(QueueUrl=url)
+
+
+class TestSQSMessageMoveTasks:
+    def test_start_message_move_task(self, sqs):
+        suffix = uuid.uuid4().hex[:6]
+        src_name = f"mmt-src-{suffix}"
+        dlq_name = f"mmt-dlq-{suffix}"
+        # Create DLQ first
+        dlq_resp = sqs.create_queue(QueueName=dlq_name)
+        dlq_url = dlq_resp["QueueUrl"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        # Create source queue with redrive policy pointing to DLQ
+        src_resp = sqs.create_queue(
+            QueueName=src_name,
+            Attributes={
+                "RedrivePolicy": json.dumps(
+                    {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "1"}
+                )
+            },
+        )
+        src_url = src_resp["QueueUrl"]
+        try:
+            # Send a message and force it to DLQ by receiving without deleting
+            sqs.send_message(QueueUrl=src_url, MessageBody="move-me")
+            for _ in range(3):
+                sqs.receive_message(QueueUrl=src_url, VisibilityTimeout=0)
+            # Start move task from DLQ back to source
+            resp = sqs.start_message_move_task(SourceArn=dlq_arn)
+            assert "TaskHandle" in resp
+        finally:
+            sqs.delete_queue(QueueUrl=src_url)
+            sqs.delete_queue(QueueUrl=dlq_url)
+
+    def test_cancel_message_move_task(self, sqs):
+        suffix = uuid.uuid4().hex[:6]
+        src_name = f"mmt-cancel-src-{suffix}"
+        dlq_name = f"mmt-cancel-dlq-{suffix}"
+        dlq_resp = sqs.create_queue(QueueName=dlq_name)
+        dlq_url = dlq_resp["QueueUrl"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        src_resp = sqs.create_queue(
+            QueueName=src_name,
+            Attributes={
+                "RedrivePolicy": json.dumps(
+                    {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "1"}
+                )
+            },
+        )
+        src_url = src_resp["QueueUrl"]
+        try:
+            sqs.send_message(QueueUrl=src_url, MessageBody="cancel-me")
+            for _ in range(3):
+                sqs.receive_message(QueueUrl=src_url, VisibilityTimeout=0)
+            start_resp = sqs.start_message_move_task(SourceArn=dlq_arn)
+            task_handle = start_resp["TaskHandle"]
+            cancel_resp = sqs.cancel_message_move_task(TaskHandle=task_handle)
+            assert "ApproximateNumberOfMessagesMoved" in cancel_resp
+        finally:
+            sqs.delete_queue(QueueUrl=src_url)
+            sqs.delete_queue(QueueUrl=dlq_url)
