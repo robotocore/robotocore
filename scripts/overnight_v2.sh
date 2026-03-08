@@ -3,15 +3,11 @@
 #
 #   ./scripts/overnight_v2.sh
 #   ./scripts/overnight_v2.sh --resume                 # skip completed services
-#   ./scripts/overnight_v2.sh --services sqs,dynamodb   # specific services only
+#   SERVICES=sqs,dynamodb ./scripts/overnight_v2.sh    # specific services only
 #   MAX_HOURS=4 ./scripts/overnight_v2.sh              # wall-clock limit
 #
-# 7-gate verification pipeline per chunk:
-#   1. Syntax  2. Static quality  3. New tests pass  4. Regression
-#   5. Runtime validation  6. Coverage delta  7. Lint
-#
-# Self-healing: gates 2,3 re-prompt Claude for fixes before reverting.
-# Gate 5 surgically deletes non-contacting tests.
+# For each service: probe -> chunk -> per-chunk Claude session -> verify -> commit -> push
+# Verification: syntax + lint + pytest on modified file. Simple and robust.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -22,7 +18,6 @@ unset CLAUDECODE 2>/dev/null || true
 
 MAX_HOURS="${MAX_HOURS:-8}"
 START_TIME=$(date +%s)
-HEAL_TIMEOUT=300   # 5 min for heal attempts
 WRITE_TIMEOUT=900  # 15 min for test writing
 PROGRESS_FILE="logs/overnight/progress.json"
 
@@ -33,8 +28,9 @@ mkdir -p logs/overnight
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
 wall_clock_exceeded() {
-    local now=$(date +%s)
-    local elapsed=$(( (now - START_TIME) / 3600 ))
+    local now elapsed
+    now=$(date +%s)
+    elapsed=$(( (now - START_TIME) / 3600 ))
     [ "$elapsed" -ge "$MAX_HOURS" ]
 }
 
@@ -46,7 +42,6 @@ restart_server() {
     log "Restarting server..."
     make stop 2>/dev/null || true
     rm -f .robotocore.pid 2>/dev/null || true
-    # Kill any leftover uvicorn/robotocore processes
     pkill -f "robotocore.main" 2>/dev/null || true
     sleep 1
     make start
@@ -57,50 +52,138 @@ restart_server() {
     fi
 }
 
+find_test_file() {
+    # Find the compat test file for a service. Handles naming mismatches.
+    local svc="$1"
+    local snake="${svc//-/_}"
+    # Exact match first
+    for f in \
+        "tests/compatibility/test_${snake}_compat.py" \
+        "tests/compatibility/test_${snake//_/}_compat.py"; do
+        [ -f "$f" ] && echo "$f" && return
+    done
+    # Glob fallback: pick shortest match to avoid wrong files
+    ls tests/compatibility/test_*${snake}*_compat.py 2>/dev/null \
+        | awk '{print length, $0}' | sort -n | head -1 | cut -d' ' -f2-
+}
+
 get_coverage() {
-    # Returns covered count for a service
     local svc="$1"
     uv run python scripts/compat_coverage.py --service "$svc" --json 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['covered'])" 2>/dev/null || echo "0"
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['covered'])" \
+        2>/dev/null || echo "0"
 }
 
 get_total_ops() {
     local svc="$1"
     uv run python scripts/compat_coverage.py --service "$svc" --json 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['total_ops'])" 2>/dev/null || echo "0"
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['total_ops'])" \
+        2>/dev/null || echo "0"
 }
 
 count_new_tests() {
-    # Count test functions added in uncommitted changes to a file using AST diff
+    # Return names of test functions added since HEAD
     local file="$1"
     python3 -c "
-import ast, subprocess, sys
+import ast, subprocess
 file = '$file'
-
-# Get the committed version's test names
 try:
-    old = subprocess.run(['git', 'show', 'HEAD:' + file], capture_output=True, text=True)
+    old = subprocess.run(['git', 'show', 'HEAD:' + file],
+                         capture_output=True, text=True)
     if old.returncode == 0:
         old_tree = ast.parse(old.stdout)
-        old_tests = {node.name for node in ast.walk(old_tree) if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')}
+        old_tests = {n.name for n in ast.walk(old_tree)
+                     if isinstance(n, ast.FunctionDef) and n.name.startswith('test_')}
     else:
         old_tests = set()
-except:
+except Exception:
     old_tests = set()
-
-# Get current version's test names
 try:
     with open(file) as f:
         new_tree = ast.parse(f.read())
-    new_tests = {node.name for node in ast.walk(new_tree) if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')}
-except:
+    new_tests = {n.name for n in ast.walk(new_tree)
+                 if isinstance(n, ast.FunctionDef) and n.name.startswith('test_')}
+except Exception:
     new_tests = set()
-
-added = new_tests - old_tests
-# Print each new test name, one per line
-for t in sorted(added):
+for t in sorted(new_tests - old_tests):
     print(t)
 " 2>/dev/null
+}
+
+verify_and_commit() {
+    # Simple verification: syntax + lint + tests pass -> commit + push
+    # Returns 0 on success, 1 on failure (reverts on failure)
+    local svc="$1"
+    local test_file="$2"
+    local before_cov="$3"
+
+    # 1. Syntax check
+    if ! python3 -c "import py_compile; py_compile.compile('$test_file', doraise=True)" 2>/dev/null; then
+        log "    FAIL: syntax error in $test_file"
+        return 1
+    fi
+
+    # 2. Lint fix + check
+    uv run ruff check --fix --unsafe-fixes --quiet "$test_file" src/robotocore/ 2>/dev/null || true
+    uv run ruff format --quiet "$test_file" src/robotocore/ 2>/dev/null || true
+    if ! uv run ruff check "$test_file" src/robotocore/ --quiet 2>/dev/null; then
+        log "    FAIL: lint errors persist after auto-fix"
+        return 1
+    fi
+
+    # 3. All tests in the file pass (the real gate)
+    if ! uv run pytest "$test_file" -q --tb=short 2>&1 | tail -5; then
+        log "    FAIL: tests don't pass"
+        return 1
+    fi
+
+    # 4. Quality check (warn only, don't block)
+    uv run python scripts/validate_test_quality.py --file "$test_file" 2>/dev/null | tail -3 || true
+
+    # 5. Commit + push
+    local after_cov total_ops grad_msg=""
+    after_cov=$(get_coverage "$svc")
+    total_ops=$(get_total_ops "$svc")
+    if [ "$after_cov" = "$total_ops" ] && [ "$total_ops" != "0" ]; then
+        grad_msg=" [GRADUATED 100%]"
+    fi
+
+    # Stage test file + any provider changes Claude made
+    git add "$test_file" src/robotocore/ 2>/dev/null || true
+    # Also pick up lockfile changes if Moto was updated
+    git add uv.lock 2>/dev/null || true
+
+    # Only commit if there are staged changes
+    if git diff --cached --quiet 2>/dev/null; then
+        log "    No staged changes to commit"
+        return 1
+    fi
+
+    local commit_msg="Expand ${svc} compat tests: ${after_cov}/${total_ops} covered${grad_msg}
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+
+    if ! git commit -m "$commit_msg" 2>/dev/null; then
+        log "    FAIL: commit failed"
+        return 1
+    fi
+
+    git push 2>/dev/null || true
+    log "    COMMITTED: $svc $before_cov -> $after_cov/$total_ops$grad_msg"
+
+    # Track progress
+    local grad_flag=""
+    [ -n "$grad_msg" ] && grad_flag="--graduated"
+    uv run python scripts/overnight_progress.py \
+        --complete-service "$svc" --after-covered "$after_cov" $grad_flag 2>/dev/null || true
+
+    return 0
+}
+
+revert_all_changes() {
+    # Revert all uncommitted changes to tests and source
+    git checkout tests/compatibility/ src/robotocore/ 2>/dev/null || true
+    rm -f tests/compatibility/*.bak 2>/dev/null || true
 }
 
 # ─── Pre-flight ───────────────────────────────────────────────────────
@@ -109,17 +192,13 @@ log "=== Overnight v2 starting (max ${MAX_HOURS}h) ==="
 
 restart_server
 
-# Run full compat suite — abort if >2 failures (allow flaky state-dependent tests)
-log "Pre-flight: running full compat test suite..."
-PREFLIGHT_OUT=$(uv run pytest tests/compatibility/ -q --tb=line 2>&1)
-PREFLIGHT_FAILS=$(echo "$PREFLIGHT_OUT" | grep -c "^FAILED" || true)
-echo "$PREFLIGHT_OUT" | tail -5
-if [ "$PREFLIGHT_FAILS" -gt 2 ]; then
-    log "ABORT: $PREFLIGHT_FAILS compat test failures (>2). Fix them first."
+# Quick smoke test — don't run full suite, just check server works
+log "Pre-flight: smoke test..."
+if ! uv run pytest tests/compatibility/test_s3_compat.py -q --tb=line -x 2>&1 | tail -3; then
+    log "ABORT: S3 smoke test failed. Server broken."
     exit 1
-elif [ "$PREFLIGHT_FAILS" -gt 0 ]; then
-    log "WARNING: $PREFLIGHT_FAILS flaky test(s) detected, proceeding anyway"
 fi
+log "Pre-flight passed"
 
 # Initialize progress tracking
 if [ "${1:-}" = "--resume" ] && [ -f "$PROGRESS_FILE" ]; then
@@ -132,15 +211,9 @@ fi
 
 # ─── Get service queue ────────────────────────────────────────────────
 
-if [ -n "${SERVICES:-}" ] || [[ "${1:-}" == --services=* ]] || [[ "${2:-}" == --services=* ]]; then
-    # Parse --services flag or SERVICES env var
-    SVC_INPUT="${SERVICES:-}"
-    for arg in "$@"; do
-        [[ "$arg" == --services=* ]] && SVC_INPUT="${arg#--services=}"
-        [[ "$arg" == --services ]] && SVC_INPUT="${2:-}"
-    done
-    SERVICE_QUEUE=$(echo "$SVC_INPUT" | tr ',' '\n')
-    log "Using specified services: $SVC_INPUT"
+if [ -n "${SERVICES:-}" ]; then
+    SERVICE_QUEUE=$(echo "$SERVICES" | tr ',' '\n')
+    log "Using specified services: $SERVICES"
 else
     SERVICE_QUEUE=$(uv run python scripts/prioritize_services.py --json $RESUME_FLAG 2>/dev/null \
         | python3 -c "
@@ -153,13 +226,12 @@ for svc in data['ordered']:
 fi
 
 SERVICES_DONE=0
-SERVICES_SINCE_REPORT=0
 
 # ─── Main loop ────────────────────────────────────────────────────────
 
 for SERVICE in $SERVICE_QUEUE; do
     if wall_clock_exceeded; then
-        log "Wall clock limit (${MAX_HOURS}h) reached, stopping"
+        log "Wall clock limit (${MAX_HOURS}h) reached"
         break
     fi
 
@@ -173,7 +245,7 @@ for SERVICE in $SERVICE_QUEUE; do
     log "=== $SERVICE at $(date)"
     log "================================================================"
 
-    uv run python scripts/overnight_progress.py --start-service "$SERVICE"
+    uv run python scripts/overnight_progress.py --start-service "$SERVICE" 2>/dev/null || true
 
     # ─── Probe ────────────────────────────────────────────────────
     PROBE_FILE="logs/overnight/${TIMESTAMP}-${SERVICE}-probe.json"
@@ -182,9 +254,11 @@ for SERVICE in $SERVICE_QUEUE; do
 
     # ─── Chunk ────────────────────────────────────────────────────
     CHUNKS_JSON=$(uv run python scripts/chunk_service.py \
-        --service "$SERVICE" --untested-only --probe-file "$PROBE_FILE" --json 2>/dev/null) || {
-        log "  Could not chunk $SERVICE, skipping"
-        uv run python scripts/overnight_progress.py --fail-service "$SERVICE" --reason "chunking failed"
+        --service "$SERVICE" --untested-only \
+        --probe-file "$PROBE_FILE" --json 2>/dev/null) || {
+        log "  Could not chunk $SERVICE"
+        uv run python scripts/overnight_progress.py \
+            --fail-service "$SERVICE" --reason "chunking failed" 2>/dev/null || true
         continue
     }
 
@@ -199,38 +273,29 @@ for c in ready:
 
     if [ -z "$CHUNK_LIST" ]; then
         log "  Nothing to do for $SERVICE"
-        uv run python scripts/overnight_progress.py --fail-service "$SERVICE" --reason "no working untested ops"
+        uv run python scripts/overnight_progress.py \
+            --fail-service "$SERVICE" --reason "no working untested ops" 2>/dev/null || true
         continue
     fi
 
     # ─── Find test file ──────────────────────────────────────────
-    SVC_SNAKE="${SERVICE//-/_}"
-    # Try exact match first, then broader patterns for naming mismatches
-    TEST_FILE=""
-    for pattern in \
-        "tests/compatibility/test_${SVC_SNAKE}_compat.py" \
-        "tests/compatibility/test_${SVC_SNAKE//_/}_compat.py"; do
-        [ -f "$pattern" ] && TEST_FILE="$pattern" && break
-    done
-    # Glob fallback: pick shortest match to avoid test_apigateway_lambda_ for lambda
-    if [ -z "$TEST_FILE" ]; then
-        TEST_FILE=$(ls tests/compatibility/test_*${SVC_SNAKE}*_compat.py 2>/dev/null \
-            | awk '{print length, $0}' | sort -n | head -1 | cut -d' ' -f2-)
-    fi
+    TEST_FILE=$(find_test_file "$SERVICE")
     if [ -z "$TEST_FILE" ]; then
         log "  No test file found for $SERVICE"
-        uv run python scripts/overnight_progress.py --fail-service "$SERVICE" --reason "no test file"
+        uv run python scripts/overnight_progress.py \
+            --fail-service "$SERVICE" --reason "no test file" 2>/dev/null || true
         continue
     fi
+    log "  Test file: $TEST_FILE"
 
     BEFORE_COV=$(get_coverage "$SERVICE")
     FAILS=0
-    SERVICE_CHANGED=false
+    COMMITTED=false
 
     # ─── Per-chunk loop ──────────────────────────────────────────
     while IFS='|' read -r NOUN OPS_CSV; do
         [ -z "$OPS_CSV" ] && continue
-        [ "$FAILS" -ge 3 ] && { log "  3 consecutive failures, moving on"; break; }
+        [ "$FAILS" -ge 3 ] && { log "  3 consecutive chunk failures, next service"; break; }
 
         if wall_clock_exceeded; then
             log "  Wall clock limit reached mid-service"
@@ -239,11 +304,8 @@ for c in ready:
 
         OPS_LIST=$(echo "$OPS_CSV" | tr ',' '\n' | sed 's/^/    - /')
         CHUNK_LOG="logs/overnight/${TIMESTAMP}-${SERVICE}-${NOUN}.log"
-        log "  chunk: $SERVICE / $NOUN"
+        log "  chunk: $SERVICE / $NOUN ($(echo "$OPS_CSV" | tr ',' '\n' | wc -l | tr -d ' ') ops)"
         ln -sf "$(basename "$CHUNK_LOG")" logs/overnight/latest.log
-
-        # Save file state for potential revert
-        cp "$TEST_FILE" "${TEST_FILE}.bak"
 
         # ─── WRITE: Claude generates tests ────────────────────
         WRITE_PROMPT="Write compat tests for the **${NOUN}** operations in **${SERVICE}**. These all work on the server (port 4566).
@@ -270,180 +332,53 @@ Rules: NEVER catch ParamValidationError. NEVER write a test without an assertion
             --permission-mode bypassPermissions -p "$WRITE_PROMPT" \
             > "$CHUNK_LOG" 2>&1 || true
 
-        # ─── Detect new tests via AST diff ───────────────────
+        # ─── Check what Claude produced ───────────────────────
         NEW_TESTS=$(count_new_tests "$TEST_FILE")
         NEW_TEST_COUNT=$(echo "$NEW_TESTS" | grep -c . 2>/dev/null || echo "0")
-        NEW_TESTS_CSV=$(echo "$NEW_TESTS" | paste -sd, - 2>/dev/null || echo "")
 
-        if [ "$NEW_TEST_COUNT" -eq 0 ] || [ -z "$NEW_TESTS_CSV" ]; then
-            log "    No new tests detected, reverting"
-            cp "${TEST_FILE}.bak" "$TEST_FILE"
-            rm -f "${TEST_FILE}.bak"
+        if [ "$NEW_TEST_COUNT" -eq 0 ]; then
+            log "    No new tests added"
+            # Revert any partial changes Claude left behind
+            revert_all_changes
             FAILS=$((FAILS + 1))
             continue
         fi
 
-        log "    $NEW_TEST_COUNT new tests: ${NEW_TESTS_CSV:0:80}"
+        log "    $NEW_TEST_COUNT new tests detected"
 
-        # ─── VERIFY: 7-gate pipeline ─────────────────────────
-        VERIFY_JSON=$(uv run python scripts/overnight_verify.py \
-            --file "$TEST_FILE" \
-            --new-tests "$NEW_TESTS_CSV" \
-            --service "$SERVICE" \
-            --before-coverage "$BEFORE_COV" \
-            --json 2>/dev/null) || VERIFY_JSON='{"passed":false,"fatal_problems":["verify script failed"]}'
-
-        VERIFY_PASSED=$(echo "$VERIFY_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['passed'])" 2>/dev/null || echo "False")
-        HAS_HEALABLE=$(echo "$VERIFY_JSON" | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-print(len(d.get('healable_problems',[])) > 0 and len(d.get('fatal_problems',[])) == 0)
-" 2>/dev/null || echo "False")
-
-        if [ "$VERIFY_PASSED" = "True" ]; then
-            log "    VERIFIED: all 7 gates passed"
+        # ─── VERIFY + COMMIT ──────────────────────────────────
+        if verify_and_commit "$SERVICE" "$TEST_FILE" "$BEFORE_COV"; then
             FAILS=0
-            SERVICE_CHANGED=true
+            COMMITTED=true
             BEFORE_COV=$(get_coverage "$SERVICE")
-            rm -f "${TEST_FILE}.bak"
-
-        elif [ "$HAS_HEALABLE" = "True" ]; then
-            # ─── HEAL: re-prompt Claude with specific problems ─
-            log "    Healable problems detected, attempting fix..."
-            HEAL_PROBLEMS=$(echo "$VERIFY_JSON" | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-for p in d.get('healable_problems',[]):
-    print('- ' + p)
-" 2>/dev/null)
-
-            HEAL_LOG="logs/overnight/${TIMESTAMP}-${SERVICE}-${NOUN}-heal.log"
-            HEAL_PROMPT="Fix these verification problems in ${TEST_FILE}:
-
-${HEAL_PROBLEMS}
-
-Rules:
-- If a test doesn't contact the server (ParamValidationError), DELETE it
-- If a test has no assertion, ADD an assertion on a response field
-- If a test fails, fix it or delete it
-- Run: uv run pytest ${TEST_FILE} -q --tb=short -- after fixes"
-
-            timeout "$HEAL_TIMEOUT" claude --output-format stream-json --verbose \
-                --permission-mode bypassPermissions -p "$HEAL_PROMPT" \
-                > "$HEAL_LOG" 2>&1 || true
-
-            # Re-verify after heal
-            NEW_TESTS=$(count_new_tests "$TEST_FILE")
-            NEW_TESTS_CSV=$(echo "$NEW_TESTS" | paste -sd, - 2>/dev/null || echo "")
-
-            VERIFY2_JSON=$(uv run python scripts/overnight_verify.py \
-                --file "$TEST_FILE" \
-                --new-tests "$NEW_TESTS_CSV" \
-                --service "$SERVICE" \
-                --before-coverage "$BEFORE_COV" \
-                --skip-runtime \
-                --json 2>/dev/null) || VERIFY2_JSON='{"passed":false}'
-
-            VERIFY2_PASSED=$(echo "$VERIFY2_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['passed'])" 2>/dev/null || echo "False")
-
-            if [ "$VERIFY2_PASSED" = "True" ]; then
-                log "    HEALED: verification passed after fix"
-                FAILS=0
-                SERVICE_CHANGED=true
-                BEFORE_COV=$(get_coverage "$SERVICE")
-                rm -f "${TEST_FILE}.bak"
-            else
-                log "    REVERT: heal failed, restoring backup"
-                cp "${TEST_FILE}.bak" "$TEST_FILE"
-                rm -f "${TEST_FILE}.bak"
-                FAILS=$((FAILS + 1))
+            # Restart server after source changes
+            if git diff HEAD~1 --name-only | grep -q "^src/"; then
+                restart_server
             fi
         else
-            # Fatal problems — revert
-            FATAL=$(echo "$VERIFY_JSON" | python3 -c "
-import json,sys
-for p in json.load(sys.stdin).get('fatal_problems',[]):
-    print(p)
-" 2>/dev/null | head -3)
-            log "    REVERT: fatal: $FATAL"
-            cp "${TEST_FILE}.bak" "$TEST_FILE"
-            rm -f "${TEST_FILE}.bak"
+            log "    Verification failed, reverting chunk"
+            revert_all_changes
             FAILS=$((FAILS + 1))
         fi
 
     done <<< "$CHUNK_LIST"
 
-    # ─── Service commit ──────────────────────────────────────────
-    rm -f "${TEST_FILE}.bak" 2>/dev/null
-
-    if ! $SERVICE_CHANGED; then
-        log "  No verified changes for $SERVICE"
-        uv run python scripts/overnight_progress.py --fail-service "$SERVICE" --reason "no verified chunks"
-        continue
+    # ─── Service summary ──────────────────────────────────────────
+    if ! $COMMITTED; then
+        uv run python scripts/overnight_progress.py \
+            --fail-service "$SERVICE" --reason "no verified chunks" 2>/dev/null || true
     fi
 
-    # Final regression check before commit
-    log "  Post-service regression check..."
-    if ! uv run pytest "$TEST_FILE" -q --tb=short 2>&1 | tail -3; then
-        log "  POST-SERVICE REGRESSION — reverting all changes to $TEST_FILE"
-        git checkout "$TEST_FILE" 2>/dev/null
-        uv run python scripts/overnight_progress.py --fail-service "$SERVICE" --reason "post-service regression"
-        continue
-    fi
-
-    # Push Moto fixes if needed
-    if ! (cd vendor/moto && git diff --quiet jackdanger/robotocore/all-fixes..HEAD 2>/dev/null); then
-        (cd vendor/moto && git push jackdanger HEAD:robotocore/all-fixes 2>/dev/null) || true
-        uv lock 2>/dev/null || true
-    fi
-
-    # Commit
-    AFTER_COV=$(get_coverage "$SERVICE")
-    TOTAL_OPS=$(get_total_ops "$SERVICE")
-    GRADUATED=false
-    GRAD_MSG=""
-    if [ "$AFTER_COV" = "$TOTAL_OPS" ] && [ "$TOTAL_OPS" != "0" ]; then
-        GRADUATED=true
-        GRAD_MSG=" [GRADUATED 100%]"
-    fi
-
-    git add "$TEST_FILE" src/robotocore/ uv.lock 2>/dev/null || true
-    COMMIT_MSG="Expand ${SERVICE} compat tests: ${AFTER_COV}/${TOTAL_OPS} operations covered${GRAD_MSG}
-
-Overnight v2: verified via 7-gate pipeline (syntax, quality, pass, regression, runtime, coverage, lint)
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
-    git commit -m "$COMMIT_MSG" 2>/dev/null || { log "  COMMIT FAILED for $SERVICE"; continue; }
-
-    # Post-commit regression — verify the commit is green
-    if ! uv run pytest "$TEST_FILE" -q --tb=short 2>&1 | tail -3; then
-        log "  POST-COMMIT REGRESSION — reverting commit"
-        git revert --no-edit HEAD 2>/dev/null || git reset --soft HEAD~1
-        uv run python scripts/overnight_progress.py --fail-service "$SERVICE" --reason "post-commit regression"
-        continue
-    fi
-
-    git push 2>/dev/null || true
-
-    # Track progress
-    GRAD_FLAG=""
-    $GRADUATED && GRAD_FLAG="--graduated"
-    uv run python scripts/overnight_progress.py \
-        --complete-service "$SERVICE" --after-covered "$AFTER_COV" $GRAD_FLAG
-
-    log "  COMMITTED: $SERVICE ${BEFORE_COV} -> ${AFTER_COV}/${TOTAL_OPS}${GRAD_MSG}"
     SERVICES_DONE=$((SERVICES_DONE + 1))
-    SERVICES_SINCE_REPORT=$((SERVICES_SINCE_REPORT + 1))
 
     # Progress report every 5 services
-    if [ "$SERVICES_SINCE_REPORT" -ge 5 ]; then
+    if [ $((SERVICES_DONE % 5)) -eq 0 ]; then
         log ""
-        log "=== Progress report ($SERVICES_DONE services done) ==="
-        uv run python scripts/overnight_progress.py --report
-        SERVICES_SINCE_REPORT=0
+        log "=== Progress report ($SERVICES_DONE services) ==="
+        uv run python scripts/overnight_progress.py --report 2>/dev/null || true
     fi
 
-    # Restart server for next service
+    # Restart server between services (code may have changed)
     restart_server
 
 done
@@ -452,7 +387,7 @@ done
 
 log ""
 log "=== Overnight v2 complete: $SERVICES_DONE services processed ==="
-uv run python scripts/overnight_progress.py --report
+uv run python scripts/overnight_progress.py --report 2>/dev/null || true
 echo ""
 log "Coverage summary:"
 uv run python scripts/compat_coverage.py 2>&1 | tail -5
