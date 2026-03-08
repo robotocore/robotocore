@@ -864,6 +864,7 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--service", help="Show detailed report for a single service")
     parser.add_argument("--no-color", action="store_true", help="Disable color output")
+    parser.add_argument("--output", help="Write JSON output to this file path")
     args = parser.parse_args()
 
     global _USE_COLOR
@@ -872,7 +873,10 @@ def main():
 
     report = build_report(filter_service=args.service if args.service else None)
 
-    if args.json:
+    if args.output:
+        Path(args.output).write_text(json.dumps(report, indent=2, default=str))
+        print(f"Parity report written to {args.output}")
+    elif args.json:
         # Convert sets to lists for JSON serialization
         print(json.dumps(report, indent=2, default=str))
     elif args.service:

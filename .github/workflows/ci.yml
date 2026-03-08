@@ -128,14 +128,20 @@ jobs:
           "
           # Basic SQS
           python -c "
-          import boto3
+          import boto3, time
           sqs = boto3.client('sqs', endpoint_url='http://localhost:4566',
               aws_access_key_id='test', aws_secret_access_key='test',
               region_name='us-east-1')
           q = sqs.create_queue(QueueName='test-queue')
           sqs.send_message(QueueUrl=q['QueueUrl'], MessageBody='hello')
-          msgs = sqs.receive_message(QueueUrl=q['QueueUrl'])
-          assert msgs['Messages'][0]['Body'] == 'hello'
+          msgs = []
+          for _ in range(5):
+              resp = sqs.receive_message(QueueUrl=q['QueueUrl'], WaitTimeSeconds=1)
+              msgs = resp.get('Messages', [])
+              if msgs:
+                  break
+              time.sleep(0.5)
+          assert msgs and msgs[0]['Body'] == 'hello', f'Expected message, got: {msgs}'
           print('SQS smoke test passed')
           "
           echo "All smoke tests passed"
