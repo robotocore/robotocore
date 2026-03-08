@@ -1336,13 +1336,41 @@ class TestCloudwatchAutoCoverage:
         return make_client("cloudwatch")
 
     def test_delete_anomaly_detector(self, client):
-        """DeleteAnomalyDetector returns a response."""
-        client.delete_anomaly_detector()
+        """DeleteAnomalyDetector returns a 200 response."""
+        resp = client.delete_anomaly_detector()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_alarm_mute_rules(self, client):
         """ListAlarmMuteRules returns a response."""
-        client.list_alarm_mute_rules()
+        resp = client.list_alarm_mute_rules()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_put_anomaly_detector(self, client):
-        """PutAnomalyDetector returns a response."""
-        client.put_anomaly_detector()
+    def test_anomaly_detector_lifecycle(self, client):
+        """PutAnomalyDetector → DescribeAnomalyDetectors → DeleteAnomalyDetector."""
+        import uuid
+
+        ns = f"ADLife-{uuid.uuid4().hex[:8]}"
+        metric = "ADMetric"
+        stat = "Average"
+
+        # Put
+        resp = client.put_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Describe and verify
+        resp = client.describe_anomaly_detectors(Namespace=ns)
+        detectors = resp["AnomalyDetectors"]
+        assert len(detectors) >= 1
+        ad = detectors[0]
+        assert ad["Namespace"] == ns
+        assert ad["MetricName"] == metric
+        assert ad["Stat"] == stat
+        assert ad["StateValue"] == "PENDING_TRAINING"
+
+        # Delete
+        resp = client.delete_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify gone
+        resp = client.describe_anomaly_detectors(Namespace=ns)
+        assert len(resp["AnomalyDetectors"]) == 0

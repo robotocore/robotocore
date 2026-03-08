@@ -1117,3 +1117,163 @@ class TestStepFunctionsSendTask:
         with pytest.raises(sfn.exceptions.ClientError) as exc:
             sfn.send_task_success(taskToken="invalid-token", output="{}")
         assert "TaskDoesNotExist" in str(exc.value)
+
+
+class TestStepFunctionsExecutionDetails:
+    """Tests for execution history details and reverse ordering."""
+
+    @pytest.fixture
+    def sfn(self):
+        return make_client("stepfunctions")
+
+    def _simple_definition(self):
+        return json.dumps(
+            {
+                "StartAt": "Pass",
+                "States": {"Pass": {"Type": "Pass", "End": True}},
+            }
+        )
+
+    def test_get_execution_history_reverse(self, sfn):
+        """GetExecutionHistory with reverseOrder returns events in reverse."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"hist-rev-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            import time
+
+            time.sleep(1)
+            history = sfn.get_execution_history(
+                executionArn=exec_resp["executionArn"],
+                reverseOrder=True,
+            )
+            events = history["events"]
+            assert len(events) >= 2
+            # In reverse order, last event should be ExecutionStarted (earliest)
+            types = [e["type"] for e in events]
+            assert "ExecutionStarted" in types
+            # The first event in reverse should be a later event
+            assert types[-1] == "ExecutionStarted"
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_get_execution_history_event_types(self, sfn):
+        """GetExecutionHistory includes PassStateEntered/Exited events."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"hist-types-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            import time
+
+            time.sleep(1)
+            history = sfn.get_execution_history(executionArn=exec_resp["executionArn"])
+            types = [e["type"] for e in history["events"]]
+            assert "ExecutionStarted" in types
+            assert "ExecutionSucceeded" in types
+            assert "PassStateEntered" in types
+            assert "PassStateExited" in types
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_describe_state_machine_for_execution_fields(self, sfn):
+        """DescribeStateMachineForExecution returns definition and roleArn."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"desc-sm-exec-f-{uuid.uuid4().hex[:8]}"
+        definition = json.dumps(
+            {
+                "StartAt": "Hello",
+                "States": {
+                    "Hello": {
+                        "Type": "Pass",
+                        "Result": {"msg": "hello"},
+                        "End": True,
+                    }
+                },
+            }
+        )
+        sm = sfn.create_state_machine(name=sm_name, definition=definition, roleArn=role_arn)
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn)
+            desc = sfn.describe_state_machine_for_execution(executionArn=exec_resp["executionArn"])
+            assert desc["name"] == sm_name
+            assert "definition" in desc
+            parsed_def = json.loads(desc["definition"])
+            assert "Hello" in parsed_def["States"]
+            assert "roleArn" in desc
+            assert "stateMachineArn" in desc
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_execution_with_named_execution(self, sfn):
+        """StartExecution with custom name, verify name in describe."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"named-exec2-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        exec_name = f"my-run-{uuid.uuid4().hex[:8]}"
+        try:
+            exec_resp = sfn.start_execution(stateMachineArn=sm_arn, name=exec_name)
+            assert exec_name in exec_resp["executionArn"]
+
+            desc = sfn.describe_execution(executionArn=exec_resp["executionArn"])
+            assert desc["name"] == exec_name
+            assert desc["stateMachineArn"] == sm_arn
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_multiple_executions_different_inputs(self, sfn):
+        """Start multiple executions with different inputs, list and verify count."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"multi-exec-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            exec_arns = []
+            for i in range(3):
+                resp = sfn.start_execution(
+                    stateMachineArn=sm_arn,
+                    input=json.dumps({"iteration": i}),
+                )
+                exec_arns.append(resp["executionArn"])
+
+            listed = sfn.list_executions(stateMachineArn=sm_arn)
+            listed_arns = [e["executionArn"] for e in listed["executions"]]
+            for arn in exec_arns:
+                assert arn in listed_arns
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_activity_describe_after_delete_raises(self, sfn):
+        """DescribeActivity on deleted activity raises ActivityDoesNotExist."""
+        name = f"del-act-err-{uuid.uuid4().hex[:8]}"
+        resp = sfn.create_activity(name=name)
+        act_arn = resp["activityArn"]
+        sfn.delete_activity(activityArn=act_arn)
+        with pytest.raises(sfn.exceptions.ClientError) as exc:
+            sfn.describe_activity(activityArn=act_arn)
+        assert (
+            "ActivityDoesNotExist" in str(exc.value) or "does not exist" in str(exc.value).lower()
+        )
+
+    def test_describe_nonexistent_state_machine(self, sfn):
+        """DescribeStateMachine with nonexistent ARN raises error."""
+        fake_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:does-not-exist"
+        with pytest.raises(sfn.exceptions.ClientError) as exc:
+            sfn.describe_state_machine(stateMachineArn=fake_arn)
+        assert (
+            "StateMachineDoesNotExist" in str(exc.value)
+            or "does not exist" in str(exc.value).lower()
+        )

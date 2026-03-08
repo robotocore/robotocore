@@ -552,3 +552,143 @@ class TestRedshiftAutoCoverage:
         resp = client.describe_cluster_security_groups()
         names = [g["ClusterSecurityGroupName"] for g in resp["ClusterSecurityGroups"]]
         assert name not in names
+
+
+class TestRedshiftClusterLifecycle:
+    """Tests for cluster lifecycle operations: pause, resume, credentials, snapshots."""
+
+    def test_get_cluster_credentials(self, redshift):
+        cid = f"cred-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.get_cluster_credentials(
+                DbUser="admin",
+                ClusterIdentifier=cid,
+            )
+            assert "DbUser" in resp
+            assert "DbPassword" in resp
+            assert "Expiration" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_pause_cluster(self, redshift):
+        cid = f"pause-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.pause_cluster(ClusterIdentifier=cid)
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_resume_cluster(self, redshift):
+        cid = f"resume-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.pause_cluster(ClusterIdentifier=cid)
+            resp = redshift.resume_cluster(ClusterIdentifier=cid)
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_enable_and_disable_snapshot_copy(self, redshift):
+        cid = f"snapcp-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.enable_snapshot_copy(
+                ClusterIdentifier=cid,
+                DestinationRegion="us-west-2",
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+
+            resp2 = redshift.disable_snapshot_copy(ClusterIdentifier=cid)
+            assert resp2["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_restore_from_cluster_snapshot(self, redshift):
+        src = f"rsrc-{_uid()}"
+        snap = f"rsnap-{_uid()}"
+        restored = f"rest-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=src,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(
+                SnapshotIdentifier=snap,
+                ClusterIdentifier=src,
+            )
+            resp = redshift.restore_from_cluster_snapshot(
+                ClusterIdentifier=restored,
+                SnapshotIdentifier=snap,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == restored
+            assert resp["Cluster"]["NodeType"] == "dc2.large"
+            redshift.delete_cluster(ClusterIdentifier=restored, SkipFinalClusterSnapshot=True)
+        finally:
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+            redshift.delete_cluster(ClusterIdentifier=src, SkipFinalClusterSnapshot=True)
+
+    def test_authorize_cluster_security_group_ingress(self, redshift):
+        name = f"auth-sg-{_uid()}"
+        redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="Auth ingress test",
+        )
+        try:
+            resp = redshift.authorize_cluster_security_group_ingress(
+                ClusterSecurityGroupName=name,
+                CIDRIP="10.0.0.0/24",
+            )
+            sg = resp["ClusterSecurityGroup"]
+            assert sg["ClusterSecurityGroupName"] == name
+            cidrs = [r.get("CIDRIP") for r in sg.get("IPRanges", [])]
+            assert "10.0.0.0/24" in cidrs
+        finally:
+            redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+    def test_create_snapshot_schedule_with_definition(self, redshift):
+        sid = f"sched-{_uid()}"
+        resp = redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        assert resp["ScheduleIdentifier"] == sid
+        assert "rate(12 hours)" in resp["ScheduleDefinitions"]
+
+        # Verify it shows up in list
+        desc = redshift.describe_snapshot_schedules(ScheduleIdentifier=sid)
+        assert len(desc["SnapshotSchedules"]) == 1
+        assert desc["SnapshotSchedules"][0]["ScheduleIdentifier"] == sid

@@ -283,12 +283,7 @@ class TestEKSFargateProfileOperations:
         finally:
             eks.delete_cluster(name=cluster_name)
 
-
-class TestEKSAdditionalOperations:
-    """Tests for DescribeNodegroup and ListTagsForResource."""
-
-    def test_describe_nodegroup_nonexistent(self, eks):
-        """DescribeNodegroup with a nonexistent nodegroup returns error."""
+    def test_list_fargate_profiles_empty(self, eks):
         cluster_name = _unique("cluster")
         eks.create_cluster(
             name=cluster_name,
@@ -299,20 +294,146 @@ class TestEKSAdditionalOperations:
             },
         )
         try:
-            with pytest.raises(ClientError) as exc_info:
-                eks.describe_nodegroup(
-                    clusterName=cluster_name,
-                    nodegroupName="nonexistent-ng",
-                )
-            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+            resp = eks.list_fargate_profiles(clusterName=cluster_name)
+            assert isinstance(resp["fargateProfileNames"], list)
         finally:
             eks.delete_cluster(name=cluster_name)
 
-    def test_list_tags_for_resource(self, eks):
-        """ListTagsForResource returns tags on a cluster."""
+    def test_list_fargate_profiles_includes_created(self, eks):
         cluster_name = _unique("cluster")
+        profile_name = _unique("fargate")
         eks.create_cluster(
             name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.create_fargate_profile(
+                fargateProfileName=profile_name,
+                clusterName=cluster_name,
+                podExecutionRoleArn="arn:aws:iam::123456789012:role/fargate-role",
+                selectors=[{"namespace": "default"}],
+            )
+            resp = eks.list_fargate_profiles(clusterName=cluster_name)
+            assert profile_name in resp["fargateProfileNames"]
+        finally:
+            try:
+                eks.delete_fargate_profile(
+                    fargateProfileName=profile_name, clusterName=cluster_name
+                )
+            except Exception:
+                pass
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSNodegroupOperations:
+    """Tests for EKS managed node group CRUD operations."""
+
+    @pytest.fixture
+    def cluster_name(self, eks):
+        name = _unique("cluster")
+        eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        yield name
+        eks.delete_cluster(name=name)
+
+    def test_create_nodegroup(self, eks, cluster_name):
+        ng_name = _unique("ng")
+        resp = eks.create_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=ng_name,
+            nodeRole="arn:aws:iam::123456789012:role/node-role",
+            subnets=["subnet-12345"],
+        )
+        ng = resp["nodegroup"]
+        assert ng["nodegroupName"] == ng_name
+        assert ng["clusterName"] == cluster_name
+        assert "nodegroupArn" in ng
+        eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+
+    def test_describe_nodegroup(self, eks, cluster_name):
+        ng_name = _unique("ng")
+        eks.create_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=ng_name,
+            nodeRole="arn:aws:iam::123456789012:role/node-role",
+            subnets=["subnet-12345"],
+        )
+        try:
+            resp = eks.describe_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+            ng = resp["nodegroup"]
+            assert ng["nodegroupName"] == ng_name
+            assert ng["clusterName"] == cluster_name
+            assert ng["nodeRole"] == "arn:aws:iam::123456789012:role/node-role"
+        finally:
+            eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+
+    def test_list_nodegroups(self, eks, cluster_name):
+        ng_name = _unique("ng")
+        eks.create_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=ng_name,
+            nodeRole="arn:aws:iam::123456789012:role/node-role",
+            subnets=["subnet-12345"],
+        )
+        try:
+            resp = eks.list_nodegroups(clusterName=cluster_name)
+            assert ng_name in resp["nodegroups"]
+        finally:
+            eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+
+    def test_list_nodegroups_empty(self, eks, cluster_name):
+        resp = eks.list_nodegroups(clusterName=cluster_name)
+        assert isinstance(resp["nodegroups"], list)
+
+    def test_delete_nodegroup(self, eks, cluster_name):
+        ng_name = _unique("ng")
+        eks.create_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=ng_name,
+            nodeRole="arn:aws:iam::123456789012:role/node-role",
+            subnets=["subnet-12345"],
+        )
+        resp = eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+        assert resp["nodegroup"]["nodegroupName"] == ng_name
+
+    def test_describe_nonexistent_nodegroup(self, eks, cluster_name):
+        with pytest.raises(ClientError) as exc_info:
+            eks.describe_nodegroup(clusterName=cluster_name, nodegroupName="nonexistent")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_nodegroup_with_scaling(self, eks, cluster_name):
+        ng_name = _unique("ng")
+        resp = eks.create_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=ng_name,
+            nodeRole="arn:aws:iam::123456789012:role/node-role",
+            subnets=["subnet-12345"],
+            scalingConfig={"minSize": 1, "maxSize": 3, "desiredSize": 2},
+        )
+        ng = resp["nodegroup"]
+        assert ng["scalingConfig"]["minSize"] == 1
+        assert ng["scalingConfig"]["maxSize"] == 3
+        assert ng["scalingConfig"]["desiredSize"] == 2
+        eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+
+
+class TestEKSTagOperations:
+    """Tests for EKS tag/untag/list-tags operations."""
+
+    def test_list_tags_for_resource(self, eks):
+        name = _unique("cluster")
+        resp = eks.create_cluster(
+            name=name,
             roleArn="arn:aws:iam::123456789012:role/eks-role",
             resourcesVpcConfig={
                 "subnetIds": ["subnet-12345"],
@@ -320,10 +441,49 @@ class TestEKSAdditionalOperations:
             },
             tags={"env": "test"},
         )
+        arn = resp["cluster"]["arn"]
         try:
-            cluster_arn = eks.describe_cluster(name=cluster_name)["cluster"]["arn"]
-            resp = eks.list_tags_for_resource(resourceArn=cluster_arn)
-            assert "tags" in resp
-            assert resp["tags"].get("env") == "test"
+            tags_resp = eks.list_tags_for_resource(resourceArn=arn)
+            assert "tags" in tags_resp
+            assert tags_resp["tags"].get("env") == "test"
         finally:
-            eks.delete_cluster(name=cluster_name)
+            eks.delete_cluster(name=name)
+
+    def test_tag_resource(self, eks):
+        name = _unique("cluster")
+        resp = eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        arn = resp["cluster"]["arn"]
+        try:
+            eks.tag_resource(resourceArn=arn, tags={"team": "platform", "cost": "dev"})
+            tags_resp = eks.list_tags_for_resource(resourceArn=arn)
+            assert tags_resp["tags"]["team"] == "platform"
+            assert tags_resp["tags"]["cost"] == "dev"
+        finally:
+            eks.delete_cluster(name=name)
+
+    def test_untag_resource(self, eks):
+        name = _unique("cluster")
+        resp = eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+            tags={"keep": "yes", "remove": "me"},
+        )
+        arn = resp["cluster"]["arn"]
+        try:
+            eks.untag_resource(resourceArn=arn, tagKeys=["remove"])
+            tags_resp = eks.list_tags_for_resource(resourceArn=arn)
+            assert "remove" not in tags_resp["tags"]
+            assert tags_resp["tags"].get("keep") == "yes"
+        finally:
+            eks.delete_cluster(name=name)

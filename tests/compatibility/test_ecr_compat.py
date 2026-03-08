@@ -421,6 +421,213 @@ class TestECRExtendedOperations:
             ecr.delete_repository(repositoryName=repo_name)
 
 
+class TestECRImageOperations:
+    """Tests for ECR image push/list/describe/batch operations."""
+
+    @pytest.fixture
+    def repo(self, ecr):
+        name = _unique("img-repo")
+        ecr.create_repository(repositoryName=name)
+        yield name
+        ecr.delete_repository(repositoryName=name, force=True)
+
+    def _make_manifest(self, tag_seed: str) -> str:
+        import hashlib
+
+        digest = hashlib.sha256(tag_seed.encode()).hexdigest()
+        return json.dumps(
+            {
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "size": 7023,
+                    "digest": f"sha256:{digest}",
+                },
+                "layers": [],
+            }
+        )
+
+    def test_put_image(self, ecr, repo):
+        manifest = self._make_manifest("put-test")
+        resp = ecr.put_image(repositoryName=repo, imageManifest=manifest, imageTag="v1")
+        assert "image" in resp
+        assert resp["image"]["repositoryName"] == repo
+        assert resp["image"]["imageId"]["imageTag"] == "v1"
+
+    def test_list_images(self, ecr, repo):
+        manifest = self._make_manifest("list-test")
+        ecr.put_image(repositoryName=repo, imageManifest=manifest, imageTag="latest")
+        resp = ecr.list_images(repositoryName=repo)
+        assert "imageIds" in resp
+        tags = [img.get("imageTag") for img in resp["imageIds"]]
+        assert "latest" in tags
+
+    def test_describe_images_after_put(self, ecr, repo):
+        manifest = self._make_manifest("desc-test")
+        ecr.put_image(repositoryName=repo, imageManifest=manifest, imageTag="desc1")
+        resp = ecr.describe_images(repositoryName=repo)
+        assert len(resp["imageDetails"]) >= 1
+        tags = []
+        for detail in resp["imageDetails"]:
+            tags.extend(detail.get("imageTags", []))
+        assert "desc1" in tags
+
+    def test_batch_get_image(self, ecr, repo):
+        manifest = self._make_manifest("batch-get-test")
+        ecr.put_image(repositoryName=repo, imageManifest=manifest, imageTag="bg1")
+        resp = ecr.batch_get_image(repositoryName=repo, imageIds=[{"imageTag": "bg1"}])
+        assert len(resp["images"]) == 1
+        assert resp["images"][0]["imageId"]["imageTag"] == "bg1"
+
+    def test_batch_delete_image(self, ecr, repo):
+        manifest = self._make_manifest("batch-del-test")
+        ecr.put_image(repositoryName=repo, imageManifest=manifest, imageTag="bd1")
+        resp = ecr.batch_delete_image(repositoryName=repo, imageIds=[{"imageTag": "bd1"}])
+        assert len(resp["imageIds"]) == 1
+        assert resp["imageIds"][0]["imageTag"] == "bd1"
+        # Verify image is gone
+        listed = ecr.list_images(repositoryName=repo)
+        tags = [img.get("imageTag") for img in listed["imageIds"]]
+        assert "bd1" not in tags
+
+    def test_put_multiple_images(self, ecr, repo):
+        for tag in ["alpha", "beta"]:
+            manifest = self._make_manifest(f"multi-{tag}")
+            ecr.put_image(repositoryName=repo, imageManifest=manifest, imageTag=tag)
+        resp = ecr.list_images(repositoryName=repo)
+        tags = [img.get("imageTag") for img in resp["imageIds"]]
+        assert "alpha" in tags
+        assert "beta" in tags
+
+
+class TestECRImageScanning2:
+    """Tests for ECR image scan operations."""
+
+    @pytest.fixture
+    def repo_with_image(self, ecr):
+        import hashlib
+
+        name = _unique("scan-repo")
+        ecr.create_repository(repositoryName=name)
+        digest = hashlib.sha256(b"scan-image-config").hexdigest()
+        manifest = json.dumps(
+            {
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "size": 7023,
+                    "digest": f"sha256:{digest}",
+                },
+                "layers": [],
+            }
+        )
+        ecr.put_image(repositoryName=name, imageManifest=manifest, imageTag="scanme")
+        yield name
+        ecr.delete_repository(repositoryName=name, force=True)
+
+    def test_start_image_scan(self, ecr, repo_with_image):
+        resp = ecr.start_image_scan(
+            repositoryName=repo_with_image,
+            imageId={"imageTag": "scanme"},
+        )
+        assert resp["repositoryName"] == repo_with_image
+        assert resp["imageScanStatus"]["status"] in ("IN_PROGRESS", "COMPLETE")
+
+    def test_describe_image_scan_findings(self, ecr, repo_with_image):
+        ecr.start_image_scan(
+            repositoryName=repo_with_image,
+            imageId={"imageTag": "scanme"},
+        )
+        resp = ecr.describe_image_scan_findings(
+            repositoryName=repo_with_image,
+            imageId={"imageTag": "scanme"},
+        )
+        assert resp["repositoryName"] == repo_with_image
+        assert "imageScanStatus" in resp
+
+
+class TestECRRegistryPolicy:
+    """Tests for ECR registry-level policy operations."""
+
+    def test_put_registry_policy(self, ecr):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "ReplicationAccess",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": ["ecr:ReplicateImage"],
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        resp = ecr.put_registry_policy(policyText=policy)
+        assert "policyText" in resp
+        assert resp["registryId"] is not None
+
+    def test_get_registry_policy(self, ecr):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "GetTest",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": ["ecr:ReplicateImage"],
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        ecr.put_registry_policy(policyText=policy)
+        resp = ecr.get_registry_policy()
+        assert "policyText" in resp
+        returned = json.loads(resp["policyText"])
+        assert returned["Version"] == "2012-10-17"
+
+    def test_delete_registry_policy(self, ecr):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "DeleteTest",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": ["ecr:ReplicateImage"],
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        ecr.put_registry_policy(policyText=policy)
+        resp = ecr.delete_registry_policy()
+        assert "registryId" in resp
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc_info:
+            ecr.get_registry_policy()
+        assert "RegistryPolicyNotFoundException" in str(exc_info.value)
+
+
+class TestECRRegistryScanningConfig:
+    """Tests for ECR registry scanning configuration."""
+
+    def test_put_registry_scanning_configuration(self, ecr):
+        resp = ecr.put_registry_scanning_configuration(
+            scanType="BASIC",
+            rules=[],
+        )
+        assert "registryScanningConfiguration" in resp
+        config = resp["registryScanningConfiguration"]
+        assert config["scanType"] == "BASIC"
+
+
 class TestEcrAutoCoverage:
     """Auto-generated coverage tests for ecr."""
 
@@ -432,40 +639,3 @@ class TestEcrAutoCoverage:
         """GetRegistryScanningConfiguration returns a response."""
         resp = client.get_registry_scanning_configuration()
         assert "registryId" in resp
-
-    def test_list_images_empty_repo(self, client):
-        """ListImages on an empty repo returns empty imageIds."""
-        repo_name = _unique("listimg-repo")
-        client.create_repository(repositoryName=repo_name)
-        try:
-            resp = client.list_images(repositoryName=repo_name)
-            assert "imageIds" in resp
-            assert isinstance(resp["imageIds"], list)
-        finally:
-            client.delete_repository(repositoryName=repo_name)
-
-    def test_describe_image_scan_findings_no_scan(self, client):
-        """DescribeImageScanFindings on a repo with no scan raises error."""
-        repo_name = _unique("scanfind-repo")
-        client.create_repository(repositoryName=repo_name)
-        try:
-            with pytest.raises(ClientError) as exc:
-                client.describe_image_scan_findings(
-                    repositoryName=repo_name,
-                    imageId={"imageTag": "latest"},
-                )
-            assert exc.value.response["Error"]["Code"] in (
-                "ImageNotFoundException",
-                "ScanNotFoundException",
-            )
-        finally:
-            client.delete_repository(repositoryName=repo_name)
-
-    def test_get_registry_policy_not_set(self, client):
-        """GetRegistryPolicy when no policy is set raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.get_registry_policy()
-        assert exc.value.response["Error"]["Code"] in (
-            "RegistryPolicyNotFoundException",
-            "PolicyNotFoundException",
-        )

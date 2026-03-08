@@ -206,6 +206,24 @@ class TestLogsOperations:
         suffix = uuid.uuid4().hex[:8]
         stream = f"pattern-{suffix}"
         logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+        now = int(time.time() * 1000)
+        logs.put_log_events(
+            logGroupName=log_group,
+            logStreamName=stream,
+            logEvents=[
+                {"timestamp": now, "message": f"WARN slow-{suffix}"},
+                {"timestamp": now + 1, "message": f"ERROR crash-{suffix}"},
+                {"timestamp": now + 2, "message": f"INFO ok-{suffix}"},
+            ],
+        )
+        resp = logs.filter_log_events(
+            logGroupName=log_group,
+            logStreamNames=[stream],
+            filterPattern="ERROR",
+        )
+        messages = [e["message"] for e in resp["events"]]
+        assert any("ERROR" in m for m in messages)
+        assert all("INFO" not in m for m in messages)
 
     def test_put_multiple_log_events_and_get(self, logs, log_group):
         """Put multiple log events and retrieve them in order."""
@@ -446,10 +464,23 @@ class TestLogsOperations:
         import uuid
 
         suffix = uuid.uuid4().hex[:8]
-        _filter_name = f"sf-{suffix}"
+        filter_name = f"sf-{suffix}"
+        dest_arn = f"arn:aws:lambda:us-east-1:000000000000:function:dummy-{suffix}"
 
-        # Create a lambda function ARN (doesn't need to exist for the filter)
-        _dest_arn = f"arn:aws:lambda:us-east-1:000000000000:function:dummy-{suffix}"
+        logs.put_subscription_filter(
+            logGroupName=log_group,
+            filterName=filter_name,
+            filterPattern="ERROR",
+            destinationArn=dest_arn,
+        )
+        resp = logs.describe_subscription_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in resp["subscriptionFilters"]]
+        assert filter_name in names
+
+        logs.delete_subscription_filter(logGroupName=log_group, filterName=filter_name)
+        resp = logs.describe_subscription_filters(logGroupName=log_group)
+        names = [f["filterName"] for f in resp["subscriptionFilters"]]
+        assert filter_name not in names
 
     def test_describe_log_streams(self, logs, log_group):
         """Create stream, describe_log_streams, verify stream name in list."""
@@ -635,31 +666,37 @@ class TestLogsOperations:
             for name in names:
                 logs.delete_metric_filter(logGroupName=log_group, filterName=name)
 
-    def test_create_export_task(self, logs, log_group):
-        """CreateExportTask - may not be supported, skip on error."""
-        # Need an S3 bucket for export
+    def test_create_and_describe_export_task(self, logs, log_group):
+        """CreateExportTask → DescribeExportTasks with proper assertions."""
         s3 = make_client("s3")
-        bucket = "logs-export-test-bucket"
+        bucket = f"logs-export-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket)
         try:
-            s3.create_bucket(Bucket=bucket)
-            logs.create_export_task(
+            resp = logs.create_export_task(
                 logGroupName=log_group,
                 fromTime=int(time.time() * 1000) - 3600000,
                 to=int(time.time() * 1000),
                 destination=bucket,
             )
-        except Exception:
-            pytest.skip("CreateExportTask not supported")
+            task_id = resp["taskId"]
+            assert task_id
+
+            # Describe by task ID
+            desc = logs.describe_export_tasks(taskId=task_id)
+            assert len(desc["exportTasks"]) == 1
+            task = desc["exportTasks"][0]
+            assert task["taskId"] == task_id
+            assert task["logGroupName"] == log_group
+            assert task["status"]["code"] in ("COMPLETED", "RUNNING", "PENDING")
         finally:
             try:
+                # Clean up S3 objects if any
+                objs = s3.list_objects_v2(Bucket=bucket)
+                for obj in objs.get("Contents", []):
+                    s3.delete_object(Bucket=bucket, Key=obj["Key"])
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
                 pass
-        logs.put_retention_policy(logGroupName=log_group, retentionInDays=7)
-        logs.delete_retention_policy(logGroupName=log_group)
-        response = logs.describe_log_groups(logGroupNamePrefix=log_group)
-        group = [g for g in response["logGroups"] if g["logGroupName"] == log_group][0]
-        assert "retentionInDays" not in group
 
     def test_describe_log_groups_prefix_filter(self, logs):
         """DescribeLogGroups with prefix filter."""
@@ -1286,16 +1323,104 @@ class TestLogsAutoCoverage:
 
     def test_describe_import_tasks(self, client):
         """DescribeImportTasks returns a response."""
-        client.describe_import_tasks()
+        resp = client.describe_import_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_scheduled_queries(self, client):
         """ListScheduledQueries returns a response."""
-        client.list_scheduled_queries()
+        resp = client.list_scheduled_queries()
+        assert "scheduledQueries" in resp
 
-    def test_get_delivery_source_nonexistent(self, client):
-        """GetDeliverySource for a nonexistent source returns error."""
-        from botocore.exceptions import ClientError
+    def test_put_describe_query_definition_lifecycle(self, client):
+        """PutQueryDefinition → DescribeQueryDefinitions with content verification."""
+        name = _unique("lifecycle-query")
+        query = "fields @timestamp, @message | sort @timestamp desc | limit 50"
+        resp = client.put_query_definition(
+            name=name,
+            queryString=query,
+            logGroupNames=["/test/example"],
+        )
+        qid = resp["queryDefinitionId"]
+        assert qid
 
-        with pytest.raises(ClientError) as exc:
-            client.get_delivery_source(name="nonexistent-source-xyz")
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        # Describe and verify fields
+        desc = client.describe_query_definitions()
+        matching = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid]
+        assert len(matching) == 1
+        qdef = matching[0]
+        assert qdef["name"] == name
+        assert qdef["queryString"] == query
+
+    def test_put_subscription_filter_with_destination(self, client):
+        """PutSubscriptionFilter → DescribeSubscriptionFilters → DeleteSubscriptionFilter."""
+        group = _unique("/test/sub-filter")
+        client.create_log_group(logGroupName=group)
+        try:
+            client.create_log_stream(logGroupName=group, logStreamName="test-stream")
+            filter_name = _unique("sub-filter")
+            dest_arn = "arn:aws:lambda:us-east-1:123456789012:function:dummy-processor"
+            client.put_subscription_filter(
+                logGroupName=group,
+                filterName=filter_name,
+                filterPattern="ERROR",
+                destinationArn=dest_arn,
+            )
+            resp = client.describe_subscription_filters(logGroupName=group)
+            filters = [f for f in resp["subscriptionFilters"] if f["filterName"] == filter_name]
+            assert len(filters) == 1
+            assert filters[0]["filterPattern"] == "ERROR"
+            assert filters[0]["destinationArn"] == dest_arn
+
+            client.delete_subscription_filter(logGroupName=group, filterName=filter_name)
+            resp = client.describe_subscription_filters(logGroupName=group)
+            names = [f["filterName"] for f in resp["subscriptionFilters"]]
+            assert filter_name not in names
+        finally:
+            client.delete_log_group(logGroupName=group)
+
+    def test_put_describe_delete_resource_policy_v2(self, client):
+        """ResourcePolicy full lifecycle with content verification."""
+        policy_name = _unique("res-pol-v2")
+        policy_doc = (
+            '{"Version":"2012-10-17","Statement":[{"Sid":"AllowCWL","Effect":"Allow",'
+            '"Principal":{"Service":"es.amazonaws.com"},'
+            '"Action":["logs:PutLogEvents","logs:CreateLogStream"],'
+            '"Resource":"*"}]}'
+        )
+        client.put_resource_policy(policyName=policy_name, policyDocument=policy_doc)
+        try:
+            resp = client.describe_resource_policies()
+            matching = [p for p in resp["resourcePolicies"] if p["policyName"] == policy_name]
+            assert len(matching) == 1
+            assert "policyDocument" in matching[0]
+        finally:
+            client.delete_resource_policy(policyName=policy_name)
+
+        # Verify deletion
+        resp = client.describe_resource_policies()
+        names = [p["policyName"] for p in resp["resourcePolicies"]]
+        assert policy_name not in names
+
+    def test_put_destination_describe_delete(self, client):
+        """PutDestination → DescribeDestinations → DeleteDestination with field assertions."""
+        dest_name = _unique("dest-v2")
+        target_arn = "arn:aws:kinesis:us-east-1:000000000000:stream/test-stream"
+        role_arn = "arn:aws:iam::000000000000:role/test-role"
+        client.put_destination(
+            destinationName=dest_name,
+            targetArn=target_arn,
+            roleArn=role_arn,
+        )
+        try:
+            resp = client.describe_destinations(DestinationNamePrefix=dest_name)
+            matching = [d for d in resp["destinations"] if d["destinationName"] == dest_name]
+            assert len(matching) == 1
+            assert matching[0]["targetArn"] == target_arn
+            assert matching[0]["roleArn"] == role_arn
+        finally:
+            client.delete_destination(destinationName=dest_name)
+
+        # Verify deletion
+        resp = client.describe_destinations(DestinationNamePrefix=dest_name)
+        names = [d["destinationName"] for d in resp["destinations"]]
+        assert dest_name not in names

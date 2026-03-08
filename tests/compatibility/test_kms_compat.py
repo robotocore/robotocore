@@ -825,3 +825,164 @@ class TestKMSGapStubs:
             assert resp["ReplicaKeyMetadata"]["MultiRegion"] is True
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_create_key_multi_region(self, kms):
+        """CreateKey with MultiRegion=True sets the flag."""
+        key = kms.create_key(Description="multi-region-test", MultiRegion=True)
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            assert key["KeyMetadata"]["MultiRegion"] is True
+            desc = kms.describe_key(KeyId=key_id)
+            assert desc["KeyMetadata"]["MultiRegion"] is True
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_create_key_external_origin(self, kms):
+        """CreateKey with Origin=EXTERNAL creates a key with EXTERNAL origin."""
+        key = kms.create_key(Description="external-origin", Origin="EXTERNAL")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            meta = key["KeyMetadata"]
+            assert meta["Origin"] == "EXTERNAL"
+            # Server may return Enabled or PendingImport depending on implementation
+            assert meta["KeyState"] in ("Enabled", "PendingImport")
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_grant_with_constraints(self, kms):
+        """CreateGrant with EncryptionContextSubset constraint."""
+        key = kms.create_key(Description="grant-constraint-key")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            grant = kms.create_grant(
+                KeyId=key_id,
+                GranteePrincipal="arn:aws:iam::123456789012:root",
+                Operations=["Encrypt", "Decrypt"],
+                Constraints={
+                    "EncryptionContextSubset": {"env": "test"},
+                },
+            )
+            assert "GrantId" in grant
+
+            grants = kms.list_grants(KeyId=key_id)
+            found = [g for g in grants["Grants"] if g["GrantId"] == grant["GrantId"]]
+            assert len(found) == 1
+            assert "Constraints" in found[0]
+
+            kms.revoke_grant(KeyId=key_id, GrantId=grant["GrantId"])
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_random_various_sizes(self, kms):
+        """GenerateRandom with different byte sizes."""
+        for size in [16, 64, 128]:
+            resp = kms.generate_random(NumberOfBytes=size)
+            assert len(resp["Plaintext"]) == size
+
+    def test_create_key_ecc(self, kms):
+        """CreateKey with ECC_NIST_P256 for sign/verify."""
+        key = kms.create_key(
+            Description="ecc-key",
+            KeySpec="ECC_NIST_P256",
+            KeyUsage="SIGN_VERIFY",
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            assert key["KeyMetadata"]["KeySpec"] == "ECC_NIST_P256"
+            pub = kms.get_public_key(KeyId=key_id)
+            assert "PublicKey" in pub
+            assert "KeyId" in pub
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_encrypt_decrypt_with_algorithm(self, kms):
+        """Encrypt/Decrypt specifying EncryptionAlgorithm explicitly."""
+        key = kms.create_key(Description="algo-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            enc = kms.encrypt(
+                KeyId=key_id,
+                Plaintext=b"algorithm test",
+                EncryptionAlgorithm="SYMMETRIC_DEFAULT",
+            )
+            assert "CiphertextBlob" in enc
+            assert "KeyId" in enc
+
+            dec = kms.decrypt(
+                CiphertextBlob=enc["CiphertextBlob"],
+                EncryptionAlgorithm="SYMMETRIC_DEFAULT",
+            )
+            assert dec["Plaintext"] == b"algorithm test"
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_re_encrypt_with_context(self, kms):
+        """ReEncrypt preserving encryption context."""
+        key1 = kms.create_key(Description="re-enc-ctx-src")
+        key2 = kms.create_key(Description="re-enc-ctx-dst")
+        key1_id = key1["KeyMetadata"]["KeyId"]
+        key2_id = key2["KeyMetadata"]["KeyId"]
+        try:
+            ctx = {"purpose": "reencrypt-test"}
+            enc = kms.encrypt(
+                KeyId=key1_id,
+                Plaintext=b"context reencrypt",
+                EncryptionContext=ctx,
+            )
+            re_enc = kms.re_encrypt(
+                CiphertextBlob=enc["CiphertextBlob"],
+                SourceEncryptionContext=ctx,
+                DestinationKeyId=key2_id,
+                DestinationEncryptionContext=ctx,
+            )
+            assert "CiphertextBlob" in re_enc
+
+            dec = kms.decrypt(
+                CiphertextBlob=re_enc["CiphertextBlob"],
+                EncryptionContext=ctx,
+            )
+            assert dec["Plaintext"] == b"context reencrypt"
+        finally:
+            kms.schedule_key_deletion(KeyId=key1_id, PendingWindowInDays=7)
+            kms.schedule_key_deletion(KeyId=key2_id, PendingWindowInDays=7)
+
+    def test_sign_verify_ecc(self, kms):
+        """Sign and Verify with ECC key."""
+        key = kms.create_key(
+            Description="ecc-sign",
+            KeySpec="ECC_NIST_P256",
+            KeyUsage="SIGN_VERIFY",
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            msg = b"ecc sign test"
+            sig = kms.sign(
+                KeyId=key_id,
+                Message=msg,
+                MessageType="RAW",
+                SigningAlgorithm="ECDSA_SHA_256",
+            )
+            assert "Signature" in sig
+            assert sig["SigningAlgorithm"] == "ECDSA_SHA_256"
+
+            ver = kms.verify(
+                KeyId=key_id,
+                Message=msg,
+                MessageType="RAW",
+                Signature=sig["Signature"],
+                SigningAlgorithm="ECDSA_SHA_256",
+            )
+            assert ver["SignatureValid"] is True
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_data_key_number_of_bytes(self, kms):
+        """GenerateDataKey with NumberOfBytes instead of KeySpec."""
+        key = kms.create_key(Description="dk-bytes")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key(KeyId=key_id, NumberOfBytes=64)
+            assert len(resp["Plaintext"]) == 64
+            assert "CiphertextBlob" in resp
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)

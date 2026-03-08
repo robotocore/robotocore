@@ -200,6 +200,23 @@ class TestAthenaPreparedStatementOperations:
         assert ps["QueryStatement"] == "SELECT ? FROM my_table"
 
 
+class TestAthenaQueryLifecycle:
+    def test_stop_query_execution(self, athena):
+        start_resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        qe_id = start_resp["QueryExecutionId"]
+        athena.stop_query_execution(QueryExecutionId=qe_id)
+        resp = athena.get_query_execution(QueryExecutionId=qe_id)
+        assert resp["QueryExecution"]["Status"]["State"] in (
+            "CANCELLED",
+            "SUCCEEDED",
+            "FAILED",
+        )
+
+
 class TestAthenaQueryResultsOperations:
     def test_get_query_results(self, athena):
         start_resp = athena.start_query_execution(
