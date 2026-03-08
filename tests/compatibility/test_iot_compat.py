@@ -1,10 +1,15 @@
 """IoT compatibility tests."""
 
+import datetime
 import json
 import uuid
 
 import pytest
 from botocore.exceptions import ClientError
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 from tests.compatibility.conftest import make_client
 
@@ -946,3 +951,118 @@ class TestIoTSearchIndexOperations:
     def test_search_index(self, iot):
         resp = iot.search_index(queryString="thingName:*")
         assert "things" in resp
+
+
+def _make_ca_cert():
+    """Generate a self-signed CA certificate and its private key."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test CA")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256())
+    )
+    pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+    return key, pem
+
+
+def _make_verification_cert(ca_key, registration_code):
+    """Generate a verification certificate signed by the CA with registration code as CN."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, registration_code)])
+    issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test CA")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
+        .sign(ca_key, hashes.SHA256())
+    )
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def _make_device_cert(ca_key):
+    """Generate a device certificate signed by the CA."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test-device")])
+    issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test CA")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
+        .sign(ca_key, hashes.SHA256())
+    )
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+class TestIoTCACertificateOperations:
+    def test_register_ca_certificate(self, iot):
+        """RegisterCACertificate registers a CA cert using the registration code."""
+        reg_code_resp = iot.get_registration_code()
+        registration_code = reg_code_resp["registrationCode"]
+        ca_key, ca_pem = _make_ca_cert()
+        verification_pem = _make_verification_cert(ca_key, registration_code)
+        resp = iot.register_ca_certificate(
+            caCertificate=ca_pem,
+            verificationCertificate=verification_pem,
+        )
+        assert "certificateId" in resp
+        assert "certificateArn" in resp
+        ca_cert_id = resp["certificateId"]
+        # Cleanup
+        iot.update_ca_certificate(certificateId=ca_cert_id, newStatus="INACTIVE")
+        iot.delete_ca_certificate(certificateId=ca_cert_id)
+
+    def test_register_certificate(self, iot):
+        """RegisterCertificate registers a device cert signed by a registered CA."""
+        reg_code_resp = iot.get_registration_code()
+        registration_code = reg_code_resp["registrationCode"]
+        ca_key, ca_pem = _make_ca_cert()
+        verification_pem = _make_verification_cert(ca_key, registration_code)
+        ca_resp = iot.register_ca_certificate(
+            caCertificate=ca_pem,
+            verificationCertificate=verification_pem,
+            setAsActive=True,
+            allowAutoRegistration=True,
+        )
+        ca_cert_id = ca_resp["certificateId"]
+        device_pem = _make_device_cert(ca_key)
+        resp = iot.register_certificate(
+            certificatePem=device_pem,
+            caCertificatePem=ca_pem,
+        )
+        assert "certificateId" in resp
+        assert "certificateArn" in resp
+        dev_cert_id = resp["certificateId"]
+        # Cleanup
+        iot.update_certificate(certificateId=dev_cert_id, newStatus="INACTIVE")
+        iot.delete_certificate(certificateId=dev_cert_id)
+        iot.update_ca_certificate(certificateId=ca_cert_id, newStatus="INACTIVE")
+        iot.delete_ca_certificate(certificateId=ca_cert_id)
+
+    def test_register_certificate_without_ca(self, iot):
+        """RegisterCertificateWithoutCA registers a cert PEM directly."""
+        cert = iot.create_keys_and_certificate(setAsActive=True)
+        cert_id = cert["certificateId"]
+        pem = cert["certificatePem"]
+        iot.update_certificate(certificateId=cert_id, newStatus="INACTIVE")
+        iot.delete_certificate(certificateId=cert_id)
+        resp = iot.register_certificate_without_ca(certificatePem=pem, status="ACTIVE")
+        assert "certificateId" in resp
+        assert "certificateArn" in resp
+        new_id = resp["certificateId"]
+        iot.update_certificate(certificateId=new_id, newStatus="INACTIVE")
+        iot.delete_certificate(certificateId=new_id)
