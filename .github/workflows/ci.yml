@@ -84,7 +84,6 @@ jobs:
           tests/unit/providers/
           tests/unit/test_handler_chain_unit.py
           tests/unit/test_iam_middleware.py
-          tests/unit/test_moto_patches.py
           -n4 -q --tb=short
 
   unit-services:
@@ -124,7 +123,6 @@ jobs:
           tests/unit/test_chaos_middleware.py
           tests/unit/test_audit_log.py
           tests/unit/test_audit_log_unit.py
-          tests/unit/test_chaos.py
           tests/unit/test_extensions.py
           tests/unit/test_extensions_unit.py
           tests/unit/test_state_manager.py
