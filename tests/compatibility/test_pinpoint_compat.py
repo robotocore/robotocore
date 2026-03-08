@@ -147,3 +147,59 @@ class TestPinpointTagOperations:
         assert "remove" not in tags
         # cleanup
         pinpoint.delete_app(ApplicationId=app_id)
+
+
+class TestPinpointEventStreamOperations:
+    def test_put_event_stream(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            resp = pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                },
+            )
+            es = resp["EventStream"]
+            assert es["ApplicationId"] == app_id
+            assert "DestinationStreamArn" in es
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_get_event_stream(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                },
+            )
+            resp = pinpoint.get_event_stream(ApplicationId=app_id)
+            es = resp["EventStream"]
+            assert es["ApplicationId"] == app_id
+            assert (
+                es["DestinationStreamArn"] == "arn:aws:kinesis:us-east-1:123456789012:stream/test"
+            )
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_delete_event_stream(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                },
+            )
+            resp = pinpoint.delete_event_stream(ApplicationId=app_id)
+            es = resp["EventStream"]
+            assert es["ApplicationId"] == app_id
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
