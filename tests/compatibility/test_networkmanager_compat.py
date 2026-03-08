@@ -108,6 +108,38 @@ class TestNetworkManagerSites:
         assert isinstance(resp["Sites"], list)
 
 
+class TestNetworkManagerCoreNetworks:
+    def test_create_core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.create_core_network(GlobalNetworkId=gn_id)
+        cn = resp["CoreNetwork"]
+        assert "CoreNetworkId" in cn
+        assert "CoreNetworkArn" in cn
+        assert cn["GlobalNetworkId"] == gn_id
+        # cleanup
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_get_core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.create_core_network(GlobalNetworkId=gn_id)
+        cn_id = resp["CoreNetwork"]["CoreNetworkId"]
+        try:
+            result = nm.get_core_network(CoreNetworkId=cn_id)
+            cn = result["CoreNetwork"]
+            assert cn["CoreNetworkId"] == cn_id
+            assert "CoreNetworkArn" in cn
+            assert "GlobalNetworkId" in cn
+        finally:
+            nm.delete_core_network(CoreNetworkId=cn_id)
+
+    def test_delete_core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.create_core_network(GlobalNetworkId=gn_id)
+        cn_id = resp["CoreNetwork"]["CoreNetworkId"]
+        del_resp = nm.delete_core_network(CoreNetworkId=cn_id)
+        assert "CoreNetwork" in del_resp
+
+
 class TestNetworkmanagerAutoCoverage:
     """Auto-generated coverage tests for networkmanager."""
 
