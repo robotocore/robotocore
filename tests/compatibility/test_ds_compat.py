@@ -187,3 +187,19 @@ class TestDsAutoCoverage:
         """ListLogSubscriptions returns a response."""
         resp = client.list_log_subscriptions()
         assert "LogSubscriptions" in resp
+
+
+class TestDsLDAPSSettings:
+    """Test LDAPS enable/disable operations."""
+
+    def test_enable_ldaps_unsupported_directory_type(self, ds, directory):
+        """EnableLDAPS on a SimpleAD directory raises UnsupportedOperationException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.enable_ldaps(DirectoryId=directory, Type="Client")
+        assert exc_info.value.response["Error"]["Code"] == "UnsupportedOperationException"
+
+    def test_disable_ldaps_unsupported_directory_type(self, ds, directory):
+        """DisableLDAPS on a SimpleAD directory raises UnsupportedOperationException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.disable_ldaps(DirectoryId=directory, Type="Client")
+        assert exc_info.value.response["Error"]["Code"] == "UnsupportedOperationException"

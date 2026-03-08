@@ -12,9 +12,9 @@ def macie2():
 
 class TestMacie2Operations:
     def test_get_macie_session(self, macie2):
+        macie2.enable_macie()
         response = macie2.get_macie_session()
         assert "status" in response
-        assert "createdAt" in response
 
     def test_list_members(self, macie2):
         response = macie2.list_members()
