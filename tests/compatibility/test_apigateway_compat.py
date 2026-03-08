@@ -950,6 +950,348 @@ class TestApigatewayAutoCoverage:
     def client(self):
         return make_client("apigateway")
 
+    @pytest.fixture
+    def api(self, client):
+        import uuid
+
+        resp = client.create_rest_api(
+            name=f"auto-api-{uuid.uuid4().hex[:8]}",
+            description="Auto coverage test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        client.delete_rest_api(restApiId=api_id)
+
+    @pytest.fixture
+    def authorizer(self, client, api):
+        auth = client.create_authorizer(
+            restApiId=api,
+            name="test-authorizer",
+            type="TOKEN",
+            authorizerUri="arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:auth/invocations",
+            identitySource="method.request.header.Authorization",
+        )
+        return auth["id"]
+
     def test_get_vpc_links(self, client):
         """GetVpcLinks returns a response."""
-        client.get_vpc_links()
+        resp = client.get_vpc_links()
+        assert "items" in resp
+
+    def test_get_authorizer(self, client, api, authorizer):
+        """GetAuthorizer retrieves authorizer by ID."""
+        resp = client.get_authorizer(restApiId=api, authorizerId=authorizer)
+        assert resp["id"] == authorizer
+        assert resp["name"] == "test-authorizer"
+        assert resp["type"] == "TOKEN"
+
+    def test_update_authorizer(self, client, api, authorizer):
+        """UpdateAuthorizer modifies authorizer properties."""
+        resp = client.update_authorizer(
+            restApiId=api,
+            authorizerId=authorizer,
+            patchOperations=[
+                {"op": "replace", "path": "/name", "value": "updated-auth"},
+            ],
+        )
+        assert resp["name"] == "updated-auth"
+
+    def test_delete_authorizer(self, client, api):
+        """DeleteAuthorizer removes an authorizer."""
+        auth = client.create_authorizer(
+            restApiId=api,
+            name="delete-me-auth",
+            type="TOKEN",
+            authorizerUri="arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:auth/invocations",
+            identitySource="method.request.header.Authorization",
+        )
+        client.delete_authorizer(restApiId=api, authorizerId=auth["id"])
+        auths = client.get_authorizers(restApiId=api)
+        auth_ids = [a["id"] for a in auths["items"]]
+        assert auth["id"] not in auth_ids
+
+    @pytest.fixture
+    def domain(self, client):
+        import uuid
+
+        domain_name = f"auto-{uuid.uuid4().hex[:8]}.example.com"
+        client.create_domain_name(
+            domainName=domain_name,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+        )
+        yield domain_name
+        try:
+            client.delete_domain_name(domainName=domain_name)
+        except Exception:
+            pass
+
+    def test_create_base_path_mapping(self, client, api, domain):
+        """CreateBasePathMapping creates a mapping for a domain."""
+        resp = client.create_base_path_mapping(
+            domainName=domain,
+            restApiId=api,
+            basePath="v1",
+        )
+        assert resp["basePath"] == "v1"
+        assert resp["restApiId"] == api
+
+    def test_get_base_path_mapping(self, client, api, domain):
+        """GetBasePathMapping retrieves a specific mapping."""
+        client.create_base_path_mapping(
+            domainName=domain,
+            restApiId=api,
+            basePath="v2",
+        )
+        resp = client.get_base_path_mapping(domainName=domain, basePath="v2")
+        assert resp["basePath"] == "v2"
+        assert resp["restApiId"] == api
+
+    def test_get_base_path_mappings(self, client, api, domain):
+        """GetBasePathMappings lists mappings for a domain."""
+        client.create_base_path_mapping(
+            domainName=domain,
+            restApiId=api,
+            basePath="v3",
+        )
+        resp = client.get_base_path_mappings(domainName=domain)
+        assert "items" in resp
+        paths = [m["basePath"] for m in resp["items"]]
+        assert "v3" in paths
+
+    def test_update_base_path_mapping(self, client, api, domain):
+        """UpdateBasePathMapping modifies a mapping."""
+        client.create_base_path_mapping(
+            domainName=domain,
+            restApiId=api,
+            basePath="v4",
+        )
+        resp = client.update_base_path_mapping(
+            domainName=domain,
+            basePath="v4",
+            patchOperations=[
+                {"op": "replace", "path": "/basePath", "value": "v4updated"},
+            ],
+        )
+        assert resp["basePath"] == "v4updated"
+
+    def test_get_request_validator(self, client, api):
+        """GetRequestValidator retrieves a validator by ID."""
+        v = client.create_request_validator(
+            restApiId=api,
+            name="get-val-test",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        resp = client.get_request_validator(restApiId=api, requestValidatorId=v["id"])
+        assert resp["id"] == v["id"]
+        assert resp["name"] == "get-val-test"
+
+    def test_update_request_validator(self, client, api):
+        """UpdateRequestValidator modifies a validator."""
+        v = client.create_request_validator(
+            restApiId=api,
+            name="upd-val-test",
+            validateRequestBody=False,
+            validateRequestParameters=False,
+        )
+        resp = client.update_request_validator(
+            restApiId=api,
+            requestValidatorId=v["id"],
+            patchOperations=[
+                {"op": "replace", "path": "/validateRequestBody", "value": "true"},
+            ],
+        )
+        assert resp["validateRequestBody"] is True
+
+    def test_delete_request_validator(self, client, api):
+        """DeleteRequestValidator removes a validator."""
+        v = client.create_request_validator(
+            restApiId=api,
+            name="del-val-test",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        client.delete_request_validator(restApiId=api, requestValidatorId=v["id"])
+        validators = client.get_request_validators(restApiId=api)
+        ids = [val["id"] for val in validators["items"]]
+        assert v["id"] not in ids
+
+    def test_create_vpc_link(self, client):
+        """CreateVpcLink creates a VPC link."""
+        resp = client.create_vpc_link(
+            name="test-vpc-link",
+            targetArns=[
+                "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/my-nlb/abc123"
+            ],
+        )
+        link_id = resp["id"]
+        try:
+            assert resp["name"] == "test-vpc-link"
+            assert "id" in resp
+        finally:
+            try:
+                client.delete_vpc_link(vpcLinkId=link_id)
+            except Exception:
+                pass
+
+    def test_get_vpc_link(self, client):
+        """GetVpcLink retrieves a VPC link by ID."""
+        created = client.create_vpc_link(
+            name="get-vpc-link",
+            targetArns=[
+                "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/my-nlb/abc123"
+            ],
+        )
+        link_id = created["id"]
+        try:
+            resp = client.get_vpc_link(vpcLinkId=link_id)
+            assert resp["id"] == link_id
+            assert resp["name"] == "get-vpc-link"
+        finally:
+            try:
+                client.delete_vpc_link(vpcLinkId=link_id)
+            except Exception:
+                pass
+
+    def test_delete_vpc_link(self, client):
+        """DeleteVpcLink removes a VPC link."""
+        created = client.create_vpc_link(
+            name="del-vpc-link",
+            targetArns=[
+                "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/my-nlb/abc123"
+            ],
+        )
+        link_id = created["id"]
+        client.delete_vpc_link(vpcLinkId=link_id)
+        links = client.get_vpc_links()
+        link_ids = [lnk["id"] for lnk in links["items"]]
+        assert link_id not in link_ids
+
+    def test_update_api_key(self, client):
+        """UpdateApiKey modifies an API key."""
+        import uuid
+
+        key = client.create_api_key(name=f"upd-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        try:
+            resp = client.update_api_key(
+                apiKey=key["id"],
+                patchOperations=[
+                    {"op": "replace", "path": "/description", "value": "Updated key desc"},
+                ],
+            )
+            assert resp["description"] == "Updated key desc"
+        finally:
+            client.delete_api_key(apiKey=key["id"])
+
+    def test_delete_deployment(self, client, api):
+        """DeleteDeployment removes a deployment."""
+        resources = client.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        client.put_method(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        client.put_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = client.create_deployment(restApiId=api)
+        client.delete_deployment(restApiId=api, deploymentId=dep["id"])
+        deployments = client.get_deployments(restApiId=api)
+        dep_ids = [d["id"] for d in deployments["items"]]
+        assert dep["id"] not in dep_ids
+
+    def test_delete_gateway_response(self, client, api):
+        """DeleteGatewayResponse removes a gateway response."""
+        client.put_gateway_response(
+            restApiId=api,
+            responseType="ACCESS_DENIED",
+            statusCode="403",
+        )
+        client.delete_gateway_response(restApiId=api, responseType="ACCESS_DENIED")
+        responses = client.get_gateway_responses(restApiId=api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "ACCESS_DENIED" not in types
+
+    def test_delete_integration(self, client, api):
+        """DeleteIntegration removes an integration."""
+        resources = client.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = client.create_resource(restApiId=api, parentId=root_id, pathPart="delint")
+        client.put_method(
+            restApiId=api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        client.put_integration(
+            restApiId=api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        client.delete_integration(restApiId=api, resourceId=child["id"], httpMethod="GET")
+        # Verify the resource no longer has the integration
+        resource = client.get_resource(restApiId=api, resourceId=child["id"])
+        method_info = resource.get("resourceMethods", {}).get("GET", {})
+        assert "methodIntegration" not in method_info
+
+    def test_delete_method(self, client, api):
+        """DeleteMethod removes a method."""
+        resources = client.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = client.create_resource(restApiId=api, parentId=root_id, pathPart="delmeth")
+        client.put_method(
+            restApiId=api,
+            resourceId=child["id"],
+            httpMethod="DELETE",
+            authorizationType="NONE",
+        )
+        client.delete_method(restApiId=api, resourceId=child["id"], httpMethod="DELETE")
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError):
+            client.get_method(restApiId=api, resourceId=child["id"], httpMethod="DELETE")
+
+    def test_update_usage_plan(self, client):
+        """UpdateUsagePlan modifies a usage plan."""
+        plan = client.create_usage_plan(name="upd-plan-test")
+        try:
+            resp = client.update_usage_plan(
+                usagePlanId=plan["id"],
+                patchOperations=[
+                    {"op": "replace", "path": "/description", "value": "Updated plan"},
+                ],
+            )
+            assert resp["description"] == "Updated plan"
+        finally:
+            client.delete_usage_plan(usagePlanId=plan["id"])
+
+    def test_get_usage_plan_key(self, client):
+        """GetUsagePlanKey retrieves a specific key in a plan."""
+        import uuid
+
+        plan = client.create_usage_plan(name=f"key-plan-{uuid.uuid4().hex[:8]}")
+        key = client.create_api_key(name=f"key-{uuid.uuid4().hex[:8]}", enabled=True)
+        try:
+            client.create_usage_plan_key(
+                usagePlanId=plan["id"],
+                keyId=key["id"],
+                keyType="API_KEY",
+            )
+            resp = client.get_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
+            assert resp["id"] == key["id"]
+            assert resp["type"] == "API_KEY"
+        finally:
+            try:
+                client.delete_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
+            except Exception:
+                pass
+            client.delete_api_key(apiKey=key["id"])
+            client.delete_usage_plan(usagePlanId=plan["id"])
