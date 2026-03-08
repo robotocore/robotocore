@@ -1,5 +1,6 @@
 """Amazon Managed Prometheus (AMP) compatibility tests."""
 
+import base64
 import uuid
 
 import pytest
@@ -10,6 +11,16 @@ from tests.compatibility.conftest import make_client
 @pytest.fixture
 def amp():
     return make_client("amp")
+
+
+@pytest.fixture
+def workspace(amp):
+    """Create a workspace for tests that need one, clean up after."""
+    alias = f"test-ws-fix-{uuid.uuid4().hex[:8]}"
+    resp = amp.create_workspace(alias=alias)
+    ws_id = resp["workspaceId"]
+    yield ws_id, resp["arn"]
+    amp.delete_workspace(workspaceId=ws_id)
 
 
 class TestAMPOperations:
@@ -110,3 +121,121 @@ class TestAMPOperations:
 
         amp.delete_workspace(workspaceId=resp1["workspaceId"])
         amp.delete_workspace(workspaceId=resp2["workspaceId"])
+
+
+class TestAMPLoggingConfiguration:
+    def test_create_logging_configuration(self, amp, workspace):
+        ws_id, _ = workspace
+        log_group_arn = "arn:aws:logs:us-east-1:123456789012:log-group:test-amp-logs"
+        resp = amp.create_logging_configuration(workspaceId=ws_id, logGroupArn=log_group_arn)
+        assert "status" in resp
+        assert resp["status"]["statusCode"] in ("CREATING", "ACTIVE")
+
+    def test_describe_logging_configuration(self, amp, workspace):
+        ws_id, _ = workspace
+        log_group_arn = "arn:aws:logs:us-east-1:123456789012:log-group:test-amp-desc"
+        amp.create_logging_configuration(workspaceId=ws_id, logGroupArn=log_group_arn)
+        resp = amp.describe_logging_configuration(workspaceId=ws_id)
+        assert "loggingConfiguration" in resp
+        lc = resp["loggingConfiguration"]
+        assert lc["logGroupArn"] == log_group_arn
+        assert lc["workspace"] == ws_id
+
+    def test_update_logging_configuration(self, amp, workspace):
+        ws_id, _ = workspace
+        log_group_arn = "arn:aws:logs:us-east-1:123456789012:log-group:test-amp-upd1"
+        amp.create_logging_configuration(workspaceId=ws_id, logGroupArn=log_group_arn)
+        new_arn = "arn:aws:logs:us-east-1:123456789012:log-group:test-amp-upd2"
+        resp = amp.update_logging_configuration(workspaceId=ws_id, logGroupArn=new_arn)
+        assert "status" in resp
+        # Verify the update took effect
+        desc = amp.describe_logging_configuration(workspaceId=ws_id)
+        assert desc["loggingConfiguration"]["logGroupArn"] == new_arn
+
+    def test_delete_logging_configuration(self, amp, workspace):
+        ws_id, _ = workspace
+        log_group_arn = "arn:aws:logs:us-east-1:123456789012:log-group:test-amp-del"
+        amp.create_logging_configuration(workspaceId=ws_id, logGroupArn=log_group_arn)
+        resp = amp.delete_logging_configuration(workspaceId=ws_id)
+        # Delete should succeed (2xx response)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
+
+class TestAMPRuleGroupsNamespace:
+    def test_create_rule_groups_namespace(self, amp, workspace):
+        ws_id, _ = workspace
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        data = base64.b64encode(b"groups:\n  - name: test\n    rules: []\n").decode()
+        resp = amp.create_rule_groups_namespace(workspaceId=ws_id, name=name, data=data)
+        assert "name" in resp
+        assert resp["name"] == name
+        assert "arn" in resp
+        assert "status" in resp
+        amp.delete_rule_groups_namespace(workspaceId=ws_id, name=name)
+
+    def test_describe_rule_groups_namespace(self, amp, workspace):
+        ws_id, _ = workspace
+        name = f"test-rg-desc-{uuid.uuid4().hex[:8]}"
+        data = base64.b64encode(b"groups:\n  - name: test\n    rules: []\n").decode()
+        amp.create_rule_groups_namespace(workspaceId=ws_id, name=name, data=data)
+        try:
+            resp = amp.describe_rule_groups_namespace(workspaceId=ws_id, name=name)
+            assert "ruleGroupsNamespace" in resp
+            ns = resp["ruleGroupsNamespace"]
+            assert ns["name"] == name
+            assert "arn" in ns
+            assert "data" in ns
+        finally:
+            amp.delete_rule_groups_namespace(workspaceId=ws_id, name=name)
+
+    def test_put_rule_groups_namespace(self, amp, workspace):
+        ws_id, _ = workspace
+        name = f"test-rg-put-{uuid.uuid4().hex[:8]}"
+        data = base64.b64encode(b"groups:\n  - name: test\n    rules: []\n").decode()
+        amp.create_rule_groups_namespace(workspaceId=ws_id, name=name, data=data)
+        try:
+            new_data = base64.b64encode(b"groups:\n  - name: updated\n    rules: []\n").decode()
+            resp = amp.put_rule_groups_namespace(workspaceId=ws_id, name=name, data=new_data)
+            assert "name" in resp
+            assert resp["name"] == name
+            assert "status" in resp
+        finally:
+            amp.delete_rule_groups_namespace(workspaceId=ws_id, name=name)
+
+    def test_delete_rule_groups_namespace(self, amp, workspace):
+        ws_id, _ = workspace
+        name = f"test-rg-del-{uuid.uuid4().hex[:8]}"
+        data = base64.b64encode(b"groups:\n  - name: test\n    rules: []\n").decode()
+        amp.create_rule_groups_namespace(workspaceId=ws_id, name=name, data=data)
+        amp.delete_rule_groups_namespace(workspaceId=ws_id, name=name)
+        # Verify deletion
+        resp = amp.list_rule_groups_namespaces(workspaceId=ws_id)
+        names = [ns["name"] for ns in resp["ruleGroupsNamespaces"]]
+        assert name not in names
+
+    def test_list_rule_groups_namespaces(self, amp, workspace):
+        ws_id, _ = workspace
+        resp = amp.list_rule_groups_namespaces(workspaceId=ws_id)
+        assert "ruleGroupsNamespaces" in resp
+
+
+class TestAMPTagging:
+    def test_tag_resource(self, amp, workspace):
+        _, arn = workspace
+        amp.tag_resource(resourceArn=arn, tags={"team": "platform"})
+        resp = amp.list_tags_for_resource(resourceArn=arn)
+        assert "tags" in resp
+        assert resp["tags"].get("team") == "platform"
+
+    def test_untag_resource(self, amp, workspace):
+        _, arn = workspace
+        amp.tag_resource(resourceArn=arn, tags={"team": "platform", "env": "test"})
+        amp.untag_resource(resourceArn=arn, tagKeys=["team"])
+        resp = amp.list_tags_for_resource(resourceArn=arn)
+        assert "team" not in resp.get("tags", {})
+        assert resp.get("tags", {}).get("env") == "test"
+
+    def test_list_tags_for_resource(self, amp, workspace):
+        _, arn = workspace
+        resp = amp.list_tags_for_resource(resourceArn=arn)
+        assert "tags" in resp
