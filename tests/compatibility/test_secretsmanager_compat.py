@@ -275,11 +275,10 @@ class TestSecretsManagerOperations:
         sm.create_secret(Name="batch/secret2", SecretString="val2")
         try:
             resp = sm.batch_get_secret_value(SecretIdList=["batch/secret1", "batch/secret2"])
+            assert "SecretValues" in resp
             values = {s["Name"]: s["SecretString"] for s in resp["SecretValues"]}
             assert values["batch/secret1"] == "val1"
             assert values["batch/secret2"] == "val2"
-        except Exception:
-            pass  # BatchGetSecretValue may not be supported
         finally:
             sm.delete_secret(SecretId="batch/secret1", ForceDeleteWithoutRecovery=True)
             sm.delete_secret(SecretId="batch/secret2", ForceDeleteWithoutRecovery=True)

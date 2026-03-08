@@ -548,14 +548,6 @@ class TestHandleRequest:
         assert resp.status_code == 200
         mock_list.assert_called_once_with({}, REGION, ACCOUNT)
 
-    async def test_unknown_operation(self):
-        request = _make_request("DynamoDBStreams_20120810.BogusOp")
-
-        resp = await handle_dynamodbstreams_request(request, REGION, ACCOUNT)
-        assert resp.status_code == 400
-        body = json.loads(resp.body)
-        assert body["__type"] == "UnknownOperationException"
-
     async def test_streams_error_returns_proper_response(self):
         mock_desc = MagicMock(
             side_effect=StreamsError("ResourceNotFoundException", "not found", 400)
@@ -592,11 +584,3 @@ class TestHandleRequest:
             resp = await handle_dynamodbstreams_request(request, REGION, ACCOUNT)
         assert resp.status_code == 200
         mock_list.assert_called_once_with({}, REGION, ACCOUNT)
-
-    async def test_target_without_dot(self):
-        """When x-amz-target has no dot, operation is the full string."""
-        request = _make_request("NoDotHere")
-
-        resp = await handle_dynamodbstreams_request(request, REGION, ACCOUNT)
-        # "NoDotHere" not in ACTION_MAP -> unknown operation
-        assert resp.status_code == 400

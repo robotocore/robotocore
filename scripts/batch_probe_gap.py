@@ -498,6 +498,35 @@ GAP_SERVICES = [
 ]
 
 
+# Registry service name → botocore/boto3 service name
+BOTOCORE_NAME_MAP: dict[str, str] = {
+    "acmpca": "acm-pca",
+    "applicationautoscaling": "application-autoscaling",
+    "bedrockagent": "bedrock-agent",
+    "cognitoidentity": "cognito-identity",
+    "ec2instanceconnect": "ec2-instance-connect",
+    "emrcontainers": "emr-containers",
+    "emrserverless": "emr-serverless",
+    "iotdata": "iot-data",
+    "lexv2models": "lexv2-models",
+    "networkfirewall": "network-firewall",
+    "rdsdata": "rds-data",
+    "redshiftdata": "redshift-data",
+    "servicecatalogappregistry": "servicecatalog-appregistry",
+    "ssoadmin": "sso-admin",
+    "timestreaminfluxdb": "timestream-influxdb",
+    "timestreamquery": "timestream-query",
+    "timestreamwrite": "timestream-write",
+    "vpclattice": "vpc-lattice",
+    "workspacesweb": "workspaces-web",
+}
+
+
+def _to_botocore_name(service_name: str) -> str:
+    """Map registry service name to botocore/boto3 service name."""
+    return BOTOCORE_NAME_MAP.get(service_name, service_name)
+
+
 def _to_snake_case(name: str) -> str:
     """Convert PascalCase to snake_case."""
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
@@ -621,9 +650,10 @@ def probe_operation(client, operation_name: str, params: dict) -> tuple[str, str
 
 def get_all_operations(service_name: str) -> list[str]:
     """Get ALL botocore operations for a service."""
+    boto_name = _to_botocore_name(service_name)
     loader = botocore.loaders.Loader()
     try:
-        api = loader.load_service_model(service_name, "service-2")
+        api = loader.load_service_model(boto_name, "service-2")
     except Exception:
         return []
     return sorted(api.get("operations", {}).keys())
@@ -639,8 +669,9 @@ def probe_service(
 
     Each HTTP call is bounded by op_timeout seconds (connect + read).
     """
+    boto_name = _to_botocore_name(service_name)
     client = boto3.client(
-        service_name,
+        boto_name,
         endpoint_url=endpoint,
         region_name="us-east-1",
         aws_access_key_id="testing",
@@ -718,6 +749,11 @@ def summarize(all_results: dict) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Batch-probe gap operations")
     parser.add_argument("--all", action="store_true", help="Probe all 34 gap services")
+    parser.add_argument(
+        "--all-registered",
+        action="store_true",
+        help="Probe ALL registered services (147)",
+    )
     parser.add_argument("--services", help="Comma-separated service names")
     parser.add_argument("--endpoint", default="http://localhost:4566", help="Server endpoint")
     parser.add_argument("--json", action="store_true", help="Output full JSON results")
@@ -737,12 +773,16 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.all:
+    if args.all_registered:
+        from robotocore.services.registry import get_enabled_services
+
+        services = get_enabled_services()
+    elif args.all:
         services = GAP_SERVICES
     elif args.services:
         services = [s.strip() for s in args.services.split(",")]
     else:
-        parser.error("Specify --all or --services")
+        parser.error("Specify --all, --all-registered, or --services")
 
     all_results = {}
     t0 = time.time()

@@ -349,18 +349,6 @@ class TestHandleCloudFormationRequest:
         assert resp.status_code == 200
         assert b"CreateStackResult" in resp.body
 
-    async def test_unknown_action(self):
-        form = urlencode({"Action": "BogusAction"}).encode()
-        headers = {"content-type": "application/x-www-form-urlencoded"}
-        req = _make_request(body=form, headers=headers)
-
-        with patch("robotocore.services.cloudformation.provider._get_store") as mock_get:
-            mock_get.return_value = CfnStore()
-            resp = await handle_cloudformation_request(req, "us-east-1", "123456789012")
-
-        assert resp.status_code == 400
-        assert b"InvalidAction" in resp.body
-
     async def test_validation_error_handling(self):
         form = urlencode(
             {

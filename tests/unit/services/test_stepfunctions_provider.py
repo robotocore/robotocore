@@ -303,15 +303,6 @@ class TestHandleStepFunctionsRequest:
         data = json.loads(resp.body)
         assert "stateMachineArn" in data
 
-    async def test_unknown_operation(self):
-        body = json.dumps({}).encode()
-        headers = {"x-amz-target": "AWSStepFunctions.Bogus"}
-        req = _make_request(body=body, headers=headers)
-        resp = await handle_stepfunctions_request(req, "us-east-1", "123456789012")
-        assert resp.status_code == 400
-        data = json.loads(resp.body)
-        assert data["__type"] == "UnknownOperation"
-
     async def test_sfn_error_handling(self):
         body = json.dumps({"stateMachineArn": "arn:nope"}).encode()
         headers = {

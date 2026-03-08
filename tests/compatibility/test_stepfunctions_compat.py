@@ -958,3 +958,116 @@ class TestStepFunctionsExtended:
                 assert output == inp
         finally:
             sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+
+class TestStepFunctionsActivities:
+    """Tests for Step Functions Activity operations."""
+
+    @pytest.fixture
+    def sfn(self):
+        return make_client("stepfunctions")
+
+    def test_create_activity(self, sfn):
+        """CreateActivity creates an activity and returns its ARN."""
+        name = f"test-activity-{uuid.uuid4().hex[:8]}"
+        resp = sfn.create_activity(name=name)
+        act_arn = resp["activityArn"]
+        try:
+            assert act_arn.startswith("arn:aws:states:")
+            assert f":activity:{name}" in act_arn
+            assert "creationDate" in resp
+        finally:
+            sfn.delete_activity(activityArn=act_arn)
+
+    def test_describe_activity(self, sfn):
+        """DescribeActivity returns activity details."""
+        name = f"desc-activity-{uuid.uuid4().hex[:8]}"
+        resp = sfn.create_activity(name=name)
+        act_arn = resp["activityArn"]
+        try:
+            desc = sfn.describe_activity(activityArn=act_arn)
+            assert desc["name"] == name
+            assert desc["activityArn"] == act_arn
+            assert "creationDate" in desc
+        finally:
+            sfn.delete_activity(activityArn=act_arn)
+
+    def test_list_activities(self, sfn):
+        """ListActivities returns created activities."""
+        name = f"list-activity-{uuid.uuid4().hex[:8]}"
+        resp = sfn.create_activity(name=name)
+        act_arn = resp["activityArn"]
+        try:
+            list_resp = sfn.list_activities()
+            assert "activities" in list_resp
+            arns = [a["activityArn"] for a in list_resp["activities"]]
+            assert act_arn in arns
+        finally:
+            sfn.delete_activity(activityArn=act_arn)
+
+    def test_delete_activity(self, sfn):
+        """DeleteActivity removes the activity."""
+        name = f"del-activity-{uuid.uuid4().hex[:8]}"
+        resp = sfn.create_activity(name=name)
+        act_arn = resp["activityArn"]
+        sfn.delete_activity(activityArn=act_arn)
+        # Verify it's gone
+        list_resp = sfn.list_activities()
+        arns = [a["activityArn"] for a in list_resp["activities"]]
+        assert act_arn not in arns
+
+    def test_list_activities_pagination(self, sfn):
+        """ListActivities with maxResults."""
+        created = []
+        try:
+            for i in range(3):
+                name = f"page-act-{i}-{uuid.uuid4().hex[:8]}"
+                resp = sfn.create_activity(name=name)
+                created.append(resp["activityArn"])
+            list_resp = sfn.list_activities(maxResults=10)
+            assert "activities" in list_resp
+            arns = [a["activityArn"] for a in list_resp["activities"]]
+            for arn in created:
+                assert arn in arns
+        finally:
+            for arn in created:
+                sfn.delete_activity(activityArn=arn)
+
+    def test_describe_activity_fields(self, sfn):
+        """DescribeActivity returns all expected fields."""
+        name = f"fields-act-{uuid.uuid4().hex[:8]}"
+        resp = sfn.create_activity(name=name)
+        act_arn = resp["activityArn"]
+        try:
+            desc = sfn.describe_activity(activityArn=act_arn)
+            assert "activityArn" in desc
+            assert "name" in desc
+            assert "creationDate" in desc
+        finally:
+            sfn.delete_activity(activityArn=act_arn)
+
+
+class TestStepFunctionsSendTask:
+    """Tests for SendTask* operations (callback pattern)."""
+
+    @pytest.fixture
+    def sfn(self):
+        return make_client("stepfunctions")
+
+    def test_send_task_failure_invalid_token(self, sfn):
+        """SendTaskFailure with invalid token returns TaskDoesNotExist."""
+        with pytest.raises(sfn.exceptions.ClientError) as exc:
+            sfn.send_task_failure(taskToken="invalid-token", error="test")
+        assert "TaskDoesNotExist" in str(exc.value)
+
+    def test_send_task_heartbeat_invalid_token(self, sfn):
+        """SendTaskHeartbeat with invalid token returns TaskDoesNotExist."""
+        with pytest.raises(sfn.exceptions.ClientError) as exc:
+            sfn.send_task_heartbeat(taskToken="invalid-token")
+        assert "TaskDoesNotExist" in str(exc.value)
+
+    def test_send_task_success_invalid_token(self, sfn):
+        """SendTaskSuccess with invalid token returns TaskDoesNotExist."""
+        with pytest.raises(sfn.exceptions.ClientError) as exc:
+            sfn.send_task_success(taskToken="invalid-token", output="{}")
+        assert "TaskDoesNotExist" in str(exc.value)

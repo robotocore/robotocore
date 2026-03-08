@@ -956,3 +956,19 @@ class TestKinesisExtended:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
                 pass
+
+
+class TestKinesisGapStubs:
+    """Tests for gap operations: describe_limits, list_streams."""
+
+    def test_describe_limits(self, kinesis):
+        resp = kinesis.describe_limits()
+        assert "ShardLimit" in resp
+        assert "OpenShardCount" in resp
+        assert isinstance(resp["ShardLimit"], int)
+        assert isinstance(resp["OpenShardCount"], int)
+
+    def test_list_streams(self, kinesis):
+        resp = kinesis.list_streams()
+        assert "StreamNames" in resp
+        assert "HasMoreStreams" in resp

@@ -639,3 +639,113 @@ class TestConfigExtended:
             assert "env" not in tag_map2
         finally:
             config.delete_config_rule(ConfigRuleName=name)
+
+    def test_describe_configuration_recorder_status(self, config, iam):
+        role = iam.create_role(
+            RoleName="config-status-role",
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "config.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+        )
+        config.put_configuration_recorder(
+            ConfigurationRecorder={
+                "name": "default",
+                "roleARN": role["Role"]["Arn"],
+                "recordingGroup": {"allSupported": True},
+            }
+        )
+        try:
+            resp = config.describe_configuration_recorder_status()
+            assert "ConfigurationRecordersStatus" in resp
+        finally:
+            try:
+                config.delete_configuration_recorder(ConfigurationRecorderName="default")
+            except ClientError:
+                pass
+            iam.delete_role(RoleName="config-status-role")
+
+    def test_describe_retention_configurations(self, config):
+        config.put_retention_configuration(RetentionPeriodInDays=365)
+        resp = config.describe_retention_configurations()
+        assert "RetentionConfigurations" in resp
+        assert len(resp["RetentionConfigurations"]) >= 1
+
+    def test_list_discovered_resources(self, config, s3):
+        bucket_name = "config-disc-res-test"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = config.list_discovered_resources(resourceType="AWS::S3::Bucket")
+            assert "resourceIdentifiers" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+    def test_get_resource_config_history(self, config, s3):
+        bucket_name = "config-hist-test"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = config.get_resource_config_history(
+                resourceType="AWS::S3::Bucket",
+                resourceId=bucket_name,
+            )
+            assert "configurationItems" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestConfigGapStubs:
+    """Tests for newly-stubbed Config operations that return empty results."""
+
+    def test_describe_conformance_packs(self, config):
+        resp = config.describe_conformance_packs()
+        assert "ConformancePackDetails" in resp
+
+    def test_describe_conformance_pack_status(self, config):
+        resp = config.describe_conformance_pack_status()
+        assert "ConformancePackStatusDetails" in resp
+
+    def test_describe_organization_config_rules(self, config):
+        resp = config.describe_organization_config_rules()
+        assert "OrganizationConfigRules" in resp
+
+    def test_describe_organization_conformance_packs(self, config):
+        resp = config.describe_organization_conformance_packs()
+        assert "OrganizationConformancePacks" in resp
+
+    def test_describe_organization_conformance_pack_statuses(self, config):
+        resp = config.describe_organization_conformance_pack_statuses()
+        assert "OrganizationConformancePackStatuses" in resp
+
+    def test_describe_pending_aggregation_requests(self, config):
+        resp = config.describe_pending_aggregation_requests()
+        assert "PendingAggregationRequests" in resp
+
+    def test_describe_retention_configurations(self, config):
+        resp = config.describe_retention_configurations()
+        assert "RetentionConfigurations" in resp
+
+    def test_get_compliance_details_by_config_rule_stub(self, config):
+        resp = config.get_compliance_details_by_config_rule(ConfigRuleName="dummy")
+        assert "EvaluationResults" in resp
+
+    def test_get_compliance_details_by_resource_stub(self, config):
+        resp = config.get_compliance_details_by_resource(
+            ResourceType="AWS::S3::Bucket", ResourceId="dummy"
+        )
+        assert "EvaluationResults" in resp
+
+    def test_list_conformance_pack_compliance_scores(self, config):
+        resp = config.list_conformance_pack_compliance_scores()
+        assert "ConformancePackComplianceScores" in resp
+
+    def test_list_stored_queries(self, config):
+        resp = config.list_stored_queries()
+        assert "StoredQueryMetadata" in resp

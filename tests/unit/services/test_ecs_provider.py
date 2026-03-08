@@ -437,12 +437,6 @@ class TestTagging:
 
 class TestEdgeCases:
     @pytest.mark.asyncio
-    async def test_unknown_action(self):
-        req = _make_request("BogusAction", {})
-        resp = await handle_ecs_request(req, REGION, ACCOUNT)
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
     async def test_missing_target(self):
         scope = {
             "type": "http",

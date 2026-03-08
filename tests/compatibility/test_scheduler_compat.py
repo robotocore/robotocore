@@ -540,3 +540,66 @@ class TestSchedulerExtended:
         # Second delete should raise
         with pytest.raises(ClientError):
             scheduler.delete_schedule(Name=name)
+
+    def test_list_tags_for_resource(self, scheduler):
+        """ListTagsForResource returns a Tags list for a schedule group."""
+        name = "list-tags-grp"
+        resp = scheduler.create_schedule_group(Name=name)
+        arn = resp["ScheduleGroupArn"]
+        try:
+            tags_resp = scheduler.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], list)
+            assert tags_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            scheduler.delete_schedule_group(Name=name)
+
+    def test_tag_resource(self, scheduler):
+        """TagResource adds tags to a schedule group without error."""
+        name = "tag-res-grp"
+        resp = scheduler.create_schedule_group(Name=name)
+        arn = resp["ScheduleGroupArn"]
+        try:
+            tag_resp = scheduler.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "dev"}],
+            )
+            assert tag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            scheduler.delete_schedule_group(Name=name)
+
+    def test_untag_resource(self, scheduler):
+        """UntagResource removes tags from a schedule group without error."""
+        name = "untag-res-grp"
+        resp = scheduler.create_schedule_group(Name=name)
+        arn = resp["ScheduleGroupArn"]
+        try:
+            scheduler.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            untag_resp = scheduler.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            assert untag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            scheduler.delete_schedule_group(Name=name)
+
+    def test_tag_and_list_tags_for_schedule(self, scheduler):
+        """Tag a schedule and list its tags."""
+        name = "tag-sched"
+        resp = scheduler.create_schedule(
+            Name=name,
+            ScheduleExpression="rate(1 hour)",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target=self._target(),
+        )
+        arn = resp["ScheduleArn"]
+        try:
+            scheduler.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "app", "Value": "myapp"}],
+            )
+            tags_resp = scheduler.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], list)
+        finally:
+            scheduler.delete_schedule(Name=name)

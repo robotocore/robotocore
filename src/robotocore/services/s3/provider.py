@@ -505,6 +505,19 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
     path = request.url.path
     method = request.method.upper()
 
+    # Handle ListDirectoryBuckets (S3 Express) — return empty list
+    if method == "GET" and path == "/" and "s3express" in request.headers.get("authorization", ""):
+        return Response(
+            content=(
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                "<ListDirectoryBucketsResult>"
+                "<Buckets/>"
+                "</ListDirectoryBucketsResult>"
+            ),
+            status_code=200,
+            media_type="application/xml",
+        )
+
     # Handle OPTIONS (CORS preflight)
     if method == "OPTIONS":
         match = _PATH_RE.match(path)

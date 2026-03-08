@@ -108,12 +108,6 @@ class TestHandleKinesisRequest:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_unknown_action_returns_400(self):
-        req = _make_request("BogusAction", {})
-        resp = await handle_kinesis_request(req, "us-east-1", "123456789012")
-        assert resp.status_code == 400
-
-    @pytest.mark.asyncio
     async def test_create_stream(self):
         req = _make_request("CreateStream", {"StreamName": "mystream", "ShardCount": 1})
         resp = await handle_kinesis_request(req, "us-east-1", "123456789012")

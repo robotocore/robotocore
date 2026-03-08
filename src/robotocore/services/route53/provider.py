@@ -5,6 +5,10 @@ Intercepts operations that Moto has bugs or doesn't implement:
 - TestDNSAnswer: Not implemented in Moto
 - CreateQueryLoggingConfig: Moto cross-service validation too strict
 - AssociateVPCWithHostedZone / DisassociateVPCFromHostedZone
+- GetCheckerIpRanges, GetGeoLocation, GetHealthCheckCount,
+  GetTrafficPolicyInstanceCount, ListCidrCollections, ListGeoLocations,
+  ListTrafficPolicies, ListTrafficPolicyInstances: Missing from Moto's
+  flask_paths routing table
 """
 
 import re
@@ -21,6 +25,16 @@ _QUERY_LOG_RE = re.compile(r"^/2013-04-01/queryloggingconfig$")
 _HOSTEDZONE_RE = re.compile(r"^/2013-04-01/hostedzone$")
 _ASSOCIATE_VPC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/associatevpc$")
 _DISASSOCIATE_VPC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/disassociatevpc$")
+
+# Route53 operations missing from Moto's flask_paths
+_CHECKER_IP_RE = re.compile(r"^/2013-04-01/checkeripranges$")
+_GEO_LOCATION_RE = re.compile(r"^/2013-04-01/geolocation$")
+_HEALTH_CHECK_COUNT_RE = re.compile(r"^/2013-04-01/healthcheckcount$")
+_TRAFFIC_POLICY_INSTANCE_COUNT_RE = re.compile(r"^/2013-04-01/trafficpolicyinstancecount$")
+_CIDR_COLLECTIONS_RE = re.compile(r"^/2013-04-01/cidrcollection$")
+_GEO_LOCATIONS_RE = re.compile(r"^/2013-04-01/geolocations$")
+_TRAFFIC_POLICIES_RE = re.compile(r"^/2013-04-01/trafficpolicies$")
+_TRAFFIC_POLICY_INSTANCES_RE = re.compile(r"^/2013-04-01/trafficpolicyinstances$")
 
 # Store query logging configs
 _query_log_configs: dict[str, dict] = {}
@@ -71,7 +85,178 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
     if m and request.method == "POST":
         return _handle_disassociate_vpc(region, account_id)
 
+    # GetCheckerIpRanges (GET /2013-04-01/checkeripranges)
+    if _CHECKER_IP_RE.match(path) and request.method == "GET":
+        return _handle_checker_ip_ranges()
+
+    # GetGeoLocation (GET /2013-04-01/geolocation)
+    if _GEO_LOCATION_RE.match(path) and request.method == "GET":
+        return _handle_get_geo_location(request)
+
+    # GetHealthCheckCount (GET /2013-04-01/healthcheckcount)
+    if _HEALTH_CHECK_COUNT_RE.match(path) and request.method == "GET":
+        return _handle_get_health_check_count(account_id)
+
+    # GetTrafficPolicyInstanceCount (GET /2013-04-01/trafficpolicyinstancecount)
+    if _TRAFFIC_POLICY_INSTANCE_COUNT_RE.match(path) and request.method == "GET":
+        return _handle_get_traffic_policy_instance_count()
+
+    # ListCidrCollections (GET /2013-04-01/cidrcollection)
+    if _CIDR_COLLECTIONS_RE.match(path) and request.method == "GET":
+        return _handle_list_cidr_collections()
+
+    # ListGeoLocations (GET /2013-04-01/geolocations)
+    if _GEO_LOCATIONS_RE.match(path) and request.method == "GET":
+        return _handle_list_geo_locations()
+
+    # ListTrafficPolicies (GET /2013-04-01/trafficpolicies)
+    if _TRAFFIC_POLICIES_RE.match(path) and request.method == "GET":
+        return _handle_list_traffic_policies()
+
+    # ListTrafficPolicyInstances (GET /2013-04-01/trafficpolicyinstances)
+    if _TRAFFIC_POLICY_INSTANCES_RE.match(path) and request.method == "GET":
+        return _handle_list_traffic_policy_instances()
+
     return await forward_to_moto(request, "route53")
+
+
+def _handle_checker_ip_ranges() -> Response:
+    """GetCheckerIpRanges — return AWS health checker IP ranges."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<GetCheckerIpRangesResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <CheckerIpRanges>
+    <member>54.183.255.128/26</member>
+    <member>54.228.16.0/26</member>
+    <member>176.34.159.192/26</member>
+    <member>54.232.40.64/26</member>
+  </CheckerIpRanges>
+</GetCheckerIpRangesResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_get_geo_location(request: Request) -> Response:
+    """GetGeoLocation — return geo location details."""
+    continent = request.query_params.get("continentcode", "")
+    country = request.query_params.get("countrycode", "")
+    subdivision = request.query_params.get("subdivisioncode", "")
+
+    parts = []
+    if continent:
+        parts.append(f"    <ContinentCode>{continent}</ContinentCode>")
+        parts.append(f"    <ContinentName>{continent}</ContinentName>")
+    if country:
+        parts.append(f"    <CountryCode>{country}</CountryCode>")
+        parts.append(f"    <CountryName>{country}</CountryName>")
+    if subdivision:
+        parts.append(f"    <SubdivisionCode>{subdivision}</SubdivisionCode>")
+        parts.append(f"    <SubdivisionName>{subdivision}</SubdivisionName>")
+
+    details = "\n".join(parts)
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<GetGeoLocationResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <GeoLocationDetails>
+{details}
+  </GeoLocationDetails>
+</GetGeoLocationResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_get_health_check_count(account_id: str) -> Response:
+    """GetHealthCheckCount — return count of health checks."""
+    count = 0
+    try:
+        from moto.backends import get_backend
+
+        backend = get_backend("route53")[account_id]["global"]
+        count = len(backend.health_checks.values())
+    except Exception:
+        pass
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<GetHealthCheckCountResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <HealthCheckCount>{count}</HealthCheckCount>
+</GetHealthCheckCountResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_get_traffic_policy_instance_count() -> Response:
+    """GetTrafficPolicyInstanceCount — return count (always 0, not implemented)."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<GetTrafficPolicyInstanceCountResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <TrafficPolicyInstanceCount>0</TrafficPolicyInstanceCount>
+</GetTrafficPolicyInstanceCountResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_list_cidr_collections() -> Response:
+    """ListCidrCollections — return empty list."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<ListCidrCollectionsResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <CidrCollections/>
+</ListCidrCollectionsResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_list_geo_locations() -> Response:
+    """ListGeoLocations — return common geo locations."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<ListGeoLocationsResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <GeoLocationDetailsList>
+    <GeoLocationDetails>
+      <ContinentCode>AF</ContinentCode>
+      <ContinentName>Africa</ContinentName>
+    </GeoLocationDetails>
+    <GeoLocationDetails>
+      <ContinentCode>AN</ContinentCode>
+      <ContinentName>Antarctica</ContinentName>
+    </GeoLocationDetails>
+    <GeoLocationDetails>
+      <ContinentCode>AS</ContinentCode>
+      <ContinentName>Asia</ContinentName>
+    </GeoLocationDetails>
+    <GeoLocationDetails>
+      <ContinentCode>EU</ContinentCode>
+      <ContinentName>Europe</ContinentName>
+    </GeoLocationDetails>
+    <GeoLocationDetails>
+      <ContinentCode>NA</ContinentCode>
+      <ContinentName>North America</ContinentName>
+    </GeoLocationDetails>
+    <GeoLocationDetails>
+      <ContinentCode>OC</ContinentCode>
+      <ContinentName>Oceania</ContinentName>
+    </GeoLocationDetails>
+    <GeoLocationDetails>
+      <ContinentCode>SA</ContinentCode>
+      <ContinentName>South America</ContinentName>
+    </GeoLocationDetails>
+  </GeoLocationDetailsList>
+  <IsTruncated>false</IsTruncated>
+  <MaxItems>100</MaxItems>
+</ListGeoLocationsResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_list_traffic_policies() -> Response:
+    """ListTrafficPolicies — return empty list."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<ListTrafficPoliciesResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <TrafficPolicySummaries/>
+  <IsTruncated>false</IsTruncated>
+  <MaxItems>100</MaxItems>
+</ListTrafficPoliciesResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_list_traffic_policy_instances() -> Response:
+    """ListTrafficPolicyInstances — return empty list."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<ListTrafficPolicyInstancesResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <TrafficPolicyInstances/>
+  <IsTruncated>false</IsTruncated>
+  <MaxItems>100</MaxItems>
+</ListTrafficPolicyInstancesResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
 
 
 def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> Response:
