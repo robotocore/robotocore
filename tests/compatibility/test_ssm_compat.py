@@ -946,3 +946,91 @@ class TestSSMGapStubs:
         resp = ssm.list_ops_metadata()
         assert "OpsMetadataList" in resp
         assert isinstance(resp["OpsMetadataList"], list)
+
+
+class TestSSMGapCoverage:
+    """Additional SSM compat tests to close coverage gaps."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_describe_activations(self, ssm):
+        """DescribeActivations returns list."""
+        resp = ssm.describe_activations()
+        assert "ActivationList" in resp
+        assert isinstance(resp["ActivationList"], list)
+
+    def test_describe_instance_information(self, ssm):
+        """DescribeInstanceInformation returns list."""
+        resp = ssm.describe_instance_information()
+        assert "InstanceInformationList" in resp
+        assert isinstance(resp["InstanceInformationList"], list)
+
+    def test_describe_maintenance_window_schedule(self, ssm):
+        """DescribeMaintenanceWindowSchedule returns list."""
+        resp = ssm.describe_maintenance_window_schedule()
+        assert "ScheduledWindowExecutions" in resp
+        assert isinstance(resp["ScheduledWindowExecutions"], list)
+
+    def test_describe_parameters(self, ssm):
+        """DescribeParameters returns list of parameter metadata."""
+        resp = ssm.describe_parameters()
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)
+
+    def test_describe_parameters_with_filter(self, ssm):
+        """DescribeParameters with ParameterFilters."""
+        name = _unique("/test/desc-param")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert "Parameters" in resp
+            names = [p["Name"] for p in resp["Parameters"]]
+            assert name in names
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_default_patch_baseline(self, ssm):
+        """GetDefaultPatchBaseline returns a baseline ID."""
+        resp = ssm.get_default_patch_baseline()
+        assert "BaselineId" in resp
+        assert resp["BaselineId"].startswith("pb-")
+
+    def test_get_service_setting_activation_tier(self, ssm):
+        """GetServiceSetting for activation-tier."""
+        resp = ssm.get_service_setting(SettingId="/ssm/managed-instance/activation-tier")
+        assert "ServiceSetting" in resp
+        assert resp["ServiceSetting"]["SettingId"] == "/ssm/managed-instance/activation-tier"
+
+    def test_get_service_setting_throughput(self, ssm):
+        """GetServiceSetting for high-throughput-enabled."""
+        resp = ssm.get_service_setting(SettingId="/ssm/parameter-store/high-throughput-enabled")
+        assert "ServiceSetting" in resp
+
+    def test_get_ops_summary(self, ssm):
+        """GetOpsSummary returns list."""
+        resp = ssm.get_ops_summary()
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_list_command_invocations(self, ssm):
+        """ListCommandInvocations returns list."""
+        resp = ssm.list_command_invocations()
+        assert "CommandInvocations" in resp
+        assert isinstance(resp["CommandInvocations"], list)
+
+    def test_get_parameters_by_path_empty(self, ssm):
+        """GetParametersByPath with nonexistent path returns empty list."""
+        resp = ssm.get_parameters_by_path(Path="/nonexistent/probe/path")
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)
+        assert len(resp["Parameters"]) == 0
+
+    def test_describe_parameters_empty(self, ssm):
+        """DescribeParameters returns parameter list."""
+        resp = ssm.describe_parameters()
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)
