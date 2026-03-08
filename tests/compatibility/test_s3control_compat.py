@@ -492,3 +492,401 @@ class TestS3ControlAccessPoints:
             except Exception:
                 pass
             s3.delete_bucket(Bucket=bucket)
+
+
+class TestS3ControlMultiRegionAccessPoints:
+    """Tests for S3 Control Multi-Region Access Point operations."""
+
+    def test_create_multi_region_access_point(self, s3control, s3):
+        """CreateMultiRegionAccessPoint creates an MRAP and returns a request token."""
+        bucket = f"mrap-create-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "RequestTokenARN" in resp
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_multi_region_access_point(self, s3control, s3):
+        """GetMultiRegionAccessPoint returns MRAP details."""
+        bucket = f"mrap-get-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            resp = s3control.get_multi_region_access_point(AccountId=ACCOUNT_ID, Name=mrap_name)
+            assert "AccessPoint" in resp
+            ap = resp["AccessPoint"]
+            assert ap["Name"] == mrap_name
+            assert "Regions" in ap
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_multi_region_access_point(self, s3control, s3):
+        """DeleteMultiRegionAccessPoint removes the MRAP and returns a request token."""
+        bucket = f"mrap-del-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            resp = s3control.delete_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "RequestTokenARN" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_list_multi_region_access_points(self, s3control, s3):
+        """ListMultiRegionAccessPoints returns MRAPs for the account."""
+        bucket = f"mrap-list-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            resp = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+            assert "AccessPoints" in resp
+            names = [ap["Name"] for ap in resp["AccessPoints"]]
+            assert mrap_name in names
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_multi_region_access_point_policy(self, s3control, s3):
+        """GetMultiRegionAccessPointPolicy returns the policy for an MRAP."""
+        bucket = f"mrap-pol-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+            s3control.put_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name, "Policy": policy},
+            )
+            resp = s3control.get_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID, Name=mrap_name
+            )
+            assert "Policy" in resp
+            assert "Established" in resp["Policy"]
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_put_multi_region_access_point_policy(self, s3control, s3):
+        """PutMultiRegionAccessPointPolicy sets a policy on an MRAP."""
+        bucket = f"mrap-putpol-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+            resp = s3control.put_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name, "Policy": policy},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "RequestTokenARN" in resp
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_multi_region_access_point_policy_status(self, s3control, s3):
+        """GetMultiRegionAccessPointPolicyStatus returns IsPublic status."""
+        bucket = f"mrap-polst-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            # Must set a policy first, otherwise NoSuchMultiRegionAccessPointPolicy
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+            s3control.put_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name, "Policy": policy},
+            )
+            resp = s3control.get_multi_region_access_point_policy_status(
+                AccountId=ACCOUNT_ID, Name=mrap_name
+            )
+            assert "Established" in resp
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_describe_multi_region_access_point_operation(self, s3control, s3):
+        """DescribeMultiRegionAccessPointOperation returns async op status."""
+        bucket = f"mrap-desc-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            create_resp = s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            token_arn = create_resp["RequestTokenARN"]
+            resp = s3control.describe_multi_region_access_point_operation(
+                AccountId=ACCOUNT_ID, RequestTokenARN=token_arn
+            )
+            assert "AsyncOperation" in resp
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+
+class TestS3ControlStorageLens:
+    """Tests for S3 Control Storage Lens operations."""
+
+    def test_put_storage_lens_configuration(self, s3control):
+        """PutStorageLensConfiguration creates a storage lens config."""
+        config_id = f"lens-{_uid()}"
+        try:
+            resp = s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {
+                        "BucketLevel": {},
+                    },
+                    "IsEnabled": True,
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_delete_storage_lens_configuration(self, s3control):
+        """DeleteStorageLensConfiguration removes the config."""
+        config_id = f"lens-{_uid()}"
+        s3control.put_storage_lens_configuration(
+            AccountId=ACCOUNT_ID,
+            ConfigId=config_id,
+            StorageLensConfiguration={
+                "Id": config_id,
+                "AccountLevel": {
+                    "BucketLevel": {},
+                },
+                "IsEnabled": True,
+            },
+        )
+        resp = s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_list_storage_lens_configurations(self, s3control):
+        """ListStorageLensConfigurations returns configs for the account."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {
+                        "BucketLevel": {},
+                    },
+                    "IsEnabled": True,
+                },
+            )
+            resp = s3control.list_storage_lens_configurations(AccountId=ACCOUNT_ID)
+            assert "StorageLensConfigurationList" in resp
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_put_storage_lens_configuration_tagging(self, s3control):
+        """PutStorageLensConfigurationTagging sets tags on a storage lens config."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {
+                        "BucketLevel": {},
+                    },
+                    "IsEnabled": True,
+                },
+            )
+            resp = s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_get_storage_lens_configuration_tagging(self, s3control):
+        """GetStorageLensConfigurationTagging returns tags for a storage lens config."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {
+                        "BucketLevel": {},
+                    },
+                    "IsEnabled": True,
+                },
+            )
+            s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            resp = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
