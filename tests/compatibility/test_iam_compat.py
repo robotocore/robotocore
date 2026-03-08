@@ -2422,11 +2422,14 @@ class TestIAMInstanceProfileTags:
         name = _unique("ip-tag")
         iam.create_instance_profile(InstanceProfileName=name)
         try:
-            resp = iam.tag_instance_profile(
+            iam.tag_instance_profile(
                 InstanceProfileName=name,
                 Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "platform"}],
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            resp = iam.get_instance_profile(InstanceProfileName=name)
+            tag_keys = {t["Key"] for t in resp["InstanceProfile"].get("Tags", [])}
+            assert "env" in tag_keys
+            assert "team" in tag_keys
         finally:
             iam.delete_instance_profile(InstanceProfileName=name)
 
@@ -2439,8 +2442,11 @@ class TestIAMInstanceProfileTags:
                 InstanceProfileName=name,
                 Tags=[{"Key": "env", "Value": "test"}, {"Key": "remove-me", "Value": "bye"}],
             )
-            resp = iam.untag_instance_profile(InstanceProfileName=name, TagKeys=["remove-me"])
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            iam.untag_instance_profile(InstanceProfileName=name, TagKeys=["remove-me"])
+            resp = iam.get_instance_profile(InstanceProfileName=name)
+            tag_keys = {t["Key"] for t in resp["InstanceProfile"].get("Tags", [])}
+            assert "env" in tag_keys
+            assert "remove-me" not in tag_keys
         finally:
             iam.delete_instance_profile(InstanceProfileName=name)
 
