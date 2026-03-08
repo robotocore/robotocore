@@ -61,3 +61,9 @@ class TestCloudhsmv2AutoCoverage:
     def test_put_resource_policy(self, client):
         """PutResourcePolicy returns a response."""
         client.put_resource_policy()
+
+    def test_list_tags(self, client):
+        """ListTags returns tags for a cluster resource."""
+        response = client.list_tags(ResourceId="cluster-doesnotexist123")
+        assert "TagList" in response
+        assert isinstance(response["TagList"], list)
