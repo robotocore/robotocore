@@ -23,12 +23,16 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
     if action == "BatchCheckLayerAvailability":
         params = json.loads(body) if body else {}
         digests = params.get("layerDigests", [])
+        repo_name = params.get("repositoryName", "")
+        registry_id = params.get("registryId", account_id)
         layers = []
         for digest in digests:
             layers.append(
                 {
                     "layerDigest": digest,
                     "layerAvailability": "UNAVAILABLE",
+                    "repositoryName": repo_name,
+                    "registryId": registry_id,
                 }
             )
         return Response(

@@ -431,7 +431,9 @@ def _run_task(store: EcsStore, params: dict, region: str, account_id: str) -> di
                             f"arn:aws:ecs:{region}:{account_id}:container/{_new_id()}"
                         ),
                         "name": cd.get("name", ""),
+                        "image": cd.get("image", ""),
                         "lastStatus": "RUNNING",
+                        **({"portMappings": cd["portMappings"]} if "portMappings" in cd else {}),
                     }
                     for cd in td.get("containerDefinitions", [])
                 ],
@@ -607,7 +609,7 @@ def _json_response(data: dict) -> Response:
 def _put_cluster_capacity_providers(
     store: EcsStore, params: dict, region: str, account_id: str
 ) -> dict:
-    cluster_name = params.get("cluster", "default")
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     capacity_providers = params.get("capacityProviders", [])
     default_strategy = params.get("defaultCapacityProviderStrategy", [])
     with store.lock:
