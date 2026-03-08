@@ -252,6 +252,71 @@ class TestGlueJobOperations:
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
+class TestGlueTriggerOperations:
+    def test_create_and_get_trigger(self, glue):
+        trigger_name = _unique("trigger")
+        glue.create_trigger(
+            Name=trigger_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            response = glue.get_trigger(Name=trigger_name)
+            assert response["Trigger"]["Name"] == trigger_name
+            assert response["Trigger"]["Type"] == "SCHEDULED"
+        finally:
+            glue.delete_trigger(Name=trigger_name)
+
+    def test_delete_trigger(self, glue):
+        trigger_name = _unique("trigger")
+        glue.create_trigger(
+            Name=trigger_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        glue.delete_trigger(Name=trigger_name)
+
+        with pytest.raises(ClientError) as exc:
+            glue.get_trigger(Name=trigger_name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_start_trigger(self, glue):
+        trigger_name = _unique("trigger")
+        glue.create_trigger(
+            Name=trigger_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            response = glue.start_trigger(Name=trigger_name)
+            assert response["Name"] == trigger_name
+        finally:
+            glue.delete_trigger(Name=trigger_name)
+
+    def test_stop_trigger(self, glue):
+        trigger_name = _unique("trigger")
+        glue.create_trigger(
+            Name=trigger_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            glue.start_trigger(Name=trigger_name)
+            response = glue.stop_trigger(Name=trigger_name)
+            assert response["Name"] == trigger_name
+        finally:
+            glue.delete_trigger(Name=trigger_name)
+
+    def test_get_nonexistent_trigger(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.get_trigger(Name="does-not-exist-trigger")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
 class TestGlueTags:
     def test_tag_and_get_tags(self, glue):
         db_name = _unique("db")
