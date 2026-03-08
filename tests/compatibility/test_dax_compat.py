@@ -67,6 +67,28 @@ class TestDAXClusterOperations:
         resp = dax.delete_cluster(ClusterName=name)
         assert resp["Cluster"]["ClusterName"] == name
 
+    def test_decrease_replication_factor(self, dax):
+        name = _unique("dax")
+        dax.create_cluster(
+            ClusterName=name,
+            NodeType="dax.r4.large",
+            ReplicationFactor=3,
+            IamRoleArn="arn:aws:iam::123456789012:role/DAXRole",
+        )
+        try:
+            resp = dax.decrease_replication_factor(
+                ClusterName=name,
+                NewReplicationFactor=1,
+            )
+            cluster = resp["Cluster"]
+            assert cluster["ClusterName"] == name
+            assert "TotalNodes" in cluster
+        finally:
+            try:
+                dax.delete_cluster(ClusterName=name)
+            except Exception:
+                pass
+
     def test_list_tags(self, dax, cluster):
         resp = dax.list_tags(ResourceName=cluster["arn"])
         assert "Tags" in resp
