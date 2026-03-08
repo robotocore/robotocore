@@ -10,17 +10,20 @@ from starlette.requests import Request
 from robotocore.services.sqs.models import SqsStore
 from robotocore.services.sqs.provider import (
     SqsError,
+    _add_permission,
     _create_queue,
     _delete_queue,
     _error,
     _get_queue_attributes,
     _get_queue_url,
     _json_response,
+    _list_dead_letter_source_queues,
     _list_queues,
     _md5,
     _parse_message_attributes,
     _resolve_queue,
     _send_message,
+    _send_message_batch,
     _xml_response,
     handle_sqs_request,
 )
@@ -291,3 +294,170 @@ class TestSqsError:
     def test_default_status(self):
         err = SqsError("MyCode", "msg")
         assert err.status == 400
+
+
+# ---------------------------------------------------------------------------
+# Bug-exposing tests below. Each test targets a specific correctness bug
+# in the SQS provider and is expected to FAIL until the bug is fixed.
+# ---------------------------------------------------------------------------
+
+
+class TestBugListDeadLetterSourceQueuesResponseKey:
+    """Bug: _list_dead_letter_source_queues returns 'queueUrls' (camelCase)
+    instead of 'QueueUrls' (PascalCase). The AWS SQS API uses PascalCase
+    for ListDeadLetterSourceQueues response."""
+
+    def test_response_key_is_pascal_case(self):
+        store = SqsStore()
+        dlq = store.create_queue("my-dlq", "us-east-1", "123456789012")
+        source = store.create_queue("my-source", "us-east-1", "123456789012")
+        source.attributes["RedrivePolicy"] = json.dumps(
+            {"deadLetterTargetArn": dlq.arn, "maxReceiveCount": 3}
+        )
+        mock_req = MagicMock()
+        result = _list_dead_letter_source_queues(
+            store,
+            {"QueueUrl": "http://localhost:4566/123456789012/my-dlq"},
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        # AWS returns PascalCase "QueueUrls", not camelCase "queueUrls"
+        assert "QueueUrls" in result, f"Expected 'QueueUrls' but got keys: {list(result.keys())}"
+
+
+class TestBugSendMessageBatchFifoDedup:
+    """Bug: _send_message_batch ignores the return value of queue.put() for
+    FIFO queues. When a duplicate message is sent, FifoQueue.put() returns
+    the original message, but the batch code always uses the new msg_id and
+    md5 in the response."""
+
+    def test_batch_dedup_returns_original_message_id(self):
+        store = SqsStore()
+        queue = store.create_queue(
+            "test.fifo",
+            "us-east-1",
+            "123456789012",
+            {"ContentBasedDeduplication": "true"},
+        )
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test.fifo"
+
+        # Send first message to get the original message ID
+        first_result = _send_message(
+            store,
+            {
+                "QueueUrl": queue.url,
+                "MessageBody": "hello",
+                "MessageGroupId": "g1",
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        original_id = first_result["MessageId"]
+
+        # Send duplicate via batch -- should return original ID
+        batch_result = _send_message_batch(
+            store,
+            {
+                "QueueUrl": queue.url,
+                "Entries": [
+                    {
+                        "Id": "entry1",
+                        "MessageBody": "hello",
+                        "MessageGroupId": "g1",
+                    }
+                ],
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        batch_msg_id = batch_result["Successful"][0]["MessageId"]
+        assert batch_msg_id == original_id, (
+            f"Batch dedup should return original '{original_id}' but got '{batch_msg_id}'"
+        )
+
+    def test_batch_dedup_returns_original_md5(self):
+        """Same dedup ID but different body -- should return original MD5."""
+        store = SqsStore()
+        queue = store.create_queue("test2.fifo", "us-east-1", "123456789012")
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test2.fifo"
+
+        first_result = _send_message(
+            store,
+            {
+                "QueueUrl": queue.url,
+                "MessageBody": "original-body",
+                "MessageGroupId": "g1",
+                "MessageDeduplicationId": "dedup-1",
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        original_md5 = first_result["MD5OfMessageBody"]
+
+        batch_result = _send_message_batch(
+            store,
+            {
+                "QueueUrl": queue.url,
+                "Entries": [
+                    {
+                        "Id": "entry1",
+                        "MessageBody": "different-body",
+                        "MessageGroupId": "g1",
+                        "MessageDeduplicationId": "dedup-1",
+                    }
+                ],
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        batch_md5 = batch_result["Successful"][0]["MD5OfMessageBody"]
+        assert batch_md5 == original_md5, (
+            f"Expected original MD5 '{original_md5}' but got '{batch_md5}'"
+        )
+
+
+class TestBugAddPermissionEmptyActions:
+    """Bug: _add_permission crashes with IndexError when Actions is an empty
+    list, because line 460 does `action_list[0]` unconditionally."""
+
+    def test_empty_actions_raises_sqs_error_not_index_error(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        # Should raise SqsError (validation), not crash with IndexError
+        with pytest.raises(SqsError):
+            _add_permission(
+                store,
+                {
+                    "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                    "Label": "my-label",
+                    "AWSAccountIds": ["111111111111"],
+                    "Actions": [],
+                },
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
+
+
+class TestBugDeleteQueueNonExistent:
+    """Bug: _delete_queue silently returns {} for a non-existent queue URL.
+    AWS returns AWS.SimpleQueueService.NonExistentQueue error."""
+
+    def test_delete_nonexistent_queue_raises_error(self):
+        store = SqsStore()
+        mock_req = MagicMock()
+        with pytest.raises(SqsError):
+            _delete_queue(
+                store,
+                {"QueueUrl": "http://localhost:4566/123456789012/does-not-exist"},
+                "us-east-1",
+                "123456789012",
+                mock_req,
+            )
