@@ -38,7 +38,20 @@ Launched 20 worktree agents targeting:
 - SNS/Firehose/SecretsManager, CloudFront/OpenSearch/IoT, Backup/GuardDuty/ElastiCache,
   S3Control/DMS/Inspector2, EC2 batch 2
 
-### Results
+### Phase 5: Wave 2 Merge
+- Merged SecretsManager, CloudFront, IoT, OpenSearch, ElastiCache, DMS, Inspector2, S3Control
+- 321 new tests, all passing
+
+### Phase 6: Wave 3 (5 more agents)
+- Glue batch 2, SageMaker CRUD, Pinpoint/SecurityHub/Bedrock,
+  Redshift/SESv2/SSM batch 2, DS/Macie2/Rekognition/Transfer
+- 3,204 new lines of test code across 10 files
+
+### Final Results
 - Starting: 2,936/9,165 (32.0%), 3,451 compat tests
-- After wave 1: 3,130/9,196 (34.0%), 4,397 compat tests
-- Net: +194 tested ops, +946 compat tests
+- After wave 1: 3,130/9,196 (34.0%), ~4,400 compat tests
+- After wave 2: 3,137/9,196 (34.1%)
+- After wave 3: 3,222/9,196 (35.0%), ~5,100 compat tests
+- **Net: +286 tested ops, ~1,650 new compat tests**
+- 9 commits pushed to main
+- Top movers: EC2 296→339, SageMaker 35→73, Glue 47→86, Redshift 58→66
