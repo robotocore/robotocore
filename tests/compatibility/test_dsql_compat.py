@@ -33,3 +33,16 @@ class TestDSQLClusterOperations:
         create_resp = dsql.create_cluster(deletionProtectionEnabled=False)
         resp = dsql.delete_cluster(identifier=create_resp["identifier"])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDSQLTagsForResource:
+    """Tests for Aurora DSQL tag operations."""
+
+    def test_list_tags_for_resource(self, dsql):
+        create_resp = dsql.create_cluster(deletionProtectionEnabled=False)
+        cluster_arn = create_resp["arn"]
+        try:
+            resp = dsql.list_tags_for_resource(resourceArn=cluster_arn)
+            assert "tags" in resp
+        finally:
+            dsql.delete_cluster(identifier=create_resp["identifier"])
