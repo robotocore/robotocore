@@ -2563,6 +2563,41 @@ class TestIAMUpdateAssumeRolePolicy:
         finally:
             iam.delete_role(RoleName=role_name)
 
+    def test_update_assume_role_policy_nonexistent_role(self, iam):
+        """UpdateAssumeRolePolicy on a non-existent role returns NoSuchEntity."""
+        with pytest.raises(iam.exceptions.NoSuchEntityException) as exc_info:
+            iam.update_assume_role_policy(
+                RoleName="no-such-role-xyz",
+                PolicyDocument=TRUST_POLICY,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchEntity"
+
+    def test_update_assume_role_policy_verify_content(self, iam):
+        """UpdateAssumeRolePolicy: verify the new policy document content."""
+        role_name = _unique("uarp-v")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            new_trust = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "ec2.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            )
+            iam.update_assume_role_policy(RoleName=role_name, PolicyDocument=new_trust)
+            resp = iam.get_role(RoleName=role_name)
+            doc = resp["Role"]["AssumeRolePolicyDocument"]
+            # doc is already parsed by boto3
+            principals = [s["Principal"] for s in doc["Statement"]]
+            assert {"Service": "ec2.amazonaws.com"} in principals
+        finally:
+            iam.delete_role(RoleName=role_name)
+
 
 # ---------------------------------------------------------------------------
 # MFA device operations
