@@ -1063,6 +1063,162 @@ class TestSSMGapCoverage:
         assert isinstance(resp["Parameters"], list)
 
 
+class TestSSMPatchBaselineExtended:
+    """Patch baseline CRUD and patch group registration tests."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_create_and_delete_patch_baseline(self, ssm):
+        """CreatePatchBaseline / DeletePatchBaseline full lifecycle."""
+        name = _unique("pb-crud")
+        resp = ssm.create_patch_baseline(
+            Name=name,
+            Description="Test patch baseline",
+            OperatingSystem="AMAZON_LINUX_2",
+        )
+        baseline_id = resp["BaselineId"]
+        assert baseline_id.startswith("pb-")
+
+        # Verify it shows in describe
+        desc = ssm.describe_patch_baselines()
+        ids = [b["BaselineId"] for b in desc["BaselineIdentities"]]
+        assert baseline_id in ids
+
+        ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+    def test_register_deregister_patch_baseline_for_patch_group(self, ssm):
+        """RegisterPatchBaselineForPatchGroup / DeregisterPatchBaselineForPatchGroup."""
+        name = _unique("pb-pg")
+        resp = ssm.create_patch_baseline(Name=name)
+        baseline_id = resp["BaselineId"]
+        group_name = _unique("test-group")
+        try:
+            reg = ssm.register_patch_baseline_for_patch_group(
+                BaselineId=baseline_id, PatchGroup=group_name
+            )
+            assert reg["BaselineId"] == baseline_id
+            assert reg["PatchGroup"] == group_name
+
+            dereg = ssm.deregister_patch_baseline_for_patch_group(
+                BaselineId=baseline_id, PatchGroup=group_name
+            )
+            assert dereg["BaselineId"] == baseline_id
+            assert dereg["PatchGroup"] == group_name
+        finally:
+            ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+
+class TestSSMDocumentPermissions:
+    """Document sharing and permission tests."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _create_doc(self, ssm, name=None):
+        import json
+
+        name = name or _unique("doc-perm")
+        content = json.dumps(
+            {
+                "schemaVersion": "2.2",
+                "description": "Permission test document",
+                "mainSteps": [
+                    {
+                        "action": "aws:runShellScript",
+                        "name": "runScript",
+                        "inputs": {"runCommand": ["echo hello"]},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(
+            Content=content,
+            Name=name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        return name
+
+    def test_modify_document_permission_share_and_unshare(self, ssm):
+        """ModifyDocumentPermission: share then unshare a document."""
+        doc_name = self._create_doc(ssm)
+        try:
+            # Share with account
+            ssm.modify_document_permission(
+                Name=doc_name,
+                PermissionType="Share",
+                AccountIdsToAdd=["111111111111"],
+            )
+            resp = ssm.describe_document_permission(Name=doc_name, PermissionType="Share")
+            assert "111111111111" in resp["AccountIds"]
+
+            # Unshare
+            ssm.modify_document_permission(
+                Name=doc_name,
+                PermissionType="Share",
+                AccountIdsToRemove=["111111111111"],
+            )
+            resp2 = ssm.describe_document_permission(Name=doc_name, PermissionType="Share")
+            assert "111111111111" not in resp2.get("AccountIds", [])
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_list_documents_no_filter(self, ssm):
+        """ListDocuments with no filter returns document list."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.list_documents()
+            assert "DocumentIdentifiers" in resp
+            assert isinstance(resp["DocumentIdentifiers"], list)
+            names = [d["Name"] for d in resp["DocumentIdentifiers"]]
+            assert doc_name in names
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_list_documents_owner_self_filter(self, ssm):
+        """ListDocuments with Owner=Self filter."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.list_documents(Filters=[{"Key": "Owner", "Values": ["Self"]}])
+            assert "DocumentIdentifiers" in resp
+            names = [d["Name"] for d in resp["DocumentIdentifiers"]]
+            assert doc_name in names
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMCommandExtended:
+    """Extended command operations."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_list_commands_no_params(self, ssm):
+        """ListCommands with no params returns Commands list."""
+        resp = ssm.list_commands()
+        assert "Commands" in resp
+        assert isinstance(resp["Commands"], list)
+
+    def test_send_command_and_list(self, ssm):
+        """SendCommand then ListCommands finds the command."""
+        resp = ssm.send_command(
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["echo test"]},
+            Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+        )
+        command_id = resp["Command"]["CommandId"]
+        assert command_id is not None
+        assert resp["Command"]["DocumentName"] == "AWS-RunShellScript"
+
+        list_resp = ssm.list_commands(CommandId=command_id)
+        assert len(list_resp["Commands"]) >= 1
+        assert list_resp["Commands"][0]["CommandId"] == command_id
+
+
 class TestSsmAutoCoverage:
     """Auto-generated coverage tests for ssm."""
 

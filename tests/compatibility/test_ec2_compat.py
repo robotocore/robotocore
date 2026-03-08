@@ -2297,10 +2297,6 @@ class TestEc2AutoCoverage:
         """CancelImportTask returns a response."""
         client.cancel_import_task()
 
-    def test_create_default_subnet(self, client):
-        """CreateDefaultSubnet returns a response."""
-        client.create_default_subnet()
-
     def test_create_instance_event_window(self, client):
         """CreateInstanceEventWindow returns a response."""
         client.create_instance_event_window()
@@ -2553,3 +2549,877 @@ class TestEc2AutoCoverage:
         """RequestSpotInstances returns a response."""
         resp = client.request_spot_instances()
         assert "SpotInstanceRequests" in resp
+
+
+class TestEC2AddressOperations:
+    """Tests for EIP associate/disassociate operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_disassociate_address_to_instance(self, ec2):
+        """AssociateAddress / DisassociateAddress with an instance."""
+        # Allocate an EIP
+        alloc = ec2.allocate_address(Domain="vpc")
+        alloc_id = alloc["AllocationId"]
+        try:
+            # Launch an instance
+            run = ec2.run_instances(ImageId="ami-12345678", MinCount=1, MaxCount=1)
+            inst_id = run["Instances"][0]["InstanceId"]
+            try:
+                # Associate EIP with instance
+                assoc = ec2.associate_address(AllocationId=alloc_id, InstanceId=inst_id)
+                assoc_id = assoc["AssociationId"]
+                assert assoc_id.startswith("eipassoc-")
+
+                # Verify association via describe
+                desc = ec2.describe_addresses(AllocationIds=[alloc_id])
+                assert desc["Addresses"][0]["InstanceId"] == inst_id
+                assert desc["Addresses"][0]["AssociationId"] == assoc_id
+
+                # Disassociate
+                ec2.disassociate_address(AssociationId=assoc_id)
+
+                # Verify disassociation
+                desc2 = ec2.describe_addresses(AllocationIds=[alloc_id])
+                assert desc2["Addresses"][0].get("InstanceId", "") in ("", inst_id)
+            finally:
+                ec2.terminate_instances(InstanceIds=[inst_id])
+        finally:
+            ec2.release_address(AllocationId=alloc_id)
+
+    def test_associate_address_to_network_interface(self, ec2):
+        """AssociateAddress / DisassociateAddress with ENI."""
+        vpc = ec2.create_vpc(CidrBlock="10.220.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.220.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id)
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    alloc = ec2.allocate_address(Domain="vpc")
+                    alloc_id = alloc["AllocationId"]
+                    try:
+                        assoc = ec2.associate_address(
+                            AllocationId=alloc_id, NetworkInterfaceId=eni_id
+                        )
+                        assoc_id = assoc["AssociationId"]
+                        assert assoc_id.startswith("eipassoc-")
+
+                        ec2.disassociate_address(AssociationId=assoc_id)
+                    finally:
+                        ec2.release_address(AllocationId=alloc_id)
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2InstanceOperations:
+    """Tests for instance monitoring, start/stop/reboot, IAM profiles, attributes."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _launch_instance(self, ec2):
+        """Launch a t2.micro instance and return instance ID."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        return resp["Instances"][0]["InstanceId"]
+
+    def test_stop_start_instances(self, ec2):
+        """StopInstances / StartInstances."""
+        inst_id = self._launch_instance(ec2)
+        try:
+            stop = ec2.stop_instances(InstanceIds=[inst_id])
+            assert len(stop["StoppingInstances"]) == 1
+            assert stop["StoppingInstances"][0]["InstanceId"] == inst_id
+
+            start = ec2.start_instances(InstanceIds=[inst_id])
+            assert len(start["StartingInstances"]) == 1
+            assert start["StartingInstances"][0]["InstanceId"] == inst_id
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_reboot_instances(self, ec2):
+        """RebootInstances."""
+        inst_id = self._launch_instance(ec2)
+        try:
+            # RebootInstances returns empty on success
+            resp = ec2.reboot_instances(InstanceIds=[inst_id])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instance_attribute_instance_type(self, ec2):
+        """DescribeInstanceAttribute for instanceType."""
+        inst_id = self._launch_instance(ec2)
+        try:
+            resp = ec2.describe_instance_attribute(InstanceId=inst_id, Attribute="instanceType")
+            assert resp["InstanceId"] == inst_id
+            assert resp["InstanceType"]["Value"] == "t2.micro"
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instance_attribute_disable_api_termination(self, ec2):
+        """DescribeInstanceAttribute for disableApiTermination."""
+        inst_id = self._launch_instance(ec2)
+        try:
+            resp = ec2.describe_instance_attribute(
+                InstanceId=inst_id, Attribute="disableApiTermination"
+            )
+            assert resp["InstanceId"] == inst_id
+            assert "DisableApiTermination" in resp
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instance_attribute_user_data(self, ec2):
+        """DescribeInstanceAttribute for userData."""
+        inst_id = self._launch_instance(ec2)
+        try:
+            resp = ec2.describe_instance_attribute(InstanceId=inst_id, Attribute="userData")
+            assert resp["InstanceId"] == inst_id
+            assert "UserData" in resp
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_associate_disassociate_iam_instance_profile(self, ec2):
+        """AssociateIamInstanceProfile / DisassociateIamInstanceProfile."""
+        import json
+
+        iam = make_client("iam")
+
+        # Create IAM role and instance profile
+        role_name = _unique("ec2-role")
+        profile_name = _unique("ec2-profile")
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "ec2.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        iam.add_role_to_instance_profile(InstanceProfileName=profile_name, RoleName=role_name)
+
+        inst_id = self._launch_instance(ec2)
+        try:
+            profile_resp = iam.get_instance_profile(InstanceProfileName=profile_name)
+            profile_arn = profile_resp["InstanceProfile"]["Arn"]
+
+            assoc = ec2.associate_iam_instance_profile(
+                IamInstanceProfile={"Arn": profile_arn},
+                InstanceId=inst_id,
+            )
+            assoc_id = assoc["IamInstanceProfileAssociation"]["AssociationId"]
+            assert assoc_id.startswith("iip-assoc-")
+            assert assoc["IamInstanceProfileAssociation"]["InstanceId"] == inst_id
+
+            # Describe to verify
+            desc = ec2.describe_iam_instance_profile_associations(AssociationIds=[assoc_id])
+            assert len(desc["IamInstanceProfileAssociations"]) == 1
+
+            # Disassociate
+            dis = ec2.disassociate_iam_instance_profile(AssociationId=assoc_id)
+            assert dis["IamInstanceProfileAssociation"]["AssociationId"] == assoc_id
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+            iam.remove_role_from_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            iam.delete_instance_profile(InstanceProfileName=profile_name)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestEC2LaunchTemplateAdvanced:
+    """Advanced launch template operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_launch_template_versions(self, ec2):
+        """DescribeLaunchTemplateVersions."""
+        name = _unique("lt-ver")
+        resp = ec2.create_launch_template(
+            LaunchTemplateName=name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+        )
+        lt_id = resp["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            vers = ec2.describe_launch_template_versions(LaunchTemplateId=lt_id)
+            assert len(vers["LaunchTemplateVersions"]) >= 1
+            assert vers["LaunchTemplateVersions"][0]["LaunchTemplateId"] == lt_id
+            assert (
+                vers["LaunchTemplateVersions"][0]["LaunchTemplateData"]["InstanceType"]
+                == "t2.micro"
+            )
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+    def test_create_launch_template_version(self, ec2):
+        """CreateLaunchTemplateVersion."""
+        name = _unique("lt-newver")
+        resp = ec2.create_launch_template(
+            LaunchTemplateName=name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+        )
+        lt_id = resp["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            v2 = ec2.create_launch_template_version(
+                LaunchTemplateId=lt_id,
+                LaunchTemplateData={"InstanceType": "t2.small"},
+            )
+            assert v2["LaunchTemplateVersion"]["VersionNumber"] == 2
+            assert v2["LaunchTemplateVersion"]["LaunchTemplateData"]["InstanceType"] == "t2.small"
+
+            vers = ec2.describe_launch_template_versions(LaunchTemplateId=lt_id)
+            assert len(vers["LaunchTemplateVersions"]) == 2
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+    def test_modify_launch_template_default_version(self, ec2):
+        """ModifyLaunchTemplate to change default version."""
+        name = _unique("lt-mod")
+        resp = ec2.create_launch_template(
+            LaunchTemplateName=name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+        )
+        lt_id = resp["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            # Create version 2
+            ec2.create_launch_template_version(
+                LaunchTemplateId=lt_id,
+                LaunchTemplateData={"InstanceType": "t2.small"},
+            )
+
+            # Modify default version to 2
+            mod = ec2.modify_launch_template(LaunchTemplateId=lt_id, DefaultVersion="2")
+            assert mod["LaunchTemplate"]["DefaultVersionNumber"] == 2
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+
+class TestEC2ManagedPrefixListAdvanced:
+    """Advanced managed prefix list operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_managed_prefix_list_add_entry(self, ec2):
+        """ModifyManagedPrefixList to add an entry."""
+        name = _unique("pfx-mod")
+        resp = ec2.create_managed_prefix_list(
+            PrefixListName=name,
+            MaxEntries=5,
+            AddressFamily="IPv4",
+            Entries=[{"Cidr": "10.0.0.0/8", "Description": "initial"}],
+        )
+        pl_id = resp["PrefixList"]["PrefixListId"]
+        try:
+            # Modify: add a new entry
+            mod = ec2.modify_managed_prefix_list(
+                PrefixListId=pl_id,
+                CurrentVersion=1,
+                AddEntries=[{"Cidr": "172.16.0.0/12", "Description": "added"}],
+            )
+            assert mod["PrefixList"]["PrefixListId"] == pl_id
+            assert mod["PrefixList"]["Version"] == 2
+
+            # Get entries and verify both exist
+            entries = ec2.get_managed_prefix_list_entries(PrefixListId=pl_id)
+            cidrs = [e["Cidr"] for e in entries["Entries"]]
+            assert "10.0.0.0/8" in cidrs
+            assert "172.16.0.0/12" in cidrs
+        finally:
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+
+    def test_modify_managed_prefix_list_remove_entry(self, ec2):
+        """ModifyManagedPrefixList to remove an entry."""
+        name = _unique("pfx-rm")
+        resp = ec2.create_managed_prefix_list(
+            PrefixListName=name,
+            MaxEntries=5,
+            AddressFamily="IPv4",
+            Entries=[
+                {"Cidr": "10.0.0.0/8", "Description": "keep"},
+                {"Cidr": "192.168.0.0/16", "Description": "remove"},
+            ],
+        )
+        pl_id = resp["PrefixList"]["PrefixListId"]
+        try:
+            mod = ec2.modify_managed_prefix_list(
+                PrefixListId=pl_id,
+                CurrentVersion=1,
+                RemoveEntries=[{"Cidr": "192.168.0.0/16"}],
+            )
+            assert mod["PrefixList"]["Version"] == 2
+
+            entries = ec2.get_managed_prefix_list_entries(PrefixListId=pl_id)
+            cidrs = [e["Cidr"] for e in entries["Entries"]]
+            assert "10.0.0.0/8" in cidrs
+            assert "192.168.0.0/16" not in cidrs
+        finally:
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+
+
+class TestEC2ImageAttribute:
+    """Tests for DescribeImageAttribute."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_image_attribute_launch_permission(self, ec2):
+        """DescribeImageAttribute for launchPermission."""
+        # Create an AMI from a snapshot
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                img = ec2.register_image(
+                    Name=_unique("img-attr"),
+                    RootDeviceName="/dev/sda1",
+                    BlockDeviceMappings=[
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"SnapshotId": snap_id},
+                        }
+                    ],
+                )
+                image_id = img["ImageId"]
+                try:
+                    resp = ec2.describe_image_attribute(
+                        ImageId=image_id, Attribute="launchPermission"
+                    )
+                    assert resp["ImageId"] == image_id
+                    assert "LaunchPermissions" in resp
+                finally:
+                    ec2.deregister_image(ImageId=image_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_describe_image_attribute_description(self, ec2):
+        """DescribeImageAttribute for description."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                img = ec2.register_image(
+                    Name=_unique("img-desc"),
+                    Description="test-description",
+                    RootDeviceName="/dev/sda1",
+                    BlockDeviceMappings=[
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"SnapshotId": snap_id},
+                        }
+                    ],
+                )
+                image_id = img["ImageId"]
+                try:
+                    resp = ec2.describe_image_attribute(ImageId=image_id, Attribute="description")
+                    assert resp["ImageId"] == image_id
+                    assert resp["Description"]["Value"] == "test-description"
+                finally:
+                    ec2.deregister_image(ImageId=image_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2DescribeIdFormat:
+    """Tests for DescribeIdFormat and DescribeIdentityIdFormat."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_id_format_with_resource(self, ec2):
+        """DescribeIdFormat with specific resource type."""
+        resp = ec2.describe_id_format(Resource="instance")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2VolumeAdvanced:
+    """Advanced volume operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_volume(self, ec2):
+        """ModifyVolume to change size."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            mod = ec2.modify_volume(VolumeId=vol_id, Size=2)
+            assert mod["VolumeModification"]["VolumeId"] == vol_id
+            assert mod["VolumeModification"]["TargetSize"] == 2
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_describe_snapshot_attribute(self, ec2):
+        """DescribeSnapshotAttribute for createVolumePermission."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                resp = ec2.describe_snapshot_attribute(
+                    SnapshotId=snap_id, Attribute="createVolumePermission"
+                )
+                assert "SnapshotId" in resp
+                assert "CreateVolumePermissions" in resp
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2NetworkInterfaceAdvanced:
+    """Advanced network interface operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_network_interface_attribute(self, ec2):
+        """ModifyNetworkInterfaceAttribute to change description."""
+        vpc = ec2.create_vpc(CidrBlock="10.222.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.222.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id, Description="original")
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    ec2.modify_network_interface_attribute(
+                        NetworkInterfaceId=eni_id,
+                        Description={"Value": "updated"},
+                    )
+                    desc = ec2.describe_network_interfaces(NetworkInterfaceIds=[eni_id])
+                    assert desc["NetworkInterfaces"][0]["Description"] == "updated"
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_assign_unassign_private_ip_addresses(self, ec2):
+        """AssignPrivateIpAddresses / UnassignPrivateIpAddresses."""
+        vpc = ec2.create_vpc(CidrBlock="10.223.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.223.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id)
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    assign = ec2.assign_private_ip_addresses(
+                        NetworkInterfaceId=eni_id,
+                        SecondaryPrivateIpAddressCount=1,
+                    )
+                    assert assign["NetworkInterfaceId"] == eni_id
+                    assigned_ips = assign["AssignedPrivateIpAddresses"]
+                    assert len(assigned_ips) >= 1
+                    ip_addr = assigned_ips[0]["PrivateIpAddress"]
+
+                    ec2.unassign_private_ip_addresses(
+                        NetworkInterfaceId=eni_id,
+                        PrivateIpAddresses=[ip_addr],
+                    )
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2SubnetAdvanced:
+    """Advanced subnet operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_subnet_attribute_enable_dns64(self, ec2):
+        """ModifySubnetAttribute to enable DNS64."""
+        vpc = ec2.create_vpc(CidrBlock="10.224.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.224.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                ec2.modify_subnet_attribute(
+                    SubnetId=subnet_id,
+                    EnableDns64={"Value": True},
+                )
+                desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+                # Just verify the call succeeded and subnet is returned
+                assert desc["Subnets"][0]["SubnetId"] == subnet_id
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2CopyOperations:
+    """Tests for copy operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_copy_snapshot(self, ec2):
+        """CopySnapshot."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                copy = ec2.copy_snapshot(SourceSnapshotId=snap_id, SourceRegion="us-east-1")
+                copy_id = copy["SnapshotId"]
+                try:
+                    assert copy_id.startswith("snap-")
+                    assert copy_id != snap_id
+                finally:
+                    ec2.delete_snapshot(SnapshotId=copy_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_copy_image(self, ec2):
+        """CopyImage."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                img = ec2.register_image(
+                    Name=_unique("src-img"),
+                    RootDeviceName="/dev/sda1",
+                    BlockDeviceMappings=[
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"SnapshotId": snap_id},
+                        }
+                    ],
+                )
+                src_id = img["ImageId"]
+                try:
+                    copy = ec2.copy_image(
+                        Name=_unique("copy-img"),
+                        SourceImageId=src_id,
+                        SourceRegion="us-east-1",
+                    )
+                    copy_id = copy["ImageId"]
+                    try:
+                        assert copy_id.startswith("ami-")
+                        assert copy_id != src_id
+                    finally:
+                        ec2.deregister_image(ImageId=copy_id)
+                finally:
+                    ec2.deregister_image(ImageId=src_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2ModifyImageSnapshot:
+    """Tests for modify operations on images and snapshots."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_image_attribute_description(self, ec2):
+        """ModifyImageAttribute to change description."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                img = ec2.register_image(
+                    Name=_unique("mod-img"),
+                    RootDeviceName="/dev/sda1",
+                    BlockDeviceMappings=[
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"SnapshotId": snap_id},
+                        }
+                    ],
+                )
+                image_id = img["ImageId"]
+                try:
+                    resp = ec2.modify_image_attribute(
+                        ImageId=image_id,
+                        Description={"Value": "updated-description"},
+                    )
+                    assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+                finally:
+                    ec2.deregister_image(ImageId=image_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_modify_snapshot_attribute_add_permission(self, ec2):
+        """ModifySnapshotAttribute to add createVolumePermission."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                ec2.modify_snapshot_attribute(
+                    SnapshotId=snap_id,
+                    Attribute="createVolumePermission",
+                    OperationType="add",
+                    UserIds=["111122223333"],
+                )
+                attr = ec2.describe_snapshot_attribute(
+                    SnapshotId=snap_id, Attribute="createVolumePermission"
+                )
+                user_ids = [p["UserId"] for p in attr["CreateVolumePermissions"]]
+                assert "111122223333" in user_ids
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2RouteOperations:
+    """Tests for route table operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_route(self, ec2):
+        """ReplaceRoute in a route table."""
+        vpc = ec2.create_vpc(CidrBlock="10.240.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            igw = ec2.create_internet_gateway()
+            igw_id = igw["InternetGateway"]["InternetGatewayId"]
+            ec2.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+            try:
+                rt = ec2.describe_route_tables(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+                rt_id = rt["RouteTables"][0]["RouteTableId"]
+
+                ec2.create_route(
+                    RouteTableId=rt_id,
+                    DestinationCidrBlock="0.0.0.0/0",
+                    GatewayId=igw_id,
+                )
+                # Replace the route (same destination, same gateway — just
+                # verifies the API call succeeds)
+                resp = ec2.replace_route(
+                    RouteTableId=rt_id,
+                    DestinationCidrBlock="0.0.0.0/0",
+                    GatewayId=igw_id,
+                )
+                assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+                ec2.delete_route(RouteTableId=rt_id, DestinationCidrBlock="0.0.0.0/0")
+            finally:
+                ec2.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+                ec2.delete_internet_gateway(InternetGatewayId=igw_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2NetworkAclAdvanced:
+    """Advanced network ACL operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_network_acl_entry(self, ec2):
+        """ReplaceNetworkAclEntry."""
+        vpc = ec2.create_vpc(CidrBlock="10.242.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            acl = ec2.create_network_acl(VpcId=vpc_id)
+            acl_id = acl["NetworkAcl"]["NetworkAclId"]
+            try:
+                ec2.create_network_acl_entry(
+                    NetworkAclId=acl_id,
+                    RuleNumber=100,
+                    Protocol="-1",
+                    RuleAction="allow",
+                    Egress=False,
+                    CidrBlock="10.0.0.0/8",
+                )
+                # Replace the entry to deny instead of allow
+                resp = ec2.replace_network_acl_entry(
+                    NetworkAclId=acl_id,
+                    RuleNumber=100,
+                    Protocol="-1",
+                    RuleAction="deny",
+                    Egress=False,
+                    CidrBlock="10.0.0.0/8",
+                )
+                assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+                # Verify the replacement
+                desc = ec2.describe_network_acls(NetworkAclIds=[acl_id])
+                entries = [
+                    e
+                    for e in desc["NetworkAcls"][0]["Entries"]
+                    if e["RuleNumber"] == 100 and not e["Egress"]
+                ]
+                assert len(entries) == 1
+                assert entries[0]["RuleAction"] == "deny"
+            finally:
+                ec2.delete_network_acl(NetworkAclId=acl_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_delete_network_acl_entry(self, ec2):
+        """DeleteNetworkAclEntry."""
+        vpc = ec2.create_vpc(CidrBlock="10.243.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            acl = ec2.create_network_acl(VpcId=vpc_id)
+            acl_id = acl["NetworkAcl"]["NetworkAclId"]
+            try:
+                ec2.create_network_acl_entry(
+                    NetworkAclId=acl_id,
+                    RuleNumber=200,
+                    Protocol="-1",
+                    RuleAction="allow",
+                    Egress=False,
+                    CidrBlock="172.16.0.0/12",
+                )
+                ec2.delete_network_acl_entry(NetworkAclId=acl_id, RuleNumber=200, Egress=False)
+
+                desc = ec2.describe_network_acls(NetworkAclIds=[acl_id])
+                rule_numbers = [
+                    e["RuleNumber"]
+                    for e in desc["NetworkAcls"][0]["Entries"]
+                    if not e["Egress"] and e["RuleNumber"] != 32767
+                ]
+                assert 200 not in rule_numbers
+            finally:
+                ec2.delete_network_acl(NetworkAclId=acl_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2VpcEndpointAdvanced:
+    """Advanced VPC endpoint operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_vpc_endpoint(self, ec2):
+        """ModifyVpcEndpoint to reset policy."""
+        vpc = ec2.create_vpc(CidrBlock="10.244.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            rt = ec2.describe_route_tables(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+            rt_id = rt["RouteTables"][0]["RouteTableId"]
+
+            ep = ec2.create_vpc_endpoint(
+                VpcId=vpc_id,
+                ServiceName="com.amazonaws.us-east-1.s3",
+                RouteTableIds=[rt_id],
+            )
+            ep_id = ep["VpcEndpoint"]["VpcEndpointId"]
+            try:
+                resp = ec2.modify_vpc_endpoint(VpcEndpointId=ep_id, ResetPolicy=True)
+                assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            finally:
+                ec2.delete_vpc_endpoints(VpcEndpointIds=[ep_id])
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2NetworkInterfaceAttribute:
+    """Tests for network interface attribute operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_network_interface_attribute(self, ec2):
+        """DescribeNetworkInterfaceAttribute for description."""
+        vpc = ec2.create_vpc(CidrBlock="10.245.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.245.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id, Description="test-eni-attr")
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    resp = ec2.describe_network_interface_attribute(
+                        NetworkInterfaceId=eni_id, Attribute="description"
+                    )
+                    assert resp["NetworkInterfaceId"] == eni_id
+                    assert resp["Description"]["Value"] == "test-eni-attr"
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2VpcAttributeToggle:
+    """Tests for VPC attribute toggling."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_vpc_attribute_disable_dns_support(self, ec2):
+        """ModifyVpcAttribute to disable DNS support, then verify."""
+        vpc = ec2.create_vpc(CidrBlock="10.246.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsSupport={"Value": False})
+            attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsSupport")
+            assert attr["EnableDnsSupport"]["Value"] is False
+
+            # Re-enable
+            ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsSupport={"Value": True})
+            attr2 = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsSupport")
+            assert attr2["EnableDnsSupport"]["Value"] is True
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)

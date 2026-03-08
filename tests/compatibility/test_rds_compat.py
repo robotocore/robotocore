@@ -1165,3 +1165,361 @@ class TestRDSFailoverOperations:
         with pytest.raises(ClientError) as exc:
             client.failover_db_cluster(DBClusterIdentifier="does-not-exist")
         assert exc.value.response["Error"]["Code"] == "DBClusterNotFoundFault"
+
+
+class TestRDSDBProxyCRUD:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def vpc_subnets(self, ec2_client):
+        """Create a VPC with two subnets for DB proxy."""
+        vpc = ec2_client.create_vpc(CidrBlock="10.97.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.97.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.97.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        yield subnet_ids
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass
+
+    def test_create_describe_delete_db_proxy(self, client, vpc_subnets):
+        """Full CRUD lifecycle for DBProxy."""
+        name = _unique("compat-px")
+        try:
+            resp = client.create_db_proxy(
+                DBProxyName=name,
+                EngineFamily="MYSQL",
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "DISABLED",
+                    }
+                ],
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+                VpcSubnetIds=vpc_subnets,
+            )
+            assert resp["DBProxy"]["DBProxyName"] == name
+            assert resp["DBProxy"]["EngineFamily"] == "MYSQL"
+
+            # Describe specific proxy
+            desc = client.describe_db_proxies(DBProxyName=name)
+            assert len(desc["DBProxies"]) == 1
+            assert desc["DBProxies"][0]["DBProxyName"] == name
+
+            # Delete
+            client.delete_db_proxy(DBProxyName=name)
+
+            # Verify deletion
+            desc2 = client.describe_db_proxies()
+            names = [p["DBProxyName"] for p in desc2["DBProxies"]]
+            assert name not in names
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass
+            raise
+
+
+class TestRDSModifyDBClusterOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_modify_db_cluster(self, client):
+        """ModifyDBCluster changes cluster settings."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            resp = client.modify_db_cluster(
+                DBClusterIdentifier=name,
+                DeletionProtection=False,
+            )
+            assert resp["DBCluster"]["DBClusterIdentifier"] == name
+            assert resp["DBCluster"]["Engine"] == "aurora-mysql"
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSModifyDBSubnetGroupOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    def test_modify_db_subnet_group(self, client, ec2_client):
+        """ModifyDBSubnetGroup updates description and subnets."""
+        vpc = ec2_client.create_vpc(CidrBlock="10.96.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.96.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.96.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        s3 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.96.3.0/24", AvailabilityZone="us-east-1c"
+        )
+        sid1 = s1["Subnet"]["SubnetId"]
+        sid2 = s2["Subnet"]["SubnetId"]
+        sid3 = s3["Subnet"]["SubnetId"]
+        name = _unique("compat-sg")
+        client.create_db_subnet_group(
+            DBSubnetGroupName=name,
+            DBSubnetGroupDescription="original",
+            SubnetIds=[sid1, sid2],
+        )
+        try:
+            resp = client.modify_db_subnet_group(
+                DBSubnetGroupName=name,
+                DBSubnetGroupDescription="modified desc",
+                SubnetIds=[sid1, sid2, sid3],
+            )
+            grp = resp["DBSubnetGroup"]
+            assert grp["DBSubnetGroupName"] == name
+            assert grp["DBSubnetGroupDescription"] == "modified desc"
+            assert len(grp["Subnets"]) == 3
+        finally:
+            try:
+                client.delete_db_subnet_group(DBSubnetGroupName=name)
+            except ClientError:
+                pass
+
+
+class TestRDSGlobalClusterCRUD:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_describe_delete_global_cluster(self, client):
+        """Full CRUD lifecycle for GlobalCluster."""
+        name = _unique("compat-gc")
+        resp = client.create_global_cluster(
+            GlobalClusterIdentifier=name,
+            Engine="aurora-mysql",
+        )
+        assert resp["GlobalCluster"]["GlobalClusterIdentifier"] == name
+        assert resp["GlobalCluster"]["Engine"] == "aurora-mysql"
+
+        # Describe
+        desc = client.describe_global_clusters(GlobalClusterIdentifier=name)
+        assert len(desc["GlobalClusters"]) == 1
+        assert desc["GlobalClusters"][0]["GlobalClusterIdentifier"] == name
+
+        # Delete
+        del_resp = client.delete_global_cluster(GlobalClusterIdentifier=name)
+        assert "GlobalCluster" in del_resp
+
+        # Verify gone
+        desc2 = client.describe_global_clusters()
+        names = [g["GlobalClusterIdentifier"] for g in desc2["GlobalClusters"]]
+        assert name not in names
+
+
+class TestRDSReadReplicaOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def source_instance(self, client):
+        name = _unique("compat-src")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_create_read_replica(self, client, source_instance):
+        """CreateDBInstanceReadReplica creates a replica and it appears in DescribeDBInstances."""
+        rr_name = _unique("compat-rr")
+        try:
+            resp = client.create_db_instance_read_replica(
+                DBInstanceIdentifier=rr_name,
+                SourceDBInstanceIdentifier=source_instance,
+            )
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == rr_name
+            assert resp["DBInstance"]["Engine"] == "mysql"
+
+            # Verify in describe
+            desc = client.describe_db_instances(DBInstanceIdentifier=rr_name)
+            assert len(desc["DBInstances"]) == 1
+            assert desc["DBInstances"][0]["DBInstanceIdentifier"] == rr_name
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=rr_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_promote_read_replica(self, client, source_instance):
+        """PromoteReadReplica promotes a replica to standalone."""
+        rr_name = _unique("compat-rr")
+        client.create_db_instance_read_replica(
+            DBInstanceIdentifier=rr_name,
+            SourceDBInstanceIdentifier=source_instance,
+        )
+        try:
+            resp = client.promote_read_replica(DBInstanceIdentifier=rr_name)
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == rr_name
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=rr_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSExportTaskCRUD:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def snapshot(self, client):
+        db_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap_name,
+            DBInstanceIdentifier=db_name,
+        )
+        snap_arn = f"arn:aws:rds:us-east-1:123456789012:snapshot:{snap_name}"
+        yield snap_arn, snap_name, db_name
+        try:
+            client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+        except ClientError:
+            pass
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_start_describe_cancel_export_task(self, client, snapshot):
+        """Full export task lifecycle: start, describe, cancel."""
+        snap_arn, _, _ = snapshot
+        task_id = _unique("compat-exp")
+        resp = client.start_export_task(
+            ExportTaskIdentifier=task_id,
+            SourceArn=snap_arn,
+            S3BucketName="test-export-bucket",
+            IamRoleArn="arn:aws:iam::123456789012:role/export-role",
+            KmsKeyId="arn:aws:kms:us-east-1:123456789012:key/test-key",
+        )
+        assert resp["ExportTaskIdentifier"] == task_id
+        assert resp["SourceArn"] == snap_arn
+
+        # Describe
+        desc = client.describe_export_tasks(ExportTaskIdentifier=task_id)
+        assert len(desc["ExportTasks"]) == 1
+        assert desc["ExportTasks"][0]["ExportTaskIdentifier"] == task_id
+
+        # Cancel
+        cancel = client.cancel_export_task(ExportTaskIdentifier=task_id)
+        assert cancel["ExportTaskIdentifier"] == task_id
+
+
+class TestRDSRestoreDBInstanceOperations:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_restore_db_instance_from_snapshot(self, client):
+        """RestoreDBInstanceFromDBSnapshot creates an instance from a snapshot."""
+        src = _unique("compat-db")
+        snap = _unique("compat-snap")
+        restored = _unique("compat-rest")
+        client.create_db_instance(
+            DBInstanceIdentifier=src,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap,
+            DBInstanceIdentifier=src,
+        )
+        try:
+            resp = client.restore_db_instance_from_db_snapshot(
+                DBInstanceIdentifier=restored,
+                DBSnapshotIdentifier=snap,
+            )
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == restored
+            assert resp["DBInstance"]["Engine"] == "mysql"
+        finally:
+            for name in [restored, src]:
+                try:
+                    client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass
+            try:
+                client.delete_db_snapshot(DBSnapshotIdentifier=snap)
+            except ClientError:
+                pass
+
+    def test_restore_db_instance_to_point_in_time(self, client):
+        """RestoreDBInstanceToPointInTime creates instance from point-in-time."""
+        src = _unique("compat-db")
+        tgt = _unique("compat-pit")
+        client.create_db_instance(
+            DBInstanceIdentifier=src,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.restore_db_instance_to_point_in_time(
+                SourceDBInstanceIdentifier=src,
+                TargetDBInstanceIdentifier=tgt,
+                UseLatestRestorableTime=True,
+            )
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == tgt
+            assert resp["DBInstance"]["Engine"] == "mysql"
+        finally:
+            for name in [tgt, src]:
+                try:
+                    client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass
