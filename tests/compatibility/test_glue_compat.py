@@ -365,6 +365,162 @@ class TestGlueTags:
         glue.delete_database(Name=db_name)
 
 
+class TestGluePartitionOperations:
+    """Tests for Glue Partition CRUD operations."""
+
+    def _make_db_and_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "string"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def _cleanup(self, glue, db_name, tbl_name):
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        glue.delete_database(Name=db_name)
+
+    def test_create_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            glue.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2024"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2024",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            resp = glue.get_partition(
+                DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2024"]
+            )
+            assert resp["Partition"]["Values"] == ["2024"]
+        finally:
+            self._cleanup(glue, db_name, tbl_name)
+
+    def test_get_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            glue.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2025"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2025",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            resp = glue.get_partition(
+                DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2025"]
+            )
+            assert resp["Partition"]["Values"] == ["2025"]
+            assert "StorageDescriptor" in resp["Partition"]
+        finally:
+            self._cleanup(glue, db_name, tbl_name)
+
+    def test_delete_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            glue.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2023"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2023",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            glue.delete_partition(
+                DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2023"]
+            )
+            with pytest.raises(ClientError) as exc:
+                glue.get_partition(
+                    DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2023"]
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            self._cleanup(glue, db_name, tbl_name)
+
+    def test_update_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            glue.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2022"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2022",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            glue.update_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionValueList=["2022"],
+                PartitionInput={
+                    "Values": ["2022"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2022-updated",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            resp = glue.get_partition(
+                DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2022"]
+            )
+            assert "2022-updated" in resp["Partition"]["StorageDescriptor"]["Location"]
+        finally:
+            self._cleanup(glue, db_name, tbl_name)
+
+
 class TestGlueAutoCoverage:
     """Auto-generated coverage tests for glue."""
 
