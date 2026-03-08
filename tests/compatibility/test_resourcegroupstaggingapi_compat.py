@@ -50,6 +50,10 @@ class TestResourceGroupsTaggingAPIOperations:
             except Exception:
                 pass
 
+    def test_get_compliance_summary(self, tagging):
+        resp = tagging.get_compliance_summary()
+        assert "SummaryList" in resp
+
     def test_untag_resources(self, tagging, s3):
         bucket = f"untagres-{_uid()}"
         s3.create_bucket(Bucket=bucket)
