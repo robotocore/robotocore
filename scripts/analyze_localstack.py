@@ -370,7 +370,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
                 "coverage_pct": (
                     min(100, round(len(robotocore_ops) / len(community_ops) * 100))
                     if community_ops
-                    else 100
+                    else None
                 ),
             }
 
@@ -485,9 +485,10 @@ def main():
                     print(f"  [{tier_label[tier]}]")
                 prov = "YES" if gap["has_provider"] else "NO"
                 comm = str(gap["community_ops"]) if gap["community_ops"] else "—"
+                cov = f"{gap['coverage_pct']}%" if gap["coverage_pct"] is not None else "—"
                 print(
                     f"{service:<25} {tier_label[tier]:>9} {prov:>8} {comm:>10} "
-                    f"{gap['robotocore_ops']:>11} {gap['coverage_pct']:>8}%"
+                    f"{gap['robotocore_ops']:>11} {cov:>9}"
                 )
             print("-" * 86)
             total_missing = sum(len(g["missing_ops"]) for g in gaps.values())
