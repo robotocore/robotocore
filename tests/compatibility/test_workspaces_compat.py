@@ -244,3 +244,19 @@ class TestWorkSpacesTags:
         # May have tags from other tests in fixture, but structure is correct
         assert "TagList" in result
         assert isinstance(result["TagList"], list)
+
+
+class TestWorkSpacesImagePermissions:
+    """Test DescribeWorkspaceImagePermissions."""
+
+    def test_describe_workspace_image_permissions_nonexistent(self, workspaces):
+        """DescribeWorkspaceImagePermissions for nonexistent image returns error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_workspace_image_permissions(ImageId="wsi-nonexistent123")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "AccessDeniedException",
+            "ValidationException",
+        )

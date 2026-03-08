@@ -175,3 +175,26 @@ class TestCodeBuildListOperations:
     def test_list_projects_returns_list(self, codebuild):
         resp = codebuild.list_projects()
         assert isinstance(resp["projects"], list)
+
+    def test_list_builds_for_project(self, codebuild):
+        """ListBuildsForProject returns build IDs for a project."""
+        name = _unique("project")
+        codebuild.create_project(
+            name=name,
+            source={"type": "S3", "location": "my-bucket/source.zip"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+        )
+        try:
+            codebuild.start_build(projectName=name)
+            resp = codebuild.list_builds_for_project(projectName=name)
+            assert "ids" in resp
+            assert isinstance(resp["ids"], list)
+            assert len(resp["ids"]) >= 1
+        finally:
+            codebuild.delete_project(name=name)

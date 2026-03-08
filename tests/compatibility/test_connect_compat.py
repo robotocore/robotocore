@@ -118,3 +118,35 @@ class TestConnectInstances:
         # Verify the other instance still exists
         resp = connect.describe_instance(InstanceId=id2)
         assert resp["Instance"]["Id"] == id2
+
+    def test_list_tags_for_resource(self, connect):
+        """ListTagsForResource returns tags on a Connect instance."""
+        instance_id, arn = _create_instance(connect)
+        try:
+            resp = connect.list_tags_for_resource(resourceArn=arn)
+            assert "tags" in resp
+            assert isinstance(resp["tags"], dict)
+        finally:
+            try:
+                connect.delete_instance(InstanceId=instance_id)
+            except Exception:
+                pass
+
+    def test_list_analytics_data_associations(self, connect):
+        """ListAnalyticsDataAssociations returns a response."""
+        instance_id, _ = _create_instance(connect)
+        try:
+            resp = connect.list_analytics_data_associations(InstanceId=instance_id)
+            assert "Results" in resp
+            assert isinstance(resp["Results"], list)
+        except ClientError as e:
+            # Some implementations may not support this yet
+            assert e.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidRequestException",
+            )
+        finally:
+            try:
+                connect.delete_instance(InstanceId=instance_id)
+            except Exception:
+                pass

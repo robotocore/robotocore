@@ -209,3 +209,13 @@ class TestDsLDAPSSettings:
         with pytest.raises(ClientError) as exc_info:
             ds.describe_ldaps_settings(DirectoryId=directory, Type="Client")
         assert exc_info.value.response["Error"]["Code"] == "UnsupportedOperationException"
+
+
+class TestDsSettings:
+    """Test DescribeSettings operation."""
+
+    def test_describe_settings_simple_ad_rejected(self, ds, directory):
+        """DescribeSettings on SimpleAD raises InvalidParameterException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.describe_settings(DirectoryId=directory)
+        assert exc_info.value.response["Error"]["Code"] == "InvalidParameterException"

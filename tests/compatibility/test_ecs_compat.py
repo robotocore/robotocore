@@ -655,3 +655,53 @@ class TestEcsAutoCoverage:
         """ListTasks returns a response."""
         resp = client.list_tasks()
         assert "taskArns" in resp
+
+    def test_describe_container_instances_with_fake_id(self, client):
+        """DescribeContainerInstances with fake IDs returns failures."""
+        from botocore.exceptions import ClientError
+
+        name = f"ci-test-{uuid.uuid4().hex[:8]}"
+        client.create_cluster(clusterName=name)
+        try:
+            resp = client.describe_container_instances(
+                cluster=name,
+                containerInstances=["arn:aws:ecs:us-east-1:123456789012:container-instance/fake"],
+            )
+            assert "failures" in resp
+            assert len(resp["failures"]) >= 1
+        except ClientError as e:
+            # ClusterNotFoundException also proves server contact
+            assert e.response["Error"]["Code"] == "ClusterNotFoundException"
+        finally:
+            try:
+                client.delete_cluster(cluster=name)
+            except Exception:
+                pass
+
+    def test_describe_task_sets_nonexistent_service(self, client):
+        """DescribeTaskSets with a nonexistent service returns error."""
+        from botocore.exceptions import ClientError
+
+        name = f"ts-test-{uuid.uuid4().hex[:8]}"
+        client.create_cluster(clusterName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.describe_task_sets(
+                    cluster=name,
+                    service="nonexistent-service",
+                )
+            assert exc.value.response["Error"]["Code"] in (
+                "ServiceNotFoundException",
+                "ClusterNotFoundException",
+                "ServiceNotActiveException",
+            )
+        finally:
+            client.delete_cluster(cluster=name)
+
+    def test_list_attributes(self, client):
+        """ListAttributes returns a response with attributes key."""
+        resp = client.list_attributes(
+            targetType="container-instance",
+        )
+        assert "attributes" in resp
+        assert isinstance(resp["attributes"], list)

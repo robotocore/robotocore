@@ -282,3 +282,48 @@ class TestEKSFargateProfileOperations:
             assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
         finally:
             eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSAdditionalOperations:
+    """Tests for DescribeNodegroup and ListTagsForResource."""
+
+    def test_describe_nodegroup_nonexistent(self, eks):
+        """DescribeNodegroup with a nonexistent nodegroup returns error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.describe_nodegroup(
+                    clusterName=cluster_name,
+                    nodegroupName="nonexistent-ng",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_tags_for_resource(self, eks):
+        """ListTagsForResource returns tags on a cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+            tags={"env": "test"},
+        )
+        try:
+            cluster_arn = eks.describe_cluster(name=cluster_name)["cluster"]["arn"]
+            resp = eks.list_tags_for_resource(resourceArn=cluster_arn)
+            assert "tags" in resp
+            assert resp["tags"].get("env") == "test"
+        finally:
+            eks.delete_cluster(name=cluster_name)

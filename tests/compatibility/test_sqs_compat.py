@@ -1472,3 +1472,18 @@ class TestSQSMessageMoveTasks:
         finally:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)
+
+    def test_list_message_move_tasks(self, sqs):
+        suffix = uuid.uuid4().hex[:6]
+        dlq_name = f"mmt-list-dlq-{suffix}"
+        dlq_resp = sqs.create_queue(QueueName=dlq_name)
+        dlq_url = dlq_resp["QueueUrl"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        try:
+            resp = sqs.list_message_move_tasks(SourceArn=dlq_arn)
+            assert "Results" in resp
+            assert isinstance(resp["Results"], list)
+        finally:
+            sqs.delete_queue(QueueUrl=dlq_url)

@@ -185,3 +185,13 @@ class TestRekognitionFaceSearchOperations:
         resp = rekognition.get_face_search(JobId="fake-nonexistent-job-id")
         assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
         assert "Persons" in resp
+
+
+class TestRekognitionTextDetection:
+    """Tests for GetTextDetection video analysis."""
+
+    def test_get_text_detection_with_fake_job_id(self, rekognition):
+        """GetTextDetection with a fake job ID returns a response."""
+        resp = rekognition.get_text_detection(JobId="fake-text-detection-job-id")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "TextDetections" in resp

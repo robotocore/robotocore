@@ -252,3 +252,22 @@ class TestAppConfigHostedConfigVersionOperations:
                 ApplicationId=app_id, ConfigurationProfileId=prof_id
             )
             appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigTagOperations:
+    """Tests for ListTagsForResource on AppConfig."""
+
+    def test_list_tags_for_resource(self, appconfig):
+        """ListTagsForResource returns tags on an application."""
+        name = _unique("app")
+        resp = appconfig.create_application(Name=name)
+        app_id = resp["Id"]
+        try:
+            # The create response should contain an ARN-like identifier
+            # Use the application ARN for tagging
+            app_arn = f"arn:aws:appconfig:us-east-1:123456789012:application/{app_id}"
+            tags_resp = appconfig.list_tags_for_resource(ResourceArn=app_arn)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], dict)
+        finally:
+            appconfig.delete_application(ApplicationId=app_id)

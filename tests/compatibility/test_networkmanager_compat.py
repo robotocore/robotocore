@@ -151,3 +151,34 @@ class TestNetworkmanagerAutoCoverage:
         """ListCoreNetworks returns a response."""
         resp = client.list_core_networks()
         assert "CoreNetworks" in resp
+
+    def test_get_devices(self, client):
+        """GetDevices returns a response with Devices key."""
+        desc = f"test-gn-{uuid.uuid4().hex[:8]}"
+        gn_resp = client.create_global_network(Description=desc)
+        gn_id = gn_resp["GlobalNetwork"]["GlobalNetworkId"]
+        resp = client.get_devices(GlobalNetworkId=gn_id)
+        assert "Devices" in resp
+        assert isinstance(resp["Devices"], list)
+
+    def test_get_links(self, client):
+        """GetLinks returns a response with Links key."""
+        desc = f"test-gn-{uuid.uuid4().hex[:8]}"
+        gn_resp = client.create_global_network(Description=desc)
+        gn_id = gn_resp["GlobalNetwork"]["GlobalNetworkId"]
+        resp = client.get_links(GlobalNetworkId=gn_id)
+        assert "Links" in resp
+        assert isinstance(resp["Links"], list)
+
+    def test_list_tags_for_resource(self, client):
+        """ListTagsForResource returns tags on a global network."""
+        desc = f"test-gn-{uuid.uuid4().hex[:8]}"
+        gn_resp = client.create_global_network(
+            Description=desc,
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        gn_arn = gn_resp["GlobalNetwork"]["GlobalNetworkArn"]
+        resp = client.list_tags_for_resource(ResourceArn=gn_arn)
+        assert "TagList" in resp
+        tag_map = {t["Key"]: t["Value"] for t in resp["TagList"]}
+        assert tag_map.get("env") == "test"

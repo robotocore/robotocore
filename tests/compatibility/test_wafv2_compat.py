@@ -663,3 +663,29 @@ class TestWAFv2RuleGroupOperations:
         with pytest.raises(ClientError) as exc:
             wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
         assert exc.value.response["Error"]["Code"] == "WAFNonexistentItemException"
+
+
+class TestWAFv2AdditionalOperations:
+    """Tests for DescribeManagedRuleGroup and GetPermissionPolicy."""
+
+    def test_describe_managed_rule_group(self, wafv2):
+        """DescribeManagedRuleGroup returns info about an AWS managed rule group."""
+        resp = wafv2.describe_managed_rule_group(
+            VendorName="AWS",
+            Name="AWSManagedRulesCommonRuleSet",
+            Scope="REGIONAL",
+        )
+        assert "Capacity" in resp
+        assert "Rules" in resp
+        assert isinstance(resp["Rules"], list)
+
+    def test_get_permission_policy_nonexistent(self, wafv2):
+        """GetPermissionPolicy on a nonexistent ARN returns error."""
+        with pytest.raises(ClientError) as exc:
+            wafv2.get_permission_policy(
+                ResourceArn="arn:aws:wafv2:us-east-1:123456789012:regional/rulegroup/nonexistent/fake-id"
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "WAFNonexistentItemException",
+            "WAFInvalidParameterException",
+        )
