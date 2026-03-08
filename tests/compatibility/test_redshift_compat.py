@@ -349,3 +349,134 @@ class TestRedshiftOperations:
         with pytest.raises(ClientError) as exc:
             redshift.delete_cluster_parameter_group(ParameterGroupName="nonexistent-pg-xyz")
         assert "ClusterParameterGroupNotFound" in exc.value.response["Error"]["Code"]
+
+
+class TestRedshiftGapStubs:
+    """Tests for newly-stubbed Redshift describe operations that return empty results."""
+
+    def test_describe_snapshot_schedules(self, redshift):
+        resp = redshift.describe_snapshot_schedules()
+        assert "SnapshotSchedules" in resp
+        assert isinstance(resp["SnapshotSchedules"], list)
+
+    def test_describe_event_subscriptions(self, redshift):
+        resp = redshift.describe_event_subscriptions()
+        assert "EventSubscriptionsList" in resp
+        assert isinstance(resp["EventSubscriptionsList"], list)
+
+    def test_describe_data_shares(self, redshift):
+        resp = redshift.describe_data_shares()
+        assert "DataShares" in resp
+        assert isinstance(resp["DataShares"], list)
+
+    def test_describe_data_shares_for_consumer(self, redshift):
+        resp = redshift.describe_data_shares_for_consumer()
+        assert "DataShares" in resp
+        assert isinstance(resp["DataShares"], list)
+
+    def test_describe_data_shares_for_producer(self, redshift):
+        resp = redshift.describe_data_shares_for_producer()
+        assert "DataShares" in resp
+        assert isinstance(resp["DataShares"], list)
+
+    def test_describe_endpoint_access(self, redshift):
+        resp = redshift.describe_endpoint_access()
+        assert "EndpointAccessList" in resp
+        assert isinstance(resp["EndpointAccessList"], list)
+
+    def test_describe_endpoint_authorization(self, redshift):
+        resp = redshift.describe_endpoint_authorization()
+        assert "EndpointAuthorizationList" in resp
+        assert isinstance(resp["EndpointAuthorizationList"], list)
+
+    def test_describe_usage_limits(self, redshift):
+        resp = redshift.describe_usage_limits()
+        assert "UsageLimits" in resp
+        assert isinstance(resp["UsageLimits"], list)
+
+    def test_describe_hsm_client_certificates(self, redshift):
+        resp = redshift.describe_hsm_client_certificates()
+        assert "HsmClientCertificates" in resp
+        assert isinstance(resp["HsmClientCertificates"], list)
+
+    def test_describe_hsm_configurations(self, redshift):
+        resp = redshift.describe_hsm_configurations()
+        assert "HsmConfigurations" in resp
+        assert isinstance(resp["HsmConfigurations"], list)
+
+    def test_describe_cluster_db_revisions(self, redshift):
+        resp = redshift.describe_cluster_db_revisions()
+        assert "ClusterDbRevisions" in resp
+        assert isinstance(resp["ClusterDbRevisions"], list)
+
+    def test_describe_cluster_tracks(self, redshift):
+        resp = redshift.describe_cluster_tracks()
+        assert "MaintenanceTracks" in resp
+        assert isinstance(resp["MaintenanceTracks"], list)
+
+    def test_describe_events(self, redshift):
+        resp = redshift.describe_events()
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_reserved_nodes(self, redshift):
+        resp = redshift.describe_reserved_nodes()
+        assert "ReservedNodes" in resp
+        assert isinstance(resp["ReservedNodes"], list)
+
+    def test_describe_reserved_node_offerings(self, redshift):
+        resp = redshift.describe_reserved_node_offerings()
+        assert "ReservedNodeOfferings" in resp
+        assert isinstance(resp["ReservedNodeOfferings"], list)
+
+    def test_describe_reserved_node_exchange_status(self, redshift):
+        resp = redshift.describe_reserved_node_exchange_status()
+        assert "ReservedNodeExchangeStatusDetails" in resp
+        assert isinstance(resp["ReservedNodeExchangeStatusDetails"], list)
+
+    def test_describe_table_restore_status(self, redshift):
+        resp = redshift.describe_table_restore_status()
+        assert "TableRestoreStatusDetails" in resp
+        assert isinstance(resp["TableRestoreStatusDetails"], list)
+
+    def test_describe_custom_domain_associations(self, redshift):
+        resp = redshift.describe_custom_domain_associations()
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+    def test_describe_inbound_integrations(self, redshift):
+        resp = redshift.describe_inbound_integrations()
+        assert "InboundIntegrations" in resp
+        assert isinstance(resp["InboundIntegrations"], list)
+
+    def test_describe_snapshot_copy_grants_empty(self, redshift):
+        resp = redshift.describe_snapshot_copy_grants()
+        assert "SnapshotCopyGrants" in resp
+        assert isinstance(resp["SnapshotCopyGrants"], list)
+
+    def test_describe_cluster_versions(self, redshift):
+        resp = redshift.describe_cluster_versions()
+        assert "ClusterVersions" in resp
+        assert isinstance(resp["ClusterVersions"], list)
+
+    def test_describe_orderable_cluster_options(self, redshift):
+        resp = redshift.describe_orderable_cluster_options()
+        assert "OrderableClusterOptions" in resp
+        assert isinstance(resp["OrderableClusterOptions"], list)
+
+    def test_describe_storage(self, redshift):
+        resp = redshift.describe_storage()
+        assert "TotalBackupSizeInMegaBytes" in resp
+        assert "TotalProvisionedStorageInMegaBytes" in resp
+        assert isinstance(resp["TotalBackupSizeInMegaBytes"], float)
+        assert isinstance(resp["TotalProvisionedStorageInMegaBytes"], float)
+
+    def test_describe_authentication_profiles(self, redshift):
+        resp = redshift.describe_authentication_profiles()
+        assert "AuthenticationProfiles" in resp
+        assert isinstance(resp["AuthenticationProfiles"], list)
+
+    def test_describe_redshift_idc_applications(self, redshift):
+        resp = redshift.describe_redshift_idc_applications()
+        assert "RedshiftIdcApplications" in resp
+        assert isinstance(resp["RedshiftIdcApplications"], list)

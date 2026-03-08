@@ -850,3 +850,99 @@ class TestSSMPatchBaseline:
             assert baseline_id in ids
         finally:
             ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+
+class TestSSMGapStubs:
+    """Tests for newly-stubbed SSM operations that return empty results."""
+
+    def test_list_associations(self, ssm):
+        """ListAssociations returns empty list."""
+        resp = ssm.list_associations()
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+    def test_describe_automation_executions(self, ssm):
+        """DescribeAutomationExecutions returns empty list."""
+        resp = ssm.describe_automation_executions()
+        assert "AutomationExecutionMetadataList" in resp
+        assert isinstance(resp["AutomationExecutionMetadataList"], list)
+
+    def test_list_compliance_items(self, ssm):
+        """ListComplianceItems returns empty list."""
+        resp = ssm.list_compliance_items()
+        assert "ComplianceItems" in resp
+        assert isinstance(resp["ComplianceItems"], list)
+
+    def test_list_compliance_summaries(self, ssm):
+        """ListComplianceSummaries returns empty list."""
+        resp = ssm.list_compliance_summaries()
+        assert "ComplianceSummaryItems" in resp
+        assert isinstance(resp["ComplianceSummaryItems"], list)
+
+    def test_list_resource_compliance_summaries(self, ssm):
+        """ListResourceComplianceSummaries returns empty list."""
+        resp = ssm.list_resource_compliance_summaries()
+        assert "ResourceComplianceSummaryItems" in resp
+        assert isinstance(resp["ResourceComplianceSummaryItems"], list)
+
+    def test_describe_ops_items(self, ssm):
+        """DescribeOpsItems returns empty list."""
+        resp = ssm.describe_ops_items(
+            OpsItemFilters=[{"Key": "Status", "Values": ["Open"], "Operator": "Equal"}]
+        )
+        assert "OpsItemSummaries" in resp
+        assert isinstance(resp["OpsItemSummaries"], list)
+
+    def test_describe_available_patches(self, ssm):
+        """DescribeAvailablePatches returns empty list."""
+        resp = ssm.describe_available_patches()
+        assert "Patches" in resp
+        assert isinstance(resp["Patches"], list)
+
+    def test_describe_patch_groups(self, ssm):
+        """DescribePatchGroups returns empty list."""
+        resp = ssm.describe_patch_groups()
+        assert "Mappings" in resp
+        assert isinstance(resp["Mappings"], list)
+
+    def test_describe_inventory_deletions(self, ssm):
+        """DescribeInventoryDeletions returns empty list."""
+        resp = ssm.describe_inventory_deletions()
+        assert "InventoryDeletions" in resp
+        assert isinstance(resp["InventoryDeletions"], list)
+
+    def test_get_inventory(self, ssm):
+        """GetInventory returns empty list."""
+        resp = ssm.get_inventory()
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_get_inventory_schema(self, ssm):
+        """GetInventorySchema returns empty list."""
+        resp = ssm.get_inventory_schema()
+        assert "Schemas" in resp
+        assert isinstance(resp["Schemas"], list)
+
+    def test_list_resource_data_sync(self, ssm):
+        """ListResourceDataSync returns empty list."""
+        resp = ssm.list_resource_data_sync()
+        assert "ResourceDataSyncItems" in resp
+        assert isinstance(resp["ResourceDataSyncItems"], list)
+
+    def test_list_ops_item_events(self, ssm):
+        """ListOpsItemEvents returns empty list."""
+        resp = ssm.list_ops_item_events()
+        assert "Summaries" in resp
+        assert isinstance(resp["Summaries"], list)
+
+    def test_list_ops_item_related_items(self, ssm):
+        """ListOpsItemRelatedItems returns empty list."""
+        resp = ssm.list_ops_item_related_items(OpsItemId="oi-0000000000")
+        assert "Summaries" in resp
+        assert isinstance(resp["Summaries"], list)
+
+    def test_list_ops_metadata(self, ssm):
+        """ListOpsMetadata returns empty list."""
+        resp = ssm.list_ops_metadata()
+        assert "OpsMetadataList" in resp
+        assert isinstance(resp["OpsMetadataList"], list)

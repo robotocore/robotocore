@@ -710,3 +710,23 @@ class TestSESExtendedOperations:
         finally:
             ses.delete_receipt_rule(RuleSetName=rs_name, RuleName=rule_name)
             ses.delete_receipt_rule_set(RuleSetName=rs_name)
+
+
+class TestSESGapStubs:
+    """Tests for gap operations: custom verification templates, receipt filters, account sending."""
+
+    @pytest.fixture
+    def ses(self):
+        return make_client("ses")
+
+    def test_list_custom_verification_email_templates(self, ses):
+        resp = ses.list_custom_verification_email_templates()
+        assert "CustomVerificationEmailTemplates" in resp
+
+    def test_list_receipt_filters(self, ses):
+        resp = ses.list_receipt_filters()
+        assert "Filters" in resp
+
+    def test_get_account_sending_enabled(self, ses):
+        resp = ses.get_account_sending_enabled()
+        assert "Enabled" in resp

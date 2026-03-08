@@ -755,3 +755,35 @@ class TestKMSExtended:
         finally:
             kms.schedule_key_deletion(KeyId=key1_id, PendingWindowInDays=7)
             kms.schedule_key_deletion(KeyId=key2_id, PendingWindowInDays=7)
+
+
+# ---------------------------------------------------------------------------
+# Gap stubs — newly verified operations
+# ---------------------------------------------------------------------------
+
+
+class TestKMSGapStubs:
+    def test_describe_custom_key_stores(self, kms):
+        """DescribeCustomKeyStores returns a list (possibly empty)."""
+        resp = kms.describe_custom_key_stores()
+        assert "CustomKeyStores" in resp
+        assert isinstance(resp["CustomKeyStores"], list)
+
+    def test_list_grants(self, kms):
+        """ListGrants returns grants for a key (empty when none created)."""
+        key = kms.create_key(Description="list-grants-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.list_grants(KeyId=key_id)
+            assert "Grants" in resp
+            assert isinstance(resp["Grants"], list)
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_list_retirable_grants(self, kms):
+        """ListRetirableGrants returns grants for a principal (possibly empty)."""
+        resp = kms.list_retirable_grants(
+            RetiringPrincipal="arn:aws:iam::123456789012:root",
+        )
+        assert "Grants" in resp
+        assert isinstance(resp["Grants"], list)

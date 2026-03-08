@@ -1323,3 +1323,23 @@ class TestEventBridgeListArchivesFilters:
             assert archive_name in names
         finally:
             events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventsGapStubs:
+    """Tests for gap operations: list_connections, list_api_destinations, list_endpoints."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_list_connections(self, events):
+        resp = events.list_connections()
+        assert "Connections" in resp
+
+    def test_list_api_destinations(self, events):
+        resp = events.list_api_destinations()
+        assert "ApiDestinations" in resp
+
+    def test_list_endpoints(self, events):
+        resp = events.list_endpoints()
+        assert "Endpoints" in resp

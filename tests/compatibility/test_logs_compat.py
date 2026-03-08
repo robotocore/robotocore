@@ -1069,3 +1069,29 @@ class TestLogsExtended:
             assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             logs.delete_log_group(logGroupName=name)
+
+
+class TestLogsGapStubs:
+    """Tests for newly-stubbed Logs operations that return empty results."""
+
+    @pytest.fixture
+    def logs(self):
+        return make_client("logs")
+
+    def test_describe_query_definitions(self, logs):
+        resp = logs.describe_query_definitions()
+        assert "queryDefinitions" in resp
+
+    def test_list_anomalies(self, logs):
+        resp = logs.list_anomalies(
+            anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:dummy"
+        )
+        assert "anomalies" in resp
+
+    def test_list_log_anomaly_detectors(self, logs):
+        resp = logs.list_log_anomaly_detectors()
+        assert "anomalyDetectors" in resp
+
+    def test_list_integrations(self, logs):
+        resp = logs.list_integrations()
+        assert "integrationSummaries" in resp

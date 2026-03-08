@@ -401,3 +401,24 @@ class TestOpenSearchExtended:
             assert "DomainConfig" in resp
         finally:
             opensearch.delete_domain(DomainName=name)
+
+
+class TestOpenSearchGapStubs:
+    """Tests for gap operations: list_domain_names, list_versions, list_vpc_endpoints."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_list_domain_names_empty(self, opensearch):
+        resp = opensearch.list_domain_names()
+        assert "DomainNames" in resp
+
+    def test_list_versions(self, opensearch):
+        resp = opensearch.list_versions()
+        assert "Versions" in resp
+        assert len(resp["Versions"]) > 0
+
+    def test_list_vpc_endpoints(self, opensearch):
+        resp = opensearch.list_vpc_endpoints()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

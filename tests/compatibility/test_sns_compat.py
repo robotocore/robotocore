@@ -1026,3 +1026,24 @@ class TestSNSExtendedOperations:
         attrs = sns.get_topic_attributes(TopicArn=topic_arn)
         parsed = json.loads(attrs["Attributes"]["Policy"])
         assert len(parsed["Statement"]) >= 1
+
+
+class TestSNSGapStubs:
+    """Tests for gap operations: SMS sandbox phone numbers, origination numbers, sandbox status."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_list_sms_sandbox_phone_numbers(self, sns):
+        resp = sns.list_sms_sandbox_phone_numbers()
+        assert "PhoneNumbers" in resp
+
+    def test_list_origination_numbers(self, sns):
+        resp = sns.list_origination_numbers()
+        assert "PhoneNumbers" in resp
+
+    def test_get_sms_sandbox_account_status(self, sns):
+        resp = sns.get_sms_sandbox_account_status()
+        assert "IsInSandbox" in resp
+        assert isinstance(resp["IsInSandbox"], bool)

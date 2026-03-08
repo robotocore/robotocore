@@ -1609,3 +1609,60 @@ class TestCloudFormationAdvancedOps:
             assert "ExportingStackId" in export
         finally:
             cfn.delete_stack(StackName=stack_name)
+
+
+class TestCloudFormationGapStubs:
+    """Tests for newly-stubbed CloudFormation operations that return empty/default results."""
+
+    def test_list_types(self, cfn):
+        resp = cfn.list_types()
+        assert "TypeSummaries" in resp
+        assert isinstance(resp["TypeSummaries"], list)
+
+    def test_list_type_registrations(self, cfn):
+        resp = cfn.list_type_registrations()
+        assert "RegistrationTokenList" in resp
+        assert isinstance(resp["RegistrationTokenList"], list)
+
+    def test_describe_organizations_access(self, cfn):
+        resp = cfn.describe_organizations_access()
+        assert "Status" in resp
+        assert resp["Status"] in ("ENABLED", "DISABLED", "DISABLED_PERMANENTLY")
+
+    def test_list_generated_templates(self, cfn):
+        resp = cfn.list_generated_templates()
+        assert "Summaries" in resp
+        assert isinstance(resp["Summaries"], list)
+
+    def test_list_resource_scans(self, cfn):
+        resp = cfn.list_resource_scans()
+        assert "ResourceScanSummaries" in resp
+        assert isinstance(resp["ResourceScanSummaries"], list)
+
+    def test_describe_account_limits(self, cfn):
+        resp = cfn.describe_account_limits()
+        assert "AccountLimits" in resp
+        assert len(resp["AccountLimits"]) > 0
+        names = {limit["Name"] for limit in resp["AccountLimits"]}
+        assert "StackLimit" in names
+        for limit in resp["AccountLimits"]:
+            assert "Name" in limit
+            assert "Value" in limit
+
+    def test_describe_publisher(self, cfn):
+        resp = cfn.describe_publisher()
+        assert "PublisherId" in resp
+        assert "PublisherStatus" in resp
+        assert resp["PublisherStatus"] in ("VERIFIED", "UNVERIFIED")
+
+    def test_describe_type(self, cfn):
+        resp = cfn.describe_type()
+        assert "TypeName" in resp
+        assert "Type" in resp
+        assert resp["Type"] in ("RESOURCE", "MODULE", "HOOK")
+        assert "Arn" in resp
+
+    def test_list_type_versions(self, cfn):
+        resp = cfn.list_type_versions(TypeName="AWS::S3::Bucket", Type="RESOURCE")
+        assert "TypeVersionSummaries" in resp
+        assert isinstance(resp["TypeVersionSummaries"], list)

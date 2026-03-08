@@ -403,3 +403,31 @@ class TestTranscribeMedicalVocabularies:
         )
         resp = transcribe.delete_medical_vocabulary(VocabularyName=name)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestTranscribeGapStubs:
+    """Tests for gap operations: call analytics, language models, medical jobs/vocabs."""
+
+    @pytest.fixture
+    def transcribe(self):
+        return make_client("transcribe")
+
+    def test_list_call_analytics_categories(self, transcribe):
+        resp = transcribe.list_call_analytics_categories()
+        assert "Categories" in resp
+
+    def test_list_call_analytics_jobs(self, transcribe):
+        resp = transcribe.list_call_analytics_jobs()
+        assert "CallAnalyticsJobSummaries" in resp
+
+    def test_list_language_models(self, transcribe):
+        resp = transcribe.list_language_models()
+        assert "Models" in resp
+
+    def test_list_medical_transcription_jobs(self, transcribe):
+        resp = transcribe.list_medical_transcription_jobs()
+        assert "MedicalTranscriptionJobSummaries" in resp
+
+    def test_list_medical_vocabularies(self, transcribe):
+        resp = transcribe.list_medical_vocabularies()
+        assert "Vocabularies" in resp

@@ -2613,3 +2613,19 @@ class TestBackupRestore:
                 dynamodb.delete_table(TableName=tname)
             except ClientError:
                 pass
+
+
+class TestDynamoDBGapStubs:
+    """Tests for gap operations: describe_endpoints, list_exports."""
+
+    def test_describe_endpoints(self, dynamodb):
+        resp = dynamodb.describe_endpoints()
+        assert "Endpoints" in resp
+        assert len(resp["Endpoints"]) > 0
+        endpoint = resp["Endpoints"][0]
+        assert "Address" in endpoint
+        assert "CachePeriodInMinutes" in endpoint
+
+    def test_list_exports(self, dynamodb):
+        resp = dynamodb.list_exports()
+        assert "ExportSummaries" in resp

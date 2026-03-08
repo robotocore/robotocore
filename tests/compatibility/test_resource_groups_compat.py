@@ -232,3 +232,15 @@ class TestResourceGroupsExtended:
             assert "GroupConfiguration" in resp
         finally:
             resource_groups.delete_group(GroupName=name)
+
+
+class TestResourceGroupsGapStubs:
+    """Tests for gap operations: get_account_settings."""
+
+    @pytest.fixture
+    def resource_groups(self):
+        return make_client("resource-groups")
+
+    def test_get_account_settings(self, resource_groups):
+        resp = resource_groups.get_account_settings()
+        assert "AccountSettings" in resp

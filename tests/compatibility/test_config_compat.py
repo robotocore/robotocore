@@ -699,3 +699,53 @@ class TestConfigExtended:
             assert "configurationItems" in resp
         finally:
             s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestConfigGapStubs:
+    """Tests for newly-stubbed Config operations that return empty results."""
+
+    def test_describe_conformance_packs(self, config):
+        resp = config.describe_conformance_packs()
+        assert "ConformancePackDetails" in resp
+
+    def test_describe_conformance_pack_status(self, config):
+        resp = config.describe_conformance_pack_status()
+        assert "ConformancePackStatusDetails" in resp
+
+    def test_describe_organization_config_rules(self, config):
+        resp = config.describe_organization_config_rules()
+        assert "OrganizationConfigRules" in resp
+
+    def test_describe_organization_conformance_packs(self, config):
+        resp = config.describe_organization_conformance_packs()
+        assert "OrganizationConformancePacks" in resp
+
+    def test_describe_organization_conformance_pack_statuses(self, config):
+        resp = config.describe_organization_conformance_pack_statuses()
+        assert "OrganizationConformancePackStatuses" in resp
+
+    def test_describe_pending_aggregation_requests(self, config):
+        resp = config.describe_pending_aggregation_requests()
+        assert "PendingAggregationRequests" in resp
+
+    def test_describe_retention_configurations(self, config):
+        resp = config.describe_retention_configurations()
+        assert "RetentionConfigurations" in resp
+
+    def test_get_compliance_details_by_config_rule_stub(self, config):
+        resp = config.get_compliance_details_by_config_rule(ConfigRuleName="dummy")
+        assert "EvaluationResults" in resp
+
+    def test_get_compliance_details_by_resource_stub(self, config):
+        resp = config.get_compliance_details_by_resource(
+            ResourceType="AWS::S3::Bucket", ResourceId="dummy"
+        )
+        assert "EvaluationResults" in resp
+
+    def test_list_conformance_pack_compliance_scores(self, config):
+        resp = config.list_conformance_pack_compliance_scores()
+        assert "ConformancePackComplianceScores" in resp
+
+    def test_list_stored_queries(self, config):
+        resp = config.list_stored_queries()
+        assert "StoredQueryMetadata" in resp

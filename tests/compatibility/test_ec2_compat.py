@@ -1486,3 +1486,199 @@ class TestEC2FlowLogs:
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
             iam.delete_role(RoleName=role_name)
+
+
+def _assert_ok(resp):
+    """Assert the response has HTTP 200 status (stub operations return empty results)."""
+    assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2GapStubs:
+    """Tests for EC2 operations that were stubbed in Moto's gap_stubs.py.
+
+    These return empty results but should not error (no 500s).
+    """
+
+    # --- IPAM operations ---
+
+    def test_describe_ipams(self, ec2):
+        _assert_ok(ec2.describe_ipams())
+
+    def test_describe_ipam_pools(self, ec2):
+        _assert_ok(ec2.describe_ipam_pools())
+
+    def test_describe_ipam_scopes(self, ec2):
+        _assert_ok(ec2.describe_ipam_scopes())
+
+    def test_describe_ipam_resource_discoveries(self, ec2):
+        _assert_ok(ec2.describe_ipam_resource_discoveries())
+
+    def test_describe_ipam_resource_discovery_associations(self, ec2):
+        _assert_ok(ec2.describe_ipam_resource_discovery_associations())
+
+    def test_describe_ipam_byoasn(self, ec2):
+        _assert_ok(ec2.describe_ipam_byoasn())
+
+    def test_describe_ipam_external_resource_verification_tokens(self, ec2):
+        _assert_ok(ec2.describe_ipam_external_resource_verification_tokens())
+
+    def test_describe_ipam_policies(self, ec2):
+        _assert_ok(ec2.describe_ipam_policies())
+
+    def test_describe_ipam_prefix_list_resolvers(self, ec2):
+        _assert_ok(ec2.describe_ipam_prefix_list_resolvers())
+
+    def test_describe_ipam_prefix_list_resolver_targets(self, ec2):
+        _assert_ok(ec2.describe_ipam_prefix_list_resolver_targets())
+
+    # --- Verified Access operations ---
+
+    def test_describe_verified_access_instances(self, ec2):
+        _assert_ok(ec2.describe_verified_access_instances())
+
+    def test_describe_verified_access_endpoints(self, ec2):
+        _assert_ok(ec2.describe_verified_access_endpoints())
+
+    def test_describe_verified_access_groups(self, ec2):
+        _assert_ok(ec2.describe_verified_access_groups())
+
+    def test_describe_verified_access_trust_providers(self, ec2):
+        _assert_ok(ec2.describe_verified_access_trust_providers())
+
+    def test_describe_verified_access_instance_logging_configurations(self, ec2):
+        _assert_ok(ec2.describe_verified_access_instance_logging_configurations())
+
+    # --- Traffic Mirror operations ---
+
+    def test_describe_traffic_mirror_filters(self, ec2):
+        _assert_ok(ec2.describe_traffic_mirror_filters())
+
+    def test_describe_traffic_mirror_sessions(self, ec2):
+        _assert_ok(ec2.describe_traffic_mirror_sessions())
+
+    def test_describe_traffic_mirror_targets(self, ec2):
+        _assert_ok(ec2.describe_traffic_mirror_targets())
+
+    def test_describe_traffic_mirror_filter_rules(self, ec2):
+        _assert_ok(ec2.describe_traffic_mirror_filter_rules())
+
+    # --- Transit Gateway operations ---
+
+    def test_describe_transit_gateway_multicast_domains(self, ec2):
+        _assert_ok(ec2.describe_transit_gateway_multicast_domains())
+
+    def test_describe_transit_gateway_connect_peers(self, ec2):
+        _assert_ok(ec2.describe_transit_gateway_connect_peers())
+
+    def test_describe_transit_gateway_connects(self, ec2):
+        _assert_ok(ec2.describe_transit_gateway_connects())
+
+    def test_describe_transit_gateway_policy_tables(self, ec2):
+        _assert_ok(ec2.describe_transit_gateway_policy_tables())
+
+    def test_describe_transit_gateway_route_table_announcements(self, ec2):
+        _assert_ok(ec2.describe_transit_gateway_route_table_announcements())
+
+    def test_describe_transit_gateway_metering_policies(self, ec2):
+        _assert_ok(ec2.describe_transit_gateway_metering_policies())
+
+    # --- Local Gateway operations ---
+
+    def test_describe_local_gateways(self, ec2):
+        _assert_ok(ec2.describe_local_gateways())
+
+    def test_describe_local_gateway_route_tables(self, ec2):
+        _assert_ok(ec2.describe_local_gateway_route_tables())
+
+    def test_describe_local_gateway_virtual_interfaces(self, ec2):
+        _assert_ok(ec2.describe_local_gateway_virtual_interfaces())
+
+    def test_describe_local_gateway_virtual_interface_groups(self, ec2):
+        _assert_ok(ec2.describe_local_gateway_virtual_interface_groups())
+
+    def test_describe_local_gateway_route_table_vpc_associations(self, ec2):
+        _assert_ok(ec2.describe_local_gateway_route_table_vpc_associations())
+
+    def test_describe_local_gateway_route_table_virtual_interface_group_associations(self, ec2):
+        _assert_ok(ec2.describe_local_gateway_route_table_virtual_interface_group_associations())
+
+    # --- Network Insights operations ---
+
+    def test_describe_network_insights_paths(self, ec2):
+        _assert_ok(ec2.describe_network_insights_paths())
+
+    def test_describe_network_insights_analyses(self, ec2):
+        _assert_ok(ec2.describe_network_insights_analyses())
+
+    def test_describe_network_insights_access_scopes(self, ec2):
+        _assert_ok(ec2.describe_network_insights_access_scopes())
+
+    def test_describe_network_insights_access_scope_analyses(self, ec2):
+        _assert_ok(ec2.describe_network_insights_access_scope_analyses())
+
+    # --- Capacity operations ---
+
+    def test_describe_capacity_reservations(self, ec2):
+        _assert_ok(ec2.describe_capacity_reservations())
+
+    def test_describe_capacity_reservation_fleets(self, ec2):
+        _assert_ok(ec2.describe_capacity_reservation_fleets())
+
+    # --- VPC / Networking misc ---
+
+    def test_describe_coip_pools(self, ec2):
+        _assert_ok(ec2.describe_coip_pools())
+
+    def test_describe_public_ipv4_pools(self, ec2):
+        _assert_ok(ec2.describe_public_ipv4_pools())
+
+    def test_describe_ipv6_pools(self, ec2):
+        _assert_ok(ec2.describe_ipv6_pools())
+
+    def test_describe_vpc_endpoint_connections(self, ec2):
+        _assert_ok(ec2.describe_vpc_endpoint_connections())
+
+    def test_describe_vpc_endpoint_connection_notifications(self, ec2):
+        _assert_ok(ec2.describe_vpc_endpoint_connection_notifications())
+
+    def test_describe_trunk_interface_associations(self, ec2):
+        _assert_ok(ec2.describe_trunk_interface_associations())
+
+    def test_describe_network_interface_permissions(self, ec2):
+        _assert_ok(ec2.describe_network_interface_permissions())
+
+    # --- Snapshot / Image misc ---
+
+    def test_describe_locked_snapshots(self, ec2):
+        _assert_ok(ec2.describe_locked_snapshots())
+
+    def test_describe_fast_snapshot_restores(self, ec2):
+        _assert_ok(ec2.describe_fast_snapshot_restores())
+
+    def test_describe_replace_root_volume_tasks(self, ec2):
+        _assert_ok(ec2.describe_replace_root_volume_tasks())
+
+    # --- Serial console and settings ---
+
+    def test_get_serial_console_access_status(self, ec2):
+        _assert_ok(ec2.get_serial_console_access_status())
+
+    def test_get_ebs_default_kms_key_id(self, ec2):
+        _assert_ok(ec2.get_ebs_default_kms_key_id())
+
+    def test_get_instance_metadata_defaults(self, ec2):
+        _assert_ok(ec2.get_instance_metadata_defaults())
+
+    def test_get_image_block_public_access_state(self, ec2):
+        _assert_ok(ec2.get_image_block_public_access_state())
+
+    def test_get_snapshot_block_public_access_state(self, ec2):
+        _assert_ok(ec2.get_snapshot_block_public_access_state())
+
+    # --- Recycle bin ---
+
+    def test_list_images_in_recycle_bin(self, ec2):
+        _assert_ok(ec2.list_images_in_recycle_bin())
+
+    def test_list_snapshots_in_recycle_bin(self, ec2):
+        _assert_ok(ec2.list_snapshots_in_recycle_bin())

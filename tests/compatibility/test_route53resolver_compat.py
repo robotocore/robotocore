@@ -313,3 +313,35 @@ class TestRoute53ResolverOperations:
     def test_list_resolver_dnssec_configs(self, resolver):
         resp = resolver.list_resolver_dnssec_configs()
         assert "ResolverDnssecConfigs" in resp
+
+
+class TestRoute53ResolverGapStubs:
+    """Tests for gap ops: firewall, domain lists, rule groups, resolvers."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_list_firewall_configs(self, resolver):
+        resp = resolver.list_firewall_configs()
+        assert "FirewallConfigs" in resp
+
+    def test_list_firewall_domain_lists(self, resolver):
+        resp = resolver.list_firewall_domain_lists()
+        assert "FirewallDomainLists" in resp
+
+    def test_list_firewall_rule_groups(self, resolver):
+        resp = resolver.list_firewall_rule_groups()
+        assert "FirewallRuleGroups" in resp
+
+    def test_list_firewall_rule_group_associations(self, resolver):
+        resp = resolver.list_firewall_rule_group_associations()
+        assert "FirewallRuleGroupAssociations" in resp
+
+    def test_list_outpost_resolvers(self, resolver):
+        resp = resolver.list_outpost_resolvers()
+        assert "OutpostResolvers" in resp
+
+    def test_list_resolver_configs(self, resolver):
+        resp = resolver.list_resolver_configs()
+        assert "ResolverConfigs" in resp

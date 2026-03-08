@@ -2265,3 +2265,47 @@ class TestIAMDeleteUser:
         resp = iam.list_users()
         names = [u["UserName"] for u in resp["Users"]]
         assert user_name not in names
+
+
+# ---------------------------------------------------------------------------
+# Gap stubs — newly verified operations
+# ---------------------------------------------------------------------------
+
+
+class TestIAMGapStubs:
+    def test_list_open_id_connect_providers(self, iam):
+        """ListOpenIDConnectProviders returns a list (possibly empty)."""
+        resp = iam.list_open_id_connect_providers()
+        assert "OpenIDConnectProviderList" in resp
+
+    def test_list_saml_providers(self, iam):
+        """ListSAMLProviders returns a list (possibly empty)."""
+        resp = iam.list_saml_providers()
+        assert "SAMLProviderList" in resp
+
+    def test_list_service_specific_credentials(self, iam):
+        """ListServiceSpecificCredentials returns a list (possibly empty)."""
+        resp = iam.list_service_specific_credentials()
+        assert "ServiceSpecificCredentials" in resp
+
+    def test_generate_credential_report(self, iam):
+        """GenerateCredentialReport returns a State."""
+        resp = iam.generate_credential_report()
+        assert "State" in resp
+        assert resp["State"] in ("STARTED", "INPROGRESS", "COMPLETE")
+
+    def test_list_open_id_connect_provider_tags(self, iam):
+        """ListOpenIDConnectProviderTags returns tags for a real provider."""
+        resp = iam.create_open_id_connect_provider(
+            Url="https://oidc-tag-test.example.com",
+            ThumbprintList=["a" * 40],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            tag_resp = iam.list_open_id_connect_provider_tags(
+                OpenIDConnectProviderArn=arn,
+            )
+            assert "Tags" in tag_resp
+            assert isinstance(tag_resp["Tags"], list)
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)

@@ -1308,3 +1308,21 @@ class TestCloudWatchOperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             cw.delete_insight_rules(RuleNames=[rule_name])
+
+
+class TestCloudWatchGapStubs:
+    """Tests for newly-stubbed CloudWatch operations that return empty results."""
+
+    def test_describe_anomaly_detectors(self, cw):
+        resp = cw.describe_anomaly_detectors()
+        assert "AnomalyDetectors" in resp
+
+    def test_list_metric_streams(self, cw):
+        resp = cw.list_metric_streams()
+        assert "Entries" in resp
+
+    def test_list_managed_insight_rules(self, cw):
+        resp = cw.list_managed_insight_rules(
+            ResourceARN="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+        )
+        assert "ManagedRules" in resp

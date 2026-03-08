@@ -63,3 +63,19 @@ class TestSupportOperations:
         svc = resp["services"][0]
         assert "code" in svc
         assert "name" in svc
+
+
+class TestSupportGapStubs:
+    """Tests for gap operations: describe_trusted_advisor_checks."""
+
+    @pytest.fixture
+    def support(self):
+        return make_client("support")
+
+    def test_describe_trusted_advisor_checks(self, support):
+        resp = support.describe_trusted_advisor_checks(language="en")
+        assert "checks" in resp
+        assert len(resp["checks"]) > 0
+        check = resp["checks"][0]
+        assert "id" in check
+        assert "name" in check
