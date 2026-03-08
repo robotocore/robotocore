@@ -338,6 +338,18 @@ class TestJobExtended:
         resp = batch.describe_jobs(jobs=[job_id])
         assert len(resp["jobs"]) == 1
 
+    def test_terminate_job(self, batch, job_setup):
+        jq_name, jd_name = job_setup
+        submitted = batch.submit_job(
+            jobName=_unique("term-job"),
+            jobQueue=jq_name,
+            jobDefinition=f"{jd_name}:1",
+        )
+        job_id = submitted["jobId"]
+        batch.terminate_job(jobId=job_id, reason="Testing termination")
+        resp = batch.describe_jobs(jobs=[job_id])
+        assert len(resp["jobs"]) == 1
+
     def test_list_jobs_with_status_filter(self, batch, job_setup):
         jq_name, jd_name = job_setup
         batch.submit_job(
@@ -730,3 +742,70 @@ class TestBatchExtended:
     def test_describe_job_definitions_empty(self, batch):
         resp = batch.describe_job_definitions(jobDefinitionName=_unique("nonexist-jd"))
         assert resp["jobDefinitions"] == []
+
+
+class TestBatchTagging:
+    def test_tag_resource(self, batch):
+        name = _unique("ce-tag")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        arn = resp["computeEnvironmentArn"]
+        try:
+            batch.tag_resource(resourceArn=arn, tags={"team": "platform", "env": "test"})
+            tags_resp = batch.list_tags_for_resource(resourceArn=arn)
+            assert "tags" in tags_resp
+            assert tags_resp["tags"]["team"] == "platform"
+            assert tags_resp["tags"]["env"] == "test"
+        finally:
+            batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_untag_resource(self, batch):
+        name = _unique("ce-untag")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+            tags={"team": "platform", "env": "test"},
+        )
+        arn = resp["computeEnvironmentArn"]
+        try:
+            batch.untag_resource(resourceArn=arn, tagKeys=["env"])
+            tags_resp = batch.list_tags_for_resource(resourceArn=arn)
+            assert "env" not in tags_resp.get("tags", {})
+            assert tags_resp["tags"]["team"] == "platform"
+        finally:
+            batch.delete_compute_environment(computeEnvironment=name)
+
+    def test_list_tags_for_resource(self, batch):
+        name = _unique("ce-ltags")
+        resp = batch.create_compute_environment(
+            computeEnvironmentName=name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+            tags={"project": "robotocore"},
+        )
+        arn = resp["computeEnvironmentArn"]
+        try:
+            tags_resp = batch.list_tags_for_resource(resourceArn=arn)
+            assert "tags" in tags_resp
+            assert tags_resp["tags"]["project"] == "robotocore"
+        finally:
+            batch.delete_compute_environment(computeEnvironment=name)
