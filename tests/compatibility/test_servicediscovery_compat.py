@@ -2,9 +2,11 @@
 
 import uuid
 
+import boto3
 import pytest
+from botocore.config import Config
 
-from tests.compatibility.conftest import make_client
+from tests.compatibility.conftest import ENDPOINT_URL, make_client
 
 
 @pytest.fixture
@@ -337,3 +339,88 @@ class TestServiceDiscoveryNamespaceTypes:
             Service={"Description": "updated-desc"},
         )
         assert "OperationId" in resp
+
+
+class TestServiceDiscoveryDiscoverInstances:
+    """Tests for DiscoverInstances and DiscoverInstancesRevision.
+
+    These operations use a data endpoint (data-servicediscovery), so we need
+    inject_host_prefix=False to route through our local gateway.
+    """
+
+    @pytest.fixture
+    def sd_data(self):
+        """Client with inject_host_prefix=False for data-plane operations."""
+        return boto3.client(
+            "servicediscovery",
+            endpoint_url=ENDPOINT_URL,
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+            config=Config(inject_host_prefix=False),
+        )
+
+    @pytest.fixture
+    def sd(self):
+        return make_client("servicediscovery")
+
+    @pytest.fixture
+    def ns_and_svc(self, sd):
+        """Create a namespace + service with an instance for discover tests."""
+        name = _unique("disc-ns")
+        resp = sd.create_http_namespace(Name=name)
+        op = sd.get_operation(OperationId=resp["OperationId"])
+        ns_id = op["Operation"]["Targets"]["NAMESPACE"]
+        svc_name = _unique("disc-svc")
+        svc_resp = sd.create_service(Name=svc_name, NamespaceId=ns_id)
+        svc_id = svc_resp["Service"]["Id"]
+        inst_id = _unique("disc-inst")
+        sd.register_instance(
+            ServiceId=svc_id,
+            InstanceId=inst_id,
+            Attributes={"AWS_INSTANCE_IPV4": "10.0.0.99", "AWS_INSTANCE_PORT": "8080"},
+        )
+        yield {
+            "ns_name": name,
+            "ns_id": ns_id,
+            "svc_name": svc_name,
+            "svc_id": svc_id,
+            "inst_id": inst_id,
+        }
+        try:
+            sd.deregister_instance(ServiceId=svc_id, InstanceId=inst_id)
+        except Exception:
+            pass
+        try:
+            sd.delete_service(Id=svc_id)
+        except Exception:
+            pass
+        try:
+            sd.delete_namespace(Id=ns_id)
+        except Exception:
+            pass
+
+    def test_discover_instances(self, sd_data, ns_and_svc):
+        resp = sd_data.discover_instances(
+            NamespaceName=ns_and_svc["ns_name"],
+            ServiceName=ns_and_svc["svc_name"],
+        )
+        assert "Instances" in resp
+        assert isinstance(resp["Instances"], list)
+        assert "InstancesRevision" in resp
+
+    def test_discover_instances_returns_registered_instance(self, sd_data, ns_and_svc):
+        resp = sd_data.discover_instances(
+            NamespaceName=ns_and_svc["ns_name"],
+            ServiceName=ns_and_svc["svc_name"],
+        )
+        inst_ids = [i["InstanceId"] for i in resp["Instances"]]
+        assert ns_and_svc["inst_id"] in inst_ids
+
+    def test_discover_instances_revision(self, sd_data, ns_and_svc):
+        resp = sd_data.discover_instances_revision(
+            NamespaceName=ns_and_svc["ns_name"],
+            ServiceName=ns_and_svc["svc_name"],
+        )
+        assert "InstancesRevision" in resp
+        assert isinstance(resp["InstancesRevision"], int)

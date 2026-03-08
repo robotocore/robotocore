@@ -973,6 +973,59 @@ class TestSesAutoCoverage:
         names = [t["TemplateName"] for t in resp["CustomVerificationEmailTemplates"]]
         assert name not in names
 
+    def test_send_custom_verification_email(self, client):
+        """SendCustomVerificationEmail sends a verification email using a custom template."""
+        import uuid
+
+        name = f"send-cv-{uuid.uuid4().hex[:8]}"
+        client.create_custom_verification_email_template(
+            TemplateName=name,
+            FromEmailAddress="noreply@example.com",
+            TemplateSubject="Please verify",
+            TemplateContent="<html><body>Click to verify</body></html>",
+            SuccessRedirectionURL="https://example.com/success",
+            FailureRedirectionURL="https://example.com/failure",
+        )
+        try:
+            resp = client.send_custom_verification_email(
+                EmailAddress="verify-target@example.com",
+                TemplateName=name,
+            )
+            assert "MessageId" in resp
+            assert len(resp["MessageId"]) > 0
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=name)
+
+    def test_update_custom_verification_email_template(self, client):
+        """UpdateCustomVerificationEmailTemplate modifies an existing template."""
+        import uuid
+
+        name = f"upd-cv-{uuid.uuid4().hex[:8]}"
+        client.create_custom_verification_email_template(
+            TemplateName=name,
+            FromEmailAddress="orig@example.com",
+            TemplateSubject="Original Subject",
+            TemplateContent="<html>Original</html>",
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
+        )
+        try:
+            resp = client.update_custom_verification_email_template(
+                TemplateName=name,
+                FromEmailAddress="updated@example.com",
+                TemplateSubject="Updated Subject",
+                TemplateContent="<html>Updated</html>",
+                SuccessRedirectionURL="https://example.com/ok2",
+                FailureRedirectionURL="https://example.com/fail2",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify the update took effect
+            got = client.get_custom_verification_email_template(TemplateName=name)
+            assert got["TemplateSubject"] == "Updated Subject"
+            assert got["FromEmailAddress"] == "updated@example.com"
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=name)
+
     def test_create_receipt_filter(self, client):
         """CreateReceiptFilter creates an IP address filter."""
         import uuid

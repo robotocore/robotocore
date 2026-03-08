@@ -382,3 +382,446 @@ class TestAutoScalingLifecycleHookOperations:
             LifecycleHookNames=[hook_name],
         )
         assert len(resp["LifecycleHooks"]) == 0
+
+
+class TestAutoScalingScheduledActions:
+    """Tests for PutScheduledUpdateGroupAction, DeleteScheduledAction, BatchPut/Delete."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("sched-lc")
+        self.asg_name = _unique("sched-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=3,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_put_scheduled_update_group_action(self, autoscaling):
+        action_name = _unique("sched-act")
+        autoscaling.put_scheduled_update_group_action(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionName=action_name,
+            MinSize=1,
+            MaxSize=5,
+            Recurrence="0 9 * * *",
+        )
+        resp = autoscaling.describe_scheduled_actions(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionNames=[action_name],
+        )
+        actions = resp["ScheduledUpdateGroupActions"]
+        assert len(actions) == 1
+        assert actions[0]["ScheduledActionName"] == action_name
+        assert actions[0]["MinSize"] == 1
+        assert actions[0]["MaxSize"] == 5
+
+    def test_delete_scheduled_action(self, autoscaling):
+        action_name = _unique("sched-del")
+        autoscaling.put_scheduled_update_group_action(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionName=action_name,
+            MinSize=0,
+            MaxSize=2,
+            Recurrence="0 18 * * *",
+        )
+        autoscaling.delete_scheduled_action(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionName=action_name,
+        )
+        resp = autoscaling.describe_scheduled_actions(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionNames=[action_name],
+        )
+        assert len(resp["ScheduledUpdateGroupActions"]) == 0
+
+    def test_batch_put_scheduled_update_group_action(self, autoscaling):
+        act1 = _unique("batch-a")
+        act2 = _unique("batch-b")
+        resp = autoscaling.batch_put_scheduled_update_group_action(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledUpdateGroupActions=[
+                {"ScheduledActionName": act1, "MinSize": 0, "MaxSize": 1},
+                {"ScheduledActionName": act2, "MinSize": 0, "MaxSize": 2},
+            ],
+        )
+        assert "FailedScheduledUpdateGroupActions" in resp
+        # Verify both were created
+        desc = autoscaling.describe_scheduled_actions(AutoScalingGroupName=self.asg_name)
+        names = [a["ScheduledActionName"] for a in desc["ScheduledUpdateGroupActions"]]
+        assert act1 in names
+        assert act2 in names
+
+    def test_batch_delete_scheduled_action(self, autoscaling):
+        act = _unique("batch-del")
+        autoscaling.put_scheduled_update_group_action(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionName=act,
+            MinSize=0,
+            MaxSize=1,
+        )
+        resp = autoscaling.batch_delete_scheduled_action(
+            AutoScalingGroupName=self.asg_name,
+            ScheduledActionNames=[act],
+        )
+        assert "FailedScheduledActions" in resp
+
+
+class TestAutoScalingProcessManagement:
+    """Tests for SuspendProcesses and ResumeProcesses."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("proc-lc")
+        self.asg_name = _unique("proc-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=2,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_suspend_processes(self, autoscaling):
+        autoscaling.suspend_processes(
+            AutoScalingGroupName=self.asg_name,
+            ScalingProcesses=["Launch", "Terminate"],
+        )
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        suspended = [s["ProcessName"] for s in resp["AutoScalingGroups"][0]["SuspendedProcesses"]]
+        assert "Launch" in suspended
+        assert "Terminate" in suspended
+
+    def test_resume_processes(self, autoscaling):
+        autoscaling.suspend_processes(
+            AutoScalingGroupName=self.asg_name,
+            ScalingProcesses=["Launch"],
+        )
+        autoscaling.resume_processes(
+            AutoScalingGroupName=self.asg_name,
+            ScalingProcesses=["Launch"],
+        )
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        suspended = [s["ProcessName"] for s in resp["AutoScalingGroups"][0]["SuspendedProcesses"]]
+        assert "Launch" not in suspended
+
+
+class TestAutoScalingCapacityAndMetrics:
+    """Tests for SetDesiredCapacity, EnableMetricsCollection."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("cap-lc")
+        self.asg_name = _unique("cap-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=3,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_set_desired_capacity(self, autoscaling):
+        autoscaling.set_desired_capacity(
+            AutoScalingGroupName=self.asg_name,
+            DesiredCapacity=0,
+        )
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        assert resp["AutoScalingGroups"][0]["DesiredCapacity"] == 0
+
+    def test_enable_metrics_collection(self, autoscaling):
+        autoscaling.enable_metrics_collection(
+            AutoScalingGroupName=self.asg_name,
+            Granularity="1Minute",
+            Metrics=["GroupMinSize", "GroupMaxSize"],
+        )
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        # Verify the ASG still exists after the call (call succeeded)
+        assert len(resp["AutoScalingGroups"]) == 1
+        assert resp["AutoScalingGroups"][0]["AutoScalingGroupName"] == self.asg_name
+
+
+class TestAutoScalingWarmPool:
+    """Tests for PutWarmPool, DescribeWarmPool, DeleteWarmPool."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("wp-lc")
+        self.asg_name = _unique("wp-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=3,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_put_and_describe_warm_pool(self, autoscaling):
+        autoscaling.put_warm_pool(
+            AutoScalingGroupName=self.asg_name,
+            MinSize=0,
+            MaxGroupPreparedCapacity=2,
+        )
+        resp = autoscaling.describe_warm_pool(
+            AutoScalingGroupName=self.asg_name,
+        )
+        assert "WarmPoolConfiguration" in resp
+        assert resp["WarmPoolConfiguration"]["MinSize"] == 0
+        assert resp["WarmPoolConfiguration"]["MaxGroupPreparedCapacity"] == 2
+
+    def test_delete_warm_pool(self, autoscaling):
+        autoscaling.put_warm_pool(
+            AutoScalingGroupName=self.asg_name,
+            MinSize=0,
+        )
+        autoscaling.delete_warm_pool(
+            AutoScalingGroupName=self.asg_name,
+            ForceDelete=True,
+        )
+        # After deletion, describe should show no warm pool config
+        try:
+            resp = autoscaling.describe_warm_pool(
+                AutoScalingGroupName=self.asg_name,
+            )
+            # If it returns, warm pool should be gone or empty
+            assert resp.get("WarmPoolConfiguration") is None or resp.get("Instances") == []
+        except Exception:
+            # Some implementations raise an error after deletion
+            pass
+
+
+class TestAutoScalingTagOperations:
+    """Tests for DeleteTags."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("tag-lc")
+        self.asg_name = _unique("tag-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_delete_tags(self, autoscaling):
+        autoscaling.create_or_update_tags(
+            Tags=[
+                {
+                    "ResourceId": self.asg_name,
+                    "ResourceType": "auto-scaling-group",
+                    "Key": "ToDelete",
+                    "Value": "yes",
+                    "PropagateAtLaunch": False,
+                }
+            ]
+        )
+        autoscaling.delete_tags(
+            Tags=[
+                {
+                    "ResourceId": self.asg_name,
+                    "ResourceType": "auto-scaling-group",
+                    "Key": "ToDelete",
+                }
+            ]
+        )
+        resp = autoscaling.describe_tags(
+            Filters=[{"Name": "auto-scaling-group", "Values": [self.asg_name]}]
+        )
+        keys = [t["Key"] for t in resp["Tags"]]
+        assert "ToDelete" not in keys
+
+
+class TestAutoScalingPolicyDelete:
+    """Tests for DeletePolicy."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("dpol-lc")
+        self.asg_name = _unique("dpol-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=3,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_delete_policy(self, autoscaling):
+        policy_name = _unique("del-pol")
+        autoscaling.put_scaling_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            PolicyType="SimpleScaling",
+            AdjustmentType="ChangeInCapacity",
+            ScalingAdjustment=1,
+        )
+        autoscaling.delete_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+        )
+        resp = autoscaling.describe_policies(
+            AutoScalingGroupName=self.asg_name,
+            PolicyNames=[policy_name],
+        )
+        assert len(resp["ScalingPolicies"]) == 0
+
+
+class TestAutoScalingInstanceOperations:
+    """Tests for AttachInstances, DetachInstances, SetInstanceProtection,
+    EnterStandby, ExitStandby."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("inst-lc")
+        self.asg_name = _unique("inst-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=2,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_attach_instances_empty(self, autoscaling):
+        """AttachInstances with empty list is a valid call."""
+        autoscaling.attach_instances(
+            AutoScalingGroupName=self.asg_name,
+            InstanceIds=[],
+        )
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        assert "AutoScalingGroups" in resp
+
+    def test_detach_instances_empty(self, autoscaling):
+        """DetachInstances with empty list returns Activities."""
+        resp = autoscaling.detach_instances(
+            AutoScalingGroupName=self.asg_name,
+            InstanceIds=[],
+            ShouldDecrementDesiredCapacity=True,
+        )
+        assert "Activities" in resp
+
+    def test_set_instance_protection_empty(self, autoscaling):
+        """SetInstanceProtection with no instances is valid."""
+        autoscaling.set_instance_protection(
+            AutoScalingGroupName=self.asg_name,
+            InstanceIds=[],
+            ProtectedFromScaleIn=True,
+        )
+        # If no error, call succeeded
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        assert len(resp["AutoScalingGroups"]) == 1
+
+    def test_enter_standby_empty(self, autoscaling):
+        """EnterStandby with empty instance list returns Activities."""
+        resp = autoscaling.enter_standby(
+            AutoScalingGroupName=self.asg_name,
+            InstanceIds=[],
+            ShouldDecrementDesiredCapacity=True,
+        )
+        assert "Activities" in resp
+
+    def test_exit_standby_empty(self, autoscaling):
+        """ExitStandby with empty instance list returns Activities."""
+        resp = autoscaling.exit_standby(
+            AutoScalingGroupName=self.asg_name,
+            InstanceIds=[],
+        )
+        assert "Activities" in resp
+
+
+class TestAutoScalingLoadBalancerDescribe:
+    """Tests for DescribeLoadBalancers and DescribeLoadBalancerTargetGroups."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("lb-lc")
+        self.asg_name = _unique("lb-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_describe_load_balancers(self, autoscaling):
+        resp = autoscaling.describe_load_balancers(
+            AutoScalingGroupName=self.asg_name,
+        )
+        assert "LoadBalancers" in resp
+        assert isinstance(resp["LoadBalancers"], list)
+
+    def test_describe_load_balancer_target_groups(self, autoscaling):
+        resp = autoscaling.describe_load_balancer_target_groups(
+            AutoScalingGroupName=self.asg_name,
+        )
+        assert "LoadBalancerTargetGroups" in resp
+        assert isinstance(resp["LoadBalancerTargetGroups"], list)

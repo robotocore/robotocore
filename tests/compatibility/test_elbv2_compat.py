@@ -833,3 +833,286 @@ class TestELBv2SSLPolicies:
         resp = elbv2.describe_ssl_policies(Names=["ELBSecurityPolicy-FAKE-999"])
         assert "SslPolicies" in resp
         assert len(resp["SslPolicies"]) == 0
+
+
+class TestELBv2LoadBalancerAdvanced:
+    """Advanced load balancer tests for deeper coverage."""
+
+    def test_create_alb_with_tags(self, elbv2, vpc_with_subnets):
+        """CreateLoadBalancer with tags preserves them."""
+        name = _unique("alb")
+        resp = elbv2.create_load_balancer(
+            Name=name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        lb_arn = resp["LoadBalancers"][0]["LoadBalancerArn"]
+        try:
+            tags_resp = elbv2.describe_tags(ResourceArns=[lb_arn])
+            tags = {t["Key"]: t["Value"] for t in tags_resp["TagDescriptions"][0]["Tags"]}
+            assert tags["env"] == "test"
+            assert tags["team"] == "platform"
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+    def test_alb_has_dns_name(self, elbv2, vpc_with_subnets):
+        """Created ALB has a DNSName field."""
+        name = _unique("alb")
+        resp = elbv2.create_load_balancer(
+            Name=name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+        )
+        lb = resp["LoadBalancers"][0]
+        lb_arn = lb["LoadBalancerArn"]
+        try:
+            assert "DNSName" in lb
+            assert lb["DNSName"]  # not empty
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+    def test_alb_has_availability_zones(self, elbv2, vpc_with_subnets):
+        """Created ALB has AvailabilityZones matching the subnets."""
+        name = _unique("alb")
+        resp = elbv2.create_load_balancer(
+            Name=name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+        )
+        lb = resp["LoadBalancers"][0]
+        lb_arn = lb["LoadBalancerArn"]
+        try:
+            assert "AvailabilityZones" in lb
+            assert len(lb["AvailabilityZones"]) == 2
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+    def test_alb_has_vpc_id(self, elbv2, vpc_with_subnets):
+        """Created ALB references the correct VPC."""
+        name = _unique("alb")
+        resp = elbv2.create_load_balancer(
+            Name=name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+        )
+        lb = resp["LoadBalancers"][0]
+        lb_arn = lb["LoadBalancerArn"]
+        try:
+            assert lb["VpcId"] == vpc_with_subnets["vpc_id"]
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+    def test_alb_has_security_groups(self, elbv2, vpc_with_subnets):
+        """Created ALB has SecurityGroups field."""
+        name = _unique("alb")
+        resp = elbv2.create_load_balancer(
+            Name=name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+        )
+        lb = resp["LoadBalancers"][0]
+        lb_arn = lb["LoadBalancerArn"]
+        try:
+            assert "SecurityGroups" in lb
+            assert isinstance(lb["SecurityGroups"], list)
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+    def test_alb_has_created_time(self, elbv2, vpc_with_subnets):
+        """Created ALB has CreatedTime field."""
+        name = _unique("alb")
+        resp = elbv2.create_load_balancer(
+            Name=name,
+            Subnets=vpc_with_subnets["subnet_ids"],
+            Type="application",
+        )
+        lb = resp["LoadBalancers"][0]
+        lb_arn = lb["LoadBalancerArn"]
+        try:
+            assert "CreatedTime" in lb
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=lb_arn)
+
+    def test_describe_nonexistent_lb_raises(self, elbv2):
+        """DescribeLoadBalancers with a nonexistent name raises an error."""
+        with pytest.raises(elbv2.exceptions.LoadBalancerNotFoundException):
+            elbv2.describe_load_balancers(Names=["nonexistent-lb-12345"])
+
+
+class TestELBv2TargetGroupAdvanced:
+    """Advanced target group tests."""
+
+    def test_create_target_group_with_health_check(self, elbv2, vpc_with_subnets):
+        """CreateTargetGroup with custom health check settings."""
+        name = _unique("tg")
+        resp = elbv2.create_target_group(
+            Name=name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+            HealthCheckPath="/health",
+            HealthCheckIntervalSeconds=10,
+            HealthyThresholdCount=2,
+            UnhealthyThresholdCount=3,
+        )
+        tg = resp["TargetGroups"][0]
+        tg_arn = tg["TargetGroupArn"]
+        try:
+            assert tg["HealthCheckPath"] == "/health"
+            assert tg["HealthCheckIntervalSeconds"] == 10
+            assert tg["HealthyThresholdCount"] == 2
+            assert tg["UnhealthyThresholdCount"] == 3
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg_arn)
+
+    def test_create_target_group_ip_type(self, elbv2, vpc_with_subnets):
+        """CreateTargetGroup with ip target type."""
+        name = _unique("tg")
+        resp = elbv2.create_target_group(
+            Name=name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+            TargetType="ip",
+        )
+        tg = resp["TargetGroups"][0]
+        tg_arn = tg["TargetGroupArn"]
+        try:
+            assert tg["TargetType"] == "ip"
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg_arn)
+
+    def test_target_group_tags(self, elbv2, vpc_with_subnets):
+        """Target group tags via add/describe/remove."""
+        name = _unique("tg")
+        resp = elbv2.create_target_group(
+            Name=name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+        )
+        tg_arn = resp["TargetGroups"][0]["TargetGroupArn"]
+        try:
+            elbv2.add_tags(
+                ResourceArns=[tg_arn],
+                Tags=[{"Key": "env", "Value": "prod"}],
+            )
+            tags_resp = elbv2.describe_tags(ResourceArns=[tg_arn])
+            tags = {t["Key"]: t["Value"] for t in tags_resp["TagDescriptions"][0]["Tags"]}
+            assert tags["env"] == "prod"
+
+            elbv2.remove_tags(ResourceArns=[tg_arn], TagKeys=["env"])
+            tags_resp2 = elbv2.describe_tags(ResourceArns=[tg_arn])
+            tag_keys = [t["Key"] for t in tags_resp2["TagDescriptions"][0]["Tags"]]
+            assert "env" not in tag_keys
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg_arn)
+
+    def test_describe_target_groups_all(self, elbv2, vpc_with_subnets):
+        """DescribeTargetGroups with no args returns all groups."""
+        name = _unique("tg")
+        resp = elbv2.create_target_group(
+            Name=name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+        )
+        tg_arn = resp["TargetGroups"][0]["TargetGroupArn"]
+        try:
+            all_tgs = elbv2.describe_target_groups()
+            names = [tg["TargetGroupName"] for tg in all_tgs["TargetGroups"]]
+            assert name in names
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg_arn)
+
+
+class TestELBv2ListenerAdvanced:
+    """Advanced listener tests."""
+
+    def test_listener_has_default_actions(self, elbv2, lb_listener_tg):
+        """Listener describe includes DefaultActions."""
+        desc = elbv2.describe_listeners(ListenerArns=[lb_listener_tg["listener_arn"]])
+        listener = desc["Listeners"][0]
+        assert len(listener["DefaultActions"]) >= 1
+        assert listener["DefaultActions"][0]["Type"] == "forward"
+
+    def test_listener_has_load_balancer_arn(self, elbv2, lb_listener_tg):
+        """Listener references its parent load balancer."""
+        desc = elbv2.describe_listeners(ListenerArns=[lb_listener_tg["listener_arn"]])
+        listener = desc["Listeners"][0]
+        assert listener["LoadBalancerArn"] == lb_listener_tg["lb_arn"]
+
+
+class TestELBv2RuleAdvanced:
+    """Advanced rule tests."""
+
+    def test_rule_with_host_header_condition(self, elbv2, lb_listener_tg):
+        """CreateRule with host-header condition."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "host-header", "Values": ["api.example.com"]}],
+            Priority=60,
+            Actions=[
+                {
+                    "Type": "forward",
+                    "TargetGroupArn": lb_listener_tg["tg_arn"],
+                }
+            ],
+        )
+        rule = resp["Rules"][0]
+        rule_arn = rule["RuleArn"]
+        try:
+            assert len(rule["Conditions"]) == 1
+            assert rule["Conditions"][0]["Field"] == "host-header"
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+    def test_describe_rules_by_arn(self, elbv2, lb_listener_tg):
+        """DescribeRules by specific rule ARN."""
+        create_resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "path-pattern", "Values": ["/specific"]}],
+            Priority=70,
+            Actions=[
+                {
+                    "Type": "forward",
+                    "TargetGroupArn": lb_listener_tg["tg_arn"],
+                }
+            ],
+        )
+        rule_arn = create_resp["Rules"][0]["RuleArn"]
+        try:
+            desc = elbv2.describe_rules(RuleArns=[rule_arn])
+            assert len(desc["Rules"]) == 1
+            assert desc["Rules"][0]["RuleArn"] == rule_arn
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+    def test_rule_with_fixed_response(self, elbv2, lb_listener_tg):
+        """CreateRule with fixed-response action."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[{"Field": "path-pattern", "Values": ["/fixed"]}],
+            Priority=80,
+            Actions=[
+                {
+                    "Type": "fixed-response",
+                    "FixedResponseConfig": {
+                        "StatusCode": "200",
+                        "ContentType": "text/plain",
+                        "MessageBody": "OK",
+                    },
+                }
+            ],
+        )
+        rule = resp["Rules"][0]
+        rule_arn = rule["RuleArn"]
+        try:
+            assert rule["Actions"][0]["Type"] == "fixed-response"
+            assert rule["Actions"][0]["FixedResponseConfig"]["StatusCode"] == "200"
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)

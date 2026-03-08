@@ -157,3 +157,53 @@ class TestEMRServerlessJobRuns:
         assert jr["applicationId"] == application
         assert "state" in jr
         assert "executionRole" in jr
+
+    def test_cancel_job_run(self, emr_serverless, application):
+        """CancelJobRun cancels a running job and returns its IDs."""
+        resp = emr_serverless.start_job_run(
+            applicationId=application,
+            executionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            jobDriver={
+                "sparkSubmit": {
+                    "entryPoint": "s3://bucket/cancel-script.py",
+                }
+            },
+        )
+        job_run_id = resp["jobRunId"]
+
+        cancel = emr_serverless.cancel_job_run(
+            applicationId=application,
+            jobRunId=job_run_id,
+        )
+        assert cancel["applicationId"] == application
+        assert cancel["jobRunId"] == job_run_id
+
+
+class TestEMRServerlessApplicationLifecycle:
+    def test_start_application(self, emr_serverless):
+        """StartApplication transitions a stopped app to STARTED."""
+        resp = emr_serverless.create_application(
+            releaseLabel="emr-6.15.0",
+            type="SPARK",
+            name=_unique("start-app"),
+        )
+        app_id = resp["applicationId"]
+        try:
+            # Stop first (app starts in STARTED state)
+            emr_serverless.stop_application(applicationId=app_id)
+            app = emr_serverless.get_application(applicationId=app_id)["application"]
+            assert app["state"] == "STOPPED"
+
+            # Start again
+            emr_serverless.start_application(applicationId=app_id)
+            app = emr_serverless.get_application(applicationId=app_id)["application"]
+            assert app["state"] == "STARTED"
+        finally:
+            try:
+                emr_serverless.stop_application(applicationId=app_id)
+            except Exception:
+                pass
+            try:
+                emr_serverless.delete_application(applicationId=app_id)
+            except Exception:
+                pass

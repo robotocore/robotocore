@@ -487,3 +487,243 @@ class TestEKSTagOperations:
             assert tags_resp["tags"].get("keep") == "yes"
         finally:
             eks.delete_cluster(name=name)
+
+
+class TestEKSUpdateOperations:
+    """Tests for EKS update cluster/nodegroup config operations."""
+
+    def test_update_cluster_config_logging(self, eks):
+        """UpdateClusterConfig enables logging and succeeds."""
+        name = _unique("cluster")
+        eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.update_cluster_config(
+                name=name,
+                logging={"clusterLogging": [{"types": ["api", "audit"], "enabled": True}]},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            eks.delete_cluster(name=name)
+
+    def test_update_nodegroup_config_scaling(self, eks):
+        """UpdateNodegroupConfig updates scaling configuration."""
+        cluster_name = _unique("cluster")
+        ng_name = _unique("ng")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.create_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=ng_name,
+                nodeRole="arn:aws:iam::123456789012:role/node-role",
+                subnets=["subnet-12345"],
+                scalingConfig={"minSize": 1, "maxSize": 3, "desiredSize": 2},
+            )
+            resp = eks.update_nodegroup_config(
+                clusterName=cluster_name,
+                nodegroupName=ng_name,
+                scalingConfig={"minSize": 1, "maxSize": 5, "desiredSize": 3},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+            except Exception:
+                pass
+            eks.delete_cluster(name=cluster_name)
+
+    def test_update_nodegroup_config_labels(self, eks):
+        """UpdateNodegroupConfig adds labels to a nodegroup."""
+        cluster_name = _unique("cluster")
+        ng_name = _unique("ng")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.create_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=ng_name,
+                nodeRole="arn:aws:iam::123456789012:role/node-role",
+                subnets=["subnet-12345"],
+            )
+            resp = eks.update_nodegroup_config(
+                clusterName=cluster_name,
+                nodegroupName=ng_name,
+                labels={"addOrUpdateLabels": {"env": "test"}},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+            except Exception:
+                pass
+            eks.delete_cluster(name=cluster_name)
+
+    def test_update_cluster_config_nonexistent(self, eks):
+        """UpdateClusterConfig on nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.update_cluster_config(
+                name="nonexistent-cluster",
+                logging={"clusterLogging": [{"types": ["api"], "enabled": True}]},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_nodegroup_config_nonexistent(self, eks):
+        """UpdateNodegroupConfig on nonexistent nodegroup raises error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.update_nodegroup_config(
+                    clusterName=cluster_name,
+                    nodegroupName="nonexistent",
+                    scalingConfig={"minSize": 1, "maxSize": 5, "desiredSize": 3},
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSNodegroupWithTags:
+    """Tests for EKS nodegroup tag operations."""
+
+    def test_create_nodegroup_with_tags(self, eks):
+        """CreateNodegroup with tags preserves them."""
+        cluster_name = _unique("cluster")
+        ng_name = _unique("ng")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.create_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=ng_name,
+                nodeRole="arn:aws:iam::123456789012:role/node-role",
+                subnets=["subnet-12345"],
+                tags={"env": "test", "team": "platform"},
+            )
+            ng = resp["nodegroup"]
+            assert ng["tags"]["env"] == "test"
+            assert ng["tags"]["team"] == "platform"
+        finally:
+            try:
+                eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+            except Exception:
+                pass
+            eks.delete_cluster(name=cluster_name)
+
+    def test_nodegroup_tags_in_describe(self, eks):
+        """Tags set at creation appear in describe response."""
+        cluster_name = _unique("cluster")
+        ng_name = _unique("ng")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.create_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=ng_name,
+                nodeRole="arn:aws:iam::123456789012:role/node-role",
+                subnets=["subnet-12345"],
+                tags={"env": "staging"},
+            )
+            desc = eks.describe_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+            assert desc["nodegroup"]["tags"].get("env") == "staging"
+        finally:
+            try:
+                eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
+            except Exception:
+                pass
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSClusterVersionAndConfig:
+    """Tests for EKS cluster version and configuration details."""
+
+    def test_cluster_has_kubernetes_version(self, eks):
+        """Cluster response includes a Kubernetes version."""
+        name = _unique("cluster")
+        resp = eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            cluster = resp["cluster"]
+            assert "version" in cluster
+            assert cluster["version"]  # not empty
+        finally:
+            eks.delete_cluster(name=name)
+
+    def test_cluster_has_platform_version(self, eks):
+        """Cluster response includes platform version."""
+        name = _unique("cluster")
+        resp = eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            cluster = resp["cluster"]
+            assert "platformVersion" in cluster
+        finally:
+            eks.delete_cluster(name=name)
+
+    def test_cluster_logging_default(self, eks):
+        """Cluster logging config is present in describe response."""
+        name = _unique("cluster")
+        eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            desc = eks.describe_cluster(name=name)
+            cluster = desc["cluster"]
+            assert "logging" in cluster
+        finally:
+            eks.delete_cluster(name=name)

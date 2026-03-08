@@ -1424,3 +1424,157 @@ class TestLogsAutoCoverage:
         resp = client.describe_destinations(DestinationNamePrefix=dest_name)
         names = [d["destinationName"] for d in resp["destinations"]]
         assert dest_name not in names
+
+
+class TestLogsQueryDefinitionOperations:
+    """Tests for PutQueryDefinition and related query definition operations."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.client = make_client("logs")
+
+    def test_put_query_definition(self):
+        """PutQueryDefinition creates a saved query and returns its ID."""
+        name = _unique("qdef")
+        resp = self.client.put_query_definition(
+            name=name,
+            queryString="fields @timestamp, @message | sort @timestamp desc | limit 20",
+        )
+        assert "queryDefinitionId" in resp
+        assert len(resp["queryDefinitionId"]) > 0
+
+    def test_put_query_definition_with_log_groups(self):
+        """PutQueryDefinition with logGroupNames scopes the query."""
+        group = _unique("/test/qdef-group")
+        self.client.create_log_group(logGroupName=group)
+        try:
+            name = _unique("qdef-scoped")
+            resp = self.client.put_query_definition(
+                name=name,
+                queryString="fields @timestamp | limit 5",
+                logGroupNames=[group],
+            )
+            qid = resp["queryDefinitionId"]
+            # Verify via describe
+            desc = self.client.describe_query_definitions()
+            found = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found) == 1
+            assert found[0]["name"] == name
+            assert group in found[0].get("logGroupNames", [])
+        finally:
+            self.client.delete_log_group(logGroupName=group)
+
+    def test_describe_query_definitions_returns_created(self):
+        """DescribeQueryDefinitions lists previously created query definitions."""
+        name = _unique("qdef-desc")
+        resp = self.client.put_query_definition(
+            name=name,
+            queryString="fields @timestamp | limit 10",
+        )
+        qid = resp["queryDefinitionId"]
+        desc = self.client.describe_query_definitions()
+        assert "queryDefinitions" in desc
+        ids = [q["queryDefinitionId"] for q in desc["queryDefinitions"]]
+        assert qid in ids
+
+    def test_put_query_definition_update_existing(self):
+        """PutQueryDefinition with existing queryDefinitionId updates the query."""
+        name = _unique("qdef-upd")
+        resp = self.client.put_query_definition(
+            name=name,
+            queryString="fields @timestamp | limit 5",
+        )
+        qid = resp["queryDefinitionId"]
+        # Update
+        resp2 = self.client.put_query_definition(
+            name=name,
+            queryDefinitionId=qid,
+            queryString="fields @message | limit 100",
+        )
+        assert resp2["queryDefinitionId"] == qid
+        # Verify updated
+        desc = self.client.describe_query_definitions()
+        found = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid]
+        assert len(found) == 1
+        assert "limit 100" in found[0]["queryString"]
+
+
+class TestLogsQueryExecution:
+    """Tests for StartQuery, GetQueryResults, StopQuery."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.client = make_client("logs")
+        self.group = _unique("/test/query-exec")
+        self.client.create_log_group(logGroupName=self.group)
+        self.client.create_log_stream(logGroupName=self.group, logStreamName="s1")
+        self.client.put_log_events(
+            logGroupName=self.group,
+            logStreamName="s1",
+            logEvents=[{"timestamp": int(time.time() * 1000), "message": "query test msg"}],
+        )
+        yield
+        self.client.delete_log_group(logGroupName=self.group)
+
+    def test_start_query_returns_query_id(self):
+        """StartQuery returns a queryId."""
+        resp = self.client.start_query(
+            logGroupName=self.group,
+            startTime=int(time.time()) - 3600,
+            endTime=int(time.time()) + 60,
+            queryString="fields @timestamp, @message | limit 10",
+        )
+        assert "queryId" in resp
+        assert len(resp["queryId"]) > 0
+
+    def test_get_query_results(self):
+        """GetQueryResults returns results for a started query."""
+        resp = self.client.start_query(
+            logGroupName=self.group,
+            startTime=int(time.time()) - 3600,
+            endTime=int(time.time()) + 60,
+            queryString="fields @timestamp, @message | limit 10",
+        )
+        qid = resp["queryId"]
+        results = self.client.get_query_results(queryId=qid)
+        assert "status" in results
+        assert results["status"] in ("Complete", "Running", "Scheduled")
+        assert "results" in results
+
+    def test_stop_query(self):
+        """StopQuery stops a running query."""
+        resp = self.client.start_query(
+            logGroupName=self.group,
+            startTime=int(time.time()) - 3600,
+            endTime=int(time.time()) + 60,
+            queryString="fields @timestamp | limit 10",
+        )
+        qid = resp["queryId"]
+        stop_resp = self.client.stop_query(queryId=qid)
+        assert "success" in stop_resp
+
+
+class TestLogsCancelExportTask:
+    """Tests for CancelExportTask."""
+
+    def test_cancel_export_task_nonexistent(self):
+        """CancelExportTask with fake taskId raises ResourceNotFoundException."""
+        client = make_client("logs")
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.cancel_export_task(taskId="nonexistent-task-id")
+
+
+class TestLogsDeliverySourceOperations:
+    """Tests for GetDeliverySource and DeleteDeliverySource."""
+
+    def test_get_delivery_source_nonexistent(self):
+        """GetDeliverySource with nonexistent name raises ResourceNotFoundException."""
+        client = make_client("logs")
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_delivery_source(name="nonexistent-source")
+
+    def test_delete_delivery_source_nonexistent(self):
+        """DeleteDeliverySource with nonexistent name raises ResourceNotFoundException."""
+        client = make_client("logs")
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_delivery_source(name="nonexistent-source")

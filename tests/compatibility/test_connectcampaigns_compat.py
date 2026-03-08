@@ -65,3 +65,114 @@ class TestConnectCampaignsOperations:
             assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_get_campaign_state(self, connectcampaigns):
+        """GetCampaignState returns the state of a campaign."""
+        resp = _create_campaign(connectcampaigns, name="state-test")
+        campaign_id = resp["id"]
+        try:
+            result = connectcampaigns.get_campaign_state(id=campaign_id)
+            assert "state" in result
+            assert result["state"] in (
+                "Initialized",
+                "Running",
+                "Paused",
+                "Stopped",
+                "Failed",
+            )
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_get_campaign_state_nonexistent(self, connectcampaigns):
+        """GetCampaignState for nonexistent campaign raises error."""
+        with pytest.raises(ClientError) as exc:
+            connectcampaigns.get_campaign_state(id="nonexistent-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_pause_campaign(self, connectcampaigns):
+        """PauseCampaign returns 200."""
+        resp = _create_campaign(connectcampaigns, name="pause-test")
+        campaign_id = resp["id"]
+        try:
+            result = connectcampaigns.pause_campaign(id=campaign_id)
+            assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_resume_campaign(self, connectcampaigns):
+        """ResumeCampaign returns 200."""
+        resp = _create_campaign(connectcampaigns, name="resume-test")
+        campaign_id = resp["id"]
+        try:
+            result = connectcampaigns.resume_campaign(id=campaign_id)
+            assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_tag_resource(self, connectcampaigns):
+        """TagResource adds tags to a campaign."""
+        resp = _create_campaign(connectcampaigns, name="tag-test")
+        campaign_id = resp["id"]
+        try:
+            desc = connectcampaigns.describe_campaign(id=campaign_id)
+            arn = desc["campaign"]["arn"]
+            connectcampaigns.tag_resource(arn=arn, tags={"env": "test", "team": "dev"})
+            tags = connectcampaigns.list_tags_for_resource(arn=arn)
+            assert tags["tags"]["env"] == "test"
+            assert tags["tags"]["team"] == "dev"
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_list_tags_for_resource(self, connectcampaigns):
+        """ListTagsForResource returns tags dict."""
+        resp = _create_campaign(connectcampaigns, name="listtag-test")
+        campaign_id = resp["id"]
+        try:
+            desc = connectcampaigns.describe_campaign(id=campaign_id)
+            arn = desc["campaign"]["arn"]
+            result = connectcampaigns.list_tags_for_resource(arn=arn)
+            assert "tags" in result
+            assert isinstance(result["tags"], dict)
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_untag_resource(self, connectcampaigns):
+        """UntagResource removes a specific tag key."""
+        resp = _create_campaign(connectcampaigns, name="untag-test")
+        campaign_id = resp["id"]
+        try:
+            desc = connectcampaigns.describe_campaign(id=campaign_id)
+            arn = desc["campaign"]["arn"]
+            connectcampaigns.tag_resource(arn=arn, tags={"k1": "v1", "k2": "v2"})
+            connectcampaigns.untag_resource(arn=arn, tagKeys=["k1"])
+            tags = connectcampaigns.list_tags_for_resource(arn=arn)
+            assert "k1" not in tags["tags"]
+            assert tags["tags"]["k2"] == "v2"
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_get_connect_instance_config(self, connectcampaigns):
+        """GetConnectInstanceConfig returns instance configuration."""
+        # First ensure an instance config exists by creating a campaign
+        resp = _create_campaign(connectcampaigns, name="config-test")
+        campaign_id = resp["id"]
+        try:
+            result = connectcampaigns.get_connect_instance_config(
+                connectInstanceId="12345678-1234-1234-1234-123456789012"
+            )
+            assert "connectInstanceConfig" in result
+            config = result["connectInstanceConfig"]
+            assert config["connectInstanceId"] == "12345678-1234-1234-1234-123456789012"
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_start_instance_onboarding_job(self, connectcampaigns):
+        """StartInstanceOnboardingJob returns job status."""
+        result = connectcampaigns.start_instance_onboarding_job(
+            connectInstanceId="12345678-1234-1234-1234-123456789012",
+            encryptionConfig={"enabled": False, "encryptionType": "KMS"},
+        )
+        assert "connectInstanceOnboardingJobStatus" in result
+        status = result["connectInstanceOnboardingJobStatus"]
+        assert status["connectInstanceId"] == "12345678-1234-1234-1234-123456789012"
+        assert status["status"] in ("IN_PROGRESS", "SUCCEEDED", "FAILED")

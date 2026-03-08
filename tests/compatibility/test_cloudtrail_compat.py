@@ -176,3 +176,96 @@ class TestCloudTrailTags:
         resp = cloudtrail.list_tags(ResourceIdList=[trail_arn])
         assert len(resp["ResourceTagList"]) == 1
         assert resp["ResourceTagList"][0]["TagsList"] == []
+
+
+class TestCloudTrailUpdateTrail:
+    """Tests for UpdateTrail operation."""
+
+    def test_update_trail_enable_log_file_validation(self, cloudtrail, trail_with_bucket):
+        trail_name, bucket_name, _ = trail_with_bucket
+        resp = cloudtrail.update_trail(
+            Name=trail_name,
+            S3BucketName=bucket_name,
+            EnableLogFileValidation=True,
+        )
+        assert resp["Name"] == trail_name
+        assert resp["LogFileValidationEnabled"] is True
+
+    def test_update_trail_multi_region(self, cloudtrail, trail_with_bucket):
+        trail_name, bucket_name, _ = trail_with_bucket
+        resp = cloudtrail.update_trail(
+            Name=trail_name,
+            S3BucketName=bucket_name,
+            IsMultiRegionTrail=True,
+        )
+        assert resp["Name"] == trail_name
+        assert resp["IsMultiRegionTrail"] is True
+
+    def test_update_trail_include_global_events(self, cloudtrail, trail_with_bucket):
+        trail_name, bucket_name, _ = trail_with_bucket
+        resp = cloudtrail.update_trail(
+            Name=trail_name,
+            S3BucketName=bucket_name,
+            IncludeGlobalServiceEvents=False,
+        )
+        assert resp["Name"] == trail_name
+        assert resp["IncludeGlobalServiceEvents"] is False
+
+    def test_update_trail_verify_via_get(self, cloudtrail, trail_with_bucket):
+        trail_name, bucket_name, _ = trail_with_bucket
+        cloudtrail.update_trail(
+            Name=trail_name,
+            S3BucketName=bucket_name,
+            EnableLogFileValidation=True,
+            IsMultiRegionTrail=True,
+        )
+        resp = cloudtrail.get_trail(Name=trail_name)
+        assert resp["Trail"]["LogFileValidationEnabled"] is True
+        assert resp["Trail"]["IsMultiRegionTrail"] is True
+
+
+class TestCloudTrailInsightSelectors:
+    """Tests for GetInsightSelectors and PutInsightSelectors."""
+
+    def test_get_insight_selectors_default(self, cloudtrail, trail_with_bucket):
+        trail_name, _, _ = trail_with_bucket
+        resp = cloudtrail.get_insight_selectors(TrailName=trail_name)
+        assert "TrailARN" in resp
+        # Default may have empty or no insight selectors
+        selectors = resp.get("InsightSelectors", [])
+        assert isinstance(selectors, list)
+
+    def test_put_insight_selectors_api_call_rate(self, cloudtrail, trail_with_bucket):
+        trail_name, _, _ = trail_with_bucket
+        resp = cloudtrail.put_insight_selectors(
+            TrailName=trail_name,
+            InsightSelectors=[{"InsightType": "ApiCallRateInsight"}],
+        )
+        assert "TrailARN" in resp
+        assert len(resp["InsightSelectors"]) == 1
+        assert resp["InsightSelectors"][0]["InsightType"] == "ApiCallRateInsight"
+
+    def test_put_insight_selectors_verify_via_get(self, cloudtrail, trail_with_bucket):
+        trail_name, _, _ = trail_with_bucket
+        cloudtrail.put_insight_selectors(
+            TrailName=trail_name,
+            InsightSelectors=[{"InsightType": "ApiCallRateInsight"}],
+        )
+        resp = cloudtrail.get_insight_selectors(TrailName=trail_name)
+        found = [
+            s for s in resp.get("InsightSelectors", []) if s["InsightType"] == "ApiCallRateInsight"
+        ]
+        assert len(found) == 1
+
+    def test_put_insight_selectors_empty_clears(self, cloudtrail, trail_with_bucket):
+        trail_name, _, _ = trail_with_bucket
+        # Set then clear
+        cloudtrail.put_insight_selectors(
+            TrailName=trail_name,
+            InsightSelectors=[{"InsightType": "ApiCallRateInsight"}],
+        )
+        resp = cloudtrail.put_insight_selectors(
+            TrailName=trail_name,
+            InsightSelectors=[],
+        )
+        assert resp.get("InsightSelectors", []) == []
