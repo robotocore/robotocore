@@ -984,3 +984,83 @@ class TestKinesisAutoCoverage:
     def test_describe_account_settings(self, client):
         """DescribeAccountSettings returns a response."""
         client.describe_account_settings()
+
+
+class TestKinesisResourcePolicy:
+    """Tests for ResourcePolicy operations: Put, Get, Delete."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("kinesis")
+
+    @pytest.fixture
+    def stream_arn(self, client):
+        name = f"rp-stream-{uuid.uuid4().hex[:8]}"
+        client.create_stream(StreamName=name, ShardCount=1)
+        client.get_waiter("stream_exists").wait(StreamName=name)
+        desc = client.describe_stream(StreamName=name)
+        arn = desc["StreamDescription"]["StreamARN"]
+        yield arn
+        client.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
+
+    def test_put_resource_policy(self, client, stream_arn):
+        """PutResourcePolicy sets a policy on a stream."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "123456789012"},
+                        "Action": "kinesis:DescribeStream",
+                        "Resource": stream_arn,
+                    }
+                ],
+            }
+        )
+        resp = client.put_resource_policy(ResourceARN=stream_arn, Policy=policy)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_resource_policy(self, client, stream_arn):
+        """GetResourcePolicy retrieves a previously set policy."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "123456789012"},
+                        "Action": "kinesis:DescribeStream",
+                        "Resource": stream_arn,
+                    }
+                ],
+            }
+        )
+        client.put_resource_policy(ResourceARN=stream_arn, Policy=policy)
+        resp = client.get_resource_policy(ResourceARN=stream_arn)
+        assert "Policy" in resp
+
+    def test_delete_resource_policy(self, client, stream_arn):
+        """DeleteResourcePolicy removes a policy from a stream."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "123456789012"},
+                        "Action": "kinesis:DescribeStream",
+                        "Resource": stream_arn,
+                    }
+                ],
+            }
+        )
+        client.put_resource_policy(ResourceARN=stream_arn, Policy=policy)
+        resp = client.delete_resource_policy(ResourceARN=stream_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
