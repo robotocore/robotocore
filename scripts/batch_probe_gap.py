@@ -33,9 +33,12 @@ import sys
 import time
 
 import boto3
+import botocore.config
 import botocore.exceptions
 import botocore.loaders
 import botocore.session
+
+DEFAULT_OP_TIMEOUT = 10  # seconds per operation (connect + read)
 
 # ---------------------------------------------------------------------------
 # Known params: enough to get past botocore validation for common operations.
@@ -591,13 +594,22 @@ def classify_response(client, operation_name: str, error: Exception | None) -> s
 
 
 def probe_operation(client, operation_name: str, params: dict) -> tuple[str, str]:
-    """Probe a single operation. Returns (status, detail_message)."""
+    """Probe a single operation. Returns (status, detail_message).
+
+    Timeout is enforced by the client's botocore Config (connect_timeout /
+    read_timeout).  ConnectTimeoutError and ReadTimeoutError are caught here
+    and reported as "error" so the probe loop can continue.
+    """
     try:
         method = getattr(client, _to_snake_case(operation_name))
         method(**params)
         return "working", "OK"
     except botocore.exceptions.ParamValidationError as e:
         return "needs_params", f"param validation: {str(e)[:80]}"
+    except (botocore.exceptions.ConnectTimeoutError, botocore.exceptions.ReadTimeoutError) as e:
+        return "error", f"timeout: {type(e).__name__}"
+    except botocore.exceptions.EndpointConnectionError:
+        return "error", "endpoint unreachable"
     except botocore.exceptions.ClientError as e:
         status = classify_response(client, operation_name, e)
         code = e.response["Error"]["Code"]
@@ -621,14 +633,23 @@ def probe_service(
     service_name: str,
     endpoint: str = "http://localhost:4566",
     verbose: bool = False,
+    op_timeout: int = DEFAULT_OP_TIMEOUT,
 ) -> dict:
-    """Probe all operations for a service. Returns classification dict."""
+    """Probe all operations for a service. Returns classification dict.
+
+    Each HTTP call is bounded by op_timeout seconds (connect + read).
+    """
     client = boto3.client(
         service_name,
         endpoint_url=endpoint,
         region_name="us-east-1",
         aws_access_key_id="testing",
         aws_secret_access_key="testing",
+        config=botocore.config.Config(
+            connect_timeout=min(op_timeout, 5),
+            read_timeout=op_timeout,
+            retries={"max_attempts": 1},  # no retries — this is a probe, not production
+        ),
     )
 
     operations = get_all_operations(service_name)
@@ -707,6 +728,13 @@ def main():
         help="Show only ops with this status",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Show per-op progress")
+    parser.add_argument(
+        "--op-timeout",
+        type=int,
+        default=DEFAULT_OP_TIMEOUT,
+        metavar="SECS",
+        help=f"Per-operation timeout in seconds (default: {DEFAULT_OP_TIMEOUT})",
+    )
     args = parser.parse_args()
 
     if args.all:
@@ -727,7 +755,9 @@ def main():
                 flush=True,
             )  # noqa: E501
 
-        results = probe_service(service, args.endpoint, verbose=args.verbose)
+        results = probe_service(
+            service, args.endpoint, verbose=args.verbose, op_timeout=args.op_timeout
+        )
         all_results[service] = results
 
         # Quick per-service summary
