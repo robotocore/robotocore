@@ -15,9 +15,7 @@ from starlette.responses import Response
 from robotocore.providers.moto_bridge import forward_to_moto
 
 
-async def handle_iam_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_iam_request(request: Request, region: str, account_id: str) -> Response:
     """Handle IAM requests, intercepting unimplemented operations."""
     body = await request.body()
     params = parse_qs(body.decode("utf-8")) if body else {}
@@ -66,10 +64,7 @@ def _inject_user_permissions_boundary(
                 f"</PermissionsBoundary>"
             )
             body = body.replace("</User>", f"{boundary_xml}</User>")
-            headers = {
-                k: v for k, v in response.headers.items()
-                if k.lower() != "content-length"
-            }
+            headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
             return Response(
                 content=body,
                 status_code=response.status_code,

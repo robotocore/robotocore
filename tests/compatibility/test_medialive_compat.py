@@ -77,17 +77,13 @@ class TestMediaLiveChannelCRUD:
         return medialive.create_channel(
             Name=name,
             InputAttachments=[{"InputId": inp_id}],
-            Destinations=[
-                {"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}
-            ],
+            Destinations=[{"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}],
             EncoderSettings={
                 "AudioDescriptions": [],
                 "OutputGroups": [
                     {
                         "OutputGroupSettings": {
-                            "ArchiveGroupSettings": {
-                                "Destination": {"DestinationRefId": "dest1"}
-                            }
+                            "ArchiveGroupSettings": {"Destination": {"DestinationRefId": "dest1"}}
                         },
                         "Outputs": [
                             {

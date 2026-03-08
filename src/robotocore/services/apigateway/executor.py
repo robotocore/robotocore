@@ -45,9 +45,7 @@ DEFAULT_GATEWAY_RESPONSES: dict[str, dict] = {
     },
     "MISSING_AUTHENTICATION_TOKEN": {
         "statusCode": 403,
-        "responseTemplates": {
-            "application/json": '{"message": "Missing Authentication Token"}'
-        },
+        "responseTemplates": {"application/json": '{"message": "Missing Authentication Token"}'},
     },
     "RESOURCE_NOT_FOUND": {
         "statusCode": 404,
@@ -69,9 +67,7 @@ DEFAULT_GATEWAY_RESPONSES: dict[str, dict] = {
     },
     "BAD_REQUEST_BODY": {
         "statusCode": 400,
-        "responseTemplates": {
-            "application/json": '{"message": "Invalid request body"}'
-        },
+        "responseTemplates": {"application/json": '{"message": "Invalid request body"}'},
     },
 }
 
@@ -130,29 +126,32 @@ def execute_api_request(
 
     # Build context variables
     context_vars = _build_context_vars(
-        rest_api_id, stage, method_upper, path, resource,
-        request_id, account_id, headers
+        rest_api_id, stage, method_upper, path, resource, request_id, account_id, headers
     )
 
     # Check authorizer
     auth_result = _check_authorizer(
-        rest_api, method_obj, headers, query_params, path_params,
-        stage_vars, region, account_id, request_id, context_vars
+        rest_api,
+        method_obj,
+        headers,
+        query_params,
+        path_params,
+        stage_vars,
+        region,
+        account_id,
+        request_id,
+        context_vars,
     )
     if auth_result is not None:
         return auth_result
 
     # Check API key requirement
-    api_key_result = _check_api_key(
-        rest_api, method_obj, headers, backend, request_id
-    )
+    api_key_result = _check_api_key(rest_api, method_obj, headers, backend, request_id)
     if api_key_result is not None:
         return api_key_result
 
     # Validate request body
-    validation_result = _validate_request_body(
-        rest_api, method_obj, body, headers
-    )
+    validation_result = _validate_request_body(rest_api, method_obj, body, headers)
     if validation_result is not None:
         return validation_result
 
@@ -187,23 +186,42 @@ def execute_api_request(
         )
     elif integration_type == "MOCK":
         return _invoke_mock(
-            integration, method_obj, body_str, headers, query_params,
-            path_params, stage_vars, context_vars
+            integration,
+            method_obj,
+            body_str,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            context_vars,
         )
     elif integration_type == "AWS":
         return _invoke_aws_service(
-            integration, uri, body, headers, query_params, path_params,
-            stage_vars, context_vars, region, account_id
+            integration,
+            uri,
+            body,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            context_vars,
+            region,
+            account_id,
         )
     elif integration_type in ("HTTP", "HTTP_PROXY"):
         return _invoke_http(
-            integration, uri, method, body, headers, query_params,
-            path_params, stage_vars, context_vars
+            integration,
+            uri,
+            method,
+            body,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            context_vars,
         )
     else:
-        return 500, {}, json.dumps(
-            {"message": f"Unsupported integration type: {integration_type}"}
-        )
+        return 500, {}, json.dumps({"message": f"Unsupported integration type: {integration_type}"})
 
 
 def _match_resource(rest_api, path: str) -> tuple:
@@ -231,9 +249,7 @@ def _get_full_path(rest_api, resource) -> str:
     parts = []
     current = resource
     while current:
-        part = getattr(current, "path_part", "") or getattr(
-            current, "resource_path", ""
-        )
+        part = getattr(current, "path_part", "") or getattr(current, "resource_path", "")
         if part:
             parts.insert(0, part)
         parent_id = getattr(current, "parent_id", None)
@@ -312,8 +328,14 @@ def _substitute_stage_variables(s: str, stage_vars: dict) -> str:
 
 
 def _build_context_vars(
-    api_id: str, stage: str, method: str, path: str, resource,
-    request_id: str, account_id: str, headers: dict,
+    api_id: str,
+    stage: str,
+    method: str,
+    path: str,
+    resource,
+    request_id: str,
+    account_id: str,
+    headers: dict,
 ) -> dict:
     """Build the $context variables dict."""
     resource_path = getattr(resource, "path_part", path)
@@ -341,8 +363,16 @@ def _build_context_vars(
 
 
 def _check_authorizer(
-    rest_api, method_obj, headers, query_params, path_params,
-    stage_vars, region, account_id, request_id, context_vars,
+    rest_api,
+    method_obj,
+    headers,
+    query_params,
+    path_params,
+    stage_vars,
+    region,
+    account_id,
+    request_id,
+    context_vars,
 ) -> tuple[int, dict, str] | None:
     """Check authorizer on method. Returns error tuple or None if authorized."""
     auth_type = getattr(method_obj, "authorization_type", "NONE") or "NONE"
@@ -362,13 +392,17 @@ def _check_authorizer(
     auth_type_obj = getattr(authorizer, "type", "").upper()
 
     if auth_type_obj == "TOKEN":
-        return _check_token_authorizer(
-            authorizer, headers, region, account_id, request_id
-        )
+        return _check_token_authorizer(authorizer, headers, region, account_id, request_id)
     elif auth_type_obj == "REQUEST":
         return _check_request_authorizer(
-            authorizer, headers, query_params, path_params,
-            stage_vars, region, account_id, request_id
+            authorizer,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            region,
+            account_id,
+            request_id,
         )
     elif auth_type_obj in ("COGNITO_USER_POOLS", "COGNITO"):
         return _check_cognito_authorizer(authorizer, headers, request_id)
@@ -377,7 +411,11 @@ def _check_authorizer(
 
 
 def _check_token_authorizer(
-    authorizer, headers, region, account_id, request_id,
+    authorizer,
+    headers,
+    region,
+    account_id,
+    request_id,
 ) -> tuple[int, dict, str] | None:
     """Lambda TOKEN authorizer: extract token from header, invoke Lambda."""
     source = getattr(authorizer, "auth_type", None) or getattr(
@@ -418,8 +456,14 @@ def _check_token_authorizer(
 
 
 def _check_request_authorizer(
-    authorizer, headers, query_params, path_params,
-    stage_vars, region, account_id, request_id,
+    authorizer,
+    headers,
+    query_params,
+    path_params,
+    stage_vars,
+    region,
+    account_id,
+    request_id,
 ) -> tuple[int, dict, str] | None:
     """Lambda REQUEST authorizer: pass request context to Lambda."""
     uri = getattr(authorizer, "authorizer_uri", "") or ""
@@ -450,7 +494,9 @@ def _check_request_authorizer(
 
 
 def _check_cognito_authorizer(
-    authorizer, headers, request_id,
+    authorizer,
+    headers,
+    request_id,
 ) -> tuple[int, dict, str] | None:
     """Cognito User Pools authorizer: basic JWT validation."""
     source = getattr(authorizer, "identity_source", "method.request.header.Authorization")
@@ -516,7 +562,11 @@ def _check_cognito_authorizer(
 
 
 def _check_api_key(
-    rest_api, method_obj, headers, backend, request_id,
+    rest_api,
+    method_obj,
+    headers,
+    backend,
+    request_id,
 ) -> tuple[int, dict, str] | None:
     """Check API key requirement on method."""
     api_key_required = getattr(method_obj, "api_key_required", False)
@@ -544,7 +594,10 @@ def _check_api_key(
 
 
 def _validate_request_body(
-    rest_api, method_obj, body, headers,
+    rest_api,
+    method_obj,
+    body,
+    headers,
 ) -> tuple[int, dict, str] | None:
     """Validate request body against the method's request model schema."""
     validator_id = getattr(method_obj, "request_validator_id", None)
@@ -641,7 +694,9 @@ def _validate_json_schema(data: object, schema: dict) -> str | None:
 
 
 def _gateway_response(
-    rest_api, response_type: str, request_id: str,
+    rest_api,
+    response_type: str,
+    request_id: str,
 ) -> tuple[int, dict, str]:
     """Return a gateway response for the given type."""
     # Check for custom gateway responses on the API
@@ -698,8 +753,13 @@ def _build_vtl_context(
 
 
 def _apply_request_template(
-    integration, body_str: str | None, headers: dict, query_params: dict,
-    path_params: dict, stage_vars: dict, context_vars: dict,
+    integration,
+    body_str: str | None,
+    headers: dict,
+    query_params: dict,
+    path_params: dict,
+    stage_vars: dict,
+    context_vars: dict,
 ) -> str | None:
     """Apply request mapping template if configured."""
     templates = getattr(integration, "request_templates", None) or {}
@@ -715,9 +775,13 @@ def _apply_request_template(
 
 
 def _apply_response_template(
-    integration_response, response_body: str,
-    headers: dict, query_params: dict, path_params: dict,
-    stage_vars: dict, context_vars: dict,
+    integration_response,
+    response_body: str,
+    headers: dict,
+    query_params: dict,
+    path_params: dict,
+    stage_vars: dict,
+    context_vars: dict,
 ) -> str:
     """Apply response mapping template if configured."""
     templates = getattr(integration_response, "response_templates", None) or {}
@@ -753,9 +817,7 @@ def _invoke_lambda_proxy(
     function_name = _extract_lambda_function_from_uri(uri)
 
     if not function_name:
-        return 500, {}, json.dumps(
-            {"message": "Could not resolve Lambda function from URI"}
-        )
+        return 500, {}, json.dumps({"message": "Could not resolve Lambda function from URI"})
 
     request_id = (context_vars or {}).get("requestId", str(uuid.uuid4()))
 
@@ -810,9 +872,14 @@ def _invoke_lambda_proxy(
 
 
 def _invoke_mock(
-    integration, method_obj,
-    body_str=None, headers=None, query_params=None,
-    path_params=None, stage_vars=None, context_vars=None,
+    integration,
+    method_obj,
+    body_str=None,
+    headers=None,
+    query_params=None,
+    path_params=None,
+    stage_vars=None,
+    context_vars=None,
 ) -> tuple[int, dict, str]:
     """Handle mock integration with VTL mapping template support."""
     headers = headers or {}
@@ -824,8 +891,13 @@ def _invoke_mock(
     # Apply request template (for mock, this builds the "backend response")
     if body_str is not None or stage_vars or context_vars:
         _apply_request_template(
-            integration, body_str, headers, query_params,
-            path_params, stage_vars, context_vars,
+            integration,
+            body_str,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            context_vars,
         )
 
     responses = getattr(integration, "integration_responses", None) or {}
@@ -841,12 +913,14 @@ def _invoke_mock(
         resp_body = templates.get("application/json", "")
 
         # Apply response template VTL
-        if resp_body and any(
-            c in resp_body for c in ("$", "#")
-        ):
+        if resp_body and any(c in resp_body for c in ("$", "#")):
             vtl_ctx = _build_vtl_context(
-                body_str, headers, query_params, path_params,
-                stage_vars, context_vars,
+                body_str,
+                headers,
+                query_params,
+                path_params,
+                stage_vars,
+                context_vars,
             )
             resp_body = evaluate_vtl(resp_body, vtl_ctx)
 
@@ -861,8 +935,16 @@ def _invoke_mock(
 
 
 def _invoke_aws_service(
-    integration, uri, body, headers, query_params=None, path_params=None,
-    stage_vars=None, context_vars=None, region="us-east-1", account_id="123456789012",
+    integration,
+    uri,
+    body,
+    headers,
+    query_params=None,
+    path_params=None,
+    stage_vars=None,
+    context_vars=None,
+    region="us-east-1",
+    account_id="123456789012",
 ) -> tuple[int, dict, str]:
     """Handle AWS service integration (non-proxy) with request/response mapping."""
     query_params = query_params or {}
@@ -874,8 +956,13 @@ def _invoke_aws_service(
 
     # Apply request mapping template
     mapped_body = _apply_request_template(
-        integration, body_str, headers, query_params,
-        path_params, stage_vars, context_vars,
+        integration,
+        body_str,
+        headers,
+        query_params,
+        path_params,
+        stage_vars,
+        context_vars,
     )
 
     # Parse the URI to determine the target service
@@ -892,24 +979,30 @@ def _invoke_aws_service(
     if "200" in responses:
         resp = responses["200"]
         result = _apply_response_template(
-            resp, result, headers, query_params, path_params,
-            stage_vars, context_vars,
+            resp,
+            result,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            context_vars,
         )
 
     return 200, {}, result
 
 
 def _forward_to_aws_backend(
-    uri: str, body: str | None, headers: dict,
-    region: str, account_id: str,
+    uri: str,
+    body: str | None,
+    headers: dict,
+    region: str,
+    account_id: str,
 ) -> str:
     """Forward an AWS integration request to the appropriate Moto backend."""
     # Parse service and action from URI
     # arn:aws:apigateway:region:lambda:path/2015-03-31/functions/ARN/invocations
     # arn:aws:apigateway:region:dynamodb:action/PutItem
-    arn_match = re.match(
-        r"arn:aws:apigateway:[^:]+:(\w+):(action|path)/(.+)", uri
-    )
+    arn_match = re.match(r"arn:aws:apigateway:[^:]+:(\w+):(action|path)/(.+)", uri)
     if not arn_match:
         return json.dumps({"message": "AWS integration executed"})
 
@@ -940,7 +1033,10 @@ def _forward_to_aws_backend(
 
 
 def _forward_dynamodb_action(
-    action: str, body: str | None, region: str, account_id: str,
+    action: str,
+    body: str | None,
+    region: str,
+    account_id: str,
 ) -> str:
     """Forward a DynamoDB action through the API Gateway AWS integration."""
     try:
@@ -972,23 +1068,35 @@ def _forward_dynamodb_action(
 
 
 def _forward_sqs_action(
-    action: str, body: str | None, region: str, account_id: str,
+    action: str,
+    body: str | None,
+    region: str,
+    account_id: str,
 ) -> str:
     """Forward an SQS action through the API Gateway AWS integration."""
     return json.dumps({"message": f"SQS {action} executed"})
 
 
 def _forward_sns_action(
-    action: str, body: str | None, region: str, account_id: str,
+    action: str,
+    body: str | None,
+    region: str,
+    account_id: str,
 ) -> str:
     """Forward an SNS action through the API Gateway AWS integration."""
     return json.dumps({"message": f"SNS {action} executed"})
 
 
 def _invoke_http(
-    integration, uri, method, body, headers,
-    query_params=None, path_params=None,
-    stage_vars=None, context_vars=None,
+    integration,
+    uri,
+    method,
+    body,
+    headers,
+    query_params=None,
+    path_params=None,
+    stage_vars=None,
+    context_vars=None,
 ) -> tuple[int, dict, str]:
     """Handle HTTP/HTTP_PROXY integration with mapping template support."""
     query_params = query_params or {}
@@ -1002,8 +1110,13 @@ def _invoke_http(
     if integration_type == "HTTP":
         # Non-proxy: apply request mapping
         _apply_request_template(
-            integration, body_str, headers, query_params,
-            path_params, stage_vars, context_vars,
+            integration,
+            body_str,
+            headers,
+            query_params,
+            path_params,
+            stage_vars,
+            context_vars,
         )
         # Would make HTTP request here; for now return mock response
         result_body = json.dumps({"message": "HTTP integration executed"})
@@ -1013,8 +1126,13 @@ def _invoke_http(
         if "200" in responses:
             resp = responses["200"]
             result_body = _apply_response_template(
-                resp, result_body, headers, query_params, path_params,
-                stage_vars, context_vars,
+                resp,
+                result_body,
+                headers,
+                query_params,
+                path_params,
+                stage_vars,
+                context_vars,
             )
         return 200, {}, result_body
     else:

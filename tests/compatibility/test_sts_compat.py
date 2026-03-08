@@ -107,6 +107,7 @@ class TestSTSOperations:
         assert "Credentials" in response
         assert "AssumedRoleUser" in response
         iam.delete_role(RoleName=role_name)
+
     def test_get_federation_token(self, sts):
         response = sts.get_federation_token(Name="testuser")
         creds = response["Credentials"]
@@ -115,6 +116,7 @@ class TestSTSOperations:
         assert "SessionToken" in creds
         assert "FederatedUser" in response
         assert "FederatedUserId" in response["FederatedUser"]
+
     def test_decode_authorization_message(self, sts):
         """Call decode_authorization_message with a dummy encoded message."""
         try:
@@ -216,16 +218,17 @@ class TestSTSOperations:
         """AssumedRoleUser has Arn and AssumedRoleId."""
         iam = make_client("iam")
         role_name = f"aru-role-{uuid.uuid4().hex[:8]}"
-        trust = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Principal": {"AWS": "*"},
-                           "Action": "sts:AssumeRole"}],
-        })
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole"}
+                ],
+            }
+        )
         role = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
         try:
-            resp = sts.assume_role(
-                RoleArn=role["Role"]["Arn"], RoleSessionName="aru-session"
-            )
+            resp = sts.assume_role(RoleArn=role["Role"]["Arn"], RoleSessionName="aru-session")
             aru = resp["AssumedRoleUser"]
             assert "Arn" in aru
             assert "AssumedRoleId" in aru
@@ -235,10 +238,12 @@ class TestSTSOperations:
 
     def test_get_federation_token_with_policy(self, sts):
         """GetFederationToken with an inline Policy."""
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
         response = sts.get_federation_token(Name="poluser", Policy=policy)
         assert "Credentials" in response
         assert "FederatedUser" in response
@@ -498,9 +503,7 @@ class TestSTSExtended:
                 + ",".join(
                     [
                         '{"Effect":"Allow","Action":"s3:GetObject",'
-                        f'"Resource":"arn:aws:s3:::bucket-{i}-'
-                        + "x" * 200
-                        + '/*"}'
+                        f'"Resource":"arn:aws:s3:::bucket-{i}-' + "x" * 200 + '/*"}'
                         for i in range(20)
                     ]
                 )

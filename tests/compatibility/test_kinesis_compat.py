@@ -156,8 +156,7 @@ class TestKinesisOperations:
     def test_put_records_batch_multiple_all_succeed(self, kinesis, stream):
         """PutRecords batch with multiple records, verify all succeed."""
         records = [
-            {"Data": f"batch-record-{i}".encode(), "PartitionKey": f"pk-{i}"}
-            for i in range(10)
+            {"Data": f"batch-record-{i}".encode(), "PartitionKey": f"pk-{i}"} for i in range(10)
         ]
         response = kinesis.put_records(StreamName=stream, Records=records)
         assert response["FailedRecordCount"] == 0
@@ -169,10 +168,7 @@ class TestKinesisOperations:
 
     def test_get_records_with_limit(self, kinesis, stream):
         """GetRecords with Limit parameter returns at most that many records."""
-        records = [
-            {"Data": f"limit-rec-{i}".encode(), "PartitionKey": "pk1"}
-            for i in range(5)
-        ]
+        records = [{"Data": f"limit-rec-{i}".encode(), "PartitionKey": "pk1"} for i in range(5)]
         kinesis.put_records(StreamName=stream, Records=records)
 
         shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
@@ -199,9 +195,7 @@ class TestKinesisOperations:
     def test_shard_iterator_latest_vs_trim_horizon(self, kinesis, stream):
         """LATEST iterator only sees records written after it was obtained."""
         # Put a record before getting LATEST iterator
-        kinesis.put_record(
-            StreamName=stream, Data=b"before-latest", PartitionKey="pk1"
-        )
+        kinesis.put_record(StreamName=stream, Data=b"before-latest", PartitionKey="pk1")
 
         shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
 
@@ -265,9 +259,7 @@ class TestKinesisOperations:
 
     def test_register_and_describe_stream_consumer(self, kinesis, stream):
         """RegisterStreamConsumer and DescribeStreamConsumer for enhanced fan-out."""
-        stream_arn = kinesis.describe_stream(StreamName=stream)[
-            "StreamDescription"
-        ]["StreamARN"]
+        stream_arn = kinesis.describe_stream(StreamName=stream)["StreamDescription"]["StreamARN"]
 
         reg_resp = kinesis.register_stream_consumer(
             StreamARN=stream_arn,
@@ -286,9 +278,7 @@ class TestKinesisOperations:
 
     def test_list_stream_consumers(self, kinesis, stream):
         """ListStreamConsumers returns registered consumers."""
-        stream_arn = kinesis.describe_stream(StreamName=stream)[
-            "StreamDescription"
-        ]["StreamARN"]
+        stream_arn = kinesis.describe_stream(StreamName=stream)["StreamDescription"]["StreamARN"]
 
         kinesis.register_stream_consumer(
             StreamARN=stream_arn,
@@ -300,9 +290,7 @@ class TestKinesisOperations:
 
     def test_deregister_stream_consumer(self, kinesis, stream):
         """DeregisterStreamConsumer removes a consumer."""
-        stream_arn = kinesis.describe_stream(StreamName=stream)[
-            "StreamDescription"
-        ]["StreamARN"]
+        stream_arn = kinesis.describe_stream(StreamName=stream)["StreamDescription"]["StreamARN"]
 
         kinesis.register_stream_consumer(
             StreamARN=stream_arn,
@@ -421,18 +409,13 @@ class TestKinesisOperations:
             assert desc_resp["ConsumerDescription"]["ConsumerARN"] == consumer_arn
         finally:
             try:
-                kinesis.deregister_stream_consumer(
-                    StreamARN=stream_arn, ConsumerName=consumer_name
-                )
+                kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             except ClientError:
                 pass
 
     def test_put_records_batch_all_succeed(self, kinesis, stream):
         """PutRecords with multiple records, verify all succeed."""
-        records = [
-            {"Data": f"rec-{i}".encode(), "PartitionKey": f"pk-{i}"}
-            for i in range(10)
-        ]
+        records = [{"Data": f"rec-{i}".encode(), "PartitionKey": f"pk-{i}"} for i in range(10)]
         response = kinesis.put_records(StreamName=stream, Records=records)
         assert response["FailedRecordCount"] == 0
         assert len(response["Records"]) == 10
@@ -444,9 +427,7 @@ class TestKinesisOperations:
     def test_latest_vs_trim_horizon_iterator(self, kinesis, stream):
         """LATEST iterator only sees new records; TRIM_HORIZON sees all."""
         # Put a record before getting iterators
-        kinesis.put_record(
-            StreamName=stream, Data=b"before-latest", PartitionKey="pk1"
-        )
+        kinesis.put_record(StreamName=stream, Data=b"before-latest", PartitionKey="pk1")
 
         desc = kinesis.describe_stream(StreamName=stream)
         shard_id = desc["StreamDescription"]["Shards"][0]["ShardId"]
@@ -466,9 +447,7 @@ class TestKinesisOperations:
         )["ShardIterator"]
 
         # Put a new record after LATEST iterator was created
-        kinesis.put_record(
-            StreamName=stream, Data=b"after-latest", PartitionKey="pk1"
-        )
+        kinesis.put_record(StreamName=stream, Data=b"after-latest", PartitionKey="pk1")
 
         # Allow a moment for propagation
         time.sleep(0.5)
@@ -519,22 +498,16 @@ class TestKinesisOperations:
             except ClientError:
                 pass
 
-    def test_increase_stream_retention_period(self, kinesis, stream):
+    def test_increase_stream_retention_period_v2(self, kinesis, stream):
         """IncreaseStreamRetentionPeriod beyond default 24 hours."""
-        kinesis.increase_stream_retention_period(
-            StreamName=stream, RetentionPeriodHours=48
-        )
+        kinesis.increase_stream_retention_period(StreamName=stream, RetentionPeriodHours=48)
         desc = kinesis.describe_stream(StreamName=stream)
         assert desc["StreamDescription"]["RetentionPeriodHours"] >= 48
 
-    def test_decrease_stream_retention_period(self, kinesis, stream):
+    def test_decrease_stream_retention_period_v2(self, kinesis, stream):
         """DecreaseStreamRetentionPeriod back to 24 hours."""
-        kinesis.increase_stream_retention_period(
-            StreamName=stream, RetentionPeriodHours=48
-        )
-        kinesis.decrease_stream_retention_period(
-            StreamName=stream, RetentionPeriodHours=24
-        )
+        kinesis.increase_stream_retention_period(StreamName=stream, RetentionPeriodHours=48)
+        kinesis.decrease_stream_retention_period(StreamName=stream, RetentionPeriodHours=24)
         desc = kinesis.describe_stream(StreamName=stream)
         assert desc["StreamDescription"]["RetentionPeriodHours"] == 24
 
@@ -548,7 +521,7 @@ class TestKinesisOperations:
         assert tags["env"] == "test"
         assert tags["team"] == "platform"
 
-    def test_remove_tags_from_stream(self, kinesis, stream):
+    def test_remove_tags_from_stream_v2(self, kinesis, stream):
         kinesis.add_tags_to_stream(StreamName=stream, Tags={"keep": "yes", "drop": "no"})
         kinesis.remove_tags_from_stream(StreamName=stream, TagKeys=["drop"])
         resp = kinesis.list_tags_for_stream(StreamName=stream)
@@ -556,7 +529,7 @@ class TestKinesisOperations:
         assert "keep" in keys
         assert "drop" not in keys
 
-    def test_describe_stream_summary(self, kinesis, stream):
+    def test_describe_stream_summary_v2(self, kinesis, stream):
         resp = kinesis.describe_stream_summary(StreamName=stream)
         summary = resp["StreamDescriptionSummary"]
         assert summary["StreamName"] == stream
@@ -564,7 +537,7 @@ class TestKinesisOperations:
         assert "StreamStatus" in summary
         assert "OpenShardCount" in summary
 
-    def test_list_streams(self, kinesis, stream):
+    def test_list_streams_v2(self, kinesis, stream):
         resp = kinesis.list_streams()
         assert stream in resp["StreamNames"]
 
@@ -597,9 +570,7 @@ class TestKinesisOperations:
         stream_arn = desc["StreamDescription"]["StreamARN"]
         consumer_name = f"consumer-{uuid.uuid4().hex[:8]}"
         try:
-            reg = kinesis.register_stream_consumer(
-                StreamARN=stream_arn, ConsumerName=consumer_name
-            )
+            reg = kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             consumer = reg["Consumer"]
             assert consumer["ConsumerName"] == consumer_name
             assert "ConsumerARN" in consumer
@@ -610,13 +581,11 @@ class TestKinesisOperations:
             assert desc_resp["ConsumerDescription"]["ConsumerName"] == consumer_name
         finally:
             try:
-                kinesis.deregister_stream_consumer(
-                    StreamARN=stream_arn, ConsumerName=consumer_name
-                )
+                kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             except ClientError:
                 pass
 
-    def test_list_stream_consumers(self, kinesis, stream):
+    def test_list_stream_consumers_v2(self, kinesis, stream):
         """ListStreamConsumers."""
         desc = kinesis.describe_stream(StreamName=stream)
         stream_arn = desc["StreamDescription"]["StreamARN"]
@@ -715,9 +684,7 @@ class TestKinesisExtended:
             first_stream = resp1["StreamNames"][0]
 
             # Get next page starting after the first
-            resp2 = kinesis.list_streams(
-                Limit=100, ExclusiveStartStreamName=first_stream
-            )
+            resp2 = kinesis.list_streams(Limit=100, ExclusiveStartStreamName=first_stream)
             assert first_stream not in resp2["StreamNames"]
         finally:
             for name in names:
@@ -729,12 +696,8 @@ class TestKinesisExtended:
     def test_after_sequence_number_iterator(self, kinesis, stream):
         """AFTER_SEQUENCE_NUMBER iterator skips the record at the given sequence."""
         # Put two records
-        resp1 = kinesis.put_record(
-            StreamName=stream, Data=b"first-record", PartitionKey="pk1"
-        )
-        kinesis.put_record(
-            StreamName=stream, Data=b"second-record", PartitionKey="pk1"
-        )
+        resp1 = kinesis.put_record(StreamName=stream, Data=b"first-record", PartitionKey="pk1")
+        kinesis.put_record(StreamName=stream, Data=b"second-record", PartitionKey="pk1")
 
         shard_id = resp1["ShardId"]
         seq = resp1["SequenceNumber"]
@@ -754,9 +717,7 @@ class TestKinesisExtended:
 
     def test_get_records_millis_behind_latest(self, kinesis, stream):
         """GetRecords response includes MillisBehindLatest field."""
-        kinesis.put_record(
-            StreamName=stream, Data=b"millis-test", PartitionKey="pk1"
-        )
+        kinesis.put_record(StreamName=stream, Data=b"millis-test", PartitionKey="pk1")
         shard_id = kinesis.list_shards(StreamName=stream)["Shards"][0]["ShardId"]
         iterator = kinesis.get_shard_iterator(
             StreamName=stream,
@@ -785,7 +746,11 @@ class TestKinesisExtended:
         """PutRecords batch where records include ExplicitHashKey."""
         records = [
             {"Data": b"hash-batch-0", "PartitionKey": "pk1", "ExplicitHashKey": "0"},
-            {"Data": b"hash-batch-1", "PartitionKey": "pk2", "ExplicitHashKey": "170141183460469231731687303715884105727"},
+            {
+                "Data": b"hash-batch-1",
+                "PartitionKey": "pk2",
+                "ExplicitHashKey": "170141183460469231731687303715884105727",
+            },
         ]
         response = kinesis.put_records(StreamName=stream, Records=records)
         assert response["FailedRecordCount"] == 0
@@ -876,12 +841,8 @@ class TestKinesisExtended:
 
     def test_overwrite_tag_value(self, kinesis, stream):
         """Adding a tag with an existing key overwrites the value."""
-        kinesis.add_tags_to_stream(
-            StreamName=stream, Tags={"mykey": "original"}
-        )
-        kinesis.add_tags_to_stream(
-            StreamName=stream, Tags={"mykey": "updated"}
-        )
+        kinesis.add_tags_to_stream(StreamName=stream, Tags={"mykey": "original"})
+        kinesis.add_tags_to_stream(StreamName=stream, Tags={"mykey": "updated"})
         response = kinesis.list_tags_for_stream(StreamName=stream)
         tag_map = {t["Key"]: t["Value"] for t in response["Tags"]}
         assert tag_map["mykey"] == "updated"
@@ -894,9 +855,7 @@ class TestKinesisExtended:
 
     def test_describe_stream_consumer_by_arn(self, kinesis, stream):
         """DescribeStreamConsumer using ConsumerARN."""
-        stream_arn = kinesis.describe_stream(StreamName=stream)[
-            "StreamDescription"
-        ]["StreamARN"]
+        stream_arn = kinesis.describe_stream(StreamName=stream)["StreamDescription"]["StreamARN"]
         consumer_name = f"consumer-{uuid.uuid4().hex[:8]}"
         try:
             reg_resp = kinesis.register_stream_consumer(
@@ -916,24 +875,16 @@ class TestKinesisExtended:
 
     def test_register_duplicate_consumer_error(self, kinesis, stream):
         """Registering a consumer with the same name raises ResourceInUseException."""
-        stream_arn = kinesis.describe_stream(StreamName=stream)[
-            "StreamDescription"
-        ]["StreamARN"]
+        stream_arn = kinesis.describe_stream(StreamName=stream)["StreamDescription"]["StreamARN"]
         consumer_name = f"dup-consumer-{uuid.uuid4().hex[:8]}"
         try:
-            kinesis.register_stream_consumer(
-                StreamARN=stream_arn, ConsumerName=consumer_name
-            )
+            kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             with pytest.raises(ClientError) as exc_info:
-                kinesis.register_stream_consumer(
-                    StreamARN=stream_arn, ConsumerName=consumer_name
-                )
+                kinesis.register_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             assert exc_info.value.response["Error"]["Code"] == "ResourceInUseException"
         finally:
             try:
-                kinesis.deregister_stream_consumer(
-                    StreamARN=stream_arn, ConsumerName=consumer_name
-                )
+                kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             except ClientError:
                 pass
 
@@ -952,9 +903,7 @@ class TestKinesisExtended:
 
     def test_put_record_returns_encryption_type(self, kinesis, stream):
         """PutRecord response includes EncryptionType field."""
-        resp = kinesis.put_record(
-            StreamName=stream, Data=b"enc-test", PartitionKey="pk1"
-        )
+        resp = kinesis.put_record(StreamName=stream, Data=b"enc-test", PartitionKey="pk1")
         assert "EncryptionType" in resp
         assert resp["EncryptionType"] in ("NONE", "KMS")
 
@@ -1007,4 +956,3 @@ class TestKinesisExtended:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
                 pass
-

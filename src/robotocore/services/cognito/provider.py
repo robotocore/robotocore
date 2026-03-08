@@ -94,9 +94,7 @@ def _new_id() -> str:
 
 def _secret_hash(username: str, client_id: str, client_secret: str) -> str:
     msg = username + client_id
-    return base64.b64encode(
-        hashlib.sha256((msg + client_secret).encode()).digest()
-    ).decode()
+    return base64.b64encode(hashlib.sha256((msg + client_secret).encode()).digest()).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -104,9 +102,7 @@ def _secret_hash(username: str, client_id: str, client_secret: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def handle_cognito_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_cognito_request(request: Request, region: str, account_id: str) -> Response:
     """Handle a Cognito Identity Provider API request."""
     body = await request.body()
     target = request.headers.get("x-amz-target", "")
@@ -136,9 +132,7 @@ async def handle_cognito_request(
 # ---------------------------------------------------------------------------
 
 
-def _create_user_pool(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_user_pool(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = f"{region}_{_new_id()[:8]}"
     pool_name = params.get("PoolName", "")
     if not pool_name:
@@ -176,16 +170,12 @@ def _create_user_pool(
     return {"UserPool": pool}
 
 
-def _describe_user_pool(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_user_pool(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     with store.lock:
         pool = store.pools.get(pool_id)
     if not pool:
-        raise CognitoError(
-            "ResourceNotFoundException", f"User pool {pool_id} does not exist.", 404
-        )
+        raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} does not exist.", 404)
     # AWS returns Schema as SchemaAttributes in describe
     result = dict(pool)
     if "Schema" in result:
@@ -193,9 +183,7 @@ def _describe_user_pool(
     return {"UserPool": result}
 
 
-def _delete_user_pool(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _delete_user_pool(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     with store.lock:
         if pool_id not in store.pools:
@@ -212,17 +200,19 @@ def _delete_user_pool(
     return {}
 
 
-def _list_user_pools(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_user_pools(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     max_results = int(params.get("MaxResults", 60))
     with store.lock:
         pools = list(store.pools.values())
     return {
         "UserPools": [
-            {"Id": p["Id"], "Name": p["Name"], "Status": p["Status"],
-             "CreationDate": p["CreationDate"],
-             "LastModifiedDate": p["LastModifiedDate"]}
+            {
+                "Id": p["Id"],
+                "Name": p["Name"],
+                "Status": p["Status"],
+                "CreationDate": p["CreationDate"],
+                "LastModifiedDate": p["LastModifiedDate"],
+            }
             for p in pools[:max_results]
         ]
     }
@@ -273,9 +263,7 @@ def _describe_user_pool_client(
     with store.lock:
         client = store.clients.get(pool_id, {}).get(client_id)
     if not client:
-        raise CognitoError(
-            "ResourceNotFoundException", f"Client {client_id} does not exist.", 404
-        )
+        raise CognitoError("ResourceNotFoundException", f"Client {client_id} does not exist.", 404)
     return {"UserPoolClient": client}
 
 
@@ -313,11 +301,20 @@ def _update_user_pool_client(
             )
         # Update mutable fields
         updatable = [
-            "ClientName", "ExplicitAuthFlows", "AllowedOAuthFlows",
-            "AllowedOAuthScopes", "CallbackURLs", "LogoutURLs",
-            "DefaultRedirectURI", "ReadAttributes", "WriteAttributes",
-            "SupportedIdentityProviders", "AllowedOAuthFlowsUserPoolClient",
-            "TokenValidityUnits", "AccessTokenValidity", "IdTokenValidity",
+            "ClientName",
+            "ExplicitAuthFlows",
+            "AllowedOAuthFlows",
+            "AllowedOAuthScopes",
+            "CallbackURLs",
+            "LogoutURLs",
+            "DefaultRedirectURI",
+            "ReadAttributes",
+            "WriteAttributes",
+            "SupportedIdentityProviders",
+            "AllowedOAuthFlowsUserPoolClient",
+            "TokenValidityUnits",
+            "AccessTokenValidity",
+            "IdTokenValidity",
             "RefreshTokenValidity",
         ]
         for key in updatable:
@@ -338,8 +335,11 @@ def _list_user_pool_clients(
         clients = list(store.clients.get(pool_id, {}).values())
     return {
         "UserPoolClients": [
-            {"ClientId": c["ClientId"], "ClientName": c["ClientName"],
-             "UserPoolId": c["UserPoolId"]}
+            {
+                "ClientId": c["ClientId"],
+                "ClientName": c["ClientName"],
+                "UserPoolId": c["UserPoolId"],
+            }
             for c in clients
         ]
     }
@@ -350,9 +350,7 @@ def _list_user_pool_clients(
 # ---------------------------------------------------------------------------
 
 
-def _sign_up(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _sign_up(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     client_id = params.get("ClientId", "")
     username = params.get("Username", "")
     password = params.get("Password", "")
@@ -385,11 +383,15 @@ def _sign_up(
 
     # Lambda trigger: PreSignUp
     pool = store.pools.get(pool_id, {})
-    _invoke_trigger(pool, "PreSignUp", {
-        "userPoolId": pool_id,
-        "userName": username,
-        "request": {"userAttributes": _attrs_to_dict(user_attrs)},
-    })
+    _invoke_trigger(
+        pool,
+        "PreSignUp",
+        {
+            "userPoolId": pool_id,
+            "userName": username,
+            "request": {"userAttributes": _attrs_to_dict(user_attrs)},
+        },
+    )
 
     with store.lock:
         store.users[pool_id][username] = user
@@ -400,9 +402,7 @@ def _sign_up(
     }
 
 
-def _admin_confirm_sign_up(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_confirm_sign_up(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -410,25 +410,25 @@ def _admin_confirm_sign_up(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
         if not user:
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
         user["UserStatus"] = "CONFIRMED"
         user["LastModifiedDate"] = time.time()
 
     # Lambda trigger: PostConfirmation
     pool = store.pools.get(pool_id, {})
-    _invoke_trigger(pool, "PostConfirmation", {
-        "userPoolId": pool_id,
-        "userName": username,
-    })
+    _invoke_trigger(
+        pool,
+        "PostConfirmation",
+        {
+            "userPoolId": pool_id,
+            "userName": username,
+        },
+    )
 
     return {}
 
 
-def _initiate_auth(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _initiate_auth(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     auth_flow = params.get("AuthFlow", "")
     client_id = params.get("ClientId", "")
     auth_params = params.get("AuthParameters", {})
@@ -446,9 +446,7 @@ def _initiate_auth(
         )
 
 
-def _admin_initiate_auth(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_initiate_auth(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     client_id = params.get("ClientId", "")
     auth_flow = params.get("AuthFlow", "")
@@ -495,11 +493,12 @@ def _respond_to_auth_challenge(
         issuer = f"https://cognito-idp.{region}.amazonaws.com/{pool_id}"
         return {
             "AuthenticationResult": {
-                "AccessToken": _generate_jwt(
-                    user["UserSub"], issuer, client_id, "access"
-                ),
+                "AccessToken": _generate_jwt(user["UserSub"], issuer, client_id, "access"),
                 "IdToken": _generate_jwt(
-                    user["UserSub"], issuer, client_id, "id",
+                    user["UserSub"],
+                    issuer,
+                    client_id,
+                    "id",
                     {"cognito:username": username},
                 ),
                 "RefreshToken": _new_id(),
@@ -515,9 +514,7 @@ def _respond_to_auth_challenge(
         )
 
 
-def _get_user(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _get_user(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     access_token = params.get("AccessToken", "")
     if not access_token:
         raise CognitoError("NotAuthorizedException", "Missing access token.")
@@ -552,9 +549,7 @@ def _get_user(
     raise CognitoError("UserNotFoundException", "User not found.", 404)
 
 
-def _admin_get_user(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_get_user(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -562,9 +557,7 @@ def _admin_get_user(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
     if not user:
-        raise CognitoError(
-            "UserNotFoundException", f"User {username} does not exist.", 404
-        )
+        raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
     return {
         "Username": user["Username"],
         "UserAttributes": user.get("Attributes", []),
@@ -575,9 +568,7 @@ def _admin_get_user(
     }
 
 
-def _admin_create_user(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_create_user(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -588,9 +579,7 @@ def _admin_create_user(
     with store.lock:
         users = store.users.get(pool_id, {})
         if username in users:
-            raise CognitoError(
-                "UsernameExistsException", f"User {username} already exists."
-            )
+            raise CognitoError("UsernameExistsException", f"User {username} already exists.")
 
     user_sub = _new_id()
     user = {
@@ -620,9 +609,7 @@ def _admin_create_user(
     }
 
 
-def _admin_disable_user(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_disable_user(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -630,17 +617,13 @@ def _admin_disable_user(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
         if not user:
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
         user["Enabled"] = False
         user["LastModifiedDate"] = time.time()
     return {}
 
 
-def _admin_enable_user(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_enable_user(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -648,17 +631,13 @@ def _admin_enable_user(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
         if not user:
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
         user["Enabled"] = True
         user["LastModifiedDate"] = time.time()
     return {}
 
 
-def _admin_delete_user(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_delete_user(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -666,18 +645,14 @@ def _admin_delete_user(
     with store.lock:
         users = store.users.get(pool_id, {})
         if username not in users:
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
         del users[username]
         # Remove from groups
         store.user_groups.get(pool_id, {}).pop(username, None)
     return {}
 
 
-def _forgot_password(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _forgot_password(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     client_id = params.get("ClientId", "")
     username = params.get("Username", "")
     pool_id = _find_pool_by_client(store, client_id)
@@ -685,9 +660,7 @@ def _forgot_password(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
     if not user:
-        raise CognitoError(
-            "UserNotFoundException", f"User {username} does not exist.", 404
-        )
+        raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
 
     return {
         "CodeDeliveryDetails": {
@@ -709,17 +682,13 @@ def _confirm_forgot_password(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
         if not user:
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
         user["Password"] = password
         user["LastModifiedDate"] = time.time()
     return {}
 
 
-def _change_password(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _change_password(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     access_token = params.get("AccessToken", "")
     previous_password = params.get("PreviousPassword", "")
     proposed_password = params.get("ProposedPassword", "")
@@ -744,9 +713,7 @@ def _change_password(
             for username, user in users.items():
                 if user["UserSub"] == sub:
                     if user["Password"] != previous_password:
-                        raise CognitoError(
-                            "NotAuthorizedException", "Incorrect password."
-                        )
+                        raise CognitoError("NotAuthorizedException", "Incorrect password.")
                     user["Password"] = proposed_password
                     user["LastModifiedDate"] = time.time()
                     return {}
@@ -766,9 +733,7 @@ def _admin_set_user_password(
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
         if not user:
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
         user["Password"] = password
         if permanent:
             user["UserStatus"] = "CONFIRMED"
@@ -776,9 +741,7 @@ def _admin_set_user_password(
     return {}
 
 
-def _list_users(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_users(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     _require_pool(store, pool_id)
     filter_str = params.get("Filter", "")
@@ -809,9 +772,7 @@ def _list_users(
 # ---------------------------------------------------------------------------
 
 
-def _create_group(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_group(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     group_name = params.get("GroupName", "")
     _require_pool(store, pool_id)
@@ -819,9 +780,7 @@ def _create_group(
     with store.lock:
         groups = store.groups.get(pool_id, {})
         if group_name in groups:
-            raise CognitoError(
-                "GroupExistsException", f"Group {group_name} already exists."
-            )
+            raise CognitoError("GroupExistsException", f"Group {group_name} already exists.")
         group = {
             "GroupName": group_name,
             "UserPoolId": pool_id,
@@ -835,9 +794,7 @@ def _create_group(
     return {"Group": group}
 
 
-def _get_group(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _get_group(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     group_name = params.get("GroupName", "")
     _require_pool(store, pool_id)
@@ -845,15 +802,11 @@ def _get_group(
     with store.lock:
         group = store.groups.get(pool_id, {}).get(group_name)
     if not group:
-        raise CognitoError(
-            "ResourceNotFoundException", f"Group {group_name} does not exist.", 404
-        )
+        raise CognitoError("ResourceNotFoundException", f"Group {group_name} does not exist.", 404)
     return {"Group": group}
 
 
-def _delete_group(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _delete_group(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     group_name = params.get("GroupName", "")
     _require_pool(store, pool_id)
@@ -870,9 +823,7 @@ def _delete_group(
     return {}
 
 
-def _list_groups(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_groups(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     _require_pool(store, pool_id)
 
@@ -950,9 +901,7 @@ def _require_pool(store: CognitoStore, pool_id: str) -> None:
 def _require_user(store: CognitoStore, pool_id: str, username: str) -> None:
     with store.lock:
         if username not in store.users.get(pool_id, {}):
-            raise CognitoError(
-                "UserNotFoundException", f"User {username} does not exist.", 404
-            )
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
 
 
 def _require_group(store: CognitoStore, pool_id: str, group_name: str) -> None:
@@ -970,9 +919,7 @@ def _find_pool_by_client(store: CognitoStore, client_id: str) -> str:
         for pool_id, clients in store.clients.items():
             if client_id in clients:
                 return pool_id
-    raise CognitoError(
-        "ResourceNotFoundException", f"Client {client_id} does not exist.", 404
-    )
+    raise CognitoError("ResourceNotFoundException", f"Client {client_id} does not exist.", 404)
 
 
 def _authenticate_user(
@@ -985,10 +932,14 @@ def _authenticate_user(
     pool = store.pools.get(pool_id, {})
 
     # PreAuthentication trigger
-    _invoke_trigger(pool, "PreAuthentication", {
-        "userPoolId": pool_id,
-        "userName": username,
-    })
+    _invoke_trigger(
+        pool,
+        "PreAuthentication",
+        {
+            "userPoolId": pool_id,
+            "userName": username,
+        },
+    )
 
     with store.lock:
         user = store.users.get(pool_id, {}).get(username)
@@ -997,9 +948,7 @@ def _authenticate_user(
     if user["Password"] != password:
         raise CognitoError("NotAuthorizedException", "Incorrect username or password.")
     if user["UserStatus"] == "UNCONFIRMED":
-        raise CognitoError(
-            "UserNotConfirmedException", "User is not confirmed."
-        )
+        raise CognitoError("UserNotConfirmedException", "User is not confirmed.")
     if user["UserStatus"] == "FORCE_CHANGE_PASSWORD":
         return {
             "ChallengeName": "NEW_PASSWORD_REQUIRED",
@@ -1014,18 +963,23 @@ def _authenticate_user(
     issuer = f"https://cognito-idp.{region}.amazonaws.com/{pool_id}"
 
     # PostAuthentication trigger
-    _invoke_trigger(pool, "PostAuthentication", {
-        "userPoolId": pool_id,
-        "userName": username,
-    })
+    _invoke_trigger(
+        pool,
+        "PostAuthentication",
+        {
+            "userPoolId": pool_id,
+            "userName": username,
+        },
+    )
 
     return {
         "AuthenticationResult": {
-            "AccessToken": _generate_jwt(
-                user["UserSub"], issuer, client_id, "access"
-            ),
+            "AccessToken": _generate_jwt(user["UserSub"], issuer, client_id, "access"),
             "IdToken": _generate_jwt(
-                user["UserSub"], issuer, client_id, "id",
+                user["UserSub"],
+                issuer,
+                client_id,
+                "id",
                 {"cognito:username": username},
             ),
             "RefreshToken": _new_id(),
@@ -1090,9 +1044,7 @@ def _json_response(data: dict) -> Response:
     )
 
 
-def _update_user_pool(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _update_user_pool(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     with store.lock:
         pool = store.pools.get(pool_id)
@@ -1100,8 +1052,13 @@ def _update_user_pool(
             raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} not found")
         # Update mutable fields
         for key in (
-            "Policies", "LambdaConfig", "AutoVerifiedAttributes", "MfaConfiguration",
-            "EmailConfiguration", "SmsConfiguration", "AdminCreateUserConfig",
+            "Policies",
+            "LambdaConfig",
+            "AutoVerifiedAttributes",
+            "MfaConfiguration",
+            "EmailConfiguration",
+            "SmsConfiguration",
+            "AdminCreateUserConfig",
         ):
             if key in params:
                 pool[key] = params[key]
@@ -1129,9 +1086,7 @@ def _admin_update_user_attributes(
     return {}
 
 
-def _update_group(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _update_group(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     group_name = params.get("GroupName", "")
     with store.lock:
@@ -1149,9 +1104,7 @@ def _update_group(
     return {"Group": group}
 
 
-def _add_custom_attributes(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _add_custom_attributes(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     custom_attrs = params.get("CustomAttributes", [])
     with store.lock:
@@ -1163,12 +1116,14 @@ def _add_custom_attributes(
             name = attr.get("Name", "")
             if not name.startswith("custom:"):
                 name = f"custom:{name}"
-            schema.append({
-                "Name": name,
-                "AttributeDataType": attr.get("AttributeDataType", "String"),
-                "Mutable": attr.get("Mutable", True),
-                "Required": False,
-            })
+            schema.append(
+                {
+                    "Name": name,
+                    "AttributeDataType": attr.get("AttributeDataType", "String"),
+                    "Mutable": attr.get("Mutable", True),
+                    "Required": False,
+                }
+            )
         pool["Schema"] = schema
     return {}
 
@@ -1193,9 +1148,7 @@ def _set_user_pool_mfa_config(
     return result
 
 
-def _list_users_in_group(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_users_in_group(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     group_name = params.get("GroupName", "")
     with store.lock:
@@ -1215,9 +1168,7 @@ def _list_users_in_group(
 
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
-    return Response(
-        content=body, status_code=status, media_type="application/x-amz-json-1.1"
-    )
+    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
 
 
 # ---------------------------------------------------------------------------

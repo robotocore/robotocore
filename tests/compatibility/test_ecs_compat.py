@@ -60,11 +60,13 @@ class TestTaskDefinitions:
         family = _unique("task-fam")
         resp = ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "app",
-                "image": "nginx:latest",
-                "memory": 128,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "app",
+                    "image": "nginx:latest",
+                    "memory": 128,
+                }
+            ],
         )
         td = resp["taskDefinition"]
         assert td["family"] == family
@@ -75,11 +77,13 @@ class TestTaskDefinitions:
         family = _unique("desc-td")
         ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "web",
-                "image": "nginx:latest",
-                "memory": 128,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "web",
+                    "image": "nginx:latest",
+                    "memory": 128,
+                }
+            ],
         )
         try:
             resp = ecs.describe_task_definition(taskDefinition=f"{family}:1")
@@ -91,11 +95,13 @@ class TestTaskDefinitions:
         family = _unique("list-td")
         ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "svc",
-                "image": "busybox:latest",
-                "memory": 64,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "svc",
+                    "image": "busybox:latest",
+                    "memory": 64,
+                }
+            ],
         )
         try:
             resp = ecs.list_task_definitions(familyPrefix=family)
@@ -240,6 +246,7 @@ class TestECSExtended:
     @pytest.fixture
     def ecs(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("ecs")
 
     def test_list_clusters(self, ecs):
@@ -276,6 +283,7 @@ class TestECSExtended:
 
     def test_register_deregister_task_definition(self, ecs):
         import uuid
+
         family = f"task-fam-{uuid.uuid4().hex[:8]}"
         resp = ecs.register_task_definition(
             family=family,
@@ -301,12 +309,11 @@ class TestECSExtended:
 
     def test_list_task_definitions(self, ecs):
         import uuid
+
         family = f"list-td-{uuid.uuid4().hex[:8]}"
         ecs.register_task_definition(
             family=family,
-            containerDefinitions=[
-                {"name": "app", "image": "alpine", "memory": 64}
-            ],
+            containerDefinitions=[{"name": "app", "image": "alpine", "memory": 64}],
         )
         resp = ecs.list_task_definitions(familyPrefix=family)
         assert len(resp["taskDefinitionArns"]) >= 1
@@ -335,9 +342,7 @@ class TestECSExtended:
             ecs.put_cluster_capacity_providers(
                 cluster=name,
                 capacityProviders=["FARGATE"],
-                defaultCapacityProviderStrategy=[
-                    {"capacityProvider": "FARGATE", "weight": 1}
-                ],
+                defaultCapacityProviderStrategy=[{"capacityProvider": "FARGATE", "weight": 1}],
             )
             desc = ecs.describe_clusters(clusters=[name], include=["SETTINGS"])
             cluster = desc["clusters"][0]
@@ -390,11 +395,13 @@ class TestECSExtendedV2:
         family = _unique("td-arn")
         resp = ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "app",
-                "image": "nginx",
-                "memory": 128,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "app",
+                    "image": "nginx",
+                    "memory": 128,
+                }
+            ],
         )
         assert "taskDefinitionArn" in resp["taskDefinition"]
         assert family in resp["taskDefinition"]["taskDefinitionArn"]
@@ -404,11 +411,13 @@ class TestECSExtendedV2:
         family = _unique("td-status")
         resp = ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "app",
-                "image": "nginx",
-                "memory": 128,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "app",
+                    "image": "nginx",
+                    "memory": 128,
+                }
+            ],
         )
         assert resp["taskDefinition"]["status"] == "ACTIVE"
         ecs.deregister_task_definition(taskDefinition=f"{family}:1")
@@ -417,11 +426,13 @@ class TestECSExtendedV2:
         family = _unique("td-dereg")
         ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "app",
-                "image": "nginx",
-                "memory": 128,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "app",
+                    "image": "nginx",
+                    "memory": 128,
+                }
+            ],
         )
         resp = ecs.deregister_task_definition(taskDefinition=f"{family}:1")
         assert resp["taskDefinition"]["status"] == "INACTIVE"
@@ -430,12 +441,14 @@ class TestECSExtendedV2:
         family = _unique("td-res")
         resp = ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "app",
-                "image": "nginx",
-                "cpu": 256,
-                "memory": 512,
-            }],
+            containerDefinitions=[
+                {
+                    "name": "app",
+                    "image": "nginx",
+                    "cpu": 256,
+                    "memory": 512,
+                }
+            ],
         )
         try:
             containers = resp["taskDefinition"]["containerDefinitions"]
@@ -448,15 +461,17 @@ class TestECSExtendedV2:
         family = _unique("td-ports")
         resp = ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "web",
-                "image": "nginx",
-                "memory": 128,
-                "portMappings": [
-                    {"containerPort": 80, "hostPort": 80, "protocol": "tcp"},
-                    {"containerPort": 443, "hostPort": 443, "protocol": "tcp"},
-                ],
-            }],
+            containerDefinitions=[
+                {
+                    "name": "web",
+                    "image": "nginx",
+                    "memory": 128,
+                    "portMappings": [
+                        {"containerPort": 80, "hostPort": 80, "protocol": "tcp"},
+                        {"containerPort": 443, "hostPort": 443, "protocol": "tcp"},
+                    ],
+                }
+            ],
         )
         try:
             ports = resp["taskDefinition"]["containerDefinitions"][0]["portMappings"]
@@ -470,15 +485,17 @@ class TestECSExtendedV2:
         family = _unique("td-env")
         resp = ecs.register_task_definition(
             family=family,
-            containerDefinitions=[{
-                "name": "app",
-                "image": "busybox",
-                "memory": 128,
-                "environment": [
-                    {"name": "APP_ENV", "value": "test"},
-                    {"name": "DEBUG", "value": "true"},
-                ],
-            }],
+            containerDefinitions=[
+                {
+                    "name": "app",
+                    "image": "busybox",
+                    "memory": 128,
+                    "environment": [
+                        {"name": "APP_ENV", "value": "test"},
+                        {"name": "DEBUG", "value": "true"},
+                    ],
+                }
+            ],
         )
         try:
             env = resp["taskDefinition"]["containerDefinitions"][0]["environment"]
@@ -552,4 +569,3 @@ class TestECSExtendedV2:
             assert "team" not in keys
         finally:
             ecs.delete_cluster(cluster=name)
-

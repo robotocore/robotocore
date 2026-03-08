@@ -17,9 +17,7 @@ from robotocore.providers.moto_bridge import forward_to_moto
 _commands: dict[str, dict[str, dict]] = {}  # account -> {command_id -> command}
 
 
-async def handle_ssm_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_ssm_request(request: Request, region: str, account_id: str) -> Response:
     """Handle SSM requests, intercepting buggy operations."""
     body = await request.body()
     target = request.headers.get("x-amz-target", "")
@@ -29,9 +27,7 @@ async def handle_ssm_request(
         params = json.loads(body) if body else {}
         targets = params.get("Targets", [])
         # Check if any target uses the problematic 'instanceids' key
-        has_instanceids = any(
-            t.get("Key", "").lower() == "instanceids" for t in targets
-        )
+        has_instanceids = any(t.get("Key", "").lower() == "instanceids" for t in targets)
         if has_instanceids:
             return _send_command_native(params, region, account_id)
 

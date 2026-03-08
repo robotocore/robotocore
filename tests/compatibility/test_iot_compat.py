@@ -168,12 +168,12 @@ class TestIoTThingGroupOperations:
 
 class TestIoTPolicyOperations:
     def _policy_doc(self):
-        return json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {"Effect": "Allow", "Action": "iot:*", "Resource": "*"}
-            ],
-        })
+        return json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "iot:*", "Resource": "*"}],
+            }
+        )
 
     def test_create_policy(self, iot):
         name = _unique("pol")

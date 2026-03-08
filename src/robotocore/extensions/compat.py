@@ -34,34 +34,26 @@ class LocalStackExtensionAdapter(RobotocorePlugin):
             try:
                 self._ext.on_platform_start()
             except Exception:
-                logger.exception(
-                    f"Error in LS extension {self.name}.on_platform_start()"
-                )
+                logger.exception(f"Error in LS extension {self.name}.on_platform_start()")
         if hasattr(self._ext, "on_platform_ready"):
             try:
                 self._ext.on_platform_ready()
             except Exception:
-                logger.exception(
-                    f"Error in LS extension {self.name}.on_platform_ready()"
-                )
+                logger.exception(f"Error in LS extension {self.name}.on_platform_ready()")
 
     def on_shutdown(self) -> None:
         if hasattr(self._ext, "on_platform_shutdown"):
             try:
                 self._ext.on_platform_shutdown()
             except Exception:
-                logger.exception(
-                    f"Error in LS extension {self.name}.on_platform_shutdown()"
-                )
+                logger.exception(f"Error in LS extension {self.name}.on_platform_shutdown()")
 
     def on_request(self, request, context):
         if hasattr(self._ext, "on_request"):
             try:
                 return self._ext.on_request(request, context)
             except Exception:
-                logger.exception(
-                    f"Error in LS extension {self.name}.on_request()"
-                )
+                logger.exception(f"Error in LS extension {self.name}.on_request()")
         return None
 
     def on_response(self, request, response, context):
@@ -69,9 +61,7 @@ class LocalStackExtensionAdapter(RobotocorePlugin):
             try:
                 return self._ext.on_response(request, response, context)
             except Exception:
-                logger.exception(
-                    f"Error in LS extension {self.name}.on_response()"
-                )
+                logger.exception(f"Error in LS extension {self.name}.on_response()")
         return None
 
 
@@ -94,13 +84,9 @@ def discover_localstack_extensions() -> list[RobotocorePlugin]:
 
                 adapter = LocalStackExtensionAdapter(ext)
                 plugins.append(adapter)
-                logger.info(
-                    f"Loaded LocalStack extension: {ep.name} as {adapter}"
-                )
+                logger.info(f"Loaded LocalStack extension: {ep.name} as {adapter}")
             except Exception:
-                logger.debug(
-                    f"Could not load LocalStack extension: {ep.name}"
-                )
+                logger.debug(f"Could not load LocalStack extension: {ep.name}")
     except Exception:
         logger.debug("No LocalStack extensions found")
 
@@ -117,9 +103,7 @@ def load_localstack_extension_module(
             attr = getattr(mod, attr_name)
             if isinstance(attr, type) and attr_name != "Extension":
                 # Check if it looks like a LocalStack Extension
-                if hasattr(attr, "on_platform_start") or hasattr(
-                    attr, "on_platform_ready"
-                ):
+                if hasattr(attr, "on_platform_start") or hasattr(attr, "on_platform_ready"):
                     ext = attr()
                     return LocalStackExtensionAdapter(ext)
     except Exception:

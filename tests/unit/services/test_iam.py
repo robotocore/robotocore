@@ -62,50 +62,28 @@ from robotocore.services.iam.policy_engine import (
 
 class TestPolicyEvaluationBasics:
     def test_allow_policy(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == ALLOW
 
     def test_deny_policy(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Deny", "Action": "s3:GetObject", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Deny", "Action": "s3:GetObject", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == DENY
 
     def test_implicit_deny(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:PutObject", "Resource": "*"}
-            ]
-        }
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == IMPLICIT_DENY
-        )
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:PutObject", "Resource": "*"}]}
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == IMPLICIT_DENY
 
     def test_single_statement_as_dict(self):
         """Statement can be a dict instead of a list."""
-        policy = {
-            "Statement": {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-        }
+        policy = {"Statement": {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}}
         assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == ALLOW
 
     def test_empty_policies(self):
         assert evaluate_policy([], "s3:GetObject", "arn:aws:s3:::bucket/key") == IMPLICIT_DENY
 
     def test_no_matching_action(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:PutObject", "Resource": "*"}
-            ]
-        }
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == IMPLICIT_DENY
-        )
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:PutObject", "Resource": "*"}]}
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket/key") == IMPLICIT_DENY
 
     def test_no_matching_resource(self):
         policy = {
@@ -118,16 +96,11 @@ class TestPolicyEvaluationBasics:
             ]
         }
         assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/key")
-            == IMPLICIT_DENY
+            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/key") == IMPLICIT_DENY
         )
 
     def test_none_context(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:*", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
 
 
@@ -149,18 +122,12 @@ class TestExplicitDenyOverrides:
         assert evaluate_policy(policies, "s3:DeleteObject", "arn:aws:s3:::b/k") == DENY
 
     def test_deny_in_separate_policy(self):
-        allow_policy = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
+        allow_policy = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
         deny_policy = {
-            "Statement": [
-                {"Effect": "Deny", "Action": "s3:DeleteObject", "Resource": "*"}
-            ]
+            "Statement": [{"Effect": "Deny", "Action": "s3:DeleteObject", "Resource": "*"}]
         }
         assert (
-            evaluate_policy(
-                [allow_policy, deny_policy], "s3:DeleteObject", "arn:aws:s3:::b/k"
-            )
+            evaluate_policy([allow_policy, deny_policy], "s3:DeleteObject", "arn:aws:s3:::b/k")
             == DENY
         )
 
@@ -183,11 +150,7 @@ class TestExplicitDenyOverrides:
 
 class TestActionMatching:
     def test_exact_match(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
 
     def test_wildcard_all(self):
@@ -195,28 +158,18 @@ class TestActionMatching:
         assert evaluate_policy([policy], "sqs:SendMessage", "*") == ALLOW
 
     def test_service_wildcard(self):
-        policy = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
         assert evaluate_policy([policy], "sqs:SendMessage", "*") == IMPLICIT_DENY
 
     def test_partial_wildcard(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:Get*", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:Get*", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
         assert evaluate_policy([policy], "s3:GetBucketPolicy", "*") == ALLOW
         assert evaluate_policy([policy], "s3:PutObject", "*") == IMPLICIT_DENY
 
     def test_case_insensitive(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "S3:getobject", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "S3:getobject", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
 
     def test_multiple_actions(self):
@@ -242,9 +195,7 @@ class TestActionMatching:
 class TestNotActionNotResource:
     def test_not_action_allows_other(self):
         policy = {
-            "Statement": [
-                {"Effect": "Allow", "NotAction": "s3:DeleteObject", "Resource": "*"}
-            ]
+            "Statement": [{"Effect": "Allow", "NotAction": "s3:DeleteObject", "Resource": "*"}]
         }
         assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
         assert evaluate_policy([policy], "s3:DeleteObject", "*") == IMPLICIT_DENY
@@ -315,9 +266,7 @@ class TestResourceArnMatching:
                 }
             ]
         }
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/my-key") == ALLOW
-        )
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/my-key") == ALLOW
         assert (
             evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/other")
             == IMPLICIT_DENY
@@ -333,19 +282,11 @@ class TestResourceArnMatching:
                 }
             ]
         }
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/any-key") == ALLOW
-        )
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/any-key") == ALLOW
 
     def test_star_resource(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-            ]
-        }
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::any-bucket/any-key") == ALLOW
-        )
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::any-bucket/any-key") == ALLOW
 
     def test_multiple_resources(self):
         policy = {
@@ -360,15 +301,10 @@ class TestResourceArnMatching:
                 }
             ]
         }
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-a/key") == ALLOW
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-b/key") == ALLOW
         assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-a/key") == ALLOW
-        )
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-b/key") == ALLOW
-        )
-        assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-c/key")
-            == IMPLICIT_DENY
+            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-c/key") == IMPLICIT_DENY
         )
 
 
@@ -514,18 +450,14 @@ class TestDateConditions:
 
     def test_date_less_than_equals(self):
         assert _date_less_than_equals("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z") is True
-        assert (
-            _date_less_than_equals("2024-06-01T00:00:00Z", "2024-01-01T00:00:00Z") is False
-        )
+        assert _date_less_than_equals("2024-06-01T00:00:00Z", "2024-01-01T00:00:00Z") is False
 
     def test_date_greater_than(self):
         assert _date_greater_than("2024-06-01T00:00:00Z", "2024-01-01T00:00:00Z") is True
         assert _date_greater_than("2024-01-01T00:00:00Z", "2024-06-01T00:00:00Z") is False
 
     def test_date_greater_than_equals(self):
-        assert (
-            _date_greater_than_equals("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z") is True
-        )
+        assert _date_greater_than_equals("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z") is True
 
     def test_date_with_datetime_objects(self):
         dt1 = datetime(2024, 1, 1, tzinfo=UTC)
@@ -604,10 +536,13 @@ class TestArnConditions:
 
     def test_arn_like_per_section_wildcard(self):
         """Wildcards should match within each ARN section independently."""
-        assert _arn_like(
-            "arn:aws:iam::123456789012:user/alice",
-            "arn:aws:iam::*:user/*",
-        ) is True
+        assert (
+            _arn_like(
+                "arn:aws:iam::123456789012:user/alice",
+                "arn:aws:iam::*:user/*",
+            )
+            is True
+        )
 
     def test_arn_short_arn_returns_false(self):
         assert _arn_equals("not-an-arn", "also-not") is False
@@ -621,37 +556,27 @@ class TestArnConditions:
 class TestNullCondition:
     def test_null_key_absent(self):
         ctx = {}
-        result = evaluate_condition_block(
-            {"Null": {"aws:TokenIssueTime": "true"}}, ctx
-        )
+        result = evaluate_condition_block({"Null": {"aws:TokenIssueTime": "true"}}, ctx)
         assert result is True
 
     def test_null_key_present(self):
         ctx = {"aws:TokenIssueTime": "2024-01-01"}
-        result = evaluate_condition_block(
-            {"Null": {"aws:TokenIssueTime": "true"}}, ctx
-        )
+        result = evaluate_condition_block({"Null": {"aws:TokenIssueTime": "true"}}, ctx)
         assert result is False
 
     def test_null_false_key_present(self):
         ctx = {"aws:TokenIssueTime": "2024-01-01"}
-        result = evaluate_condition_block(
-            {"Null": {"aws:TokenIssueTime": "false"}}, ctx
-        )
+        result = evaluate_condition_block({"Null": {"aws:TokenIssueTime": "false"}}, ctx)
         assert result is True
 
     def test_null_false_key_absent(self):
         ctx = {}
-        result = evaluate_condition_block(
-            {"Null": {"aws:TokenIssueTime": "false"}}, ctx
-        )
+        result = evaluate_condition_block({"Null": {"aws:TokenIssueTime": "false"}}, ctx)
         assert result is False
 
     def test_null_with_none_value(self):
         ctx: dict[str, Any] = {"aws:TokenIssueTime": None}
-        result = evaluate_condition_block(
-            {"Null": {"aws:TokenIssueTime": "true"}}, ctx
-        )
+        result = evaluate_condition_block({"Null": {"aws:TokenIssueTime": "true"}}, ctx)
         assert result is True
 
 
@@ -715,11 +640,7 @@ class TestSetOperators:
         """Single (non-list) context value should work."""
         ctx = {"aws:PrincipalTag/dept": "engineering"}
         result = evaluate_condition_block(
-            {
-                "ForAllValues:StringEquals": {
-                    "aws:PrincipalTag/dept": ["engineering", "science"]
-                }
-            },
+            {"ForAllValues:StringEquals": {"aws:PrincipalTag/dept": ["engineering", "science"]}},
             ctx,
         )
         assert result is True
@@ -756,9 +677,7 @@ class TestIfExists:
     def test_without_if_exists_key_absent(self):
         """Without IfExists, missing key means condition fails."""
         ctx: dict[str, Any] = {}
-        result = evaluate_condition_block(
-            {"StringEquals": {"aws:SourceVpc": "vpc-123"}}, ctx
-        )
+        result = evaluate_condition_block({"StringEquals": {"aws:SourceVpc": "vpc-123"}}, ctx)
         assert result is False
 
 
@@ -827,9 +746,7 @@ class TestConditionsInStatements:
                     "Effect": "Allow",
                     "Action": "s3:GetObject",
                     "Resource": "*",
-                    "Condition": {
-                        "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}
-                    },
+                    "Condition": {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
                 }
             ]
         }
@@ -843,9 +760,7 @@ class TestConditionsInStatements:
                     "Effect": "Allow",
                     "Action": "s3:GetObject",
                     "Resource": "*",
-                    "Condition": {
-                        "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}
-                    },
+                    "Condition": {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
                 }
             ]
         }
@@ -860,9 +775,7 @@ class TestConditionsInStatements:
                     "Effect": "Deny",
                     "Action": "s3:*",
                     "Resource": "*",
-                    "Condition": {
-                        "Bool": {"aws:SecureTransport": "false"}
-                    },
+                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
                 },
             ]
         }
@@ -877,9 +790,7 @@ class TestConditionsInStatements:
                     "Effect": "Deny",
                     "Action": "s3:*",
                     "Resource": "*",
-                    "Condition": {
-                        "Bool": {"aws:SecureTransport": "false"}
-                    },
+                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
                 },
             ]
         }
@@ -894,54 +805,29 @@ class TestConditionsInStatements:
 
 class TestPermissionBoundaries:
     def test_boundary_allows(self):
-        identity = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
-        boundary = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]
-        }
-        assert (
-            evaluate_with_permission_boundary([identity], boundary, "s3:GetObject", "*")
-            == ALLOW
-        )
+        identity = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
+        boundary = {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
+        assert evaluate_with_permission_boundary([identity], boundary, "s3:GetObject", "*") == ALLOW
 
     def test_boundary_denies(self):
-        identity = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
-        boundary = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]
-        }
+        identity = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
+        boundary = {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
         assert (
             evaluate_with_permission_boundary([identity], boundary, "s3:PutObject", "*")
             == IMPLICIT_DENY
         )
 
     def test_no_boundary(self):
-        identity = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
-        assert (
-            evaluate_with_permission_boundary([identity], None, "s3:PutObject", "*")
-            == ALLOW
-        )
+        identity = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
+        assert evaluate_with_permission_boundary([identity], None, "s3:PutObject", "*") == ALLOW
 
     def test_explicit_deny_overrides_boundary(self):
-        identity = {
-            "Statement": [{"Effect": "Deny", "Action": "s3:*", "Resource": "*"}]
-        }
-        boundary = {
-            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]
-        }
-        assert (
-            evaluate_with_permission_boundary([identity], boundary, "s3:GetObject", "*")
-            == DENY
-        )
+        identity = {"Statement": [{"Effect": "Deny", "Action": "s3:*", "Resource": "*"}]}
+        boundary = {"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
+        assert evaluate_with_permission_boundary([identity], boundary, "s3:GetObject", "*") == DENY
 
     def test_boundary_with_context(self):
-        identity = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
+        identity = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
         boundary = {
             "Statement": [
                 {
@@ -1029,15 +915,11 @@ class TestResourcePolicyEvaluation:
             ]
         }
         assert (
-            evaluate_resource_policy(
-                policy, "arn:aws:iam::111111111111:root", "s3:GetObject", "*"
-            )
+            evaluate_resource_policy(policy, "arn:aws:iam::111111111111:root", "s3:GetObject", "*")
             == ALLOW
         )
         assert (
-            evaluate_resource_policy(
-                policy, "arn:aws:iam::333333333333:root", "s3:GetObject", "*"
-            )
+            evaluate_resource_policy(policy, "arn:aws:iam::333333333333:root", "s3:GetObject", "*")
             == IMPLICIT_DENY
         )
 
@@ -1053,9 +935,7 @@ class TestResourcePolicyEvaluation:
             ]
         }
         assert (
-            evaluate_resource_policy(
-                policy, "arn:aws:iam::123456789012:root", "s3:GetObject", "*"
-            )
+            evaluate_resource_policy(policy, "arn:aws:iam::123456789012:root", "s3:GetObject", "*")
             == DENY
         )
 
@@ -1076,14 +956,9 @@ class TestResourcePolicyEvaluation:
             ]
         }
         ctx = {"aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"}
-        assert (
-            evaluate_resource_policy(policy, "*", "sqs:SendMessage", "*", ctx) == ALLOW
-        )
+        assert evaluate_resource_policy(policy, "*", "sqs:SendMessage", "*", ctx) == ALLOW
         ctx2 = {"aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:other-topic"}
-        assert (
-            evaluate_resource_policy(policy, "*", "sqs:SendMessage", "*", ctx2)
-            == IMPLICIT_DENY
-        )
+        assert evaluate_resource_policy(policy, "*", "sqs:SendMessage", "*", ctx2) == IMPLICIT_DENY
 
 
 # ===========================================================================
@@ -1243,9 +1118,7 @@ class TestResourceArnBuilding:
     def test_sqs_from_queue_url(self):
         request = MagicMock()
         request.url.path = "/"
-        request.query_params = {
-            "QueueUrl": "http://localhost:4566/123456789012/my-queue"
-        }
+        request.query_params = {"QueueUrl": "http://localhost:4566/123456789012/my-queue"}
         arn = build_resource_arn("sqs", "us-east-1", "123456789012", request)
         assert arn == "arn:aws:sqs:us-east-1:123456789012:my-queue"
 
@@ -1266,9 +1139,7 @@ class TestResourceArnBuilding:
     def test_sns_from_topic_arn(self):
         request = MagicMock()
         request.url.path = "/"
-        request.query_params = {
-            "TopicArn": "arn:aws:sns:us-east-1:123456789012:my-topic"
-        }
+        request.query_params = {"TopicArn": "arn:aws:sns:us-east-1:123456789012:my-topic"}
         arn = build_resource_arn("sns", "us-east-1", "123456789012", request)
         assert arn == "arn:aws:sns:us-east-1:123456789012:my-topic"
 
@@ -1343,9 +1214,7 @@ class TestMiddlewareIntegration:
             "SignedHeaders=host, Signature=abc"
         )
         ctx = self._make_context(auth=auth)
-        allow_policy = {
-            "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
-        }
+        allow_policy = {"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
         with (
             patch.dict(os.environ, {"ENFORCE_IAM": "1"}),
             patch(
@@ -1363,9 +1232,7 @@ class TestMiddlewareIntegration:
             "SignedHeaders=host, Signature=abc"
         )
         ctx = self._make_context(auth=auth)
-        deny_policy = {
-            "Statement": [{"Effect": "Deny", "Action": "s3:*", "Resource": "*"}]
-        }
+        deny_policy = {"Statement": [{"Effect": "Deny", "Action": "s3:*", "Resource": "*"}]}
         with (
             patch.dict(os.environ, {"ENFORCE_IAM": "1"}),
             patch(
@@ -1441,9 +1308,7 @@ class TestAccessDeniedResponses:
 class TestComplexScenarios:
     def test_admin_user(self):
         """Admin user with full access."""
-        policy = {
-            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]
-        }
+        policy = {"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::any/key") == ALLOW
         assert (
             evaluate_policy([policy], "ec2:RunInstances", "arn:aws:ec2:us-east-1:123:instance/*")
@@ -1480,16 +1345,13 @@ class TestComplexScenarios:
                         "arn:aws:s3:::user-bucket",
                         "arn:aws:s3:::user-bucket/*",
                     ],
-                    "Condition": {
-                        "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}
-                    },
+                    "Condition": {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
                 }
             ]
         }
         ctx = {"aws:SourceIp": "10.1.2.3"}
         assert (
-            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::user-bucket/file", ctx)
-            == ALLOW
+            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::user-bucket/file", ctx) == ALLOW
         )
         assert (
             evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::other-bucket/file", ctx)
@@ -1497,18 +1359,14 @@ class TestComplexScenarios:
         )
         bad_ctx = {"aws:SourceIp": "192.168.1.1"}
         assert (
-            evaluate_policy(
-                [policy], "s3:GetObject", "arn:aws:s3:::user-bucket/file", bad_ctx
-            )
+            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::user-bucket/file", bad_ctx)
             == IMPLICIT_DENY
         )
 
     def test_multi_policy_evaluation(self):
         """Multiple policies from different sources (user + group)."""
         user_policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-            ]
+            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]
         }
         group_policy = {
             "Statement": [
@@ -1555,9 +1413,7 @@ class TestComplexScenarios:
                     "Principal": {"AWS": "arn:aws:iam::999999999999:root"},
                     "Action": "s3:GetObject",
                     "Resource": "arn:aws:s3:::shared-bucket/*",
-                    "Condition": {
-                        "IpAddress": {"aws:SourceIp": "203.0.113.0/24"}
-                    },
+                    "Condition": {"IpAddress": {"aws:SourceIp": "203.0.113.0/24"}},
                 }
             ]
         }
@@ -1641,9 +1497,7 @@ class TestConditionBlockEdgeCases:
         assert evaluate_condition_block({}, {}) is True
 
     def test_unknown_operator(self):
-        result = evaluate_condition_block(
-            {"UnknownOp": {"key": "value"}}, {"key": "value"}
-        )
+        result = evaluate_condition_block({"UnknownOp": {"key": "value"}}, {"key": "value"})
         assert result is False
 
     def test_or_within_values(self):
@@ -1691,15 +1545,16 @@ class TestAdditionalConditionEdgeCases:
         assert _ip_address("::1", "::1/128") is True
 
     def test_arn_like_wildcard_in_resource(self):
-        assert _arn_like(
-            "arn:aws:s3:::my-bucket/path/to/key",
-            "arn:aws:s3:::my-bucket/*",
-        ) is True
+        assert (
+            _arn_like(
+                "arn:aws:s3:::my-bucket/path/to/key",
+                "arn:aws:s3:::my-bucket/*",
+            )
+            is True
+        )
 
     def test_date_with_fractional_seconds(self):
-        assert _date_equals(
-            "2024-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z"
-        ) is True
+        assert _date_equals("2024-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z") is True
 
     def test_bool_with_string_true(self):
         assert _bool_op("True", "true") is True
@@ -1739,11 +1594,7 @@ class TestAdditionalConditionEdgeCases:
 
 class TestAdditionalPolicyEngineEdgeCases:
     def test_invalid_effect_ignored(self):
-        policy = {
-            "Statement": [
-                {"Effect": "Invalid", "Action": "s3:GetObject", "Resource": "*"}
-            ]
-        }
+        policy = {"Statement": [{"Effect": "Invalid", "Action": "s3:GetObject", "Resource": "*"}]}
         assert evaluate_policy([policy], "s3:GetObject", "*") == IMPLICIT_DENY
 
     def test_resource_policy_string_principal(self):
@@ -1758,22 +1609,14 @@ class TestAdditionalPolicyEngineEdgeCases:
             ]
         }
         assert (
-            evaluate_resource_policy(
-                policy, "arn:aws:iam::123456789012:root", "s3:GetObject", "*"
-            )
+            evaluate_resource_policy(policy, "arn:aws:iam::123456789012:root", "s3:GetObject", "*")
             == ALLOW
         )
 
     def test_resource_policy_no_principal(self):
         """Statement without Principal should match any caller."""
-        policy = {
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-            ]
-        }
-        assert (
-            evaluate_resource_policy(policy, "anyone", "s3:GetObject", "*") == ALLOW
-        )
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
+        assert evaluate_resource_policy(policy, "anyone", "s3:GetObject", "*") == ALLOW
 
     def test_multiple_statements_mixed(self):
         policy = {
@@ -1828,6 +1671,5 @@ class TestAdditionalMiddlewareEdgeCases:
 
     def test_build_iam_action_secretsmanager(self):
         assert (
-            build_iam_action("secretsmanager", "GetSecretValue")
-            == "secretsmanager:GetSecretValue"
+            build_iam_action("secretsmanager", "GetSecretValue") == "secretsmanager:GetSecretValue"
         )

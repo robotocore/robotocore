@@ -21,9 +21,7 @@ class TestAthenaWorkGroupOperations:
         name = _unique("wg")
         athena.create_work_group(
             Name=name,
-            Configuration={
-                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
-            },
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
         )
         resp = athena.get_work_group(WorkGroup=name)
         assert resp["WorkGroup"]["Name"] == name
@@ -34,9 +32,7 @@ class TestAthenaWorkGroupOperations:
         name = _unique("wg")
         athena.create_work_group(
             Name=name,
-            Configuration={
-                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
-            },
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
             Description="test workgroup",
         )
         resp = athena.get_work_group(WorkGroup=name)
@@ -51,9 +47,7 @@ class TestAthenaWorkGroupOperations:
         name = _unique("wg")
         athena.create_work_group(
             Name=name,
-            Configuration={
-                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
-            },
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
         )
         resp = athena.list_work_groups()
         names = [wg["Name"] for wg in resp["WorkGroups"]]
@@ -65,9 +59,7 @@ class TestAthenaWorkGroupOperations:
         name = _unique("wg")
         athena.create_work_group(
             Name=name,
-            Configuration={
-                "ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}
-            },
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
         )
         athena.delete_work_group(WorkGroup=name)
         # Verify it's gone from the list

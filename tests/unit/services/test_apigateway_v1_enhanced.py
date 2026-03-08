@@ -52,9 +52,7 @@ class TestApiKeyValidation:
         backend = MagicMock()
         key_obj = SimpleNamespace(value="valid-key", enabled=True)
         backend.keys = {"k1": key_obj}
-        status, _, body = _check_api_key(
-            None, method_obj, {"x-api-key": "wrong-key"}, backend, "r"
-        )
+        status, _, body = _check_api_key(None, method_obj, {"x-api-key": "wrong-key"}, backend, "r")
         assert status == 403
 
     def test_key_required_valid(self):
@@ -62,9 +60,7 @@ class TestApiKeyValidation:
         backend = MagicMock()
         key_obj = SimpleNamespace(value="my-api-key", enabled=True)
         backend.keys = {"k1": key_obj}
-        result = _check_api_key(
-            None, method_obj, {"x-api-key": "my-api-key"}, backend, "r"
-        )
+        result = _check_api_key(None, method_obj, {"x-api-key": "my-api-key"}, backend, "r")
         assert result is None  # Authorized
 
     def test_key_required_disabled_key(self):
@@ -72,9 +68,7 @@ class TestApiKeyValidation:
         backend = MagicMock()
         key_obj = SimpleNamespace(value="my-api-key", enabled=False)
         backend.keys = {"k1": key_obj}
-        status, _, _ = _check_api_key(
-            None, method_obj, {"x-api-key": "my-api-key"}, backend, "r"
-        )
+        status, _, _ = _check_api_key(None, method_obj, {"x-api-key": "my-api-key"}, backend, "r")
         assert status == 403
 
 
@@ -85,12 +79,10 @@ class TestApiKeyValidation:
 
 class TestCognitoAuthorizer:
     def _make_jwt(self, payload: dict) -> str:
-        header = base64.urlsafe_b64encode(
-            json.dumps({"alg": "RS256"}).encode()
-        ).decode().rstrip("=")
-        body = base64.urlsafe_b64encode(
-            json.dumps(payload).encode()
-        ).decode().rstrip("=")
+        header = (
+            base64.urlsafe_b64encode(json.dumps({"alg": "RS256"}).encode()).decode().rstrip("=")
+        )
+        body = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
         sig = base64.urlsafe_b64encode(b"signature").decode().rstrip("=")
         return f"{header}.{body}.{sig}"
 
@@ -108,9 +100,7 @@ class TestCognitoAuthorizer:
             identity_source="method.request.header.Authorization",
             provider_arns=[],
         )
-        result = _check_cognito_authorizer(
-            auth, {"authorization": f"Bearer {token}"}, "req-1"
-        )
+        result = _check_cognito_authorizer(auth, {"authorization": f"Bearer {token}"}, "req-1")
         assert result is None  # Authorized
 
     def test_expired_token(self):
@@ -141,9 +131,7 @@ class TestCognitoAuthorizer:
             identity_source="method.request.header.Authorization",
             provider_arns=[],
         )
-        result = _check_cognito_authorizer(
-            auth, {"authorization": f"Bearer {token}"}, "req-1"
-        )
+        result = _check_cognito_authorizer(auth, {"authorization": f"Bearer {token}"}, "req-1")
         assert result is None
 
     def test_custom_header(self):
@@ -152,9 +140,7 @@ class TestCognitoAuthorizer:
             identity_source="method.request.header.X-Auth",
             provider_arns=[],
         )
-        result = _check_cognito_authorizer(
-            auth, {"x-auth": token}, "req-1"
-        )
+        result = _check_cognito_authorizer(auth, {"x-auth": token}, "req-1")
         assert result is None
 
 
@@ -165,13 +151,10 @@ class TestCognitoAuthorizer:
 
 class TestLambdaAuthorizer:
     def test_no_authorizer_passes(self):
-        method_obj = SimpleNamespace(
-            authorization_type="NONE", authorizer_id=None
-        )
+        method_obj = SimpleNamespace(authorization_type="NONE", authorizer_id=None)
         rest_api = SimpleNamespace(authorizers={})
         result = _check_authorizer(
-            rest_api, method_obj, {}, {}, {}, {}, REGION, ACCOUNT_ID,
-            "req-1", {}
+            rest_api, method_obj, {}, {}, {}, {}, REGION, ACCOUNT_ID, "req-1", {}
         )
         assert result is None
 
@@ -181,17 +164,13 @@ class TestLambdaAuthorizer:
             identity_source="method.request.header.Authorization",
             auth_type="method.request.header.Authorization",
             authorizer_uri=(
-                "arn:aws:apigateway:us-east-1:lambda:path/"
-                "2015-03-31/functions/auth-fn/invocations"
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/auth-fn/invocations"
             ),
         )
-        method_obj = SimpleNamespace(
-            authorization_type="CUSTOM", authorizer_id="auth1"
-        )
+        method_obj = SimpleNamespace(authorization_type="CUSTOM", authorizer_id="auth1")
         rest_api = SimpleNamespace(authorizers={"auth1": authorizer})
         status, _, body = _check_authorizer(
-            rest_api, method_obj, {}, {}, {}, {}, REGION, ACCOUNT_ID,
-            "req-1", {}
+            rest_api, method_obj, {}, {}, {}, {}, REGION, ACCOUNT_ID, "req-1", {}
         )
         assert status == 401
 
@@ -201,29 +180,29 @@ class TestLambdaAuthorizer:
             identity_source="method.request.header.Authorization",
             auth_type="method.request.header.Authorization",
             authorizer_uri=(
-                "arn:aws:apigateway:us-east-1:lambda:path/"
-                "2015-03-31/functions/auth-fn/invocations"
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/auth-fn/invocations"
             ),
         )
-        method_obj = SimpleNamespace(
-            authorization_type="CUSTOM", authorizer_id="auth1"
-        )
+        method_obj = SimpleNamespace(authorization_type="CUSTOM", authorizer_id="auth1")
         rest_api = SimpleNamespace(authorizers={"auth1": authorizer})
 
-        allow_policy = {
-            "policyDocument": {
-                "Statement": [{"Effect": "Allow", "Resource": "*"}]
-            }
-        }
+        allow_policy = {"policyDocument": {"Statement": [{"Effect": "Allow", "Resource": "*"}]}}
 
         with patch(
             "robotocore.services.apigateway.executor._invoke_lambda",
             return_value=allow_policy,
         ):
             result = _check_authorizer(
-                rest_api, method_obj,
+                rest_api,
+                method_obj,
                 {"authorization": "my-token"},
-                {}, {}, {}, REGION, ACCOUNT_ID, "req-1", {}
+                {},
+                {},
+                {},
+                REGION,
+                ACCOUNT_ID,
+                "req-1",
+                {},
             )
         assert result is None  # Authorized
 
@@ -232,29 +211,29 @@ class TestLambdaAuthorizer:
             type="TOKEN",
             auth_type="method.request.header.Authorization",
             authorizer_uri=(
-                "arn:aws:apigateway:us-east-1:lambda:path/"
-                "2015-03-31/functions/auth-fn/invocations"
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/auth-fn/invocations"
             ),
         )
-        method_obj = SimpleNamespace(
-            authorization_type="CUSTOM", authorizer_id="auth1"
-        )
+        method_obj = SimpleNamespace(authorization_type="CUSTOM", authorizer_id="auth1")
         rest_api = SimpleNamespace(authorizers={"auth1": authorizer})
 
-        deny_policy = {
-            "policyDocument": {
-                "Statement": [{"Effect": "Deny", "Resource": "*"}]
-            }
-        }
+        deny_policy = {"policyDocument": {"Statement": [{"Effect": "Deny", "Resource": "*"}]}}
 
         with patch(
             "robotocore.services.apigateway.executor._invoke_lambda",
             return_value=deny_policy,
         ):
             status, _, _ = _check_authorizer(
-                rest_api, method_obj,
+                rest_api,
+                method_obj,
                 {"authorization": "bad-token"},
-                {}, {}, {}, REGION, ACCOUNT_ID, "req-1", {}
+                {},
+                {},
+                {},
+                REGION,
+                ACCOUNT_ID,
+                "req-1",
+                {},
             )
         assert status == 403
 
@@ -262,32 +241,29 @@ class TestLambdaAuthorizer:
         authorizer = SimpleNamespace(
             type="REQUEST",
             authorizer_uri=(
-                "arn:aws:apigateway:us-east-1:lambda:path/"
-                "2015-03-31/functions/auth-fn/invocations"
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/auth-fn/invocations"
             ),
         )
-        method_obj = SimpleNamespace(
-            authorization_type="CUSTOM", authorizer_id="auth1"
-        )
+        method_obj = SimpleNamespace(authorization_type="CUSTOM", authorizer_id="auth1")
         rest_api = SimpleNamespace(authorizers={"auth1": authorizer})
 
-        allow_policy = {
-            "policyDocument": {
-                "Statement": [{"Effect": "Allow"}]
-            }
-        }
+        allow_policy = {"policyDocument": {"Statement": [{"Effect": "Allow"}]}}
 
         with patch(
             "robotocore.services.apigateway.executor._invoke_lambda",
             return_value=allow_policy,
         ):
             result = _check_authorizer(
-                rest_api, method_obj,
+                rest_api,
+                method_obj,
                 {"authorization": "token"},
                 {"key": "val"},
                 {"id": "123"},
                 {"env": "test"},
-                REGION, ACCOUNT_ID, "req-1", {}
+                REGION,
+                ACCOUNT_ID,
+                "req-1",
+                {},
             )
         assert result is None
 
@@ -300,9 +276,7 @@ class TestLambdaAuthorizer:
 class TestMockIntegrationEnhanced:
     def test_mock_with_vtl_template(self):
         resp_200 = SimpleNamespace(
-            response_templates={
-                "application/json": '{"requestId": "$context.requestId"}'
-            },
+            response_templates={"application/json": '{"requestId": "$context.requestId"}'},
             response_parameters={},
         )
         integration = SimpleNamespace(
@@ -312,7 +286,8 @@ class TestMockIntegrationEnhanced:
         method_obj = MagicMock()
 
         status, headers, body = _invoke_mock(
-            integration, method_obj,
+            integration,
+            method_obj,
             body_str='{"test": true}',
             headers={},
             query_params={},
@@ -327,9 +302,7 @@ class TestMockIntegrationEnhanced:
     def test_mock_with_response_parameters(self):
         resp_200 = SimpleNamespace(
             response_templates={"application/json": '{"ok": true}'},
-            response_parameters={
-                "method.response.header.X-Custom": "'custom-value'"
-            },
+            response_parameters={"method.response.header.X-Custom": "'custom-value'"},
         )
         integration = SimpleNamespace(
             integration_responses={"200": resp_200},
@@ -338,9 +311,13 @@ class TestMockIntegrationEnhanced:
         method_obj = MagicMock()
 
         status, headers, body = _invoke_mock(
-            integration, method_obj,
-            headers={}, query_params={}, path_params={},
-            stage_vars={}, context_vars={},
+            integration,
+            method_obj,
+            headers={},
+            query_params={},
+            path_params={},
+            stage_vars={},
+            context_vars={},
         )
         assert headers.get("X-Custom") == "custom-value"
 
@@ -364,9 +341,7 @@ class TestStageVariables:
 
     def test_substitute_stage_variables(self):
         uri = "https://${stageVariables.host}/api"
-        result = _substitute_stage_variables(
-            uri, {"host": "example.com"}
-        )
+        result = _substitute_stage_variables(uri, {"host": "example.com"})
         assert result == "https://example.com/api"
 
     def test_substitute_no_variables(self):
@@ -384,8 +359,14 @@ class TestBuildContextVars:
     def test_context_vars(self):
         resource = SimpleNamespace(path_part="/users")
         ctx = _build_context_vars(
-            "api-1", "prod", "GET", "/users", resource,
-            "req-123", ACCOUNT_ID, {"user-agent": "test-agent"},
+            "api-1",
+            "prod",
+            "GET",
+            "/users",
+            resource,
+            "req-123",
+            ACCOUNT_ID,
+            {"user-agent": "test-agent"},
         )
         assert ctx["apiId"] == "api-1"
         assert ctx["stage"] == "prod"
@@ -403,43 +384,29 @@ class TestBuildContextVars:
 class TestGatewayResponses:
     def test_default_not_found(self):
         rest_api = SimpleNamespace(gateway_responses={})
-        status, _, body = _gateway_response(
-            rest_api, "RESOURCE_NOT_FOUND", "req-1"
-        )
+        status, _, body = _gateway_response(rest_api, "RESOURCE_NOT_FOUND", "req-1")
         assert status == 404
 
     def test_default_unauthorized(self):
         rest_api = SimpleNamespace(gateway_responses={})
-        status, _, body = _gateway_response(
-            rest_api, "UNAUTHORIZED", "req-1"
-        )
+        status, _, body = _gateway_response(rest_api, "UNAUTHORIZED", "req-1")
         assert status == 401
 
     def test_custom_gateway_response(self):
         custom = SimpleNamespace(
             status_code="418",
-            response_templates={
-                "application/json": '{"error": "custom"}'
-            },
-            response_parameters={
-                "gatewayresponse.header.X-Error": "'custom-error'"
-            },
+            response_templates={"application/json": '{"error": "custom"}'},
+            response_parameters={"gatewayresponse.header.X-Error": "'custom-error'"},
         )
-        rest_api = SimpleNamespace(
-            gateway_responses={"UNAUTHORIZED": custom}
-        )
-        status, headers, body = _gateway_response(
-            rest_api, "UNAUTHORIZED", "req-1"
-        )
+        rest_api = SimpleNamespace(gateway_responses={"UNAUTHORIZED": custom})
+        status, headers, body = _gateway_response(rest_api, "UNAUTHORIZED", "req-1")
         assert status == 418
         assert headers.get("X-Error") == "custom-error"
         assert "custom" in body
 
     def test_unknown_type_uses_default_4xx(self):
         rest_api = SimpleNamespace(gateway_responses={})
-        status, _, _ = _gateway_response(
-            rest_api, "UNKNOWN_TYPE", "req-1"
-        )
+        status, _, _ = _gateway_response(rest_api, "UNKNOWN_TYPE", "req-1")
         assert status == 400  # DEFAULT_4XX
 
 
@@ -452,7 +419,7 @@ class TestRequestBodyValidation:
     def test_no_validator(self):
         method_obj = SimpleNamespace(request_validator_id=None)
         rest_api = SimpleNamespace(validators={})
-        result = _validate_request_body(rest_api, method_obj, b'{}', {})
+        result = _validate_request_body(rest_api, method_obj, b"{}", {})
         assert result is None
 
     def test_validate_missing_required_field(self):
@@ -509,27 +476,19 @@ class TestRequestBodyValidation:
 class TestBinaryMediaTypes:
     def test_not_binary_json(self):
         integration = SimpleNamespace(content_handling=None)
-        assert not _is_binary_content(
-            {"content-type": "application/json"}, integration
-        )
+        assert not _is_binary_content({"content-type": "application/json"}, integration)
 
     def test_binary_octet_stream(self):
         integration = SimpleNamespace(content_handling=None)
-        assert _is_binary_content(
-            {"content-type": "application/octet-stream"}, integration
-        )
+        assert _is_binary_content({"content-type": "application/octet-stream"}, integration)
 
     def test_binary_image(self):
         integration = SimpleNamespace(content_handling=None)
-        assert _is_binary_content(
-            {"content-type": "image/png"}, integration
-        )
+        assert _is_binary_content({"content-type": "image/png"}, integration)
 
     def test_binary_convert_to_binary(self):
         integration = SimpleNamespace(content_handling="CONVERT_TO_BINARY")
-        assert _is_binary_content(
-            {"content-type": "text/plain"}, integration
-        )
+        assert _is_binary_content({"content-type": "text/plain"}, integration)
 
     def test_no_content_type(self):
         integration = SimpleNamespace(content_handling=None)
@@ -548,9 +507,7 @@ class TestExecuteApiRequestEnhanced:
             uri="",
             integration_responses={
                 "200": SimpleNamespace(
-                    response_templates={
-                        "application/json": '{"status": "ok"}'
-                    },
+                    response_templates={"application/json": '{"status": "ok"}'},
                     response_parameters={},
                 )
             },
@@ -592,8 +549,15 @@ class TestExecuteApiRequestEnhanced:
             return_value={ACCOUNT_ID: {REGION: mock_backend}},
         ):
             status, _, body = execute_api_request(
-                "abc123", "prod", "GET", "/", None,
-                {}, {}, REGION, ACCOUNT_ID,
+                "abc123",
+                "prod",
+                "GET",
+                "/",
+                None,
+                {},
+                {},
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 403
 
@@ -609,7 +573,14 @@ class TestExecuteApiRequestEnhanced:
             return_value={ACCOUNT_ID: {REGION: mock_backend}},
         ):
             status, _, body = execute_api_request(
-                "abc123", "prod", "GET", "/", None,
-                {"x-api-key": "valid-key"}, {}, REGION, ACCOUNT_ID,
+                "abc123",
+                "prod",
+                "GET",
+                "/",
+                None,
+                {"x-api-key": "valid-key"},
+                {},
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 200

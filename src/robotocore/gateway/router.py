@@ -155,12 +155,21 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
 
 
 # Timestream Query operations (vs Write ops which are the default)
-_TIMESTREAM_QUERY_OPS = frozenset({
-    "CancelQuery", "CreateScheduledQuery", "DeleteScheduledQuery",
-    "DescribeAccountSettings", "DescribeScheduledQuery", "ExecuteScheduledQuery",
-    "ListScheduledQueries", "PrepareQuery", "Query", "UpdateAccountSettings",
-    "UpdateScheduledQuery",
-})
+_TIMESTREAM_QUERY_OPS = frozenset(
+    {
+        "CancelQuery",
+        "CreateScheduledQuery",
+        "DeleteScheduledQuery",
+        "DescribeAccountSettings",
+        "DescribeScheduledQuery",
+        "ExecuteScheduledQuery",
+        "ListScheduledQueries",
+        "PrepareQuery",
+        "Query",
+        "UpdateAccountSettings",
+        "UpdateScheduledQuery",
+    }
+)
 
 
 def route_to_service(request: Request) -> str | None:

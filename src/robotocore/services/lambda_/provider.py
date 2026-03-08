@@ -261,15 +261,11 @@ async def _handle_functions(
 
         # /functions/{name}/url — Function URLs (native store)
         if sub == "url":
-            return _handle_function_url(
-                func_name, method, body, region, account_id
-            )
+            return _handle_function_url(func_name, method, body, region, account_id)
 
         # /functions/{name}/event-invoke-config — Event invoke config
         if sub == "event-invoke-config":
-            return _handle_event_invoke_config(
-                func_name, method, body, backend, region, account_id
-            )
+            return _handle_event_invoke_config(func_name, method, body, backend, region, account_id)
 
         # /functions/{name}/provisioned-concurrency — Provisioned concurrency
         if sub == "provisioned-concurrency":
@@ -351,7 +347,10 @@ def _handle_provisioned_concurrency(
     if method == "PUT":
         spec = json.loads(body) if body else {}
         config = _put_provisioned_concurrency(
-            account_id, region, func_name, qualifier,
+            account_id,
+            region,
+            func_name,
+            qualifier,
             spec.get("ProvisionedConcurrentExecutions", 0),
         )
         return _json(202, config)
@@ -458,15 +457,17 @@ def dispatch_to_dlq(
     if not target_arn:
         return
 
-    record = json.dumps({
-        "requestContext": {
-            "requestId": str(uuid.uuid4()),
-            "functionArn": f"arn:aws:lambda:{region}:{account_id}:function:{func_name}",
-            "condition": "RetriesExhausted",
-        },
-        "requestPayload": payload,
-        "errorMessage": error or "Unknown error",
-    })
+    record = json.dumps(
+        {
+            "requestContext": {
+                "requestId": str(uuid.uuid4()),
+                "functionArn": f"arn:aws:lambda:{region}:{account_id}:function:{func_name}",
+                "condition": "RetriesExhausted",
+            },
+            "requestPayload": payload,
+            "errorMessage": error or "Unknown error",
+        }
+    )
 
     try:
         if ":sqs:" in target_arn:
@@ -543,17 +544,13 @@ async def _handle_event_source_mappings(
                 "EventSourceArn": spec.get("EventSourceArn", ""),
                 "FunctionArn": func_arn,
                 "BatchSize": spec.get("BatchSize", 10),
-                "MaximumBatchingWindowInSeconds": spec.get(
-                    "MaximumBatchingWindowInSeconds", 0
-                ),
+                "MaximumBatchingWindowInSeconds": spec.get("MaximumBatchingWindowInSeconds", 0),
                 "State": "Enabled",
                 "StateTransitionReason": "User action",
                 "LastModified": time.time(),
                 "FunctionResponseTypes": spec.get("FunctionResponseTypes", []),
                 "FilterCriteria": spec.get("FilterCriteria"),
-                "BisectBatchOnFunctionError": spec.get(
-                    "BisectBatchOnFunctionError", False
-                ),
+                "BisectBatchOnFunctionError": spec.get("BisectBatchOnFunctionError", False),
                 "MaximumRetryAttempts": spec.get("MaximumRetryAttempts", -1),
                 "_region": region,
                 "_account_id": account_id,
@@ -613,9 +610,7 @@ async def _handle_event_source_mappings(
                         if key in spec:
                             _esm_store[esm_uuid][key] = spec[key]
                     if "Enabled" in spec:
-                        _esm_store[esm_uuid]["State"] = (
-                            "Enabled" if spec["Enabled"] else "Disabled"
-                        )
+                        _esm_store[esm_uuid]["State"] = "Enabled" if spec["Enabled"] else "Disabled"
                     _esm_store[esm_uuid]["LastModified"] = time.time()
                     config = _esm_store[esm_uuid]
             return _json(200, _sanitize_esm(config))
@@ -650,9 +645,7 @@ async def _handle_layers(
                     return _json(201, _layer_version_dict(layer_ver))
                 elif method == "GET":
                     versions = backend.list_layer_versions(layer_name)
-                    return _json(
-                        200, {"LayerVersions": [_layer_version_dict(v) for v in versions]}
-                    )
+                    return _json(200, {"LayerVersions": [_layer_version_dict(v) for v in versions]})
             elif len(parts) == 4:
                 version_num = int(parts[3])
                 if method == "GET":

@@ -40,7 +40,10 @@ def _make_scope(method: str, path: str, body: bytes = b"", headers: dict | None 
 
 
 def _make_scope_with_qs(
-    method: str, path: str, query_string: str = "", body: bytes = b"",
+    method: str,
+    path: str,
+    query_string: str = "",
+    body: bytes = b"",
     headers: dict | None = None,
 ):
     """Build an ASGI scope dict with query string."""
@@ -148,11 +151,13 @@ class TestAliases:
         mock_backend.create_alias.return_value = mock_alias
         mock_backend_fn.return_value = mock_backend
 
-        body = json.dumps({
-            "Name": "prod",
-            "FunctionVersion": "1",
-            "Description": "Production",
-        }).encode()
+        body = json.dumps(
+            {
+                "Name": "prod",
+                "FunctionVersion": "1",
+                "Description": "Production",
+            }
+        ).encode()
         req = await _make_request("POST", "/2015-03-31/functions/fn/aliases", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 201
@@ -160,7 +165,11 @@ class TestAliases:
         assert data["Name"] == "prod"
         assert data["FunctionVersion"] == "1"
         mock_backend.create_alias.assert_called_once_with(
-            "prod", "fn", "1", "Production", None,
+            "prod",
+            "fn",
+            "1",
+            "Production",
+            None,
         )
 
     @patch("robotocore.services.lambda_.provider._get_moto_backend")
@@ -172,16 +181,22 @@ class TestAliases:
         mock_backend_fn.return_value = mock_backend
 
         routing = {"AdditionalVersionWeights": {"2": 0.1}}
-        body = json.dumps({
-            "Name": "canary",
-            "FunctionVersion": "1",
-            "RoutingConfig": routing,
-        }).encode()
+        body = json.dumps(
+            {
+                "Name": "canary",
+                "FunctionVersion": "1",
+                "RoutingConfig": routing,
+            }
+        ).encode()
         req = await _make_request("POST", "/2015-03-31/functions/fn/aliases", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 201
         mock_backend.create_alias.assert_called_once_with(
-            "canary", "fn", "1", "", routing,
+            "canary",
+            "fn",
+            "1",
+            "",
+            routing,
         )
 
     @patch("robotocore.services.lambda_.provider._get_moto_backend")
@@ -223,15 +238,21 @@ class TestAliases:
         mock_backend.update_alias.return_value = mock_alias
         mock_backend_fn.return_value = mock_backend
 
-        body = json.dumps({
-            "FunctionVersion": "2",
-            "Description": "updated",
-        }).encode()
+        body = json.dumps(
+            {
+                "FunctionVersion": "2",
+                "Description": "updated",
+            }
+        ).encode()
         req = await _make_request("PUT", "/2015-03-31/functions/fn/aliases/prod", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_backend.update_alias.assert_called_once_with(
-            "prod", "fn", "2", "updated", None,
+            "prod",
+            "fn",
+            "2",
+            "updated",
+            None,
         )
 
     @patch("robotocore.services.lambda_.provider._get_moto_backend")
@@ -254,10 +275,12 @@ class TestAliases:
 class TestFunctionUrls:
     def setup_method(self):
         from robotocore.services.lambda_.urls import clear_store
+
         clear_store()
 
     def teardown_method(self):
         from robotocore.services.lambda_.urls import clear_store
+
         clear_store()
 
     @patch("robotocore.services.lambda_.provider._get_moto_backend")
@@ -265,10 +288,12 @@ class TestFunctionUrls:
         mock_backend = MagicMock()
         mock_backend_fn.return_value = mock_backend
 
-        body = json.dumps({
-            "AuthType": "NONE",
-            "Cors": {"AllowOrigins": ["*"]},
-        }).encode()
+        body = json.dumps(
+            {
+                "AuthType": "NONE",
+                "Cors": {"AllowOrigins": ["*"]},
+            }
+        ).encode()
         req = await _make_request("POST", "/2015-03-31/functions/my-fn/url", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 201
@@ -359,10 +384,12 @@ class TestFunctionUrls:
         mock_backend = MagicMock()
         mock_backend_fn.return_value = mock_backend
 
-        body = json.dumps({
-            "AuthType": "NONE",
-            "InvokeMode": "RESPONSE_STREAM",
-        }).encode()
+        body = json.dumps(
+            {
+                "AuthType": "NONE",
+                "InvokeMode": "RESPONSE_STREAM",
+            }
+        ).encode()
         req = await _make_request("POST", "/2015-03-31/functions/fn/url", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 201
@@ -488,15 +515,15 @@ class TestEventInvokeConfig:
         }
         mock_backend_fn.return_value = mock_backend
 
-        body = json.dumps({
-            "MaximumRetryAttempts": 1,
-            "DestinationConfig": {
-                "OnSuccess": {"Destination": "arn:aws:sqs:us-east-1:123:q"},
-            },
-        }).encode()
-        req = await _make_request(
-            "PUT", "/2015-03-31/functions/fn/event-invoke-config", body
-        )
+        body = json.dumps(
+            {
+                "MaximumRetryAttempts": 1,
+                "DestinationConfig": {
+                    "OnSuccess": {"Destination": "arn:aws:sqs:us-east-1:123:q"},
+                },
+            }
+        ).encode()
+        req = await _make_request("PUT", "/2015-03-31/functions/fn/event-invoke-config", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -511,9 +538,7 @@ class TestEventInvokeConfig:
         }
         mock_backend_fn.return_value = mock_backend
 
-        req = await _make_request(
-            "GET", "/2015-03-31/functions/fn/event-invoke-config"
-        )
+        req = await _make_request("GET", "/2015-03-31/functions/fn/event-invoke-config")
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
@@ -522,9 +547,7 @@ class TestEventInvokeConfig:
         mock_backend = MagicMock()
         mock_backend_fn.return_value = mock_backend
 
-        req = await _make_request(
-            "DELETE", "/2015-03-31/functions/fn/event-invoke-config"
-        )
+        req = await _make_request("DELETE", "/2015-03-31/functions/fn/event-invoke-config")
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 204
 
@@ -547,10 +570,12 @@ class TestLayers:
         mock_backend.publish_layer_version.return_value = mock_lv
         mock_backend_fn.return_value = mock_backend
 
-        body = json.dumps({
-            "Content": {"ZipFile": "UEsFBg..."},
-            "CompatibleRuntimes": ["python3.12"],
-        }).encode()
+        body = json.dumps(
+            {
+                "Content": {"ZipFile": "UEsFBg..."},
+                "CompatibleRuntimes": ["python3.12"],
+            }
+        ).encode()
         req = await _make_request("POST", "/2015-03-31/layers/my-layer/versions", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 201
@@ -560,9 +585,7 @@ class TestLayers:
     @patch("robotocore.services.lambda_.provider._get_moto_backend")
     async def test_list_layers(self, mock_backend_fn):
         mock_backend = MagicMock()
-        mock_backend.list_layers.return_value = [
-            {"LayerName": "layer1"}, {"LayerName": "layer2"}
-        ]
+        mock_backend.list_layers.return_value = [{"LayerName": "layer1"}, {"LayerName": "layer2"}]
         mock_backend_fn.return_value = mock_backend
 
         req = await _make_request("GET", "/2015-03-31/layers")
@@ -624,20 +647,18 @@ class TestESMEnhancements:
         _esm_store.clear()
 
     async def test_create_esm_with_filter_criteria(self):
-        filter_criteria = {
-            "Filters": [{"Pattern": '{"body": {"key": ["value1"]}}'}]
-        }
-        body = json.dumps({
-            "EventSourceArn": "arn:aws:sqs:us-east-1:123:my-queue",
-            "FunctionName": "my-fn",
-            "FilterCriteria": filter_criteria,
-        }).encode()
+        filter_criteria = {"Filters": [{"Pattern": '{"body": {"key": ["value1"]}}'}]}
+        body = json.dumps(
+            {
+                "EventSourceArn": "arn:aws:sqs:us-east-1:123:my-queue",
+                "FunctionName": "my-fn",
+                "FilterCriteria": filter_criteria,
+            }
+        ).encode()
 
         with patch("robotocore.services.lambda_.event_source.get_engine") as me:
             me.return_value = MagicMock()
-            req = await _make_request(
-                "POST", "/2015-03-31/event-source-mappings", body
-            )
+            req = await _make_request("POST", "/2015-03-31/event-source-mappings", body)
             resp = await handle_lambda_request(req, "us-east-1", "123456789012")
 
         assert resp.status_code == 202
@@ -645,18 +666,18 @@ class TestESMEnhancements:
         assert data["FilterCriteria"] == filter_criteria
 
     async def test_create_esm_with_bisect(self):
-        body = json.dumps({
-            "EventSourceArn": "arn:aws:dynamodb:us-east-1:123:table/t/stream/s",
-            "FunctionName": "fn",
-            "BisectBatchOnFunctionError": True,
-            "MaximumRetryAttempts": 2,
-        }).encode()
+        body = json.dumps(
+            {
+                "EventSourceArn": "arn:aws:dynamodb:us-east-1:123:table/t/stream/s",
+                "FunctionName": "fn",
+                "BisectBatchOnFunctionError": True,
+                "MaximumRetryAttempts": 2,
+            }
+        ).encode()
 
         with patch("robotocore.services.lambda_.event_source.get_engine") as me:
             me.return_value = MagicMock()
-            req = await _make_request(
-                "POST", "/2015-03-31/event-source-mappings", body
-            )
+            req = await _make_request("POST", "/2015-03-31/event-source-mappings", body)
             resp = await handle_lambda_request(req, "us-east-1", "123456789012")
 
         assert resp.status_code == 202
@@ -678,14 +699,14 @@ class TestESMEnhancements:
         }
 
         new_filter = {"Filters": [{"Pattern": '{"body": {"x": [1]}}'}]}
-        body = json.dumps({
-            "FilterCriteria": new_filter,
-            "BisectBatchOnFunctionError": True,
-        }).encode()
+        body = json.dumps(
+            {
+                "FilterCriteria": new_filter,
+                "BisectBatchOnFunctionError": True,
+            }
+        ).encode()
 
-        req = await _make_request(
-            "PUT", "/2015-03-31/event-source-mappings/uuid-1", body
-        )
+        req = await _make_request("PUT", "/2015-03-31/event-source-mappings/uuid-1", body)
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -693,17 +714,17 @@ class TestESMEnhancements:
         assert data["BisectBatchOnFunctionError"] is True
 
     async def test_create_esm_with_function_response_types(self):
-        body = json.dumps({
-            "EventSourceArn": "arn:aws:sqs:us-east-1:123:q",
-            "FunctionName": "fn",
-            "FunctionResponseTypes": ["ReportBatchItemFailures"],
-        }).encode()
+        body = json.dumps(
+            {
+                "EventSourceArn": "arn:aws:sqs:us-east-1:123:q",
+                "FunctionName": "fn",
+                "FunctionResponseTypes": ["ReportBatchItemFailures"],
+            }
+        ).encode()
 
         with patch("robotocore.services.lambda_.event_source.get_engine") as me:
             me.return_value = MagicMock()
-            req = await _make_request(
-                "POST", "/2015-03-31/event-source-mappings", body
-            )
+            req = await _make_request("POST", "/2015-03-31/event-source-mappings", body)
             resp = await handle_lambda_request(req, "us-east-1", "123456789012")
 
         assert resp.status_code == 202
@@ -735,9 +756,7 @@ class TestFilterCriteriaMatching:
         from robotocore.services.lambda_.event_source import matches_filter_criteria
 
         criteria = {
-            "Filters": [
-                {"Pattern": '{"dynamodb": {"NewImage": {"status": {"S": ["ACTIVE"]}}}}'}
-            ]
+            "Filters": [{"Pattern": '{"dynamodb": {"NewImage": {"status": {"S": ["ACTIVE"]}}}}'}]
         }
         record = {
             "dynamodb": {"NewImage": {"status": {"S": "ACTIVE"}}},
@@ -752,20 +771,14 @@ class TestFilterCriteriaMatching:
     def test_prefix_match(self):
         from robotocore.services.lambda_.event_source import matches_filter_criteria
 
-        criteria = {
-            "Filters": [{"Pattern": '{"body": [{"prefix": "hello"}]}'}]
-        }
+        criteria = {"Filters": [{"Pattern": '{"body": [{"prefix": "hello"}]}'}]}
         assert matches_filter_criteria({"body": "hello world"}, criteria) is True
         assert matches_filter_criteria({"body": "goodbye"}, criteria) is False
 
     def test_numeric_match(self):
         from robotocore.services.lambda_.event_source import matches_filter_criteria
 
-        criteria = {
-            "Filters": [
-                {"Pattern": '{"age": [{"numeric": [">=", 18, "<", 65]}]}'}
-            ]
-        }
+        criteria = {"Filters": [{"Pattern": '{"age": [{"numeric": [">=", 18, "<", 65]}]}'}]}
         assert matches_filter_criteria({"age": 25}, criteria) is True
         assert matches_filter_criteria({"age": 10}, criteria) is False
         assert matches_filter_criteria({"age": 65}, criteria) is False
@@ -773,29 +786,21 @@ class TestFilterCriteriaMatching:
     def test_exists_match(self):
         from robotocore.services.lambda_.event_source import matches_filter_criteria
 
-        criteria = {
-            "Filters": [{"Pattern": '{"name": [{"exists": true}]}'}]
-        }
+        criteria = {"Filters": [{"Pattern": '{"name": [{"exists": true}]}'}]}
         assert matches_filter_criteria({"name": "Alice"}, criteria) is True
         assert matches_filter_criteria({"age": 25}, criteria) is False
 
     def test_exists_false_match(self):
         from robotocore.services.lambda_.event_source import matches_filter_criteria
 
-        criteria = {
-            "Filters": [{"Pattern": '{"deleted": [{"exists": false}]}'}]
-        }
+        criteria = {"Filters": [{"Pattern": '{"deleted": [{"exists": false}]}'}]}
         assert matches_filter_criteria({"name": "Alice"}, criteria) is True
         assert matches_filter_criteria({"deleted": True}, criteria) is False
 
     def test_anything_but_match(self):
         from robotocore.services.lambda_.event_source import matches_filter_criteria
 
-        criteria = {
-            "Filters": [
-                {"Pattern": '{"status": [{"anything-but": ["DELETED"]}]}'}
-            ]
-        }
+        criteria = {"Filters": [{"Pattern": '{"status": [{"anything-but": ["DELETED"]}]}'}]}
         assert matches_filter_criteria({"status": "ACTIVE"}, criteria) is True
         assert matches_filter_criteria({"status": "DELETED"}, criteria) is False
 
@@ -838,7 +843,9 @@ class TestDLQ:
         )
 
         _store_dlq_config(
-            "123", "us-east-1", "my-fn",
+            "123",
+            "us-east-1",
+            "my-fn",
             {"TargetArn": "arn:aws:sqs:us-east-1:123:dlq"},
         )
         config = _get_dlq_config("123", "us-east-1", "my-fn")
@@ -873,7 +880,9 @@ class TestDLQ:
         mock_get_store.return_value = mock_store
 
         _store_dlq_config(
-            "123", "us-east-1", "fn",
+            "123",
+            "us-east-1",
+            "fn",
             {"TargetArn": "arn:aws:sqs:us-east-1:123:dlq-queue"},
         )
 
@@ -924,8 +933,10 @@ class TestProvisionedConcurrency:
 
         body = json.dumps({"ProvisionedConcurrentExecutions": 10}).encode()
         req = await _make_request(
-            "PUT", "/2015-03-31/functions/fn/provisioned-concurrency",
-            body, query_string="Qualifier=1",
+            "PUT",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
+            body,
+            query_string="Qualifier=1",
         )
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 202
@@ -941,14 +952,17 @@ class TestProvisionedConcurrency:
         # Put first
         body = json.dumps({"ProvisionedConcurrentExecutions": 5}).encode()
         req = await _make_request(
-            "PUT", "/2015-03-31/functions/fn/provisioned-concurrency",
-            body, query_string="Qualifier=1",
+            "PUT",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
+            body,
+            query_string="Qualifier=1",
         )
         await handle_lambda_request(req, "us-east-1", "123456789012")
 
         # Get
         req = await _make_request(
-            "GET", "/2015-03-31/functions/fn/provisioned-concurrency",
+            "GET",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
             query_string="Qualifier=1",
         )
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
@@ -962,7 +976,8 @@ class TestProvisionedConcurrency:
         mock_backend_fn.return_value = mock_backend
 
         req = await _make_request(
-            "GET", "/2015-03-31/functions/fn/provisioned-concurrency",
+            "GET",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
             query_string="Qualifier=99",
         )
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
@@ -976,14 +991,17 @@ class TestProvisionedConcurrency:
         # Put first
         body = json.dumps({"ProvisionedConcurrentExecutions": 5}).encode()
         req = await _make_request(
-            "PUT", "/2015-03-31/functions/fn/provisioned-concurrency",
-            body, query_string="Qualifier=1",
+            "PUT",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
+            body,
+            query_string="Qualifier=1",
         )
         await handle_lambda_request(req, "us-east-1", "123456789012")
 
         # Delete
         req = await _make_request(
-            "DELETE", "/2015-03-31/functions/fn/provisioned-concurrency",
+            "DELETE",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
             query_string="Qualifier=1",
         )
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
@@ -991,7 +1009,8 @@ class TestProvisionedConcurrency:
 
         # Verify gone
         req = await _make_request(
-            "GET", "/2015-03-31/functions/fn/provisioned-concurrency",
+            "GET",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
             query_string="Qualifier=1",
         )
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
@@ -1003,7 +1022,8 @@ class TestProvisionedConcurrency:
         mock_backend_fn.return_value = mock_backend
 
         req = await _make_request(
-            "DELETE", "/2015-03-31/functions/fn/provisioned-concurrency",
+            "DELETE",
+            "/2015-03-31/functions/fn/provisioned-concurrency",
             query_string="Qualifier=99",
         )
         resp = await handle_lambda_request(req, "us-east-1", "123456789012")
@@ -1085,10 +1105,12 @@ class TestAsyncInvokeDestinations:
 class TestFunctionUrlStore:
     def setup_method(self):
         from robotocore.services.lambda_.urls import clear_store
+
         clear_store()
 
     def teardown_method(self):
         from robotocore.services.lambda_.urls import clear_store
+
         clear_store()
 
     def test_create_and_get(self):
@@ -1097,9 +1119,7 @@ class TestFunctionUrlStore:
             get_function_url_config,
         )
 
-        config = create_function_url_config(
-            "fn", "us-east-1", "123", {"AuthType": "NONE"}
-        )
+        config = create_function_url_config("fn", "us-east-1", "123", {"AuthType": "NONE"})
         assert config["AuthType"] == "NONE"
         assert "lambda-url" in config["FunctionUrl"]
 
@@ -1132,9 +1152,7 @@ class TestFunctionUrlStore:
         )
 
         create_function_url_config("fn", "us-east-1", "123", {"AuthType": "NONE"})
-        updated = update_function_url_config(
-            "fn", "us-east-1", "123", {"AuthType": "IAM"}
-        )
+        updated = update_function_url_config("fn", "us-east-1", "123", {"AuthType": "IAM"})
         assert updated["AuthType"] == "IAM"
 
     def test_update_not_found_raises(self):
@@ -1185,9 +1203,7 @@ class TestFunctionUrlStore:
             find_function_by_url,
         )
 
-        config = create_function_url_config(
-            "fn", "us-east-1", "123", {"AuthType": "NONE"}
-        )
+        config = create_function_url_config("fn", "us-east-1", "123", {"AuthType": "NONE"})
         url = config["FunctionUrl"]
         host = url.replace("https://", "").replace("/", "")
         found = find_function_by_url(host)

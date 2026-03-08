@@ -174,7 +174,6 @@ class TestEventBridgeOperations:
         events.remove_targets(Rule=rule_name, Ids=["t1", "t2"])
         events.delete_rule(Name=rule_name)
 
-
     def test_describe_event_bus(self, events):
         """Call describe_event_bus for 'default', assert Name='default' and Arn present."""
         response = events.describe_event_bus(Name="default")
@@ -482,9 +481,7 @@ class TestEventBridgeTags:
                     {"Key": "keep-me", "Value": "yes"},
                 ],
             )
-            events.untag_resource(
-                ResourceARN=rule_arn, TagKeys=["remove-me"]
-            )
+            events.untag_resource(ResourceARN=rule_arn, TagKeys=["remove-me"])
             tags_resp = events.list_tags_for_resource(ResourceARN=rule_arn)
             keys = [t["Key"] for t in tags_resp["Tags"]]
             assert "remove-me" not in keys
@@ -670,6 +667,7 @@ class TestEventBridgeRuleState:
         resp = events.list_archives()
         names = [a["ArchiveName"] for a in resp["Archives"]]
         assert archive_name not in names
+
     def test_create_describe_list_delete_archive(self, events):
         """Archive CRUD lifecycle."""
         suffix = uuid.uuid4().hex[:8]
@@ -726,7 +724,7 @@ class TestEventBridgeDescribeRuleFields:
             events.delete_rule(Name=rule_name)
 
 
-class TestEventBridgeTargets:
+class TestEventBridgeTargetsExtended:
     def test_list_targets_by_rule(self, events):
         """ListTargetsByRule returns targets for a rule."""
         suffix = uuid.uuid4().hex[:8]
@@ -934,6 +932,7 @@ class TestEventBridgeExtended:
     @pytest.fixture
     def events(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("events")
 
     def test_put_rule_with_event_pattern(self, events):

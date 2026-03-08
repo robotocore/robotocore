@@ -117,14 +117,16 @@ def gather_data(registry: dict) -> list[dict]:
     for name in sorted(registry.keys()):
         info = registry[name]
         moto_ops = count_moto_ops(name)
-        rows.append({
-            "service": name,
-            "status": info.status.value,
-            "protocol": info.protocol,
-            "compat_tests": has_compat_tests(name),
-            "unit_tests": has_unit_tests(name),
-            "moto_ops": moto_ops,
-        })
+        rows.append(
+            {
+                "service": name,
+                "status": info.status.value,
+                "protocol": info.protocol,
+                "compat_tests": has_compat_tests(name),
+                "unit_tests": has_unit_tests(name),
+                "moto_ops": moto_ops,
+            }
+        )
     return rows
 
 
@@ -153,10 +155,12 @@ def format_markdown(rows: list[dict]) -> str:
     total_ops = sum(r["moto_ops"] for r in rows if r["moto_ops"] is not None)
 
     lines.append("")
-    lines.append(f"**Total: {total} services** | "
-                 f"{native} native, {moto_backed} moto-backed | "
-                 f"{with_compat} with compat tests, {with_unit} with unit tests | "
-                 f"{total_ops} total Moto ops")
+    lines.append(
+        f"**Total: {total} services** | "
+        f"{native} native, {moto_backed} moto-backed | "
+        f"{with_compat} with compat tests, {with_unit} with unit tests | "
+        f"{total_ops} total Moto ops"
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -164,8 +168,9 @@ def format_markdown(rows: list[dict]) -> str:
 def format_csv(rows: list[dict]) -> str:
     """Format rows as CSV."""
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=["service", "status", "protocol",
-                                              "compat_tests", "unit_tests", "moto_ops"])
+    writer = csv.DictWriter(
+        buf, fieldnames=["service", "status", "protocol", "compat_tests", "unit_tests", "moto_ops"]
+    )
     writer.writeheader()
     writer.writerows(rows)
     return buf.getvalue()
@@ -179,8 +184,13 @@ def format_json(rows: list[dict]) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Service health matrix for robotocore")
     parser.add_argument("--output", "-o", help="Write output to file instead of stdout")
-    parser.add_argument("--format", "-f", choices=["markdown", "csv", "json"],
-                        default="markdown", help="Output format (default: markdown)")
+    parser.add_argument(
+        "--format",
+        "-f",
+        choices=["markdown", "csv", "json"],
+        default="markdown",
+        help="Output format (default: markdown)",
+    )
     args = parser.parse_args()
 
     registry = load_registry()

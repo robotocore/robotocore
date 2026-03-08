@@ -1,6 +1,5 @@
 """S3 compatibility tests — verify robotocore matches LocalStack behavior."""
 
-from botocore.exceptions import ClientError
 import json
 import os
 import time
@@ -9,6 +8,7 @@ from urllib.request import urlopen
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
@@ -353,7 +353,9 @@ class TestS3BucketConfigurations:
     def test_get_bucket_location(self, s3, bucket):
         response = s3.get_bucket_location(Bucket=bucket)
         # us-east-1 returns None for LocationConstraint per AWS behavior
-        assert response["LocationConstraint"] is None or response["LocationConstraint"] == "us-east-1"
+        assert (
+            response["LocationConstraint"] is None or response["LocationConstraint"] == "us-east-1"
+        )
 
     def test_bucket_versioning(self, s3):
         vbucket = "test-versioning-bucket"
@@ -432,18 +434,20 @@ class TestS3BucketConfigurations:
         assert exc_info.value.response["Error"]["Code"] == "NoSuchCORSConfiguration"
 
     def test_bucket_policy(self, s3, bucket):
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "PublicRead",
-                    "Effect": "Allow",
-                    "Principal": "*",
-                    "Action": "s3:GetObject",
-                    "Resource": f"arn:aws:s3:::{bucket}/*",
-                }
-            ],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicRead",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
         s3.put_bucket_policy(Bucket=bucket, Policy=policy)
 
         response = s3.get_bucket_policy(Bucket=bucket)
@@ -581,9 +585,7 @@ class TestS3MultipartLifecycle:
             upload_ids = [u["UploadId"] for u in uploads]
             assert upload_id in upload_ids
         finally:
-            s3.abort_multipart_upload(
-                Bucket=bucket, Key="list-multi.bin", UploadId=upload_id
-            )
+            s3.abort_multipart_upload(Bucket=bucket, Key="list-multi.bin", UploadId=upload_id)
 
 
 class TestS3PresignedUrls:
@@ -693,9 +695,7 @@ class TestS3MultipartExtended:
         resp = s3.create_multipart_upload(Bucket=bucket, Key=key)
         upload_id = resp["UploadId"]
 
-        s3.upload_part(
-            Bucket=bucket, Key=key, UploadId=upload_id, PartNumber=1, Body=b"data"
-        )
+        s3.upload_part(Bucket=bucket, Key=key, UploadId=upload_id, PartNumber=1, Body=b"data")
         s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
 
         listing = s3.list_objects_v2(Bucket=bucket, Prefix=key)
@@ -722,7 +722,7 @@ class TestS3MultipartExtended:
             s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
 
 
-class TestS3CopyObject:
+class TestS3CopyObjectExtended:
     """CopyObject within same bucket and cross-bucket."""
 
     def test_copy_within_same_bucket(self, s3, bucket):
@@ -858,18 +858,14 @@ class TestS3BucketVersioning:
     """Bucket versioning: enable, put versions, list, get specific, delete specific."""
 
     def test_enable_versioning(self, s3, bucket):
-        s3.put_bucket_versioning(
-            Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
-        )
+        s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
         resp = s3.get_bucket_versioning(Bucket=bucket)
         assert resp["Status"] == "Enabled"
 
     def test_put_same_key_twice_list_versions(self, s3, bucket):
         """Put the same key twice with versioning, list both versions."""
         try:
-            s3.put_bucket_versioning(
-                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
-            )
+            s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
             s3.put_object(Bucket=bucket, Key="ver.txt", Body=b"v1")
             s3.put_object(Bucket=bucket, Key="ver.txt", Body=b"v2")
 
@@ -887,20 +883,14 @@ class TestS3BucketVersioning:
     def test_get_specific_version(self, s3, bucket):
         """Get a specific version of an object."""
         try:
-            s3.put_bucket_versioning(
-                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
-            )
+            s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
             r1 = s3.put_object(Bucket=bucket, Key="vget.txt", Body=b"first")
             r2 = s3.put_object(Bucket=bucket, Key="vget.txt", Body=b"second")
 
-            obj1 = s3.get_object(
-                Bucket=bucket, Key="vget.txt", VersionId=r1["VersionId"]
-            )
+            obj1 = s3.get_object(Bucket=bucket, Key="vget.txt", VersionId=r1["VersionId"])
             assert obj1["Body"].read() == b"first"
 
-            obj2 = s3.get_object(
-                Bucket=bucket, Key="vget.txt", VersionId=r2["VersionId"]
-            )
+            obj2 = s3.get_object(Bucket=bucket, Key="vget.txt", VersionId=r2["VersionId"])
             assert obj2["Body"].read() == b"second"
         finally:
             versions_resp = s3.list_object_versions(Bucket=bucket, Prefix="vget.txt")
@@ -910,9 +900,7 @@ class TestS3BucketVersioning:
     def test_delete_specific_version(self, s3, bucket):
         """Delete a specific version, other version still accessible."""
         try:
-            s3.put_bucket_versioning(
-                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
-            )
+            s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
             r1 = s3.put_object(Bucket=bucket, Key="vdel.txt", Body=b"keep")
             r2 = s3.put_object(Bucket=bucket, Key="vdel.txt", Body=b"remove")
 
@@ -939,7 +927,9 @@ class TestS3ObjectTagging:
             s3.put_object_tagging(
                 Bucket=bucket,
                 Key="tagged.txt",
-                Tagging={"TagSet": [{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "core"}]},
+                Tagging={
+                    "TagSet": [{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "core"}]
+                },
             )
             resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
             tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
@@ -1164,9 +1154,7 @@ class TestS3BucketLifecycle:
                 }
             ]
         }
-        s3.put_bucket_lifecycle_configuration(
-            Bucket=bucket, LifecycleConfiguration=config
-        )
+        s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=config)
         resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
         rules = resp["Rules"]
         assert len(rules) == 1
@@ -1190,9 +1178,7 @@ class TestS3BucketLifecycle:
                 },
             ]
         }
-        s3.put_bucket_lifecycle_configuration(
-            Bucket=bucket, LifecycleConfiguration=config
-        )
+        s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=config)
         resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
         ids = [r["ID"] for r in resp["Rules"]]
         assert "rule1" in ids
@@ -1251,6 +1237,7 @@ class TestS3Versioning:
     @pytest.fixture
     def versioned_bucket(self, s3):
         import uuid
+
         name = f"ver-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
         s3.put_bucket_versioning(
@@ -1275,14 +1262,11 @@ class TestS3Versioning:
 
     def test_put_bucket_versioning_suspended(self, s3):
         import uuid
+
         name = f"sus-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
-        s3.put_bucket_versioning(
-            Bucket=name, VersioningConfiguration={"Status": "Enabled"}
-        )
-        s3.put_bucket_versioning(
-            Bucket=name, VersioningConfiguration={"Status": "Suspended"}
-        )
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Suspended"})
         resp = s3.get_bucket_versioning(Bucket=name)
         assert resp["Status"] == "Suspended"
         s3.delete_bucket(Bucket=name)
@@ -1310,9 +1294,7 @@ class TestS3Versioning:
     def test_delete_specific_version(self, s3, versioned_bucket):
         r1 = s3.put_object(Bucket=versioned_bucket, Key="del-ver.txt", Body=b"v1")
         s3.put_object(Bucket=versioned_bucket, Key="del-ver.txt", Body=b"v2")
-        s3.delete_object(
-            Bucket=versioned_bucket, Key="del-ver.txt", VersionId=r1["VersionId"]
-        )
+        s3.delete_object(Bucket=versioned_bucket, Key="del-ver.txt", VersionId=r1["VersionId"])
         versions = s3.list_object_versions(Bucket=versioned_bucket, Prefix="del-ver.txt")
         version_ids = [v["VersionId"] for v in versions["Versions"]]
         assert r1["VersionId"] not in version_ids
@@ -1324,6 +1306,7 @@ class TestS3MultipartUpload:
     @pytest.fixture
     def bucket(self, s3):
         import uuid
+
         name = f"mp-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
         yield name
@@ -1355,11 +1338,16 @@ class TestS3MultipartUpload:
         resp = s3.create_multipart_upload(Bucket=bucket, Key="complete.bin")
         upload_id = resp["UploadId"]
         part = s3.upload_part(
-            Bucket=bucket, Key="complete.bin", UploadId=upload_id,
-            PartNumber=1, Body=b"x" * (5 * 1024 * 1024),
+            Bucket=bucket,
+            Key="complete.bin",
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=b"x" * (5 * 1024 * 1024),
         )
         s3.complete_multipart_upload(
-            Bucket=bucket, Key="complete.bin", UploadId=upload_id,
+            Bucket=bucket,
+            Key="complete.bin",
+            UploadId=upload_id,
             MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]},
         )
         obj = s3.get_object(Bucket=bucket, Key="complete.bin")
@@ -1370,8 +1358,11 @@ class TestS3MultipartUpload:
         upload_id = resp["UploadId"]
         try:
             s3.upload_part(
-                Bucket=bucket, Key="parts.bin", UploadId=upload_id,
-                PartNumber=1, Body=b"a" * (5 * 1024 * 1024),
+                Bucket=bucket,
+                Key="parts.bin",
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=b"a" * (5 * 1024 * 1024),
             )
             parts_resp = s3.list_parts(Bucket=bucket, Key="parts.bin", UploadId=upload_id)
             assert len(parts_resp["Parts"]) == 1
@@ -1386,6 +1377,7 @@ class TestS3CORS:
     @pytest.fixture
     def bucket(self, s3):
         import uuid
+
         name = f"cors-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
         yield name
@@ -1439,6 +1431,7 @@ class TestS3ObjectOperations:
     @pytest.fixture
     def bucket(self, s3):
         import uuid
+
         name = f"obj-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
         yield name
@@ -1453,7 +1446,8 @@ class TestS3ObjectOperations:
     def test_copy_object(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="src.txt", Body=b"source")
         s3.copy_object(
-            Bucket=bucket, Key="dst.txt",
+            Bucket=bucket,
+            Key="dst.txt",
             CopySource={"Bucket": bucket, "Key": "src.txt"},
         )
         obj = s3.get_object(Bucket=bucket, Key="dst.txt")
@@ -1467,7 +1461,9 @@ class TestS3ObjectOperations:
 
     def test_put_object_with_content_type(self, s3, bucket):
         s3.put_object(
-            Bucket=bucket, Key="page.html", Body=b"<h1>hi</h1>",
+            Bucket=bucket,
+            Key="page.html",
+            Body=b"<h1>hi</h1>",
             ContentType="text/html",
         )
         resp = s3.head_object(Bucket=bucket, Key="page.html")
@@ -1475,7 +1471,9 @@ class TestS3ObjectOperations:
 
     def test_put_object_with_metadata(self, s3, bucket):
         s3.put_object(
-            Bucket=bucket, Key="meta.txt", Body=b"data",
+            Bucket=bucket,
+            Key="meta.txt",
+            Body=b"data",
             Metadata={"author": "test", "version": "1"},
         )
         resp = s3.head_object(Bucket=bucket, Key="meta.txt")
@@ -1490,7 +1488,8 @@ class TestS3ObjectOperations:
     def test_put_get_object_tagging(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"data")
         s3.put_object_tagging(
-            Bucket=bucket, Key="tagged.txt",
+            Bucket=bucket,
+            Key="tagged.txt",
             Tagging={"TagSet": [{"Key": "env", "Value": "prod"}]},
         )
         resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
@@ -1500,7 +1499,8 @@ class TestS3ObjectOperations:
     def test_delete_object_tagging(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="untag.txt", Body=b"data")
         s3.put_object_tagging(
-            Bucket=bucket, Key="untag.txt",
+            Bucket=bucket,
+            Key="untag.txt",
             Tagging={"TagSet": [{"Key": "x", "Value": "y"}]},
         )
         s3.delete_object_tagging(Bucket=bucket, Key="untag.txt")
@@ -1545,6 +1545,7 @@ class TestS3BucketOperations:
     @pytest.fixture
     def bucket(self, s3):
         import uuid
+
         name = f"bkt-ops-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
         yield name
@@ -1559,6 +1560,7 @@ class TestS3BucketOperations:
 
     def test_head_bucket_nonexistent(self, s3):
         import uuid
+
         with pytest.raises(ClientError):
             s3.head_bucket(Bucket=f"no-such-bucket-{uuid.uuid4().hex[:8]}")
 
@@ -1570,10 +1572,12 @@ class TestS3BucketOperations:
     def test_put_get_bucket_tagging(self, s3, bucket):
         s3.put_bucket_tagging(
             Bucket=bucket,
-            Tagging={"TagSet": [
-                {"Key": "env", "Value": "test"},
-                {"Key": "team", "Value": "dev"},
-            ]},
+            Tagging={
+                "TagSet": [
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "dev"},
+                ]
+            },
         )
         resp = s3.get_bucket_tagging(Bucket=bucket)
         tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
@@ -1641,6 +1645,7 @@ class TestS3BucketOperations:
 
     def test_put_get_bucket_logging(self, s3, bucket):
         import uuid
+
         log_bucket = f"log-target-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=log_bucket)
         try:
@@ -1663,13 +1668,17 @@ class TestS3AdvancedOperations:
     @pytest.fixture
     def s3(self):
         return boto3.client(
-            "s3", endpoint_url=ENDPOINT_URL, region_name="us-east-1",
-            aws_access_key_id="testing", aws_secret_access_key="testing",
+            "s3",
+            endpoint_url=ENDPOINT_URL,
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
         )
 
     @pytest.fixture
     def bucket(self, s3):
         import uuid
+
         name = f"adv-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
         yield name
@@ -1707,29 +1716,29 @@ class TestS3AdvancedOperations:
             s3.put_object(Bucket=bucket, Key=f"p{i}.txt", Body=b"x")
         resp1 = s3.list_objects_v2(Bucket=bucket, MaxKeys=3)
         assert resp1["IsTruncated"] is True
-        resp2 = s3.list_objects_v2(
-            Bucket=bucket, ContinuationToken=resp1["NextContinuationToken"]
-        )
+        resp2 = s3.list_objects_v2(Bucket=bucket, ContinuationToken=resp1["NextContinuationToken"])
         total = len(resp1["Contents"]) + len(resp2["Contents"])
         assert total == 5
 
     def test_put_object_content_type(self, s3, bucket):
-        s3.put_object(Bucket=bucket, Key="page.html", Body=b"<h1>Hello</h1>",
-                       ContentType="text/html")
+        s3.put_object(
+            Bucket=bucket, Key="page.html", Body=b"<h1>Hello</h1>", ContentType="text/html"
+        )
         resp = s3.head_object(Bucket=bucket, Key="page.html")
         assert resp["ContentType"] == "text/html"
 
     def test_put_object_metadata(self, s3, bucket):
-        s3.put_object(Bucket=bucket, Key="meta.txt", Body=b"data",
-                       Metadata={"custom-key": "custom-value"})
+        s3.put_object(
+            Bucket=bucket, Key="meta.txt", Body=b"data", Metadata={"custom-key": "custom-value"}
+        )
         resp = s3.head_object(Bucket=bucket, Key="meta.txt")
         assert resp["Metadata"]["custom-key"] == "custom-value"
 
     def test_copy_object_preserves_metadata(self, s3, bucket):
-        s3.put_object(Bucket=bucket, Key="src.txt", Body=b"source",
-                       Metadata={"copied": "yes"})
-        s3.copy_object(Bucket=bucket, Key="dst.txt",
-                        CopySource={"Bucket": bucket, "Key": "src.txt"})
+        s3.put_object(Bucket=bucket, Key="src.txt", Body=b"source", Metadata={"copied": "yes"})
+        s3.copy_object(
+            Bucket=bucket, Key="dst.txt", CopySource={"Bucket": bucket, "Key": "src.txt"}
+        )
         resp = s3.head_object(Bucket=bucket, Key="dst.txt")
         assert resp["ContentLength"] == 6
 
@@ -1759,8 +1768,7 @@ class TestS3AdvancedOperations:
         assert resp["ContentLength"] == len(data)
 
     def test_put_object_with_storage_class(self, s3, bucket):
-        s3.put_object(Bucket=bucket, Key="sc.txt", Body=b"data",
-                       StorageClass="STANDARD")
+        s3.put_object(Bucket=bucket, Key="sc.txt", Body=b"data", StorageClass="STANDARD")
         resp = s3.head_object(Bucket=bucket, Key="sc.txt")
         # StorageClass may not be returned for STANDARD, just verify no error
         assert resp["ContentLength"] == 4
@@ -1772,30 +1780,38 @@ class TestS3AdvancedOperations:
         assert body == b"2345"
 
     def test_put_bucket_policy(self, s3, bucket):
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": "*",
-                "Action": "s3:GetObject",
-                "Resource": f"arn:aws:s3:::{bucket}/*",
-            }],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
         s3.put_bucket_policy(Bucket=bucket, Policy=policy)
         resp = s3.get_bucket_policy(Bucket=bucket)
         returned = json.loads(resp["Policy"])
         assert len(returned["Statement"]) == 1
 
     def test_delete_bucket_policy(self, s3, bucket):
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": "*",
-                "Action": "s3:GetObject",
-                "Resource": f"arn:aws:s3:::{bucket}/*",
-            }],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
         s3.put_bucket_policy(Bucket=bucket, Policy=policy)
         s3.delete_bucket_policy(Bucket=bucket)
         with pytest.raises(ClientError):
@@ -1809,7 +1825,8 @@ class TestS3AdvancedOperations:
     def test_put_get_object_tagging(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"tag me")
         s3.put_object_tagging(
-            Bucket=bucket, Key="tagged.txt",
+            Bucket=bucket,
+            Key="tagged.txt",
             Tagging={"TagSet": [{"Key": "env", "Value": "test"}]},
         )
         resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
@@ -1819,7 +1836,8 @@ class TestS3AdvancedOperations:
     def test_delete_object_tagging(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="dtag.txt", Body=b"data")
         s3.put_object_tagging(
-            Bucket=bucket, Key="dtag.txt",
+            Bucket=bucket,
+            Key="dtag.txt",
             Tagging={"TagSet": [{"Key": "temp", "Value": "yes"}]},
         )
         s3.delete_object_tagging(Bucket=bucket, Key="dtag.txt")
@@ -1834,4 +1852,3 @@ class TestS3AdvancedOperations:
     def test_head_bucket(self, s3, bucket):
         resp = s3.head_bucket(Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-

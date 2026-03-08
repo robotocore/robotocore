@@ -21,7 +21,6 @@ import boto3
 import botocore.exceptions
 import botocore.loaders
 
-
 # Minimal valid parameters for common parameter types.
 # These are enough to make the API call succeed syntactically,
 # even if the referenced resources don't exist.
@@ -39,9 +38,17 @@ PARAM_DEFAULTS = {
 
 # Operations that are destructive or have side effects we don't want during probing.
 SKIP_OPERATIONS = {
-    "DeleteBucket", "DeleteQueue", "DeleteTopic", "DeleteTable",
-    "DeleteFunction", "DeleteStack", "DeleteApi", "DeleteRestApi",
-    "PurgeQueue", "TerminateInstances", "DeleteCluster",
+    "DeleteBucket",
+    "DeleteQueue",
+    "DeleteTopic",
+    "DeleteTable",
+    "DeleteFunction",
+    "DeleteStack",
+    "DeleteApi",
+    "DeleteRestApi",
+    "PurgeQueue",
+    "TerminateInstances",
+    "DeleteCluster",
 }
 
 # Operations that require specific parameters we can provide.
@@ -134,7 +141,8 @@ def get_list_operations(service_name: str) -> list[str]:
     # Focus on read operations that are safe to call
     safe_prefixes = ("List", "Describe", "Get")
     return sorted(
-        name for name in operations
+        name
+        for name in operations
         if name.startswith(safe_prefixes) and name not in SKIP_OPERATIONS
     )
 
@@ -150,13 +158,24 @@ def probe_operation(client, operation_name: str, params: dict) -> tuple[bool, st
         msg = e.response["Error"]["Message"]
         # These error codes mean the operation IS implemented but we gave bad params
         implemented_errors = {
-            "ResourceNotFoundException", "ValidationException",
-            "NotFoundException", "NoSuchEntity", "InvalidParameterValue",
-            "MissingParameter", "InvalidParameter", "MalformedPolicyDocument",
-            "NoSuchBucket", "QueueDoesNotExist", "ResourceNotFoundFault",
-            "HostedZoneNotFound", "InvalidInput", "FunctionNotFound",
-            "RepositoryNotFoundException", "ResourceNotFoundException",
-            "ParameterNotFound", "SecretNotFoundException",
+            "ResourceNotFoundException",
+            "ValidationException",
+            "NotFoundException",
+            "NoSuchEntity",
+            "InvalidParameterValue",
+            "MissingParameter",
+            "InvalidParameter",
+            "MalformedPolicyDocument",
+            "NoSuchBucket",
+            "QueueDoesNotExist",
+            "ResourceNotFoundFault",
+            "HostedZoneNotFound",
+            "InvalidInput",
+            "FunctionNotFound",
+            "RepositoryNotFoundException",
+            "ResourceNotFoundException",
+            "ParameterNotFound",
+            "SecretNotFoundException",
         }
         if code in implemented_errors:
             return True, f"implemented ({code})"
@@ -175,6 +194,7 @@ def probe_operation(client, operation_name: str, params: dict) -> tuple[bool, st
 def _to_snake_case(name: str) -> str:
     """Convert PascalCase to snake_case."""
     import re
+
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
@@ -184,7 +204,9 @@ def main():
     parser.add_argument("--service", required=True, help="AWS service name (e.g., sqs, s3)")
     parser.add_argument("--endpoint", default="http://localhost:4566", help="Endpoint URL")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
-    parser.add_argument("--all", action="store_true", help="Probe all operations, not just List/Describe/Get")
+    parser.add_argument(
+        "--all", action="store_true", help="Probe all operations, not just List/Describe/Get"
+    )
     args = parser.parse_args()
 
     client = boto3.client(
@@ -199,8 +221,7 @@ def main():
         loader = botocore.loaders.Loader()
         api = loader.load_service_model(args.service, "service-2")
         operations = sorted(
-            name for name in api.get("operations", {})
-            if name not in SKIP_OPERATIONS
+            name for name in api.get("operations", {}) if name not in SKIP_OPERATIONS
         )
     else:
         operations = get_list_operations(args.service)
@@ -219,7 +240,9 @@ def main():
     if args.json:
         print(json.dumps(results, indent=2))
     else:
-        print(f"\n{args.service}: {len(results['working'])} working, {len(results['broken'])} broken")
+        print(
+            f"\n{args.service}: {len(results['working'])} working, {len(results['broken'])} broken"
+        )
         print(f"\nWorking operations ({len(results['working'])}):")
         for r in results["working"]:
             print(f"  + {r['operation']}: {r['message']}")

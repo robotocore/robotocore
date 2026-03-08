@@ -67,9 +67,7 @@ def execute_v2_request(
         return 404, {}, json.dumps({"message": "Not Found"})
 
     # Check authorizer
-    auth_result = _check_v2_authorizer(
-        api_id, route, headers, region, account_id
-    )
+    auth_result = _check_v2_authorizer(api_id, route, headers, region, account_id)
     if auth_result is not None:
         return auth_result
 
@@ -87,16 +85,25 @@ def execute_v2_request(
 
     if integ_type == "AWS_PROXY":
         return _invoke_lambda_v2(
-            integration, api_id, route, method, path, body, headers,
-            query_params, path_params, stage, stage_vars,
-            request_id, region, account_id,
+            integration,
+            api_id,
+            route,
+            method,
+            path,
+            body,
+            headers,
+            query_params,
+            path_params,
+            stage,
+            stage_vars,
+            request_id,
+            region,
+            account_id,
         )
     elif integ_type in ("HTTP_PROXY", "HTTP"):
         return _invoke_http_v2(integration, method, path, body, headers, query_params)
     else:
-        return 500, {}, json.dumps(
-            {"message": f"Unsupported integration type: {integ_type}"}
-        )
+        return 500, {}, json.dumps({"message": f"Unsupported integration type: {integ_type}"})
 
 
 def execute_websocket_message(
@@ -147,11 +154,7 @@ def execute_websocket_message(
 
     # Get integration
     target = route.get("Target", "")
-    integ_id = (
-        target.replace("integrations/", "")
-        if target.startswith("integrations/")
-        else target
-    )
+    integ_id = target.replace("integrations/", "") if target.startswith("integrations/") else target
     integration = integrations.get(integ_id)
     if not integration:
         return 500, {}, json.dumps({"message": "No integration configured"})
@@ -175,9 +178,7 @@ def execute_websocket_message(
         "isBase64Encoded": False,
     }
 
-    return _invoke_lambda_for_websocket(
-        integration, event, region, account_id
-    )
+    return _invoke_lambda_for_websocket(integration, event, region, account_id)
 
 
 def execute_websocket_connect(
@@ -209,11 +210,7 @@ def execute_websocket_connect(
         return 200, {}, ""
 
     target = route.get("Target", "")
-    integ_id = (
-        target.replace("integrations/", "")
-        if target.startswith("integrations/")
-        else target
-    )
+    integ_id = target.replace("integrations/", "") if target.startswith("integrations/") else target
     integration = integrations.get(integ_id)
     if not integration:
         return 200, {}, ""
@@ -262,11 +259,7 @@ def execute_websocket_disconnect(
         return 200, {}, ""
 
     target = route.get("Target", "")
-    integ_id = (
-        target.replace("integrations/", "")
-        if target.startswith("integrations/")
-        else target
-    )
+    integ_id = target.replace("integrations/", "") if target.startswith("integrations/") else target
     integration = integrations.get(integ_id)
     if not integration:
         return 200, {}, ""
@@ -294,7 +287,11 @@ def execute_websocket_disconnect(
 
 
 def _match_route(
-    routes: dict, route_key: str, method: str, path: str, protocol: str,
+    routes: dict,
+    route_key: str,
+    method: str,
+    path: str,
+    protocol: str,
 ) -> tuple[dict | None, dict]:
     """Match a request to a route. Returns (route, path_params)."""
     # 1. Exact match
@@ -385,7 +382,11 @@ def _path_specificity_v2(pattern: str) -> int:
 
 
 def _check_v2_authorizer(
-    api_id: str, route: dict, headers: dict, region: str, account_id: str,
+    api_id: str,
+    route: dict,
+    headers: dict,
+    region: str,
+    account_id: str,
 ) -> tuple[int, dict, str] | None:
     """Check v2 authorizer (JWT). Returns error or None."""
     auth_type = route.get("AuthorizationType", "NONE")
@@ -412,13 +413,12 @@ def _check_v2_authorizer(
 
 
 def _validate_jwt(
-    authorizer: dict, headers: dict,
+    authorizer: dict,
+    headers: dict,
 ) -> tuple[int, dict, str] | None:
     """Validate JWT token from headers."""
     # Extract token from identity source
-    identity_source = authorizer.get(
-        "IdentitySource", "$request.header.Authorization"
-    )
+    identity_source = authorizer.get("IdentitySource", "$request.header.Authorization")
     header_name = "Authorization"
     if "header." in identity_source:
         header_name = identity_source.split("header.")[-1]
@@ -500,9 +500,7 @@ def _invoke_lambda_v2(
     function_name = _extract_function_name(uri)
 
     if not function_name:
-        return 500, {}, json.dumps(
-            {"message": "Could not resolve Lambda function"}
-        )
+        return 500, {}, json.dumps({"message": "Could not resolve Lambda function"})
 
     # Build v2.0 payload
     raw_query = "&".join(f"{k}={v}" for k, v in query_params.items()) if query_params else ""
@@ -561,15 +559,22 @@ def _invoke_lambda_v2(
 
 
 def _invoke_http_v2(
-    integration: dict, method: str, path: str,
-    body: bytes | None, headers: dict, query_params: dict,
+    integration: dict,
+    method: str,
+    path: str,
+    body: bytes | None,
+    headers: dict,
+    query_params: dict,
 ) -> tuple[int, dict, str]:
     """Handle HTTP/HTTP_PROXY integration for v2."""
     return 200, {}, json.dumps({"message": "HTTP integration executed"})
 
 
 def _invoke_lambda_for_websocket(
-    integration: dict, event: dict, region: str, account_id: str,
+    integration: dict,
+    event: dict,
+    region: str,
+    account_id: str,
 ) -> tuple[int, dict, str]:
     """Invoke Lambda for a WebSocket route."""
     uri = integration.get("IntegrationUri", "")

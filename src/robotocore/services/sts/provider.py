@@ -23,9 +23,7 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 MAX_PACKED_POLICY_SIZE = 2048
 
 
-async def handle_sts_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_sts_request(request: Request, region: str, account_id: str) -> Response:
     """Handle STS API requests."""
     body = await request.body()
     parsed = parse_qs(body.decode(), keep_blank_values=True)
@@ -60,7 +58,7 @@ def _decode_authorization_message(params: dict) -> Response:
     """DecodeAuthorizationMessage — return the message as-is (mock decode)."""
     encoded = params.get("EncodedMessage", "")
     xml = (
-        '<DecodeAuthorizationMessageResponse '
+        "<DecodeAuthorizationMessageResponse "
         'xmlns="https://sts.amazonaws.com/doc/2011-06-15/">'
         "<DecodeAuthorizationMessageResult>"
         f"<DecodedMessage>{encoded}</DecodedMessage>"
@@ -111,12 +109,10 @@ def _assume_role_with_saml(params: dict, account_id: str) -> Response:
     expiration = now + timedelta(seconds=duration)
     exp_str = expiration.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    assumed_arn = (
-        f"arn:aws:sts::{account_id}:assumed-role/{role_name}/{session_name}"
-    )
+    assumed_arn = f"arn:aws:sts::{account_id}:assumed-role/{role_name}/{session_name}"
 
     xml = (
-        '<AssumeRoleWithSAMLResponse '
+        "<AssumeRoleWithSAMLResponse "
         'xmlns="https://sts.amazonaws.com/doc/2011-06-15/">'
         "<AssumeRoleWithSAMLResult>"
         "<Credentials>"

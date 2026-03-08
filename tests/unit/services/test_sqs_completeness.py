@@ -55,7 +55,9 @@ def _store_with_queue(name="test-queue", **attrs):
 class TestFifoContentBasedDedup:
     def test_identical_bodies_deduped(self):
         q = FifoQueue(
-            "q.fifo", "us-east-1", "123",
+            "q.fifo",
+            "us-east-1",
+            "123",
             attributes={"ContentBasedDeduplication": "true"},
         )
         q.put(_msg("same", message_group_id="g1"))
@@ -65,7 +67,9 @@ class TestFifoContentBasedDedup:
 
     def test_different_bodies_not_deduped(self):
         q = FifoQueue(
-            "q.fifo", "us-east-1", "123",
+            "q.fifo",
+            "us-east-1",
+            "123",
             attributes={"ContentBasedDeduplication": "true"},
         )
         q.put(_msg("body-a", message_group_id="g1"))
@@ -78,7 +82,9 @@ class TestFifoContentBasedDedup:
 
     def test_dedup_uses_sha256(self):
         q = FifoQueue(
-            "q.fifo", "us-east-1", "123",
+            "q.fifo",
+            "us-east-1",
+            "123",
             attributes={"ContentBasedDeduplication": "true"},
         )
         msg = _msg("test body", message_group_id="g1")
@@ -124,8 +130,7 @@ class TestFifoGroupOrdering:
     def test_messages_in_same_group_ordered(self):
         q = FifoQueue("q.fifo", "us-east-1", "123")
         for i in range(5):
-            q.put(_msg(f"msg-{i}", message_group_id="g1",
-                        message_deduplication_id=f"d{i}"))
+            q.put(_msg(f"msg-{i}", message_group_id="g1", message_deduplication_id=f"d{i}"))
         results = []
         for _ in range(5):
             r = q.receive()
@@ -145,8 +150,9 @@ class TestFifoGroupOrdering:
         assert len(r2) == 0
 
     def test_different_groups_concurrent(self):
-        q = FifoQueue("q.fifo", "us-east-1", "123",
-                       attributes={"ContentBasedDeduplication": "true"})
+        q = FifoQueue(
+            "q.fifo", "us-east-1", "123", attributes={"ContentBasedDeduplication": "true"}
+        )
         q.put(_msg("g1-m1", message_group_id="g1"))
         q.put(_msg("g2-m1", message_group_id="g2"))
         r1 = q.receive()
@@ -168,15 +174,19 @@ class TestQueuePolicies:
     def test_set_and_get_policy(self):
         store = _store_with_queue()
         q = store.get_queue("test-queue")
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": "*",
-                "Action": "sqs:SendMessage",
-                "Resource": q.arn,
-            }],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "sqs:SendMessage",
+                        "Resource": q.arn,
+                    }
+                ],
+            }
+        )
         mock_req = MagicMock()
         _set_queue_attributes(
             store,
@@ -184,10 +194,16 @@ class TestQueuePolicies:
                 "QueueUrl": q.url,
                 "Attributes": {"Policy": policy},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _get_queue_attributes(
-            store, {"QueueUrl": q.url}, "us-east-1", "123", mock_req,
+            store,
+            {"QueueUrl": q.url},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Attributes"]["Policy"] == policy
 
@@ -201,9 +217,14 @@ class TestRedriveAllowPolicy:
         assert q.is_redrive_allowed("arn:aws:sqs:us-east-1:123:src") is True
 
     def test_deny_all(self):
-        q = StandardQueue("dlq", "us-east-1", "123", attributes={
-            "RedriveAllowPolicy": json.dumps({"redrivePermission": "denyAll"}),
-        })
+        q = StandardQueue(
+            "dlq",
+            "us-east-1",
+            "123",
+            attributes={
+                "RedriveAllowPolicy": json.dumps({"redrivePermission": "denyAll"}),
+            },
+        )
         assert q.is_redrive_allowed("arn:aws:sqs:us-east-1:123:src") is False
 
     def test_by_queue_allowed(self):
@@ -211,17 +232,27 @@ class TestRedriveAllowPolicy:
             "redrivePermission": "byQueue",
             "sourceQueueArns": ["arn:aws:sqs:us-east-1:123:allowed"],
         }
-        q = StandardQueue("dlq", "us-east-1", "123", attributes={
-            "RedriveAllowPolicy": json.dumps(policy),
-        })
+        q = StandardQueue(
+            "dlq",
+            "us-east-1",
+            "123",
+            attributes={
+                "RedriveAllowPolicy": json.dumps(policy),
+            },
+        )
         assert q.is_redrive_allowed("arn:aws:sqs:us-east-1:123:allowed") is True
         assert q.is_redrive_allowed("arn:aws:sqs:us-east-1:123:denied") is False
 
     def test_get_attributes_includes_redrive_allow(self):
         policy = json.dumps({"redrivePermission": "denyAll"})
-        q = StandardQueue("dlq", "us-east-1", "123", attributes={
-            "RedriveAllowPolicy": policy,
-        })
+        q = StandardQueue(
+            "dlq",
+            "us-east-1",
+            "123",
+            attributes={
+                "RedriveAllowPolicy": policy,
+            },
+        )
         attrs = q.get_attributes()
         assert attrs["RedriveAllowPolicy"] == policy
 
@@ -246,7 +277,9 @@ class TestMessageSystemAttributes:
                     },
                 },
             },
-            "us-east-1", "123456789012", mock_req,
+            "us-east-1",
+            "123456789012",
+            mock_req,
         )
         assert "MessageId" in result
 
@@ -267,7 +300,9 @@ class TestMessageSystemAttributes:
         result = _receive_message(
             store,
             {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
-            "us-east-1", "123456789012", mock_req,
+            "us-east-1",
+            "123456789012",
+            mock_req,
         )
         msgs = result["Messages"]
         assert len(msgs) == 1
@@ -287,7 +322,9 @@ class TestPurgeQueue:
         _purge_queue(
             store,
             {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         results = q.receive(max_messages=10, wait_time_seconds=0)
         assert len(results) == 0
@@ -321,7 +358,9 @@ class TestSSEAttributes:
                 "QueueName": "sse-queue",
                 "Attributes": {"SqsManagedSseEnabled": "true"},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         q = store.get_queue("sse-queue")
         attrs = q.get_attributes()
@@ -339,7 +378,9 @@ class TestSSEAttributes:
                     "KmsDataKeyReusePeriodSeconds": "600",
                 },
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         q = store.get_queue("kms-queue")
         attrs = q.get_attributes()
@@ -360,12 +401,16 @@ class TestQueueTags:
                 "QueueUrl": "http://localhost:4566/123456789012/test-queue",
                 "Tags": {"env": "dev", "team": "platform"},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _list_queue_tags(
             store,
             {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Tags"]["env"] == "dev"
         assert result["Tags"]["team"] == "platform"
@@ -381,12 +426,16 @@ class TestQueueTags:
                 "QueueUrl": "http://localhost:4566/123456789012/test-queue",
                 "TagKeys": ["env"],
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _list_queue_tags(
             store,
             {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "env" not in result["Tags"]
         assert result["Tags"]["team"] == "platform"
@@ -401,7 +450,9 @@ class TestQueueTags:
                 "Tag.1.Key": "region",
                 "Tag.1.Value": "east",
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         q = store.get_queue("test-queue")
         assert q.tags["region"] == "east"
@@ -412,7 +463,9 @@ class TestQueueTags:
         result = _list_queue_tags(
             store,
             {"QueueUrl": "http://localhost:4566/123456789012/test-queue"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Tags"] == {}
 
@@ -424,12 +477,19 @@ class TestMessageMoveTasks:
     def _setup_dlq_pair(self):
         store = SqsStore()
         store.create_queue("dlq", "us-east-1", "123")
-        store.create_queue("source", "us-east-1", "123", {
-            "RedrivePolicy": json.dumps({
-                "deadLetterTargetArn": "arn:aws:sqs:us-east-1:123:dlq",
-                "maxReceiveCount": 3,
-            }),
-        })
+        store.create_queue(
+            "source",
+            "us-east-1",
+            "123",
+            {
+                "RedrivePolicy": json.dumps(
+                    {
+                        "deadLetterTargetArn": "arn:aws:sqs:us-east-1:123:dlq",
+                        "maxReceiveCount": 3,
+                    }
+                ),
+            },
+        )
         return store
 
     def test_start_move_task(self):
@@ -445,7 +505,9 @@ class TestMessageMoveTasks:
             {
                 "SourceArn": "arn:aws:sqs:us-east-1:123:dlq",
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "TaskHandle" in result
 
@@ -460,7 +522,9 @@ class TestMessageMoveTasks:
         _start_message_move_task(
             store,
             {"SourceArn": "arn:aws:sqs:us-east-1:123:dlq"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
 
         # Messages should be in source queue now
@@ -481,7 +545,9 @@ class TestMessageMoveTasks:
                 "SourceArn": "arn:aws:sqs:us-east-1:123:dlq",
                 "DestinationArn": "arn:aws:sqs:us-east-1:123:dest",
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         dest = store.get_queue("dest")
         results = dest.receive(max_messages=10, wait_time_seconds=0)
@@ -496,12 +562,16 @@ class TestMessageMoveTasks:
         _start_message_move_task(
             store,
             {"SourceArn": "arn:aws:sqs:us-east-1:123:dlq"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _list_message_move_tasks(
             store,
             {"SourceArn": "arn:aws:sqs:us-east-1:123:dlq"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert len(result["Results"]) == 1
         assert result["Results"][0]["Status"] == "COMPLETED"
@@ -523,7 +593,9 @@ class TestMessageMoveTasks:
         result = _cancel_message_move_task(
             store,
             {"TaskHandle": "test-handle"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "ApproximateNumberOfMessagesMoved" in result
         assert task.status == "CANCELLED"
@@ -535,7 +607,9 @@ class TestMessageMoveTasks:
             _cancel_message_move_task(
                 store,
                 {"TaskHandle": "nope"},
-                "us-east-1", "123", mock_req,
+                "us-east-1",
+                "123",
+                mock_req,
             )
         assert "ResourceNotFoundException" in exc.value.code
 
@@ -546,7 +620,9 @@ class TestMessageMoveTasks:
             _start_message_move_task(
                 store,
                 {"SourceArn": "arn:aws:sqs:us-east-1:123:nope"},
-                "us-east-1", "123", mock_req,
+                "us-east-1",
+                "123",
+                mock_req,
             )
 
 

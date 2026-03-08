@@ -75,9 +75,7 @@ def _cleanup_org(client):
 def _delete_ous_recursive(client, parent_id):
     """Recursively delete organizational units under a parent."""
     try:
-        ous = client.list_organizational_units_for_parent(ParentId=parent_id)[
-            "OrganizationalUnits"
-        ]
+        ous = client.list_organizational_units_for_parent(ParentId=parent_id)["OrganizationalUnits"]
         for ou in ous:
             _delete_ous_recursive(client, ou["Id"])
             try:
@@ -188,9 +186,7 @@ class TestOrganizationsOUOperations:
         acct = orgs.create_account(Email=email, AccountName=_unique("MoveAcct"))
         acct_id = acct["CreateAccountStatus"]["AccountId"]
 
-        orgs.move_account(
-            AccountId=acct_id, SourceParentId=root_id, DestinationParentId=ou_id
-        )
+        orgs.move_account(AccountId=acct_id, SourceParentId=root_id, DestinationParentId=ou_id)
 
         children = orgs.list_children(ParentId=ou_id, ChildType="ACCOUNT")
         child_ids = [c["Id"] for c in children["Children"]]
@@ -202,9 +198,7 @@ class TestOrganizationsPolicyOperations:
         orgs.create_organization(FeatureSet="ALL")
         root_id = orgs.list_roots()["Roots"][0]["Id"]
 
-        resp = orgs.enable_policy_type(
-            RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY"
-        )
+        resp = orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
         assert resp["Root"]["Id"] == root_id
 
         policies = orgs.list_policies(Filter="SERVICE_CONTROL_POLICY")["Policies"]
@@ -219,9 +213,7 @@ class TestOrganizationsPolicyOperations:
         policy_doc = json.dumps(
             {
                 "Version": "2012-10-17",
-                "Statement": [
-                    {"Effect": "Allow", "Action": "s3:*", "Resource": "*"}
-                ],
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
             }
         )
         name = _unique("Policy")
@@ -296,9 +288,7 @@ class TestOrganizationsTags:
         ou = orgs.create_organizational_unit(ParentId=root_id, Name=_unique("TagOU"))
         ou_id = ou["OrganizationalUnit"]["Id"]
 
-        orgs.tag_resource(
-            ResourceId=ou_id, Tags=[{"Key": "team", "Value": "platform"}]
-        )
+        orgs.tag_resource(ResourceId=ou_id, Tags=[{"Key": "team", "Value": "platform"}])
 
         resp = orgs.list_tags_for_resource(ResourceId=ou_id)
         tags = {t["Key"]: t["Value"] for t in resp["Tags"]}

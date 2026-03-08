@@ -134,133 +134,147 @@ def _to_snake_case(name: str) -> str:
 def generate_target_handler(target_name: str, spec: dict) -> str:
     """Generate a target handler function."""
     lines = []
-    lines.append(f'def _invoke_{target_name}_target(')
+    lines.append(f"def _invoke_{target_name}_target(")
     lines.append("    arn: str, payload: str, region: str, account_id: str")
     lines.append(") -> None:")
     lines.append(f'    """{spec["description"]}.')
     lines.append("")
-    lines.append(f'    ARN pattern: {spec["arn_example"]}')
+    lines.append(f"    ARN pattern: {spec['arn_example']}")
     lines.append('    """')
 
     if target_name == "kinesis":
-        lines.extend([
-            "    from robotocore.services.kinesis.provider import _get_store",
-            "",
-            "    # Extract stream name from ARN: arn:aws:kinesis:region:acct:stream/name",
-            '    stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]',
-            "    store = _get_store(region)",
-            "    stream = store.get_stream(stream_name)",
-            "    if not stream:",
-            '        logger.error(f"EventBridge: Kinesis stream not found: {stream_name}")',
-            "        return",
-            "",
-            "    import hashlib",
-            '    partition_key = hashlib.md5(payload.encode()).hexdigest()[:16]',
-            "    stream.put_record(payload.encode(), partition_key)",
-            '    _log_invocation("kinesis", arn, payload)',
-            '    logger.info(f"EventBridge -> Kinesis: {stream_name}")',
-        ])
+        lines.extend(
+            [
+                "    from robotocore.services.kinesis.provider import _get_store",
+                "",
+                "    # Extract stream name from ARN: arn:aws:kinesis:region:acct:stream/name",
+                '    stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]',
+                "    store = _get_store(region)",
+                "    stream = store.get_stream(stream_name)",
+                "    if not stream:",
+                '        logger.error(f"EventBridge: Kinesis stream not found: {stream_name}")',
+                "        return",
+                "",
+                "    import hashlib",
+                "    partition_key = hashlib.md5(payload.encode()).hexdigest()[:16]",
+                "    stream.put_record(payload.encode(), partition_key)",
+                '    _log_invocation("kinesis", arn, payload)',
+                '    logger.info(f"EventBridge -> Kinesis: {stream_name}")',
+            ]
+        )
     elif target_name == "firehose":
-        lines.extend([
-            "    from robotocore.services.firehose.provider import _get_store",
-            "",
-            "    # Extract delivery stream name from ARN",
-            '    stream_name = arn.rsplit("/", 1)[-1]',
-            "    store = _get_store(region)",
-            "    stream = store.get_stream(stream_name)",
-            "    if not stream:",
-            '        logger.error(f"EventBridge: Firehose stream not found: {stream_name}")',
-            "        return",
-            "",
-            "    stream.put_record(payload.encode())",
-            '    _log_invocation("firehose", arn, payload)',
-            '    logger.info(f"EventBridge -> Firehose: {stream_name}")',
-        ])
+        lines.extend(
+            [
+                "    from robotocore.services.firehose.provider import _get_store",
+                "",
+                "    # Extract delivery stream name from ARN",
+                '    stream_name = arn.rsplit("/", 1)[-1]',
+                "    store = _get_store(region)",
+                "    stream = store.get_stream(stream_name)",
+                "    if not stream:",
+                '        logger.error(f"EventBridge: Firehose stream not found: {stream_name}")',
+                "        return",
+                "",
+                "    stream.put_record(payload.encode())",
+                '    _log_invocation("firehose", arn, payload)',
+                '    logger.info(f"EventBridge -> Firehose: {stream_name}")',
+            ]
+        )
     elif target_name == "stepfunctions":
-        lines.extend([
-            "    from robotocore.services.stepfunctions.provider import _get_store",
-            "",
-            "    store = _get_store(region)",
-            "    import json as _json_mod",
-            "    input_data = _json_mod.loads(payload) if isinstance(payload, str) else payload",
-            "    store.start_execution(arn, _json_mod.dumps(input_data))",
-            '    _log_invocation("stepfunctions", arn, payload)',
-            '    logger.info(f"EventBridge -> StepFunctions: {arn}")',
-        ])
+        lines.extend(
+            [
+                "    from robotocore.services.stepfunctions.provider import _get_store",
+                "",
+                "    store = _get_store(region)",
+                "    import json as _json_mod",
+                "    input_data = _json_mod.loads(payload) if isinstance(payload, str) else payload",
+                "    store.start_execution(arn, _json_mod.dumps(input_data))",
+                '    _log_invocation("stepfunctions", arn, payload)',
+                '    logger.info(f"EventBridge -> StepFunctions: {arn}")',
+            ]
+        )
     elif target_name == "logs":
-        lines.extend([
-            "    import time",
-            "",
-            "    from moto.backends import get_backend",
-            "    from moto.core import DEFAULT_ACCOUNT_ID",
-            "",
-            "    acct = account_id if account_id != '123456789012' else DEFAULT_ACCOUNT_ID",
-            "    logs_backend = get_backend('logs')[acct][region]",
-            "",
-            "    # Extract log group name from ARN",
-            '    # arn:aws:logs:region:acct:log-group:/aws/events/name',
-            '    parts = arn.split(":")',
-            '    log_group_name = parts[-1] if parts else arn',
-            '    if log_group_name.startswith("log-group:"):',
-            '        log_group_name = log_group_name[len("log-group:"):]',
-            "",
-            "    # Create log group/stream if needed",
-            "    try:",
-            "        logs_backend.create_log_group(log_group_name, {})",
-            "    except Exception:",
-            "        pass  # Already exists",
-            '    stream_name = "eventbridge"',
-            "    try:",
-            "        logs_backend.create_log_stream(log_group_name, stream_name)",
-            "    except Exception:",
-            "        pass  # Already exists",
-            "",
-            "    logs_backend.put_log_events(",
-            "        log_group_name,",
-            "        stream_name,",
-            "        [{'timestamp': int(time.time() * 1000), 'message': payload}],",
-            "    )",
-            '    _log_invocation("logs", arn, payload)',
-            '    logger.info(f"EventBridge -> CloudWatch Logs: {log_group_name}")',
-        ])
+        lines.extend(
+            [
+                "    import time",
+                "",
+                "    from moto.backends import get_backend",
+                "    from moto.core import DEFAULT_ACCOUNT_ID",
+                "",
+                "    acct = account_id if account_id != '123456789012' else DEFAULT_ACCOUNT_ID",
+                "    logs_backend = get_backend('logs')[acct][region]",
+                "",
+                "    # Extract log group name from ARN",
+                "    # arn:aws:logs:region:acct:log-group:/aws/events/name",
+                '    parts = arn.split(":")',
+                "    log_group_name = parts[-1] if parts else arn",
+                '    if log_group_name.startswith("log-group:"):',
+                '        log_group_name = log_group_name[len("log-group:"):]',
+                "",
+                "    # Create log group/stream if needed",
+                "    try:",
+                "        logs_backend.create_log_group(log_group_name, {})",
+                "    except Exception:",
+                "        pass  # Already exists",
+                '    stream_name = "eventbridge"',
+                "    try:",
+                "        logs_backend.create_log_stream(log_group_name, stream_name)",
+                "    except Exception:",
+                "        pass  # Already exists",
+                "",
+                "    logs_backend.put_log_events(",
+                "        log_group_name,",
+                "        stream_name,",
+                "        [{'timestamp': int(time.time() * 1000), 'message': payload}],",
+                "    )",
+                '    _log_invocation("logs", arn, payload)',
+                '    logger.info(f"EventBridge -> CloudWatch Logs: {log_group_name}")',
+            ]
+        )
     elif target_name == "ecs":
-        lines.extend([
-            "    # ECS RunTask - simulated (creates task record in Moto)",
-            "    from moto.backends import get_backend",
-            "    from moto.core import DEFAULT_ACCOUNT_ID",
-            "",
-            "    acct = account_id if account_id != '123456789012' else DEFAULT_ACCOUNT_ID",
-            "    try:",
-            "        ecs_backend = get_backend('ecs')[acct][region]",
-            '        # Extract cluster from ARN',
-            "        cluster_name = arn.rsplit('/', 1)[-1]",
-            '        logger.info(f"EventBridge -> ECS RunTask (simulated): {cluster_name}")',
-            "    except Exception:",
-            '        logger.warning(f"EventBridge -> ECS target failed: {arn}")',
-            '    _log_invocation("ecs", arn, payload)',
-        ])
+        lines.extend(
+            [
+                "    # ECS RunTask - simulated (creates task record in Moto)",
+                "    from moto.backends import get_backend",
+                "    from moto.core import DEFAULT_ACCOUNT_ID",
+                "",
+                "    acct = account_id if account_id != '123456789012' else DEFAULT_ACCOUNT_ID",
+                "    try:",
+                "        ecs_backend = get_backend('ecs')[acct][region]",
+                "        # Extract cluster from ARN",
+                "        cluster_name = arn.rsplit('/', 1)[-1]",
+                '        logger.info(f"EventBridge -> ECS RunTask (simulated): {cluster_name}")',
+                "    except Exception:",
+                '        logger.warning(f"EventBridge -> ECS target failed: {arn}")',
+                '    _log_invocation("ecs", arn, payload)',
+            ]
+        )
     elif target_name == "eventbridge":
-        lines.extend([
-            "    import json as _json_mod",
-            "",
-            "    # Put events to another EventBridge bus",
-            '    bus_name = arn.rsplit("/", 1)[-1] if "/" in arn else "default"',
-            "    store = _get_store(region, account_id)",
-            "    bus = store.get_bus(bus_name)",
-            "    if bus:",
-            "        event = _json_mod.loads(payload) if isinstance(payload, str) else payload",
-            "        for rule in bus.rules.values():",
-            "            if rule.matches_event(event):",
-            "                _dispatch_to_targets(rule, event, region, account_id)",
-            '    _log_invocation("eventbridge", arn, payload)',
-            '    logger.info(f"EventBridge -> EventBridge bus: {bus_name}")',
-        ])
+        lines.extend(
+            [
+                "    import json as _json_mod",
+                "",
+                "    # Put events to another EventBridge bus",
+                '    bus_name = arn.rsplit("/", 1)[-1] if "/" in arn else "default"',
+                "    store = _get_store(region, account_id)",
+                "    bus = store.get_bus(bus_name)",
+                "    if bus:",
+                "        event = _json_mod.loads(payload) if isinstance(payload, str) else payload",
+                "        for rule in bus.rules.values():",
+                "            if rule.matches_event(event):",
+                "                _dispatch_to_targets(rule, event, region, account_id)",
+                '    _log_invocation("eventbridge", arn, payload)',
+                '    logger.info(f"EventBridge -> EventBridge bus: {bus_name}")',
+            ]
+        )
     else:
         # Generic stub for unsupported targets
-        lines.extend([
-            f'    logger.info(f"EventBridge -> {target_name} (simulated): {{arn}}")',
-            f'    _log_invocation("{target_name}", arn, payload)',
-        ])
+        lines.extend(
+            [
+                f'    logger.info(f"EventBridge -> {target_name} (simulated): {{arn}}")',
+                f'    _log_invocation("{target_name}", arn, payload)',
+            ]
+        )
 
     lines.append("")
     return "\n".join(lines)
@@ -292,11 +306,13 @@ def generate_dispatcher(targets: dict[str, dict]) -> str:
         lines.append(f'    if "{pattern}" in arn:')
         lines.append(f"        return _invoke_{name}_target(arn, payload, region, account_id)")
 
-    lines.extend([
-        "",
-        '    logger.warning(f"Unsupported EventBridge target type: {arn}")',
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            '    logger.warning(f"Unsupported EventBridge target type: {arn}")',
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -372,9 +388,7 @@ def generate_all(write: bool = False):
     if write:
         targets_dir = Path("src/robotocore/services/events/targets")
         targets_dir.mkdir(parents=True, exist_ok=True)
-        (targets_dir / "__init__.py").write_text(
-            '"""EventBridge target dispatchers."""\n'
-        )
+        (targets_dir / "__init__.py").write_text('"""EventBridge target dispatchers."""\n')
 
         content = [
             '"""EventBridge target handlers — auto-generated stubs.',

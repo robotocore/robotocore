@@ -35,9 +35,7 @@ class BatchStore:
         self.lock = threading.RLock()
 
 
-def _get_store(
-    region: str = "us-east-1", account_id: str = "123456789012"
-) -> BatchStore:
+def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> BatchStore:
     with _lock:
         if region not in _stores:
             _stores[region] = BatchStore(region, account_id)
@@ -83,9 +81,7 @@ def _route(pattern: str):
 # ---------------------------------------------------------------------------
 
 
-async def handle_batch_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_batch_request(request: Request, region: str, account_id: str) -> Response:
     """Handle an AWS Batch API request."""
     path = request.url.path
     method = request.method.upper()
@@ -102,7 +98,7 @@ async def handle_batch_request(
 
         # Tags routes with ARN in path
         if path.startswith("/v1/tags/"):
-            arn = path[len("/v1/tags/"):]
+            arn = path[len("/v1/tags/") :]
             if method == "POST":
                 return _json_response(_tag_resource(store, arn, params))
             elif method == "DELETE":
@@ -225,9 +221,7 @@ def _delete_compute_environment(
 # ---------------------------------------------------------------------------
 
 
-def _create_job_queue(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_job_queue(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("jobQueueName", "")
     if not name:
         raise BatchError("ClientException", "jobQueueName is required.")
@@ -247,9 +241,7 @@ def _create_job_queue(
 
     with store.lock:
         if name in store.job_queues:
-            raise BatchError(
-                "ClientException", f"Job queue {name} already exists."
-            )
+            raise BatchError("ClientException", f"Job queue {name} already exists.")
         store.job_queues[name] = queue
         if queue["tags"]:
             store.tags[queue_arn] = queue["tags"]
@@ -257,9 +249,7 @@ def _create_job_queue(
     return {"jobQueueArn": queue_arn, "jobQueueName": name}
 
 
-def _describe_job_queues(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_job_queues(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     names = params.get("jobQueues", [])
 
     with store.lock:
@@ -276,18 +266,14 @@ def _describe_job_queues(
     return {"jobQueues": queues}
 
 
-def _update_job_queue(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _update_job_queue(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("jobQueue", "")
     name = name.split("/")[-1] if "/" in name else name
 
     with store.lock:
         queue = store.job_queues.get(name)
         if not queue:
-            raise BatchError(
-                "ClientException", f"Job queue {name} not found."
-            )
+            raise BatchError("ClientException", f"Job queue {name} not found.")
         if "state" in params:
             queue["state"] = params["state"]
         if "priority" in params:
@@ -301,17 +287,13 @@ def _update_job_queue(
     }
 
 
-def _delete_job_queue(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _delete_job_queue(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("jobQueue", "")
     name = name.split("/")[-1] if "/" in name else name
 
     with store.lock:
         if name not in store.job_queues:
-            raise BatchError(
-                "ClientException", f"Job queue {name} not found."
-            )
+            raise BatchError("ClientException", f"Job queue {name} not found.")
         del store.job_queues[name]
     return {}
 
@@ -321,9 +303,7 @@ def _delete_job_queue(
 # ---------------------------------------------------------------------------
 
 
-def _register_job_definition(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _register_job_definition(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("jobDefinitionName", "")
     if not name:
         raise BatchError("ClientException", "jobDefinitionName is required.")
@@ -393,9 +373,7 @@ def _deregister_job_definition(
     with store.lock:
         jd = _resolve_job_definition(store, ref)
         if not jd:
-            raise BatchError(
-                "ClientException", f"Job definition {ref} not found."
-            )
+            raise BatchError("ClientException", f"Job definition {ref} not found.")
         jd["status"] = "INACTIVE"
     return {}
 
@@ -405,14 +383,10 @@ def _deregister_job_definition(
 # ---------------------------------------------------------------------------
 
 
-_JOB_LIFECYCLE = [
-    "SUBMITTED", "PENDING", "RUNNABLE", "STARTING", "RUNNING", "SUCCEEDED"
-]
+_JOB_LIFECYCLE = ["SUBMITTED", "PENDING", "RUNNABLE", "STARTING", "RUNNING", "SUCCEEDED"]
 
 
-def _submit_job(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _submit_job(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     job_name = params.get("jobName", "")
     job_queue = params.get("jobQueue", "")
     job_def = params.get("jobDefinition", "")
@@ -451,9 +425,7 @@ def _submit_job(
     return {"jobArn": job_arn, "jobId": job_id, "jobName": job_name}
 
 
-def _describe_jobs(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_jobs(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     job_ids = params.get("jobs", [])
 
     with store.lock:
@@ -466,9 +438,7 @@ def _describe_jobs(
     return {"jobs": jobs}
 
 
-def _list_jobs(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_jobs(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     job_queue = params.get("jobQueue", "")
     status_filter = params.get("jobStatus")
 
@@ -483,21 +453,21 @@ def _list_jobs(
                     continue
             if status_filter and job["status"] != status_filter:
                 continue
-            summaries.append({
-                "jobArn": job["jobArn"],
-                "jobId": job["jobId"],
-                "jobName": job["jobName"],
-                "createdAt": job["createdAt"],
-                "status": job["status"],
-                "statusReason": job["statusReason"],
-            })
+            summaries.append(
+                {
+                    "jobArn": job["jobArn"],
+                    "jobId": job["jobId"],
+                    "jobName": job["jobName"],
+                    "createdAt": job["createdAt"],
+                    "status": job["status"],
+                    "statusReason": job["statusReason"],
+                }
+            )
 
     return {"jobSummaryList": summaries}
 
 
-def _terminate_job(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _terminate_job(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     job_id = params.get("jobId", "")
     reason = params.get("reason", "Terminated by user")
 
@@ -512,9 +482,7 @@ def _terminate_job(
     return {}
 
 
-def _cancel_job(
-    store: BatchStore, params: dict, region: str, account_id: str
-) -> dict:
+def _cancel_job(store: BatchStore, params: dict, region: str, account_id: str) -> dict:
     job_id = params.get("jobId", "")
     reason = params.get("reason", "Cancelled by user")
 
@@ -539,9 +507,7 @@ def _cancel_job(
 # ---------------------------------------------------------------------------
 
 
-def _tag_resource(
-    store: BatchStore, arn: str, params: dict
-) -> dict:
+def _tag_resource(store: BatchStore, arn: str, params: dict) -> dict:
     new_tags = params.get("tags", {})
     with store.lock:
         existing = store.tags.setdefault(arn, {})
@@ -549,9 +515,7 @@ def _tag_resource(
     return {}
 
 
-def _untag_resource(
-    store: BatchStore, arn: str, tag_keys: list[str]
-) -> dict:
+def _untag_resource(store: BatchStore, arn: str, tag_keys: list[str]) -> dict:
     with store.lock:
         existing = store.tags.get(arn, {})
         for key in tag_keys:

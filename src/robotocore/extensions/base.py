@@ -45,9 +45,7 @@ class RobotocorePlugin:
     def on_shutdown(self) -> None:
         """Called when the server is shutting down."""
 
-    def on_request(
-        self, request: Request, context: dict
-    ) -> Request | Response | None:
+    def on_request(self, request: Request, context: dict) -> Request | Response | None:
         """Called before each AWS request is processed.
 
         Args:
@@ -61,9 +59,7 @@ class RobotocorePlugin:
         """
         return None
 
-    def on_response(
-        self, request: Request, response: Response, context: dict
-    ) -> Response | None:
+    def on_response(self, request: Request, response: Response, context: dict) -> Response | None:
         """Called after each AWS request is processed.
 
         Args:
@@ -77,9 +73,7 @@ class RobotocorePlugin:
         """
         return None
 
-    def on_error(
-        self, request: Request, error: Exception, context: dict
-    ) -> Response | None:
+    def on_error(self, request: Request, error: Exception, context: dict) -> Response | None:
         """Called when request processing raises an exception.
 
         Returns:

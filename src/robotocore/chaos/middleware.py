@@ -31,11 +31,13 @@ def chaos_handler(context: RequestContext) -> None:
 
     # Apply error injection
     if rule.error_code:
-        error_body = json.dumps({
-            "__type": rule.error_code,
-            "message": rule.error_message,
-            "Message": rule.error_message,
-        })
+        error_body = json.dumps(
+            {
+                "__type": rule.error_code,
+                "message": rule.error_message,
+                "Message": rule.error_message,
+            }
+        )
         context.response = Response(
             content=error_body,
             status_code=rule.status_code,

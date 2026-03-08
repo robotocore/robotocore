@@ -104,9 +104,7 @@ def _matches_filter_policy(filter_policy: dict, message_attributes: dict) -> boo
             rules = [rules]
 
         # Check for exists: false first
-        has_exists_false = any(
-            isinstance(r, dict) and r.get("exists") is False for r in rules
-        )
+        has_exists_false = any(isinstance(r, dict) and r.get("exists") is False for r in rules)
 
         if key not in message_attributes:
             if has_exists_false:
@@ -171,9 +169,7 @@ class SnsTopic:
 
     @property
     def content_based_dedup(self) -> bool:
-        return (
-            self.attributes.get("ContentBasedDeduplication", "false").lower() == "true"
-        )
+        return self.attributes.get("ContentBasedDeduplication", "false").lower() == "true"
 
     def check_dedup(
         self, message: str, dedup_id: str | None, group_id: str | None
@@ -196,9 +192,7 @@ class SnsTopic:
 
     def _clean_dedup_cache(self) -> None:
         now = time.time()
-        expired = [
-            k for k, t in self._dedup_cache.items() if now - t > self.DEDUP_INTERVAL
-        ]
+        expired = [k for k, t in self._dedup_cache.items() if now - t > self.DEDUP_INTERVAL]
         for k in expired:
             del self._dedup_cache[k]
 
@@ -282,9 +276,7 @@ class SnsStore:
             )
             if attributes:
                 if "RawMessageDelivery" in attributes:
-                    sub.raw_message_delivery = (
-                        attributes["RawMessageDelivery"].lower() == "true"
-                    )
+                    sub.raw_message_delivery = attributes["RawMessageDelivery"].lower() == "true"
                 if "FilterPolicy" in attributes:
                     sub.filter_policy = (
                         json.loads(attributes["FilterPolicy"])
@@ -297,9 +289,7 @@ class SnsStore:
             self.subscriptions[sub_arn] = sub
             return sub
 
-    def confirm_subscription(
-        self, topic_arn: str, token: str
-    ) -> SnsSubscription | None:
+    def confirm_subscription(self, topic_arn: str, token: str) -> SnsSubscription | None:
         """Confirm a pending subscription (for HTTP/HTTPS)."""
         with self.mutex:
             topic = self.topics.get(topic_arn)
@@ -320,18 +310,14 @@ class SnsStore:
             topic = self.topics.get(sub.topic_arn)
             if topic:
                 topic.subscriptions = [
-                    s
-                    for s in topic.subscriptions
-                    if s.subscription_arn != subscription_arn
+                    s for s in topic.subscriptions if s.subscription_arn != subscription_arn
                 ]
             return True
 
     def get_subscription(self, arn: str) -> SnsSubscription | None:
         return self.subscriptions.get(arn)
 
-    def list_subscriptions(
-        self, topic_arn: str | None = None
-    ) -> list[SnsSubscription]:
+    def list_subscriptions(self, topic_arn: str | None = None) -> list[SnsSubscription]:
         if topic_arn:
             topic = self.topics.get(topic_arn)
             return list(topic.subscriptions) if topic else []

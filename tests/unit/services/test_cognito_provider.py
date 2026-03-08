@@ -129,7 +129,10 @@ class TestJwtGeneration:
 
     def test_jwt_extra_claims(self):
         token = _generate_jwt(
-            "sub-123", "https://issuer", "client-id", "id",
+            "sub-123",
+            "https://issuer",
+            "client-id",
+            "id",
             {"cognito:username": "john"},
         )
         payload_part = token.split(".")[1]
@@ -249,9 +252,7 @@ class TestUserPoolClientCrud:
     @pytest.mark.asyncio
     async def test_list_clients(self):
         pool_id, _ = await _create_pool_and_client()
-        req = _make_request(
-            "ListUserPoolClients", {"UserPoolId": pool_id}
-        )
+        req = _make_request("ListUserPoolClients", {"UserPoolId": pool_id})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         data = json.loads(resp.body)
         assert len(data["UserPoolClients"]) == 1
@@ -266,11 +267,14 @@ class TestAuthFlows:
     @pytest.mark.asyncio
     async def test_sign_up(self):
         pool_id, client_id = await _create_pool_and_client()
-        req = _make_request("SignUp", {
-            "ClientId": client_id,
-            "Username": "testuser",
-            "Password": "P@ssw0rd!",
-        })
+        req = _make_request(
+            "SignUp",
+            {
+                "ClientId": client_id,
+                "Username": "testuser",
+                "Password": "P@ssw0rd!",
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -280,9 +284,9 @@ class TestAuthFlows:
     @pytest.mark.asyncio
     async def test_sign_up_duplicate(self):
         pool_id, client_id = await _create_pool_and_client()
-        req = _make_request("SignUp", {
-            "ClientId": client_id, "Username": "testuser", "Password": "P@ss1!"
-        })
+        req = _make_request(
+            "SignUp", {"ClientId": client_id, "Username": "testuser", "Password": "P@ss1!"}
+        )
         await handle_cognito_request(req, "us-east-1", "123456789012")
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
@@ -290,14 +294,12 @@ class TestAuthFlows:
     @pytest.mark.asyncio
     async def test_admin_confirm_sign_up(self):
         pool_id, client_id = await _create_pool_and_client()
-        req = _make_request("SignUp", {
-            "ClientId": client_id, "Username": "testuser", "Password": "P@ss1!"
-        })
+        req = _make_request(
+            "SignUp", {"ClientId": client_id, "Username": "testuser", "Password": "P@ss1!"}
+        )
         await handle_cognito_request(req, "us-east-1", "123456789012")
 
-        req2 = _make_request("AdminConfirmSignUp", {
-            "UserPoolId": pool_id, "Username": "testuser"
-        })
+        req2 = _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "testuser"})
         resp = await handle_cognito_request(req2, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
@@ -306,21 +308,26 @@ class TestAuthFlows:
         pool_id, client_id = await _create_pool_and_client()
         # Sign up and confirm
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminConfirmSignUp", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("InitiateAuth", {
-            "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": client_id,
-            "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
-        })
+        req = _make_request(
+            "InitiateAuth",
+            {
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "ClientId": client_id,
+                "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -332,21 +339,26 @@ class TestAuthFlows:
     async def test_initiate_auth_wrong_password(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminConfirmSignUp", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("InitiateAuth", {
-            "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": client_id,
-            "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Wrong!"},
-        })
+        req = _make_request(
+            "InitiateAuth",
+            {
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "ClientId": client_id,
+                "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Wrong!"},
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
 
@@ -354,16 +366,21 @@ class TestAuthFlows:
     async def test_initiate_auth_unconfirmed(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("InitiateAuth", {
-            "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": client_id,
-            "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
-        })
+        req = _make_request(
+            "InitiateAuth",
+            {
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "ClientId": client_id,
+                "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
 
@@ -371,22 +388,27 @@ class TestAuthFlows:
     async def test_admin_initiate_auth(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminConfirmSignUp", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminInitiateAuth", {
-            "UserPoolId": pool_id,
-            "ClientId": client_id,
-            "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
-            "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
-        })
+        req = _make_request(
+            "AdminInitiateAuth",
+            {
+                "UserPoolId": pool_id,
+                "ClientId": client_id,
+                "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -397,34 +419,38 @@ class TestAuthFlows:
         pool_id, client_id = await _create_pool_and_client()
         # AdminCreateUser creates FORCE_CHANGE_PASSWORD
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "admin_user"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "admin_user"}),
+            "us-east-1",
+            "123456789012",
         )
 
         # Auth should return NEW_PASSWORD_REQUIRED challenge
-        auth_req = _make_request("AdminInitiateAuth", {
-            "UserPoolId": pool_id,
-            "ClientId": client_id,
-            "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
-            "AuthParameters": {"USERNAME": "admin_user", "PASSWORD": "TempPass1!"},
-        })
+        auth_req = _make_request(
+            "AdminInitiateAuth",
+            {
+                "UserPoolId": pool_id,
+                "ClientId": client_id,
+                "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "admin_user", "PASSWORD": "TempPass1!"},
+            },
+        )
         auth_resp = await handle_cognito_request(auth_req, "us-east-1", "123456789012")
         auth_data = json.loads(auth_resp.body)
         assert auth_data["ChallengeName"] == "NEW_PASSWORD_REQUIRED"
 
         # Respond to challenge
-        challenge_req = _make_request("RespondToAuthChallenge", {
-            "ClientId": client_id,
-            "ChallengeName": "NEW_PASSWORD_REQUIRED",
-            "ChallengeResponses": {
-                "USERNAME": "admin_user",
-                "NEW_PASSWORD": "NewP@ss1!",
+        challenge_req = _make_request(
+            "RespondToAuthChallenge",
+            {
+                "ClientId": client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "ChallengeResponses": {
+                    "USERNAME": "admin_user",
+                    "NEW_PASSWORD": "NewP@ss1!",
+                },
             },
-        })
-        challenge_resp = await handle_cognito_request(
-            challenge_req, "us-east-1", "123456789012"
         )
+        challenge_resp = await handle_cognito_request(challenge_req, "us-east-1", "123456789012")
         assert challenge_resp.status_code == 200
         data = json.loads(challenge_resp.body)
         assert "AuthenticationResult" in data
@@ -440,21 +466,28 @@ class TestUserManagement:
     async def test_get_user_by_token(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminConfirmSignUp", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
         auth_resp = await handle_cognito_request(
-            _make_request("InitiateAuth", {
-                "AuthFlow": "USER_PASSWORD_AUTH",
-                "ClientId": client_id,
-                "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "InitiateAuth",
+                {
+                    "AuthFlow": "USER_PASSWORD_AUTH",
+                    "ClientId": client_id,
+                    "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
+                },
+            ),
+            "us-east-1",
+            "123456789012",
         )
         token = json.loads(auth_resp.body)["AuthenticationResult"]["AccessToken"]
 
@@ -468,14 +501,12 @@ class TestUserManagement:
     async def test_admin_get_user(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "admin_user"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "admin_user"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminGetUser", {
-            "UserPoolId": pool_id, "Username": "admin_user"
-        })
+        req = _make_request("AdminGetUser", {"UserPoolId": pool_id, "Username": "admin_user"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -484,11 +515,14 @@ class TestUserManagement:
     @pytest.mark.asyncio
     async def test_admin_create_user(self):
         pool_id = await _create_pool()
-        req = _make_request("AdminCreateUser", {
-            "UserPoolId": pool_id,
-            "Username": "newuser",
-            "TemporaryPassword": "Temp1!",
-        })
+        req = _make_request(
+            "AdminCreateUser",
+            {
+                "UserPoolId": pool_id,
+                "Username": "newuser",
+                "TemporaryPassword": "Temp1!",
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -498,21 +532,17 @@ class TestUserManagement:
     async def test_admin_delete_user(self):
         pool_id = await _create_pool()
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "tobedeleted"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "tobedeleted"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminDeleteUser", {
-            "UserPoolId": pool_id, "Username": "tobedeleted"
-        })
+        req = _make_request("AdminDeleteUser", {"UserPoolId": pool_id, "Username": "tobedeleted"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
         # Verify deleted
-        req2 = _make_request("AdminGetUser", {
-            "UserPoolId": pool_id, "Username": "tobedeleted"
-        })
+        req2 = _make_request("AdminGetUser", {"UserPoolId": pool_id, "Username": "tobedeleted"})
         resp2 = await handle_cognito_request(req2, "us-east-1", "123456789012")
         assert resp2.status_code == 404
 
@@ -527,14 +557,14 @@ class TestPasswordOps:
     async def test_forgot_password(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("ForgotPassword", {
-            "ClientId": client_id, "Username": "user1"
-        })
+        req = _make_request("ForgotPassword", {"ClientId": client_id, "Username": "user1"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert "CodeDeliveryDetails" in json.loads(resp.body)
@@ -543,17 +573,22 @@ class TestPasswordOps:
     async def test_confirm_forgot_password(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("ConfirmForgotPassword", {
-            "ClientId": client_id,
-            "Username": "user1",
-            "Password": "NewPass1!",
-            "ConfirmationCode": "123456",
-        })
+        req = _make_request(
+            "ConfirmForgotPassword",
+            {
+                "ClientId": client_id,
+                "Username": "user1",
+                "Password": "NewPass1!",
+                "ConfirmationCode": "123456",
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
@@ -561,24 +596,25 @@ class TestPasswordOps:
     async def test_admin_set_user_password(self):
         pool_id = await _create_pool()
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminSetUserPassword", {
-            "UserPoolId": pool_id,
-            "Username": "user1",
-            "Password": "NewPerm1!",
-            "Permanent": True,
-        })
+        req = _make_request(
+            "AdminSetUserPassword",
+            {
+                "UserPoolId": pool_id,
+                "Username": "user1",
+                "Password": "NewPerm1!",
+                "Permanent": True,
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
         # Verify status changed to CONFIRMED
-        req2 = _make_request("AdminGetUser", {
-            "UserPoolId": pool_id, "Username": "user1"
-        })
+        req2 = _make_request("AdminGetUser", {"UserPoolId": pool_id, "Username": "user1"})
         resp2 = await handle_cognito_request(req2, "us-east-1", "123456789012")
         data = json.loads(resp2.body)
         assert data["UserStatus"] == "CONFIRMED"
@@ -587,29 +623,39 @@ class TestPasswordOps:
     async def test_change_password(self):
         pool_id, client_id = await _create_pool_and_client()
         await handle_cognito_request(
-            _make_request("SignUp", {
-                "ClientId": client_id, "Username": "user1", "Password": "Pass1!"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "SignUp", {"ClientId": client_id, "Username": "user1", "Password": "Pass1!"}
+            ),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminConfirmSignUp", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminConfirmSignUp", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
         auth_resp = await handle_cognito_request(
-            _make_request("InitiateAuth", {
-                "AuthFlow": "USER_PASSWORD_AUTH",
-                "ClientId": client_id,
-                "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "InitiateAuth",
+                {
+                    "AuthFlow": "USER_PASSWORD_AUTH",
+                    "ClientId": client_id,
+                    "AuthParameters": {"USERNAME": "user1", "PASSWORD": "Pass1!"},
+                },
+            ),
+            "us-east-1",
+            "123456789012",
         )
         token = json.loads(auth_resp.body)["AuthenticationResult"]["AccessToken"]
 
-        req = _make_request("ChangePassword", {
-            "AccessToken": token,
-            "PreviousPassword": "Pass1!",
-            "ProposedPassword": "NewPass1!",
-        })
+        req = _make_request(
+            "ChangePassword",
+            {
+                "AccessToken": token,
+                "PreviousPassword": "Pass1!",
+                "ProposedPassword": "NewPass1!",
+            },
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
@@ -625,9 +671,9 @@ class TestListUsers:
         pool_id = await _create_pool()
         for name in ("alice", "bob"):
             await handle_cognito_request(
-                _make_request("AdminCreateUser", {
-                    "UserPoolId": pool_id, "Username": name
-                }), "us-east-1", "123456789012"
+                _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": name}),
+                "us-east-1",
+                "123456789012",
             )
 
         req = _make_request("ListUsers", {"UserPoolId": pool_id})
@@ -640,14 +686,12 @@ class TestListUsers:
         pool_id = await _create_pool()
         for name in ("alice", "bob"):
             await handle_cognito_request(
-                _make_request("AdminCreateUser", {
-                    "UserPoolId": pool_id, "Username": name
-                }), "us-east-1", "123456789012"
+                _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": name}),
+                "us-east-1",
+                "123456789012",
             )
 
-        req = _make_request("ListUsers", {
-            "UserPoolId": pool_id, "Filter": 'username = "alice"'
-        })
+        req = _make_request("ListUsers", {"UserPoolId": pool_id, "Filter": 'username = "alice"'})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         data = json.loads(resp.body)
         assert len(data["Users"]) == 1
@@ -663,9 +707,7 @@ class TestGroups:
     @pytest.mark.asyncio
     async def test_create_group(self):
         pool_id = await _create_pool()
-        req = _make_request("CreateGroup", {
-            "UserPoolId": pool_id, "GroupName": "admins"
-        })
+        req = _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -674,9 +716,7 @@ class TestGroups:
     @pytest.mark.asyncio
     async def test_create_duplicate_group(self):
         pool_id = await _create_pool()
-        req = _make_request("CreateGroup", {
-            "UserPoolId": pool_id, "GroupName": "admins"
-        })
+        req = _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"})
         await handle_cognito_request(req, "us-east-1", "123456789012")
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
@@ -685,13 +725,11 @@ class TestGroups:
     async def test_delete_group(self):
         pool_id = await _create_pool()
         await handle_cognito_request(
-            _make_request("CreateGroup", {
-                "UserPoolId": pool_id, "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
         )
-        req = _make_request("DeleteGroup", {
-            "UserPoolId": pool_id, "GroupName": "admins"
-        })
+        req = _make_request("DeleteGroup", {"UserPoolId": pool_id, "GroupName": "admins"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
@@ -700,9 +738,9 @@ class TestGroups:
         pool_id = await _create_pool()
         for g in ("admins", "users"):
             await handle_cognito_request(
-                _make_request("CreateGroup", {
-                    "UserPoolId": pool_id, "GroupName": g
-                }), "us-east-1", "123456789012"
+                _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": g}),
+                "us-east-1",
+                "123456789012",
             )
         req = _make_request("ListGroups", {"UserPoolId": pool_id})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
@@ -713,19 +751,20 @@ class TestGroups:
     async def test_add_user_to_group(self):
         pool_id = await _create_pool()
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("CreateGroup", {
-                "UserPoolId": pool_id, "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminAddUserToGroup", {
-            "UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"
-        })
+        req = _make_request(
+            "AdminAddUserToGroup",
+            {"UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"},
+        )
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
@@ -733,24 +772,25 @@ class TestGroups:
     async def test_list_groups_for_user(self):
         pool_id = await _create_pool()
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("CreateGroup", {
-                "UserPoolId": pool_id, "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminAddUserToGroup", {
-                "UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "AdminAddUserToGroup",
+                {"UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"},
+            ),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminListGroupsForUser", {
-            "UserPoolId": pool_id, "Username": "user1"
-        })
+        req = _make_request("AdminListGroupsForUser", {"UserPoolId": pool_id, "Username": "user1"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         data = json.loads(resp.body)
         assert len(data["Groups"]) == 1
@@ -760,29 +800,33 @@ class TestGroups:
     async def test_remove_user_from_group(self):
         pool_id = await _create_pool()
         await handle_cognito_request(
-            _make_request("AdminCreateUser", {
-                "UserPoolId": pool_id, "Username": "user1"
-            }), "us-east-1", "123456789012"
+            _make_request("AdminCreateUser", {"UserPoolId": pool_id, "Username": "user1"}),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("CreateGroup", {
-                "UserPoolId": pool_id, "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request("CreateGroup", {"UserPoolId": pool_id, "GroupName": "admins"}),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminAddUserToGroup", {
-                "UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "AdminAddUserToGroup",
+                {"UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"},
+            ),
+            "us-east-1",
+            "123456789012",
         )
         await handle_cognito_request(
-            _make_request("AdminRemoveUserFromGroup", {
-                "UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"
-            }), "us-east-1", "123456789012"
+            _make_request(
+                "AdminRemoveUserFromGroup",
+                {"UserPoolId": pool_id, "Username": "user1", "GroupName": "admins"},
+            ),
+            "us-east-1",
+            "123456789012",
         )
 
-        req = _make_request("AdminListGroupsForUser", {
-            "UserPoolId": pool_id, "Username": "user1"
-        })
+        req = _make_request("AdminListGroupsForUser", {"UserPoolId": pool_id, "Username": "user1"})
         resp = await handle_cognito_request(req, "us-east-1", "123456789012")
         data = json.loads(resp.body)
         assert len(data["Groups"]) == 0

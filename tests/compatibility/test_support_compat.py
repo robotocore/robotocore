@@ -163,4 +163,3 @@ class TestSupportExtended:
         resp = support.describe_communications(caseId=case_id)
         assert "communications" in resp
         assert len(resp["communications"]) >= 1
-

@@ -463,9 +463,7 @@ def _describe_stream_summary(
     }
 
 
-def _update_shard_count(
-    store: KinesisStore, params: dict, region: str, account_id: str
-) -> dict:
+def _update_shard_count(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
@@ -484,9 +482,7 @@ def _update_shard_count(
             f"ScalingType {scaling_type} is not supported. Only UNIFORM_SCALING is supported.",
         )
     if target_shard_count < 1:
-        raise KinesisError(
-            "InvalidArgumentException", "TargetShardCount must be at least 1."
-        )
+        raise KinesisError("InvalidArgumentException", "TargetShardCount must be at least 1.")
 
     current_shard_count = len(stream.shards)
 
@@ -529,7 +525,9 @@ def _list_tags(store: KinesisStore, params: dict, region: str, account_id: str) 
     return {"Tags": tags, "HasMoreTags": False}
 
 
-def _start_stream_encryption(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+def _start_stream_encryption(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
     name = params.get("StreamName", "")
     key_id = params.get("KeyId", "")
     encryption_type = params.get("EncryptionType", "KMS")
@@ -541,7 +539,9 @@ def _start_stream_encryption(store: KinesisStore, params: dict, region: str, acc
     return {}
 
 
-def _stop_stream_encryption(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+def _stop_stream_encryption(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
     if not stream:
@@ -551,7 +551,9 @@ def _stop_stream_encryption(store: KinesisStore, params: dict, region: str, acco
     return {}
 
 
-def _register_stream_consumer(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+def _register_stream_consumer(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
     stream_arn = params.get("StreamARN", "")
     consumer_name = params.get("ConsumerName", "")
     # Find stream by ARN
@@ -571,6 +573,7 @@ def _register_stream_consumer(store: KinesisStore, params: dict, region: str, ac
         )
 
     import time as _time
+
     consumer_arn = f"{stream_arn}/consumer/{consumer_name}:{int(_time.time())}"
     consumer = {
         "ConsumerName": consumer_name,
@@ -582,7 +585,9 @@ def _register_stream_consumer(store: KinesisStore, params: dict, region: str, ac
     return {"Consumer": consumer}
 
 
-def _describe_stream_consumer(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+def _describe_stream_consumer(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
     stream_arn = params.get("StreamARN", "")
     consumer_name = params.get("ConsumerName", "")
     consumer_arn = params.get("ConsumerARN", "")
@@ -610,7 +615,9 @@ def _list_stream_consumers(store: KinesisStore, params: dict, region: str, accou
     raise KinesisError("ResourceNotFoundException", f"Stream not found: {stream_arn}")
 
 
-def _deregister_stream_consumer(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
+def _deregister_stream_consumer(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
     stream_arn = params.get("StreamARN", "")
     consumer_name = params.get("ConsumerName", "")
     for s in store.streams.values():
@@ -638,6 +645,7 @@ def _split_shard(store: KinesisStore, params: dict, region: str, account_id: str
     # Create two new shards from the split
     mid = int(new_hash) if new_hash else (target.hash_key_start + target.hash_key_end) // 2
     from robotocore.services.kinesis.models import Shard
+
     new_id1 = f"shardId-{len(stream.shards):012d}"
     new_id2 = f"shardId-{len(stream.shards) + 1:012d}"
     shard1 = Shard(shard_id=new_id1, hash_key_start=target.hash_key_start, hash_key_end=mid - 1)
@@ -664,6 +672,7 @@ def _merge_shards(store: KinesisStore, params: dict, region: str, account_id: st
     if not s1 or not s2:
         raise KinesisError("ResourceNotFoundException", "Shard not found")
     from robotocore.services.kinesis.models import Shard
+
     new_id = f"shardId-{len(stream.shards):012d}"
     merged = Shard(
         shard_id=new_id,

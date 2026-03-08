@@ -86,10 +86,7 @@ def stop_query(query_id: str) -> bool:
 def get_all_queries() -> list[dict]:
     """Return all stored queries (for testing)."""
     with _query_lock:
-        return [
-            {"query_id": q["query_id"], "status": q["status"]}
-            for q in _queries.values()
-        ]
+        return [{"query_id": q["query_id"], "status": q["status"]} for q in _queries.values()]
 
 
 def clear_queries() -> None:
@@ -174,18 +171,12 @@ def _parse_command(text: str) -> dict | None:
         return {"type": "filter", "expression": text[7:].strip()}
 
     # stats count(*) by field
-    stats_match = re.match(
-        r"stats\s+(.+?)(?:\s+by\s+(.+))?$", text, re.IGNORECASE
-    )
+    stats_match = re.match(r"stats\s+(.+?)(?:\s+by\s+(.+))?$", text, re.IGNORECASE)
     if stats_match:
         aggregations_str = stats_match.group(1).strip()
         group_by_str = stats_match.group(2)
         aggregations = _parse_aggregations(aggregations_str)
-        group_by = (
-            [g.strip().lstrip("@") for g in group_by_str.split(",")]
-            if group_by_str
-            else []
-        )
+        group_by = [g.strip().lstrip("@") for g in group_by_str.split(",")] if group_by_str else []
         return {"type": "stats", "aggregations": aggregations, "group_by": group_by}
 
     # sort field asc/desc
@@ -201,9 +192,7 @@ def _parse_command(text: str) -> dict | None:
         return {"type": "limit", "count": int(limit_match.group(1))}
 
     # parse @message /regex/ as @field1, @field2
-    parse_match = re.match(
-        r'parse\s+(@?\w+)\s+[/"](.+?)[/"]\s+as\s+(.+)', text, re.IGNORECASE
-    )
+    parse_match = re.match(r'parse\s+(@?\w+)\s+[/"](.+?)[/"]\s+as\s+(.+)', text, re.IGNORECASE)
     if parse_match:
         source = parse_match.group(1).lstrip("@")
         pattern = parse_match.group(2)
@@ -307,9 +296,7 @@ def execute_pipeline(
             rows = _exec_parse(rows, cmd)
 
     # Convert to result format [{field: value}]
-    return [
-        {k: str(v) for k, v in row.items()} for row in rows
-    ]
+    return [{k: str(v) for k, v in row.items()} for row in rows]
 
 
 def _exec_fields(rows: list[dict], cmd: dict) -> list[dict]:
@@ -352,9 +339,7 @@ def _evaluate_filter(row: dict, expression: str) -> bool:
     expression = expression.strip()
 
     # like with regex: @field like /pattern/
-    like_regex = re.match(
-        r'(@?\w+)\s+like\s+/(.+)/', expression, re.IGNORECASE
-    )
+    like_regex = re.match(r"(@?\w+)\s+like\s+/(.+)/", expression, re.IGNORECASE)
     if like_regex:
         field = like_regex.group(1).lstrip("@")
         pattern = like_regex.group(2)
@@ -362,9 +347,7 @@ def _evaluate_filter(row: dict, expression: str) -> bool:
         return bool(re.search(pattern, val))
 
     # like with string: @field like "text"
-    like_str = re.match(
-        r'(@?\w+)\s+like\s+"([^"]*)"', expression, re.IGNORECASE
-    )
+    like_str = re.match(r'(@?\w+)\s+like\s+"([^"]*)"', expression, re.IGNORECASE)
     if like_str:
         field = like_str.group(1).lstrip("@")
         text = like_str.group(2)
@@ -571,7 +554,5 @@ def _execute_query(query_id: str, region: str, account_id: str) -> None:
             query["statistics"] = {
                 "recordsMatched": float(len(results)),
                 "recordsScanned": float(len(all_events)),
-                "bytesScanned": float(
-                    sum(len(str(e.get("message", ""))) for e in all_events)
-                ),
+                "bytesScanned": float(sum(len(str(e.get("message", ""))) for e in all_events)),
             }

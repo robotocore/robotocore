@@ -79,9 +79,7 @@ _TAGS = re.compile(r"^/v1/tags/(.+)$")
 # ---------------------------------------------------------------------------
 
 
-async def handle_appsync_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_appsync_request(request: Request, region: str, account_id: str) -> Response:
     """Handle an AppSync API request."""
     path = request.url.path
     method = request.method.upper()
@@ -95,74 +93,52 @@ async def handle_appsync_request(
         if m:
             api_id = m.group(1)
             if method == "GET":
-                return _json_response(
-                    _get_graphql_api(store, api_id, region, account_id)
-                )
+                return _json_response(_get_graphql_api(store, api_id, region, account_id))
             elif method == "POST":
                 return _json_response(
                     _update_graphql_api(store, api_id, params, region, account_id)
                 )
             elif method == "DELETE":
-                return _json_response(
-                    _delete_graphql_api(store, api_id, region, account_id)
-                )
+                return _json_response(_delete_graphql_api(store, api_id, region, account_id))
 
         if _APIS_LIST.match(path):
             if method == "POST":
-                return _json_response(
-                    _create_graphql_api(store, params, region, account_id)
-                )
+                return _json_response(_create_graphql_api(store, params, region, account_id))
             elif method == "GET":
-                return _json_response(
-                    _list_graphql_apis(store, region, account_id)
-                )
+                return _json_response(_list_graphql_apis(store, region, account_id))
 
         # API Keys
         m = _API_KEY_ITEM.match(path)
         if m:
             api_id, key_id = m.group(1), m.group(2)
             if method == "DELETE":
-                return _json_response(
-                    _delete_api_key(store, api_id, key_id)
-                )
+                return _json_response(_delete_api_key(store, api_id, key_id))
 
         m = _API_KEYS_LIST.match(path)
         if m:
             api_id = m.group(1)
             if method == "POST":
-                return _json_response(
-                    _create_api_key(store, api_id, params, region, account_id)
-                )
+                return _json_response(_create_api_key(store, api_id, params, region, account_id))
             elif method == "GET":
-                return _json_response(
-                    _list_api_keys(store, api_id)
-                )
+                return _json_response(_list_api_keys(store, api_id))
 
         # Schema
         m = _SCHEMA.match(path)
         if m:
             api_id = m.group(1)
             if method == "POST":
-                return _json_response(
-                    _start_schema_creation(store, api_id, params)
-                )
+                return _json_response(_start_schema_creation(store, api_id, params))
             elif method == "GET":
-                return _json_response(
-                    _get_schema_creation_status(store, api_id)
-                )
+                return _json_response(_get_schema_creation_status(store, api_id))
 
         # Resolvers
         m = _RESOLVER_ITEM.match(path)
         if m:
             api_id, type_name, field_name = m.group(1), m.group(2), m.group(3)
             if method == "GET":
-                return _json_response(
-                    _get_resolver(store, api_id, type_name, field_name)
-                )
+                return _json_response(_get_resolver(store, api_id, type_name, field_name))
             elif method == "DELETE":
-                return _json_response(
-                    _delete_resolver(store, api_id, type_name, field_name)
-                )
+                return _json_response(_delete_resolver(store, api_id, type_name, field_name))
 
         m = _RESOLVERS_LIST.match(path)
         if m:
@@ -172,22 +148,16 @@ async def handle_appsync_request(
                     _create_resolver(store, api_id, type_name, params, region, account_id)
                 )
             elif method == "GET":
-                return _json_response(
-                    _list_resolvers(store, api_id, type_name)
-                )
+                return _json_response(_list_resolvers(store, api_id, type_name))
 
         # Data Sources
         m = _DATA_SOURCE_ITEM.match(path)
         if m:
             api_id, ds_name = m.group(1), m.group(2)
             if method == "GET":
-                return _json_response(
-                    _get_data_source(store, api_id, ds_name)
-                )
+                return _json_response(_get_data_source(store, api_id, ds_name))
             elif method == "DELETE":
-                return _json_response(
-                    _delete_data_source(store, api_id, ds_name)
-                )
+                return _json_response(_delete_data_source(store, api_id, ds_name))
             elif method in ("POST", "PUT"):
                 return _json_response(
                     _update_data_source(store, api_id, ds_name, params, region, account_id)
@@ -201,30 +171,22 @@ async def handle_appsync_request(
                     _create_data_source(store, api_id, params, region, account_id)
                 )
             elif method == "GET":
-                return _json_response(
-                    _list_data_sources(store, api_id)
-                )
+                return _json_response(_list_data_sources(store, api_id))
 
         # Types
         m = _TYPE_ITEM.match(path)
         if m:
             api_id, type_name = m.group(1), m.group(2)
             if method == "GET":
-                return _json_response(
-                    _get_type(store, api_id, type_name)
-                )
+                return _json_response(_get_type(store, api_id, type_name))
 
         m = _TYPES_LIST.match(path)
         if m:
             api_id = m.group(1)
             if method == "POST":
-                return _json_response(
-                    _create_type(store, api_id, params, region, account_id)
-                )
+                return _json_response(_create_type(store, api_id, params, region, account_id))
             elif method == "GET":
-                return _json_response(
-                    _list_types(store, api_id)
-                )
+                return _json_response(_list_types(store, api_id))
 
         # Tags
         m = _TAGS.match(path)
@@ -249,9 +211,7 @@ async def handle_appsync_request(
 # ---------------------------------------------------------------------------
 
 
-def _create_graphql_api(
-    store: AppSyncStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_graphql_api(store: AppSyncStore, params: dict, region: str, account_id: str) -> dict:
     api_id = _new_id()[:26]
     name = params.get("name", "")
     if not name:
@@ -270,9 +230,7 @@ def _create_graphql_api(
         "tags": params.get("tags", {}),
         "xrayEnabled": params.get("xrayEnabled", False),
         "logConfig": params.get("logConfig"),
-        "additionalAuthenticationProviders": params.get(
-            "additionalAuthenticationProviders", []
-        ),
+        "additionalAuthenticationProviders": params.get("additionalAuthenticationProviders", []),
     }
 
     with store.lock:
@@ -285,21 +243,15 @@ def _create_graphql_api(
     return {"graphqlApi": api}
 
 
-def _get_graphql_api(
-    store: AppSyncStore, api_id: str, region: str, account_id: str
-) -> dict:
+def _get_graphql_api(store: AppSyncStore, api_id: str, region: str, account_id: str) -> dict:
     with store.lock:
         api = store.apis.get(api_id)
     if not api:
-        raise AppSyncError(
-            "NotFoundException", f"GraphQL API {api_id} not found.", 404
-        )
+        raise AppSyncError("NotFoundException", f"GraphQL API {api_id} not found.", 404)
     return {"graphqlApi": api}
 
 
-def _list_graphql_apis(
-    store: AppSyncStore, region: str, account_id: str
-) -> dict:
+def _list_graphql_apis(store: AppSyncStore, region: str, account_id: str) -> dict:
     with store.lock:
         apis = list(store.apis.values())
     return {"graphqlApis": apis}
@@ -311,9 +263,7 @@ def _update_graphql_api(
     with store.lock:
         api = store.apis.get(api_id)
         if not api:
-            raise AppSyncError(
-                "NotFoundException", f"GraphQL API {api_id} not found.", 404
-            )
+            raise AppSyncError("NotFoundException", f"GraphQL API {api_id} not found.", 404)
         if "name" in params:
             api["name"] = params["name"]
         if "authenticationType" in params:
@@ -325,14 +275,10 @@ def _update_graphql_api(
     return {"graphqlApi": api}
 
 
-def _delete_graphql_api(
-    store: AppSyncStore, api_id: str, region: str, account_id: str
-) -> dict:
+def _delete_graphql_api(store: AppSyncStore, api_id: str, region: str, account_id: str) -> dict:
     with store.lock:
         if api_id not in store.apis:
-            raise AppSyncError(
-                "NotFoundException", f"GraphQL API {api_id} not found.", 404
-            )
+            raise AppSyncError("NotFoundException", f"GraphQL API {api_id} not found.", 404)
         del store.apis[api_id]
         store.api_keys.pop(api_id, None)
         store.resolvers.pop(api_id, None)
@@ -379,9 +325,7 @@ def _delete_api_key(store: AppSyncStore, api_id: str, key_id: str) -> dict:
     with store.lock:
         keys = store.api_keys.get(api_id, {})
         if key_id not in keys:
-            raise AppSyncError(
-                "NotFoundException", f"API key {key_id} not found.", 404
-            )
+            raise AppSyncError("NotFoundException", f"API key {key_id} not found.", 404)
         del keys[key_id]
     return {}
 
@@ -391,9 +335,7 @@ def _delete_api_key(store: AppSyncStore, api_id: str, key_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _start_schema_creation(
-    store: AppSyncStore, api_id: str, params: dict
-) -> dict:
+def _start_schema_creation(store: AppSyncStore, api_id: str, params: dict) -> dict:
     _require_api(store, api_id)
     definition = params.get("definition", "")
 
@@ -410,9 +352,7 @@ def _get_schema_creation_status(store: AppSyncStore, api_id: str) -> dict:
     with store.lock:
         schema = store.schemas.get(api_id)
     if not schema:
-        raise AppSyncError(
-            "NotFoundException", f"Schema for API {api_id} not found.", 404
-        )
+        raise AppSyncError("NotFoundException", f"Schema for API {api_id} not found.", 404)
     return {"status": schema["status"]}
 
 
@@ -453,9 +393,7 @@ def _create_resolver(
     return {"resolver": resolver}
 
 
-def _get_resolver(
-    store: AppSyncStore, api_id: str, type_name: str, field_name: str
-) -> dict:
+def _get_resolver(store: AppSyncStore, api_id: str, type_name: str, field_name: str) -> dict:
     _require_api(store, api_id)
     key = f"{type_name}.{field_name}"
     with store.lock:
@@ -469,22 +407,16 @@ def _get_resolver(
     return {"resolver": resolver}
 
 
-def _list_resolvers(
-    store: AppSyncStore, api_id: str, type_name: str
-) -> dict:
+def _list_resolvers(store: AppSyncStore, api_id: str, type_name: str) -> dict:
     _require_api(store, api_id)
     with store.lock:
         resolvers = [
-            r
-            for r in store.resolvers.get(api_id, {}).values()
-            if r["typeName"] == type_name
+            r for r in store.resolvers.get(api_id, {}).values() if r["typeName"] == type_name
         ]
     return {"resolvers": resolvers}
 
 
-def _delete_resolver(
-    store: AppSyncStore, api_id: str, type_name: str, field_name: str
-) -> dict:
+def _delete_resolver(store: AppSyncStore, api_id: str, type_name: str, field_name: str) -> dict:
     _require_api(store, api_id)
     key = f"{type_name}.{field_name}"
     with store.lock:
@@ -514,8 +446,7 @@ def _create_data_source(
 
     ds = {
         "dataSourceArn": (
-            f"arn:aws:appsync:{region}:{account_id}"
-            f":apis/{api_id}/datasources/{name}"
+            f"arn:aws:appsync:{region}:{account_id}:apis/{api_id}/datasources/{name}"
         ),
         "name": name,
         "type": params.get("type", "NONE"),
@@ -536,16 +467,12 @@ def _create_data_source(
     return {"dataSource": ds}
 
 
-def _get_data_source(
-    store: AppSyncStore, api_id: str, name: str
-) -> dict:
+def _get_data_source(store: AppSyncStore, api_id: str, name: str) -> dict:
     _require_api(store, api_id)
     with store.lock:
         ds = store.data_sources.get(api_id, {}).get(name)
     if not ds:
-        raise AppSyncError(
-            "NotFoundException", f"Data source {name} not found.", 404
-        )
+        raise AppSyncError("NotFoundException", f"Data source {name} not found.", 404)
     return {"dataSource": ds}
 
 
@@ -556,16 +483,12 @@ def _list_data_sources(store: AppSyncStore, api_id: str) -> dict:
     return {"dataSources": sources}
 
 
-def _delete_data_source(
-    store: AppSyncStore, api_id: str, name: str
-) -> dict:
+def _delete_data_source(store: AppSyncStore, api_id: str, name: str) -> dict:
     _require_api(store, api_id)
     with store.lock:
         sources = store.data_sources.get(api_id, {})
         if name not in sources:
-            raise AppSyncError(
-                "NotFoundException", f"Data source {name} not found.", 404
-            )
+            raise AppSyncError("NotFoundException", f"Data source {name} not found.", 404)
         del sources[name]
     return {}
 
@@ -578,9 +501,7 @@ def _update_data_source(
         sources = store.data_sources.get(api_id, {})
         ds = sources.get(name)
         if not ds:
-            raise AppSyncError(
-                "NotFoundException", f"Data source {name} not found.", 404
-            )
+            raise AppSyncError("NotFoundException", f"Data source {name} not found.", 404)
         if "type" in params:
             ds["type"] = params["type"]
         if "description" in params:
@@ -616,10 +537,7 @@ def _create_type(
     t = {
         "name": type_name,
         "description": params.get("description", ""),
-        "arn": (
-            f"arn:aws:appsync:{region}:{account_id}"
-            f":apis/{api_id}/types/{type_name}"
-        ),
+        "arn": (f"arn:aws:appsync:{region}:{account_id}:apis/{api_id}/types/{type_name}"),
         "definition": definition,
         "format": fmt,
     }
@@ -634,9 +552,7 @@ def _get_type(store: AppSyncStore, api_id: str, type_name: str) -> dict:
     with store.lock:
         t = store.types.get(api_id, {}).get(type_name)
     if not t:
-        raise AppSyncError(
-            "NotFoundException", f"Type {type_name} not found.", 404
-        )
+        raise AppSyncError("NotFoundException", f"Type {type_name} not found.", 404)
     return {"type": t}
 
 
@@ -655,9 +571,7 @@ def _list_types(store: AppSyncStore, api_id: str) -> dict:
 def _require_api(store: AppSyncStore, api_id: str) -> None:
     with store.lock:
         if api_id not in store.apis:
-            raise AppSyncError(
-                "NotFoundException", f"GraphQL API {api_id} not found.", 404
-            )
+            raise AppSyncError("NotFoundException", f"GraphQL API {api_id} not found.", 404)
 
 
 def _json_response(data: dict, status: int = 200) -> Response:

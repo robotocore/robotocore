@@ -180,12 +180,14 @@ async def health(request: Request) -> JSONResponse:
             "requests": counts.get(name, 0),
         }
 
-    return JSONResponse({
-        "status": "running",
-        "version": "1.0.0",
-        "uptime_seconds": round(uptime, 1),
-        "services": services_status,
-    })
+    return JSONResponse(
+        {
+            "status": "running",
+            "version": "1.0.0",
+            "uptime_seconds": round(uptime, 1),
+            "services": services_status,
+        }
+    )
 
 
 async def services_endpoint(request: Request) -> JSONResponse:
@@ -193,29 +195,31 @@ async def services_endpoint(request: Request) -> JSONResponse:
     services = []
     for name, info in sorted(SERVICE_REGISTRY.items()):
         stype = "native" if info.status == ServiceStatus.NATIVE else "moto"
-        services.append({
-            "name": name,
-            "status": stype,
-            "protocol": info.protocol,
-            "description": info.description,
-        })
+        services.append(
+            {
+                "name": name,
+                "status": stype,
+                "protocol": info.protocol,
+                "description": info.description,
+            }
+        )
     return JSONResponse({"services": services})
 
 
 async def config_endpoint(request: Request) -> JSONResponse:
     """Return current Robotocore configuration."""
-    native_count = sum(
-        1 for s in SERVICE_REGISTRY.values() if s.status == ServiceStatus.NATIVE
+    native_count = sum(1 for s in SERVICE_REGISTRY.values() if s.status == ServiceStatus.NATIVE)
+    return JSONResponse(
+        {
+            "enforce_iam": False,
+            "persistence": os.environ.get("PERSISTENCE", "0") == "1",
+            "log_level": os.environ.get("LOG_LEVEL", "INFO").upper(),
+            "debug": os.environ.get("DEBUG", "0") == "1",
+            "region": os.environ.get("DEFAULT_REGION", "us-east-1"),
+            "services_count": len(SERVICE_REGISTRY),
+            "native_providers": native_count,
+        }
     )
-    return JSONResponse({
-        "enforce_iam": False,
-        "persistence": os.environ.get("PERSISTENCE", "0") == "1",
-        "log_level": os.environ.get("LOG_LEVEL", "INFO").upper(),
-        "debug": os.environ.get("DEBUG", "0") == "1",
-        "region": os.environ.get("DEFAULT_REGION", "us-east-1"),
-        "services_count": len(SERVICE_REGISTRY),
-        "native_providers": native_count,
-    })
 
 
 async def save_state(request: Request) -> JSONResponse:
@@ -447,9 +451,7 @@ def _maybe_persist() -> None:
 
     manager = get_state_manager()
     if not manager.state_dir:
-        default_dir = os.environ.get(
-            "ROBOTOCORE_STATE_DIR", "/tmp/robotocore/state"
-        )
+        default_dir = os.environ.get("ROBOTOCORE_STATE_DIR", "/tmp/robotocore/state")
         from pathlib import Path
 
         manager.state_dir = Path(default_dir)
@@ -523,7 +525,10 @@ async def handle_execute_api_v2(
 
 
 async def handle_connections_api(
-    request: Request, api_id: str, stage: str, connection_id: str,
+    request: Request,
+    api_id: str,
+    stage: str,
+    connection_id: str,
 ) -> Response:
     """Handle @connections API for WebSocket management."""
     from robotocore.services.apigatewayv2.provider import (
@@ -651,9 +656,7 @@ class AWSRoutingMiddleware:
         request = Request(scope, receive)
 
         # V1: /restapis/{id}/{stage}/_user_request_/{path}
-        exec_match = re.match(
-            r"^/restapis/([^/]+)/([^/]+)/_user_request_/?(.*)", path
-        )
+        exec_match = re.match(r"^/restapis/([^/]+)/([^/]+)/_user_request_/?(.*)", path)
         if exec_match:
             response = await handle_execute_api(
                 request,
@@ -665,9 +668,7 @@ class AWSRoutingMiddleware:
             return
 
         # V2: /@connections/{connection_id} (WebSocket management)
-        conn_match = re.match(
-            r"^/@connections/([^/]+)$", path
-        )
+        conn_match = re.match(r"^/@connections/([^/]+)$", path)
         if conn_match:
             api_id = request.query_params.get("apiId", "")
             stage = request.query_params.get("stage", "$default")
@@ -681,9 +682,7 @@ class AWSRoutingMiddleware:
             return
 
         # V2: /v2-exec/{api_id}/{stage}/{path} (HTTP API execution)
-        v2_match = re.match(
-            r"^/v2-exec/([^/]+)/([^/]+)/?(.*)", path
-        )
+        v2_match = re.match(r"^/v2-exec/([^/]+)/([^/]+)/?(.*)", path)
         if v2_match:
             response = await handle_execute_api_v2(
                 request,

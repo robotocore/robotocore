@@ -61,10 +61,7 @@ class EventArchive:
 
     @property
     def arn(self) -> str:
-        return (
-            f"arn:aws:events:{self.region}:{self.account_id}"
-            f":archive/{self.name}"
-        )
+        return f"arn:aws:events:{self.region}:{self.account_id}:archive/{self.name}"
 
 
 @dataclass
@@ -82,10 +79,7 @@ class EventReplay:
 
     @property
     def arn(self) -> str:
-        return (
-            f"arn:aws:events:{self.region}:{self.account_id}"
-            f":replay/{self.name}"
-        )
+        return f"arn:aws:events:{self.region}:{self.account_id}:replay/{self.name}"
 
 
 @dataclass
@@ -278,14 +272,10 @@ class EventsStore:
         with self.mutex:
             return self.archives.pop(name, None) is not None
 
-    def list_archives(
-        self, prefix: str | None = None
-    ) -> list[EventArchive]:
+    def list_archives(self, prefix: str | None = None) -> list[EventArchive]:
         archives = list(self.archives.values())
         if prefix:
-            archives = [
-                a for a in archives if a.name.startswith(prefix)
-            ]
+            archives = [a for a in archives if a.name.startswith(prefix)]
         return archives
 
     def archive_event(self, event: dict, bus_name: str) -> None:
@@ -301,9 +291,7 @@ class EventsStore:
                 if archive.state != "ENABLED":
                     continue
                 if archive.event_pattern:
-                    if not _match_pattern(
-                        archive.event_pattern, event
-                    ):
+                    if not _match_pattern(archive.event_pattern, event):
                         continue
                 import json
 

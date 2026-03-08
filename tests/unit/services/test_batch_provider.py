@@ -45,27 +45,41 @@ def _clear_stores():
 
 
 async def _create_compute_env(name: str = "test-ce") -> str:
-    req = _make_request("POST", "/v1/createcomputeenvironment", {
-        "computeEnvironmentName": name, "type": "MANAGED",
-    })
+    req = _make_request(
+        "POST",
+        "/v1/createcomputeenvironment",
+        {
+            "computeEnvironmentName": name,
+            "type": "MANAGED",
+        },
+    )
     resp = await handle_batch_request(req, REGION, ACCOUNT)
     return json.loads(resp.body)["computeEnvironmentArn"]
 
 
 async def _create_job_queue(name: str = "test-queue") -> str:
-    req = _make_request("POST", "/v1/createjobqueue", {
-        "jobQueueName": name, "priority": 1,
-    })
+    req = _make_request(
+        "POST",
+        "/v1/createjobqueue",
+        {
+            "jobQueueName": name,
+            "priority": 1,
+        },
+    )
     resp = await handle_batch_request(req, REGION, ACCOUNT)
     return json.loads(resp.body)["jobQueueArn"]
 
 
 async def _register_job_def(name: str = "test-def") -> str:
-    req = _make_request("POST", "/v1/registerjobdefinition", {
-        "jobDefinitionName": name,
-        "type": "container",
-        "containerProperties": {"image": "busybox", "vcpus": 1, "memory": 512},
-    })
+    req = _make_request(
+        "POST",
+        "/v1/registerjobdefinition",
+        {
+            "jobDefinitionName": name,
+            "type": "container",
+            "containerProperties": {"image": "busybox", "vcpus": 1, "memory": 512},
+        },
+    )
     resp = await handle_batch_request(req, REGION, ACCOUNT)
     return json.loads(resp.body)["jobDefinitionArn"]
 
@@ -103,9 +117,14 @@ class TestResponseHelpers:
 class TestComputeEnvironments:
     @pytest.mark.asyncio
     async def test_create(self):
-        req = _make_request("POST", "/v1/createcomputeenvironment", {
-            "computeEnvironmentName": "myenv", "type": "MANAGED",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/createcomputeenvironment",
+            {
+                "computeEnvironmentName": "myenv",
+                "type": "MANAGED",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -114,18 +133,26 @@ class TestComputeEnvironments:
     @pytest.mark.asyncio
     async def test_create_duplicate(self):
         await _create_compute_env("myenv")
-        req = _make_request("POST", "/v1/createcomputeenvironment", {
-            "computeEnvironmentName": "myenv",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/createcomputeenvironment",
+            {
+                "computeEnvironmentName": "myenv",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_describe(self):
         await _create_compute_env("myenv")
-        req = _make_request("POST", "/v1/describecomputeenvironments", {
-            "computeEnvironments": ["myenv"],
-        })
+        req = _make_request(
+            "POST",
+            "/v1/describecomputeenvironments",
+            {
+                "computeEnvironments": ["myenv"],
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["computeEnvironments"]) == 1
@@ -142,26 +169,39 @@ class TestComputeEnvironments:
     @pytest.mark.asyncio
     async def test_update(self):
         await _create_compute_env("myenv")
-        req = _make_request("POST", "/v1/updatecomputeenvironment", {
-            "computeEnvironment": "myenv", "state": "DISABLED",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/updatecomputeenvironment",
+            {
+                "computeEnvironment": "myenv",
+                "state": "DISABLED",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_delete(self):
         await _create_compute_env("myenv")
-        req = _make_request("POST", "/v1/deletecomputeenvironment", {
-            "computeEnvironment": "myenv",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/deletecomputeenvironment",
+            {
+                "computeEnvironment": "myenv",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent(self):
-        req = _make_request("POST", "/v1/deletecomputeenvironment", {
-            "computeEnvironment": "nope",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/deletecomputeenvironment",
+            {
+                "computeEnvironment": "nope",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
 
@@ -174,9 +214,14 @@ class TestComputeEnvironments:
 class TestJobQueues:
     @pytest.mark.asyncio
     async def test_create(self):
-        req = _make_request("POST", "/v1/createjobqueue", {
-            "jobQueueName": "myqueue", "priority": 10,
-        })
+        req = _make_request(
+            "POST",
+            "/v1/createjobqueue",
+            {
+                "jobQueueName": "myqueue",
+                "priority": 10,
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -185,9 +230,13 @@ class TestJobQueues:
     @pytest.mark.asyncio
     async def test_describe(self):
         await _create_job_queue("q1")
-        req = _make_request("POST", "/v1/describejobqueues", {
-            "jobQueues": ["q1"],
-        })
+        req = _make_request(
+            "POST",
+            "/v1/describejobqueues",
+            {
+                "jobQueues": ["q1"],
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["jobQueues"]) == 1
@@ -195,9 +244,14 @@ class TestJobQueues:
     @pytest.mark.asyncio
     async def test_update(self):
         await _create_job_queue("q1")
-        req = _make_request("POST", "/v1/updatejobqueue", {
-            "jobQueue": "q1", "priority": 99,
-        })
+        req = _make_request(
+            "POST",
+            "/v1/updatejobqueue",
+            {
+                "jobQueue": "q1",
+                "priority": 99,
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
@@ -217,10 +271,15 @@ class TestJobQueues:
 class TestJobDefinitions:
     @pytest.mark.asyncio
     async def test_register(self):
-        req = _make_request("POST", "/v1/registerjobdefinition", {
-            "jobDefinitionName": "mydef", "type": "container",
-            "containerProperties": {"image": "busybox"},
-        })
+        req = _make_request(
+            "POST",
+            "/v1/registerjobdefinition",
+            {
+                "jobDefinitionName": "mydef",
+                "type": "container",
+                "containerProperties": {"image": "busybox"},
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -230,9 +289,13 @@ class TestJobDefinitions:
     async def test_revision_auto_increment(self):
         for _ in range(3):
             await _register_job_def("mydef")
-        req = _make_request("POST", "/v1/describejobdefinitions", {
-            "jobDefinitionName": "mydef",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/describejobdefinitions",
+            {
+                "jobDefinitionName": "mydef",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["jobDefinitions"]) == 3
@@ -240,9 +303,13 @@ class TestJobDefinitions:
     @pytest.mark.asyncio
     async def test_describe_by_name(self):
         await _register_job_def("mydef")
-        req = _make_request("POST", "/v1/describejobdefinitions", {
-            "jobDefinitions": ["mydef:1"],
-        })
+        req = _make_request(
+            "POST",
+            "/v1/describejobdefinitions",
+            {
+                "jobDefinitions": ["mydef:1"],
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["jobDefinitions"]) == 1
@@ -250,9 +317,13 @@ class TestJobDefinitions:
     @pytest.mark.asyncio
     async def test_deregister(self):
         await _register_job_def("mydef")
-        req = _make_request("POST", "/v1/deregisterjobdefinition", {
-            "jobDefinition": "mydef:1",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/deregisterjobdefinition",
+            {
+                "jobDefinition": "mydef:1",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
@@ -267,11 +338,15 @@ class TestJobs:
     async def test_submit_job(self):
         await _create_job_queue("q1")
         await _register_job_def("mydef")
-        req = _make_request("POST", "/v1/submitjob", {
-            "jobName": "myjob",
-            "jobQueue": "q1",
-            "jobDefinition": "mydef",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/submitjob",
+            {
+                "jobName": "myjob",
+                "jobQueue": "q1",
+                "jobDefinition": "mydef",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -283,9 +358,17 @@ class TestJobs:
         await _create_job_queue("q1")
         await _register_job_def("mydef")
         submit_resp = await handle_batch_request(
-            _make_request("POST", "/v1/submitjob", {
-                "jobName": "myjob", "jobQueue": "q1", "jobDefinition": "mydef",
-            }), REGION, ACCOUNT
+            _make_request(
+                "POST",
+                "/v1/submitjob",
+                {
+                    "jobName": "myjob",
+                    "jobQueue": "q1",
+                    "jobDefinition": "mydef",
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
         job_id = json.loads(submit_resp.body)["jobId"]
 
@@ -300,13 +383,26 @@ class TestJobs:
         await _create_job_queue("q1")
         await _register_job_def("mydef")
         await handle_batch_request(
-            _make_request("POST", "/v1/submitjob", {
-                "jobName": "myjob", "jobQueue": "q1", "jobDefinition": "mydef",
-            }), REGION, ACCOUNT
+            _make_request(
+                "POST",
+                "/v1/submitjob",
+                {
+                    "jobName": "myjob",
+                    "jobQueue": "q1",
+                    "jobDefinition": "mydef",
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
-        req = _make_request("POST", "/v1/listjobs", {
-            "jobQueue": "q1", "jobStatus": "SUCCEEDED",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/listjobs",
+            {
+                "jobQueue": "q1",
+                "jobStatus": "SUCCEEDED",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["jobSummaryList"]) == 1
@@ -316,15 +412,28 @@ class TestJobs:
         await _create_job_queue("q1")
         await _register_job_def("mydef")
         submit_resp = await handle_batch_request(
-            _make_request("POST", "/v1/submitjob", {
-                "jobName": "myjob", "jobQueue": "q1", "jobDefinition": "mydef",
-            }), REGION, ACCOUNT
+            _make_request(
+                "POST",
+                "/v1/submitjob",
+                {
+                    "jobName": "myjob",
+                    "jobQueue": "q1",
+                    "jobDefinition": "mydef",
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
         job_id = json.loads(submit_resp.body)["jobId"]
 
-        req = _make_request("POST", "/v1/terminatejob", {
-            "jobId": job_id, "reason": "Testing",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/terminatejob",
+            {
+                "jobId": job_id,
+                "reason": "Testing",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
@@ -334,9 +443,17 @@ class TestJobs:
         await _register_job_def("mydef")
         # Override status to SUBMITTED for cancel test
         submit_resp = await handle_batch_request(
-            _make_request("POST", "/v1/submitjob", {
-                "jobName": "myjob", "jobQueue": "q1", "jobDefinition": "mydef",
-            }), REGION, ACCOUNT
+            _make_request(
+                "POST",
+                "/v1/submitjob",
+                {
+                    "jobName": "myjob",
+                    "jobQueue": "q1",
+                    "jobDefinition": "mydef",
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
         job_id = json.loads(submit_resp.body)["jobId"]
         # Set status back to SUBMITTED for cancel test
@@ -344,9 +461,14 @@ class TestJobs:
         with store.lock:
             store.jobs[job_id]["status"] = "SUBMITTED"
 
-        req = _make_request("POST", "/v1/canceljob", {
-            "jobId": job_id, "reason": "No longer needed",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/canceljob",
+            {
+                "jobId": job_id,
+                "reason": "No longer needed",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
@@ -361,7 +483,8 @@ class TestTagging:
     async def test_tag_resource(self):
         arn = await _create_compute_env("tagged-env")
         req = _make_request(
-            "POST", f"/v1/tags/{arn}",
+            "POST",
+            f"/v1/tags/{arn}",
             {"tags": {"env": "test", "team": "eng"}},
         )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
@@ -371,8 +494,7 @@ class TestTagging:
     async def test_list_tags(self):
         arn = await _create_compute_env("tagged-env")
         await handle_batch_request(
-            _make_request("POST", f"/v1/tags/{arn}", {"tags": {"env": "test"}}),
-            REGION, ACCOUNT
+            _make_request("POST", f"/v1/tags/{arn}", {"tags": {"env": "test"}}), REGION, ACCOUNT
         )
         req = _make_request("GET", f"/v1/tags/{arn}")
         resp = await handle_batch_request(req, REGION, ACCOUNT)
@@ -383,8 +505,7 @@ class TestTagging:
     async def test_untag_resource(self):
         arn = await _create_compute_env("tagged-env")
         await handle_batch_request(
-            _make_request("POST", f"/v1/tags/{arn}", {"tags": {"env": "test"}}),
-            REGION, ACCOUNT
+            _make_request("POST", f"/v1/tags/{arn}", {"tags": {"env": "test"}}), REGION, ACCOUNT
         )
         req = _make_request("DELETE", f"/v1/tags/{arn}", query="tagKeys=env")
         resp = await handle_batch_request(req, REGION, ACCOUNT)
@@ -405,8 +526,13 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_missing_job_name(self):
-        req = _make_request("POST", "/v1/submitjob", {
-            "jobQueue": "q1", "jobDefinition": "mydef",
-        })
+        req = _make_request(
+            "POST",
+            "/v1/submitjob",
+            {
+                "jobQueue": "q1",
+                "jobDefinition": "mydef",
+            },
+        )
         resp = await handle_batch_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400

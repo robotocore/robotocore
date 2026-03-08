@@ -68,9 +68,7 @@ def validate_presigned_url(info: PresignedUrlInfo) -> bool:
     return True
 
 
-def _parse_sigv4(
-    params: dict[str, list[str]], bucket: str, key: str
-) -> PresignedUrlInfo:
+def _parse_sigv4(params: dict[str, list[str]], bucket: str, key: str) -> PresignedUrlInfo:
     """Parse SigV4 presigned URL parameters."""
     signature = _first(params, "X-Amz-Signature")
     credential = _first(params, "X-Amz-Credential")
@@ -100,9 +98,7 @@ def _parse_sigv4(
     )
 
 
-def _parse_sigv2(
-    params: dict[str, list[str]], bucket: str, key: str
-) -> PresignedUrlInfo:
+def _parse_sigv2(params: dict[str, list[str]], bucket: str, key: str) -> PresignedUrlInfo:
     """Parse SigV2 presigned URL parameters."""
     signature = _first(params, "Signature")
     access_key = _first(params, "AWSAccessKeyId")
@@ -136,9 +132,7 @@ def _check_sigv4_expiration(date_str: str, expires_seconds: int) -> bool:
         return False
     try:
         # Parse ISO 8601 basic format: 20260101T000000Z
-        sign_time = time.mktime(
-            time.strptime(date_str, "%Y%m%dT%H%M%SZ")
-        )
+        sign_time = time.mktime(time.strptime(date_str, "%Y%m%dT%H%M%SZ"))
         return time.time() > (sign_time + expires_seconds)
     except (ValueError, OverflowError):
         return False

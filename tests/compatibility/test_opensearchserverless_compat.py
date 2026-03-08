@@ -19,9 +19,7 @@ class TestOpenSearchServerlessOperations:
 
     def test_list_collections_with_filter(self, opensearchserverless):
         """ListCollections accepts a filter parameter."""
-        response = opensearchserverless.list_collections(
-            collectionFilters={"status": "ACTIVE"}
-        )
+        response = opensearchserverless.list_collections(collectionFilters={"status": "ACTIVE"})
         assert "collectionSummaries" in response
 
     def test_list_collections_status_code(self, opensearchserverless):

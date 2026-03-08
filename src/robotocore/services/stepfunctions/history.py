@@ -55,9 +55,7 @@ class ExecutionHistory:
             details={"output": output},
         )
 
-    def execution_failed(
-        self, error: str, cause: str, prev_id: int = 0
-    ) -> int:
+    def execution_failed(self, error: str, cause: str, prev_id: int = 0) -> int:
         return self._add_event(
             "ExecutionFailed",
             previous_event_id=prev_id,
@@ -133,9 +131,7 @@ class ExecutionHistory:
             },
         )
 
-    def task_failed(
-        self, resource: str, error: str, cause: str, prev_id: int = 0
-    ) -> int:
+    def task_failed(self, resource: str, error: str, cause: str, prev_id: int = 0) -> int:
         return self._add_event(
             "TaskFailed",
             previous_event_id=prev_id,

@@ -11,7 +11,6 @@ def _unique(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-
 @pytest.fixture
 def route53():
     return make_client("route53")
@@ -289,7 +288,8 @@ class TestRoute53Operations:
         )
         response = route53.list_resource_record_sets(HostedZoneId=hosted_zone)
         records = [
-            r for r in response["ResourceRecordSets"]
+            r
+            for r in response["ResourceRecordSets"]
             if r["Type"] == "A" and "upsert.example.com." in r["Name"]
         ]
         assert len(records) == 1
@@ -314,7 +314,8 @@ class TestRoute53Operations:
         )
         response2 = route53.list_resource_record_sets(HostedZoneId=hosted_zone)
         records2 = [
-            r for r in response2["ResourceRecordSets"]
+            r
+            for r in response2["ResourceRecordSets"]
             if r["Type"] == "A" and "upsert.example.com." in r["Name"]
         ]
         assert len(records2) == 1
@@ -755,7 +756,8 @@ class TestRoute53Extended:
             )
             resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
             weighted = [
-                r for r in resp["ResourceRecordSets"]
+                r
+                for r in resp["ResourceRecordSets"]
                 if r.get("SetIdentifier") in ("weight-1", "weight-2")
             ]
             assert len(weighted) == 2
@@ -829,11 +831,14 @@ class TestRoute53Extended:
             )
             resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
             alias_records = [
-                r for r in resp["ResourceRecordSets"]
+                r
+                for r in resp["ResourceRecordSets"]
                 if r["Name"] == "www.alias.example.com." and "AliasTarget" in r
             ]
             assert len(alias_records) == 1
-            assert alias_records[0]["AliasTarget"]["DNSName"].rstrip(".") == "target.alias.example.com"
+            assert (
+                alias_records[0]["AliasTarget"]["DNSName"].rstrip(".") == "target.alias.example.com"
+            )
             # Cleanup
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
@@ -892,15 +897,17 @@ class TestRoute53Extended:
             # Create several records
             changes = []
             for i in range(5):
-                changes.append({
-                    "Action": "CREATE",
-                    "ResourceRecordSet": {
-                        "Name": f"r{i}.paginate.example.com",
-                        "Type": "A",
-                        "TTL": 60,
-                        "ResourceRecords": [{"Value": f"10.0.0.{i+1}"}],
-                    },
-                })
+                changes.append(
+                    {
+                        "Action": "CREATE",
+                        "ResourceRecordSet": {
+                            "Name": f"r{i}.paginate.example.com",
+                            "Type": "A",
+                            "TTL": 60,
+                            "ResourceRecords": [{"Value": f"10.0.0.{i + 1}"}],
+                        },
+                    }
+                )
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
                 ChangeBatch={"Changes": changes},
@@ -916,15 +923,17 @@ class TestRoute53Extended:
             # Cleanup
             del_changes = []
             for i in range(5):
-                del_changes.append({
-                    "Action": "DELETE",
-                    "ResourceRecordSet": {
-                        "Name": f"r{i}.paginate.example.com",
-                        "Type": "A",
-                        "TTL": 60,
-                        "ResourceRecords": [{"Value": f"10.0.0.{i+1}"}],
-                    },
-                })
+                del_changes.append(
+                    {
+                        "Action": "DELETE",
+                        "ResourceRecordSet": {
+                            "Name": f"r{i}.paginate.example.com",
+                            "Type": "A",
+                            "TTL": 60,
+                            "ResourceRecords": [{"Value": f"10.0.0.{i + 1}"}],
+                        },
+                    }
+                )
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
                 ChangeBatch={"Changes": del_changes},
@@ -1083,15 +1092,17 @@ class TestRoute53ExtendedV2:
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
                 ChangeBatch={
-                    "Changes": [{
-                        "Action": "CREATE",
-                        "ResourceRecordSet": {
-                            "Name": "ipv6.aaaa.test.com",
-                            "Type": "AAAA",
-                            "TTL": 300,
-                            "ResourceRecords": [{"Value": "2001:db8::1"}],
-                        },
-                    }]
+                    "Changes": [
+                        {
+                            "Action": "CREATE",
+                            "ResourceRecordSet": {
+                                "Name": "ipv6.aaaa.test.com",
+                                "Type": "AAAA",
+                                "TTL": 300,
+                                "ResourceRecords": [{"Value": "2001:db8::1"}],
+                            },
+                        }
+                    ]
                 },
             )
             resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
@@ -1099,10 +1110,14 @@ class TestRoute53ExtendedV2:
             assert len(aaaa) == 1
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
-                ChangeBatch={"Changes": [{
-                    "Action": "DELETE",
-                    "ResourceRecordSet": aaaa[0],
-                }]},
+                ChangeBatch={
+                    "Changes": [
+                        {
+                            "Action": "DELETE",
+                            "ResourceRecordSet": aaaa[0],
+                        }
+                    ]
+                },
             )
         finally:
             route53.delete_hosted_zone(Id=zone_id)
@@ -1115,15 +1130,17 @@ class TestRoute53ExtendedV2:
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
                 ChangeBatch={
-                    "Changes": [{
-                        "Action": "CREATE",
-                        "ResourceRecordSet": {
-                            "Name": "_sip._tcp.srv.test.com",
-                            "Type": "SRV",
-                            "TTL": 60,
-                            "ResourceRecords": [{"Value": "10 60 5060 sip.srv.test.com"}],
-                        },
-                    }]
+                    "Changes": [
+                        {
+                            "Action": "CREATE",
+                            "ResourceRecordSet": {
+                                "Name": "_sip._tcp.srv.test.com",
+                                "Type": "SRV",
+                                "TTL": 60,
+                                "ResourceRecords": [{"Value": "10 60 5060 sip.srv.test.com"}],
+                            },
+                        }
+                    ]
                 },
             )
             resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
@@ -1144,24 +1161,29 @@ class TestRoute53ExtendedV2:
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
                 ChangeBatch={
-                    "Changes": [{
-                        "Action": "CREATE",
-                        "ResourceRecordSet": {
-                            "Name": "app.multi.test.com",
-                            "Type": "A",
-                            "TTL": 60,
-                            "ResourceRecords": [
-                                {"Value": "10.0.0.1"},
-                                {"Value": "10.0.0.2"},
-                                {"Value": "10.0.0.3"},
-                            ],
-                        },
-                    }]
+                    "Changes": [
+                        {
+                            "Action": "CREATE",
+                            "ResourceRecordSet": {
+                                "Name": "app.multi.test.com",
+                                "Type": "A",
+                                "TTL": 60,
+                                "ResourceRecords": [
+                                    {"Value": "10.0.0.1"},
+                                    {"Value": "10.0.0.2"},
+                                    {"Value": "10.0.0.3"},
+                                ],
+                            },
+                        }
+                    ]
                 },
             )
             resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
-            a_recs = [r for r in resp["ResourceRecordSets"]
-                      if r["Name"].startswith("app.multi") and r["Type"] == "A"]
+            a_recs = [
+                r
+                for r in resp["ResourceRecordSets"]
+                if r["Name"].startswith("app.multi") and r["Type"] == "A"
+            ]
             assert len(a_recs) == 1
             assert len(a_recs[0]["ResourceRecords"]) == 3
             route53.change_resource_record_sets(
@@ -1192,8 +1214,11 @@ class TestRoute53ExtendedV2:
                 ChangeBatch={"Changes": [{"Action": "UPSERT", "ResourceRecordSet": rrs}]},
             )
             resp = route53.list_resource_record_sets(HostedZoneId=zone_id)
-            www = [r for r in resp["ResourceRecordSets"]
-                   if r["Name"].startswith("www.upsert2") and r["Type"] == "A"]
+            www = [
+                r
+                for r in resp["ResourceRecordSets"]
+                if r["Name"].startswith("www.upsert2") and r["Type"] == "A"
+            ]
             assert len(www) == 1
             assert www[0]["ResourceRecords"][0]["Value"] == "2.2.2.2"
             route53.change_resource_record_sets(
@@ -1223,15 +1248,17 @@ class TestRoute53ExtendedV2:
             change = route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
                 ChangeBatch={
-                    "Changes": [{
-                        "Action": "CREATE",
-                        "ResourceRecordSet": {
-                            "Name": "x.chg.test.com",
-                            "Type": "A",
-                            "TTL": 60,
-                            "ResourceRecords": [{"Value": "3.3.3.3"}],
-                        },
-                    }]
+                    "Changes": [
+                        {
+                            "Action": "CREATE",
+                            "ResourceRecordSet": {
+                                "Name": "x.chg.test.com",
+                                "Type": "A",
+                                "TTL": 60,
+                                "ResourceRecords": [{"Value": "3.3.3.3"}],
+                            },
+                        }
+                    ]
                 },
             )
             change_id = change["ChangeInfo"]["Id"].split("/")[-1]
@@ -1239,15 +1266,19 @@ class TestRoute53ExtendedV2:
             assert resp["ChangeInfo"]["Status"] in ("PENDING", "INSYNC")
             route53.change_resource_record_sets(
                 HostedZoneId=zone_id,
-                ChangeBatch={"Changes": [{
-                    "Action": "DELETE",
-                    "ResourceRecordSet": {
-                        "Name": "x.chg.test.com",
-                        "Type": "A",
-                        "TTL": 60,
-                        "ResourceRecords": [{"Value": "3.3.3.3"}],
-                    },
-                }]},
+                ChangeBatch={
+                    "Changes": [
+                        {
+                            "Action": "DELETE",
+                            "ResourceRecordSet": {
+                                "Name": "x.chg.test.com",
+                                "Type": "A",
+                                "TTL": 60,
+                                "ResourceRecords": [{"Value": "3.3.3.3"}],
+                            },
+                        }
+                    ]
+                },
             )
         finally:
             route53.delete_hosted_zone(Id=zone_id)

@@ -30,9 +30,7 @@ async def handle_tagging_request(request: Request, region: str, account_id: str)
     return await forward_to_moto(request, "resourcegroupstaggingapi")
 
 
-async def _get_resources(
-    request: Request, body: bytes, region: str, account_id: str
-) -> Response:
+async def _get_resources(request: Request, body: bytes, region: str, account_id: str) -> Response:
     params = json.loads(body) if body else {}
     tag_filters = params.get("TagFilters", [])
     resource_type_filters = [r.lower() for r in params.get("ResourceTypeFilters", [])]
@@ -43,11 +41,19 @@ async def _get_resources(
     results = moto_body.get("ResourceTagMappingList", [])
 
     # Augment with native SQS queues
-    if not resource_type_filters or "sqs" in resource_type_filters or "sqs:queue" in resource_type_filters:
+    if (
+        not resource_type_filters
+        or "sqs" in resource_type_filters
+        or "sqs:queue" in resource_type_filters
+    ):
         results.extend(_get_native_sqs_resources(region, tag_filters))
 
     # Augment with native SNS topics
-    if not resource_type_filters or "sns" in resource_type_filters or "sns:topic" in resource_type_filters:
+    if (
+        not resource_type_filters
+        or "sns" in resource_type_filters
+        or "sns:topic" in resource_type_filters
+    ):
         results.extend(_get_native_sns_resources(region, tag_filters))
 
     response = {
@@ -61,9 +67,7 @@ async def _get_resources(
     )
 
 
-async def _get_tag_keys(
-    request: Request, body: bytes, region: str, account_id: str
-) -> Response:
+async def _get_tag_keys(request: Request, body: bytes, region: str, account_id: str) -> Response:
     # Get Moto results
     moto_resp = await forward_to_moto(request, "resourcegroupstaggingapi")
     moto_body = json.loads(moto_resp.body)
@@ -72,6 +76,7 @@ async def _get_tag_keys(
     # Add keys from native SQS
     try:
         from robotocore.services.sqs.provider import _get_store as get_sqs_store
+
         sqs_store = get_sqs_store(region)
         for queue in sqs_store.list_queues():
             tag_keys.update(queue.tags.keys())
@@ -81,6 +86,7 @@ async def _get_tag_keys(
     # Add keys from native SNS
     try:
         from robotocore.services.sns.provider import _get_store as get_sns_store
+
         sns_store = get_sns_store(region)
         for topic in sns_store.topics.values():
             if hasattr(topic, "tags") and topic.tags:
@@ -103,6 +109,7 @@ def _get_native_sqs_resources(region: str, tag_filters: list) -> list:
     results = []
     try:
         from robotocore.services.sqs.provider import _get_store as get_sqs_store
+
         sqs_store = get_sqs_store(region)
         for queue in sqs_store.list_queues():
             if not queue.tags:
@@ -120,6 +127,7 @@ def _get_native_sns_resources(region: str, tag_filters: list) -> list:
     results = []
     try:
         from robotocore.services.sns.provider import _get_store as get_sns_store
+
         sns_store = get_sns_store(region)
         for topic in sns_store.topics.values():
             if not hasattr(topic, "tags") or not topic.tags:

@@ -879,16 +879,8 @@ class TestBatchOperationsAdvanced:
                     {"DeleteRequest": {"Key": {"pk": {"S": "bwd-del-1"}}}},
                     {"DeleteRequest": {"Key": {"pk": {"S": "bwd-del-2"}}}},
                     # Put 2 new items
-                    {
-                        "PutRequest": {
-                            "Item": {"pk": {"S": "bwd-new-0"}, "val": {"S": "fresh"}}
-                        }
-                    },
-                    {
-                        "PutRequest": {
-                            "Item": {"pk": {"S": "bwd-new-1"}, "val": {"S": "fresh"}}
-                        }
-                    },
+                    {"PutRequest": {"Item": {"pk": {"S": "bwd-new-0"}, "val": {"S": "fresh"}}}},
+                    {"PutRequest": {"Item": {"pk": {"S": "bwd-new-1"}, "val": {"S": "fresh"}}}},
                 ]
             }
         )
@@ -946,12 +938,8 @@ class TestBatchOperationsAdvanced:
 
             dynamodb.batch_write_item(
                 RequestItems={
-                    t1: [
-                        {"PutRequest": {"Item": {"pk": {"S": "t1-a"}, "src": {"S": "table1"}}}}
-                    ],
-                    t2: [
-                        {"PutRequest": {"Item": {"pk": {"S": "t2-a"}, "src": {"S": "table2"}}}}
-                    ],
+                    t1: [{"PutRequest": {"Item": {"pk": {"S": "t1-a"}, "src": {"S": "table1"}}}}],
+                    t2: [{"PutRequest": {"Item": {"pk": {"S": "t2-a"}, "src": {"S": "table2"}}}}],
                 }
             )
 
@@ -1412,8 +1400,7 @@ class TestTransactionsAdvanced:
 
         response = dynamodb.transact_get_items(
             TransactItems=[
-                {"Get": {"TableName": table, "Key": {"pk": {"S": f"tg-{i}"}}}}
-                for i in range(3)
+                {"Get": {"TableName": table, "Key": {"pk": {"S": f"tg-{i}"}}}} for i in range(3)
             ]
         )
         items = [r["Item"] for r in response["Responses"]]
@@ -1858,9 +1845,7 @@ class TestDynamoDBExtendedOperations:
         """CreateBackup, DescribeBackup, ListBackups, DeleteBackup lifecycle."""
         backup_name = f"backup-{uuid.uuid4().hex[:8]}"
         try:
-            create_resp = dynamodb.create_backup(
-                TableName=table, BackupName=backup_name
-            )
+            create_resp = dynamodb.create_backup(TableName=table, BackupName=backup_name)
             backup_arn = create_resp["BackupDetails"]["BackupArn"]
             assert create_resp["BackupDetails"]["BackupName"] == backup_name
             assert create_resp["BackupDetails"]["BackupStatus"] in (
@@ -2090,6 +2075,7 @@ class TestDynamoDBMoreOperations:
     @pytest.fixture
     def dynamodb(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("dynamodb")
 
     @pytest.fixture
@@ -2235,9 +2221,7 @@ class TestDynamoDBMoreOperations:
         )
         try:
             for suffix in ["order#001", "order#002", "user#001"]:
-                dynamodb.put_item(
-                    TableName=name, Item={"pk": {"S": "main"}, "sk": {"S": suffix}}
-                )
+                dynamodb.put_item(TableName=name, Item={"pk": {"S": "main"}, "sk": {"S": suffix}})
             resp = dynamodb.query(
                 TableName=name,
                 KeyConditionExpression="pk = :pk AND begins_with(sk, :prefix)",
@@ -2269,9 +2253,7 @@ class TestDynamoDBMoreOperations:
         )
         try:
             for i in range(1, 11):
-                dynamodb.put_item(
-                    TableName=name, Item={"pk": {"S": "data"}, "sk": {"N": str(i)}}
-                )
+                dynamodb.put_item(TableName=name, Item={"pk": {"S": "data"}, "sk": {"N": str(i)}})
             resp = dynamodb.query(
                 TableName=name,
                 KeyConditionExpression="pk = :pk AND sk BETWEEN :lo AND :hi",
@@ -2305,9 +2287,7 @@ class TestDynamoDBMoreOperations:
     def test_execute_statement_delete(self, dynamodb, table):
         """ExecuteStatement with PartiQL DELETE."""
         dynamodb.put_item(TableName=table, Item={"pk": {"S": "partiql-del"}, "v": {"S": "bye"}})
-        dynamodb.execute_statement(
-            Statement=f"DELETE FROM \"{table}\" WHERE pk='partiql-del'"
-        )
+        dynamodb.execute_statement(Statement=f"DELETE FROM \"{table}\" WHERE pk='partiql-del'")
         r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "partiql-del"}})
         assert "Item" not in r
 
@@ -2354,6 +2334,7 @@ class TestDynamoDBAdvanced:
     @pytest.fixture
     def table(self, dynamodb):
         import uuid
+
         name = f"adv-table-{uuid.uuid4().hex[:8]}"
         dynamodb.create_table(
             TableName=name,
@@ -2380,9 +2361,7 @@ class TestDynamoDBAdvanced:
         for i in range(3):
             dynamodb.put_item(TableName=table, Item={"pk": {"S": f"bg-{i}"}, "v": {"S": "val"}})
         resp = dynamodb.batch_get_item(
-            RequestItems={
-                table: {"Keys": [{"pk": {"S": f"bg-{i}"}} for i in range(3)]}
-            }
+            RequestItems={table: {"Keys": [{"pk": {"S": f"bg-{i}"}} for i in range(3)]}}
         )
         assert len(resp["Responses"][table]) == 3
 
@@ -2443,9 +2422,7 @@ class TestDynamoDBAdvanced:
             dynamodb.put_item(TableName=table, Item={"pk": {"S": f"pg-{i}"}})
         resp1 = dynamodb.scan(TableName=table, Limit=5)
         assert "LastEvaluatedKey" in resp1
-        resp2 = dynamodb.scan(
-            TableName=table, ExclusiveStartKey=resp1["LastEvaluatedKey"]
-        )
+        resp2 = dynamodb.scan(TableName=table, ExclusiveStartKey=resp1["LastEvaluatedKey"])
         total = resp1["Count"] + resp2["Count"]
         assert total >= 10
 

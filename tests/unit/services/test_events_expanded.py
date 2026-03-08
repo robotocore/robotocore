@@ -149,9 +149,7 @@ class TestInputTransformer:
             arn="arn:aws:lambda:us-east-1:123:function:f",
             input_transformer=transformer,
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_lambda_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_lambda_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             payload = mock.call_args[0][1]
             assert '"source": "myapp.orders"' in payload
@@ -168,9 +166,7 @@ class TestInputTransformer:
             input="should not be used",
             input_transformer=transformer,
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_lambda_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_lambda_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             assert mock.call_args[0][1] == "transformed"
 
@@ -210,9 +206,7 @@ class TestKinesisTarget:
             target_id="t1",
             arn="arn:aws:kinesis:us-east-1:123:stream/my-stream",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_kinesis_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_kinesis_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -242,8 +236,7 @@ class TestKinesisTarget:
         _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
         log = get_invocation_log()
         assert any(
-            e["target_type"] == "kinesis"
-            and e.get("result", {}).get("error") == "stream_not_found"
+            e["target_type"] == "kinesis" and e.get("result", {}).get("error") == "stream_not_found"
             for e in log
         )
 
@@ -254,9 +247,7 @@ class TestFirehoseTarget:
             target_id="t1",
             arn="arn:aws:firehose:us-east-1:123:deliverystream/my-stream",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_firehose_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_firehose_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -302,9 +293,7 @@ class TestStepFunctionsTarget:
             target_id="t1",
             arn="arn:aws:states:us-east-1:123:stateMachine:my-sm",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_stepfunctions_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_stepfunctions_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -317,8 +306,7 @@ class TestStepFunctionsTarget:
         log = get_invocation_log()
         assert any(
             e["target_type"] == "stepfunctions"
-            and e.get("result", {}).get("error")
-            == "state_machine_not_found"
+            and e.get("result", {}).get("error") == "state_machine_not_found"
             for e in log
         )
 
@@ -329,9 +317,7 @@ class TestLogsTarget:
             target_id="t1",
             arn="arn:aws:logs:us-east-1:123:log-group:/aws/events/test:*",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_logs_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_logs_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -343,16 +329,12 @@ class TestLogsTarget:
         )
         with patch("moto.backends.get_backend") as mock_backend:
             mock_logs = MagicMock()
-            mock_backend.return_value = {
-                ACCOUNT: {REGION: mock_logs}
-            }
+            mock_backend.return_value = {ACCOUNT: {REGION: mock_logs}}
             from robotocore.services.events.provider import (
                 _invoke_logs_target,
             )
 
-            _invoke_logs_target(
-                target.arn, json.dumps(SAMPLE_EVENT), REGION, ACCOUNT
-            )
+            _invoke_logs_target(target.arn, json.dumps(SAMPLE_EVENT), REGION, ACCOUNT)
             mock_logs.put_log_events.assert_called_once()
 
 
@@ -362,9 +344,7 @@ class TestEcsTarget:
             target_id="t1",
             arn="arn:aws:ecs:us-east-1:123:cluster/my-cluster",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_ecs_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_ecs_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -384,9 +364,7 @@ class TestEventBridgeBusTarget:
             target_id="t1",
             arn="arn:aws:events:us-east-1:123:event-bus/custom",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_eventbridge_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_eventbridge_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -415,9 +393,7 @@ class TestEventBridgeBusTarget:
             target_id="bus-fwd",
             arn="arn:aws:events:us-east-1:123:event-bus/custom-bus",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_lambda_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_lambda_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -429,8 +405,7 @@ class TestEventBridgeBusTarget:
         _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
         log = get_invocation_log()
         assert any(
-            e["target_type"] == "events"
-            and e.get("result", {}).get("error") == "bus_not_found"
+            e["target_type"] == "events" and e.get("result", {}).get("error") == "bus_not_found"
             for e in log
         )
 
@@ -441,9 +416,7 @@ class TestApiGatewayTarget:
             target_id="t1",
             arn="arn:aws:execute-api:us-east-1:123:api/stage/GET/path",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_apigateway_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_apigateway_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             mock.assert_called_once()
 
@@ -514,18 +487,14 @@ class TestDeadLetterQueue:
         rule.targets["t1"] = EventTarget(
             target_id="t1",
             arn="arn:aws:lambda:us-east-1:123:function:broken",
-            dead_letter_config={
-                "Arn": f"arn:aws:sqs:{REGION}:{ACCOUNT}:my-dlq"
-            },
+            dead_letter_config={"Arn": f"arn:aws:sqs:{REGION}:{ACCOUNT}:my-dlq"},
         )
 
         with patch(
             "robotocore.services.events.provider._invoke_target",
             side_effect=Exception("boom"),
         ):
-            _dispatch_to_targets(
-                rule, SAMPLE_EVENT, REGION, ACCOUNT
-            )
+            _dispatch_to_targets(rule, SAMPLE_EVENT, REGION, ACCOUNT)
 
         # Check DLQ got the message via invocation log
         log = get_invocation_log()
@@ -561,9 +530,7 @@ class TestDeadLetterQueue:
             event_bus_name="default",
             region=REGION,
             account_id=ACCOUNT,
-            dead_letter_config={
-                "Arn": f"arn:aws:sqs:{REGION}:{ACCOUNT}:rule-dlq"
-            },
+            dead_letter_config={"Arn": f"arn:aws:sqs:{REGION}:{ACCOUNT}:rule-dlq"},
         )
         rule.targets["t1"] = EventTarget(
             target_id="t1",
@@ -574,9 +541,7 @@ class TestDeadLetterQueue:
             "robotocore.services.events.provider._invoke_target",
             side_effect=Exception("fail"),
         ):
-            _dispatch_to_targets(
-                rule, SAMPLE_EVENT, REGION, ACCOUNT
-            )
+            _dispatch_to_targets(rule, SAMPLE_EVENT, REGION, ACCOUNT)
 
         log = get_invocation_log()
         dlq_entries = [e for e in log if e["target_type"] == "dlq"]
@@ -602,9 +567,7 @@ class TestDeadLetterQueue:
             side_effect=Exception("fail"),
         ):
             # Should not raise
-            _dispatch_to_targets(
-                rule, SAMPLE_EVENT, REGION, ACCOUNT
-            )
+            _dispatch_to_targets(rule, SAMPLE_EVENT, REGION, ACCOUNT)
 
         log = get_invocation_log()
         assert not any(e["target_type"] == "dlq" for e in log)
@@ -621,13 +584,16 @@ class TestDeadLetterQueue:
             target_id="t1",
             arn="arn:aws:lambda:us-east-1:123:function:f",
         )
-        dlq_config = {
-            "Arn": f"arn:aws:sqs:{REGION}:{ACCOUNT}:missing-dlq"
-        }
+        dlq_config = {"Arn": f"arn:aws:sqs:{REGION}:{ACCOUNT}:missing-dlq"}
         # Should not raise
         _send_to_dlq(
-            dlq_config, SAMPLE_EVENT, target, rule,
-            Exception("err"), REGION, ACCOUNT,
+            dlq_config,
+            SAMPLE_EVENT,
+            target,
+            rule,
+            Exception("err"),
+            REGION,
+            ACCOUNT,
         )
 
     def test_dlq_non_sqs_arn_ignored(self):
@@ -641,8 +607,13 @@ class TestDeadLetterQueue:
         target = EventTarget(target_id="t1", arn="arn:aws:lambda:us-east-1:123:function:f")
         dlq_config = {"Arn": "arn:aws:sns:us-east-1:123:not-sqs"}
         _send_to_dlq(
-            dlq_config, SAMPLE_EVENT, target, rule,
-            Exception("err"), REGION, ACCOUNT,
+            dlq_config,
+            SAMPLE_EVENT,
+            target,
+            rule,
+            Exception("err"),
+            REGION,
+            ACCOUNT,
         )
         log = get_invocation_log()
         assert not any(e["target_type"] == "dlq" for e in log)
@@ -718,7 +689,8 @@ class TestArchiveStore:
         archive = store.create_archive(
             "my-archive",
             "arn:aws:events:us-east-1:123:event-bus/default",
-            REGION, ACCOUNT,
+            REGION,
+            ACCOUNT,
         )
         assert archive.name == "my-archive"
         assert store.get_archive("my-archive") is archive
@@ -754,7 +726,8 @@ class TestArchiveStore:
         store.create_archive(
             "order-archive",
             bus.arn,
-            REGION, ACCOUNT,
+            REGION,
+            ACCOUNT,
             event_pattern={"source": ["myapp.orders"]},
         )
         store.archive_event(SAMPLE_EVENT, "default")
@@ -771,7 +744,8 @@ class TestArchiveStore:
         store.create_archive(
             "other-archive",
             bus.arn,
-            REGION, ACCOUNT,
+            REGION,
+            ACCOUNT,
             event_pattern={"source": ["other.source"]},
         )
         store.archive_event(SAMPLE_EVENT, "default")
@@ -786,7 +760,8 @@ class TestArchiveStore:
         store.create_archive(
             "all-archive",
             bus.arn,
-            REGION, ACCOUNT,
+            REGION,
+            ACCOUNT,
         )
         store.archive_event(SAMPLE_EVENT, "default")
         assert store.get_archive("all-archive").event_count == 1
@@ -857,9 +832,7 @@ class TestArchiveApi:
 
     @pytest.mark.asyncio
     async def test_describe_nonexistent_archive(self):
-        req = _make_request(
-            "DescribeArchive", {"ArchiveName": "nope"}
-        )
+        req = _make_request("DescribeArchive", {"ArchiveName": "nope"})
         resp = await handle_events_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
         assert json.loads(resp.body)["__type"] == "ResourceNotFoundException"
@@ -891,23 +864,17 @@ class TestArchiveApi:
         )
         await handle_events_request(req1, REGION, ACCOUNT)
 
-        req2 = _make_request(
-            "DeleteArchive", {"ArchiveName": "to-delete"}
-        )
+        req2 = _make_request("DeleteArchive", {"ArchiveName": "to-delete"})
         resp = await handle_events_request(req2, REGION, ACCOUNT)
         assert resp.status_code == 200
 
-        req3 = _make_request(
-            "DescribeArchive", {"ArchiveName": "to-delete"}
-        )
+        req3 = _make_request("DescribeArchive", {"ArchiveName": "to-delete"})
         resp3 = await handle_events_request(req3, REGION, ACCOUNT)
         assert resp3.status_code == 400
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_archive(self):
-        req = _make_request(
-            "DeleteArchive", {"ArchiveName": "nope"}
-        )
+        req = _make_request("DeleteArchive", {"ArchiveName": "nope"})
         resp = await handle_events_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
 
@@ -934,9 +901,7 @@ class TestReplayApi:
             {
                 "ReplayName": "my-replay",
                 "EventSourceArn": f"arn:aws:events:{REGION}:{ACCOUNT}:archive/replay-archive",
-                "Destination": {
-                    "Arn": f"arn:aws:events:{REGION}:{ACCOUNT}:event-bus/default"
-                },
+                "Destination": {"Arn": f"arn:aws:events:{REGION}:{ACCOUNT}:event-bus/default"},
                 "EventStartTime": 0,
                 "EventEndTime": time.time() + 1000,
             },
@@ -977,18 +942,14 @@ class TestReplayApi:
             {
                 "ReplayName": "desc-replay",
                 "EventSourceArn": f"arn:aws:events:{REGION}:{ACCOUNT}:archive/desc-replay-archive",
-                "Destination": {
-                    "Arn": f"arn:aws:events:{REGION}:{ACCOUNT}:event-bus/default"
-                },
+                "Destination": {"Arn": f"arn:aws:events:{REGION}:{ACCOUNT}:event-bus/default"},
                 "EventStartTime": 0,
                 "EventEndTime": time.time(),
             },
         )
         await handle_events_request(req2, REGION, ACCOUNT)
 
-        req3 = _make_request(
-            "DescribeReplay", {"ReplayName": "desc-replay"}
-        )
+        req3 = _make_request("DescribeReplay", {"ReplayName": "desc-replay"})
         resp = await handle_events_request(req3, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert data["ReplayName"] == "desc-replay"
@@ -996,9 +957,7 @@ class TestReplayApi:
 
     @pytest.mark.asyncio
     async def test_describe_nonexistent_replay(self):
-        req = _make_request(
-            "DescribeReplay", {"ReplayName": "nope"}
-        )
+        req = _make_request("DescribeReplay", {"ReplayName": "nope"})
         resp = await handle_events_request(req, REGION, ACCOUNT)
         assert resp.status_code == 400
 
@@ -1016,7 +975,8 @@ class TestPutEventsArchiving:
         store.create_archive(
             "auto-archive",
             bus.arn,
-            REGION, ACCOUNT,
+            REGION,
+            ACCOUNT,
         )
 
         req = _make_request(
@@ -1049,9 +1009,7 @@ class TestInputPath:
             arn="arn:aws:lambda:us-east-1:123:function:f",
             input_path="$.detail",
         )
-        with patch(
-            "robotocore.services.events.provider._invoke_lambda_target"
-        ) as mock:
+        with patch("robotocore.services.events.provider._invoke_lambda_target") as mock:
             _invoke_target(target, SAMPLE_EVENT, REGION, ACCOUNT)
             payload = mock.call_args[0][1]
             parsed = json.loads(payload)
@@ -1106,9 +1064,7 @@ class TestListTargetsNewFields:
                     {
                         "Id": "t1",
                         "Arn": "arn:aws:sqs:us-east-1:123:q",
-                        "DeadLetterConfig": {
-                            "Arn": "arn:aws:sqs:us-east-1:123:dlq"
-                        },
+                        "DeadLetterConfig": {"Arn": "arn:aws:sqs:us-east-1:123:dlq"},
                     }
                 ],
             },

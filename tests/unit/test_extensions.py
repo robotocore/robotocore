@@ -225,9 +225,7 @@ class TestExtensionRegistry:
     def test_on_error_no_handler(self):
         plugin = SamplePlugin()
         self.registry.register(plugin)
-        result = self.registry.on_error(
-            MagicMock(), ValueError("test"), {}
-        )
+        result = self.registry.on_error(MagicMock(), ValueError("test"), {})
         assert result is None
 
     def test_broken_plugin_doesnt_crash(self):

@@ -23,9 +23,7 @@ from robotocore.services.iam.policy_engine import DENY, IMPLICIT_DENY, evaluate_
 log = logging.getLogger(__name__)
 
 # Pre-compiled patterns
-_CREDENTIAL_RE = re.compile(
-    r"Credential=([A-Za-z0-9]+)/(\d{8})/([^/]+)/([^/]+)/aws4_request"
-)
+_CREDENTIAL_RE = re.compile(r"Credential=([A-Za-z0-9]+)/(\d{8})/([^/]+)/([^/]+)/aws4_request")
 
 # Map of service signing names to canonical service prefixes for IAM actions
 _SERVICE_ACTION_PREFIX: dict[str, str] = {
@@ -272,10 +270,12 @@ def _build_access_denied_response(
     )
 
     if protocol in ("json", "rest-json"):
-        body = json.dumps({
-            "__type": "AccessDeniedException",
-            "Message": message,
-        })
+        body = json.dumps(
+            {
+                "__type": "AccessDeniedException",
+                "Message": message,
+            }
+        )
         return Response(
             content=body,
             status_code=403,

@@ -35,12 +35,10 @@ ACCOUNT_ID = "123456789012"
 
 @pytest.fixture(autouse=True)
 def _clear_stores():
-    for store in (_apis, _routes, _integrations, _stages,
-                  _authorizers, _deployments, _connections):
+    for store in (_apis, _routes, _integrations, _stages, _authorizers, _deployments, _connections):
         store.clear()
     yield
-    for store in (_apis, _routes, _integrations, _stages,
-                  _authorizers, _deployments, _connections):
+    for store in (_apis, _routes, _integrations, _stages, _authorizers, _deployments, _connections):
         store.clear()
 
 
@@ -65,9 +63,7 @@ class TestPathMatchingV2:
         assert params == {"id": "123"}
 
     def test_multi_param(self):
-        match, params = _path_matches_v2(
-            "/users/{uid}/posts/{pid}", "/users/1/posts/2"
-        )
+        match, params = _path_matches_v2("/users/{uid}/posts/{pid}", "/users/1/posts/2")
         assert match is True
         assert params == {"uid": "1", "pid": "2"}
 
@@ -87,14 +83,10 @@ class TestPathMatchingV2:
 
 class TestPathSpecificityV2:
     def test_exact_beats_param(self):
-        assert _path_specificity_v2("/pets/list") > _path_specificity_v2(
-            "/pets/{id}"
-        )
+        assert _path_specificity_v2("/pets/list") > _path_specificity_v2("/pets/{id}")
 
     def test_param_beats_greedy(self):
-        assert _path_specificity_v2("/{id}") > _path_specificity_v2(
-            "/{path+}"
-        )
+        assert _path_specificity_v2("/{id}") > _path_specificity_v2("/{path+}")
 
 
 # ---------------------------------------------------------------------------
@@ -115,9 +107,7 @@ class TestRouteMatching:
         routes = {
             "r1": {"RouteKey": "GET /pets/{id}", "RouteId": "r1"},
         }
-        route, params = _match_route(
-            routes, "GET /pets/123", "GET", "/pets/123", "HTTP"
-        )
+        route, params = _match_route(routes, "GET /pets/123", "GET", "/pets/123", "HTTP")
         assert route is not None
         assert params == {"id": "123"}
 
@@ -126,27 +116,21 @@ class TestRouteMatching:
             "r1": {"RouteKey": "GET /specific", "RouteId": "r1"},
             "r2": {"RouteKey": "$default", "RouteId": "r2"},
         }
-        route, params = _match_route(
-            routes, "GET /unmatched", "GET", "/unmatched", "HTTP"
-        )
+        route, params = _match_route(routes, "GET /unmatched", "GET", "/unmatched", "HTTP")
         assert route["RouteId"] == "r2"
 
     def test_any_method_fallback(self):
         routes = {
             "r1": {"RouteKey": "ANY /pets", "RouteId": "r1"},
         }
-        route, params = _match_route(
-            routes, "PATCH /pets", "PATCH", "/pets", "HTTP"
-        )
+        route, params = _match_route(routes, "PATCH /pets", "PATCH", "/pets", "HTTP")
         assert route is not None
 
     def test_no_match(self):
         routes = {
             "r1": {"RouteKey": "GET /pets", "RouteId": "r1"},
         }
-        route, params = _match_route(
-            routes, "POST /users", "POST", "/users", "HTTP"
-        )
+        route, params = _match_route(routes, "POST /users", "POST", "/users", "HTTP")
         assert route is None
 
     def test_specific_beats_param(self):
@@ -154,9 +138,7 @@ class TestRouteMatching:
             "r1": {"RouteKey": "GET /pets/list", "RouteId": "r1"},
             "r2": {"RouteKey": "GET /pets/{id}", "RouteId": "r2"},
         }
-        route, _ = _match_route(
-            routes, "GET /pets/list", "GET", "/pets/list", "HTTP"
-        )
+        route, _ = _match_route(routes, "GET /pets/list", "GET", "/pets/list", "HTTP")
         assert route["RouteId"] == "r1"
 
 
@@ -167,12 +149,10 @@ class TestRouteMatching:
 
 class TestJwtAuthorizer:
     def _make_jwt(self, payload: dict) -> str:
-        header = base64.urlsafe_b64encode(
-            json.dumps({"alg": "RS256"}).encode()
-        ).decode().rstrip("=")
-        body = base64.urlsafe_b64encode(
-            json.dumps(payload).encode()
-        ).decode().rstrip("=")
+        header = (
+            base64.urlsafe_b64encode(json.dumps({"alg": "RS256"}).encode()).decode().rstrip("=")
+        )
+        body = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
         sig = base64.urlsafe_b64encode(b"sig").decode().rstrip("=")
         return f"{header}.{body}.{sig}"
 
@@ -186,12 +166,14 @@ class TestJwtAuthorizer:
         assert result[0] == 401
 
     def test_valid_token(self):
-        token = self._make_jwt({
-            "sub": "user1",
-            "iss": "https://issuer.example.com",
-            "aud": ["my-app"],
-            "exp": time.time() + 3600,
-        })
+        token = self._make_jwt(
+            {
+                "sub": "user1",
+                "iss": "https://issuer.example.com",
+                "aud": ["my-app"],
+                "exp": time.time() + 3600,
+            }
+        )
         authorizer = {
             "IdentitySource": "$request.header.Authorization",
             "JwtConfiguration": {
@@ -199,59 +181,57 @@ class TestJwtAuthorizer:
                 "Audience": ["my-app"],
             },
         }
-        result = _validate_jwt(
-            authorizer, {"authorization": f"Bearer {token}"}
-        )
+        result = _validate_jwt(authorizer, {"authorization": f"Bearer {token}"})
         assert result is None
 
     def test_expired_token(self):
-        token = self._make_jwt({
-            "sub": "user1",
-            "exp": time.time() - 100,
-        })
+        token = self._make_jwt(
+            {
+                "sub": "user1",
+                "exp": time.time() - 100,
+            }
+        )
         authorizer = {
             "IdentitySource": "$request.header.Authorization",
             "JwtConfiguration": {},
         }
-        result = _validate_jwt(
-            authorizer, {"authorization": f"Bearer {token}"}
-        )
+        result = _validate_jwt(authorizer, {"authorization": f"Bearer {token}"})
         assert result is not None
         assert result[0] == 401
 
     def test_wrong_issuer(self):
-        token = self._make_jwt({
-            "sub": "user1",
-            "iss": "https://wrong.com",
-            "exp": time.time() + 3600,
-        })
+        token = self._make_jwt(
+            {
+                "sub": "user1",
+                "iss": "https://wrong.com",
+                "exp": time.time() + 3600,
+            }
+        )
         authorizer = {
             "IdentitySource": "$request.header.Authorization",
             "JwtConfiguration": {
                 "Issuer": "https://correct.com",
             },
         }
-        result = _validate_jwt(
-            authorizer, {"authorization": f"Bearer {token}"}
-        )
+        result = _validate_jwt(authorizer, {"authorization": f"Bearer {token}"})
         assert result is not None
         assert result[0] == 401
 
     def test_wrong_audience(self):
-        token = self._make_jwt({
-            "sub": "user1",
-            "aud": ["other-app"],
-            "exp": time.time() + 3600,
-        })
+        token = self._make_jwt(
+            {
+                "sub": "user1",
+                "aud": ["other-app"],
+                "exp": time.time() + 3600,
+            }
+        )
         authorizer = {
             "IdentitySource": "$request.header.Authorization",
             "JwtConfiguration": {
                 "Audience": ["my-app"],
             },
         }
-        result = _validate_jwt(
-            authorizer, {"authorization": f"Bearer {token}"}
-        )
+        result = _validate_jwt(authorizer, {"authorization": f"Bearer {token}"})
         assert result is not None
         assert result[0] == 401
 
@@ -260,17 +240,17 @@ class TestJwtAuthorizer:
             "IdentitySource": "$request.header.Authorization",
             "JwtConfiguration": {},
         }
-        result = _validate_jwt(
-            authorizer, {"authorization": "Bearer not.valid"}
-        )
+        result = _validate_jwt(authorizer, {"authorization": "Bearer not.valid"})
         assert result is not None
         assert result[0] == 401
 
     def test_custom_identity_source(self):
-        token = self._make_jwt({
-            "sub": "user1",
-            "exp": time.time() + 3600,
-        })
+        token = self._make_jwt(
+            {
+                "sub": "user1",
+                "exp": time.time() + 3600,
+            }
+        )
         authorizer = {
             "IdentitySource": "$request.header.X-Auth",
             "JwtConfiguration": {},
@@ -367,8 +347,7 @@ class TestV2PayloadFormat:
             "IntegrationId": "integ-1",
             "IntegrationType": "AWS_PROXY",
             "IntegrationUri": (
-                "arn:aws:apigateway:us-east-1:lambda:path/"
-                "2015-03-31/functions/my-func/invocations"
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/my-func/invocations"
             ),
             "PayloadFormatVersion": "2.0",
         }
@@ -422,9 +401,15 @@ class TestV2PayloadFormat:
             return_value=lambda_response,
         ) as mock_invoke:
             status, headers, body = execute_v2_request(
-                api_id, "$default", "GET", "/pets", None,
-                {"user-agent": "test"}, {"page": "1"},
-                REGION, ACCOUNT_ID,
+                api_id,
+                "$default",
+                "GET",
+                "/pets",
+                None,
+                {"user-agent": "test"},
+                {"page": "1"},
+                REGION,
+                ACCOUNT_ID,
             )
 
         assert status == 200
@@ -443,16 +428,30 @@ class TestV2PayloadFormat:
 
     def test_v2_api_not_found(self):
         status, _, body = execute_v2_request(
-            "nonexistent", "$default", "GET", "/", None,
-            {}, {}, REGION, ACCOUNT_ID,
+            "nonexistent",
+            "$default",
+            "GET",
+            "/",
+            None,
+            {},
+            {},
+            REGION,
+            ACCOUNT_ID,
         )
         assert status == 404
 
     def test_v2_route_not_found(self):
         api_id = self._setup_api()
         status, _, body = execute_v2_request(
-            api_id, "$default", "DELETE", "/unmatched", None,
-            {}, {}, REGION, ACCOUNT_ID,
+            api_id,
+            "$default",
+            "DELETE",
+            "/unmatched",
+            None,
+            {},
+            {},
+            REGION,
+            ACCOUNT_ID,
         )
         assert status == 404
 
@@ -464,8 +463,15 @@ class TestV2PayloadFormat:
             return_value=None,
         ):
             status, _, _ = execute_v2_request(
-                api_id, "$default", "GET", "/pets", None,
-                {}, {}, REGION, ACCOUNT_ID,
+                api_id,
+                "$default",
+                "GET",
+                "/pets",
+                None,
+                {},
+                {},
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 502
 
@@ -484,8 +490,15 @@ class TestV2PayloadFormat:
             return_value=lambda_response,
         ):
             status, _, body = execute_v2_request(
-                api_id, "$default", "GET", "/pets", None,
-                {}, {}, REGION, ACCOUNT_ID,
+                api_id,
+                "$default",
+                "GET",
+                "/pets",
+                None,
+                {},
+                {},
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 200
         assert body == "binary-data"
@@ -495,6 +508,7 @@ class TestV2PayloadFormat:
 
         # Add POST /pets route
         from robotocore.services.apigatewayv2.provider import _store
+
         routes = _store(_routes, REGION, api_id)
         routes["route-2"] = {
             "RouteId": "route-2",
@@ -510,10 +524,15 @@ class TestV2PayloadFormat:
             return_value=lambda_response,
         ) as mock_invoke:
             status, _, body = execute_v2_request(
-                api_id, "$default", "POST", "/pets",
+                api_id,
+                "$default",
+                "POST",
+                "/pets",
                 b'{"name": "Rex"}',
-                {"content-type": "application/json"}, {},
-                REGION, ACCOUNT_ID,
+                {"content-type": "application/json"},
+                {},
+                REGION,
+                ACCOUNT_ID,
             )
 
         assert status == 201
@@ -524,8 +543,15 @@ class TestV2PayloadFormat:
         api_id = self._setup_api(with_authorizer=True)
 
         status, _, body = execute_v2_request(
-            api_id, "$default", "GET", "/pets", None,
-            {}, {}, REGION, ACCOUNT_ID,
+            api_id,
+            "$default",
+            "GET",
+            "/pets",
+            None,
+            {},
+            {},
+            REGION,
+            ACCOUNT_ID,
         )
         assert status == 401
 
@@ -589,8 +615,12 @@ class TestWebSocketExecution:
             return_value=lambda_response,
         ) as mock_invoke:
             status, _, _ = execute_websocket_connect(
-                api_id, "conn-1", {"header": "val"}, {},
-                REGION, ACCOUNT_ID,
+                api_id,
+                "conn-1",
+                {"header": "val"},
+                {},
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 200
         event = mock_invoke.call_args[0][1]
@@ -608,7 +638,10 @@ class TestWebSocketExecution:
             return_value=lambda_response,
         ) as mock_invoke:
             status, _, _ = execute_websocket_disconnect(
-                api_id, "conn-1", REGION, ACCOUNT_ID,
+                api_id,
+                "conn-1",
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 200
         event = mock_invoke.call_args[0][1]
@@ -626,7 +659,11 @@ class TestWebSocketExecution:
             return_value=lambda_response,
         ) as mock_invoke:
             status, _, _ = execute_websocket_message(
-                api_id, "conn-1", msg, REGION, ACCOUNT_ID,
+                api_id,
+                "conn-1",
+                msg,
+                REGION,
+                ACCOUNT_ID,
             )
         assert status == 200
         event = mock_invoke.call_args[0][1]
@@ -644,7 +681,11 @@ class TestWebSocketExecution:
             return_value=lambda_response,
         ):
             status, _, _ = execute_websocket_message(
-                api_id, "conn-1", msg, REGION, ACCOUNT_ID,
+                api_id,
+                "conn-1",
+                msg,
+                REGION,
+                ACCOUNT_ID,
             )
         # Should match "unknownAction" route or fall to $default
         assert status == 200
@@ -665,12 +706,21 @@ class TestWebSocketExecution:
         _store(_integrations, REGION, api_id)
 
         status, _, _ = execute_websocket_connect(
-            api_id, "conn-1", {}, {}, REGION, ACCOUNT_ID,
+            api_id,
+            "conn-1",
+            {},
+            {},
+            REGION,
+            ACCOUNT_ID,
         )
         assert status == 200
 
     def test_websocket_api_not_found(self):
         status, _, _ = execute_websocket_message(
-            "nonexistent", "conn-1", "hi", REGION, ACCOUNT_ID,
+            "nonexistent",
+            "conn-1",
+            "hi",
+            REGION,
+            ACCOUNT_ID,
         )
         assert status == 404

@@ -11,10 +11,10 @@ Usage:
 """
 
 import ast
+import json as json_mod
 import os
 import re
 import sys
-import json as json_mod
 
 SRC_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "robotocore")
 TEST_DIR = os.path.join(os.path.dirname(__file__), "..", "tests")
@@ -189,21 +189,25 @@ def print_report(results, verbose=False):
     if no_tests:
         print(f"\n  FILES WITH NO UNIT TESTS ({len(no_tests)}):")
         print(f"  {'Source File':<45} {'Lines':>6}  {'Public Fns':>10}")
-        print(f"  {'-'*45} {'-'*6}  {'-'*10}")
+        print(f"  {'-' * 45} {'-' * 6}  {'-' * 10}")
         for r in sorted(no_tests, key=lambda x: -x["source_lines"]):
             print(f"  {r['source']:<45} {r['source_lines']:>6}  {r['public_functions']:>10}")
 
     if low_coverage:
         print(f"\n  LOW COVERAGE (<50% test:source ratio) ({len(low_coverage)}):")
         print(f"  {'Source File':<45} {'Src':>5} {'Test':>5} {'Ratio':>6} {'#Tests':>6}")
-        print(f"  {'-'*45} {'-'*5} {'-'*5} {'-'*6} {'-'*6}")
+        print(f"  {'-' * 45} {'-' * 5} {'-' * 5} {'-' * 6} {'-' * 6}")
         for r in sorted(low_coverage, key=lambda x: x["coverage_ratio"]):
-            print(f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}")
+            print(
+                f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}"
+            )
 
     if verbose:
         print(f"\n  GOOD COVERAGE ({len(good)}):")
         for r in sorted(good, key=lambda x: -x["coverage_ratio"]):
-            print(f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}")
+            print(
+                f"  {r['source']:<45} {r['source_lines']:>5} {r['test_lines']:>5} {r['coverage_ratio']:>5.0%} {r['test_count']:>6}"
+            )
 
     # Untested public symbols
     all_untested_fns = []
@@ -222,13 +226,17 @@ def print_report(results, verbose=False):
     tested_files = sum(1 for r in results if r["has_tests"])
     total_files = len(results)
 
-    print(f"\n  {'='*60}")
+    print(f"\n  {'=' * 60}")
     print(f"  Source files:        {total_files}")
-    print(f"  With unit tests:     {tested_files}/{total_files} ({tested_files/total_files:.0%})")
+    print(f"  With unit tests:     {tested_files}/{total_files} ({tested_files / total_files:.0%})")
     print(f"  Without unit tests:  {len(no_tests)}")
     print(f"  Source lines:        {total_src}")
     print(f"  Test lines:          {total_test}")
-    print(f"  Overall ratio:       {total_test/total_src:.0%}" if total_src else "  Overall ratio:       N/A")
+    print(
+        f"  Overall ratio:       {total_test / total_src:.0%}"
+        if total_src
+        else "  Overall ratio:       N/A"
+    )
     print("=" * 72)
 
     return no_tests, low_coverage

@@ -91,9 +91,7 @@ class TestVtlContext:
         assert result == "/users/{id}"
 
     def test_context_nested(self):
-        ctx = VtlContext(
-            context_vars={"identity": {"sourceIp": "10.0.0.1"}}
-        )
+        ctx = VtlContext(context_vars={"identity": {"sourceIp": "10.0.0.1"}})
         result = evaluate_vtl("$context.identity.sourceIp", ctx)
         assert result == "10.0.0.1"
 
@@ -132,50 +130,50 @@ class TestVtlSetDirective:
 
 class TestVtlIfDirective:
     def test_if_true(self):
-        template = '#if(true)\nyes\n#end'
+        template = "#if(true)\nyes\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "yes" in result
 
     def test_if_false(self):
-        template = '#if(false)\nyes\n#end'
+        template = "#if(false)\nyes\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "yes" not in result
 
     def test_if_else(self):
-        template = '#if(false)\nyes\n#else\nno\n#end'
+        template = "#if(false)\nyes\n#else\nno\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "no" in result
         assert "yes" not in result
 
     def test_if_variable_comparison(self):
-        template = '#set($x = 1)\n#if($x == 1)\nmatch\n#end'
+        template = "#set($x = 1)\n#if($x == 1)\nmatch\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "match" in result
 
     def test_if_not_equal(self):
-        template = '#set($x = 2)\n#if($x != 1)\ndifferent\n#end'
+        template = "#set($x = 2)\n#if($x != 1)\ndifferent\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "different" in result
 
     def test_if_negation(self):
-        template = '#if(!false)\nnegated\n#end'
+        template = "#if(!false)\nnegated\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "negated" in result
 
     def test_if_and(self):
-        template = '#if(true && true)\nboth\n#end'
+        template = "#if(true && true)\nboth\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "both" in result
 
     def test_if_or(self):
-        template = '#if(false || true)\none\n#end'
+        template = "#if(false || true)\none\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert "one" in result
@@ -191,7 +189,7 @@ class TestVtlForeachDirective:
         assert "c" in result
 
     def test_foreach_empty(self):
-        template = '#set($items = [])\n#foreach($item in $items)\n$item\n#end'
+        template = "#set($items = [])\n#foreach($item in $items)\n$item\n#end"
         ctx = VtlContext()
         result = evaluate_vtl(template, ctx)
         assert result.strip() == ""

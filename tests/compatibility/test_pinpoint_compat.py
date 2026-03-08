@@ -75,9 +75,7 @@ class TestPinpointAppOperations:
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
 
     def test_get_application_settings(self, pinpoint):
-        created = pinpoint.create_app(
-            CreateApplicationRequest={"Name": _unique("app")}
-        )
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
         app_id = created["ApplicationResponse"]["Id"]
 
         resp = pinpoint.get_application_settings(ApplicationId=app_id)
@@ -87,9 +85,7 @@ class TestPinpointAppOperations:
         pinpoint.delete_app(ApplicationId=app_id)
 
     def test_update_application_settings(self, pinpoint):
-        created = pinpoint.create_app(
-            CreateApplicationRequest={"Name": _unique("app")}
-        )
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
         app_id = created["ApplicationResponse"]["Id"]
 
         pinpoint.update_application_settings(
@@ -104,9 +100,7 @@ class TestPinpointAppOperations:
 
 class TestPinpointTagOperations:
     def test_tag_resource(self, pinpoint):
-        created = pinpoint.create_app(
-            CreateApplicationRequest={"Name": _unique("app")}
-        )
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
         app_resp = created["ApplicationResponse"]
         app_id = app_resp["Id"]
         arn = app_resp["Arn"]
@@ -122,9 +116,7 @@ class TestPinpointTagOperations:
         pinpoint.delete_app(ApplicationId=app_id)
 
     def test_list_tags_for_resource(self, pinpoint):
-        created = pinpoint.create_app(
-            CreateApplicationRequest={"Name": _unique("app")}
-        )
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
         app_resp = created["ApplicationResponse"]
         app_id = app_resp["Id"]
         arn = app_resp["Arn"]
@@ -141,16 +133,12 @@ class TestPinpointTagOperations:
         pinpoint.delete_app(ApplicationId=app_id)
 
     def test_untag_resource(self, pinpoint):
-        created = pinpoint.create_app(
-            CreateApplicationRequest={"Name": _unique("app")}
-        )
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
         app_resp = created["ApplicationResponse"]
         app_id = app_resp["Id"]
         arn = app_resp["Arn"]
 
-        pinpoint.tag_resource(
-            ResourceArn=arn, TagsModel={"tags": {"keep": "yes", "remove": "no"}}
-        )
+        pinpoint.tag_resource(ResourceArn=arn, TagsModel={"tags": {"keep": "yes", "remove": "no"}})
         pinpoint.untag_resource(ResourceArn=arn, TagKeys=["remove"])
 
         resp = pinpoint.list_tags_for_resource(ResourceArn=arn)

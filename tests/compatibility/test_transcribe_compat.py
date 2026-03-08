@@ -83,9 +83,7 @@ class TestTranscribeOperations:
 
     def test_list_vocabularies(self, transcribe):
         name = f"list-vocab-{_uid()}"
-        transcribe.create_vocabulary(
-            VocabularyName=name, LanguageCode="en-US", Phrases=["test"]
-        )
+        transcribe.create_vocabulary(VocabularyName=name, LanguageCode="en-US", Phrases=["test"])
         response = transcribe.list_vocabularies()
         names = [v["VocabularyName"] for v in response.get("Vocabularies", [])]
         assert name in names
@@ -93,9 +91,7 @@ class TestTranscribeOperations:
 
     def test_delete_vocabulary(self, transcribe):
         name = f"del-vocab-{_uid()}"
-        transcribe.create_vocabulary(
-            VocabularyName=name, LanguageCode="en-US", Phrases=["hello"]
-        )
+        transcribe.create_vocabulary(VocabularyName=name, LanguageCode="en-US", Phrases=["hello"])
         response = transcribe.delete_vocabulary(VocabularyName=name)
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -191,7 +187,10 @@ class TestTranscribeExtended:
         try:
             resp = transcribe.get_transcription_job(TranscriptionJobName=name)
             assert resp["TranscriptionJob"]["TranscriptionJobStatus"] in (
-                "QUEUED", "IN_PROGRESS", "COMPLETED", "FAILED"
+                "QUEUED",
+                "IN_PROGRESS",
+                "COMPLETED",
+                "FAILED",
             )
         finally:
             transcribe.delete_transcription_job(TranscriptionJobName=name)

@@ -2,9 +2,7 @@
 
 import uuid
 
-import boto3
 import pytest
-from botocore.config import Config
 
 from tests.compatibility.conftest import make_client
 
@@ -36,12 +34,12 @@ def subnet_ids(ec2):
     if len(subnets) >= 2:
         return [s["SubnetId"] for s in subnets[:2]]
 
-    s1 = ec2.create_subnet(
-        VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a"
-    )["Subnet"]["SubnetId"]
-    s2 = ec2.create_subnet(
-        VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b"
-    )["Subnet"]["SubnetId"]
+    s1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a")[
+        "Subnet"
+    ]["SubnetId"]
+    s2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b")[
+        "Subnet"
+    ]["SubnetId"]
     return [s1, s2]
 
 

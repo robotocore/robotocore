@@ -1,5 +1,7 @@
 """EventBridge Scheduler compatibility tests."""
 
+from datetime import UTC
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -258,10 +260,10 @@ class TestSchedulerOperations:
 
     def test_schedule_with_start_and_end_date(self, scheduler):
         """Create a schedule with StartDate and EndDate."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        start = datetime(2030, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2030, 12, 31, tzinfo=timezone.utc)
+        start = datetime(2030, 1, 1, tzinfo=UTC)
+        end = datetime(2030, 12, 31, tzinfo=UTC)
         response = scheduler.create_schedule(
             Name="dated-schedule",
             ScheduleExpression="rate(1 day)",
@@ -309,10 +311,10 @@ class TestSchedulerOperations:
 
     def test_schedule_start_and_end_date_are_returned(self, scheduler):
         """Create schedule with StartDate and EndDate, verify they are returned."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        start = datetime(2030, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2030, 12, 15, 12, 0, 0, tzinfo=timezone.utc)
+        start = datetime(2030, 1, 15, 12, 0, 0, tzinfo=UTC)
+        end = datetime(2030, 12, 15, 12, 0, 0, tzinfo=UTC)
         scheduler.create_schedule(
             Name="dated-verify-schedule",
             ScheduleExpression="rate(1 day)",

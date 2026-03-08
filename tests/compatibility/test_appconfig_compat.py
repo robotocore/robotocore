@@ -110,9 +110,7 @@ class TestAppConfigConfigProfileOperations:
         assert resp["Name"] == prof_name
         assert resp["LocationUri"] == "hosted"
         # cleanup
-        appconfig.delete_configuration_profile(
-            ApplicationId=app_id, ConfigurationProfileId=prof_id
-        )
+        appconfig.delete_configuration_profile(ApplicationId=app_id, ConfigurationProfileId=prof_id)
         appconfig.delete_application(ApplicationId=app_id)
 
     def test_list_configuration_profiles(self, appconfig):
@@ -135,9 +133,7 @@ class TestAppConfigConfigProfileOperations:
             assert pid in listed_ids
         # cleanup
         for pid in prof_ids:
-            appconfig.delete_configuration_profile(
-                ApplicationId=app_id, ConfigurationProfileId=pid
-            )
+            appconfig.delete_configuration_profile(ApplicationId=app_id, ConfigurationProfileId=pid)
         appconfig.delete_application(ApplicationId=app_id)
 
     def test_delete_configuration_profile(self, appconfig):
@@ -151,9 +147,7 @@ class TestAppConfigConfigProfileOperations:
         )
         prof_id = create_resp["Id"]
 
-        appconfig.delete_configuration_profile(
-            ApplicationId=app_id, ConfigurationProfileId=prof_id
-        )
+        appconfig.delete_configuration_profile(ApplicationId=app_id, ConfigurationProfileId=prof_id)
 
         with pytest.raises(ClientError) as exc_info:
             appconfig.get_configuration_profile(

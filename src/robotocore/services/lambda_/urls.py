@@ -76,9 +76,7 @@ def update_function_url_config(
             existing["Cors"] = config["Cors"]
         if "InvokeMode" in config:
             existing["InvokeMode"] = config["InvokeMode"]
-        existing["LastModifiedTime"] = time.strftime(
-            "%Y-%m-%dT%H:%M:%S.000+0000", time.gmtime()
-        )
+        existing["LastModifiedTime"] = time.strftime("%Y-%m-%dT%H:%M:%S.000+0000", time.gmtime())
         return dict(existing)
 
 
@@ -131,6 +129,4 @@ class FunctionUrlConfigNotFoundError(Exception):
     """Raised when a function URL config is not found."""
 
     def __init__(self, func_name: str):
-        super().__init__(
-            f"The function url config for function {func_name} does not exist"
-        )
+        super().__init__(f"The function url config for function {func_name} does not exist")

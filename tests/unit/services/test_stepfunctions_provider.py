@@ -334,7 +334,8 @@ class TestStepFunctionsTags:
         arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
         result = _tag_resource(
             {"resourceArn": arn, "tags": [{"key": "env", "value": "test"}]},
-            "us-east-1", "123456789012",
+            "us-east-1",
+            "123456789012",
         )
         assert result == {}
         assert len(_tags[arn]) == 1
@@ -344,7 +345,8 @@ class TestStepFunctionsTags:
         arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
         _tag_resource(
             {"resourceArn": arn, "tags": [{"key": "env", "value": "dev"}]},
-            "us-east-1", "123456789012",
+            "us-east-1",
+            "123456789012",
         )
         _tag_resource(
             {
@@ -354,7 +356,8 @@ class TestStepFunctionsTags:
                     {"key": "team", "value": "eng"},
                 ],
             },
-            "us-east-1", "123456789012",
+            "us-east-1",
+            "123456789012",
         )
         tag_map = {t["key"]: t["value"] for t in _tags[arn]}
         assert tag_map["env"] == "prod"
@@ -365,7 +368,8 @@ class TestStepFunctionsTags:
         _tags[arn] = [{"key": "env", "value": "test"}, {"key": "team", "value": "eng"}]
         _untag_resource(
             {"resourceArn": arn, "tagKeys": ["env"]},
-            "us-east-1", "123456789012",
+            "us-east-1",
+            "123456789012",
         )
         assert len(_tags[arn]) == 1
         assert _tags[arn][0]["key"] == "team"
@@ -373,9 +377,7 @@ class TestStepFunctionsTags:
     def test_list_tags_for_resource(self):
         arn = "arn:aws:states:us-east-1:123456789012:stateMachine:test"
         _tags[arn] = [{"key": "env", "value": "test"}]
-        result = _list_tags_for_resource(
-            {"resourceArn": arn}, "us-east-1", "123456789012"
-        )
+        result = _list_tags_for_resource({"resourceArn": arn}, "us-east-1", "123456789012")
         assert result == {"tags": [{"key": "env", "value": "test"}]}
 
     def test_list_tags_empty(self):

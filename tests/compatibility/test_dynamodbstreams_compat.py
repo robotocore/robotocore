@@ -106,9 +106,7 @@ class TestDynamoDBStreamsOperations:
         assert desc["StreamDescription"]["StreamViewType"] == "KEYS_ONLY"
 
         # Insert an item and read the stream record
-        dynamodb.put_item(
-            TableName=table_name, Item={"pk": {"S": "k1"}, "data": {"S": "hello"}}
-        )
+        dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "k1"}, "data": {"S": "hello"}})
 
         shards = desc["StreamDescription"]["Shards"]
         if shards:
@@ -312,9 +310,9 @@ class TestDynamoDBStreamsOperations:
                     SequenceNumber=seq_num,
                 )
                 assert "ShardIterator" in at_it
-                at_records = dynamodbstreams.get_records(
-                    ShardIterator=at_it["ShardIterator"]
-                )["Records"]
+                at_records = dynamodbstreams.get_records(ShardIterator=at_it["ShardIterator"])[
+                    "Records"
+                ]
                 # AT means inclusive - should include the record at that seq number
                 assert len(at_records) >= 1
 
@@ -429,9 +427,7 @@ class TestDynamoDBStreamsOperations:
         desc = dynamodbstreams.describe_stream(StreamArn=stream_arn)
         assert desc["StreamDescription"]["StreamViewType"] == "NEW_IMAGE"
 
-        dynamodb.put_item(
-            TableName=table_name, Item={"pk": {"S": "ni1"}, "val": {"S": "hello"}}
-        )
+        dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "ni1"}, "val": {"S": "hello"}})
 
         shards = desc["StreamDescription"]["Shards"]
         if shards:
@@ -559,7 +555,8 @@ class TestDynamoDBStreamsOperations:
         if shards:
             shard_id = shards[0]["ShardId"]
             it = dynamodbstreams.get_shard_iterator(
-                StreamArn=stream_arn, ShardId=shard_id,
+                StreamArn=stream_arn,
+                ShardId=shard_id,
                 ShardIteratorType="TRIM_HORIZON",
             )["ShardIterator"]
             records = dynamodbstreams.get_records(ShardIterator=it)["Records"]
@@ -594,7 +591,8 @@ class TestDynamoDBStreamsOperations:
         if shards:
             shard_id = shards[0]["ShardId"]
             it = dynamodbstreams.get_shard_iterator(
-                StreamArn=stream_arn, ShardId=shard_id,
+                StreamArn=stream_arn,
+                ShardId=shard_id,
                 ShardIteratorType="TRIM_HORIZON",
             )["ShardIterator"]
             records = dynamodbstreams.get_records(ShardIterator=it)["Records"]
@@ -627,7 +625,8 @@ class TestDynamoDBStreamsOperations:
 
         if shards:
             it = dynamodbstreams.get_shard_iterator(
-                StreamArn=stream_arn, ShardId=shards[0]["ShardId"],
+                StreamArn=stream_arn,
+                ShardId=shards[0]["ShardId"],
                 ShardIteratorType="TRIM_HORIZON",
             )["ShardIterator"]
             records = dynamodbstreams.get_records(ShardIterator=it)["Records"]

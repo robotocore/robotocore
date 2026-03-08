@@ -18,9 +18,7 @@ from robotocore.providers.moto_bridge import forward_to_moto
 _placement_groups: dict[str, dict[str, dict[str, dict]]] = {}
 
 
-async def handle_ec2_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_ec2_request(request: Request, region: str, account_id: str) -> Response:
     """Handle EC2 requests, intercepting unimplemented operations."""
     body = await request.body()
     params = parse_qs(body.decode("utf-8")) if body else {}
@@ -101,10 +99,10 @@ def _describe_placement_groups(params: dict, region: str, account_id: str) -> Re
     items = ""
     for g in groups:
         items += f"""        <item>
-            <groupName>{g['groupName']}</groupName>
-            <strategy>{g['strategy']}</strategy>
-            <state>{g['state']}</state>
-            <groupId>{g['groupId']}</groupId>
+            <groupName>{g["groupName"]}</groupName>
+            <strategy>{g["strategy"]}</strategy>
+            <state>{g["state"]}</state>
+            <groupId>{g["groupId"]}</groupId>
         </item>
 """
 
@@ -148,8 +146,8 @@ def _detach_volume(params: dict, region: str, account_id: str) -> Response:
 
     attachment = backend.detach_volume(volume_id, instance_id, device)
 
-    att_vol_id = attachment.volume.id if hasattr(attachment.volume, 'id') else volume_id
-    att_inst_id = attachment.instance.id if hasattr(attachment.instance, 'id') else instance_id
+    att_vol_id = attachment.volume.id if hasattr(attachment.volume, "id") else volume_id
+    att_inst_id = attachment.instance.id if hasattr(attachment.instance, "id") else instance_id
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <DetachVolumeResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">

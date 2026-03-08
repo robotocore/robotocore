@@ -3,8 +3,6 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from robotocore.services.sts.provider import handle_sts_request
 
 

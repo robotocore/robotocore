@@ -9,7 +9,6 @@ import pytest
 from robotocore.services.config.provider import (
     ConfigError,
     _describe_compliance_by_config_rule,
-    _describe_config_rule_evaluation_status,
     _describe_config_rules,
     _put_config_rule,
     _put_evaluations,

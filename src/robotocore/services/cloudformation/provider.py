@@ -131,9 +131,7 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
     except Exception as e:
         stack.status = "CREATE_FAILED"
         stack.status_reason = str(e)
-        _add_event(
-            stack, name, "AWS::CloudFormation::Stack", stack_id, "CREATE_FAILED", str(e)
-        )
+        _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "CREATE_FAILED", str(e))
 
     store.put_stack(stack)
     return {"StackId": stack_id}
@@ -219,9 +217,7 @@ def _deploy_stack(
 
         _add_event(stack, logical_id, res_type, "", "CREATE_IN_PROGRESS")
         create_resource(resource, region, account_id)
-        _add_event(
-            stack, logical_id, res_type, resource.physical_id or "", "CREATE_COMPLETE"
-        )
+        _add_event(stack, logical_id, res_type, resource.physical_id or "", "CREATE_COMPLETE")
         stack.resources[logical_id] = resource
 
     # Resolve outputs
@@ -297,10 +293,18 @@ def _describe_stacks(store: CfnStore, params: dict, region: str, account_id: str
             member["Outputs"] = list(s.outputs.values())
         if s.parameters:
             # Filter out pseudo-parameters and internal keys
-            _pseudo = {"AWS::Region", "AWS::AccountId", "AWS::StackName",
-                       "AWS::StackId", "AWS::URLSuffix", "AWS::NoValue",
-                       "AWS::NotificationARNs", "AWS::Partition",
-                       "__conditions__", "__imports__"}
+            _pseudo = {
+                "AWS::Region",
+                "AWS::AccountId",
+                "AWS::StackName",
+                "AWS::StackId",
+                "AWS::URLSuffix",
+                "AWS::NoValue",
+                "AWS::NotificationARNs",
+                "AWS::Partition",
+                "__conditions__",
+                "__imports__",
+            }
             member["Parameters"] = [
                 {"ParameterKey": k, "ParameterValue": v}
                 for k, v in s.parameters.items()
@@ -505,9 +509,7 @@ def _describe_stack_resource(store: CfnStore, params: dict, region: str, account
             "PhysicalResourceId": res.physical_id or "",
             "ResourceType": res.resource_type,
             "ResourceStatus": res.status,
-            "LastUpdatedTimestamp": time.strftime(
-                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(stack.created)
-            ),
+            "LastUpdatedTimestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stack.created)),
         }
     }
 
@@ -523,15 +525,14 @@ def _create_change_set(store: CfnStore, params: dict, region: str, account_id: s
     if not cs_name:
         raise CfnError("ValidationError", "ChangeSetName is required")
 
-    cs_id = (
-        f"arn:aws:cloudformation:{region}:{account_id}:"
-        f"changeSet/{cs_name}/{_new_id()}"
-    )
+    cs_id = f"arn:aws:cloudformation:{region}:{account_id}:changeSet/{cs_name}/{_new_id()}"
 
     # For CREATE type, also create a stub stack if it doesn't exist
     stack = store.get_stack(stack_name)
-    stack_id = stack.stack_id if stack else (
-        f"arn:aws:cloudformation:{region}:{account_id}:stack/{stack_name}/{_new_id()}"
+    stack_id = (
+        stack.stack_id
+        if stack
+        else (f"arn:aws:cloudformation:{region}:{account_id}:stack/{stack_name}/{_new_id()}")
     )
     if not stack and cs_type == "CREATE":
         stub = CfnStack(
@@ -568,9 +569,7 @@ def _describe_change_set(store: CfnStore, params: dict, region: str, account_id:
             cs = store.change_sets[cs_name]
         else:
             for c in store.change_sets.values():
-                if c.change_set_name == cs_name and (
-                    not stack_name or c.stack_name == stack_name
-                ):
+                if c.change_set_name == cs_name and (not stack_name or c.stack_name == stack_name):
                     cs = c
                     break
 
@@ -602,9 +601,7 @@ def _delete_change_set(store: CfnStore, params: dict, region: str, account_id: s
             to_delete = cs_name
         else:
             for cs_id, c in store.change_sets.items():
-                if c.change_set_name == cs_name and (
-                    not stack_name or c.stack_name == stack_name
-                ):
+                if c.change_set_name == cs_name and (not stack_name or c.stack_name == stack_name):
                     to_delete = cs_id
                     break
         if to_delete:
@@ -614,7 +611,6 @@ def _delete_change_set(store: CfnStore, params: dict, region: str, account_id: s
 
 
 def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
-    cs_name = params.get("ChangeSetName", "")
     # Just return success - full execution would require template processing
     return {}
 

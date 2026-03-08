@@ -127,9 +127,7 @@ class ASLExecutor:
                 data, next_state = self._execute_state(current_state, state_def, data)
             except ASLExecutionError as e:
                 # Check for Catch on ASLExecutionError too
-                next_state, data = self._handle_error(
-                    state_def, data, e.error, e.cause
-                )
+                next_state, data = self._handle_error(state_def, data, e.error, e.cause)
                 if next_state is None:
                     if self.history:
                         self.history.execution_failed(e.error, e.cause, last_event_id)
@@ -139,9 +137,7 @@ class ASLExecutor:
                 next_state, data = self._handle_error(state_def, data, type(e).__name__, str(e))
                 if next_state is None:
                     if self.history:
-                        self.history.execution_failed(
-                            type(e).__name__, str(e), last_event_id
-                        )
+                        self.history.execution_failed(type(e).__name__, str(e), last_event_id)
                     raise ASLExecutionError(type(e).__name__, str(e))
 
             # Record state exited
@@ -262,7 +258,7 @@ class ASLExecutor:
 
         # SDK integrations: arn:aws:states:::service:action
         if resource.startswith("arn:aws:states:::"):
-            service_action = resource[len("arn:aws:states:::"):]
+            service_action = resource[len("arn:aws:states:::") :]
             service, _, action = service_action.partition(":")
 
             if service == "sqs" and action == "sendMessage":
@@ -284,9 +280,7 @@ class ASLExecutor:
         logger.warning(f"Unknown Task resource: {resource}, returning input")
         return input_data
 
-    def _execute_callback_task(
-        self, resource: str, input_data: Any, state_def: dict
-    ) -> Any:
+    def _execute_callback_task(self, resource: str, input_data: Any, state_def: dict) -> Any:
         """Execute a task using the callback pattern with task tokens."""
         task_token = str(uuid.uuid4())
         timeout = state_def.get("TimeoutSeconds", 60)
@@ -322,9 +316,7 @@ class ASLExecutor:
             _task_tokens.pop(task_token, None)
 
         if not got_signal:
-            raise ASLExecutionError(
-                "States.Timeout", "Task timed out waiting for callback"
-            )
+            raise ASLExecutionError("States.Timeout", "Task timed out waiting for callback")
 
         if token_info["status"] == "FAILED":
             raise ASLExecutionError(
@@ -529,9 +521,7 @@ class ASLExecutor:
             acct = self.account_id if self.account_id != "123456789012" else DEFAULT_ACCOUNT_ID
             backend = get_backend("dynamodb")[acct][self.region]
         except Exception:
-            raise ASLExecutionError(
-                "DynamoDB.ServiceException", "DynamoDB backend not available"
-            )
+            raise ASLExecutionError("DynamoDB.ServiceException", "DynamoDB backend not available")
 
         table_name = input_data.get("TableName", "")
 

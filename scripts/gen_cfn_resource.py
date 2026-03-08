@@ -631,9 +631,7 @@ RESOURCE_SPECS: dict[str, dict] = {
             "args": [("LogGroupName", "log_group_name"), ("Tags", "tags")],
             "kwargs": {},
             "physical_id": "name",
-            "attributes": {
-                "Arn": "f'arn:aws:logs:{region}:{account_id}:log-group:{name}'"
-            },
+            "attributes": {"Arn": "f'arn:aws:logs:{region}:{account_id}:log-group:{name}'"},
         },
         "delete": {"method": "delete_log_group", "args": ["physical_id"]},
     },
@@ -945,23 +943,15 @@ def generate_handler_code(resource_type: str, spec: dict) -> str:
                 f'f"{prefix}cfn-{{resource.logical_id}}-{{uuid.uuid4().hex[:8]}}")'
             )
         elif prop_spec.get("required"):
-            lines.append(
-                f'    {snake} = resource.properties.get("{prop_name}", "")'
-            )
+            lines.append(f'    {snake} = resource.properties.get("{prop_name}", "")')
         else:
             default = prop_spec.get("default", "")
             if isinstance(default, str) and default not in ("", "[]", "{}"):
-                lines.append(
-                    f'    {snake} = resource.properties.get("{prop_name}", "{default}")'
-                )
+                lines.append(f'    {snake} = resource.properties.get("{prop_name}", "{default}")')
             elif isinstance(default, bool):
-                lines.append(
-                    f'    {snake} = resource.properties.get("{prop_name}", {default})'
-                )
+                lines.append(f'    {snake} = resource.properties.get("{prop_name}", {default})')
             elif isinstance(default, (int, float)):
-                lines.append(
-                    f'    {snake} = resource.properties.get("{prop_name}", {default})'
-                )
+                lines.append(f'    {snake} = resource.properties.get("{prop_name}", {default})')
             else:
                 lines.append(
                     f'    {snake} = resource.properties.get("{prop_name}", {default or "None"})'
@@ -1031,10 +1021,7 @@ def list_all_types():
 
 def generate_all(write: bool = False, target_file: str | None = None):
     """Generate handler code for all resource types not yet in resources.py."""
-    resources_path = Path(
-        target_file
-        or "src/robotocore/services/cloudformation/resources.py"
-    )
+    resources_path = Path(target_file or "src/robotocore/services/cloudformation/resources.py")
     existing = resources_path.read_text() if resources_path.exists() else ""
 
     # Find which types are already implemented
@@ -1080,7 +1067,8 @@ def main():
     parser.add_argument("--write", action="store_true", help="Write to resources.py")
     parser.add_argument("--batch", help="File with resource types (one per line)")
     parser.add_argument(
-        "--file", default="src/robotocore/services/cloudformation/resources.py",
+        "--file",
+        default="src/robotocore/services/cloudformation/resources.py",
         help="Target resources.py file",
     )
     args = parser.parse_args()

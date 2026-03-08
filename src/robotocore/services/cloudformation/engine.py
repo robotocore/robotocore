@@ -194,20 +194,12 @@ def resolve_intrinsics(
             cond_val = conditions[cond_name]
             # Evaluate if it's an intrinsic
             if isinstance(cond_val, dict):
-                cond_val = resolve_intrinsics(
-                    cond_val, resources, parameters, region, account_id
-                )
+                cond_val = resolve_intrinsics(cond_val, resources, parameters, region, account_id)
             if cond_val:
-                return resolve_intrinsics(
-                    true_val, resources, parameters, region, account_id
-                )
-            return resolve_intrinsics(
-                false_val, resources, parameters, region, account_id
-            )
+                return resolve_intrinsics(true_val, resources, parameters, region, account_id)
+            return resolve_intrinsics(false_val, resources, parameters, region, account_id)
         # Default: take the true branch
-        return resolve_intrinsics(
-            true_val, resources, parameters, region, account_id
-        )
+        return resolve_intrinsics(true_val, resources, parameters, region, account_id)
 
     if "Fn::Equals" in value:
         a, b = value["Fn::Equals"]
@@ -233,21 +225,13 @@ def resolve_intrinsics(
 
     if "Fn::Cidr" in value:
         args = value["Fn::Cidr"]
-        ip_block = str(
-            resolve_intrinsics(
-                args[0], resources, parameters, region, account_id
-            )
+        ip_block = str(resolve_intrinsics(args[0], resources, parameters, region, account_id))
+        count = int(resolve_intrinsics(args[1], resources, parameters, region, account_id))
+        cidr_bits = (
+            int(resolve_intrinsics(args[2], resources, parameters, region, account_id))
+            if len(args) > 2
+            else 8
         )
-        count = int(
-            resolve_intrinsics(
-                args[1], resources, parameters, region, account_id
-            )
-        )
-        cidr_bits = int(
-            resolve_intrinsics(
-                args[2], resources, parameters, region, account_id
-            )
-        ) if len(args) > 2 else 8
         from robotocore.services.cloudformation.resources import compute_cidr
 
         return compute_cidr(ip_block, count, cidr_bits)
@@ -257,9 +241,7 @@ def resolve_intrinsics(
         transform = value["Fn::Transform"]
         params = transform.get("Parameters", {})
         resolved_params = {
-            k: resolve_intrinsics(
-                v, resources, parameters, region, account_id
-            )
+            k: resolve_intrinsics(v, resources, parameters, region, account_id)
             for k, v in params.items()
         }
         return {"Fn::Transform": {**transform, "Parameters": resolved_params}}
@@ -267,15 +249,13 @@ def resolve_intrinsics(
     if "Fn::And" in value:
         conditions = value["Fn::And"]
         return all(
-            resolve_intrinsics(c, resources, parameters, region, account_id)
-            for c in conditions
+            resolve_intrinsics(c, resources, parameters, region, account_id) for c in conditions
         )
 
     if "Fn::Or" in value:
         conditions = value["Fn::Or"]
         return any(
-            resolve_intrinsics(c, resources, parameters, region, account_id)
-            for c in conditions
+            resolve_intrinsics(c, resources, parameters, region, account_id) for c in conditions
         )
 
     # Recursively resolve all values in the dict

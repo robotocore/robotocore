@@ -263,7 +263,7 @@ class TestInsightsParser:
         assert "message" in cmds[0]["fields"]
 
     def test_parse_filter_like(self):
-        cmds = parse_query('filter @message like /ERROR/')
+        cmds = parse_query("filter @message like /ERROR/")
         assert len(cmds) == 1
         assert cmds[0]["type"] == "filter"
         assert "like" in cmds[0]["expression"]
@@ -303,15 +303,13 @@ class TestInsightsParser:
         assert cmds[0]["count"] == 50
 
     def test_parse_parse_regex(self):
-        cmds = parse_query('parse @message /user=(\\w+)/ as @user')
+        cmds = parse_query("parse @message /user=(\\w+)/ as @user")
         assert cmds[0]["type"] == "parse"
         assert cmds[0]["source"] == "message"
         assert cmds[0]["fields"] == ["user"]
 
     def test_parse_pipeline(self):
-        cmds = parse_query(
-            'fields @timestamp, @message | filter @message like /ERROR/ | limit 10'
-        )
+        cmds = parse_query("fields @timestamp, @message | filter @message like /ERROR/ | limit 10")
         assert len(cmds) == 3
         assert cmds[0]["type"] == "fields"
         assert cmds[1]["type"] == "filter"
@@ -332,7 +330,7 @@ class TestInsightsExecutor:
 
     def test_filter_like_regex(self):
         events = self._events(["ERROR: something", "INFO: ok", "ERROR: another"])
-        cmds = parse_query('filter @message like /ERROR/')
+        cmds = parse_query("filter @message like /ERROR/")
         result = execute_pipeline(cmds, events)
         assert len(result) == 2
 
@@ -381,22 +379,22 @@ class TestInsightsExecutor:
 
     def test_parse_regex_extraction(self):
         events = self._events(["user=alice action=read", "user=bob action=write"])
-        cmds = parse_query('parse @message /user=(\\w+)/ as @user')
+        cmds = parse_query("parse @message /user=(\\w+)/ as @user")
         result = execute_pipeline(cmds, events)
         assert result[0]["user"] == "alice"
         assert result[1]["user"] == "bob"
 
     def test_full_pipeline(self):
-        events = self._events([
-            "ERROR: disk full",
-            "INFO: ok",
-            "ERROR: timeout",
-            "WARNING: slow",
-            "ERROR: crash",
-        ])
-        cmds = parse_query(
-            'fields @timestamp, @message | filter @message like /ERROR/ | limit 2'
+        events = self._events(
+            [
+                "ERROR: disk full",
+                "INFO: ok",
+                "ERROR: timeout",
+                "WARNING: slow",
+                "ERROR: crash",
+            ]
         )
+        cmds = parse_query("fields @timestamp, @message | filter @message like /ERROR/ | limit 2")
         result = execute_pipeline(cmds, events)
         assert len(result) == 2
         assert "ERROR" in result[0]["message"]
@@ -406,17 +404,13 @@ class TestInsightsLifecycle:
     @patch("moto.backends.get_backend")
     def test_start_query_returns_id(self, mock_backend):
         mock_backend.return_value = {ACCOUNT: {REGION: MagicMock(groups={})}}
-        qid = start_query(
-            ["/aws/test"], "fields @message", 0, 9999, REGION, ACCOUNT
-        )
+        qid = start_query(["/aws/test"], "fields @message", 0, 9999, REGION, ACCOUNT)
         assert qid
 
     @patch("moto.backends.get_backend")
     def test_get_query_results_complete(self, mock_backend):
         mock_backend.return_value = {ACCOUNT: {REGION: MagicMock(groups={})}}
-        qid = start_query(
-            ["/aws/test"], "fields @message", 0, 9999, REGION, ACCOUNT
-        )
+        qid = start_query(["/aws/test"], "fields @message", 0, 9999, REGION, ACCOUNT)
         result = get_query_results(qid)
         assert result["status"] == "Complete"
 
@@ -427,9 +421,7 @@ class TestInsightsLifecycle:
     @patch("moto.backends.get_backend")
     def test_stop_query(self, mock_backend):
         mock_backend.return_value = {ACCOUNT: {REGION: MagicMock(groups={})}}
-        qid = start_query(
-            ["/aws/test"], "fields @message", 0, 9999, REGION, ACCOUNT
-        )
+        qid = start_query(["/aws/test"], "fields @message", 0, 9999, REGION, ACCOUNT)
         result = stop_query(qid)
         assert result is True
 
@@ -557,9 +549,7 @@ class TestDashboardCRUD:
 
     def test_get_dashboard(self):
         body = self._valid_body()
-        put_dashboard(
-            {"DashboardName": "test-dash", "DashboardBody": body}, REGION, ACCOUNT
-        )
+        put_dashboard({"DashboardName": "test-dash", "DashboardBody": body}, REGION, ACCOUNT)
         result = get_dashboard({"DashboardName": "test-dash"}, REGION, ACCOUNT)
         assert result["DashboardName"] == "test-dash"
         assert result["DashboardBody"] == body
@@ -638,12 +628,8 @@ class TestDashboardCRUD:
     def test_update_dashboard(self):
         body1 = json.dumps({"widgets": [{"type": "metric"}]})
         body2 = json.dumps({"widgets": [{"type": "text"}]})
-        put_dashboard(
-            {"DashboardName": "test", "DashboardBody": body1}, REGION, ACCOUNT
-        )
-        put_dashboard(
-            {"DashboardName": "test", "DashboardBody": body2}, REGION, ACCOUNT
-        )
+        put_dashboard({"DashboardName": "test", "DashboardBody": body1}, REGION, ACCOUNT)
+        put_dashboard({"DashboardName": "test", "DashboardBody": body2}, REGION, ACCOUNT)
         result = get_dashboard({"DashboardName": "test"}, REGION, ACCOUNT)
         assert result["DashboardBody"] == body2
 
@@ -685,9 +671,7 @@ class TestAlarmActionDispatch:
 
     def test_dispatch_ec2_action(self):
         alarm_data = {
-            "AlarmActions": [
-                "arn:aws:automate:us-east-1:ec2:stop"
-            ],
+            "AlarmActions": ["arn:aws:automate:us-east-1:ec2:stop"],
             "OKActions": [],
             "InsufficientDataActions": [],
         }
@@ -762,9 +746,7 @@ class TestCompositeAlarmCRUD:
             REGION,
             ACCOUNT,
         )
-        alarms = describe_composite_alarms(
-            {"AlarmNamePrefix": "prod"}, REGION, ACCOUNT
-        )
+        alarms = describe_composite_alarms({"AlarmNamePrefix": "prod"}, REGION, ACCOUNT)
         assert len(alarms) == 1
 
 
@@ -838,6 +820,7 @@ class TestCloudWatchJsonProtocol:
     @pytest.fixture
     def app(self):
         from robotocore.services.cloudwatch.provider import handle_cloudwatch_request
+
         return handle_cloudwatch_request
 
     def _make_json_request(self, action, body=None):
@@ -866,9 +849,7 @@ class TestCloudWatchJsonProtocol:
             mock_backend.alarms = {"test-alarm": mock_alarm}
             mock_gb.return_value = {"123456789012": {"us-east-1": mock_backend}}
 
-            req = self._make_json_request(
-                "DisableAlarmActions", {"AlarmNames": ["test-alarm"]}
-            )
+            req = self._make_json_request("DisableAlarmActions", {"AlarmNames": ["test-alarm"]})
             resp = await app(req, "us-east-1", "123456789012")
             assert resp.status_code == 200
             assert mock_alarm.actions_enabled is False
@@ -884,9 +865,7 @@ class TestCloudWatchJsonProtocol:
             mock_backend.alarms = {"test-alarm": mock_alarm}
             mock_gb.return_value = {"123456789012": {"us-east-1": mock_backend}}
 
-            req = self._make_json_request(
-                "EnableAlarmActions", {"AlarmNames": ["test-alarm"]}
-            )
+            req = self._make_json_request("EnableAlarmActions", {"AlarmNames": ["test-alarm"]})
             resp = await app(req, "us-east-1", "123456789012")
             assert resp.status_code == 200
             assert mock_alarm.actions_enabled is True
@@ -894,9 +873,7 @@ class TestCloudWatchJsonProtocol:
     @pytest.mark.asyncio
     async def test_describe_alarm_history_json(self, app):
         """DescribeAlarmHistory via JSON protocol returns empty list."""
-        req = self._make_json_request(
-            "DescribeAlarmHistory", {"AlarmName": "test"}
-        )
+        req = self._make_json_request("DescribeAlarmHistory", {"AlarmName": "test"})
         resp = await app(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         body = json.loads(resp.body)
@@ -907,8 +884,6 @@ class TestCloudWatchJsonProtocol:
         """Unknown JSON actions fall through to Moto."""
         with patch("robotocore.services.cloudwatch.provider.forward_to_moto") as mock_moto:
             mock_moto.return_value = MagicMock(status_code=200)
-            req = self._make_json_request(
-                "ListMetrics", {}
-            )
+            req = self._make_json_request("ListMetrics", {})
             await app(req, "us-east-1", "123456789012")
             mock_moto.assert_called_once()

@@ -909,7 +909,9 @@ class TestSNSToSQS:
         # Receive all messages (may take multiple receives)
         all_msgs = []
         for _ in range(3):
-            recv = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=3)
+            recv = sqs.receive_message(
+                QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=3
+            )
             all_msgs.extend(recv.get("Messages", []))
             if len(all_msgs) >= 3:
                 break
@@ -999,8 +1001,7 @@ class TestCloudFormationLambda:
         role_arn = role_resp["Role"]["Arn"]
 
         code = _make_lambda_zip(
-            "def handler(event, ctx):\n"
-            "    return {'result': 'from-cfn-lambda', 'input': event}\n"
+            "def handler(event, ctx):\n    return {'result': 'from-cfn-lambda', 'input': event}\n"
         )
 
         import base64

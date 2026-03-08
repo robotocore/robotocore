@@ -67,6 +67,7 @@ def find_service_model(service_name: str) -> dict | None:
     # Try importing botocore directly
     try:
         import botocore.loaders
+
         loader = botocore.loaders.Loader()
         return loader.load_service_model(botocore_name, "service-2")
     except Exception:
@@ -120,25 +121,27 @@ def generate_rest_json_provider(service_name: str, model: dict, operations: list
     for op in operations:
         lines.append(f"    #   {op['method']} {op['uri']} — {op['name']}")
 
-    lines.extend([
-        "",
-        '    return _error("NotImplemented", f"Operation not implemented: {method} {path}", 501)',
-        "",
-        "",
-        "def _json(status_code: int, data) -> Response:",
-        "    if data is None:",
-        '        return Response(content=b"", status_code=status_code)',
-        "    return Response(",
-        "        content=json.dumps(data),",
-        "        status_code=status_code,",
-        '        media_type="application/json",',
-        "    )",
-        "",
-        "",
-        "def _error(code: str, message: str, status: int) -> Response:",
-        '    body = json.dumps({"__type": code, "message": message})',
-        '    return Response(content=body, status_code=status, media_type="application/json")',
-    ])
+    lines.extend(
+        [
+            "",
+            '    return _error("NotImplemented", f"Operation not implemented: {method} {path}", 501)',
+            "",
+            "",
+            "def _json(status_code: int, data) -> Response:",
+            "    if data is None:",
+            '        return Response(content=b"", status_code=status_code)',
+            "    return Response(",
+            "        content=json.dumps(data),",
+            "        status_code=status_code,",
+            '        media_type="application/json",',
+            "    )",
+            "",
+            "",
+            "def _error(code: str, message: str, status: int) -> Response:",
+            '    body = json.dumps({"__type": code, "message": message})',
+            '    return Response(content=body, status_code=status, media_type="application/json")',
+        ]
+    )
 
     return "\n".join(lines) + "\n"
 
@@ -163,7 +166,7 @@ def generate_json_provider(service_name: str, model: dict, operations: list[dict
         '    target = request.headers.get("x-amz-target", "")',
         "",
         "    # Extract operation name from X-Amz-Target header",
-        f'    # Target prefix: {target_prefix}',
+        f"    # Target prefix: {target_prefix}",
         '    operation = target.split(".")[-1] if "." in target else target',
         "",
         "    handler = _ACTION_MAP.get(operation)",
@@ -175,7 +178,7 @@ def generate_json_provider(service_name: str, model: dict, operations: list[dict
         "        result = handler(params, region, account_id)",
         "        return _json(200, result)",
         "    except Exception as e:",
-        '        return _error(type(e).__name__, str(e), 400)',
+        "        return _error(type(e).__name__, str(e), 400)",
         "",
         "",
     ]
@@ -183,13 +186,15 @@ def generate_json_provider(service_name: str, model: dict, operations: list[dict
     # Generate stub for each operation
     for op in operations:
         func_name = _to_snake_case(op["name"])
-        lines.extend([
-            f"def _{func_name}(params: dict, region: str, account_id: str) -> dict:",
-            f'    """TODO: Implement {op["name"]}."""',
-            f'    raise NotImplementedError("{op["name"]}")',
-            "",
-            "",
-        ])
+        lines.extend(
+            [
+                f"def _{func_name}(params: dict, region: str, account_id: str) -> dict:",
+                f'    """TODO: Implement {op["name"]}."""',
+                f'    raise NotImplementedError("{op["name"]}")',
+                "",
+                "",
+            ]
+        )
 
     # Generate action map
     lines.append("_ACTION_MAP = {")
@@ -200,23 +205,25 @@ def generate_json_provider(service_name: str, model: dict, operations: list[dict
     lines.append("")
 
     # Add helpers
-    lines.extend([
-        "",
-        "def _json(status_code: int, data) -> Response:",
-        "    if data is None:",
-        '        return Response(content=b"", status_code=status_code)',
-        "    return Response(",
-        "        content=json.dumps(data),",
-        "        status_code=status_code,",
-        '        media_type="application/x-amz-json-1.0",',
-        "    )",
-        "",
-        "",
-        "def _error(code: str, message: str, status: int) -> Response:",
-        '    body = json.dumps({"__type": code, "message": message})',
-        '    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.0")',
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "def _json(status_code: int, data) -> Response:",
+            "    if data is None:",
+            '        return Response(content=b"", status_code=status_code)',
+            "    return Response(",
+            "        content=json.dumps(data),",
+            "        status_code=status_code,",
+            '        media_type="application/x-amz-json-1.0",',
+            "    )",
+            "",
+            "",
+            "def _error(code: str, message: str, status: int) -> Response:",
+            '    body = json.dumps({"__type": code, "message": message})',
+            '    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.0")',
+            "",
+        ]
+    )
 
     return "\n".join(lines) + "\n"
 
@@ -265,13 +272,15 @@ def generate_query_provider(service_name: str, model: dict, operations: list[dic
     # Generate stub for each operation
     for op in operations:
         func_name = _to_snake_case(op["name"])
-        lines.extend([
-            f"def _{func_name}(params: dict, region: str, account_id: str) -> dict:",
-            f'    """TODO: Implement {op["name"]}."""',
-            f'    raise NotImplementedError("{op["name"]}")',
-            "",
-            "",
-        ])
+        lines.extend(
+            [
+                f"def _{func_name}(params: dict, region: str, account_id: str) -> dict:",
+                f'    """TODO: Implement {op["name"]}."""',
+                f'    raise NotImplementedError("{op["name"]}")',
+                "",
+                "",
+            ]
+        )
 
     # Generate action map
     lines.append("_ACTION_MAP = {")
@@ -282,50 +291,52 @@ def generate_query_provider(service_name: str, model: dict, operations: list[dic
     lines.append("")
 
     # Add helpers
-    lines.extend([
-        "",
-        "def _xml_response(action: str, data: dict) -> Response:",
-        '    result_name = action.replace("Response", "Result")',
-        "    body_xml = _dict_to_xml(data)",
-        "    xml = (",
-        """        f'<?xml version="1.0"?>'""",
-        """        f'<{action}>'""",
-        """        f'<{result_name}>{body_xml}</{result_name}>'""",
-        """        f'<ResponseMetadata><RequestId>{uuid.uuid4()}</RequestId></ResponseMetadata>'""",
-        """        f'</{action}>'""",
-        "    )",
-        '    return Response(content=xml, status_code=200, media_type="text/xml")',
-        "",
-        "",
-        "def _xml_error(code: str, message: str, status: int) -> Response:",
-        "    xml = (",
-        """        f'<?xml version="1.0"?>'""",
-        """        f'<ErrorResponse>'""",
-        """        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'""",
-        """        f'<RequestId>{uuid.uuid4()}</RequestId>'""",
-        """        f'</ErrorResponse>'""",
-        "    )",
-        '    return Response(content=xml, status_code=status, media_type="text/xml")',
-        "",
-        "",
-        "def _dict_to_xml(d: dict) -> str:",
-        "    parts = []",
-        "    for k, v in d.items():",
-        "        if isinstance(v, list):",
-        "            parts.append(f'<{k}>')",
-        "            for item in v:",
-        "                if isinstance(item, dict):",
-        "                    parts.append(f'<member>{_dict_to_xml(item)}</member>')",
-        "                else:",
-        "                    parts.append(f'<member>{item}</member>')",
-        "            parts.append(f'</{k}>')",
-        "        elif isinstance(v, dict):",
-        "            parts.append(f'<{k}>{_dict_to_xml(v)}</{k}>')",
-        "        else:",
-        "            parts.append(f'<{k}>{v}</{k}>')",
-        '    return "".join(parts)',
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "def _xml_response(action: str, data: dict) -> Response:",
+            '    result_name = action.replace("Response", "Result")',
+            "    body_xml = _dict_to_xml(data)",
+            "    xml = (",
+            """        f'<?xml version="1.0"?>'""",
+            """        f'<{action}>'""",
+            """        f'<{result_name}>{body_xml}</{result_name}>'""",
+            """        f'<ResponseMetadata><RequestId>{uuid.uuid4()}</RequestId></ResponseMetadata>'""",
+            """        f'</{action}>'""",
+            "    )",
+            '    return Response(content=xml, status_code=200, media_type="text/xml")',
+            "",
+            "",
+            "def _xml_error(code: str, message: str, status: int) -> Response:",
+            "    xml = (",
+            """        f'<?xml version="1.0"?>'""",
+            """        f'<ErrorResponse>'""",
+            """        f'<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>'""",
+            """        f'<RequestId>{uuid.uuid4()}</RequestId>'""",
+            """        f'</ErrorResponse>'""",
+            "    )",
+            '    return Response(content=xml, status_code=status, media_type="text/xml")',
+            "",
+            "",
+            "def _dict_to_xml(d: dict) -> str:",
+            "    parts = []",
+            "    for k, v in d.items():",
+            "        if isinstance(v, list):",
+            "            parts.append(f'<{k}>')",
+            "            for item in v:",
+            "                if isinstance(item, dict):",
+            "                    parts.append(f'<member>{_dict_to_xml(item)}</member>')",
+            "                else:",
+            "                    parts.append(f'<member>{item}</member>')",
+            "            parts.append(f'</{k}>')",
+            "        elif isinstance(v, dict):",
+            "            parts.append(f'<{k}>{_dict_to_xml(v)}</{k}>')",
+            "        else:",
+            "            parts.append(f'<{k}>{v}</{k}>')",
+            '    return "".join(parts)',
+            "",
+        ]
+    )
 
     return "\n".join(lines) + "\n"
 
@@ -333,12 +344,14 @@ def generate_query_provider(service_name: str, model: dict, operations: list[dic
 def _to_snake_case(name: str) -> str:
     """Convert PascalCase to snake_case."""
     import re
-    s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Generate native provider from botocore spec")
     parser.add_argument("service", help="AWS service name (e.g., lambda, stepfunctions)")
     parser.add_argument("--output-dir", help="Output directory (default: stdout)")
@@ -378,7 +391,9 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "__init__.py").touch()
         (out_dir / "provider.py").write_text(code)
-        print(f"Generated {out_dir / 'provider.py'} ({len(operations)} operations, protocol={protocol})")
+        print(
+            f"Generated {out_dir / 'provider.py'} ({len(operations)} operations, protocol={protocol})"
+        )
     else:
         print(code)
 

@@ -57,6 +57,7 @@ from robotocore.services.s3.provider import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_scope(
     method: str,
     path: str,
@@ -64,9 +65,7 @@ def _make_scope(
     headers: dict | None = None,
 ):
     hdrs = headers or {}
-    raw_headers = [
-        (k.lower().encode(), v.encode()) for k, v in hdrs.items()
-    ]
+    raw_headers = [(k.lower().encode(), v.encode()) for k, v in hdrs.items()]
     return {
         "type": "http",
         "method": method,
@@ -79,9 +78,7 @@ def _make_scope(
     }
 
 
-def _make_request(
-    method, path, body=b"", query_string=b"", headers=None
-):
+def _make_request(method, path, body=b"", query_string=b"", headers=None):
     scope = _make_scope(method, path, query_string, headers)
 
     async def receive():
@@ -101,6 +98,7 @@ def _clear_stores():
 # ===================================================================
 # 1. Presigned URL parsing and validation
 # ===================================================================
+
 
 class TestPresignedUrlParsingSigV4:
     def test_parse_sigv4_url(self):
@@ -187,24 +185,14 @@ class TestPresignedUrlParsingSigV2:
         assert not info.is_expired
 
     def test_sigv2_expired(self):
-        url = (
-            "http://localhost:4566/b/k"
-            "?AWSAccessKeyId=AKID"
-            "&Signature=sig"
-            "&Expires=1000000"
-        )
+        url = "http://localhost:4566/b/k?AWSAccessKeyId=AKID&Signature=sig&Expires=1000000"
         info = parse_presigned_url(url)
         assert info is not None
         assert info.is_expired
 
     def test_sigv2_not_expired(self):
         future_ts = str(int(time.time()) + 9999)
-        url = (
-            f"http://localhost:4566/b/k"
-            f"?AWSAccessKeyId=AKID"
-            f"&Signature=sig"
-            f"&Expires={future_ts}"
-        )
+        url = f"http://localhost:4566/b/k?AWSAccessKeyId=AKID&Signature=sig&Expires={future_ts}"
         info = parse_presigned_url(url)
         assert info is not None
         assert not info.is_expired
@@ -251,6 +239,7 @@ class TestPresignedUrlInfoDataclass:
 # 2. Multipart upload lifecycle
 # ===================================================================
 
+
 @pytest.mark.asyncio
 class TestMultipartUploadRouting:
     @patch("robotocore.services.s3.provider.forward_to_moto")
@@ -260,9 +249,7 @@ class TestMultipartUploadRouting:
             content=b"<InitiateMultipartUploadResult/>",
             status_code=200,
         )
-        req = _make_request(
-            "POST", "/mybucket/mykey", query_string=b"uploads"
-        )
+        req = _make_request("POST", "/mybucket/mykey", query_string=b"uploads")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_forward.assert_called_once()
@@ -285,9 +272,7 @@ class TestMultipartUploadRouting:
 
     @patch("robotocore.services.s3.provider.fire_event")
     @patch("robotocore.services.s3.provider.forward_to_moto")
-    async def test_complete_multipart_fires_event(
-        self, mock_forward, mock_fire
-    ):
+    async def test_complete_multipart_fires_event(self, mock_forward, mock_fire):
         """POST /<bucket>/<key>?uploadId=xxx fires CompleteMultipartUpload."""
         mock_forward.return_value = Response(
             content=b"<CompleteMultipartUploadResult/>",
@@ -310,26 +295,20 @@ class TestMultipartUploadRouting:
 
     @patch("robotocore.services.s3.provider.fire_event")
     @patch("robotocore.services.s3.provider.forward_to_moto")
-    async def test_create_multipart_no_event(
-        self, mock_forward, mock_fire
-    ):
+    async def test_create_multipart_no_event(self, mock_forward, mock_fire):
         """CreateMultipartUpload should not fire any event."""
         mock_forward.return_value = Response(
             content=b"<InitiateMultipartUploadResult/>",
             status_code=200,
         )
-        req = _make_request(
-            "POST", "/mybucket/mykey", query_string=b"uploads"
-        )
+        req = _make_request("POST", "/mybucket/mykey", query_string=b"uploads")
         await handle_s3_request(req, "us-east-1", "123456789012")
         mock_fire.assert_not_called()
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_abort_multipart(self, mock_forward):
         """DELETE /<bucket>/<key>?uploadId=xxx routes to Moto."""
-        mock_forward.return_value = Response(
-            content=b"", status_code=204
-        )
+        mock_forward.return_value = Response(content=b"", status_code=204)
         req = _make_request(
             "DELETE",
             "/mybucket/mykey",
@@ -346,9 +325,7 @@ class TestMultipartUploadRouting:
             content=b"<ListMultipartUploadsResult/>",
             status_code=200,
         )
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"uploads"
-        )
+        req = _make_request("GET", "/mybucket", query_string=b"uploads")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_forward.assert_called_once()
@@ -356,9 +333,7 @@ class TestMultipartUploadRouting:
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_list_parts(self, mock_forward):
         """GET /<bucket>/<key>?uploadId=xxx routes to Moto."""
-        mock_forward.return_value = Response(
-            content=b"<ListPartsResult/>", status_code=200
-        )
+        mock_forward.return_value = Response(content=b"<ListPartsResult/>", status_code=200)
         req = _make_request(
             "GET",
             "/mybucket/mykey",
@@ -372,6 +347,7 @@ class TestMultipartUploadRouting:
 # ===================================================================
 # 3. CORS configuration and preflight
 # ===================================================================
+
 
 class TestCorsStore:
     def setup_method(self):
@@ -501,9 +477,7 @@ class TestCorsPreflightHandler:
         )
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
-        assert resp.headers["access-control-allow-origin"] == (
-            "http://example.com"
-        )
+        assert resp.headers["access-control-allow-origin"] == ("http://example.com")
         assert "GET" in resp.headers["access-control-allow-methods"]
         assert resp.headers["access-control-max-age"] == "3000"
 
@@ -592,17 +566,13 @@ class TestCorsConfigEndpoint:
             b"</CORSRule>"
             b"</CORSConfiguration>"
         )
-        req = _make_request(
-            "PUT", "/mybucket", body=xml, query_string=b"cors"
-        )
+        req = _make_request("PUT", "/mybucket", body=xml, query_string=b"cors")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert get_bucket_cors("mybucket") is not None
 
     async def test_get_cors_no_config(self):
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"cors"
-        )
+        req = _make_request("GET", "/mybucket", query_string=b"cors")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 404
 
@@ -618,18 +588,14 @@ class TestCorsConfigEndpoint:
                 }
             ],
         )
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"cors"
-        )
+        req = _make_request("GET", "/mybucket", query_string=b"cors")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert b"CORSConfiguration" in resp.body
 
     async def test_delete_cors(self):
         set_bucket_cors("mybucket", [{"AllowedOrigins": ["*"]}])
-        req = _make_request(
-            "DELETE", "/mybucket", query_string=b"cors"
-        )
+        req = _make_request("DELETE", "/mybucket", query_string=b"cors")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 204
         assert get_bucket_cors("mybucket") is None
@@ -639,13 +605,12 @@ class TestCorsConfigEndpoint:
 # 4. Bucket versioning (forwarded to Moto)
 # ===================================================================
 
+
 @pytest.mark.asyncio
 class TestVersioningRouting:
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_put_versioning_forwarded(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"", status_code=200
-        )
+        mock_forward.return_value = Response(content=b"", status_code=200)
         req = _make_request(
             "PUT",
             "/mybucket",
@@ -658,21 +623,15 @@ class TestVersioningRouting:
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_get_versioning_forwarded(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"<VersioningConfiguration/>", status_code=200
-        )
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"versioning"
-        )
+        mock_forward.return_value = Response(content=b"<VersioningConfiguration/>", status_code=200)
+        req = _make_request("GET", "/mybucket", query_string=b"versioning")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_forward.assert_called_once()
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_get_with_version_id(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"data", status_code=200
-        )
+        mock_forward.return_value = Response(content=b"data", status_code=200)
         req = _make_request(
             "GET",
             "/mybucket/mykey",
@@ -684,9 +643,7 @@ class TestVersioningRouting:
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_delete_with_version_id(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"", status_code=204
-        )
+        mock_forward.return_value = Response(content=b"", status_code=204)
         req = _make_request(
             "DELETE",
             "/mybucket/mykey",
@@ -698,12 +655,8 @@ class TestVersioningRouting:
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_list_object_versions(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"<ListVersionsResult/>", status_code=200
-        )
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"versions"
-        )
+        mock_forward.return_value = Response(content=b"<ListVersionsResult/>", status_code=200)
+        req = _make_request("GET", "/mybucket", query_string=b"versions")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_forward.assert_called_once()
@@ -712,6 +665,7 @@ class TestVersioningRouting:
 # ===================================================================
 # 5. Expanded event notifications
 # ===================================================================
+
 
 class TestExpandedNotifications:
     def setup_method(self):
@@ -730,51 +684,64 @@ class TestExpandedNotifications:
             assert _event_matches(event, ["s3:*"], "key", None) is True
 
     def test_object_created_wildcard(self):
-        assert _event_matches(
-            "s3:ObjectCreated:CompleteMultipartUpload",
-            ["s3:ObjectCreated:*"],
-            "key",
-            None,
-        ) is True
+        assert (
+            _event_matches(
+                "s3:ObjectCreated:CompleteMultipartUpload",
+                ["s3:ObjectCreated:*"],
+                "key",
+                None,
+            )
+            is True
+        )
 
     def test_object_removed_wildcard(self):
-        assert _event_matches(
-            "s3:ObjectRemoved:DeleteMarkerCreated",
-            ["s3:ObjectRemoved:*"],
-            "key",
-            None,
-        ) is True
+        assert (
+            _event_matches(
+                "s3:ObjectRemoved:DeleteMarkerCreated",
+                ["s3:ObjectRemoved:*"],
+                "key",
+                None,
+            )
+            is True
+        )
 
     def test_restore_wildcard(self):
-        assert _event_matches(
-            "s3:ObjectRestore:Completed",
-            ["s3:ObjectRestore:*"],
-            "key",
-            None,
-        ) is True
+        assert (
+            _event_matches(
+                "s3:ObjectRestore:Completed",
+                ["s3:ObjectRestore:*"],
+                "key",
+                None,
+            )
+            is True
+        )
 
     def test_replication_wildcard(self):
-        assert _event_matches(
-            "s3:Replication:OperationNotTracked",
-            ["s3:Replication:*"],
-            "key",
-            None,
-        ) is True
+        assert (
+            _event_matches(
+                "s3:Replication:OperationNotTracked",
+                ["s3:Replication:*"],
+                "key",
+                None,
+            )
+            is True
+        )
 
     def test_tagging_wildcard(self):
-        assert _event_matches(
-            "s3:ObjectTagging:Delete",
-            ["s3:ObjectTagging:*"],
-            "key",
-            None,
-        ) is True
+        assert (
+            _event_matches(
+                "s3:ObjectTagging:Delete",
+                ["s3:ObjectTagging:*"],
+                "key",
+                None,
+            )
+            is True
+        )
 
     @patch("robotocore.services.s3.notifications._deliver_to_lambda")
     @patch("robotocore.services.s3.notifications._deliver_to_sqs")
     @patch("robotocore.services.s3.notifications._deliver_to_sns")
-    def test_fire_event_with_lambda_target(
-        self, mock_sns, mock_sqs, mock_lambda
-    ):
+    def test_fire_event_with_lambda_target(self, mock_sns, mock_sqs, mock_lambda):
         cfg = NotificationConfig(
             lambda_configs=[
                 {
@@ -784,10 +751,7 @@ class TestExpandedNotifications:
             ]
         )
         set_notification_config("bucket", cfg)
-        fire_event(
-            "s3:ObjectCreated:Put", "bucket", "key",
-            "us-east-1", "123"
-        )
+        fire_event("s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123")
         mock_lambda.assert_called_once()
         args = mock_lambda.call_args[0]
         assert args[0] == "arn:aws:lambda:us-east-1:123:function:my-fn"
@@ -810,10 +774,7 @@ class TestExpandedNotifications:
             ],
         )
         set_notification_config("bucket", cfg)
-        fire_event(
-            "s3:ObjectCreated:Put", "bucket", "key",
-            "us-east-1", "123"
-        )
+        fire_event("s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123")
         mock_sqs.assert_called_once()
         mock_lambda.assert_called_once()
 
@@ -824,21 +785,12 @@ class TestExpandedNotifications:
                 {
                     "LambdaFunctionArn": "arn:aws:lambda:us-east-1:123:function:fn",
                     "Events": ["s3:ObjectCreated:*"],
-                    "Filter": {
-                        "Key": {
-                            "FilterRules": [
-                                {"Name": "suffix", "Value": ".jpg"}
-                            ]
-                        }
-                    },
+                    "Filter": {"Key": {"FilterRules": [{"Name": "suffix", "Value": ".jpg"}]}},
                 }
             ]
         )
         set_notification_config("bucket", cfg)
-        fire_event(
-            "s3:ObjectCreated:Put", "bucket", "file.txt",
-            "us-east-1", "123"
-        )
+        fire_event("s3:ObjectCreated:Put", "bucket", "file.txt", "us-east-1", "123")
         mock_lambda.assert_not_called()
 
     @patch("robotocore.services.s3.notifications._deliver_to_lambda")
@@ -853,17 +805,12 @@ class TestExpandedNotifications:
             ]
         )
         set_notification_config("bucket", cfg)
-        fire_event(
-            "s3:ObjectRemoved:Delete", "bucket", "key",
-            "us-east-1", "123"
-        )
+        fire_event("s3:ObjectRemoved:Delete", "bucket", "key", "us-east-1", "123")
         mock_lambda.assert_called_once()
 
 
 class TestDeliverToLambda:
-    @patch(
-        "robotocore.services.lambda_.invoke.invoke_lambda_async"
-    )
+    @patch("robotocore.services.lambda_.invoke.invoke_lambda_async")
     def test_deliver_invokes_lambda(self, mock_invoke):
         msg = json.dumps({"Records": [{"event": "test"}]})
         _deliver_to_lambda(
@@ -995,14 +942,13 @@ class TestNotificationConfigWithLambda:
 # 6. Lifecycle rules CRUD
 # ===================================================================
 
+
 class TestLifecycleStore:
     def setup_method(self):
         _clear_stores()
 
     def test_set_and_get(self):
-        rules = [
-            {"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}
-        ]
+        rules = [{"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}]
         set_bucket_lifecycle("mybucket", rules)
         assert get_bucket_lifecycle("mybucket") == rules
 
@@ -1077,12 +1023,7 @@ class TestParseLifecycleXml:
           </Rule>
         </LifecycleConfiguration>"""
         rules = _parse_lifecycle_xml(xml)
-        assert (
-            rules[0]["AbortIncompleteMultipartUpload"][
-                "DaysAfterInitiation"
-            ]
-            == "7"
-        )
+        assert rules[0]["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"] == "7"
 
     def test_parse_invalid_xml(self):
         assert _parse_lifecycle_xml("not xml") == []
@@ -1117,9 +1058,7 @@ class TestLifecycleToXml:
             {
                 "ID": "t",
                 "Status": "Enabled",
-                "Transitions": [
-                    {"Days": "90", "StorageClass": "GLACIER"}
-                ],
+                "Transitions": [{"Days": "90", "StorageClass": "GLACIER"}],
             }
         ]
         xml = _lifecycle_to_xml(rules)
@@ -1133,9 +1072,7 @@ class TestLifecycleEndpoint:
         _clear_stores()
 
     async def test_get_lifecycle_no_config(self):
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"lifecycle"
-        )
+        req = _make_request("GET", "/mybucket", query_string=b"lifecycle")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 404
 
@@ -1146,9 +1083,7 @@ class TestLifecycleEndpoint:
             b"<Expiration><Days>30</Days></Expiration>"
             b"</Rule></LifecycleConfiguration>"
         )
-        req = _make_request(
-            "PUT", "/mybucket", body=xml, query_string=b"lifecycle"
-        )
+        req = _make_request("PUT", "/mybucket", body=xml, query_string=b"lifecycle")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert get_bucket_lifecycle("mybucket") is not None
@@ -1158,18 +1093,14 @@ class TestLifecycleEndpoint:
             "mybucket",
             [{"ID": "r", "Status": "Enabled"}],
         )
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"lifecycle"
-        )
+        req = _make_request("GET", "/mybucket", query_string=b"lifecycle")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert b"LifecycleConfiguration" in resp.body
 
     async def test_delete_lifecycle(self):
         set_bucket_lifecycle("mybucket", [{"ID": "r"}])
-        req = _make_request(
-            "DELETE", "/mybucket", query_string=b"lifecycle"
-        )
+        req = _make_request("DELETE", "/mybucket", query_string=b"lifecycle")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 204
         assert get_bucket_lifecycle("mybucket") is None
@@ -1178,6 +1109,7 @@ class TestLifecycleEndpoint:
 # ===================================================================
 # 7. Object lock and legal hold
 # ===================================================================
+
 
 class TestObjectLockStore:
     def setup_method(self):
@@ -1254,11 +1186,11 @@ class TestLegalHoldStore:
 
 class TestLegalHoldXml:
     def test_parse_legal_hold(self):
-        xml = '<LegalHold><Status>ON</Status></LegalHold>'
+        xml = "<LegalHold><Status>ON</Status></LegalHold>"
         assert _parse_legal_hold_xml(xml) == "ON"
 
     def test_parse_legal_hold_off(self):
-        xml = '<LegalHold><Status>OFF</Status></LegalHold>'
+        xml = "<LegalHold><Status>OFF</Status></LegalHold>"
         assert _parse_legal_hold_xml(xml) == "OFF"
 
     def test_parse_invalid(self):
@@ -1280,27 +1212,19 @@ class TestObjectLockEndpoint:
             b"<ObjectLockEnabled>Enabled</ObjectLockEnabled>"
             b"</ObjectLockConfiguration>"
         )
-        req = _make_request(
-            "PUT", "/mybucket", body=xml, query_string=b"object-lock"
-        )
+        req = _make_request("PUT", "/mybucket", body=xml, query_string=b"object-lock")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert get_object_lock_config("mybucket") is not None
 
     async def test_get_object_lock_no_config(self):
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"object-lock"
-        )
+        req = _make_request("GET", "/mybucket", query_string=b"object-lock")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 404
 
     async def test_get_object_lock_with_config(self):
-        set_object_lock_config(
-            "mybucket", {"ObjectLockEnabled": "Enabled"}
-        )
-        req = _make_request(
-            "GET", "/mybucket", query_string=b"object-lock"
-        )
+        set_object_lock_config("mybucket", {"ObjectLockEnabled": "Enabled"})
+        req = _make_request("GET", "/mybucket", query_string=b"object-lock")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert b"ObjectLockConfiguration" in resp.body
@@ -1358,13 +1282,12 @@ class TestLegalHoldEndpoint:
 # 8. Additional presigned URL provider-level tests
 # ===================================================================
 
+
 @pytest.mark.asyncio
 class TestPresignedUrlProvider:
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_presigned_get_strips_params(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"object-data", status_code=200
-        )
+        mock_forward.return_value = Response(content=b"object-data", status_code=200)
         qs = (
             b"X-Amz-Algorithm=AWS4-HMAC-SHA256"
             b"&X-Amz-Credential=AKID/20260101/us-east-1/s3/aws4_request"
@@ -1373,9 +1296,7 @@ class TestPresignedUrlProvider:
             b"&X-Amz-SignedHeaders=host"
             b"&X-Amz-Signature=abc123"
         )
-        req = _make_request(
-            "GET", "/mybucket/mykey", query_string=qs
-        )
+        req = _make_request("GET", "/mybucket/mykey", query_string=qs)
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         # Moto should have been called with stripped params
@@ -1386,10 +1307,7 @@ class TestPresignedUrlProvider:
         mock_forward.return_value = Response(
             content=b"", status_code=200, headers={"ETag": '"abc"'}
         )
-        qs = (
-            b"X-Amz-Signature=abc123"
-            b"&X-Amz-Credential=AKID/20260101/us-east-1/s3/aws4_request"
-        )
+        qs = b"X-Amz-Signature=abc123&X-Amz-Credential=AKID/20260101/us-east-1/s3/aws4_request"
         req = _make_request(
             "PUT",
             "/mybucket/mykey",
@@ -1401,13 +1319,9 @@ class TestPresignedUrlProvider:
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     async def test_sigv2_presigned(self, mock_forward):
-        mock_forward.return_value = Response(
-            content=b"data", status_code=200
-        )
+        mock_forward.return_value = Response(content=b"data", status_code=200)
         qs = b"AWSAccessKeyId=AKID&Signature=sig&Expires=9999999999"
-        req = _make_request(
-            "GET", "/mybucket/mykey", query_string=qs
-        )
+        req = _make_request("GET", "/mybucket/mykey", query_string=qs)
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         mock_forward.assert_called_once()
@@ -1416,6 +1330,7 @@ class TestPresignedUrlProvider:
 # ===================================================================
 # Additional edge-case tests
 # ===================================================================
+
 
 class TestStripPresignedEdgeCases:
     def test_no_query_params_at_all(self):
@@ -1432,35 +1347,24 @@ class TestStripPresignedEdgeCases:
         )
         new_req = _strip_presigned_params(req)
         # Should not inject a second auth header
-        auth_count = sum(
-            1 for k, v in new_req.scope["headers"]
-            if k == b"authorization"
-        )
+        auth_count = sum(1 for k, v in new_req.scope["headers"] if k == b"authorization")
         assert auth_count == 1
 
 
 @pytest.mark.asyncio
 class TestHandleS3RequestEdgeCases:
     @patch("robotocore.services.s3.provider.forward_to_moto")
-    async def test_post_without_upload_fires_post_event(
-        self, mock_forward
-    ):
-        mock_forward.return_value = Response(
-            content=b"", status_code=200
-        )
+    async def test_post_without_upload_fires_post_event(self, mock_forward):
+        mock_forward.return_value = Response(content=b"", status_code=200)
         req = _make_request("POST", "/mybucket/mykey")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
 
     @patch("robotocore.services.s3.provider.forward_to_moto")
     @patch("robotocore.services.s3.provider.fire_event")
-    async def test_put_without_key_no_event(
-        self, mock_fire, mock_forward
-    ):
+    async def test_put_without_key_no_event(self, mock_fire, mock_forward):
         """PUT to /<bucket> (e.g., create bucket) should not fire event."""
-        mock_forward.return_value = Response(
-            content=b"", status_code=200
-        )
+        mock_forward.return_value = Response(content=b"", status_code=200)
         req = _make_request("PUT", "/mybucket")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200

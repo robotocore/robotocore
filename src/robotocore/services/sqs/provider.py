@@ -126,9 +126,7 @@ def _resolve_queue(store: SqsStore, params: dict, request: Request) -> StandardQ
         queue = store.get_queue(parts[-1])
         if queue:
             return queue
-    raise SqsError(
-        "AWS.SimpleQueueService.NonExistentQueue", "The specified queue does not exist."
-    )
+    raise SqsError("AWS.SimpleQueueService.NonExistentQueue", "The specified queue does not exist.")
 
 
 # --- Actions (return dicts, serialized by caller) ---
@@ -167,9 +165,7 @@ def _get_queue_url(
     name = params.get("QueueName", "")
     queue = store.get_queue(name)
     if not queue:
-        raise SqsError(
-            "AWS.SimpleQueueService.NonExistentQueue", f"Queue {name} does not exist."
-        )
+        raise SqsError("AWS.SimpleQueueService.NonExistentQueue", f"Queue {name} does not exist.")
     return {"QueueUrl": queue.url}
 
 
@@ -249,9 +245,7 @@ def _receive_message(
                 "SenderId": account_id,
                 "SentTimestamp": str(int(msg.created * 1000)),
                 "ApproximateReceiveCount": str(msg.receive_count),
-                "ApproximateFirstReceiveTimestamp": str(
-                    int((msg.first_received or 0) * 1000)
-                ),
+                "ApproximateFirstReceiveTimestamp": str(int((msg.first_received or 0) * 1000)),
             },
         }
         if msg.message_group_id:
@@ -260,9 +254,7 @@ def _receive_message(
             m["Attributes"]["SequenceNumber"] = msg.sequence_number
         if msg.system_attributes:
             for k, v in msg.system_attributes.items():
-                m["Attributes"][k] = (
-                    v.get("StringValue", "") if isinstance(v, dict) else str(v)
-                )
+                m["Attributes"][k] = v.get("StringValue", "") if isinstance(v, dict) else str(v)
         if msg.message_attributes:
             m["MessageAttributes"] = msg.message_attributes
         messages.append(m)
@@ -329,15 +321,9 @@ def _send_message_batch(
         entries.append(
             {
                 "Id": params[f"SendMessageBatchRequestEntry.{i}.Id"],
-                "MessageBody": params.get(
-                    f"SendMessageBatchRequestEntry.{i}.MessageBody", ""
-                ),
-                "DelaySeconds": params.get(
-                    f"SendMessageBatchRequestEntry.{i}.DelaySeconds", "0"
-                ),
-                "MessageGroupId": params.get(
-                    f"SendMessageBatchRequestEntry.{i}.MessageGroupId"
-                ),
+                "MessageBody": params.get(f"SendMessageBatchRequestEntry.{i}.MessageBody", ""),
+                "DelaySeconds": params.get(f"SendMessageBatchRequestEntry.{i}.DelaySeconds", "0"),
+                "MessageGroupId": params.get(f"SendMessageBatchRequestEntry.{i}.MessageGroupId"),
                 "MessageDeduplicationId": params.get(
                     f"SendMessageBatchRequestEntry.{i}.MessageDeduplicationId"
                 ),
@@ -582,12 +568,8 @@ def _list_message_move_tasks(
             "SourceArn": task.source_arn,
             "Status": task.status,
             "MaxNumberOfMessagesPerSecond": task.max_number_of_messages_per_second,
-            "ApproximateNumberOfMessagesMoved": (
-                task.approximate_number_of_messages_moved
-            ),
-            "ApproximateNumberOfMessagesToMove": (
-                task.approximate_number_of_messages_to_move
-            ),
+            "ApproximateNumberOfMessagesMoved": (task.approximate_number_of_messages_moved),
+            "ApproximateNumberOfMessagesToMove": (task.approximate_number_of_messages_to_move),
             "StartedTimestamp": int(task.started_timestamp * 1000),
         }
         if task.destination_arn:
@@ -635,12 +617,8 @@ def _parse_system_attributes(params: dict, msg: SqsMessage) -> None:
     i = 1
     while f"MessageSystemAttribute.{i}.Name" in params:
         name = params[f"MessageSystemAttribute.{i}.Name"]
-        data_type = params.get(
-            f"MessageSystemAttribute.{i}.Value.DataType", "String"
-        )
-        string_value = params.get(
-            f"MessageSystemAttribute.{i}.Value.StringValue", ""
-        )
+        data_type = params.get(f"MessageSystemAttribute.{i}.Value.DataType", "String")
+        string_value = params.get(f"MessageSystemAttribute.{i}.Value.StringValue", "")
         msg.system_attributes[name] = {
             "DataType": data_type,
             "StringValue": string_value,
@@ -692,9 +670,7 @@ def _xml_response(action: str, data: dict) -> Response:
 def _error(code: str, message: str, status: int, use_json: bool) -> Response:
     if use_json:
         body = json.dumps({"__type": code, "message": message})
-        return Response(
-            content=body, status_code=status, media_type="application/x-amz-json-1.0"
-        )
+        return Response(content=body, status_code=status, media_type="application/x-amz-json-1.0")
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://queue.amazonaws.com/doc/2012-11-05/">'

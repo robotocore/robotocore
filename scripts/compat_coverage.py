@@ -23,7 +23,6 @@ Usage:
 
 import ast
 import re
-import sys
 from pathlib import Path
 
 import botocore.session
@@ -85,15 +84,21 @@ FILE_TO_SERVICE = {
 # Operations that are admin-only, deprecated, or testing-unfriendly
 SKIP_OPERATIONS = {
     # Cross-account / org operations
-    "AcceptHandshake", "CreateOrganization", "InviteAccountToOrganization",
+    "AcceptHandshake",
+    "CreateOrganization",
+    "InviteAccountToOrganization",
     # Deprecated
-    "GetBucketLifecycle", "PutBucketLifecycle",
+    "GetBucketLifecycle",
+    "PutBucketLifecycle",
     # Waiter-only
-    "DescribeTable", "DescribeStream",
+    "DescribeTable",
+    "DescribeStream",
     # Read-only aggregate (tested implicitly)
-    "GetMetricData", "GetInsightResults",
+    "GetMetricData",
+    "GetInsightResults",
     # Dangerous in tests
-    "DeleteAccountAlias", "DeleteAccount",
+    "DeleteAccountAlias",
+    "DeleteAccount",
 }
 
 
@@ -146,9 +151,7 @@ def get_tested_operations(test_file: Path) -> set[str]:
     return tested
 
 
-def analyze_service(
-    service_name: str, botocore_name: str, test_file: Path
-) -> dict:
+def analyze_service(service_name: str, botocore_name: str, test_file: Path) -> dict:
     """Analyze coverage for a single service."""
     all_ops = get_botocore_operations(botocore_name)
     tested_ops = get_tested_operations(test_file)
@@ -226,8 +229,10 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print generated stubs to stdout")
     parser.add_argument("--write", action="store_true", help="Append stubs to test files")
     parser.add_argument(
-        "--min-coverage", type=float, default=0,
-        help="Only generate for services below this coverage %%"
+        "--min-coverage",
+        type=float,
+        default=0,
+        help="Only generate for services below this coverage %%",
     )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args()
@@ -255,6 +260,7 @@ def main():
 
     if args.json:
         import json
+
         # Remove non-serializable fields
         for r in results:
             r.pop("test_file", None)

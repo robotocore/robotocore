@@ -275,14 +275,14 @@ class TestSNSFilterPolicy:
     def test_subscription_filter_policy_string_match(self, sns, sqs):
         suffix = uuid.uuid4().hex[:8]
         q_url = sqs.create_queue(QueueName=f"filter-str-{suffix}")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         topic_arn = sns.create_topic(Name=f"filter-str-{suffix}")["TopicArn"]
         try:
-            sub_arn = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )["SubscriptionArn"]
+            sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+                "SubscriptionArn"
+            ]
             sns.set_subscription_attributes(
                 SubscriptionArn=sub_arn,
                 AttributeName="FilterPolicy",
@@ -292,9 +292,7 @@ class TestSNSFilterPolicy:
             sns.publish(
                 TopicArn=topic_arn,
                 Message="blue msg",
-                MessageAttributes={
-                    "color": {"DataType": "String", "StringValue": "blue"}
-                },
+                MessageAttributes={"color": {"DataType": "String", "StringValue": "blue"}},
             )
             recv = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=3)
             assert len(recv.get("Messages", [])) == 1
@@ -303,9 +301,7 @@ class TestSNSFilterPolicy:
             sns.publish(
                 TopicArn=topic_arn,
                 Message="red msg",
-                MessageAttributes={
-                    "color": {"DataType": "String", "StringValue": "red"}
-                },
+                MessageAttributes={"color": {"DataType": "String", "StringValue": "red"}},
             )
             recv2 = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=1)
             assert len(recv2.get("Messages", [])) == 0
@@ -316,14 +312,14 @@ class TestSNSFilterPolicy:
     def test_subscription_filter_policy_prefix(self, sns, sqs):
         suffix = uuid.uuid4().hex[:8]
         q_url = sqs.create_queue(QueueName=f"filter-pfx-{suffix}")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         topic_arn = sns.create_topic(Name=f"filter-pfx-{suffix}")["TopicArn"]
         try:
-            sub_arn = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )["SubscriptionArn"]
+            sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+                "SubscriptionArn"
+            ]
             sns.set_subscription_attributes(
                 SubscriptionArn=sub_arn,
                 AttributeName="FilterPolicy",
@@ -332,9 +328,7 @@ class TestSNSFilterPolicy:
             sns.publish(
                 TopicArn=topic_arn,
                 Message="order event",
-                MessageAttributes={
-                    "event": {"DataType": "String", "StringValue": "order.created"}
-                },
+                MessageAttributes={"event": {"DataType": "String", "StringValue": "order.created"}},
             )
             recv = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=3)
             assert len(recv.get("Messages", [])) == 1
@@ -345,27 +339,23 @@ class TestSNSFilterPolicy:
     def test_subscription_filter_policy_numeric(self, sns, sqs):
         suffix = uuid.uuid4().hex[:8]
         q_url = sqs.create_queue(QueueName=f"filter-num-{suffix}")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         topic_arn = sns.create_topic(Name=f"filter-num-{suffix}")["TopicArn"]
         try:
-            sub_arn = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )["SubscriptionArn"]
+            sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+                "SubscriptionArn"
+            ]
             sns.set_subscription_attributes(
                 SubscriptionArn=sub_arn,
                 AttributeName="FilterPolicy",
-                AttributeValue=json.dumps(
-                    {"price": [{"numeric": [">=", 100]}]}
-                ),
+                AttributeValue=json.dumps({"price": [{"numeric": [">=", 100]}]}),
             )
             sns.publish(
                 TopicArn=topic_arn,
                 Message="expensive item",
-                MessageAttributes={
-                    "price": {"DataType": "Number", "StringValue": "150"}
-                },
+                MessageAttributes={"price": {"DataType": "Number", "StringValue": "150"}},
             )
             recv = sqs.receive_message(QueueUrl=q_url, WaitTimeSeconds=3)
             assert len(recv.get("Messages", [])) == 1
@@ -476,17 +466,15 @@ class TestSNSTopicAndSubscriptionAttributes:
     def test_get_subscription_attributes(self, sns, sqs):
         suffix = uuid.uuid4().hex[:8]
         q_url = sqs.create_queue(QueueName=f"sub-attrs-{suffix}")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         topic_arn = sns.create_topic(Name=f"sub-attrs-{suffix}")["TopicArn"]
         try:
-            sub_arn = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )["SubscriptionArn"]
-            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)[
-                "Attributes"
+            sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+                "SubscriptionArn"
             ]
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
             assert attrs["Protocol"] == "sqs"
             assert attrs["Endpoint"] == q_arn
             assert attrs["TopicArn"] == topic_arn
@@ -498,22 +486,20 @@ class TestSNSTopicAndSubscriptionAttributes:
     def test_set_subscription_raw_message_delivery(self, sns, sqs):
         suffix = uuid.uuid4().hex[:8]
         q_url = sqs.create_queue(QueueName=f"sub-raw-{suffix}")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         topic_arn = sns.create_topic(Name=f"sub-raw-{suffix}")["TopicArn"]
         try:
-            sub_arn = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )["SubscriptionArn"]
+            sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+                "SubscriptionArn"
+            ]
             sns.set_subscription_attributes(
                 SubscriptionArn=sub_arn,
                 AttributeName="RawMessageDelivery",
                 AttributeValue="true",
             )
-            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)[
-                "Attributes"
-            ]
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)["Attributes"]
             assert attrs["RawMessageDelivery"] == "true"
         finally:
             sqs.delete_queue(QueueUrl=q_url)
@@ -595,10 +581,7 @@ class TestSNSPlatformApplications:
             assert app_arn is not None
 
             apps = sns.list_platform_applications()
-            arns = [
-                a["PlatformApplicationArn"]
-                for a in apps["PlatformApplications"]
-            ]
+            arns = [a["PlatformApplicationArn"] for a in apps["PlatformApplications"]]
             assert app_arn in arns
         finally:
             sns.delete_platform_application(PlatformApplicationArn=app_arn)
@@ -614,19 +597,18 @@ class TestSNSPlatformApplications:
         app_arn = response["PlatformApplicationArn"]
         sns.delete_platform_application(PlatformApplicationArn=app_arn)
         apps = sns.list_platform_applications()
-        arns = [
-            a["PlatformApplicationArn"]
-            for a in apps["PlatformApplications"]
-        ]
+        arns = [a["PlatformApplicationArn"] for a in apps["PlatformApplications"]]
         assert app_arn not in arns
+
+
 class TestSNSSubscriptionAttributes:
     def test_set_and_get_filter_policy(self, sns, sqs):
         """SetSubscriptionAttributes + GetSubscriptionAttributes with filter policy."""
         topic_arn = sns.create_topic(Name="filter-policy-topic")["TopicArn"]
         q_url = sqs.create_queue(QueueName="filter-policy-queue")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
 
         sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
             "SubscriptionArn"
@@ -651,9 +633,9 @@ class TestSNSSubscriptionAttributes:
         """GetSubscriptionAttributes returns standard fields."""
         topic_arn = sns.create_topic(Name="get-sub-attrs-topic")["TopicArn"]
         q_url = sqs.create_queue(QueueName="get-sub-attrs-queue")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
 
         sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
             "SubscriptionArn"
@@ -693,18 +675,18 @@ class TestSNSMessageAttributes:
         assert "team" not in keys
 
 
-class TestSNSSubscriptionAttributes:
+class TestSNSSubscriptionAttributesExtended:
     def test_set_subscription_filter_policy(self, sns, sqs):
         """Test SetSubscriptionAttributes with FilterPolicy."""
         q_url = sqs.create_queue(QueueName="sns-filter-test")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         topic_arn = sns.create_topic(Name="filter-topic")["TopicArn"]
         try:
-            sub_arn = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )["SubscriptionArn"]
+            sub_arn = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)[
+                "SubscriptionArn"
+            ]
             filter_policy = json.dumps({"event_type": ["order_placed"]})
             sns.set_subscription_attributes(
                 SubscriptionArn=sub_arn,
@@ -778,9 +760,9 @@ class TestSNSSubscribeProtocols:
     def test_subscribe_sqs_protocol(self, sns, sqs, topic_arn):
         """Test Subscribe with SQS protocol."""
         q_url = sqs.create_queue(QueueName="sns-proto-sqs")["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         try:
             sub = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)
             assert "SubscriptionArn" in sub
@@ -792,9 +774,7 @@ class TestSNSSubscribeProtocols:
     def test_subscribe_lambda_protocol(self, sns, topic_arn):
         """Test Subscribe with lambda protocol."""
         lambda_arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
-        sub = sns.subscribe(
-            TopicArn=topic_arn, Protocol="lambda", Endpoint=lambda_arn
-        )
+        sub = sns.subscribe(TopicArn=topic_arn, Protocol="lambda", Endpoint=lambda_arn)
         assert "SubscriptionArn" in sub
 
     def test_subscribe_https_protocol(self, sns, topic_arn):
@@ -813,11 +793,13 @@ class TestSNSExtendedOperations:
     @pytest.fixture
     def sns(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("sns")
 
     @pytest.fixture
     def topic_arn(self, sns):
         import uuid
+
         name = f"ext-topic-{uuid.uuid4().hex[:8]}"
         resp = sns.create_topic(Name=name)
         arn = resp["TopicArn"]
@@ -852,16 +834,15 @@ class TestSNSExtendedOperations:
 
     def test_set_subscription_attributes(self, sns, topic_arn):
         from tests.compatibility.conftest import make_client
+
         sqs = make_client("sqs")
         q = sqs.create_queue(QueueName=f"sns-sub-attr-{__import__('uuid').uuid4().hex[:8]}")
         q_url = q["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         try:
-            sub = sns.subscribe(
-                TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn
-            )
+            sub = sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)
             sub_arn = sub["SubscriptionArn"]
             if sub_arn != "pending confirmation":
                 sns.set_subscription_attributes(
@@ -899,6 +880,7 @@ class TestSNSExtendedOperations:
 
     def test_create_topic_with_tags(self, sns):
         import uuid
+
         name = f"tagged-topic-{uuid.uuid4().hex[:8]}"
         resp = sns.create_topic(
             Name=name,
@@ -914,6 +896,7 @@ class TestSNSExtendedOperations:
 
     def test_create_topic_with_attributes(self, sns):
         import uuid
+
         name = f"attr-topic-{uuid.uuid4().hex[:8]}"
         resp = sns.create_topic(
             Name=name,
@@ -932,12 +915,13 @@ class TestSNSExtendedOperations:
 
     def test_list_subscriptions_by_topic(self, sns, topic_arn):
         from tests.compatibility.conftest import make_client
+
         sqs = make_client("sqs")
         q = sqs.create_queue(QueueName=f"sns-list-sub-{__import__('uuid').uuid4().hex[:8]}")
         q_url = q["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         try:
             sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=q_arn)
             resp = sns.list_subscriptions_by_topic(TopicArn=topic_arn)
@@ -950,12 +934,11 @@ class TestSNSExtendedOperations:
     def test_confirm_subscription_invalid_token(self, sns, topic_arn):
         """ConfirmSubscription with invalid token should raise error."""
         with pytest.raises(ClientError):
-            sns.confirm_subscription(
-                TopicArn=topic_arn, Token="invalid-token-value"
-            )
+            sns.confirm_subscription(TopicArn=topic_arn, Token="invalid-token-value")
 
     def test_create_fifo_topic(self, sns):
         import uuid
+
         name = f"fifo-topic-{uuid.uuid4().hex[:8]}.fifo"
         resp = sns.create_topic(
             Name=name,
@@ -970,6 +953,7 @@ class TestSNSExtendedOperations:
 
     def test_publish_to_fifo_topic(self, sns):
         import uuid
+
         name = f"pub-fifo-{uuid.uuid4().hex[:8]}.fifo"
         resp = sns.create_topic(
             Name=name,
@@ -988,12 +972,13 @@ class TestSNSExtendedOperations:
 
     def test_subscribe_with_filter_policy(self, sns, topic_arn):
         from tests.compatibility.conftest import make_client
+
         sqs = make_client("sqs")
         q = sqs.create_queue(QueueName=f"sns-filter-{__import__('uuid').uuid4().hex[:8]}")
         q_url = q["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(
-            QueueUrl=q_url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         try:
             sub = sns.subscribe(
                 TopicArn=topic_arn,
@@ -1020,15 +1005,19 @@ class TestSNSExtendedOperations:
         assert "MessageId" in resp
 
     def test_set_topic_policy(self, sns, topic_arn):
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": {"AWS": "*"},
-                "Action": "SNS:Publish",
-                "Resource": topic_arn,
-            }],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": "SNS:Publish",
+                        "Resource": topic_arn,
+                    }
+                ],
+            }
+        )
         sns.set_topic_attributes(
             TopicArn=topic_arn,
             AttributeName="Policy",

@@ -50,9 +50,7 @@ def _get_tracer():
         logger.info("OpenTelemetry tracing enabled, exporting to %s", endpoint)
         return _tracer
     except ImportError:
-        logger.debug(
-            "OpenTelemetry packages not installed; tracing disabled"
-        )
+        logger.debug("OpenTelemetry packages not installed; tracing disabled")
         return None
 
 

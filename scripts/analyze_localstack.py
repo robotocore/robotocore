@@ -187,9 +187,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
                 "missing_ops": sorted(missing_ops),
                 "enterprise_only": sorted(enterprise_ops - community_ops),
                 "coverage_pct": (
-                    round(len(robotocore_ops) / len(all_ops) * 100)
-                    if all_ops
-                    else 100
+                    round(len(robotocore_ops) / len(all_ops) * 100) if all_ops else 100
                 ),
             }
 
@@ -234,12 +232,11 @@ def enterprise_diff(community: dict, enterprise: dict):
             if len(extra) > 10:
                 print(f"    ... and {len(extra) - 10} more")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Enterprise-only services: {len(enterprise_only_services)}")
     print(f"Enterprise-enhanced services: {len(enhanced_services)}")
     total_enterprise_ops = sum(
-        len(ent_ops - com_ops)
-        for _, com_ops, ent_ops in enhanced_services
+        len(ent_ops - com_ops) for _, com_ops, ent_ops in enhanced_services
     ) + sum(len(ops) for _, ops in enterprise_only_services)
     print(f"Total enterprise-only operations: {total_enterprise_ops}")
 
@@ -310,16 +307,13 @@ def main():
 
     if args.service:
         if args.service not in providers:
-            print(
-                f"Service '{args.service}' not found. "
-                f"Available: {sorted(providers.keys())}"
-            )
+            print(f"Service '{args.service}' not found. Available: {sorted(providers.keys())}")
             sys.exit(1)
         info = analyze_service(args.service, providers[args.service])
         if args.output == "json":
             print(json.dumps(info, indent=2))
         else:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Service: {info['name']}")
             print(f"Path: {info['path']}")
             print(f"Lines: {info['lines']}")
@@ -329,10 +323,7 @@ def main():
             for op in sorted(info["operations"]):
                 print(f"  - {op}")
             if info["cross_service_imports"]:
-                print(
-                    f"Cross-service imports: "
-                    f"{', '.join(info['cross_service_imports'])}"
-                )
+                print(f"Cross-service imports: {', '.join(info['cross_service_imports'])}")
             print(f"Has Pro features: {info['has_pro_features']}")
         return
 
@@ -359,8 +350,7 @@ def main():
     else:
         total_ops = 0
         print(
-            f"\n{'Service':<30} {'Ops':>5} {'Lines':>6} "
-            f"{'CrossSvc':>10} {'Classes':>10} {'Pro':>5}"
+            f"\n{'Service':<30} {'Ops':>5} {'Lines':>6} {'CrossSvc':>10} {'Classes':>10} {'Pro':>5}"
         )
         print("-" * 75)
         for name, info in sorted(all_services.items()):
@@ -369,15 +359,9 @@ def main():
             cross = len(info["cross_service_imports"])
             classes = len(info["classes"])
             pro = "YES" if info["has_pro_features"] else ""
-            print(
-                f"{name:<30} {ops:>5} {info['lines']:>6} "
-                f"{cross:>10} {classes:>10} {pro:>5}"
-            )
+            print(f"{name:<30} {ops:>5} {info['lines']:>6} {cross:>10} {classes:>10} {pro:>5}")
         print("-" * 75)
-        print(
-            f"{'TOTAL':<30} {total_ops:>5} {'':<6} "
-            f"{len(all_services):>10} services"
-        )
+        print(f"{'TOTAL':<30} {total_ops:>5} {'':<6} {len(all_services):>10} services")
         print(f"\nTotal services found: {len(all_services)}")
         print(f"Total operations: {total_ops}")
 

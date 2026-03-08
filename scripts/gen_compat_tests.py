@@ -81,7 +81,7 @@ SMART_DEFAULTS = {
     "PolicyDocument": "json.dumps(BASIC_POLICY)",
     "AssumeRolePolicyDocument": "json.dumps(ASSUME_ROLE_POLICY)",
     "StateMachineName": 'f"test-sfn-{uuid.uuid4().hex[:8]}"',
-    "DefinitionString": 'json.dumps(BASIC_SFN_DEFINITION)',
+    "DefinitionString": "json.dumps(BASIC_SFN_DEFINITION)",
     "Name": 'f"test-{uuid.uuid4().hex[:8]}"',
     "Runtime": '"python3.12"',
     "Handler": '"index.handler"',
@@ -128,7 +128,7 @@ SHAPE_TYPE_DEFAULTS = {
 
 # Common fixture/helper templates per service
 SERVICE_FIXTURES: dict[str, str] = {
-    "sqs": '''
+    "sqs": """
 @pytest.fixture
 def queue_url(client):
     name = f"test-queue-{uuid.uuid4().hex[:8]}"
@@ -139,8 +139,8 @@ def queue_url(client):
         client.delete_queue(QueueUrl=url)
     except Exception:
         pass
-''',
-    "sns": '''
+""",
+    "sns": """
 @pytest.fixture
 def topic_arn(client):
     name = f"test-topic-{uuid.uuid4().hex[:8]}"
@@ -151,8 +151,8 @@ def topic_arn(client):
         client.delete_topic(TopicArn=arn)
     except Exception:
         pass
-''',
-    "s3": '''
+""",
+    "s3": """
 @pytest.fixture
 def bucket_name(client):
     name = f"test-bucket-{uuid.uuid4().hex[:8]}"
@@ -166,8 +166,8 @@ def bucket_name(client):
         client.delete_bucket(Bucket=name)
     except Exception:
         pass
-''',
-    "dynamodb": '''
+""",
+    "dynamodb": """
 @pytest.fixture
 def table_name(client):
     name = f"test-table-{uuid.uuid4().hex[:8]}"
@@ -183,8 +183,8 @@ def table_name(client):
         client.delete_table(TableName=name)
     except Exception:
         pass
-''',
-    "kinesis": '''
+""",
+    "kinesis": """
 @pytest.fixture
 def stream_name(client):
     name = f"test-stream-{uuid.uuid4().hex[:8]}"
@@ -195,8 +195,8 @@ def stream_name(client):
         client.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
     except Exception:
         pass
-''',
-    "logs": '''
+""",
+    "logs": """
 @pytest.fixture
 def log_group_name(client):
     name = f"/test/logs/{uuid.uuid4().hex[:8]}"
@@ -206,8 +206,8 @@ def log_group_name(client):
         client.delete_log_group(logGroupName=name)
     except Exception:
         pass
-''',
-    "secretsmanager": '''
+""",
+    "secretsmanager": """
 @pytest.fixture
 def secret_arn(client):
     name = f"test-secret-{uuid.uuid4().hex[:8]}"
@@ -218,8 +218,8 @@ def secret_arn(client):
         client.delete_secret(SecretId=arn, ForceDeleteWithoutRecovery=True)
     except Exception:
         pass
-''',
-    "events": '''
+""",
+    "events": """
 @pytest.fixture
 def event_bus_name(client):
     name = f"test-bus-{uuid.uuid4().hex[:8]}"
@@ -229,8 +229,8 @@ def event_bus_name(client):
         client.delete_event_bus(Name=name)
     except Exception:
         pass
-''',
-    "lambda": '''
+""",
+    "lambda": """
 import base64
 import io
 import zipfile
@@ -258,11 +258,11 @@ def function_name(client):
         client.delete_function(FunctionName=name)
     except Exception:
         pass
-''',
+""",
 }
 
 # Common policy documents used by tests
-POLICY_HELPERS = '''
+POLICY_HELPERS = """
 BASIC_POLICY = {
     "Version": "2012-10-17",
     "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
@@ -283,7 +283,7 @@ BASIC_SFN_DEFINITION = {
     "StartAt": "Pass",
     "States": {"Pass": {"Type": "Pass", "End": True}},
 }
-'''
+"""
 
 
 def get_required_params(operation_name: str, model: dict) -> list[dict]:

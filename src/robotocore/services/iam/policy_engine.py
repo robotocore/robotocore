@@ -62,9 +62,7 @@ def _statement_matches_action(statement: dict, action: str) -> bool:
     return False
 
 
-def _statement_matches_resource(
-    statement: dict, resource: str, context: dict[str, Any]
-) -> bool:
+def _statement_matches_resource(statement: dict, resource: str, context: dict[str, Any]) -> bool:
     """Check if a statement's Resource/NotResource matches the given resource."""
     if "Resource" in statement:
         resources = statement["Resource"]

@@ -151,9 +151,7 @@ def _process_directives(template: str, ctx: VtlContext) -> str:
         stripped = line.strip()
 
         # #set($var = value)
-        set_match = re.match(
-            r'#set\s*\(\s*\$(\w+)\s*=\s*(.+?)\s*\)', stripped
-        )
+        set_match = re.match(r"#set\s*\(\s*\$(\w+)\s*=\s*(.+?)\s*\)", stripped)
         if set_match:
             var_name = set_match.group(1)
             value_expr = set_match.group(2)
@@ -199,9 +197,7 @@ def _process_directives(template: str, ctx: VtlContext) -> str:
             continue
 
         # #foreach($item in $list)
-        foreach_match = re.match(
-            r"#foreach\s*\(\s*\$(\w+)\s+in\s+(.+?)\s*\)", stripped
-        )
+        foreach_match = re.match(r"#foreach\s*\(\s*\$(\w+)\s+in\s+(.+?)\s*\)", stripped)
         if foreach_match:
             var_name = foreach_match.group(1)
             list_expr = foreach_match.group(2)
@@ -344,11 +340,7 @@ def _resolve_input(parts: list[str], ctx: VtlContext) -> object:
             arg = _extract_method_arg(parts[1]) if "(" in parts[1] else None
         if arg:
             # Check path > query > header
-            return (
-                ctx.path_params.get(arg)
-                or ctx.query_params.get(arg)
-                or ctx.headers.get(arg, "")
-            )
+            return ctx.path_params.get(arg) or ctx.query_params.get(arg) or ctx.headers.get(arg, "")
         return {}
 
     # $input.json('$.path')
@@ -570,9 +562,7 @@ def _eval_condition(condition: str, ctx: VtlContext) -> bool:
                 return left != right
             try:
                 left_n = float(left) if not isinstance(left, (int, float)) else left
-                right_n = (
-                    float(right) if not isinstance(right, (int, float)) else right
-                )
+                right_n = float(right) if not isinstance(right, (int, float)) else right
                 if op.strip() == ">":
                     return left_n > right_n
                 if op.strip() == "<":

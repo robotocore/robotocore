@@ -200,7 +200,8 @@ class TestSchema:
     async def test_start_schema_creation(self):
         api_id = await _create_api()
         req = _make_request(
-            "POST", f"/v1/apis/{api_id}/schemacreation",
+            "POST",
+            f"/v1/apis/{api_id}/schemacreation",
             {"definition": "type Query { hello: String }"},
         )
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -213,9 +214,12 @@ class TestSchema:
         api_id = await _create_api()
         await handle_appsync_request(
             _make_request(
-                "POST", f"/v1/apis/{api_id}/schemacreation",
+                "POST",
+                f"/v1/apis/{api_id}/schemacreation",
                 {"definition": "type Query { hello: String }"},
-            ), REGION, ACCOUNT
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("GET", f"/v1/apis/{api_id}/schemacreation")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -240,7 +244,8 @@ class TestResolvers:
     async def test_create_resolver(self):
         api_id = await _create_api()
         req = _make_request(
-            "POST", f"/v1/apis/{api_id}/types/Query/resolvers",
+            "POST",
+            f"/v1/apis/{api_id}/types/Query/resolvers",
             {"fieldName": "hello", "dataSourceName": "myds"},
         )
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -253,9 +258,12 @@ class TestResolvers:
         api_id = await _create_api()
         await handle_appsync_request(
             _make_request(
-                "POST", f"/v1/apis/{api_id}/types/Query/resolvers",
+                "POST",
+                f"/v1/apis/{api_id}/types/Query/resolvers",
                 {"fieldName": "hello"},
-            ), REGION, ACCOUNT
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("GET", f"/v1/apis/{api_id}/types/Query/resolvers/hello")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -267,9 +275,12 @@ class TestResolvers:
         for fn in ("hello", "world"):
             await handle_appsync_request(
                 _make_request(
-                    "POST", f"/v1/apis/{api_id}/types/Query/resolvers",
+                    "POST",
+                    f"/v1/apis/{api_id}/types/Query/resolvers",
                     {"fieldName": fn},
-                ), REGION, ACCOUNT
+                ),
+                REGION,
+                ACCOUNT,
             )
         req = _make_request("GET", f"/v1/apis/{api_id}/types/Query/resolvers")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -281,9 +292,12 @@ class TestResolvers:
         api_id = await _create_api()
         await handle_appsync_request(
             _make_request(
-                "POST", f"/v1/apis/{api_id}/types/Query/resolvers",
+                "POST",
+                f"/v1/apis/{api_id}/types/Query/resolvers",
                 {"fieldName": "hello"},
-            ), REGION, ACCOUNT
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("DELETE", f"/v1/apis/{api_id}/types/Query/resolvers/hello")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -300,7 +314,8 @@ class TestDataSources:
     async def test_create_data_source(self):
         api_id = await _create_api()
         req = _make_request(
-            "POST", f"/v1/apis/{api_id}/datasources",
+            "POST",
+            f"/v1/apis/{api_id}/datasources",
             {"name": "myds", "type": "AMAZON_DYNAMODB"},
         )
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -313,12 +328,10 @@ class TestDataSources:
         api_id = await _create_api()
         params = {"name": "myds", "type": "NONE"}
         await handle_appsync_request(
-            _make_request("POST", f"/v1/apis/{api_id}/datasources", params),
-            REGION, ACCOUNT
+            _make_request("POST", f"/v1/apis/{api_id}/datasources", params), REGION, ACCOUNT
         )
         resp = await handle_appsync_request(
-            _make_request("POST", f"/v1/apis/{api_id}/datasources", params),
-            REGION, ACCOUNT
+            _make_request("POST", f"/v1/apis/{api_id}/datasources", params), REGION, ACCOUNT
         )
         assert resp.status_code == 400
 
@@ -326,9 +339,9 @@ class TestDataSources:
     async def test_get_data_source(self):
         api_id = await _create_api()
         await handle_appsync_request(
-            _make_request(
-                "POST", f"/v1/apis/{api_id}/datasources", {"name": "myds"}
-            ), REGION, ACCOUNT
+            _make_request("POST", f"/v1/apis/{api_id}/datasources", {"name": "myds"}),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("GET", f"/v1/apis/{api_id}/datasources/myds")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -339,9 +352,9 @@ class TestDataSources:
         api_id = await _create_api()
         for n in ("ds1", "ds2"):
             await handle_appsync_request(
-                _make_request(
-                    "POST", f"/v1/apis/{api_id}/datasources", {"name": n}
-                ), REGION, ACCOUNT
+                _make_request("POST", f"/v1/apis/{api_id}/datasources", {"name": n}),
+                REGION,
+                ACCOUNT,
             )
         req = _make_request("GET", f"/v1/apis/{api_id}/datasources")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -352,9 +365,9 @@ class TestDataSources:
     async def test_delete_data_source(self):
         api_id = await _create_api()
         await handle_appsync_request(
-            _make_request(
-                "POST", f"/v1/apis/{api_id}/datasources", {"name": "myds"}
-            ), REGION, ACCOUNT
+            _make_request("POST", f"/v1/apis/{api_id}/datasources", {"name": "myds"}),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("DELETE", f"/v1/apis/{api_id}/datasources/myds")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -371,7 +384,8 @@ class TestTypes:
     async def test_create_type(self):
         api_id = await _create_api()
         req = _make_request(
-            "POST", f"/v1/apis/{api_id}/types",
+            "POST",
+            f"/v1/apis/{api_id}/types",
             {"definition": "type Query { hello: String }", "format": "SDL"},
         )
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -384,9 +398,12 @@ class TestTypes:
         api_id = await _create_api()
         await handle_appsync_request(
             _make_request(
-                "POST", f"/v1/apis/{api_id}/types",
+                "POST",
+                f"/v1/apis/{api_id}/types",
                 {"definition": "type Mutation { create: String }"},
-            ), REGION, ACCOUNT
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("GET", f"/v1/apis/{api_id}/types/Mutation")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
@@ -397,9 +414,9 @@ class TestTypes:
         api_id = await _create_api()
         for defn in ("type Query { a: String }", "type Mutation { b: String }"):
             await handle_appsync_request(
-                _make_request(
-                    "POST", f"/v1/apis/{api_id}/types", {"definition": defn}
-                ), REGION, ACCOUNT
+                _make_request("POST", f"/v1/apis/{api_id}/types", {"definition": defn}),
+                REGION,
+                ACCOUNT,
             )
         req = _make_request("GET", f"/v1/apis/{api_id}/types")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)

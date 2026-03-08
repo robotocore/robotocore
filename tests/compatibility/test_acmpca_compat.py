@@ -31,9 +31,7 @@ def certificate_authority(acmpca):
     arn = resp["CertificateAuthorityArn"]
     yield arn
     try:
-        acmpca.update_certificate_authority(
-            CertificateAuthorityArn=arn, Status="DISABLED"
-        )
+        acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
     except Exception:
         pass
     try:
@@ -70,9 +68,7 @@ class TestACMPCAOperations:
         assert arn.startswith("arn:aws:acm-pca:")
         # Cleanup
         try:
-            acmpca.update_certificate_authority(
-                CertificateAuthorityArn=arn, Status="DISABLED"
-            )
+            acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
         except Exception:
             pass
         acmpca.delete_certificate_authority(
@@ -81,9 +77,7 @@ class TestACMPCAOperations:
 
     def test_describe_certificate_authority(self, acmpca, certificate_authority):
         """DescribeCertificateAuthority returns the CA details."""
-        resp = acmpca.describe_certificate_authority(
-            CertificateAuthorityArn=certificate_authority
-        )
+        resp = acmpca.describe_certificate_authority(CertificateAuthorityArn=certificate_authority)
         ca = resp["CertificateAuthority"]
         assert ca["Arn"] == certificate_authority
         assert "Status" in ca
@@ -93,9 +87,7 @@ class TestACMPCAOperations:
 
     def test_describe_certificate_authority_config_fields(self, acmpca, certificate_authority):
         """DescribeCertificateAuthority returns configuration details."""
-        resp = acmpca.describe_certificate_authority(
-            CertificateAuthorityArn=certificate_authority
-        )
+        resp = acmpca.describe_certificate_authority(CertificateAuthorityArn=certificate_authority)
         ca = resp["CertificateAuthority"]
         config = ca["CertificateAuthorityConfiguration"]
         assert config["KeyAlgorithm"] == "RSA_2048"
@@ -151,9 +143,7 @@ class TestACMPCAOperations:
         acmpca.update_certificate_authority(
             CertificateAuthorityArn=certificate_authority, Status="DISABLED"
         )
-        resp = acmpca.describe_certificate_authority(
-            CertificateAuthorityArn=certificate_authority
-        )
+        resp = acmpca.describe_certificate_authority(CertificateAuthorityArn=certificate_authority)
         assert resp["CertificateAuthority"]["Status"] == "DISABLED"
 
     def test_delete_certificate_authority(self, acmpca):
@@ -174,9 +164,7 @@ class TestACMPCAOperations:
         arn = resp["CertificateAuthorityArn"]
         # Disable before deleting
         try:
-            acmpca.update_certificate_authority(
-                CertificateAuthorityArn=arn, Status="DISABLED"
-            )
+            acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
         except Exception:
             pass
         acmpca.delete_certificate_authority(
@@ -193,9 +181,7 @@ class TestACMPCAOperations:
             {"Key": "cost-center", "Value": "12345"},
             {"Key": "owner", "Value": "test-user"},
         ]
-        acmpca.tag_certificate_authority(
-            CertificateAuthorityArn=certificate_authority, Tags=tags
-        )
+        acmpca.tag_certificate_authority(CertificateAuthorityArn=certificate_authority, Tags=tags)
         resp = acmpca.list_tags(CertificateAuthorityArn=certificate_authority)
         tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
         assert tag_map["team"] == "platform"
@@ -222,9 +208,7 @@ class TestACMPCAOperations:
         assert desc["CertificateAuthority"]["Type"] == "SUBORDINATE"
         # Cleanup
         try:
-            acmpca.update_certificate_authority(
-                CertificateAuthorityArn=arn, Status="DISABLED"
-            )
+            acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
         except Exception:
             pass
         acmpca.delete_certificate_authority(

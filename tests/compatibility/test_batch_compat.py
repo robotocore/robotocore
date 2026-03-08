@@ -528,13 +528,16 @@ class TestBatchExtended:
         )
         batch.delete_compute_environment(computeEnvironment=name)
         resp = batch.describe_compute_environments(computeEnvironments=[name])
-        names = [ce["computeEnvironmentName"] for ce in resp["computeEnvironments"]
-                 if ce.get("status") != "DELETED"]
+        names = [
+            ce["computeEnvironmentName"]
+            for ce in resp["computeEnvironments"]
+            if ce.get("status") != "DELETED"
+        ]
         assert name not in names
 
     def test_register_job_definition_with_command(self, batch):
         name = _unique("jd-cmd")
-        resp = batch.register_job_definition(
+        _ = batch.register_job_definition(
             jobDefinitionName=name,
             type="container",
             containerProperties={
@@ -553,7 +556,7 @@ class TestBatchExtended:
 
     def test_register_job_definition_with_timeout(self, batch):
         name = _unique("jd-to")
-        resp = batch.register_job_definition(
+        _ = batch.register_job_definition(
             jobDefinitionName=name,
             type="container",
             containerProperties={
@@ -699,7 +702,7 @@ class TestBatchExtended:
 
     def test_register_job_definition_with_volumes(self, batch):
         name = _unique("jd-vol")
-        resp = batch.register_job_definition(
+        _ = batch.register_job_definition(
             jobDefinitionName=name,
             type="container",
             containerProperties={

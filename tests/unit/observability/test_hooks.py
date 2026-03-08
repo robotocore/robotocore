@@ -134,9 +134,10 @@ class TestRunInitHooks:
                 "robotocore.observability.hooks.get_hook_base",
                 return_value=str(tmp_path),
             ),
-            patch("subprocess.run", side_effect=__import__("subprocess").TimeoutExpired(
-                cmd="bash", timeout=30
-            )),
+            patch(
+                "subprocess.run",
+                side_effect=__import__("subprocess").TimeoutExpired(cmd="bash", timeout=30),
+            ),
         ):
             results = run_init_hooks("boot")
 

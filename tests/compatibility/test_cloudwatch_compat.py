@@ -1,6 +1,5 @@
 """CloudWatch Metrics compatibility tests."""
 
-import datetime
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -566,24 +565,26 @@ class TestCloudWatchOperations:
 
         suffix = uuid.uuid4().hex[:8]
         dash_name = f"test-dash-{suffix}"
-        dash_body = json.dumps({
-            "widgets": [
-                {
-                    "type": "metric",
-                    "x": 0,
-                    "y": 0,
-                    "width": 12,
-                    "height": 6,
-                    "properties": {
-                        "metrics": [["TestNS", "TestMetric"]],
-                        "period": 300,
-                        "stat": "Average",
-                        "region": "us-east-1",
-                        "title": "Test Dashboard",
-                    },
-                }
-            ]
-        })
+        dash_body = json.dumps(
+            {
+                "widgets": [
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 0,
+                        "width": 12,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [["TestNS", "TestMetric"]],
+                            "period": 300,
+                            "stat": "Average",
+                            "region": "us-east-1",
+                            "title": "Test Dashboard",
+                        },
+                    }
+                ]
+            }
+        )
 
         # Put
         response = cw.put_dashboard(DashboardName=dash_name, DashboardBody=dash_body)
@@ -1061,6 +1062,7 @@ class TestCloudWatchOperations:
     def test_put_metric_alarm_with_actions(self, cw):
         """PutMetricAlarm with alarm, OK, and insufficient data actions."""
         import uuid
+
         suffix = uuid.uuid4().hex[:8]
         alarm_name = f"action-alarm-{suffix}"
         sns_arn = f"arn:aws:sns:us-east-1:123456789012:alarm-topic-{suffix}"
@@ -1087,6 +1089,7 @@ class TestCloudWatchOperations:
     def test_put_metric_alarm_with_dimensions(self, cw):
         """PutMetricAlarm scoped to a dimension."""
         import uuid
+
         suffix = uuid.uuid4().hex[:8]
         alarm_name = f"dim-alarm-{suffix}"
         cw.put_metric_alarm(
@@ -1106,9 +1109,10 @@ class TestCloudWatchOperations:
         assert dims["InstanceId"] == "i-12345"
         cw.delete_alarms(AlarmNames=[alarm_name])
 
-    def test_put_metric_data_with_dimensions(self, cw):
+    def test_put_metric_data_with_dimensions_v2(self, cw):
         """PutMetricData with dimensions and retrieve filtered."""
         import uuid
+
         ns = f"DimData-{uuid.uuid4().hex[:8]}"
         now = datetime.now(UTC)
         cw.put_metric_data(
@@ -1132,9 +1136,10 @@ class TestCloudWatchOperations:
         )
         assert len(resp["Metrics"]) >= 1
 
-    def test_put_composite_alarm(self, cw):
+    def test_put_composite_alarm_v2(self, cw):
         """PutCompositeAlarm creates a composite alarm from metric alarms."""
         import uuid
+
         suffix = uuid.uuid4().hex[:8]
         child_name = f"child-{suffix}"
         composite_name = f"composite-{suffix}"
@@ -1164,6 +1169,7 @@ class TestCloudWatchOperations:
     def test_list_metrics_with_dimensions_filter(self, cw):
         """ListMetrics filtered by Dimensions."""
         import uuid
+
         ns = f"DimFilter-{uuid.uuid4().hex[:8]}"
         cw.put_metric_data(
             Namespace=ns,
@@ -1195,14 +1201,19 @@ class TestCloudWatchOperations:
     def test_get_metric_statistics_extended_stats(self, cw):
         """GetMetricStatistics with ExtendedStatistics (percentiles)."""
         import uuid
+
         ns = f"ExtStat-{uuid.uuid4().hex[:8]}"
         now = datetime.now(UTC)
         for v in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
             cw.put_metric_data(
                 Namespace=ns,
                 MetricData=[
-                    {"MetricName": "Latency", "Value": float(v), "Unit": "Milliseconds",
-                     "Timestamp": now}
+                    {
+                        "MetricName": "Latency",
+                        "Value": float(v),
+                        "Unit": "Milliseconds",
+                        "Timestamp": now,
+                    }
                 ],
             )
         resp = cw.get_metric_statistics(

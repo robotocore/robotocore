@@ -78,9 +78,7 @@ class TestCodeDeployOperations:
 
     def test_create_application(self, codedeploy):
         name = _unique("test-app")
-        resp = codedeploy.create_application(
-            applicationName=name, computePlatform="Server"
-        )
+        resp = codedeploy.create_application(applicationName=name, computePlatform="Server")
         assert "applicationId" in resp
 
     def test_get_application(self, codedeploy, application):

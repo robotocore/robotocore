@@ -28,9 +28,7 @@ def _get_ses_backend(account_id: str, region: str):
     return get_backend("ses")[account_id][region]
 
 
-async def handle_ses_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_ses_request(request: Request, region: str, account_id: str) -> Response:
     """Handle SES API requests (query protocol via Action parameter)."""
     body = await request.body()
     content_type = request.headers.get("content-type", "")
@@ -90,9 +88,7 @@ def _list_identities(params: dict, region: str, account_id: str) -> str:
     return f"<Identities>{members}</Identities>"
 
 
-def _get_account_sending_enabled(
-    params: dict, region: str, account_id: str
-) -> str:
+def _get_account_sending_enabled(params: dict, region: str, account_id: str) -> str:
     """GetAccountSendingEnabled - not in Moto, return enabled=true."""
     return "<Enabled>true</Enabled>"
 
@@ -227,6 +223,7 @@ def _error_response(code: str, message: str, status: int) -> Response:
 # ---------------------------------------------------------------------------
 # Action dispatch map
 # ---------------------------------------------------------------------------
+
 
 def _set_identity_dkim_enabled(params: dict, region: str, account_id: str) -> dict:
     """SetIdentityDkimEnabled — acknowledge the request (no-op in mock)."""

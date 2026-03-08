@@ -225,9 +225,7 @@ class TestConfigurationRecorder:
                 "recordingGroup": {"allSupported": True},
             }
         )
-        response = config.describe_configuration_recorders(
-            ConfigurationRecorderNames=["default"]
-        )
+        response = config.describe_configuration_recorders(ConfigurationRecorderNames=["default"])
         assert len(response["ConfigurationRecorders"]) == 1
         recorder = response["ConfigurationRecorders"][0]
         assert recorder["name"] == "default"
@@ -261,9 +259,7 @@ class TestConfigurationRecorder:
                 },
             }
         )
-        response = config.describe_configuration_recorders(
-            ConfigurationRecorderNames=["default"]
-        )
+        response = config.describe_configuration_recorders(ConfigurationRecorderNames=["default"])
         recorder = response["ConfigurationRecorders"][0]
         resource_types = recorder["recordingGroup"]["resourceTypes"]
         assert "AWS::S3::Bucket" in resource_types
@@ -385,9 +381,7 @@ class TestConfigCompliance:
                 },
             }
         )
-        response = config.describe_compliance_by_config_rule(
-            ConfigRuleNames=["compliance-rule"]
-        )
+        response = config.describe_compliance_by_config_rule(ConfigRuleNames=["compliance-rule"])
         assert "ComplianceByConfigRules" in response
         if response["ComplianceByConfigRules"]:
             rule = response["ComplianceByConfigRules"][0]
@@ -587,14 +581,10 @@ class TestConfigExtended:
         name = "desc-agg"
         config.put_configuration_aggregator(
             ConfigurationAggregatorName=name,
-            AccountAggregationSources=[
-                {"AccountIds": ["123456789012"], "AllAwsRegions": True}
-            ],
+            AccountAggregationSources=[{"AccountIds": ["123456789012"], "AllAwsRegions": True}],
         )
         try:
-            resp = config.describe_configuration_aggregators(
-                ConfigurationAggregatorNames=[name]
-            )
+            resp = config.describe_configuration_aggregators(ConfigurationAggregatorNames=[name])
             assert len(resp["ConfigurationAggregators"]) == 1
             assert resp["ConfigurationAggregators"][0]["ConfigurationAggregatorName"] == name
         finally:

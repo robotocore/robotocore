@@ -63,9 +63,7 @@ def _clear_state():
 
 
 def _make_executor(states: dict, start_at: str = "Start", execution_arn: str = "") -> ASLExecutor:
-    return ASLExecutor(
-        {"StartAt": start_at, "States": states}, execution_arn=execution_arn
-    )
+    return ASLExecutor({"StartAt": start_at, "States": states}, execution_arn=execution_arn)
 
 
 _SIMPLE_DEFINITION = json.dumps(
@@ -91,9 +89,7 @@ class TestIntrinsicFormat:
         assert result == "1 + 2 = 3"
 
     def test_format_with_jsonpath(self):
-        result = evaluate_intrinsic(
-            "States.Format('Hello, {}!', $.name)", {"name": "Alice"}
-        )
+        result = evaluate_intrinsic("States.Format('Hello, {}!', $.name)", {"name": "Alice"})
         assert result == "Hello, Alice!"
 
 
@@ -107,21 +103,17 @@ class TestIntrinsicStringToJson:
         assert result == [1, 2, 3]
 
     def test_parse_string(self):
-        result = evaluate_intrinsic('States.StringToJson(\'"hello"\')')
+        result = evaluate_intrinsic("States.StringToJson('\"hello\"')")
         assert result == "hello"
 
 
 class TestIntrinsicJsonToString:
     def test_serialize_object(self):
-        result = evaluate_intrinsic(
-            "States.JsonToString($.data)", {"data": {"a": 1}}
-        )
+        result = evaluate_intrinsic("States.JsonToString($.data)", {"data": {"a": 1}})
         assert result == '{"a":1}'
 
     def test_serialize_array(self):
-        result = evaluate_intrinsic(
-            "States.JsonToString($.arr)", {"arr": [1, 2]}
-        )
+        result = evaluate_intrinsic("States.JsonToString($.arr)", {"arr": [1, 2]})
         assert result == "[1,2]"
 
 
@@ -138,23 +130,17 @@ class TestIntrinsicArray:
         assert result == ["a", "b"]
 
     def test_array_with_path(self):
-        result = evaluate_intrinsic(
-            "States.Array($.x, $.y)", {"x": 10, "y": 20}
-        )
+        result = evaluate_intrinsic("States.Array($.x, $.y)", {"x": 10, "y": 20})
         assert result == [10, 20]
 
 
 class TestIntrinsicArrayPartition:
     def test_even_partition(self):
-        result = evaluate_intrinsic(
-            "States.ArrayPartition($.arr, 2)", {"arr": [1, 2, 3, 4]}
-        )
+        result = evaluate_intrinsic("States.ArrayPartition($.arr, 2)", {"arr": [1, 2, 3, 4]})
         assert result == [[1, 2], [3, 4]]
 
     def test_uneven_partition(self):
-        result = evaluate_intrinsic(
-            "States.ArrayPartition($.arr, 2)", {"arr": [1, 2, 3]}
-        )
+        result = evaluate_intrinsic("States.ArrayPartition($.arr, 2)", {"arr": [1, 2, 3]})
         assert result == [[1, 2], [3]]
 
     def test_partition_error_not_array(self):
@@ -163,22 +149,16 @@ class TestIntrinsicArrayPartition:
 
     def test_partition_error_zero_size(self):
         with pytest.raises(IntrinsicError):
-            evaluate_intrinsic(
-                "States.ArrayPartition($.arr, 0)", {"arr": [1]}
-            )
+            evaluate_intrinsic("States.ArrayPartition($.arr, 0)", {"arr": [1]})
 
 
 class TestIntrinsicArrayContains:
     def test_contains_true(self):
-        result = evaluate_intrinsic(
-            "States.ArrayContains($.arr, 3)", {"arr": [1, 2, 3]}
-        )
+        result = evaluate_intrinsic("States.ArrayContains($.arr, 3)", {"arr": [1, 2, 3]})
         assert result is True
 
     def test_contains_false(self):
-        result = evaluate_intrinsic(
-            "States.ArrayContains($.arr, 5)", {"arr": [1, 2, 3]}
-        )
+        result = evaluate_intrinsic("States.ArrayContains($.arr, 5)", {"arr": [1, 2, 3]})
         assert result is False
 
 
@@ -198,49 +178,35 @@ class TestIntrinsicArrayRange:
 
 class TestIntrinsicArrayGetItem:
     def test_get_first(self):
-        result = evaluate_intrinsic(
-            "States.ArrayGetItem($.arr, 0)", {"arr": ["a", "b", "c"]}
-        )
+        result = evaluate_intrinsic("States.ArrayGetItem($.arr, 0)", {"arr": ["a", "b", "c"]})
         assert result == "a"
 
     def test_get_last(self):
-        result = evaluate_intrinsic(
-            "States.ArrayGetItem($.arr, 2)", {"arr": ["a", "b", "c"]}
-        )
+        result = evaluate_intrinsic("States.ArrayGetItem($.arr, 2)", {"arr": ["a", "b", "c"]})
         assert result == "c"
 
     def test_out_of_bounds(self):
         with pytest.raises(IntrinsicError):
-            evaluate_intrinsic(
-                "States.ArrayGetItem($.arr, 10)", {"arr": [1]}
-            )
+            evaluate_intrinsic("States.ArrayGetItem($.arr, 10)", {"arr": [1]})
 
 
 class TestIntrinsicArrayLength:
     def test_length(self):
-        result = evaluate_intrinsic(
-            "States.ArrayLength($.arr)", {"arr": [1, 2, 3]}
-        )
+        result = evaluate_intrinsic("States.ArrayLength($.arr)", {"arr": [1, 2, 3]})
         assert result == 3
 
     def test_empty_length(self):
-        result = evaluate_intrinsic(
-            "States.ArrayLength($.arr)", {"arr": []}
-        )
+        result = evaluate_intrinsic("States.ArrayLength($.arr)", {"arr": []})
         assert result == 0
 
 
 class TestIntrinsicArrayUnique:
     def test_unique(self):
-        result = evaluate_intrinsic(
-            "States.ArrayUnique($.arr)", {"arr": [1, 2, 2, 3, 1]}
-        )
+        result = evaluate_intrinsic("States.ArrayUnique($.arr)", {"arr": [1, 2, 2, 3, 1]})
         assert result == [1, 2, 3]
 
     def test_already_unique(self):
-        result = evaluate_intrinsic(
-            "States.ArrayUnique($.arr)", {"arr": [1, 2, 3]}
-        )
+        result = evaluate_intrinsic("States.ArrayUnique($.arr)", {"arr": [1, 2, 3]})
         assert result == [1, 2, 3]
 
 
@@ -326,9 +292,7 @@ class TestIntrinsicMath:
         assert result == 7
 
     def test_math_add_with_path(self):
-        result = evaluate_intrinsic(
-            "States.MathAdd($.a, $.b)", {"a": 5, "b": 10}
-        )
+        result = evaluate_intrinsic("States.MathAdd($.a, $.b)", {"a": 5, "b": 10})
         assert result == 15
 
 
@@ -397,23 +361,17 @@ class TestJSONataBasic:
 
 class TestJSONataConcatenation:
     def test_string_concat(self):
-        result = evaluate_jsonata(
-            'name & " " & "Smith"', {"name": "John"}
-        )
+        result = evaluate_jsonata('name & " " & "Smith"', {"name": "John"})
         assert result == "John Smith"
 
 
 class TestJSONataConditional:
     def test_ternary_true(self):
-        result = evaluate_jsonata(
-            "age >= 18 ? 'adult' : 'minor'", {"age": 21}
-        )
+        result = evaluate_jsonata("age >= 18 ? 'adult' : 'minor'", {"age": 21})
         assert result == "adult"
 
     def test_ternary_false(self):
-        result = evaluate_jsonata(
-            "age >= 18 ? 'adult' : 'minor'", {"age": 10}
-        )
+        result = evaluate_jsonata("age >= 18 ? 'adult' : 'minor'", {"age": 10})
         assert result == "minor"
 
 
@@ -838,12 +796,12 @@ class TestExpressWorkflows:
         assert len(result["executions"]) == 0
 
     def test_start_sync_execution_with_failure(self):
-        fail_def = json.dumps({
-            "StartAt": "Fail",
-            "States": {
-                "Fail": {"Type": "Fail", "Error": "TestError", "Cause": "testing"}
-            },
-        })
+        fail_def = json.dumps(
+            {
+                "StartAt": "Fail",
+                "States": {"Fail": {"Type": "Fail", "Error": "TestError", "Cause": "testing"}},
+            }
+        )
         _create_state_machine(
             {"name": "express_fail", "definition": fail_def, "roleArn": "r", "type": "EXPRESS"},
             "us-east-1",
@@ -1523,9 +1481,7 @@ class TestDynamoDBTypeHelpers:
 
 class TestIntrinsicNestedCalls:
     def test_nested_intrinsic(self):
-        result = evaluate_intrinsic(
-            "States.ArrayLength(States.Array(1, 2, 3))"
-        )
+        result = evaluate_intrinsic("States.ArrayLength(States.Array(1, 2, 3))")
         assert result == 3
 
     def test_format_with_json_to_string(self):

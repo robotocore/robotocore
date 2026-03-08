@@ -83,9 +83,7 @@ def fire_event(
     if not config.queue_configs and not config.topic_configs and not config.lambda_configs:
         return
 
-    record = _build_event_record(
-        event_name, bucket, key, region, account_id, size, etag
-    )
+    record = _build_event_record(event_name, bucket, key, region, account_id, size, etag)
     message = json.dumps({"Records": [record]})
 
     for qc in config.queue_configs:
@@ -98,9 +96,7 @@ def fire_event(
 
     for lc in config.lambda_configs:
         if _event_matches(event_name, lc.get("Events", []), key, lc.get("Filter")):
-            _deliver_to_lambda(
-                lc["LambdaFunctionArn"], message, region, account_id
-            )
+            _deliver_to_lambda(lc["LambdaFunctionArn"], message, region, account_id)
 
 
 def _event_matches(event_name: str, events: list[str], key: str, filter_rules: dict | None) -> bool:

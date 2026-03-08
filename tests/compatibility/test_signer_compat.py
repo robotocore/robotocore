@@ -74,12 +74,8 @@ class TestSignerProfileOperations:
     def test_put_signing_profile_version_is_unique(self, signer):
         name1 = _unique("profile")
         name2 = _unique("profile")
-        r1 = signer.put_signing_profile(
-            profileName=name1, platformId="AWSLambda-SHA384-ECDSA"
-        )
-        r2 = signer.put_signing_profile(
-            profileName=name2, platformId="AWSLambda-SHA384-ECDSA"
-        )
+        r1 = signer.put_signing_profile(profileName=name1, platformId="AWSLambda-SHA384-ECDSA")
+        r2 = signer.put_signing_profile(profileName=name2, platformId="AWSLambda-SHA384-ECDSA")
         assert r1["profileVersion"] != r2["profileVersion"]
         signer.cancel_signing_profile(profileName=name1)
         signer.cancel_signing_profile(profileName=name2)

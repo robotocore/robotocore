@@ -70,7 +70,9 @@ class TestFifoTopics:
                 "Name": "my-topic.fifo",
                 "Attributes": {"FifoTopic": "true"},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["TopicArn"].endswith(".fifo")
         topic = store.get_topic(result["TopicArn"])
@@ -86,25 +88,37 @@ class TestFifoTopics:
                     "Name": "bad-name",
                     "Attributes": {"FifoTopic": "true"},
                 },
-                "us-east-1", "123", mock_req,
+                "us-east-1",
+                "123",
+                mock_req,
             )
         assert "InvalidParameter" in exc.value.code
 
     def test_fifo_topic_content_based_dedup(self):
         store = SnsStore()
-        store.create_topic("t.fifo", "us-east-1", "123", {
-            "FifoTopic": "true",
-            "ContentBasedDeduplication": "true",
-        })
+        store.create_topic(
+            "t.fifo",
+            "us-east-1",
+            "123",
+            {
+                "FifoTopic": "true",
+                "ContentBasedDeduplication": "true",
+            },
+        )
         topic = store.get_topic("arn:aws:sns:us-east-1:123:t.fifo")
         assert topic.content_based_dedup is True
 
     def test_fifo_dedup_skips_duplicate(self):
         store = SnsStore()
-        topic = store.create_topic("t.fifo", "us-east-1", "123", {
-            "FifoTopic": "true",
-            "ContentBasedDeduplication": "true",
-        })
+        topic = store.create_topic(
+            "t.fifo",
+            "us-east-1",
+            "123",
+            {
+                "FifoTopic": "true",
+                "ContentBasedDeduplication": "true",
+            },
+        )
         is_dup1, _ = topic.check_dedup("msg body", None, "g1")
         assert is_dup1 is False
         is_dup2, _ = topic.check_dedup("msg body", None, "g1")
@@ -112,9 +126,14 @@ class TestFifoTopics:
 
     def test_fifo_dedup_explicit_id(self):
         store = SnsStore()
-        topic = store.create_topic("t.fifo", "us-east-1", "123", {
-            "FifoTopic": "true",
-        })
+        topic = store.create_topic(
+            "t.fifo",
+            "us-east-1",
+            "123",
+            {
+                "FifoTopic": "true",
+            },
+        )
         is_dup1, _ = topic.check_dedup("body1", "dedup-1", "g1")
         assert is_dup1 is False
         is_dup2, _ = topic.check_dedup("body2", "dedup-1", "g1")
@@ -122,9 +141,14 @@ class TestFifoTopics:
 
     def test_fifo_dedup_expires(self):
         store = SnsStore()
-        topic = store.create_topic("t.fifo", "us-east-1", "123", {
-            "FifoTopic": "true",
-        })
+        topic = store.create_topic(
+            "t.fifo",
+            "us-east-1",
+            "123",
+            {
+                "FifoTopic": "true",
+            },
+        )
         topic.check_dedup("body", "d1", "g1")
         # Manually expire
         for k in list(topic._dedup_cache):
@@ -134,10 +158,15 @@ class TestFifoTopics:
 
     def test_fifo_publish_returns_sequence_number(self):
         store = SnsStore()
-        store.create_topic("t.fifo", "us-east-1", "123", {
-            "FifoTopic": "true",
-            "ContentBasedDeduplication": "true",
-        })
+        store.create_topic(
+            "t.fifo",
+            "us-east-1",
+            "123",
+            {
+                "FifoTopic": "true",
+                "ContentBasedDeduplication": "true",
+            },
+        )
         mock_req = MagicMock()
         result = _publish(
             store,
@@ -146,20 +175,29 @@ class TestFifoTopics:
                 "Message": "hello",
                 "MessageGroupId": "g1",
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "SequenceNumber" in result
 
     def test_fifo_get_attributes_shows_fifo(self):
         store = SnsStore()
-        store.create_topic("t.fifo", "us-east-1", "123", {
-            "FifoTopic": "true",
-        })
+        store.create_topic(
+            "t.fifo",
+            "us-east-1",
+            "123",
+            {
+                "FifoTopic": "true",
+            },
+        )
         mock_req = MagicMock()
         result = _get_topic_attributes(
             store,
             {"TopicArn": "arn:aws:sns:us-east-1:123:t.fifo"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Attributes"]["FifoTopic"] == "true"
 
@@ -169,167 +207,242 @@ class TestFifoTopics:
 
 class TestFilterPolicyExactMatch:
     def test_string_list(self):
-        assert _matches_filter_policy(
-            {"Color": ["red", "blue"]},
-            {"Color": {"Value": "red"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": ["red", "blue"]},
+                {"Color": {"Value": "red"}},
+            )
+            is True
+        )
 
     def test_string_list_no_match(self):
-        assert _matches_filter_policy(
-            {"Color": ["red", "blue"]},
-            {"Color": {"Value": "green"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": ["red", "blue"]},
+                {"Color": {"Value": "green"}},
+            )
+            is False
+        )
 
 
 class TestFilterPolicyPrefix:
     def test_prefix_match(self):
-        assert _matches_filter_policy(
-            {"Color": [{"prefix": "blu"}]},
-            {"Color": {"Value": "blue"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"prefix": "blu"}]},
+                {"Color": {"Value": "blue"}},
+            )
+            is True
+        )
 
     def test_prefix_no_match(self):
-        assert _matches_filter_policy(
-            {"Color": [{"prefix": "red"}]},
-            {"Color": {"Value": "blue"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"prefix": "red"}]},
+                {"Color": {"Value": "blue"}},
+            )
+            is False
+        )
 
 
 class TestFilterPolicyNumeric:
     def test_exact_numeric(self):
-        assert _matches_filter_policy(
-            {"Price": [{"numeric": ["=", 100]}]},
-            {"Price": {"Value": "100"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Price": [{"numeric": ["=", 100]}]},
+                {"Price": {"Value": "100"}},
+            )
+            is True
+        )
 
     def test_range(self):
-        assert _matches_filter_policy(
-            {"Price": [{"numeric": [">=", 100, "<", 200]}]},
-            {"Price": {"Value": "150"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Price": [{"numeric": [">=", 100, "<", 200]}]},
+                {"Price": {"Value": "150"}},
+            )
+            is True
+        )
 
     def test_range_out_of_bounds(self):
-        assert _matches_filter_policy(
-            {"Price": [{"numeric": [">=", 100, "<", 200]}]},
-            {"Price": {"Value": "250"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Price": [{"numeric": [">=", 100, "<", 200]}]},
+                {"Price": {"Value": "250"}},
+            )
+            is False
+        )
 
     def test_greater_than(self):
-        assert _matches_filter_policy(
-            {"Price": [{"numeric": [">", 50]}]},
-            {"Price": {"Value": "100"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Price": [{"numeric": [">", 50]}]},
+                {"Price": {"Value": "100"}},
+            )
+            is True
+        )
 
     def test_less_than_or_equal(self):
-        assert _matches_filter_policy(
-            {"Price": [{"numeric": ["<=", 50]}]},
-            {"Price": {"Value": "50"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Price": [{"numeric": ["<=", 50]}]},
+                {"Price": {"Value": "50"}},
+            )
+            is True
+        )
 
     def test_non_numeric_value_fails(self):
-        assert _matches_filter_policy(
-            {"Price": [{"numeric": ["=", 100]}]},
-            {"Price": {"Value": "not-a-number"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Price": [{"numeric": ["=", 100]}]},
+                {"Price": {"Value": "not-a-number"}},
+            )
+            is False
+        )
 
 
 class TestFilterPolicyExists:
     def test_exists_true_with_key(self):
-        assert _matches_filter_policy(
-            {"Color": [{"exists": True}]},
-            {"Color": {"Value": "red"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"exists": True}]},
+                {"Color": {"Value": "red"}},
+            )
+            is True
+        )
 
     def test_exists_true_without_key(self):
-        assert _matches_filter_policy(
-            {"Color": [{"exists": True}]},
-            {},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"exists": True}]},
+                {},
+            )
+            is False
+        )
 
     def test_exists_false_without_key(self):
-        assert _matches_filter_policy(
-            {"Color": [{"exists": False}]},
-            {},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"exists": False}]},
+                {},
+            )
+            is True
+        )
 
     def test_exists_false_with_key(self):
-        assert _matches_filter_policy(
-            {"Color": [{"exists": False}]},
-            {"Color": {"Value": "red"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"exists": False}]},
+                {"Color": {"Value": "red"}},
+            )
+            is False
+        )
 
 
 class TestFilterPolicyAnythingBut:
     def test_anything_but_list(self):
-        assert _matches_filter_policy(
-            {"Color": [{"anything-but": ["red", "blue"]}]},
-            {"Color": {"Value": "green"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"anything-but": ["red", "blue"]}]},
+                {"Color": {"Value": "green"}},
+            )
+            is True
+        )
 
     def test_anything_but_list_matches_excluded(self):
-        assert _matches_filter_policy(
-            {"Color": [{"anything-but": ["red", "blue"]}]},
-            {"Color": {"Value": "red"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"anything-but": ["red", "blue"]}]},
+                {"Color": {"Value": "red"}},
+            )
+            is False
+        )
 
     def test_anything_but_string(self):
-        assert _matches_filter_policy(
-            {"Color": [{"anything-but": "red"}]},
-            {"Color": {"Value": "blue"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"anything-but": "red"}]},
+                {"Color": {"Value": "blue"}},
+            )
+            is True
+        )
 
     def test_anything_but_prefix(self):
-        assert _matches_filter_policy(
-            {"Color": [{"anything-but": {"prefix": "red"}}]},
-            {"Color": {"Value": "blue"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"anything-but": {"prefix": "red"}}]},
+                {"Color": {"Value": "blue"}},
+            )
+            is True
+        )
 
     def test_anything_but_prefix_excluded(self):
-        assert _matches_filter_policy(
-            {"Color": [{"anything-but": {"prefix": "red"}}]},
-            {"Color": {"Value": "reddish"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": [{"anything-but": {"prefix": "red"}}]},
+                {"Color": {"Value": "reddish"}},
+            )
+            is False
+        )
 
 
 class TestFilterPolicyCIDR:
     def test_cidr_match(self):
-        assert _matches_filter_policy(
-            {"SourceIP": [{"cidr": "10.0.0.0/8"}]},
-            {"SourceIP": {"Value": "10.1.2.3"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"SourceIP": [{"cidr": "10.0.0.0/8"}]},
+                {"SourceIP": {"Value": "10.1.2.3"}},
+            )
+            is True
+        )
 
     def test_cidr_no_match(self):
-        assert _matches_filter_policy(
-            {"SourceIP": [{"cidr": "10.0.0.0/8"}]},
-            {"SourceIP": {"Value": "192.168.1.1"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"SourceIP": [{"cidr": "10.0.0.0/8"}]},
+                {"SourceIP": {"Value": "192.168.1.1"}},
+            )
+            is False
+        )
 
     def test_cidr_invalid_ip(self):
-        assert _matches_filter_policy(
-            {"SourceIP": [{"cidr": "10.0.0.0/8"}]},
-            {"SourceIP": {"Value": "not-an-ip"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"SourceIP": [{"cidr": "10.0.0.0/8"}]},
+                {"SourceIP": {"Value": "not-an-ip"}},
+            )
+            is False
+        )
 
 
 class TestFilterPolicyCombined:
     def test_multiple_keys_all_must_match(self):
-        assert _matches_filter_policy(
-            {"Color": ["red"], "Size": [{"numeric": [">", 5]}]},
-            {"Color": {"Value": "red"}, "Size": {"Value": "10"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": ["red"], "Size": [{"numeric": [">", 5]}]},
+                {"Color": {"Value": "red"}, "Size": {"Value": "10"}},
+            )
+            is True
+        )
 
     def test_multiple_keys_one_fails(self):
-        assert _matches_filter_policy(
-            {"Color": ["red"], "Size": [{"numeric": [">", 5]}]},
-            {"Color": {"Value": "red"}, "Size": {"Value": "3"}},
-        ) is False
+        assert (
+            _matches_filter_policy(
+                {"Color": ["red"], "Size": [{"numeric": [">", 5]}]},
+                {"Color": {"Value": "red"}, "Size": {"Value": "3"}},
+            )
+            is False
+        )
 
     def test_or_within_value_list(self):
         """Multiple rules for same key: any match = pass."""
-        assert _matches_filter_policy(
-            {"Color": ["red", {"prefix": "blu"}]},
-            {"Color": {"Value": "blue"}},
-        ) is True
+        assert (
+            _matches_filter_policy(
+                {"Color": ["red", {"prefix": "blu"}]},
+                {"Color": {"Value": "blue"}},
+            )
+            is True
+        )
 
 
 class TestSubscriptionMatchesFilter:
@@ -351,7 +464,8 @@ class TestSubscriptionConfirmation:
         store = SnsStore()
         store.create_topic("t", "us-east-1", "123")
         sub = store.subscribe(
-            "arn:aws:sns:us-east-1:123:t", "http",
+            "arn:aws:sns:us-east-1:123:t",
+            "http",
             "http://example.com/hook",
         )
         assert sub.confirmed is False
@@ -360,14 +474,17 @@ class TestSubscriptionConfirmation:
         store = SnsStore()
         store.create_topic("t", "us-east-1", "123")
         store.subscribe(
-            "arn:aws:sns:us-east-1:123:t", "http",
+            "arn:aws:sns:us-east-1:123:t",
+            "http",
             "http://example.com/hook",
         )
         mock_req = MagicMock()
         result = _confirm_subscription(
             store,
             {"TopicArn": "arn:aws:sns:us-east-1:123:t", "Token": "tok"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "SubscriptionArn" in result
 
@@ -378,14 +495,17 @@ class TestSubscriptionConfirmation:
             _confirm_subscription(
                 store,
                 {"TopicArn": "arn:nope", "Token": "tok"},
-                "us-east-1", "123", mock_req,
+                "us-east-1",
+                "123",
+                mock_req,
             )
 
     def test_sqs_sub_auto_confirmed(self):
         store = SnsStore()
         store.create_topic("t", "us-east-1", "123")
         sub = store.subscribe(
-            "arn:aws:sns:us-east-1:123:t", "sqs",
+            "arn:aws:sns:us-east-1:123:t",
+            "sqs",
             "arn:aws:sqs:us-east-1:123:q",
         )
         assert sub.confirmed is True
@@ -394,14 +514,17 @@ class TestSubscriptionConfirmation:
         store = SnsStore()
         store.create_topic("t", "us-east-1", "123")
         sub = store.subscribe(
-            "arn:aws:sns:us-east-1:123:t", "http",
+            "arn:aws:sns:us-east-1:123:t",
+            "http",
             "http://example.com/hook",
         )
         mock_req = MagicMock()
         result = _get_subscription_attributes(
             store,
             {"SubscriptionArn": sub.subscription_arn},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Attributes"]["PendingConfirmation"] == "true"
 
@@ -417,7 +540,13 @@ class TestSNSLambdaDelivery:
         )
         with patch("robotocore.services.sns.provider._deliver_to_lambda") as mock:
             _deliver_to_subscriber(
-                sub, "msg", None, {}, "id", "topic", "us-east-1",
+                sub,
+                "msg",
+                None,
+                {},
+                "id",
+                "topic",
+                "us-east-1",
             )
             mock.assert_called_once()
 
@@ -433,7 +562,13 @@ class TestSNSFirehoseDelivery:
         )
         with patch("robotocore.services.sns.provider._deliver_to_firehose") as mock:
             _deliver_to_subscriber(
-                sub, "msg", None, {}, "id", "topic", "us-east-1",
+                sub,
+                "msg",
+                None,
+                {},
+                "id",
+                "topic",
+                "us-east-1",
             )
             mock.assert_called_once()
 
@@ -452,7 +587,9 @@ class TestPlatformApplications:
                 "Platform": "GCM",
                 "Attributes": {"PlatformCredential": "api-key"},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "PlatformApplicationArn" in result
         assert "GCM" in result["PlatformApplicationArn"]
@@ -463,15 +600,23 @@ class TestPlatformApplications:
         _create_platform_application(
             store,
             {"Name": "a1", "Platform": "GCM"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         _create_platform_application(
             store,
             {"Name": "a2", "Platform": "APNS"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _list_platform_applications(
-            store, {}, "us-east-1", "123", mock_req,
+            store,
+            {},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert len(result["PlatformApplications"]) == 2
 
@@ -481,12 +626,17 @@ class TestPlatformApplications:
         result = _create_platform_application(
             store,
             {"Name": "a1", "Platform": "GCM"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         arn = result["PlatformApplicationArn"]
         _delete_platform_application(
-            store, {"PlatformApplicationArn": arn},
-            "us-east-1", "123", mock_req,
+            store,
+            {"PlatformApplicationArn": arn},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert store.get_platform_application(arn) is None
 
@@ -496,15 +646,21 @@ class TestPlatformApplications:
         result = _create_platform_application(
             store,
             {
-                "Name": "a1", "Platform": "GCM",
+                "Name": "a1",
+                "Platform": "GCM",
                 "Attributes": {"PlatformCredential": "key"},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         arn = result["PlatformApplicationArn"]
         attrs = _get_platform_application_attributes(
-            store, {"PlatformApplicationArn": arn},
-            "us-east-1", "123", mock_req,
+            store,
+            {"PlatformApplicationArn": arn},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert attrs["Attributes"]["PlatformCredential"] == "key"
 
@@ -514,7 +670,9 @@ class TestPlatformApplications:
         result = _create_platform_application(
             store,
             {"Name": "a1", "Platform": "GCM"},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         arn = result["PlatformApplicationArn"]
         _set_platform_application_attributes(
@@ -523,7 +681,9 @@ class TestPlatformApplications:
                 "PlatformApplicationArn": arn,
                 "Attributes": {"Enabled": "true"},
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         app = store.get_platform_application(arn)
         assert app.attributes["Enabled"] == "true"
@@ -533,8 +693,11 @@ class TestPlatformApplications:
         mock_req = MagicMock()
         with pytest.raises(SnsError):
             _get_platform_application_attributes(
-                store, {"PlatformApplicationArn": "arn:nope"},
-                "us-east-1", "123", mock_req,
+                store,
+                {"PlatformApplicationArn": "arn:nope"},
+                "us-east-1",
+                "123",
+                mock_req,
             )
 
 
@@ -555,7 +718,9 @@ class TestSNSMessageAttributes:
                     "Color": {"DataType": "String", "StringValue": "red"},
                 },
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "MessageId" in result
 
@@ -572,7 +737,9 @@ class TestSNSMessageAttributes:
                 "MessageAttributes.entry.1.Value.DataType": "String",
                 "MessageAttributes.entry.1.Value.StringValue": "red",
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert "MessageId" in result
 
@@ -586,17 +753,25 @@ class TestTopicPoliciesAndTags:
         store.create_topic("t", "us-east-1", "123")
         arn = "arn:aws:sns:us-east-1:123:t"
         mock_req = MagicMock()
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "SNS:Publish"}],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "SNS:Publish"}],
+            }
+        )
         _set_topic_attributes(
             store,
             {"TopicArn": arn, "AttributeName": "Policy", "AttributeValue": policy},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _get_topic_attributes(
-            store, {"TopicArn": arn}, "us-east-1", "123", mock_req,
+            store,
+            {"TopicArn": arn},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Attributes"]["Policy"] == policy
 
@@ -614,10 +789,16 @@ class TestTopicPoliciesAndTags:
                     {"Key": "team", "Value": "backend"},
                 ],
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _list_tags_for_resource(
-            store, {"ResourceArn": arn}, "us-east-1", "123", mock_req,
+            store,
+            {"ResourceArn": arn},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         tags = {t["Key"]: t["Value"] for t in result["Tags"]}
         assert tags == {"env": "prod", "team": "backend"}
@@ -631,10 +812,16 @@ class TestTopicPoliciesAndTags:
         _untag_resource(
             store,
             {"ResourceArn": arn, "TagKeys": ["env"]},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         result = _list_tags_for_resource(
-            store, {"ResourceArn": arn}, "us-east-1", "123", mock_req,
+            store,
+            {"ResourceArn": arn},
+            "us-east-1",
+            "123",
+            mock_req,
         )
         keys = [t["Key"] for t in result["Tags"]]
         assert "env" not in keys
@@ -649,7 +836,9 @@ class TestTopicPoliciesAndTags:
                 "Name": "t",
                 "Tags": [{"Key": "k1", "Value": "v1"}],
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         topic = store.get_topic(result["TopicArn"])
         assert topic.tags["k1"] == "v1"
@@ -725,7 +914,9 @@ class TestFilterPolicyScope:
                 "AttributeName": "FilterPolicyScope",
                 "AttributeValue": "MessageBody",
             },
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert sub.filter_policy_scope == "MessageBody"
 
@@ -738,7 +929,9 @@ class TestFilterPolicyScope:
         result = _get_subscription_attributes(
             store,
             {"SubscriptionArn": sub.subscription_arn},
-            "us-east-1", "123", mock_req,
+            "us-east-1",
+            "123",
+            mock_req,
         )
         assert result["Attributes"]["FilterPolicyScope"] == "MessageAttributes"
 

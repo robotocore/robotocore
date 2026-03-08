@@ -207,7 +207,11 @@ class TestRedshiftOperations:
             ClusterType="single-node",
             Tags=[{"Key": "env", "Value": "test"}],
         )
-        arn = create["Cluster"]["ClusterNamespaceArn"] if "ClusterNamespaceArn" in create["Cluster"] else None
+        _arn = (
+            create["Cluster"]["ClusterNamespaceArn"]
+            if "ClusterNamespaceArn" in create["Cluster"]
+            else None
+        )
         try:
             desc = redshift.describe_clusters(ClusterIdentifier=cid)
             tags = {t["Key"]: t["Value"] for t in desc["Clusters"][0].get("Tags", [])}

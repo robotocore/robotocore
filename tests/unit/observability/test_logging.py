@@ -99,7 +99,7 @@ class TestJsonFormatter:
             level=logging.DEBUG,
             pathname="test.py",
             lineno=42,
-            msg="a message with special chars: {}<>&\"",
+            msg='a message with special chars: {}<>&"',
             args=(),
             exc_info=None,
         )

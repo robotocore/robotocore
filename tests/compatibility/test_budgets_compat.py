@@ -84,16 +84,12 @@ class TestBudgetOperations:
 
     def test_describe_nonexistent_budget_raises(self, budgets):
         with pytest.raises(ClientError) as exc:
-            budgets.describe_budget(
-                AccountId=ACCOUNT_ID, BudgetName="nonexistent-budget-xyz"
-            )
+            budgets.describe_budget(AccountId=ACCOUNT_ID, BudgetName="nonexistent-budget-xyz")
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
 
     def test_delete_nonexistent_budget_raises(self, budgets):
         with pytest.raises(ClientError) as exc:
-            budgets.delete_budget(
-                AccountId=ACCOUNT_ID, BudgetName="nonexistent-budget-xyz"
-            )
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName="nonexistent-budget-xyz")
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
 
     def test_create_duplicate_budget_raises(self, budgets):
@@ -151,9 +147,7 @@ class TestBudgetNotifications:
                     {"SubscriptionType": "EMAIL", "Address": "test@example.com"},
                 ],
             )
-            resp = budgets.describe_notifications_for_budget(
-                AccountId=ACCOUNT_ID, BudgetName=name
-            )
+            resp = budgets.describe_notifications_for_budget(AccountId=ACCOUNT_ID, BudgetName=name)
             notifications = resp["Notifications"]
             assert len(notifications) >= 1
             notif = notifications[0]
@@ -194,9 +188,7 @@ class TestBudgetNotifications:
                 BudgetName=name,
                 Notification=notification,
             )
-            resp = budgets.describe_notifications_for_budget(
-                AccountId=ACCOUNT_ID, BudgetName=name
-            )
+            resp = budgets.describe_notifications_for_budget(AccountId=ACCOUNT_ID, BudgetName=name)
             assert len(resp["Notifications"]) == 0
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
@@ -213,9 +205,7 @@ class TestBudgetNotifications:
             },
         )
         try:
-            resp = budgets.describe_notifications_for_budget(
-                AccountId=ACCOUNT_ID, BudgetName=name
-            )
+            resp = budgets.describe_notifications_for_budget(AccountId=ACCOUNT_ID, BudgetName=name)
             assert resp["Notifications"] == []
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)

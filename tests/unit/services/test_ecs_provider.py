@@ -52,10 +52,13 @@ async def _create_cluster(name: str = "test-cluster") -> str:
 
 
 async def _register_task_def(family: str = "test-family") -> str:
-    req = _make_request("RegisterTaskDefinition", {
-        "family": family,
-        "containerDefinitions": [{"name": "app", "image": "nginx"}],
-    })
+    req = _make_request(
+        "RegisterTaskDefinition",
+        {
+            "family": family,
+            "containerDefinitions": [{"name": "app", "image": "nginx"}],
+        },
+    )
     resp = await handle_ecs_request(req, REGION, ACCOUNT)
     return json.loads(resp.body)["taskDefinition"]["taskDefinitionArn"]
 
@@ -149,10 +152,13 @@ class TestClusterCrud:
 class TestTaskDefinitions:
     @pytest.mark.asyncio
     async def test_register_task_definition(self):
-        req = _make_request("RegisterTaskDefinition", {
-            "family": "web",
-            "containerDefinitions": [{"name": "app", "image": "nginx"}],
-        })
+        req = _make_request(
+            "RegisterTaskDefinition",
+            {
+                "family": "web",
+                "containerDefinitions": [{"name": "app", "image": "nginx"}],
+            },
+        )
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -214,12 +220,15 @@ class TestServices:
     async def test_create_service(self):
         await _create_cluster("c1")
         await _register_task_def("web")
-        req = _make_request("CreateService", {
-            "cluster": "c1",
-            "serviceName": "web-svc",
-            "taskDefinition": "web",
-            "desiredCount": 2,
-        })
+        req = _make_request(
+            "CreateService",
+            {
+                "cluster": "c1",
+                "serviceName": "web-svc",
+                "taskDefinition": "web",
+                "desiredCount": 2,
+            },
+        )
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -230,13 +239,13 @@ class TestServices:
         await _create_cluster("c1")
         await _register_task_def("web")
         await handle_ecs_request(
-            _make_request("CreateService", {
-                "cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"
-            }), REGION, ACCOUNT
+            _make_request(
+                "CreateService", {"cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"}
+            ),
+            REGION,
+            ACCOUNT,
         )
-        req = _make_request("DescribeServices", {
-            "cluster": "c1", "services": ["svc1"]
-        })
+        req = _make_request("DescribeServices", {"cluster": "c1", "services": ["svc1"]})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert len(data["services"]) == 1
@@ -246,9 +255,11 @@ class TestServices:
         await _create_cluster("c1")
         await _register_task_def("web")
         await handle_ecs_request(
-            _make_request("CreateService", {
-                "cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"
-            }), REGION, ACCOUNT
+            _make_request(
+                "CreateService", {"cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"}
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("ListServices", {"cluster": "c1"})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
@@ -260,14 +271,21 @@ class TestServices:
         await _create_cluster("c1")
         await _register_task_def("web")
         await handle_ecs_request(
-            _make_request("CreateService", {
-                "cluster": "c1", "serviceName": "svc1",
-                "taskDefinition": "web", "desiredCount": 1,
-            }), REGION, ACCOUNT
+            _make_request(
+                "CreateService",
+                {
+                    "cluster": "c1",
+                    "serviceName": "svc1",
+                    "taskDefinition": "web",
+                    "desiredCount": 1,
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
-        req = _make_request("UpdateService", {
-            "cluster": "c1", "service": "svc1", "desiredCount": 5
-        })
+        req = _make_request(
+            "UpdateService", {"cluster": "c1", "service": "svc1", "desiredCount": 5}
+        )
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         data = json.loads(resp.body)
         assert data["service"]["desiredCount"] == 5
@@ -277,9 +295,11 @@ class TestServices:
         await _create_cluster("c1")
         await _register_task_def("web")
         await handle_ecs_request(
-            _make_request("CreateService", {
-                "cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"
-            }), REGION, ACCOUNT
+            _make_request(
+                "CreateService", {"cluster": "c1", "serviceName": "svc1", "taskDefinition": "web"}
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("DeleteService", {"cluster": "c1", "service": "svc1"})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
@@ -297,9 +317,7 @@ class TestTasks:
     async def test_run_task(self):
         await _create_cluster("c1")
         await _register_task_def("web")
-        req = _make_request("RunTask", {
-            "cluster": "c1", "taskDefinition": "web", "count": 2
-        })
+        req = _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web", "count": 2})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
         data = json.loads(resp.body)
@@ -310,8 +328,7 @@ class TestTasks:
         await _create_cluster("c1")
         await _register_task_def("web")
         run_resp = await handle_ecs_request(
-            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}),
-            REGION, ACCOUNT
+            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}), REGION, ACCOUNT
         )
         task_arn = json.loads(run_resp.body)["tasks"][0]["taskArn"]
         task_id = task_arn.split("/")[-1]
@@ -326,8 +343,7 @@ class TestTasks:
         await _create_cluster("c1")
         await _register_task_def("web")
         await handle_ecs_request(
-            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}),
-            REGION, ACCOUNT
+            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}), REGION, ACCOUNT
         )
         req = _make_request("ListTasks", {"cluster": "c1"})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
@@ -339,8 +355,7 @@ class TestTasks:
         await _create_cluster("c1")
         await _register_task_def("web")
         run_resp = await handle_ecs_request(
-            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}),
-            REGION, ACCOUNT
+            _make_request("RunTask", {"cluster": "c1", "taskDefinition": "web"}), REGION, ACCOUNT
         )
         task_arn = json.loads(run_resp.body)["tasks"][0]["taskArn"]
         task_id = task_arn.split("/")[-1]
@@ -359,11 +374,14 @@ class TestTasks:
 class TestTagging:
     @pytest.mark.asyncio
     async def test_tag_resource(self):
-        arn = (await _create_cluster("c1"))
-        req = _make_request("TagResource", {
-            "resourceArn": arn,
-            "tags": [{"key": "env", "value": "test"}],
-        })
+        arn = await _create_cluster("c1")
+        req = _make_request(
+            "TagResource",
+            {
+                "resourceArn": arn,
+                "tags": [{"key": "env", "value": "test"}],
+            },
+        )
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
         assert resp.status_code == 200
 
@@ -371,10 +389,15 @@ class TestTagging:
     async def test_list_tags_for_resource(self):
         arn = await _create_cluster("c1")
         await handle_ecs_request(
-            _make_request("TagResource", {
-                "resourceArn": arn,
-                "tags": [{"key": "env", "value": "test"}],
-            }), REGION, ACCOUNT
+            _make_request(
+                "TagResource",
+                {
+                    "resourceArn": arn,
+                    "tags": [{"key": "env", "value": "test"}],
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("ListTagsForResource", {"resourceArn": arn})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)
@@ -386,15 +409,20 @@ class TestTagging:
     async def test_untag_resource(self):
         arn = await _create_cluster("c1")
         await handle_ecs_request(
-            _make_request("TagResource", {
-                "resourceArn": arn,
-                "tags": [{"key": "env", "value": "test"}],
-            }), REGION, ACCOUNT
+            _make_request(
+                "TagResource",
+                {
+                    "resourceArn": arn,
+                    "tags": [{"key": "env", "value": "test"}],
+                },
+            ),
+            REGION,
+            ACCOUNT,
         )
         await handle_ecs_request(
-            _make_request("UntagResource", {
-                "resourceArn": arn, "tagKeys": ["env"]
-            }), REGION, ACCOUNT
+            _make_request("UntagResource", {"resourceArn": arn, "tagKeys": ["env"]}),
+            REGION,
+            ACCOUNT,
         )
         req = _make_request("ListTagsForResource", {"resourceArn": arn})
         resp = await handle_ecs_request(req, REGION, ACCOUNT)

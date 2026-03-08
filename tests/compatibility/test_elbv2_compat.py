@@ -27,12 +27,8 @@ def vpc_with_subnets(ec2):
     cidr = "10.60.0.0/16"
     vpc = ec2.create_vpc(CidrBlock=cidr)
     vpc_id = vpc["Vpc"]["VpcId"]
-    sub1 = ec2.create_subnet(
-        VpcId=vpc_id, CidrBlock="10.60.1.0/24", AvailabilityZone="us-east-1a"
-    )
-    sub2 = ec2.create_subnet(
-        VpcId=vpc_id, CidrBlock="10.60.2.0/24", AvailabilityZone="us-east-1b"
-    )
+    sub1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.60.1.0/24", AvailabilityZone="us-east-1a")
+    sub2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.60.2.0/24", AvailabilityZone="us-east-1b")
     s1 = sub1["Subnet"]["SubnetId"]
     s2 = sub2["Subnet"]["SubnetId"]
 
@@ -118,10 +114,7 @@ class TestELBv2LoadBalancerOperations:
                 ],
             )
             tags_resp = elbv2.describe_tags(ResourceArns=[lb_arn])
-            tags = {
-                t["Key"]: t["Value"]
-                for t in tags_resp["TagDescriptions"][0]["Tags"]
-            }
+            tags = {t["Key"]: t["Value"] for t in tags_resp["TagDescriptions"][0]["Tags"]}
             assert tags["env"] == "test"
             assert tags["team"] == "platform"
 
@@ -364,7 +357,7 @@ class TestELBv2ListenerOperations:
 
             desc = elbv2.describe_listeners(LoadBalancerArn=lb_arn)
             assert len(desc["Listeners"]) == 2
-            ports = sorted([l["Port"] for l in desc["Listeners"]])
+            ports = sorted([listener["Port"] for listener in desc["Listeners"]])
             assert ports == [80, 8080]
         finally:
             for arn in listener_arns:
@@ -380,7 +373,9 @@ class TestELBv2MetadataOperations:
         assert len(resp["Limits"]) > 0
         # Should contain well-known limit names
         limit_names = [lim["Name"] for lim in resp["Limits"]]
-        assert any("load-balancers" in n.lower() or "target-groups" in n.lower() for n in limit_names)
+        assert any(
+            "load-balancers" in n.lower() or "target-groups" in n.lower() for n in limit_names
+        )
 
     def test_describe_ssl_policies(self, elbv2):
         resp = elbv2.describe_ssl_policies()

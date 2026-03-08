@@ -303,15 +303,17 @@ def _eval_function(func_name: str, args_str: str, data: dict) -> Any:
         "trim": lambda a: str(a[0]).strip() if a else "",
         "sum": lambda a: sum(a[0]) if a and isinstance(a[0], list) else 0,
         "count": lambda a: len(a[0]) if a and isinstance(a[0], list) else 0,
-        "append": lambda a: (a[0] if isinstance(a[0], list) else [a[0]])
-        + (a[1] if isinstance(a[1], list) else [a[1]])
-        if len(a) >= 2
-        else [],
+        "append": lambda a: (
+            (a[0] if isinstance(a[0], list) else [a[0]])
+            + (a[1] if isinstance(a[1], list) else [a[1]])
+            if len(a) >= 2
+            else []
+        ),
         "sort": lambda a: sorted(a[0]) if a and isinstance(a[0], list) else [],
         "reverse": lambda a: list(reversed(a[0])) if a and isinstance(a[0], list) else [],
-        "join": lambda a: (a[1] if len(a) > 1 else "").join(a[0])
-        if a and isinstance(a[0], list)
-        else "",
+        "join": lambda a: (
+            (a[1] if len(a) > 1 else "").join(a[0]) if a and isinstance(a[0], list) else ""
+        ),
         "split": lambda a: str(a[0]).split(a[1] if len(a) > 1 else " ") if a else [],
         "type": lambda a: _jsonata_type(a[0]) if a else "undefined",
         "exists": lambda a: a[0] is not None if a else False,

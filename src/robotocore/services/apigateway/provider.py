@@ -22,17 +22,13 @@ from robotocore.providers.moto_bridge import forward_to_moto
 
 _DELETE_MODEL_RE = re.compile(r"^/restapis/([^/]+)/models/([^/]+)$")
 _TAGS_RE = re.compile(r"^/tags/(.+)$")
-_FLUSH_AUTH_CACHE_RE = re.compile(
-    r"^/restapis/([^/]+)/stages/([^/]+)/cache/authorizers$"
-)
+_FLUSH_AUTH_CACHE_RE = re.compile(r"^/restapis/([^/]+)/stages/([^/]+)/cache/authorizers$")
 _FLUSH_CACHE_RE = re.compile(r"^/restapis/([^/]+)/stages/([^/]+)/cache/data$")
 
 DEFAULT_ACCOUNT_ID = "123456789012"
 
 
-async def handle_apigateway_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_apigateway_request(request: Request, region: str, account_id: str) -> Response:
     """Handle API Gateway requests."""
     path = request.url.path
     method = request.method
@@ -43,14 +39,10 @@ async def handle_apigateway_request(
             return _delete_model(match.group(1), match.group(2), account_id, region)
         match = _FLUSH_AUTH_CACHE_RE.match(path)
         if match:
-            return Response(
-                content="{}", status_code=202, media_type="application/json"
-            )
+            return Response(content="{}", status_code=202, media_type="application/json")
         match = _FLUSH_CACHE_RE.match(path)
         if match:
-            return Response(
-                content="{}", status_code=202, media_type="application/json"
-            )
+            return Response(content="{}", status_code=202, media_type="application/json")
 
     # Tag operations: PUT/DELETE/GET /tags/{arn}
     match = _TAGS_RE.match(path)
@@ -119,9 +111,7 @@ async def _handle_tags(
     return Response(status_code=405)
 
 
-def _delete_model(
-    rest_api_id: str, model_name: str, account_id: str, region: str
-) -> Response:
+def _delete_model(rest_api_id: str, model_name: str, account_id: str, region: str) -> Response:
     from moto.backends import get_backend
 
     backend = get_backend("apigateway")[account_id][region]

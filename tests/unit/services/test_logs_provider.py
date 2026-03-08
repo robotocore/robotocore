@@ -45,10 +45,13 @@ class TestPutRetentionPolicyValidation:
     @pytest.mark.asyncio
     async def test_invalid_retention_value_returns_400(self):
         """An invalid retentionInDays value (e.g. 15) should return an error."""
-        req = _make_request("PutRetentionPolicy", {
-            "logGroupName": "/test/group",
-            "retentionInDays": 15,
-        })
+        req = _make_request(
+            "PutRetentionPolicy",
+            {
+                "logGroupName": "/test/group",
+                "retentionInDays": 15,
+            },
+        )
         resp = await handle_logs_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
         data = json.loads(resp.body)
@@ -57,10 +60,13 @@ class TestPutRetentionPolicyValidation:
     @pytest.mark.asyncio
     async def test_valid_retention_value_forwards_to_moto(self):
         """A valid retentionInDays value (e.g. 7) should be forwarded to Moto."""
-        req = _make_request("PutRetentionPolicy", {
-            "logGroupName": "/test/group",
-            "retentionInDays": 7,
-        })
+        req = _make_request(
+            "PutRetentionPolicy",
+            {
+                "logGroupName": "/test/group",
+                "retentionInDays": 7,
+            },
+        )
         with patch("robotocore.services.cloudwatch.logs_provider.forward_to_moto") as mock_fwd:
             mock_fwd.return_value = MagicMock(status_code=200, body=b"{}")
             resp = await handle_logs_request(req, "us-east-1", "123456789012")
@@ -69,10 +75,13 @@ class TestPutRetentionPolicyValidation:
 
     @pytest.mark.asyncio
     async def test_zero_is_invalid(self):
-        req = _make_request("PutRetentionPolicy", {
-            "logGroupName": "/test/group",
-            "retentionInDays": 0,
-        })
+        req = _make_request(
+            "PutRetentionPolicy",
+            {
+                "logGroupName": "/test/group",
+                "retentionInDays": 0,
+            },
+        )
         resp = await handle_logs_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
 
@@ -97,10 +106,13 @@ class TestFilterLogEventsStreamNamePrefix:
     @pytest.mark.asyncio
     async def test_prefix_calls_native_handler(self):
         """FilterLogEvents with logStreamNamePrefix should not just forward to Moto."""
-        req = _make_request("FilterLogEvents", {
-            "logGroupName": "/test/group",
-            "logStreamNamePrefix": "web-",
-        })
+        req = _make_request(
+            "FilterLogEvents",
+            {
+                "logGroupName": "/test/group",
+                "logStreamNamePrefix": "web-",
+            },
+        )
         mock_backend = MagicMock()
         mock_backend.groups = {"/test/group": MagicMock()}
         mock_backend.groups["/test/group"].streams = {
@@ -131,9 +143,12 @@ class TestFilterLogEventsStreamNamePrefix:
     @pytest.mark.asyncio
     async def test_no_prefix_forwards_to_moto(self):
         """FilterLogEvents without logStreamNamePrefix should forward to Moto."""
-        req = _make_request("FilterLogEvents", {
-            "logGroupName": "/test/group",
-        })
+        req = _make_request(
+            "FilterLogEvents",
+            {
+                "logGroupName": "/test/group",
+            },
+        )
         with patch("robotocore.services.cloudwatch.logs_provider.forward_to_moto") as mock_fwd:
             mock_fwd.return_value = MagicMock(status_code=200, body=b'{"events":[]}')
             await handle_logs_request(req, "us-east-1", "123456789012")

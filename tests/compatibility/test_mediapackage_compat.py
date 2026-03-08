@@ -107,12 +107,8 @@ class TestMediaPackageOriginEndpoints:
         ep1 = _unique_id("ep")
         ep2 = _unique_id("ep")
         mediapackage.create_channel(Id=channel_id)
-        mediapackage.create_origin_endpoint(
-            ChannelId=channel_id, Id=ep1, HlsPackage={}
-        )
-        mediapackage.create_origin_endpoint(
-            ChannelId=channel_id, Id=ep2, HlsPackage={}
-        )
+        mediapackage.create_origin_endpoint(ChannelId=channel_id, Id=ep1, HlsPackage={})
+        mediapackage.create_origin_endpoint(ChannelId=channel_id, Id=ep2, HlsPackage={})
         response = mediapackage.list_origin_endpoints(ChannelId=channel_id)
         endpoint_ids = [ep["Id"] for ep in response["OriginEndpoints"]]
         assert ep1 in endpoint_ids

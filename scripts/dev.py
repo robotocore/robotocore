@@ -161,7 +161,9 @@ def run_unit_tests(extra_args=None):
     """Run unit tests in parallel."""
     n = min(_cpu_count(), 12)  # cap at 12 workers
     cmd = [
-        sys.executable, "-m", "pytest",
+        sys.executable,
+        "-m",
+        "pytest",
         "tests/unit/",
         f"-n{n}",
         "-q",
@@ -184,7 +186,9 @@ def run_compat_tests(extra_args=None, manage_server=True):
 
     n = min(_cpu_count(), 8)  # slightly fewer workers for compat (network I/O)
     cmd = [
-        sys.executable, "-m", "pytest",
+        sys.executable,
+        "-m",
+        "pytest",
         "tests/compatibility/",
         f"-n{n}",
         "--dist=loadfile",  # tests in same file run serially to avoid state collisions
@@ -213,7 +217,9 @@ def run_integration_tests(extra_args=None, manage_server=True):
             return 1
 
     cmd = [
-        sys.executable, "-m", "pytest",
+        sys.executable,
+        "-m",
+        "pytest",
         "tests/integration/",
         "-q",
         "--tb=short",

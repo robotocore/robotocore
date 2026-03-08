@@ -43,7 +43,6 @@ async def handle_resource_groups_request(
     return await forward_to_moto(request, "resource-groups")
 
 
-
 def _get_tags(arn: str, region: str, account_id: str) -> Response:
     from moto.backends import get_backend
 

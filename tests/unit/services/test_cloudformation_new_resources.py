@@ -82,9 +82,7 @@ class TestHandlerCounts:
 class TestIamManagedPolicy:
     def test_create(self):
         mock = MagicMock()
-        mock.create_policy.return_value = SimpleNamespace(
-            arn="arn:aws:iam::999:policy/mp"
-        )
+        mock.create_policy.return_value = SimpleNamespace(arn="arn:aws:iam::999:policy/mp")
         with _mock_global("iam") as p:
             p.return_value = mock
             res = _resource(
@@ -145,9 +143,7 @@ class TestIamInstanceProfile:
 class TestIamUser:
     def test_create(self):
         mock = MagicMock()
-        mock.create_user.return_value = SimpleNamespace(
-            arn="arn:aws:iam::999:user/testuser"
-        )
+        mock.create_user.return_value = SimpleNamespace(arn="arn:aws:iam::999:user/testuser")
         with _mock_global("iam") as p:
             p.return_value = mock
             res = _resource("AWS::IAM::User", {"UserName": "testuser"})
@@ -173,9 +169,7 @@ class TestIamUser:
 class TestIamGroup:
     def test_create(self):
         mock = MagicMock()
-        mock.create_group.return_value = SimpleNamespace(
-            arn="arn:aws:iam::999:group/grp"
-        )
+        mock.create_group.return_value = SimpleNamespace(arn="arn:aws:iam::999:group/grp")
         with _mock_global("iam") as p:
             p.return_value = mock
             res = _resource("AWS::IAM::Group", {"GroupName": "grp"})
@@ -254,9 +248,7 @@ class TestLambdaVersion:
         mock.publish_version_with_name.side_effect = Exception("nope")
         with _mock_regional("lambda") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::Lambda::Version", {"FunctionName": "fn1"}
-            )
+            res = _resource("AWS::Lambda::Version", {"FunctionName": "fn1"})
             create_resource(res, REGION, ACCOUNT_ID)
         assert ":function:fn1:" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
@@ -296,9 +288,7 @@ class TestLambdaAlias:
 class TestLambdaEventSourceMapping:
     def test_create_success(self):
         mock = MagicMock()
-        mock.create_event_source_mapping.return_value = SimpleNamespace(
-            uuid="esm-123"
-        )
+        mock.create_event_source_mapping.return_value = SimpleNamespace(uuid="esm-123")
         with _mock_regional("lambda") as p:
             p.return_value = mock
             res = _resource(
@@ -356,9 +346,7 @@ class TestLambdaPermission:
         mock = MagicMock()
         with _mock_regional("lambda") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::Lambda::Permission", {"FunctionName": "fn1"}
-            )
+            res = _resource("AWS::Lambda::Permission", {"FunctionName": "fn1"})
             res.physical_id = "s3invoke"
             delete_resource(res, REGION, ACCOUNT_ID)
 
@@ -370,9 +358,7 @@ class TestLambdaPermission:
 
 class TestLambdaLayerVersion:
     def test_create(self):
-        res = _resource(
-            "AWS::Lambda::LayerVersion", {"LayerName": "mylib"}
-        )
+        res = _resource("AWS::Lambda::LayerVersion", {"LayerName": "mylib"})
         create_resource(res, REGION, ACCOUNT_ID)
         assert ":layer:mylib:1" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
@@ -447,9 +433,7 @@ class TestEc2Subnet:
 class TestEc2SecurityGroup:
     def test_create(self):
         mock = MagicMock()
-        mock.create_security_group.return_value = SimpleNamespace(
-            id="sg-abc123"
-        )
+        mock.create_security_group.return_value = SimpleNamespace(id="sg-abc123")
         with _mock_regional("ec2") as p:
             p.return_value = mock
             res = _resource(
@@ -483,9 +467,7 @@ class TestEc2SecurityGroup:
 class TestEc2InternetGateway:
     def test_create(self):
         mock = MagicMock()
-        mock.create_internet_gateway.return_value = SimpleNamespace(
-            id="igw-123"
-        )
+        mock.create_internet_gateway.return_value = SimpleNamespace(id="igw-123")
         with _mock_regional("ec2") as p:
             p.return_value = mock
             res = _resource("AWS::EC2::InternetGateway", {})
@@ -543,9 +525,7 @@ class TestEc2RouteTable:
         mock.create_route_table.return_value = SimpleNamespace(id="rtb-123")
         with _mock_regional("ec2") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::EC2::RouteTable", {"VpcId": "vpc-1"}
-            )
+            res = _resource("AWS::EC2::RouteTable", {"VpcId": "vpc-1"})
             create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "rtb-123"
         assert res.status == "CREATE_COMPLETE"
@@ -628,9 +608,7 @@ class TestEc2SubnetRouteTableAssociation:
 
 class TestEc2NatGateway:
     def test_create(self):
-        res = _resource(
-            "AWS::EC2::NatGateway", {"SubnetId": "subnet-1"}
-        )
+        res = _resource("AWS::EC2::NatGateway", {"SubnetId": "subnet-1"})
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id.startswith("nat-")
         assert res.attributes["NatGatewayId"] == res.physical_id
@@ -701,9 +679,7 @@ class TestEc2LaunchTemplate:
 class TestEc2KeyPair:
     def test_create(self):
         mock = MagicMock()
-        mock.create_key_pair.return_value = SimpleNamespace(
-            id="key-abc123"
-        )
+        mock.create_key_pair.return_value = SimpleNamespace(id="key-abc123")
         with _mock_regional("ec2") as p:
             p.return_value = mock
             res = _resource("AWS::EC2::KeyPair", {"KeyName": "my-key"})
@@ -786,9 +762,7 @@ class TestDynamoDbGlobalTable:
                 {
                     "TableName": "global-t",
                     "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
-                    "AttributeDefinitions": [
-                        {"AttributeName": "pk", "AttributeType": "S"}
-                    ],
+                    "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
                 },
             )
             create_resource(res, REGION, ACCOUNT_ID)
@@ -838,9 +812,7 @@ class TestApiGatewayRestApi:
         mock.create_rest_api.return_value = SimpleNamespace(id="api-123")
         with _mock_regional("apigateway") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::ApiGateway::RestApi", {"Name": "my-api"}
-            )
+            res = _resource("AWS::ApiGateway::RestApi", {"Name": "my-api"})
             create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "api-123"
         assert res.status == "CREATE_COMPLETE"
@@ -940,9 +912,7 @@ class TestApiGatewayDeployment:
 
 class TestApiGatewayStage:
     def test_create(self):
-        res = _resource(
-            "AWS::ApiGateway::Stage", {"StageName": "v1"}
-        )
+        res = _resource("AWS::ApiGateway::Stage", {"StageName": "v1"})
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "v1"
         assert res.status == "CREATE_COMPLETE"
@@ -1059,9 +1029,7 @@ class TestLogsLogStream:
 
 class TestCloudWatchMetricFilter:
     def test_create(self):
-        res = _resource(
-            "AWS::CloudWatch::MetricFilter", {"FilterName": "err-filter"}
-        )
+        res = _resource("AWS::CloudWatch::MetricFilter", {"FilterName": "err-filter"})
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "err-filter"
         assert res.status == "CREATE_COMPLETE"
@@ -1107,9 +1075,7 @@ class TestEventsEventBus:
 
 class TestEventsArchive:
     def test_create(self):
-        res = _resource(
-            "AWS::Events::Archive", {"ArchiveName": "my-archive"}
-        )
+        res = _resource("AWS::Events::Archive", {"ArchiveName": "my-archive"})
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "my-archive"
         assert "archive/" in res.attributes["Arn"]
@@ -1165,9 +1131,7 @@ class TestSfnActivity:
         )
         with _mock_regional("stepfunctions") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::StepFunctions::Activity", {"Name": "act1"}
-            )
+            res = _resource("AWS::StepFunctions::Activity", {"Name": "act1"})
             create_resource(res, REGION, ACCOUNT_ID)
         assert "activity:act1" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
@@ -1303,9 +1267,7 @@ class TestEcsCluster:
         )
         with _mock_regional("ecs") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::ECS::Cluster", {"ClusterName": "my-cluster"}
-            )
+            res = _resource("AWS::ECS::Cluster", {"ClusterName": "my-cluster"})
             create_resource(res, REGION, ACCOUNT_ID)
         assert "cluster/my-cluster" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
@@ -1399,9 +1361,7 @@ class TestElbv2LoadBalancer:
         mock = MagicMock()
         with _mock_regional("elbv2") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::ElasticLoadBalancingV2::LoadBalancer"
-            )
+            res = _resource("AWS::ElasticLoadBalancingV2::LoadBalancer")
             res.physical_id = "arn:lb"
             delete_resource(res, REGION, ACCOUNT_ID)
         mock.delete_load_balancer.assert_called_once()
@@ -1430,9 +1390,7 @@ class TestElbv2TargetGroup:
         mock = MagicMock()
         with _mock_regional("elbv2") as p:
             p.return_value = mock
-            res = _resource(
-                "AWS::ElasticLoadBalancingV2::TargetGroup"
-            )
+            res = _resource("AWS::ElasticLoadBalancingV2::TargetGroup")
             res.physical_id = "arn:tg"
             delete_resource(res, REGION, ACCOUNT_ID)
         mock.delete_target_group.assert_called_once()
@@ -1445,9 +1403,7 @@ class TestElbv2TargetGroup:
 
 class TestElbv2Listener:
     def test_create(self):
-        res = _resource(
-            "AWS::ElasticLoadBalancingV2::Listener", {}
-        )
+        res = _resource("AWS::ElasticLoadBalancingV2::Listener", {})
         create_resource(res, REGION, ACCOUNT_ID)
         assert "listener" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
@@ -1631,9 +1587,7 @@ class TestCustomResource:
                 res = _resource(
                     "Custom::MyLambda",
                     {
-                        "ServiceToken": (
-                            "arn:aws:lambda:us-east-1:999:function:cfn-handler"
-                        ),
+                        "ServiceToken": ("arn:aws:lambda:us-east-1:999:function:cfn-handler"),
                     },
                 )
                 create_resource(res, REGION, ACCOUNT_ID)
@@ -1666,9 +1620,7 @@ class TestFnCidr:
 
     def test_fn_cidr_intrinsic(self):
         val = {"Fn::Cidr": ["10.0.0.0/16", 3, 8]}
-        result = resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID)
         assert isinstance(result, list)
         assert len(result) == 3
 
@@ -1685,16 +1637,12 @@ class TestFnImportValue:
             "__imports__": {"VpcId": "vpc-abc123"},
         }
         val = {"Fn::ImportValue": "VpcId"}
-        result = resolve_intrinsics(
-            val, _RESOURCES, params, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, params, REGION, ACCOUNT_ID)
         assert result == "vpc-abc123"
 
     def test_import_value_not_found(self):
         val = {"Fn::ImportValue": "Unknown"}
-        result = resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID)
         assert result == "Unknown"
 
 
@@ -1711,9 +1659,7 @@ class TestFnTransform:
                 "Parameters": {"Location": "s3://bucket/file.yaml"},
             }
         }
-        result = resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID)
         assert "Fn::Transform" in result
         assert result["Fn::Transform"]["Name"] == "AWS::Include"
 
@@ -1730,9 +1676,7 @@ class TestFnIfConditions:
             "__conditions__": {"IsProd": True},
         }
         val = {"Fn::If": ["IsProd", "yes", "no"]}
-        result = resolve_intrinsics(
-            val, _RESOURCES, params, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, params, REGION, ACCOUNT_ID)
         assert result == "yes"
 
     def test_fn_if_condition_false(self):
@@ -1741,42 +1685,30 @@ class TestFnIfConditions:
             "__conditions__": {"IsProd": False},
         }
         val = {"Fn::If": ["IsProd", "yes", "no"]}
-        result = resolve_intrinsics(
-            val, _RESOURCES, params, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, params, REGION, ACCOUNT_ID)
         assert result == "no"
 
     def test_fn_if_condition_missing_defaults_true(self):
         val = {"Fn::If": ["Missing", "yes", "no"]}
-        result = resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID)
         assert result == "yes"
 
     def test_fn_if_with_intrinsic_condition(self):
         params = {
             **_PARAMS,
-            "__conditions__": {
-                "IsProd": {"Fn::Equals": [{"Ref": "EnvName"}, "prod"]}
-            },
+            "__conditions__": {"IsProd": {"Fn::Equals": [{"Ref": "EnvName"}, "prod"]}},
         }
         val = {"Fn::If": ["IsProd", "prod-value", "dev-value"]}
-        result = resolve_intrinsics(
-            val, _RESOURCES, params, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, params, REGION, ACCOUNT_ID)
         assert result == "prod-value"
 
     def test_fn_if_with_false_intrinsic_condition(self):
         params = {
             **_PARAMS,
-            "__conditions__": {
-                "IsProd": {"Fn::Equals": [{"Ref": "EnvName"}, "staging"]}
-            },
+            "__conditions__": {"IsProd": {"Fn::Equals": [{"Ref": "EnvName"}, "staging"]}},
         }
         val = {"Fn::If": ["IsProd", "prod-value", "dev-value"]}
-        result = resolve_intrinsics(
-            val, _RESOURCES, params, REGION, ACCOUNT_ID
-        )
+        result = resolve_intrinsics(val, _RESOURCES, params, REGION, ACCOUNT_ID)
         assert result == "dev-value"
 
 
@@ -1788,27 +1720,19 @@ class TestFnIfConditions:
 class TestFnAndOr:
     def test_fn_and_all_true(self):
         val = {"Fn::And": [True, True, True]}
-        assert resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        ) is True
+        assert resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID) is True
 
     def test_fn_and_one_false(self):
         val = {"Fn::And": [True, False]}
-        assert resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        ) is False
+        assert resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID) is False
 
     def test_fn_or_one_true(self):
         val = {"Fn::Or": [False, True]}
-        assert resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        ) is True
+        assert resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID) is True
 
     def test_fn_or_all_false(self):
         val = {"Fn::Or": [False, False]}
-        assert resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        ) is False
+        assert resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID) is False
 
     def test_fn_and_with_intrinsics(self):
         val = {
@@ -1817,9 +1741,7 @@ class TestFnAndOr:
                 {"Fn::Equals": ["b", "b"]},
             ]
         }
-        assert resolve_intrinsics(
-            val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID
-        ) is True
+        assert resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID) is True
 
 
 # ===========================================================================
@@ -1984,9 +1906,7 @@ class TestSnsTopicPolicy:
 
 class TestElasticsearchDomain:
     def test_create(self):
-        res = _resource(
-            "AWS::Elasticsearch::Domain", {"DomainName": "my-search"}
-        )
+        res = _resource("AWS::Elasticsearch::Domain", {"DomainName": "my-search"})
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "my-search"
         assert "es.amazonaws.com" in res.attributes["DomainEndpoint"]

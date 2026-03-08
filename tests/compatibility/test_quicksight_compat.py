@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -47,30 +46,22 @@ class TestQuickSightGroups:
         assert describe_resp["Group"]["GroupName"] == group_name
 
         # Cleanup
-        quicksight.delete_group(
-            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
-        )
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
 
     def test_create_group_appears_in_list(self, quicksight):
         group_name = f"test-group-{uuid.uuid4().hex[:8]}"
-        quicksight.create_group(
-            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
-        )
+        quicksight.create_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
 
         response = quicksight.list_groups(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE)
         group_names = [g["GroupName"] for g in response["GroupList"]]
         assert group_name in group_names
 
         # Cleanup
-        quicksight.delete_group(
-            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
-        )
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
 
     def test_delete_group(self, quicksight):
         group_name = f"test-group-{uuid.uuid4().hex[:8]}"
-        quicksight.create_group(
-            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
-        )
+        quicksight.create_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
 
         delete_resp = quicksight.delete_group(
             AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
@@ -108,9 +99,7 @@ class TestQuickSightUsers:
         assert describe_resp["User"]["UserName"] == user_name
 
         # Cleanup
-        quicksight.delete_user(
-            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name
-        )
+        quicksight.delete_user(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name)
 
     def test_register_user_appears_in_list(self, quicksight):
         user_name = f"testuser-{uuid.uuid4().hex[:8]}"
@@ -128,9 +117,7 @@ class TestQuickSightUsers:
         assert user_name in user_names
 
         # Cleanup
-        quicksight.delete_user(
-            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name
-        )
+        quicksight.delete_user(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name)
 
     def test_delete_user(self, quicksight):
         user_name = f"testuser-{uuid.uuid4().hex[:8]}"

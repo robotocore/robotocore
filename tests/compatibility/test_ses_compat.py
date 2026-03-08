@@ -157,9 +157,7 @@ class TestSESOperations:
             )
             assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
-            ses.delete_receipt_rule(
-                RuleSetName="rule-test-set", RuleName="test-rule"
-            )
+            ses.delete_receipt_rule(RuleSetName="rule-test-set", RuleName="test-rule")
             ses.delete_receipt_rule_set(RuleSetName="rule-test-set")
 
     def test_set_identity_notification_topic(self, ses):
@@ -270,9 +268,7 @@ class TestSESv2Operations:
         sesv2.create_email_identity(EmailIdentity="v2list@example.com")
         try:
             response = sesv2.list_email_identities()
-            identity_names = [
-                i["IdentityName"] for i in response["EmailIdentities"]
-            ]
+            identity_names = [i["IdentityName"] for i in response["EmailIdentities"]]
             assert "v2list@example.com" in identity_names
         finally:
             sesv2.delete_email_identity(EmailIdentity="v2list@example.com")
@@ -287,9 +283,7 @@ class TestSESv2Operations:
 
     def test_create_configuration_set(self, sesv2):
         """Create a configuration set via SES v2."""
-        response = sesv2.create_configuration_set(
-            ConfigurationSetName="compat-config-set"
-        )
+        response = sesv2.create_configuration_set(ConfigurationSetName="compat-config-set")
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
         sesv2.delete_configuration_set(ConfigurationSetName="compat-config-set")
 
@@ -418,12 +412,8 @@ class TestSESv2Operations:
         """CreateConfigurationSet / DescribeConfigurationSet / DeleteConfigurationSet."""
         cs_name = "test-config-set"
         try:
-            ses.create_configuration_set(
-                ConfigurationSet={"Name": cs_name}
-            )
-            described = ses.describe_configuration_set(
-                ConfigurationSetName=cs_name
-            )
+            ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+            described = ses.describe_configuration_set(ConfigurationSetName=cs_name)
             assert described["ConfigurationSet"]["Name"] == cs_name
         finally:
             ses.delete_configuration_set(ConfigurationSetName=cs_name)
@@ -443,14 +433,10 @@ class TestSESv2Operations:
                     "Actions": [],
                 },
             )
-            described = ses.describe_receipt_rule(
-                RuleSetName=rule_set_name, RuleName=rule_name
-            )
+            described = ses.describe_receipt_rule(RuleSetName=rule_set_name, RuleName=rule_name)
             assert described["Rule"]["Name"] == rule_name
 
-            ses.delete_receipt_rule(
-                RuleSetName=rule_set_name, RuleName=rule_name
-            )
+            ses.delete_receipt_rule(RuleSetName=rule_set_name, RuleName=rule_name)
         finally:
             ses.delete_receipt_rule_set(RuleSetName=rule_set_name)
 
@@ -518,6 +504,7 @@ class TestSESExtendedOperations:
     @pytest.fixture
     def ses(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("ses")
 
     def test_get_send_quota(self, ses):
@@ -543,22 +530,16 @@ class TestSESExtendedOperations:
 
     def test_get_identity_notification_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="notif-attrs@example.com")
-        resp = ses.get_identity_notification_attributes(
-            Identities=["notif-attrs@example.com"]
-        )
+        resp = ses.get_identity_notification_attributes(Identities=["notif-attrs@example.com"])
         assert "NotificationAttributes" in resp
 
     def test_set_identity_dkim_enabled(self, ses):
         ses.verify_email_identity(EmailAddress="dkim@example.com")
-        ses.set_identity_dkim_enabled(
-            Identity="dkim@example.com", DkimEnabled=True
-        )
+        ses.set_identity_dkim_enabled(Identity="dkim@example.com", DkimEnabled=True)
 
     def test_get_identity_dkim_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="dkim-attrs@example.com")
-        resp = ses.get_identity_dkim_attributes(
-            Identities=["dkim-attrs@example.com"]
-        )
+        resp = ses.get_identity_dkim_attributes(Identities=["dkim-attrs@example.com"])
         assert "DkimAttributes" in resp
 
     def test_set_identity_feedback_forwarding_enabled(self, ses):
@@ -569,9 +550,7 @@ class TestSESExtendedOperations:
 
     def test_get_identity_mail_from_domain_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="mailfrom@example.com")
-        resp = ses.get_identity_mail_from_domain_attributes(
-            Identities=["mailfrom@example.com"]
-        )
+        resp = ses.get_identity_mail_from_domain_attributes(Identities=["mailfrom@example.com"])
         assert "MailFromDomainAttributes" in resp
 
     def test_send_raw_email(self, ses):
@@ -590,6 +569,7 @@ class TestSESExtendedOperations:
 
     def test_create_receipt_rule_set(self, ses):
         import uuid
+
         name = f"rule-set-{uuid.uuid4().hex[:8]}"
         ses.create_receipt_rule_set(RuleSetName=name)
         resp = ses.list_receipt_rule_sets()
@@ -599,6 +579,7 @@ class TestSESExtendedOperations:
 
     def test_update_template(self, ses):
         import uuid
+
         tname = f"upd-tmpl-{uuid.uuid4().hex[:8]}"
         ses.create_template(
             Template={

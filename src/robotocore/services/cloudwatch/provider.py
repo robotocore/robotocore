@@ -119,15 +119,13 @@ def _tokenize_rule(rule: str) -> list[tuple[str, str]]:
 
         raise CloudWatchError(
             "InvalidParameterValue",
-            f"Unexpected character in alarm rule at position {pos}: {rule[pos:pos + 10]}",
+            f"Unexpected character in alarm rule at position {pos}: {rule[pos : pos + 10]}",
         )
 
     return tokens
 
 
-def _parse_or_expr(
-    tokens: list[tuple[str, str]], pos: int
-) -> tuple[dict, int]:
+def _parse_or_expr(tokens: list[tuple[str, str]], pos: int) -> tuple[dict, int]:
     """Parse OR expression (lowest precedence)."""
     left, pos = _parse_and_expr(tokens, pos)
 
@@ -139,9 +137,7 @@ def _parse_or_expr(
     return left, pos
 
 
-def _parse_and_expr(
-    tokens: list[tuple[str, str]], pos: int
-) -> tuple[dict, int]:
+def _parse_and_expr(tokens: list[tuple[str, str]], pos: int) -> tuple[dict, int]:
     """Parse AND expression."""
     left, pos = _parse_not_expr(tokens, pos)
 
@@ -153,9 +149,7 @@ def _parse_and_expr(
     return left, pos
 
 
-def _parse_not_expr(
-    tokens: list[tuple[str, str]], pos: int
-) -> tuple[dict, int]:
+def _parse_not_expr(tokens: list[tuple[str, str]], pos: int) -> tuple[dict, int]:
     """Parse NOT expression."""
     if pos < len(tokens) and tokens[pos] == ("op", "NOT"):
         pos += 1
@@ -164,14 +158,10 @@ def _parse_not_expr(
     return _parse_primary_rule(tokens, pos)
 
 
-def _parse_primary_rule(
-    tokens: list[tuple[str, str]], pos: int
-) -> tuple[dict, int]:
+def _parse_primary_rule(tokens: list[tuple[str, str]], pos: int) -> tuple[dict, int]:
     """Parse primary: state function, boolean, or parenthesized expression."""
     if pos >= len(tokens):
-        raise CloudWatchError(
-            "InvalidParameterValue", "Unexpected end of alarm rule"
-        )
+        raise CloudWatchError("InvalidParameterValue", "Unexpected end of alarm rule")
 
     tok_type, tok_val = tokens[pos]
 
@@ -287,9 +277,7 @@ def put_composite_alarm(params: dict, region: str, account_id: str) -> dict:
     return {}
 
 
-def describe_composite_alarms(
-    params: dict, region: str, account_id: str
-) -> list[dict]:
+def describe_composite_alarms(params: dict, region: str, account_id: str) -> list[dict]:
     """Return composite alarms, optionally filtered by name prefix or names."""
     store = _get_composite_store(region)
     prefix = params.get("AlarmNamePrefix", "")
@@ -302,9 +290,7 @@ def describe_composite_alarms(
                 continue
             if alarm_names and alarm["AlarmName"] not in alarm_names:
                 continue
-            results.append({
-                k: v for k, v in alarm.items() if k != "rule_ast"
-            })
+            results.append({k: v for k, v in alarm.items() if k != "rule_ast"})
     return results
 
 
@@ -342,9 +328,7 @@ def put_dashboard(params: dict, region: str, account_id: str) -> dict:
     try:
         parsed = json.loads(body)
         if not isinstance(parsed, dict):
-            raise CloudWatchError(
-                "InvalidParameterInput", "DashboardBody must be a JSON object"
-            )
+            raise CloudWatchError("InvalidParameterInput", "DashboardBody must be a JSON object")
         if "widgets" not in parsed:
             raise CloudWatchError(
                 "InvalidParameterInput",
@@ -377,9 +361,7 @@ def get_dashboard(params: dict, region: str, account_id: str) -> dict:
         dash = store.get(name)
 
     if not dash:
-        raise CloudWatchError(
-            "ResourceNotFound", f"Dashboard {name} does not exist"
-        )
+        raise CloudWatchError("ResourceNotFound", f"Dashboard {name} does not exist")
 
     return {
         "DashboardName": dash["DashboardName"],
@@ -398,12 +380,14 @@ def list_dashboards(params: dict, region: str, account_id: str) -> list[dict]:
         for dash in store.values():
             if prefix and not dash["DashboardName"].startswith(prefix):
                 continue
-            results.append({
-                "DashboardName": dash["DashboardName"],
-                "DashboardArn": dash["DashboardArn"],
-                "LastModified": dash["LastModified"],
-                "Size": dash["Size"],
-            })
+            results.append(
+                {
+                    "DashboardName": dash["DashboardName"],
+                    "DashboardArn": dash["DashboardArn"],
+                    "LastModified": dash["LastModified"],
+                    "Size": dash["Size"],
+                }
+            )
     return results
 
 
@@ -485,13 +469,15 @@ def get_metric_data(params: dict, region: str, account_id: str) -> dict:
             values = collected_data.get(query_id, [])
 
         timestamps = list(range(len(values)))
-        results.append({
-            "Id": query_id,
-            "Label": label,
-            "Timestamps": timestamps,
-            "Values": values,
-            "StatusCode": "Complete",
-        })
+        results.append(
+            {
+                "Id": query_id,
+                "Label": label,
+                "Timestamps": timestamps,
+                "Values": values,
+                "StatusCode": "Complete",
+            }
+        )
 
     return {
         "MetricDataResults": results,
@@ -610,12 +596,14 @@ def _dispatch_sns_action(
     sns_region = arn_match.group(1)
     sns_account = arn_match.group(2)
 
-    message = json.dumps({
-        "AlarmName": alarm_name,
-        "NewStateValue": new_state,
-        "OldStateValue": old_state,
-        "NewStateReason": reason,
-    })
+    message = json.dumps(
+        {
+            "AlarmName": alarm_name,
+            "NewStateValue": new_state,
+            "OldStateValue": old_state,
+            "NewStateReason": reason,
+        }
+    )
 
     try:
         from moto.backends import get_backend
@@ -679,9 +667,7 @@ def _dispatch_ec2_action(
 # ---------------------------------------------------------------------------
 
 
-async def handle_cloudwatch_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_cloudwatch_request(request: Request, region: str, account_id: str) -> Response:
     """Handle CloudWatch API requests.
 
     Intercepts composite alarms, dashboards, GetMetricData with math,
@@ -716,8 +702,11 @@ async def handle_cloudwatch_request(
             composites = describe_composite_alarms(params, region, account_id)
             result = {"CompositeAlarms": composites, "MetricAlarms": []}
             if use_json_protocol:
-                return Response(content=json.dumps(result), status_code=200,
-                                media_type="application/x-amz-json-1.0")
+                return Response(
+                    content=json.dumps(result),
+                    status_code=200,
+                    media_type="application/x-amz-json-1.0",
+                )
             return _xml_response("DescribeAlarmsResponse", result)
 
     # GetMetricStatistics: intercept when ExtendedStatistics requested (Moto doesn't compute them)
@@ -741,8 +730,11 @@ async def handle_cloudwatch_request(
             try:
                 result = _handle_get_metric_statistics(params, region, account_id)
                 if use_json_protocol:
-                    return Response(content=json.dumps(result), status_code=200,
-                                    media_type="application/x-amz-json-1.0")
+                    return Response(
+                        content=json.dumps(result),
+                        status_code=200,
+                        media_type="application/x-amz-json-1.0",
+                    )
                 return _xml_response("GetMetricStatisticsResponse", result)
             except Exception as e:
                 logger.error("ExtendedStatistics error: %s", e)
@@ -761,14 +753,16 @@ async def handle_cloudwatch_request(
         except CloudWatchError as e:
             if use_json_protocol:
                 err_body = json.dumps({"__type": e.code, "message": e.message})
-                return Response(content=err_body, status_code=e.status,
-                                media_type="application/x-amz-json-1.0")
+                return Response(
+                    content=err_body, status_code=e.status, media_type="application/x-amz-json-1.0"
+                )
             return _error_response(e.code, e.message, e.status)
         except Exception as e:
             if use_json_protocol:
                 err_body = json.dumps({"__type": "InternalError", "message": str(e)})
-                return Response(content=err_body, status_code=500,
-                                media_type="application/x-amz-json-1.0")
+                return Response(
+                    content=err_body, status_code=500, media_type="application/x-amz-json-1.0"
+                )
             return _error_response("InternalError", str(e), 500)
 
     # Fall back to Moto for everything else
@@ -798,8 +792,11 @@ def _flatten_query_params(parsed: dict) -> dict:
                 if index not in list_params[list_name]:
                     list_params[list_name][index] = {}
                 list_params[list_name][index] = {
-                    **(list_params[list_name].get(index, {})
-                       if isinstance(list_params[list_name].get(index), dict) else {}),
+                    **(
+                        list_params[list_name].get(index, {})
+                        if isinstance(list_params[list_name].get(index), dict)
+                        else {}
+                    ),
                     sub_key: value,
                 }
             else:

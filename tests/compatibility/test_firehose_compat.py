@@ -136,9 +136,9 @@ class TestFirehoseOperations:
                 "CompressionFormat": "GZIP",
             },
         )
-        desc = firehose.describe_delivery_stream(
-            DeliveryStreamName="buffered-stream"
-        )["DeliveryStreamDescription"]
+        desc = firehose.describe_delivery_stream(DeliveryStreamName="buffered-stream")[
+            "DeliveryStreamDescription"
+        ]
         dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
         assert dest.get("CompressionFormat", "GZIP") == "GZIP"
         hints = dest.get("BufferingHints", {})
@@ -162,9 +162,9 @@ class TestFirehoseOperations:
 
     def test_update_destination(self, firehose, delivery_stream):
         """UpdateDestination changes buffering config."""
-        desc = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )["DeliveryStreamDescription"]
+        desc = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)[
+            "DeliveryStreamDescription"
+        ]
         dest_id = desc["Destinations"][0]["DestinationId"]
         version_id = desc["VersionId"]
 
@@ -179,13 +179,12 @@ class TestFirehoseOperations:
                 },
             },
         )
-        desc2 = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )["DeliveryStreamDescription"]
+        desc2 = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)[
+            "DeliveryStreamDescription"
+        ]
         dest2 = desc2["Destinations"][0]["ExtendedS3DestinationDescription"]
         assert dest2["BufferingHints"]["SizeInMBs"] == 10
         assert dest2["BufferingHints"]["IntervalInSeconds"] == 120
-
 
     def test_tag_delivery_stream(self, firehose, delivery_stream):
         """TagDeliveryStream adds tags."""
@@ -196,13 +195,10 @@ class TestFirehoseOperations:
                 {"Key": "project", "Value": "robotocore"},
             ],
         )
-        response = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        response = firehose.list_tags_for_delivery_stream(DeliveryStreamName=delivery_stream)
         tag_map = {t["Key"]: t["Value"] for t in response["Tags"]}
         assert tag_map["env"] == "test"
         assert tag_map["project"] == "robotocore"
-
 
     def test_untag_delivery_stream(self, firehose, delivery_stream):
         """UntagDeliveryStream removes tags."""
@@ -214,9 +210,7 @@ class TestFirehoseOperations:
             DeliveryStreamName=delivery_stream,
             TagKeys=["temp"],
         )
-        response = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        response = firehose.list_tags_for_delivery_stream(DeliveryStreamName=delivery_stream)
         tag_keys = [t["Key"] for t in response["Tags"]]
         assert "temp" not in tag_keys
 
@@ -258,16 +252,14 @@ class TestFirehoseOperations:
 
     def test_list_delivery_streams_with_type_filter(self, firehose, delivery_stream):
         """ListDeliveryStreams with DeliveryStreamType filter."""
-        response = firehose.list_delivery_streams(
-            DeliveryStreamType="DirectPut"
-        )
+        response = firehose.list_delivery_streams(DeliveryStreamType="DirectPut")
         assert delivery_stream in response["DeliveryStreamNames"]
 
     def test_describe_delivery_stream_destination_details(self, firehose, delivery_stream):
         """DescribeDeliveryStream verifies destination configuration details."""
-        desc = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )["DeliveryStreamDescription"]
+        desc = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)[
+            "DeliveryStreamDescription"
+        ]
         assert desc["DeliveryStreamType"] == "DirectPut"
         assert len(desc["Destinations"]) >= 1
         dest = desc["Destinations"][0]
@@ -298,9 +290,7 @@ class TestFirehoseOperations:
     def test_delete_nonexistent_stream(self, firehose):
         """Deleting a nonexistent delivery stream raises error."""
         with pytest.raises(ClientError) as exc:
-            firehose.delete_delivery_stream(
-                DeliveryStreamName="nonexistent-stream-xyz"
-            )
+            firehose.delete_delivery_stream(DeliveryStreamName="nonexistent-stream-xyz")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_start_and_stop_encryption(self, firehose, delivery_stream):
@@ -311,18 +301,16 @@ class TestFirehoseOperations:
                 "KeyType": "AWS_OWNED_CMK",
             },
         )
-        desc = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )["DeliveryStreamDescription"]
+        desc = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)[
+            "DeliveryStreamDescription"
+        ]
         enc = desc.get("DeliveryStreamEncryptionConfiguration", {})
         assert enc.get("KeyType") == "AWS_OWNED_CMK"
 
-        firehose.stop_delivery_stream_encryption(
-            DeliveryStreamName=delivery_stream
-        )
-        desc2 = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )["DeliveryStreamDescription"]
+        firehose.stop_delivery_stream_encryption(DeliveryStreamName=delivery_stream)
+        desc2 = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)[
+            "DeliveryStreamDescription"
+        ]
         enc2 = desc2.get("DeliveryStreamEncryptionConfiguration", {})
         assert enc2.get("Status", "DISABLED") in ("DISABLED", "DISABLING", None)
 
@@ -350,12 +338,9 @@ class TestFirehoseOperations:
                 firehose.delete_delivery_stream(DeliveryStreamName=name)
             s3.delete_bucket(Bucket="fh-multi-test")
 
-
     def test_list_tags_for_delivery_stream_empty(self, firehose, delivery_stream):
         """ListTagsForDeliveryStream on untagged stream returns empty list."""
-        response = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        response = firehose.list_tags_for_delivery_stream(DeliveryStreamName=delivery_stream)
         assert "Tags" in response
         assert isinstance(response["Tags"], list)
 
@@ -368,19 +353,13 @@ class TestFirehoseOperations:
                 {"Key": "team", "Value": "data"},
             ],
         )
-        resp = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        resp = firehose.list_tags_for_delivery_stream(DeliveryStreamName=delivery_stream)
         tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
         assert tags["env"] == "test"
         assert tags["team"] == "data"
 
-        firehose.untag_delivery_stream(
-            DeliveryStreamName=delivery_stream, TagKeys=["team"]
-        )
-        resp2 = firehose.list_tags_for_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        firehose.untag_delivery_stream(DeliveryStreamName=delivery_stream, TagKeys=["team"])
+        resp2 = firehose.list_tags_for_delivery_stream(DeliveryStreamName=delivery_stream)
         keys = [t["Key"] for t in resp2["Tags"]]
         assert "env" in keys
         assert "team" not in keys
@@ -410,9 +389,7 @@ class TestFirehoseOperations:
 
     def test_describe_delivery_stream_fields(self, firehose, delivery_stream):
         """DescribeDeliveryStream returns all expected fields."""
-        resp = firehose.describe_delivery_stream(
-            DeliveryStreamName=delivery_stream
-        )
+        resp = firehose.describe_delivery_stream(DeliveryStreamName=delivery_stream)
         desc = resp["DeliveryStreamDescription"]
         assert desc["DeliveryStreamName"] == delivery_stream
         assert "DeliveryStreamARN" in desc
@@ -486,9 +463,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket)
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             assert desc["DeliveryStreamName"] == name
             assert "DeliveryStreamARN" in desc
             assert desc["DeliveryStreamStatus"] == "ACTIVE"
@@ -537,9 +514,9 @@ class TestFirehoseExtended:
                 },
             )
             assert "DeliveryStreamARN" in resp
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             assert desc["DeliveryStreamStatus"] == "ACTIVE"
         finally:
             self._cleanup_stream(name)
@@ -552,9 +529,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket, CompressionFormat="SNAPPY")
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
             assert dest["CompressionFormat"] == "SNAPPY"
         finally:
@@ -568,9 +545,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket, CompressionFormat="ZIP")
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
             assert dest["CompressionFormat"] == "ZIP"
         finally:
@@ -584,9 +561,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket, CompressionFormat="UNCOMPRESSED")
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
             assert dest["CompressionFormat"] == "UNCOMPRESSED"
         finally:
@@ -605,9 +582,9 @@ class TestFirehoseExtended:
                 Prefix="data/year=!{timestamp:yyyy}/",
                 ErrorOutputPrefix="errors/",
             )
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
             assert dest.get("Prefix") == "data/year=!{timestamp:yyyy}/"
             assert dest.get("ErrorOutputPrefix") == "errors/"
@@ -646,12 +623,8 @@ class TestFirehoseExtended:
         try:
             self._create_stream(name, bucket)
             tags = [{"Key": f"key-{i}", "Value": f"val-{i}"} for i in range(5)]
-            self.firehose.tag_delivery_stream(
-                DeliveryStreamName=name, Tags=tags
-            )
-            resp = self.firehose.list_tags_for_delivery_stream(
-                DeliveryStreamName=name
-            )
+            self.firehose.tag_delivery_stream(DeliveryStreamName=name, Tags=tags)
+            resp = self.firehose.list_tags_for_delivery_stream(DeliveryStreamName=name)
             tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
             for i in range(5):
                 assert tag_map[f"key-{i}"] == f"val-{i}"
@@ -674,9 +647,7 @@ class TestFirehoseExtended:
                 DeliveryStreamName=name,
                 Tags=[{"Key": "env", "Value": "prod"}],
             )
-            resp = self.firehose.list_tags_for_delivery_stream(
-                DeliveryStreamName=name
-            )
+            resp = self.firehose.list_tags_for_delivery_stream(DeliveryStreamName=name)
             tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
             assert tag_map["env"] == "prod"
         finally:
@@ -706,9 +677,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket, CompressionFormat="UNCOMPRESSED")
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest_id = desc["Destinations"][0]["DestinationId"]
             version_id = desc["VersionId"]
 
@@ -720,9 +691,9 @@ class TestFirehoseExtended:
                     "CompressionFormat": "GZIP",
                 },
             )
-            desc2 = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc2 = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest2 = desc2["Destinations"][0]["ExtendedS3DestinationDescription"]
             assert dest2["CompressionFormat"] == "GZIP"
         finally:
@@ -736,9 +707,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket)
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest_id = desc["Destinations"][0]["DestinationId"]
 
             with pytest.raises(ClientError) as exc:
@@ -784,9 +755,7 @@ class TestFirehoseExtended:
         try:
             self._create_stream(name, bucket)
             records = [{"Data": f"item-{i}\n".encode()} for i in range(5)]
-            resp = self.firehose.put_record_batch(
-                DeliveryStreamName=name, Records=records
-            )
+            resp = self.firehose.put_record_batch(DeliveryStreamName=name, Records=records)
             assert resp["FailedPutCount"] == 0
             assert len(resp["RequestResponses"]) == 5
             record_ids = [r["RecordId"] for r in resp["RequestResponses"]]
@@ -806,9 +775,9 @@ class TestFirehoseExtended:
                 bucket,
                 BufferingHints={"SizeInMBs": 64, "IntervalInSeconds": 300},
             )
-            desc = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             dest = desc["Destinations"][0]["ExtendedS3DestinationDescription"]
             hints = dest["BufferingHints"]
             assert hints["SizeInMBs"] == 64
@@ -824,9 +793,9 @@ class TestFirehoseExtended:
         self.s3.create_bucket(Bucket=bucket)
         try:
             self._create_stream(name, bucket)
-            desc1 = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc1 = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             v1 = desc1["VersionId"]
             dest_id = desc1["Destinations"][0]["DestinationId"]
 
@@ -838,9 +807,9 @@ class TestFirehoseExtended:
                     "BufferingHints": {"SizeInMBs": 32, "IntervalInSeconds": 90},
                 },
             )
-            desc2 = self.firehose.describe_delivery_stream(
-                DeliveryStreamName=name
-            )["DeliveryStreamDescription"]
+            desc2 = self.firehose.describe_delivery_stream(DeliveryStreamName=name)[
+                "DeliveryStreamDescription"
+            ]
             v2 = desc2["VersionId"]
             assert v1 != v2
         finally:
@@ -855,12 +824,8 @@ class TestFirehoseExtended:
         try:
             self._create_stream(name, bucket)
             tags = [{"Key": f"k{i}", "Value": f"v{i}"} for i in range(5)]
-            self.firehose.tag_delivery_stream(
-                DeliveryStreamName=name, Tags=tags
-            )
-            resp = self.firehose.list_tags_for_delivery_stream(
-                DeliveryStreamName=name, Limit=2
-            )
+            self.firehose.tag_delivery_stream(DeliveryStreamName=name, Tags=tags)
+            resp = self.firehose.list_tags_for_delivery_stream(DeliveryStreamName=name, Limit=2)
             assert len(resp["Tags"]) <= 2
             assert "HasMoreTags" in resp
         finally:
@@ -875,9 +840,7 @@ class TestFirehoseExtended:
         try:
             self._create_stream(name, bucket)
             tags = [{"Key": f"alpha-{i}", "Value": f"v{i}"} for i in range(5)]
-            self.firehose.tag_delivery_stream(
-                DeliveryStreamName=name, Tags=tags
-            )
+            self.firehose.tag_delivery_stream(DeliveryStreamName=name, Tags=tags)
             resp = self.firehose.list_tags_for_delivery_stream(
                 DeliveryStreamName=name,
                 ExclusiveStartTagKey="alpha-0",
@@ -901,4 +864,3 @@ class TestFirehoseExtended:
             assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
         finally:
             self._cleanup_bucket(bucket)
-

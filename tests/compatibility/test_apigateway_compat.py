@@ -375,12 +375,8 @@ class TestAPIGatewayOperations:
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
         dep = apigw.create_deployment(restApiId=rest_api)
-        apigw.create_stage(
-            restApiId=rest_api, stageName="dev", deploymentId=dep["id"]
-        )
-        apigw.create_stage(
-            restApiId=rest_api, stageName="staging", deploymentId=dep["id"]
-        )
+        apigw.create_stage(restApiId=rest_api, stageName="dev", deploymentId=dep["id"])
+        apigw.create_stage(restApiId=rest_api, stageName="staging", deploymentId=dep["id"])
         stages = apigw.get_stages(restApiId=rest_api)
         stage_names = [s["stageName"] for s in stages["item"]]
         assert "dev" in stage_names
@@ -404,9 +400,7 @@ class TestAPIGatewayOperations:
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
         dep = apigw.create_deployment(restApiId=rest_api)
-        apigw.create_stage(
-            restApiId=rest_api, stageName="upd", deploymentId=dep["id"]
-        )
+        apigw.create_stage(restApiId=rest_api, stageName="upd", deploymentId=dep["id"])
         updated = apigw.update_stage(
             restApiId=rest_api,
             stageName="upd",
@@ -434,9 +428,7 @@ class TestAPIGatewayOperations:
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
         dep = apigw.create_deployment(restApiId=rest_api)
-        apigw.create_stage(
-            restApiId=rest_api, stageName="deleteme", deploymentId=dep["id"]
-        )
+        apigw.create_stage(restApiId=rest_api, stageName="deleteme", deploymentId=dep["id"])
         apigw.delete_stage(restApiId=rest_api, stageName="deleteme")
         stages = apigw.get_stages(restApiId=rest_api)
         stage_names = [s["stageName"] for s in stages["item"]]
@@ -458,9 +450,7 @@ class TestAPIGatewayOperations:
             responseType="DEFAULT_5XX",
             statusCode="500",
         )
-        got = apigw.get_gateway_response(
-            restApiId=rest_api, responseType="DEFAULT_5XX"
-        )
+        got = apigw.get_gateway_response(restApiId=rest_api, responseType="DEFAULT_5XX")
         assert got["responseType"] == "DEFAULT_5XX"
 
     def test_get_gateway_responses(self, apigw, rest_api):
@@ -508,9 +498,7 @@ class TestAPIGatewayOperations:
         """GetResource for a created child resource."""
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        child = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="orders"
-        )
+        child = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="orders")
         got = apigw.get_resource(restApiId=rest_api, resourceId=child["id"])
         assert got["pathPart"] == "orders"
         assert got["id"] == child["id"]
@@ -519,9 +507,7 @@ class TestAPIGatewayOperations:
         """DeleteResource removes a child resource."""
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        child = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="deleteme"
-        )
+        child = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="deleteme")
         apigw.delete_resource(restApiId=rest_api, resourceId=child["id"])
         resources = apigw.get_resources(restApiId=rest_api)
         ids = [r["id"] for r in resources["items"]]
@@ -531,18 +517,14 @@ class TestAPIGatewayOperations:
         """PutMethod then GetMethod."""
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        child = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="getmethod"
-        )
+        child = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="getmethod")
         apigw.put_method(
             restApiId=rest_api,
             resourceId=child["id"],
             httpMethod="POST",
             authorizationType="NONE",
         )
-        method = apigw.get_method(
-            restApiId=rest_api, resourceId=child["id"], httpMethod="POST"
-        )
+        method = apigw.get_method(restApiId=rest_api, resourceId=child["id"], httpMethod="POST")
         assert method["httpMethod"] == "POST"
         assert method["authorizationType"] == "NONE"
 
@@ -550,9 +532,7 @@ class TestAPIGatewayOperations:
         """PutMethodResponse / GetMethodResponse."""
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        child = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="methresp"
-        )
+        child = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="methresp")
         apigw.put_method(
             restApiId=rest_api,
             resourceId=child["id"],
@@ -578,9 +558,7 @@ class TestAPIGatewayOperations:
         """PutIntegration / PutIntegrationResponse / GetIntegrationResponse."""
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
-        child = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="intresp"
-        )
+        child = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="intresp")
         apigw.put_method(
             restApiId=rest_api,
             resourceId=child["id"],
@@ -682,9 +660,7 @@ class TestAPIGatewayOperations:
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
         dep = apigw.create_deployment(restApiId=rest_api)
-        apigw.create_stage(
-            restApiId=rest_api, stageName="cache", deploymentId=dep["id"]
-        )
+        apigw.create_stage(restApiId=rest_api, stageName="cache", deploymentId=dep["id"])
         apigw.flush_stage_authorizers_cache(restApiId=rest_api, stageName="cache")
         apigw.flush_stage_cache(restApiId=rest_api, stageName="cache")
 
@@ -705,7 +681,7 @@ class TestAPIGatewayOperations:
             type="MOCK",
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
-        dep = apigw.create_deployment(restApiId=rest_api, stageName="export")
+        _dep = apigw.create_deployment(restApiId=rest_api, stageName="export")
         resp = apigw.get_export(
             restApiId=rest_api,
             stageName="export",
@@ -721,11 +697,13 @@ class TestAPIGatewayExtended:
     @pytest.fixture
     def apigw(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("apigateway")
 
     @pytest.fixture
     def rest_api(self, apigw):
         import uuid
+
         resp = apigw.create_rest_api(
             name=f"ext-api-{uuid.uuid4().hex[:8]}",
             description="Extended test API",
@@ -760,9 +738,7 @@ class TestAPIGatewayExtended:
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
 
-        child = apigw.create_resource(
-            restApiId=rest_api, parentId=root_id, pathPart="users"
-        )
+        child = apigw.create_resource(restApiId=rest_api, parentId=root_id, pathPart="users")
         assert child["pathPart"] == "users"
         assert child["path"] == "/users"
 
@@ -778,17 +754,23 @@ class TestAPIGatewayExtended:
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
 
         apigw.put_method(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", authorizationType="NONE",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
         )
         apigw.put_method_response(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", statusCode="200",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
             responseModels={"application/json": "Empty"},
         )
         resp = apigw.get_method_response(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", statusCode="200",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
         )
         assert resp["statusCode"] == "200"
 
@@ -797,35 +779,44 @@ class TestAPIGatewayExtended:
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
 
         apigw.put_method(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", authorizationType="NONE",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
         )
         apigw.put_integration(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", type="MOCK",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
         apigw.put_method_response(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", statusCode="200",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
         )
         apigw.put_integration_response(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", statusCode="200",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
             responseTemplates={"application/json": ""},
         )
         resp = apigw.get_integration_response(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", statusCode="200",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
         )
         assert resp["statusCode"] == "200"
 
     def test_create_api_key(self, apigw):
         import uuid
+
         key_name = f"test-key-{uuid.uuid4().hex[:8]}"
-        resp = apigw.create_api_key(
-            name=key_name, enabled=True, value=f"apikey-{uuid.uuid4().hex}"
-        )
+        resp = apigw.create_api_key(name=key_name, enabled=True, value=f"apikey-{uuid.uuid4().hex}")
         key_id = resp["id"]
         try:
             assert resp["name"] == key_name
@@ -842,6 +833,7 @@ class TestAPIGatewayExtended:
 
     def test_create_usage_plan(self, apigw):
         import uuid
+
         name = f"usage-plan-{uuid.uuid4().hex[:8]}"
         resp = apigw.create_usage_plan(
             name=name,
@@ -863,13 +855,16 @@ class TestAPIGatewayExtended:
         assert "items" in resp
 
     def test_create_model(self, apigw, rest_api):
-        import uuid
         import json
+        import uuid
+
         model_name = f"TestModel{uuid.uuid4().hex[:8]}"
-        schema = json.dumps({
-            "type": "object",
-            "properties": {"name": {"type": "string"}},
-        })
+        schema = json.dumps(
+            {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+            }
+        )
         resp = apigw.create_model(
             restApiId=rest_api,
             name=model_name,
@@ -884,6 +879,7 @@ class TestAPIGatewayExtended:
 
     def test_create_get_delete_domain_name(self, apigw):
         import uuid
+
         domain = f"api-{uuid.uuid4().hex[:8]}.example.com"
         try:
             resp = apigw.create_domain_name(
@@ -906,15 +902,20 @@ class TestAPIGatewayExtended:
 
     def test_create_deployment_and_stages(self, apigw, rest_api):
         import uuid
+
         resources = apigw.get_resources(restApiId=rest_api)
         root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
         apigw.put_method(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", authorizationType="NONE",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            authorizationType="NONE",
         )
         apigw.put_integration(
-            restApiId=rest_api, resourceId=root_id,
-            httpMethod="GET", type="MOCK",
+            restApiId=rest_api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
             requestTemplates={"application/json": '{"statusCode": 200}'},
         )
         dep = apigw.create_deployment(restApiId=rest_api)

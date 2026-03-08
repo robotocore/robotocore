@@ -39,10 +39,7 @@ class TestXRaySamplingRuleOperations:
 
         # GetSamplingRules should include our rule
         rules_resp = xray.get_sampling_rules()
-        rule_names = [
-            r["SamplingRule"]["RuleName"]
-            for r in rules_resp["SamplingRuleRecords"]
-        ]
+        rule_names = [r["SamplingRule"]["RuleName"] for r in rules_resp["SamplingRuleRecords"]]
         assert rule_name in rule_names
 
         # Cleanup

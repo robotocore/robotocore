@@ -26,9 +26,7 @@ _TEMPLATE_ITEM_PATH = re.compile(r"^/v2/email/templates/([^/]+)$")
 _TEMPLATE_RENDER_PATH = re.compile(r"^/v2/email/templates/([^/]+)/render$")
 
 
-async def handle_sesv2_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_sesv2_request(request: Request, region: str, account_id: str) -> Response:
     """Handle SES v2 API requests (REST-JSON protocol)."""
     path = request.url.path
     method = request.method.upper()
@@ -80,10 +78,12 @@ def _get_email_template(name: str, region: str) -> Response:
     if not tmpl:
         return _error("NotFoundException", f"Template {name} does not exist", 404)
     return Response(
-        content=json.dumps({
-            "TemplateName": tmpl["TemplateName"],
-            "TemplateContent": tmpl["TemplateContent"],
-        }),
+        content=json.dumps(
+            {
+                "TemplateName": tmpl["TemplateName"],
+                "TemplateContent": tmpl["TemplateContent"],
+            }
+        ),
         status_code=200,
         media_type="application/json",
     )

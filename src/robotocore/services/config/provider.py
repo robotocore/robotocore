@@ -36,9 +36,7 @@ def _get_config_backend(account_id: str, region: str):
     return get_backend("config")[account_id][region]
 
 
-async def handle_config_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_config_request(request: Request, region: str, account_id: str) -> Response:
     """Handle AWS Config API requests (JSON protocol via X-Amz-Target)."""
     body = await request.body()
     target = request.headers.get("x-amz-target", "")
@@ -170,9 +168,7 @@ def _describe_config_rules(params: dict, region: str, account_id: str) -> dict:
     return result
 
 
-def _describe_compliance_by_config_rule(
-    params: dict, region: str, account_id: str
-) -> dict:
+def _describe_compliance_by_config_rule(params: dict, region: str, account_id: str) -> dict:
     """DescribeComplianceByConfigRule - stub returning COMPLIANT for all rules."""
     backend = _get_config_backend(account_id, region)
     rule_names = params.get("ConfigRuleNames", [])
@@ -191,10 +187,12 @@ def _describe_compliance_by_config_rule(
         compliance_type = "COMPLIANT"
         if compliance_types and compliance_type not in compliance_types:
             continue
-        results.append({
-            "ConfigRuleName": rule_name,
-            "Compliance": {"ComplianceType": compliance_type},
-        })
+        results.append(
+            {
+                "ConfigRuleName": rule_name,
+                "Compliance": {"ComplianceType": compliance_type},
+            }
+        )
 
     return {"ComplianceByConfigRules": results}
 
@@ -233,9 +231,7 @@ def _put_evaluations(params: dict, region: str, account_id: str) -> dict:
     return {"FailedEvaluations": []}
 
 
-def _describe_config_rule_evaluation_status(
-    params: dict, region: str, account_id: str
-) -> dict:
+def _describe_config_rule_evaluation_status(params: dict, region: str, account_id: str) -> dict:
     """DescribeConfigRuleEvaluationStatus - return status for rules."""
     backend = _get_config_backend(account_id, region)
     rule_names = params.get("ConfigRuleNames", [])
@@ -260,16 +256,16 @@ def _describe_config_rule_evaluation_status(
             "ConfigRuleId": rule.config_rule_id,
         }
 
-        results.append({
-            "ConfigRuleName": rule_name,
-            "ConfigRuleArn": rule.config_rule_arn,
-            "ConfigRuleId": rule.config_rule_id,
-            "LastSuccessfulInvocationTime": status.get(
-                "LastSuccessfulInvocationTime", 0
-            ),
-            "FirstActivatedTime": status.get("FirstActivatedTime", 0),
-            "FirstEvaluationStarted": status.get("FirstEvaluationStarted", False),
-        })
+        results.append(
+            {
+                "ConfigRuleName": rule_name,
+                "ConfigRuleArn": rule.config_rule_arn,
+                "ConfigRuleId": rule.config_rule_id,
+                "LastSuccessfulInvocationTime": status.get("LastSuccessfulInvocationTime", 0),
+                "FirstActivatedTime": status.get("FirstActivatedTime", 0),
+                "FirstEvaluationStarted": status.get("FirstEvaluationStarted", False),
+            }
+        )
 
     return {"ConfigRulesEvaluationStatus": results}
 
@@ -291,6 +287,7 @@ def _error_response(code: str, message: str, status: int) -> Response:
 # ---------------------------------------------------------------------------
 # Action dispatch map
 # ---------------------------------------------------------------------------
+
 
 def _describe_compliance_by_resource(params: dict, region: str, account_id: str) -> dict:
     """DescribeComplianceByResource — return empty compliance list."""

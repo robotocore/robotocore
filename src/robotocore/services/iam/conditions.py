@@ -49,6 +49,7 @@ def _to_datetime(value: Any) -> datetime:
 # Core operator functions
 # ---------------------------------------------------------------------------
 
+
 def _string_equals(context_val: str, policy_val: str) -> bool:
     return _to_str(context_val) == _to_str(policy_val)
 
@@ -312,7 +313,7 @@ def evaluate_condition_block(
         for prefix in ("ForAllValues:", "ForAnyValue:"):
             if operator.startswith(prefix):
                 set_prefix = prefix.rstrip(":")
-                operator = operator[len(prefix):]
+                operator = operator[len(prefix) :]
                 break
 
         # Check for IfExists suffix

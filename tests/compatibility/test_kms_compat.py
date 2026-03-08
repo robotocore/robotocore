@@ -203,7 +203,8 @@ class TestKMSOperations:
         assert decrypted["Plaintext"] == b"context secret"
 
     def test_generate_data_key_without_plaintext(self, kms):
-        key = kms.create_key(Description="data key no pt")
+        _key = kms.create_key(Description="data key no pt")
+
     def test_re_encrypt(self, kms):
         key1 = kms.create_key(Description="reencrypt src")
         key1_id = key1["KeyMetadata"]["KeyId"]
@@ -293,19 +294,22 @@ class TestKMSOperations:
         key_id = key["KeyMetadata"]["KeyId"]
 
         import json
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Id": "custom-policy",
-            "Statement": [
-                {
-                    "Sid": "Enable IAM User Permissions",
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                    "Action": "kms:*",
-                    "Resource": "*",
-                }
-            ],
-        })
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Id": "custom-policy",
+                "Statement": [
+                    {
+                        "Sid": "Enable IAM User Permissions",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "kms:*",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
         kms.put_key_policy(KeyId=key_id, PolicyName="default", Policy=policy)
 
         response = kms.get_key_policy(KeyId=key_id, PolicyName="default")
@@ -483,6 +487,7 @@ class TestKMSOperations:
             assert tag_map2["project"] == "robotocore"
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
     def test_sign_verify_rsa(self, kms):
         """Test Sign and Verify with an RSA key."""
         key = kms.create_key(
@@ -536,18 +541,20 @@ class TestKMSOperations:
             assert "Statement" in parsed
 
             # Put a new policy
-            new_policy = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "Enable IAM policies",
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                        "Action": "kms:*",
-                        "Resource": "*",
-                    }
-                ],
-            })
+            new_policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "Enable IAM policies",
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": "kms:*",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
             kms.put_key_policy(KeyId=key_id, PolicyName="default", Policy=new_policy)
             get_resp2 = kms.get_key_policy(KeyId=key_id, PolicyName="default")
             policy2 = get_resp2["Policy"]
@@ -563,6 +570,7 @@ class TestKMSExtended:
     @pytest.fixture
     def kms(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("kms")
 
     def test_generate_data_key(self, kms):
@@ -581,9 +589,7 @@ class TestKMSExtended:
         key = kms.create_key()
         key_id = key["KeyMetadata"]["KeyId"]
         try:
-            resp = kms.generate_data_key_without_plaintext(
-                KeyId=key_id, KeySpec="AES_256"
-            )
+            resp = kms.generate_data_key_without_plaintext(KeyId=key_id, KeySpec="AES_256")
             assert "CiphertextBlob" in resp
             assert "Plaintext" not in resp or resp.get("Plaintext") is None
         finally:

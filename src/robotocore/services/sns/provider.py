@@ -43,9 +43,7 @@ class SnsError(Exception):
         self.status = status
 
 
-async def handle_sns_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_sns_request(request: Request, region: str, account_id: str) -> Response:
     """Handle an SNS API request."""
     body = await request.body()
     content_type = request.headers.get("content-type", "")
@@ -69,9 +67,7 @@ async def handle_sns_request(
     store = _get_store(region)
     handler = _ACTION_MAP.get(action)
     if handler is None:
-        return _error(
-            "InvalidAction", f"Unknown action: {action}", 400, use_json
-        )
+        return _error("InvalidAction", f"Unknown action: {action}", 400, use_json)
 
     try:
         result = handler(store, params, region, account_id, request)
@@ -97,18 +93,18 @@ def _create_topic(
     # Query protocol tags: Tags.member.N.Key / Tags.member.N.Value
     i = 1
     while f"Tags.member.{i}.Key" in params:
-        tags.append({
-            "Key": params[f"Tags.member.{i}.Key"],
-            "Value": params.get(f"Tags.member.{i}.Value", ""),
-        })
+        tags.append(
+            {
+                "Key": params[f"Tags.member.{i}.Key"],
+                "Value": params.get(f"Tags.member.{i}.Value", ""),
+            }
+        )
         i += 1
     # Query protocol attributes
     for key, value in params.items():
         if key.startswith("Attributes.entry.") and key.endswith(".key"):
             idx = key.split(".")[2]
-            attributes[value] = params.get(
-                f"Attributes.entry.{idx}.value", ""
-            )
+            attributes[value] = params.get(f"Attributes.entry.{idx}.value", "")
     # Validate FIFO topic naming
     if attributes.get("FifoTopic", "false").lower() == "true":
         if not name.endswith(".fifo"):
@@ -207,9 +203,7 @@ def _confirm_subscription(
     token = params.get("Token", "")
     sub = store.confirm_subscription(topic_arn, token)
     if not sub:
-        raise SnsError(
-            "NotFound", f"No pending subscription for topic {topic_arn}", 404
-        )
+        raise SnsError("NotFound", f"No pending subscription for topic {topic_arn}", 404)
     return {"SubscriptionArn": sub.subscription_arn}
 
 
@@ -278,9 +272,7 @@ def _set_subscription_attributes(
     return {}
 
 
-def _publish(
-    store: SnsStore, params: dict, region: str, account_id: str, request: Request
-) -> dict:
+def _publish(store: SnsStore, params: dict, region: str, account_id: str, request: Request) -> dict:
     topic_arn = params.get("TopicArn", "")
     target_arn = params.get("TargetArn", "")
     arn = topic_arn or target_arn
@@ -299,12 +291,8 @@ def _publish(
     i = 1
     while f"MessageAttributes.entry.{i}.Name" in params:
         name = params[f"MessageAttributes.entry.{i}.Name"]
-        data_type = params.get(
-            f"MessageAttributes.entry.{i}.Value.DataType", "String"
-        )
-        string_value = params.get(
-            f"MessageAttributes.entry.{i}.Value.StringValue", ""
-        )
+        data_type = params.get(f"MessageAttributes.entry.{i}.Value.DataType", "String")
+        string_value = params.get(f"MessageAttributes.entry.{i}.Value.StringValue", "")
         message_attributes[name] = {
             "DataType": data_type,
             "StringValue": string_value,
@@ -325,9 +313,7 @@ def _publish(
             continue
         if not sub.matches_filter(message_attributes):
             continue
-        _deliver_to_subscriber(
-            sub, message, subject, message_attributes, message_id, arn, region
-        )
+        _deliver_to_subscriber(sub, message, subject, message_attributes, message_id, arn, region)
 
     result = {"MessageId": message_id}
     if topic.is_fifo and message_group_id:
@@ -357,9 +343,7 @@ def _publish_batch(
         group_id = params.get(f"PublishBatchRequestEntries.member.{i}.MessageGroupId")
         if group_id:
             entry["MessageGroupId"] = group_id
-        dedup_id = params.get(
-            f"PublishBatchRequestEntries.member.{i}.MessageDeduplicationId"
-        )
+        dedup_id = params.get(f"PublishBatchRequestEntries.member.{i}.MessageDeduplicationId")
         if dedup_id:
             entry["MessageDeduplicationId"] = dedup_id
         i += 1
@@ -455,12 +439,8 @@ def _create_platform_application(
     for key, value in params.items():
         if key.startswith("Attributes.entry.") and key.endswith(".key"):
             idx = key.split(".")[2]
-            attributes[value] = params.get(
-                f"Attributes.entry.{idx}.value", ""
-            )
-    app = store.create_platform_application(
-        name, platform, region, account_id, attributes
-    )
+            attributes[value] = params.get(f"Attributes.entry.{idx}.value", "")
+    app = store.create_platform_application(name, platform, region, account_id, attributes)
     return {"PlatformApplicationArn": app.arn}
 
 
@@ -478,8 +458,7 @@ def _list_platform_applications(
     apps = store.list_platform_applications()
     return {
         "PlatformApplications": [
-            {"PlatformApplicationArn": a.arn, "Attributes": a.attributes}
-            for a in apps
+            {"PlatformApplicationArn": a.arn, "Attributes": a.attributes} for a in apps
         ]
     }
 
@@ -490,9 +469,7 @@ def _get_platform_application_attributes(
     arn = params.get("PlatformApplicationArn", "")
     app = store.get_platform_application(arn)
     if not app:
-        raise SnsError(
-            "NotFound", f"Platform application {arn} not found", 404
-        )
+        raise SnsError("NotFound", f"Platform application {arn} not found", 404)
     return {"Attributes": app.attributes}
 
 
@@ -502,16 +479,12 @@ def _set_platform_application_attributes(
     arn = params.get("PlatformApplicationArn", "")
     app = store.get_platform_application(arn)
     if not app:
-        raise SnsError(
-            "NotFound", f"Platform application {arn} not found", 404
-        )
+        raise SnsError("NotFound", f"Platform application {arn} not found", 404)
     attributes = params.get("Attributes", {})
     for key, value in params.items():
         if key.startswith("Attributes.entry.") and key.endswith(".key"):
             idx = key.split(".")[2]
-            attributes[value] = params.get(
-                f"Attributes.entry.{idx}.value", ""
-            )
+            attributes[value] = params.get(f"Attributes.entry.{idx}.value", "")
     app.attributes.update(attributes)
     return {}
 
@@ -530,22 +503,42 @@ def _deliver_to_subscriber(
 ) -> None:
     if sub.protocol == "sqs":
         _deliver_to_sqs(
-            sub, message, subject, message_attributes, message_id, topic_arn,
+            sub,
+            message,
+            subject,
+            message_attributes,
+            message_id,
+            topic_arn,
             region,
         )
     elif sub.protocol == "lambda":
         _deliver_to_lambda(
-            sub, message, subject, message_attributes, message_id, topic_arn,
+            sub,
+            message,
+            subject,
+            message_attributes,
+            message_id,
+            topic_arn,
             region,
         )
     elif sub.protocol in ("http", "https"):
         _deliver_to_http(
-            sub, message, subject, message_attributes, message_id, topic_arn,
+            sub,
+            message,
+            subject,
+            message_attributes,
+            message_id,
+            topic_arn,
             region,
         )
     elif sub.protocol == "firehose":
         _deliver_to_firehose(
-            sub, message, subject, message_attributes, message_id, topic_arn,
+            sub,
+            message,
+            subject,
+            message_attributes,
+            message_id,
+            topic_arn,
             region,
         )
     # Other protocols (email, sms, etc.) are no-ops for now
@@ -580,10 +573,7 @@ def _deliver_to_sqs(
             "Timestamp": _iso_timestamp(),
             "SignatureVersion": "1",
             "Signature": "EXAMPLE",
-            "SigningCertURL": (
-                "https://sns.us-east-1.amazonaws.com/"
-                "SimpleNotificationService.pem"
-            ),
+            "SigningCertURL": ("https://sns.us-east-1.amazonaws.com/SimpleNotificationService.pem"),
             "UnsubscribeURL": (
                 f"https://sns.us-east-1.amazonaws.com/"
                 f"?Action=Unsubscribe"
@@ -596,9 +586,7 @@ def _deliver_to_sqs(
             for attr_name, attr_val in message_attributes.items():
                 sns_attrs[attr_name] = {
                     "Type": attr_val.get("DataType", "String"),
-                    "Value": attr_val.get(
-                        "StringValue", attr_val.get("Value", "")
-                    ),
+                    "Value": attr_val.get("StringValue", attr_val.get("Value", "")),
                 }
             notification["MessageAttributes"] = sns_attrs
         body = json.dumps(notification)
@@ -631,9 +619,7 @@ def _deliver_to_lambda(
         arn_parts = endpoint.split(":")
         account_id = arn_parts[4] if len(arn_parts) >= 5 else "123456789012"
     except (IndexError, ValueError):
-        logger.warning(
-            "SNS: Cannot parse Lambda ARN from endpoint: %s", endpoint
-        )
+        logger.warning("SNS: Cannot parse Lambda ARN from endpoint: %s", endpoint)
         return
 
     # Build SNS-to-Lambda event payload (matches AWS format)
@@ -641,9 +627,7 @@ def _deliver_to_lambda(
     for attr_name, attr_val in message_attributes.items():
         sns_message_attributes[attr_name] = {
             "Type": attr_val.get("DataType", "String"),
-            "Value": attr_val.get(
-                "StringValue", attr_val.get("Value", "")
-            ),
+            "Value": attr_val.get("StringValue", attr_val.get("Value", "")),
         }
 
     timestamp = _iso_timestamp()
@@ -663,8 +647,7 @@ def _deliver_to_lambda(
                     "SignatureVersion": "1",
                     "Signature": "EXAMPLE",
                     "SigningCertUrl": (
-                        f"https://sns.{region}.amazonaws.com/"
-                        f"SimpleNotificationService.pem"
+                        f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem"
                     ),
                     "UnsubscribeUrl": (
                         f"https://sns.{region}.amazonaws.com/"
@@ -704,10 +687,7 @@ def _deliver_to_http(
             "Timestamp": timestamp,
             "SignatureVersion": "1",
             "Signature": "EXAMPLE",
-            "SigningCertURL": (
-                f"https://sns.{region}.amazonaws.com/"
-                f"SimpleNotificationService.pem"
-            ),
+            "SigningCertURL": (f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem"),
             "UnsubscribeURL": (
                 f"https://sns.{region}.amazonaws.com/"
                 f"?Action=Unsubscribe"
@@ -776,23 +756,17 @@ def _deliver_to_firehose(
                 }
             )
             stream.put_record(record_data.encode())
-            logger.debug(
-                "SNS: Delivered to Firehose stream %s", stream_name
-            )
+            logger.debug("SNS: Delivered to Firehose stream %s", stream_name)
     except ImportError:
         logger.warning(
             "SNS: Firehose provider not available for delivery to %s",
             sub.endpoint,
         )
     except Exception as e:
-        logger.warning(
-            "SNS: Failed to deliver to Firehose %s: %s", sub.endpoint, e
-        )
+        logger.warning("SNS: Failed to deliver to Firehose %s: %s", sub.endpoint, e)
 
 
-def _send_subscription_confirmation(
-    sub: SnsSubscription, topic_arn: str, region: str
-) -> None:
+def _send_subscription_confirmation(sub: SnsSubscription, topic_arn: str, region: str) -> None:
     """Send a SubscriptionConfirmation message to HTTP/HTTPS endpoints."""
     import urllib.error
     import urllib.request
@@ -814,10 +788,7 @@ def _send_subscription_confirmation(
             "Timestamp": _iso_timestamp(),
             "SignatureVersion": "1",
             "Signature": "EXAMPLE",
-            "SigningCertURL": (
-                f"https://sns.{region}.amazonaws.com/"
-                f"SimpleNotificationService.pem"
-            ),
+            "SigningCertURL": (f"https://sns.{region}.amazonaws.com/SimpleNotificationService.pem"),
         }
     )
 
@@ -890,9 +861,7 @@ def _xml_response(action: str, data: dict) -> Response:
             elif isinstance(v, dict) and k in map_fields:
                 parts.append(f"<{k}>")
                 for mk, mv in v.items():
-                    parts.append(
-                        f"<entry><key>{mk}</key><value>{mv}</value></entry>"
-                    )
+                    parts.append(f"<entry><key>{mk}</key><value>{mv}</value></entry>")
                 parts.append(f"</{k}>")
             elif isinstance(v, dict):
                 parts.append(f"<{k}>{dict_to_xml(v)}</{k}>")
@@ -913,9 +882,7 @@ def _xml_response(action: str, data: dict) -> Response:
     return Response(content=xml, status_code=200, media_type="text/xml")
 
 
-def _error(
-    code: str, message: str, status: int, use_json: bool
-) -> Response:
+def _error(code: str, message: str, status: int, use_json: bool) -> Response:
     if use_json:
         body = json.dumps({"__type": code, "message": message})
         return Response(

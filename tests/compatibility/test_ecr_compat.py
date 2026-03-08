@@ -400,7 +400,9 @@ class TestECRExtendedOperations:
         try:
             resp = ecr.batch_check_layer_availability(
                 repositoryName=repo_name,
-                layerDigests=["sha256:0000000000000000000000000000000000000000000000000000000000000000"],
+                layerDigests=[
+                    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                ],
             )
             assert "layers" in resp or "failures" in resp
         finally:

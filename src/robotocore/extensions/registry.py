@@ -25,9 +25,7 @@ class ExtensionRegistry:
     def register(self, plugin: RobotocorePlugin) -> None:
         """Register a plugin instance."""
         if not isinstance(plugin, RobotocorePlugin):
-            raise TypeError(
-                f"Expected RobotocorePlugin, got {type(plugin).__name__}"
-            )
+            raise TypeError(f"Expected RobotocorePlugin, got {type(plugin).__name__}")
         if not plugin.name:
             plugin.name = type(plugin).__name__
 
@@ -44,8 +42,7 @@ class ExtensionRegistry:
         for service, handler in plugin.get_service_overrides().items():
             if service in self._service_overrides:
                 logger.warning(
-                    f"Service '{service}' override from '{plugin.name}' "
-                    f"replaces existing override"
+                    f"Service '{service}' override from '{plugin.name}' replaces existing override"
                 )
             self._service_overrides[service] = handler
 
@@ -95,9 +92,7 @@ class ExtensionRegistry:
                         return result
                     request = result
             except Exception:
-                logger.exception(
-                    f"Error in {plugin.name}.on_request()"
-                )
+                logger.exception(f"Error in {plugin.name}.on_request()")
         return None
 
     def on_response(self, request, response, context: dict):
@@ -108,9 +103,7 @@ class ExtensionRegistry:
                 if result is not None:
                     response = result
             except Exception:
-                logger.exception(
-                    f"Error in {plugin.name}.on_response()"
-                )
+                logger.exception(f"Error in {plugin.name}.on_response()")
         return response
 
     def on_error(self, request, error, context: dict):
@@ -121,9 +114,7 @@ class ExtensionRegistry:
                 if result is not None:
                     return result
             except Exception:
-                logger.exception(
-                    f"Error in {plugin.name}.on_error()"
-                )
+                logger.exception(f"Error in {plugin.name}.on_error()")
         return None
 
     def get_custom_routes(self) -> list[tuple[str, str, callable]]:
@@ -133,9 +124,7 @@ class ExtensionRegistry:
             try:
                 routes.extend(plugin.get_custom_routes())
             except Exception:
-                logger.exception(
-                    f"Error getting routes from {plugin.name}"
-                )
+                logger.exception(f"Error getting routes from {plugin.name}")
         return routes
 
     def list_plugins(self) -> list[dict]:
@@ -146,9 +135,7 @@ class ExtensionRegistry:
                 "version": p.version,
                 "description": p.description,
                 "priority": p.priority,
-                "service_overrides": list(
-                    p.get_service_overrides().keys()
-                ),
+                "service_overrides": list(p.get_service_overrides().keys()),
             }
             for p in self.plugins
         ]
@@ -218,17 +205,12 @@ def _discover_entry_points() -> list[RobotocorePlugin]:
         for ep in eps:
             try:
                 plugin_cls = ep.load()
-                if isinstance(plugin_cls, type) and issubclass(
-                    plugin_cls, RobotocorePlugin
-                ):
+                if isinstance(plugin_cls, type) and issubclass(plugin_cls, RobotocorePlugin):
                     plugins.append(plugin_cls())
                 elif isinstance(plugin_cls, RobotocorePlugin):
                     plugins.append(plugin_cls)
                 else:
-                    logger.warning(
-                        f"Entry point {ep.name} is not a "
-                        f"RobotocorePlugin: {plugin_cls}"
-                    )
+                    logger.warning(f"Entry point {ep.name} is not a RobotocorePlugin: {plugin_cls}")
             except Exception:
                 logger.exception(f"Failed to load entry point: {ep.name}")
     except Exception:
@@ -285,9 +267,7 @@ def _discover_from_directory(dir_path: str) -> list[RobotocorePlugin]:
         if py_file.name.startswith("_"):
             continue
         try:
-            spec = importlib.util.spec_from_file_location(
-                f"robotocore_ext_{py_file.stem}", py_file
-            )
+            spec = importlib.util.spec_from_file_location(f"robotocore_ext_{py_file.stem}", py_file)
             if spec and spec.loader:
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)

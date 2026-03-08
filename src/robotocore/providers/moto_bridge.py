@@ -158,9 +158,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
         )
 
 
-async def forward_to_moto_with_body(
-    request: Request, service_name: str, body: bytes
-) -> Response:
+async def forward_to_moto_with_body(request: Request, service_name: str, body: bytes) -> Response:
     """Forward to Moto with a custom body (for request body modifications)."""
     raw_path = request.url.path
     try:
@@ -187,9 +185,7 @@ async def forward_to_moto_with_body(
         if isinstance(response_body, str) and len(response_body) == 0:
             response_body = None
         headers_dict = dict(response_headers) if response_headers else {}
-        clean_headers = {
-            k: v for k, v in headers_dict.items() if k.lower() != "content-length"
-        }
+        clean_headers = {k: v for k, v in headers_dict.items() if k.lower() != "content-length"}
         return Response(
             content=response_body,
             status_code=status,

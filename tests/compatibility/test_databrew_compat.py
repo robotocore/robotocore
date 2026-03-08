@@ -113,9 +113,7 @@ class TestDataBrewRecipes:
         assert resp["Name"] == name
 
     def test_describe_recipe(self, databrew_client, created_recipe):
-        resp = databrew_client.describe_recipe(
-            Name=created_recipe, RecipeVersion="LATEST_WORKING"
-        )
+        resp = databrew_client.describe_recipe(Name=created_recipe, RecipeVersion="LATEST_WORKING")
         assert resp["Name"] == created_recipe
         assert "Steps" in resp
 

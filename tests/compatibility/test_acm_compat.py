@@ -15,22 +15,22 @@ from tests.compatibility.conftest import make_client
 def _generate_self_signed_cert():
     """Generate a self-signed certificate and private key in PEM format."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "California"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Test"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "California"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Test"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
-        .not_valid_after(
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
-        )
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
         .sign(key, hashes.SHA256())
     )
     cert_pem = cert.public_bytes(serialization.Encoding.PEM)
@@ -165,8 +165,7 @@ class TestACMOperations:
     def test_delete_nonexistent_certificate(self, acm):
         """Deleting a non-existent certificate should raise an error."""
         fake_arn = (
-            "arn:aws:acm:us-east-1:123456789012:certificate/"
-            "00000000-0000-0000-0000-000000000000"
+            "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
         )
         with pytest.raises(ClientError) as exc_info:
             acm.delete_certificate(CertificateArn=fake_arn)
@@ -175,8 +174,7 @@ class TestACMOperations:
     def test_describe_nonexistent_certificate(self, acm):
         """Describing a non-existent certificate should raise an error."""
         fake_arn = (
-            "arn:aws:acm:us-east-1:123456789012:certificate/"
-            "11111111-1111-1111-1111-111111111111"
+            "arn:aws:acm:us-east-1:123456789012:certificate/11111111-1111-1111-1111-111111111111"
         )
         with pytest.raises(ClientError) as exc_info:
             acm.describe_certificate(CertificateArn=fake_arn)
@@ -198,18 +196,14 @@ class TestACMOperations:
         """ListCertificates should show the domain name in the summary."""
         arn = acm.request_certificate(DomainName="listsummary.example.com")["CertificateArn"]
         response = acm.list_certificates()
-        matching = [
-            c for c in response["CertificateSummaryList"]
-            if c["CertificateArn"] == arn
-        ]
+        matching = [c for c in response["CertificateSummaryList"] if c["CertificateArn"] == arn]
         assert len(matching) == 1
         assert matching[0]["DomainName"] == "listsummary.example.com"
 
     def test_export_certificate_invalid_arn(self, acm):
         """ExportCertificate with bad ARN should raise an error."""
         fake_arn = (
-            "arn:aws:acm:us-east-1:123456789012:certificate/"
-            "22222222-2222-2222-2222-222222222222"
+            "arn:aws:acm:us-east-1:123456789012:certificate/22222222-2222-2222-2222-222222222222"
         )
         with pytest.raises(ClientError) as exc_info:
             acm.export_certificate(
@@ -231,6 +225,7 @@ class TestACMOperations:
         arn = acm.request_certificate(DomainName="status.example.com")["CertificateArn"]
         cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
         assert cert["Status"] == "PENDING_VALIDATION"
+
     def test_import_certificate(self, acm):
         """ImportCertificate imports a self-signed cert and returns an ARN."""
         cert_pem, key_pem = _generate_self_signed_cert()
@@ -289,26 +284,27 @@ class TestACMOperations:
 class TestACMImportCertificate:
     def _generate_self_signed_cert(self):
         """Generate a self-signed certificate using the cryptography library."""
+        import datetime
+
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.x509.oid import NameOID
-        import datetime
 
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
-        ])
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
+            ]
+        )
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
             .issuer_name(issuer)
             .public_key(key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
-            .not_valid_after(
-                datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
-            )
+            .not_valid_before(datetime.datetime.now(datetime.UTC))
+            .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
             .sign(key, hashes.SHA256())
         )
         cert_pem = cert.public_bytes(serialization.Encoding.PEM)

@@ -128,9 +128,7 @@ def _send_to_lambda(function_arn: str, record: dict, region: str, account_id: st
     )
 
 
-def _send_to_eventbridge(
-    event_bus_arn: str, record: dict, region: str, account_id: str
-) -> None:
+def _send_to_eventbridge(event_bus_arn: str, record: dict, region: str, account_id: str) -> None:
     """Send destination record to EventBridge."""
     try:
         from robotocore.services.eventbridge.provider import get_store

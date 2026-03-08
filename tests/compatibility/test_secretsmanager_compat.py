@@ -185,17 +185,19 @@ class TestSecretsManagerOperations:
     def test_put_resource_policy(self, sm):
         """Test putting and getting a resource policy on a secret."""
         sm.create_secret(Name="policy/secret", SecretString="val")
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                    "Action": "secretsmanager:GetSecretValue",
-                    "Resource": "*",
-                }
-            ],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "secretsmanager:GetSecretValue",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
         sm.put_resource_policy(SecretId="policy/secret", ResourcePolicy=policy)
         response = sm.get_resource_policy(SecretId="policy/secret")
         assert response["ResourcePolicy"] is not None
@@ -231,6 +233,7 @@ class TestSecretsManagerOperations:
         assert response["SecretString"] == "original"
         assert response["VersionId"] == version_id
         sm.delete_secret(SecretId="byversion/secret", ForceDeleteWithoutRecovery=True)
+
     def test_update_secret_string(self, sm):
         """UpdateSecret changes the secret value."""
         sm.create_secret(Name="upd-str/secret", SecretString="before")
@@ -271,9 +274,7 @@ class TestSecretsManagerOperations:
         sm.create_secret(Name="batch/secret1", SecretString="val1")
         sm.create_secret(Name="batch/secret2", SecretString="val2")
         try:
-            resp = sm.batch_get_secret_value(
-                SecretIdList=["batch/secret1", "batch/secret2"]
-            )
+            resp = sm.batch_get_secret_value(SecretIdList=["batch/secret1", "batch/secret2"])
             values = {s["Name"]: s["SecretString"] for s in resp["SecretValues"]}
             assert values["batch/secret1"] == "val1"
             assert values["batch/secret2"] == "val2"
@@ -299,17 +300,19 @@ class TestSecretsManagerOperations:
         """Test PutResourcePolicy, GetResourcePolicy, DeleteResourcePolicy."""
         sm.create_secret(Name="policy-test/secret", SecretString="val")
         try:
-            policy = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                        "Action": "secretsmanager:GetSecretValue",
-                        "Resource": "*",
-                    }
-                ],
-            })
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": "secretsmanager:GetSecretValue",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
             sm.put_resource_policy(SecretId="policy-test/secret", ResourcePolicy=policy)
 
             get_resp = sm.get_resource_policy(SecretId="policy-test/secret")
@@ -328,17 +331,19 @@ class TestSecretsManagerOperations:
         """Test ValidateResourcePolicy."""
         sm.create_secret(Name="validate-policy/secret", SecretString="val")
         try:
-            policy = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                        "Action": "secretsmanager:GetSecretValue",
-                        "Resource": "*",
-                    }
-                ],
-            })
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": "secretsmanager:GetSecretValue",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
             response = sm.validate_resource_policy(
                 SecretId="validate-policy/secret",
                 ResourcePolicy=policy,
@@ -367,10 +372,12 @@ class TestSecretsManagerExtended:
     @pytest.fixture
     def sm(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("secretsmanager")
 
     def test_create_secret_with_tags(self, sm):
         import uuid
+
         name = f"tagged-secret-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(
@@ -390,6 +397,7 @@ class TestSecretsManagerExtended:
 
     def test_tag_untag_secret(self, sm):
         import uuid
+
         name = f"tag-untag-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretString="val")
@@ -411,6 +419,7 @@ class TestSecretsManagerExtended:
 
     def test_update_secret_string(self, sm):
         import uuid
+
         name = f"update-str-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretString="original")
@@ -422,6 +431,7 @@ class TestSecretsManagerExtended:
 
     def test_update_secret_description(self, sm):
         import uuid
+
         name = f"update-desc-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretString="val", Description="original desc")
@@ -433,6 +443,7 @@ class TestSecretsManagerExtended:
 
     def test_put_secret_value_new_version(self, sm):
         import uuid
+
         name = f"put-val-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretString="v1")
@@ -448,6 +459,7 @@ class TestSecretsManagerExtended:
 
     def test_list_secret_version_ids(self, sm):
         import uuid
+
         name = f"versions-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretString="v1")
@@ -463,6 +475,7 @@ class TestSecretsManagerExtended:
 
     def test_restore_secret(self, sm):
         import uuid
+
         name = f"restore-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretString="val")
@@ -489,6 +502,7 @@ class TestSecretsManagerExtended:
 
     def test_create_secret_binary(self, sm):
         import uuid
+
         name = f"binary-{uuid.uuid4().hex[:8]}"
         try:
             sm.create_secret(Name=name, SecretBinary=b"\x00\x01\x02\x03")
@@ -499,18 +513,16 @@ class TestSecretsManagerExtended:
 
     def test_list_secrets_filter(self, sm):
         import uuid
+
         prefix = f"filter-{uuid.uuid4().hex[:8]}"
         names = [f"{prefix}/a", f"{prefix}/b"]
         try:
             for n in names:
                 sm.create_secret(Name=n, SecretString="val")
-            resp = sm.list_secrets(
-                Filters=[{"Key": "name", "Values": [prefix]}]
-            )
+            resp = sm.list_secrets(Filters=[{"Key": "name", "Values": [prefix]}])
             found = [s["Name"] for s in resp["SecretList"]]
             for n in names:
                 assert n in found
         finally:
             for n in names:
                 sm.delete_secret(SecretId=n, ForceDeleteWithoutRecovery=True)
-

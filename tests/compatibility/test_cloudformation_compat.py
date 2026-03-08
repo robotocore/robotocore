@@ -501,18 +501,20 @@ class TestCloudFormationAdvanced:
         """Pass Parameters to CreateStack, verify the parameter is resolved in the resource."""
         uid = uuid.uuid4().hex[:8]
         queue_name = f"cfn-param-q-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Parameters": {
-                "QName": {"Type": "String"},
-            },
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": {"Ref": "QName"}},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Parameters": {
+                    "QName": {"Type": "String"},
                 },
-            },
-        })
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": {"Ref": "QName"}},
+                    },
+                },
+            }
+        )
         stack_name = f"test-param-resolve-{uid}"
         cfn.create_stack(
             StackName=stack_name,
@@ -531,25 +533,27 @@ class TestCloudFormationAdvanced:
         """Stack with Fn::GetAtt and Fn::Ref in Outputs."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-outputs-getatt-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "MyQueue": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-out-q-{uid}"},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-out-q-{uid}"},
+                    },
                 },
-            },
-            "Outputs": {
-                "QUrl": {
-                    "Value": {"Ref": "MyQueue"},
-                    "Description": "Queue URL from Ref",
+                "Outputs": {
+                    "QUrl": {
+                        "Value": {"Ref": "MyQueue"},
+                        "Description": "Queue URL from Ref",
+                    },
+                    "QArn": {
+                        "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
+                        "Description": "Queue ARN from GetAtt",
+                    },
                 },
-                "QArn": {
-                    "Value": {"Fn::GetAtt": ["MyQueue", "Arn"]},
-                    "Description": "Queue ARN from GetAtt",
-                },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         stack = resp["Stacks"][0]
@@ -566,27 +570,29 @@ class TestCloudFormationAdvanced:
         uid = uuid.uuid4().hex[:8]
         table_name = f"cfn-ddb-{uid}"
         stack_name = f"test-ddb-adv-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Table": {
-                    "Type": "AWS::DynamoDB::Table",
-                    "Properties": {
-                        "TableName": table_name,
-                        "AttributeDefinitions": [
-                            {"AttributeName": "id", "AttributeType": "S"},
-                        ],
-                        "KeySchema": [
-                            {"AttributeName": "id", "KeyType": "HASH"},
-                        ],
-                        "BillingMode": "PAY_PER_REQUEST",
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Table": {
+                        "Type": "AWS::DynamoDB::Table",
+                        "Properties": {
+                            "TableName": table_name,
+                            "AttributeDefinitions": [
+                                {"AttributeName": "id", "AttributeType": "S"},
+                            ],
+                            "KeySchema": [
+                                {"AttributeName": "id", "KeyType": "HASH"},
+                            ],
+                            "BillingMode": "PAY_PER_REQUEST",
+                        },
                     },
                 },
-            },
-            "Outputs": {
-                "TableName": {"Value": {"Ref": "Table"}},
-            },
-        })
+                "Outputs": {
+                    "TableName": {"Value": {"Ref": "Table"}},
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
@@ -601,18 +607,20 @@ class TestCloudFormationAdvanced:
         uid = uuid.uuid4().hex[:8]
         topic_name = f"cfn-topic-{uid}"
         stack_name = f"test-sns-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Topic": {
-                    "Type": "AWS::SNS::Topic",
-                    "Properties": {"TopicName": topic_name},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Topic": {
+                        "Type": "AWS::SNS::Topic",
+                        "Properties": {"TopicName": topic_name},
+                    },
                 },
-            },
-            "Outputs": {
-                "TopicArn": {"Value": {"Ref": "Topic"}},
-            },
-        })
+                "Outputs": {
+                    "TopicArn": {"Value": {"Ref": "Topic"}},
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
@@ -626,28 +634,32 @@ class TestCloudFormationAdvanced:
         uid = uuid.uuid4().hex[:8]
         role_name = f"cfn-role-{uid}"
         stack_name = f"test-iam-adv-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Role": {
-                    "Type": "AWS::IAM::Role",
-                    "Properties": {
-                        "RoleName": role_name,
-                        "AssumeRolePolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [{
-                                "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
-                                "Action": "sts:AssumeRole",
-                            }],
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Role": {
+                        "Type": "AWS::IAM::Role",
+                        "Properties": {
+                            "RoleName": role_name,
+                            "AssumeRolePolicyDocument": {
+                                "Version": "2012-10-17",
+                                "Statement": [
+                                    {
+                                        "Effect": "Allow",
+                                        "Principal": {"Service": "lambda.amazonaws.com"},
+                                        "Action": "sts:AssumeRole",
+                                    }
+                                ],
+                            },
                         },
                     },
                 },
-            },
-            "Outputs": {
-                "RoleArn": {"Value": {"Fn::GetAtt": ["Role", "Arn"]}},
-            },
-        })
+                "Outputs": {
+                    "RoleArn": {"Value": {"Fn::GetAtt": ["Role", "Arn"]}},
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
@@ -664,29 +676,33 @@ class TestCloudFormationAdvanced:
         q2 = f"cfn-upd-q2-{uid}"
         stack_name = f"test-update-{uid}"
 
-        template_v1 = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": q1},
+        template_v1 = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": q1},
+                    },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template_v1)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
 
         # Update with new queue name
-        template_v2 = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": q2},
+        template_v2 = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": q2},
+                    },
                 },
-            },
-        })
+            }
+        )
         cfn.update_stack(StackName=stack_name, TemplateBody=template_v2)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "UPDATE_COMPLETE"
@@ -701,28 +717,30 @@ class TestCloudFormationAdvanced:
         """Stack with multiple resources using Fn::Ref between them."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-multi-ref-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Topic": {
-                    "Type": "AWS::SNS::Topic",
-                    "Properties": {"TopicName": f"cfn-ref-topic-{uid}"},
-                },
-                "Queue": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-ref-queue-{uid}"},
-                },
-                "Sub": {
-                    "Type": "AWS::SNS::Subscription",
-                    "DependsOn": ["Topic", "Queue"],
-                    "Properties": {
-                        "TopicArn": {"Ref": "Topic"},
-                        "Protocol": "sqs",
-                        "Endpoint": {"Fn::GetAtt": ["Queue", "Arn"]},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Topic": {
+                        "Type": "AWS::SNS::Topic",
+                        "Properties": {"TopicName": f"cfn-ref-topic-{uid}"},
+                    },
+                    "Queue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-ref-queue-{uid}"},
+                    },
+                    "Sub": {
+                        "Type": "AWS::SNS::Subscription",
+                        "DependsOn": ["Topic", "Queue"],
+                        "Properties": {
+                            "TopicArn": {"Ref": "Topic"},
+                            "Protocol": "sqs",
+                            "Endpoint": {"Fn::GetAtt": ["Queue", "Arn"]},
+                        },
                     },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
@@ -735,15 +753,17 @@ class TestCloudFormationAdvanced:
         """DescribeStackResources returns logical and physical IDs."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-res-ids-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "MyQueue": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-resid-q-{uid}"},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-resid-q-{uid}"},
+                    },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         res = cfn.describe_stack_resources(StackName=stack_name)
         resources = res["StackResources"]
@@ -760,22 +780,24 @@ class TestCloudFormationAdvanced:
         """Stack with Fn::Join in outputs."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-join-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-join-q-{uid}"},
-                },
-            },
-            "Outputs": {
-                "Joined": {
-                    "Value": {
-                        "Fn::Join": ["-", ["prefix", {"Ref": "AWS::Region"}, "suffix"]],
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-join-q-{uid}"},
                     },
                 },
-            },
-        })
+                "Outputs": {
+                    "Joined": {
+                        "Value": {
+                            "Fn::Join": ["-", ["prefix", {"Ref": "AWS::Region"}, "suffix"]],
+                        },
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         stack = resp["Stacks"][0]
@@ -790,19 +812,21 @@ class TestCloudFormationAdvanced:
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-sub-ref-{uid}"
         expected_name = f"cfn-sub-ref-us-east-1-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {
-                        "QueueName": {
-                            "Fn::Sub": f"cfn-sub-ref-${{AWS::Region}}-{uid}",
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {
+                            "QueueName": {
+                                "Fn::Sub": f"cfn-sub-ref-${{AWS::Region}}-{uid}",
+                            },
                         },
                     },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
@@ -816,20 +840,22 @@ class TestCloudFormationAdvanced:
         """Stack with Fn::Select picking an element from a list."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-select-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-sel-q-{uid}"},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-sel-q-{uid}"},
+                    },
                 },
-            },
-            "Outputs": {
-                "Selected": {
-                    "Value": {"Fn::Select": ["1", ["alpha", "beta", "gamma"]]},
+                "Outputs": {
+                    "Selected": {
+                        "Value": {"Fn::Select": ["1", ["alpha", "beta", "gamma"]]},
+                    },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         stack = resp["Stacks"][0]
@@ -843,15 +869,17 @@ class TestCloudFormationAdvanced:
         """Create stack with tags, verify tags in describe output."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-tags-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-tag-q-{uid}"},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-tag-q-{uid}"},
+                    },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(
             StackName=stack_name,
             TemplateBody=template,
@@ -873,16 +901,18 @@ class TestCloudFormationAdvanced:
         """GetTemplate returns the template that was submitted."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-gettempl-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Description": "GetTemplate test",
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": f"cfn-gt-q-{uid}"},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Description": "GetTemplate test",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"cfn-gt-q-{uid}"},
+                    },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.get_template(StackName=stack_name)
         body = resp["TemplateBody"]
@@ -898,19 +928,21 @@ class TestCloudFormationAdvanced:
         """Stack creates an EventBridge rule resource."""
         uid = uuid.uuid4().hex[:8]
         stack_name = f"test-eb-rule-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Rule": {
-                    "Type": "AWS::Events::Rule",
-                    "Properties": {
-                        "Name": f"cfn-rule-{uid}",
-                        "ScheduleExpression": "rate(1 hour)",
-                        "State": "ENABLED",
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Rule": {
+                        "Type": "AWS::Events::Rule",
+                        "Properties": {
+                            "Name": f"cfn-rule-{uid}",
+                            "ScheduleExpression": "rate(1 hour)",
+                            "State": "ENABLED",
+                        },
                     },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
         assert resp["Stacks"][0]["StackStatus"] == "CREATE_COMPLETE"
@@ -927,21 +959,23 @@ class TestCloudFormationAdvanced:
         uid = uuid.uuid4().hex[:8]
         default_name = f"cfn-default-q-{uid}"
         stack_name = f"test-default-param-{uid}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Parameters": {
-                "QName": {
-                    "Type": "String",
-                    "Default": default_name,
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Parameters": {
+                    "QName": {
+                        "Type": "String",
+                        "Default": default_name,
+                    },
                 },
-            },
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": {"Ref": "QName"}},
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": {"Ref": "QName"}},
+                    },
                 },
-            },
-        })
+            }
+        )
         # Don't pass Parameters — should use Default
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         resp = cfn.describe_stacks(StackName=stack_name)
@@ -954,23 +988,25 @@ class TestCloudFormationAdvanced:
 
     def test_validate_template(self, cfn):
         """ValidateTemplate returns parameter info."""
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Description": "Validation test",
-            "Parameters": {
-                "Env": {
-                    "Type": "String",
-                    "Default": "dev",
-                    "Description": "Environment name",
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Description": "Validation test",
+                "Parameters": {
+                    "Env": {
+                        "Type": "String",
+                        "Default": "dev",
+                        "Description": "Environment name",
+                    },
                 },
-            },
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {"QueueName": "validate-q"},
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": "validate-q"},
+                    },
                 },
-            },
-        })
+            }
+        )
         resp = cfn.validate_template(TemplateBody=template)
         assert resp.get("Description") == "Validation test"
         params = resp.get("Parameters", [])
@@ -982,12 +1018,17 @@ class TestCloudFormationAdvanced:
     def test_describe_stack_events(self, cfn):
         """DescribeStackEvents returns lifecycle events."""
         stack_name = f"events-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stack_events(StackName=stack_name)
@@ -1001,13 +1042,21 @@ class TestCloudFormationAdvanced:
     def test_list_stack_resources(self, cfn):
         """ListStackResources returns logical and physical IDs."""
         stack_name = f"lsr-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q1": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q1"}},
-                "Q2": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q2"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q1": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q1"},
+                    },
+                    "Q2": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q2"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.list_stack_resources(StackName=stack_name)
@@ -1024,21 +1073,28 @@ class TestCloudFormationAdvanced:
     def test_fn_split(self, cfn):
         """Fn::Split intrinsic function."""
         stack_name = f"split-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-            "Outputs": {
-                "Second": {
-                    "Value": {"Fn::Select": [1, {"Fn::Split": [",", "a,b,c"]}]},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
                 },
-            },
-        })
+                "Outputs": {
+                    "Second": {
+                        "Value": {"Fn::Select": [1, {"Fn::Split": [",", "a,b,c"]}]},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
-            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            outputs = {
+                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
+            }
             assert outputs.get("Second") == "b"
         finally:
             cfn.delete_stack(StackName=stack_name)
@@ -1046,30 +1102,36 @@ class TestCloudFormationAdvanced:
     def test_conditions(self, cfn):
         """Stack with Conditions and Fn::If."""
         stack_name = f"cond-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Parameters": {
-                "Env": {"Type": "String", "Default": "prod"},
-            },
-            "Conditions": {
-                "IsProd": {"Fn::Equals": [{"Ref": "Env"}, "prod"]},
-            },
-            "Resources": {
-                "Q": {
-                    "Type": "AWS::SQS::Queue",
-                    "Properties": {
-                        "QueueName": {"Fn::If": ["IsProd", f"{stack_name}-prod-q", f"{stack_name}-dev-q"]},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Parameters": {
+                    "Env": {"Type": "String", "Default": "prod"},
+                },
+                "Conditions": {
+                    "IsProd": {"Fn::Equals": [{"Ref": "Env"}, "prod"]},
+                },
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {
+                            "QueueName": {
+                                "Fn::If": ["IsProd", f"{stack_name}-prod-q", f"{stack_name}-dev-q"]
+                            },
+                        },
                     },
                 },
-            },
-            "Outputs": {
-                "QueueName": {"Value": {"Fn::GetAtt": ["Q", "QueueName"]}},
-            },
-        })
+                "Outputs": {
+                    "QueueName": {"Value": {"Fn::GetAtt": ["Q", "QueueName"]}},
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
-            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            outputs = {
+                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
+            }
             assert outputs.get("QueueName") == f"{stack_name}-prod-q"
         finally:
             cfn.delete_stack(StackName=stack_name)
@@ -1077,12 +1139,17 @@ class TestCloudFormationAdvanced:
     def test_describe_stacks_returns_status(self, cfn):
         """DescribeStacks returns StackStatus."""
         stack_name = f"status-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
@@ -1098,27 +1165,31 @@ class TestCloudFormationAdvanced:
     def test_stack_with_kms_key(self, cfn):
         """Create a stack with a KMS key resource."""
         stack_name = f"kms-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Key": {
-                    "Type": "AWS::KMS::Key",
-                    "Properties": {
-                        "Description": "test key from cfn",
-                        "KeyPolicy": {
-                            "Version": "2012-10-17",
-                            "Statement": [{
-                                "Sid": "Enable IAM User Permissions",
-                                "Effect": "Allow",
-                                "Principal": {"AWS": "*"},
-                                "Action": "kms:*",
-                                "Resource": "*",
-                            }],
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Key": {
+                        "Type": "AWS::KMS::Key",
+                        "Properties": {
+                            "Description": "test key from cfn",
+                            "KeyPolicy": {
+                                "Version": "2012-10-17",
+                                "Statement": [
+                                    {
+                                        "Sid": "Enable IAM User Permissions",
+                                        "Effect": "Allow",
+                                        "Principal": {"AWS": "*"},
+                                        "Action": "kms:*",
+                                        "Resource": "*",
+                                    }
+                                ],
+                            },
                         },
                     },
                 },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stack_resources(StackName=stack_name)
@@ -1131,22 +1202,26 @@ class TestCloudFormationAdvanced:
         """Create a stack with an S3 bucket."""
         stack_name = f"s3-test-{uuid.uuid4().hex[:8]}"
         bucket_name = f"cfn-bucket-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Bucket": {
-                    "Type": "AWS::S3::Bucket",
-                    "Properties": {"BucketName": bucket_name},
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Bucket": {
+                        "Type": "AWS::S3::Bucket",
+                        "Properties": {"BucketName": bucket_name},
+                    },
                 },
-            },
-            "Outputs": {
-                "BucketName": {"Value": {"Ref": "Bucket"}},
-            },
-        })
+                "Outputs": {
+                    "BucketName": {"Value": {"Ref": "Bucket"}},
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
-            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            outputs = {
+                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
+            }
             assert outputs.get("BucketName") == bucket_name
         finally:
             cfn.delete_stack(StackName=stack_name)
@@ -1154,35 +1229,39 @@ class TestCloudFormationAdvanced:
     def test_stack_with_lambda_function(self, cfn):
         """Create a stack with a Lambda function."""
         stack_name = f"lam-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Role": {
-                    "Type": "AWS::IAM::Role",
-                    "Properties": {
-                        "RoleName": f"{stack_name}-role",
-                        "AssumeRolePolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [{
-                                "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
-                                "Action": "sts:AssumeRole",
-                            }],
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Role": {
+                        "Type": "AWS::IAM::Role",
+                        "Properties": {
+                            "RoleName": f"{stack_name}-role",
+                            "AssumeRolePolicyDocument": {
+                                "Version": "2012-10-17",
+                                "Statement": [
+                                    {
+                                        "Effect": "Allow",
+                                        "Principal": {"Service": "lambda.amazonaws.com"},
+                                        "Action": "sts:AssumeRole",
+                                    }
+                                ],
+                            },
+                        },
+                    },
+                    "Fn": {
+                        "Type": "AWS::Lambda::Function",
+                        "Properties": {
+                            "FunctionName": f"{stack_name}-fn",
+                            "Runtime": "python3.12",
+                            "Handler": "index.handler",
+                            "Role": {"Fn::GetAtt": ["Role", "Arn"]},
+                            "Code": {"ZipFile": "def handler(event, context): return 'ok'"},
                         },
                     },
                 },
-                "Fn": {
-                    "Type": "AWS::Lambda::Function",
-                    "Properties": {
-                        "FunctionName": f"{stack_name}-fn",
-                        "Runtime": "python3.12",
-                        "Handler": "index.handler",
-                        "Role": {"Fn::GetAtt": ["Role", "Arn"]},
-                        "Code": {"ZipFile": "def handler(event, context): return 'ok'"},
-                    },
-                },
-            },
-        })
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stack_resources(StackName=stack_name)
@@ -1195,12 +1274,17 @@ class TestCloudFormationAdvanced:
     def test_list_stacks_with_filter(self, cfn):
         """ListStacks with StackStatusFilter."""
         stack_name = f"filter-test-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.list_stacks(StackStatusFilter=["CREATE_COMPLETE"])
@@ -1217,18 +1301,23 @@ class TestCloudFormationAdvancedOps:
 
     def test_create_stack_with_outputs(self, cfn):
         stack_name = f"output-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-            "Outputs": {
-                "QueueUrl": {
-                    "Value": {"Ref": "Q"},
-                    "Description": "Queue URL",
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
                 },
-            },
-        })
+                "Outputs": {
+                    "QueueUrl": {
+                        "Value": {"Ref": "Q"},
+                        "Description": "Queue URL",
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
@@ -1240,16 +1329,20 @@ class TestCloudFormationAdvancedOps:
 
     def test_create_stack_with_parameters(self, cfn):
         stack_name = f"params-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Parameters": {
-                "QueueName": {"Type": "String", "Default": "default-queue"},
-            },
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue",
-                       "Properties": {"QueueName": {"Ref": "QueueName"}}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Parameters": {
+                    "QueueName": {"Type": "String", "Default": "default-queue"},
+                },
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": {"Ref": "QueueName"}},
+                    },
+                },
+            }
+        )
         cfn.create_stack(
             StackName=stack_name,
             TemplateBody=template,
@@ -1265,12 +1358,17 @@ class TestCloudFormationAdvancedOps:
 
     def test_get_template(self, cfn):
         stack_name = f"tmpl-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.get_template(StackName=stack_name)
@@ -1279,23 +1377,30 @@ class TestCloudFormationAdvancedOps:
             cfn.delete_stack(StackName=stack_name)
 
     def test_validate_template(self, cfn):
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue"},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {"Type": "AWS::SQS::Queue"},
+                },
+            }
+        )
         resp = cfn.validate_template(TemplateBody=template)
         assert "Parameters" in resp
 
     def test_create_stack_with_tags(self, cfn):
         stack_name = f"tags-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(
             StackName=stack_name,
             TemplateBody=template,
@@ -1310,20 +1415,30 @@ class TestCloudFormationAdvancedOps:
 
     def test_update_stack(self, cfn):
         stack_name = f"upd-{uuid.uuid4().hex[:8]}"
-        template1 = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q1"}},
-            },
-        })
-        cfn.create_stack(StackName=stack_name, TemplateBody=template1)
-        try:
-            template2 = json.dumps({
+        template1 = json.dumps(
+            {
                 "AWSTemplateFormatVersion": "2010-09-09",
                 "Resources": {
-                    "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q2"}},
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q1"},
+                    },
                 },
-            })
+            }
+        )
+        cfn.create_stack(StackName=stack_name, TemplateBody=template1)
+        try:
+            template2 = json.dumps(
+                {
+                    "AWSTemplateFormatVersion": "2010-09-09",
+                    "Resources": {
+                        "Q": {
+                            "Type": "AWS::SQS::Queue",
+                            "Properties": {"QueueName": f"{stack_name}-q2"},
+                        },
+                    },
+                }
+            )
             cfn.update_stack(StackName=stack_name, TemplateBody=template2)
             resp = cfn.describe_stacks(StackName=stack_name)
             status = resp["Stacks"][0]["StackStatus"]
@@ -1333,18 +1448,20 @@ class TestCloudFormationAdvancedOps:
 
     def test_describe_stack_resource(self, cfn):
         stack_name = f"res-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "MyQueue": {"Type": "AWS::SQS::Queue",
-                             "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
-            resp = cfn.describe_stack_resource(
-                StackName=stack_name, LogicalResourceId="MyQueue"
-            )
+            resp = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId="MyQueue")
             detail = resp["StackResourceDetail"]
             assert detail["LogicalResourceId"] == "MyQueue"
             assert detail["ResourceType"] == "AWS::SQS::Queue"
@@ -1353,13 +1470,17 @@ class TestCloudFormationAdvancedOps:
 
     def test_create_stack_with_sns_topic(self, cfn):
         stack_name = f"sns-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Topic": {"Type": "AWS::SNS::Topic",
-                           "Properties": {"TopicName": f"{stack_name}-topic"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Topic": {
+                        "Type": "AWS::SNS::Topic",
+                        "Properties": {"TopicName": f"{stack_name}-topic"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stack_resources(StackName=stack_name)
@@ -1370,15 +1491,19 @@ class TestCloudFormationAdvancedOps:
 
     def test_fn_join(self, cfn):
         stack_name = f"join-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue",
-                       "Properties": {
-                           "QueueName": {"Fn::Join": ["-", [stack_name, "joined", "q"]]},
-                       }},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {
+                            "QueueName": {"Fn::Join": ["-", [stack_name, "joined", "q"]]},
+                        },
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
@@ -1388,15 +1513,19 @@ class TestCloudFormationAdvancedOps:
 
     def test_fn_sub(self, cfn):
         stack_name = f"sub-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue",
-                       "Properties": {
-                           "QueueName": {"Fn::Sub": "${AWS::StackName}-sub-q"},
-                       }},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {
+                            "QueueName": {"Fn::Sub": "${AWS::StackName}-sub-q"},
+                        },
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
@@ -1406,12 +1535,17 @@ class TestCloudFormationAdvancedOps:
 
     def test_delete_stack_removes_resources(self, cfn):
         stack_name = f"delres-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         cfn.delete_stack(StackName=stack_name)
         resp = cfn.list_stacks(StackStatusFilter=["DELETE_COMPLETE"])
@@ -1420,13 +1554,21 @@ class TestCloudFormationAdvancedOps:
 
     def test_list_stack_resources_types(self, cfn):
         stack_name = f"types-{uuid.uuid4().hex[:8]}"
-        template = json.dumps({
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Resources": {
-                "Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{stack_name}-q"}},
-                "T": {"Type": "AWS::SNS::Topic", "Properties": {"TopicName": f"{stack_name}-t"}},
-            },
-        })
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                    "T": {
+                        "Type": "AWS::SNS::Topic",
+                        "Properties": {"TopicName": f"{stack_name}-t"},
+                    },
+                },
+            }
+        )
         cfn.create_stack(StackName=stack_name, TemplateBody=template)
         try:
             resp = cfn.list_stack_resources(StackName=stack_name)

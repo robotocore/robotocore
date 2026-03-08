@@ -30,12 +30,12 @@ def _unique(prefix):
 def registered_directory(workspaces, ec2, ds):
     """Create a VPC, subnets, Simple AD directory, and register it with WorkSpaces."""
     vpc_id = ec2.create_vpc(CidrBlock="10.0.0.0/16")["Vpc"]["VpcId"]
-    sub1 = ec2.create_subnet(
-        VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a"
-    )["Subnet"]["SubnetId"]
-    sub2 = ec2.create_subnet(
-        VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b"
-    )["Subnet"]["SubnetId"]
+    sub1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a")[
+        "Subnet"
+    ]["SubnetId"]
+    sub2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b")[
+        "Subnet"
+    ]["SubnetId"]
 
     dir_id = ds.create_directory(
         Name=f"{_unique('test')}.example.com",
@@ -76,9 +76,7 @@ def workspace(workspaces, registered_directory):
 
     # Cleanup
     try:
-        workspaces.terminate_workspaces(
-            TerminateWorkspaceRequests=[{"WorkspaceId": ws_id}]
-        )
+        workspaces.terminate_workspaces(TerminateWorkspaceRequests=[{"WorkspaceId": ws_id}])
     except Exception:
         pass
 
@@ -133,9 +131,7 @@ class TestWorkSpacesDirectoryOperations:
 
         # Verify gone
         dirs = workspaces.describe_workspace_directories()["Directories"]
-        assert not any(
-            d["DirectoryId"] == dir_id and d["State"] == "REGISTERED" for d in dirs
-        )
+        assert not any(d["DirectoryId"] == dir_id and d["State"] == "REGISTERED" for d in dirs)
 
 
 class TestWorkSpacesOperations:
@@ -235,12 +231,8 @@ class TestWorkSpacesTags:
 
     def test_create_tags_overwrites_existing(self, workspaces, workspace):
         """Creating a tag with the same key overwrites the previous value."""
-        workspaces.create_tags(
-            ResourceId=workspace, Tags=[{"Key": "env", "Value": "dev"}]
-        )
-        workspaces.create_tags(
-            ResourceId=workspace, Tags=[{"Key": "env", "Value": "prod"}]
-        )
+        workspaces.create_tags(ResourceId=workspace, Tags=[{"Key": "env", "Value": "dev"}])
+        workspaces.create_tags(ResourceId=workspace, Tags=[{"Key": "env", "Value": "prod"}])
 
         result = workspaces.describe_tags(ResourceId=workspace)
         tag_map = {t["Key"]: t["Value"] for t in result["TagList"]}

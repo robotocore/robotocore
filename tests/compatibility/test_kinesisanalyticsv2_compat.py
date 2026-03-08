@@ -105,9 +105,7 @@ class TestKinesisAnalyticsV2Operations:
             ServiceExecutionRole=ROLE_ARN,
         )
         response = kav2.list_applications()
-        matching = [
-            s for s in response["ApplicationSummaries"] if s["ApplicationName"] == name
-        ]
+        matching = [s for s in response["ApplicationSummaries"] if s["ApplicationName"] == name]
         assert len(matching) == 1
         summary = matching[0]
         assert "ApplicationARN" in summary

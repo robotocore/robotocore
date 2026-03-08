@@ -17,15 +17,33 @@ _OS_VERSIONS_RE = re.compile(r"^/2021-01-01/opensearch/versions$")
 _ES_COMPAT_RE = re.compile(r"^/2015-01-01/es/compatibleVersions$")
 
 _OPENSEARCH_VERSIONS = [
-    "OpenSearch_2.13", "OpenSearch_2.11", "OpenSearch_2.9", "OpenSearch_2.7",
-    "OpenSearch_2.5", "OpenSearch_2.3", "OpenSearch_1.3", "OpenSearch_1.2",
-    "OpenSearch_1.1", "OpenSearch_1.0",
-    "Elasticsearch_7.10", "Elasticsearch_7.9", "Elasticsearch_7.8",
-    "Elasticsearch_7.7", "Elasticsearch_7.4", "Elasticsearch_7.1",
-    "Elasticsearch_6.8", "Elasticsearch_6.7", "Elasticsearch_6.5",
-    "Elasticsearch_6.4", "Elasticsearch_6.3", "Elasticsearch_6.2",
-    "Elasticsearch_6.0", "Elasticsearch_5.6", "Elasticsearch_5.5",
-    "Elasticsearch_5.3", "Elasticsearch_5.1",
+    "OpenSearch_2.13",
+    "OpenSearch_2.11",
+    "OpenSearch_2.9",
+    "OpenSearch_2.7",
+    "OpenSearch_2.5",
+    "OpenSearch_2.3",
+    "OpenSearch_1.3",
+    "OpenSearch_1.2",
+    "OpenSearch_1.1",
+    "OpenSearch_1.0",
+    "Elasticsearch_7.10",
+    "Elasticsearch_7.9",
+    "Elasticsearch_7.8",
+    "Elasticsearch_7.7",
+    "Elasticsearch_7.4",
+    "Elasticsearch_7.1",
+    "Elasticsearch_6.8",
+    "Elasticsearch_6.7",
+    "Elasticsearch_6.5",
+    "Elasticsearch_6.4",
+    "Elasticsearch_6.3",
+    "Elasticsearch_6.2",
+    "Elasticsearch_6.0",
+    "Elasticsearch_5.6",
+    "Elasticsearch_5.5",
+    "Elasticsearch_5.3",
+    "Elasticsearch_5.1",
 ]
 
 _ES_COMPAT_VERSIONS = [
@@ -49,9 +67,7 @@ _ES_COMPAT_VERSIONS = [
 ]
 
 
-async def handle_opensearch_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_opensearch_request(request: Request, region: str, account_id: str) -> Response:
     """Handle OpenSearch requests, intercepting unimplemented operations."""
     path = request.url.path
 
@@ -65,17 +81,13 @@ async def handle_opensearch_request(
     return await forward_to_moto(request, "opensearch")
 
 
-async def handle_es_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_es_request(request: Request, region: str, account_id: str) -> Response:
     """Handle Elasticsearch requests, intercepting unimplemented operations."""
     path = request.url.path
 
     if _ES_COMPAT_RE.match(path) and request.method == "GET":
         return Response(
-            content=json.dumps(
-                {"CompatibleElasticsearchVersions": _ES_COMPAT_VERSIONS}
-            ),
+            content=json.dumps({"CompatibleElasticsearchVersions": _ES_COMPAT_VERSIONS}),
             status_code=200,
             media_type="application/json",
         )

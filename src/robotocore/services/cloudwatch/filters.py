@@ -112,9 +112,7 @@ class FilterStore:
             )
             for filters in groups.values():
                 for mf in filters.values():
-                    if filter_name_prefix and not mf.filter_name.startswith(
-                        filter_name_prefix
-                    ):
+                    if filter_name_prefix and not mf.filter_name.startswith(filter_name_prefix):
                         continue
                     results.append(mf)
             return results
@@ -151,22 +149,14 @@ class FilterStore:
                 return True
             return False
 
-    def describe_subscription_filters(
-        self, log_group_name: str
-    ) -> list[SubscriptionFilter]:
+    def describe_subscription_filters(self, log_group_name: str) -> list[SubscriptionFilter]:
         with self._lock:
-            return list(
-                self.subscription_filters.get(log_group_name, {}).values()
-            )
+            return list(self.subscription_filters.get(log_group_name, {}).values())
 
-    def get_subscription_filters_for_group(
-        self, log_group_name: str
-    ) -> list[SubscriptionFilter]:
+    def get_subscription_filters_for_group(self, log_group_name: str) -> list[SubscriptionFilter]:
         """Get all subscription filters for a log group (for delivery)."""
         with self._lock:
-            return list(
-                self.subscription_filters.get(log_group_name, {}).values()
-            )
+            return list(self.subscription_filters.get(log_group_name, {}).values())
 
 
 # Global store per region
@@ -335,16 +325,13 @@ def process_log_events(
     sub_filters = store.get_subscription_filters_for_group(log_group_name)
     for sf in sub_filters:
         matching_events = [
-            e for e in events
-            if matches_filter_pattern(sf.filter_pattern, e.get("message", ""))
+            e for e in events if matches_filter_pattern(sf.filter_pattern, e.get("message", ""))
         ]
         if matching_events:
             _deliver_to_subscription(sf, log_group_name, log_stream_name, matching_events, region)
 
 
-def _emit_metric_from_filter(
-    mf: MetricFilter, region: str, account_id: str
-) -> None:
+def _emit_metric_from_filter(mf: MetricFilter, region: str, account_id: str) -> None:
     """Emit metric data from a matching metric filter."""
     try:
         from moto.backends import get_backend

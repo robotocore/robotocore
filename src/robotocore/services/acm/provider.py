@@ -12,9 +12,7 @@ from starlette.responses import Response
 from robotocore.providers.moto_bridge import forward_to_moto
 
 
-async def handle_acm_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_acm_request(request: Request, region: str, account_id: str) -> Response:
     """Handle ACM requests, intercepting unimplemented operations."""
     target = request.headers.get("x-amz-target", "")
     action = target.split(".")[-1] if "." in target else ""

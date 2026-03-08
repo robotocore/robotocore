@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -103,6 +102,7 @@ class TestCloudTrailTrailOperations:
         trail_names = [t["Name"] for t in resp["trailList"]]
         assert trail not in trail_names
         s3.delete_bucket(Bucket=bucket)
+
 
 class TestCloudTrailEventSelectors:
     def test_get_event_selectors_default(self, cloudtrail, trail_with_bucket):

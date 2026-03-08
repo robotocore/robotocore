@@ -103,7 +103,14 @@ class TestEMRClusterOperations:
 class TestEMRSecurityConfiguration:
     def test_create_security_configuration(self, emr):
         name = _unique("sec-config")
-        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False, "EnableAtRestEncryption": False}})
+        config = json.dumps(
+            {
+                "EncryptionConfiguration": {
+                    "EnableInTransitEncryption": False,
+                    "EnableAtRestEncryption": False,
+                }
+            }
+        )
         resp = emr.create_security_configuration(
             Name=name,
             SecurityConfiguration=config,
@@ -114,7 +121,14 @@ class TestEMRSecurityConfiguration:
 
     def test_describe_security_configuration(self, emr):
         name = _unique("sec-config")
-        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False, "EnableAtRestEncryption": False}})
+        config = json.dumps(
+            {
+                "EncryptionConfiguration": {
+                    "EnableInTransitEncryption": False,
+                    "EnableAtRestEncryption": False,
+                }
+            }
+        )
         emr.create_security_configuration(Name=name, SecurityConfiguration=config)
         resp = emr.describe_security_configuration(Name=name)
         assert resp["Name"] == name
@@ -123,7 +137,14 @@ class TestEMRSecurityConfiguration:
 
     def test_delete_security_configuration(self, emr):
         name = _unique("sec-config")
-        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False, "EnableAtRestEncryption": False}})
+        config = json.dumps(
+            {
+                "EncryptionConfiguration": {
+                    "EnableInTransitEncryption": False,
+                    "EnableAtRestEncryption": False,
+                }
+            }
+        )
         emr.create_security_configuration(Name=name, SecurityConfiguration=config)
         emr.delete_security_configuration(Name=name)
         with pytest.raises(ClientError):
@@ -132,7 +153,7 @@ class TestEMRSecurityConfiguration:
 
 class TestEMRTags:
     def test_add_tags_to_cluster(self, emr, cluster_id):
-        cluster_arn = emr.describe_cluster(ClusterId=cluster_id)["Cluster"]["ClusterArn"]
+        _cluster_arn = emr.describe_cluster(ClusterId=cluster_id)["Cluster"]["ClusterArn"]
         emr.add_tags(
             ResourceId=cluster_id,
             Tags=[

@@ -1,14 +1,14 @@
 """SSM Parameter Store compatibility tests."""
 
+import uuid
+
 import pytest
 
 from tests.compatibility.conftest import make_client
-import uuid
 
 
 def _unique(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
-
 
 
 @pytest.fixture
@@ -211,11 +211,10 @@ class TestSSMParameterOperations:
         assert params["/pathval/b"] == "beta"
         ssm.delete_parameter(Name="/pathval/a")
         ssm.delete_parameter(Name="/pathval/b")
+
     def test_label_parameter_version(self, ssm):
         ssm.put_parameter(Name="/label/param", Value="v1", Type="String")
-        ssm.label_parameter_version(
-            Name="/label/param", ParameterVersion=1, Labels=["prod"]
-        )
+        ssm.label_parameter_version(Name="/label/param", ParameterVersion=1, Labels=["prod"])
         response = ssm.get_parameter_history(Name="/label/param")
         labels = response["Parameters"][0].get("Labels", [])
         assert "prod" in labels
@@ -228,6 +227,7 @@ class TestSSMParameterOperations:
         deleted = response["DeletedParameters"]
         assert "/delmulti/a" in deleted
         assert "/delmulti/b" in deleted
+
 
 class TestSSMParameterExtended:
     def test_put_and_get_parameter_secure_string(self, ssm):
@@ -257,9 +257,7 @@ class TestSSMParameterExtended:
             ResourceId="/ext/taggable",
             Tags=[{"Key": "team", "Value": "platform"}, {"Key": "env", "Value": "staging"}],
         )
-        response = ssm.list_tags_for_resource(
-            ResourceType="Parameter", ResourceId="/ext/taggable"
-        )
+        response = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId="/ext/taggable")
         tags = {t["Key"]: t["Value"] for t in response["TagList"]}
         assert tags["team"] == "platform"
         assert tags["env"] == "staging"
@@ -269,16 +267,12 @@ class TestSSMParameterExtended:
         ssm.put_parameter(Name="/ext/batch/a", Value="1", Type="String")
         ssm.put_parameter(Name="/ext/batch/b", Value="2", Type="String")
         ssm.put_parameter(Name="/ext/batch/c", Value="3", Type="String")
-        response = ssm.delete_parameters(
-            Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
-        )
+        response = ssm.delete_parameters(Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"])
         assert sorted(response["DeletedParameters"]) == sorted(
             ["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
         )
         # Verify they are actually gone
-        get_resp = ssm.get_parameters(
-            Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"]
-        )
+        get_resp = ssm.get_parameters(Names=["/ext/batch/a", "/ext/batch/b", "/ext/batch/c"])
         assert len(get_resp["Parameters"]) == 0
 
     def test_put_parameter_overwrite_flag(self, ssm):
@@ -518,10 +512,12 @@ class TestSSMExtendedOperations:
     @pytest.fixture
     def ssm(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("ssm")
 
     def test_put_parameter_secure_string(self, ssm):
         import uuid
+
         name = f"/test/secure-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(Name=name, Value="secret-value", Type="SecureString")
@@ -533,6 +529,7 @@ class TestSSMExtendedOperations:
 
     def test_put_parameter_string_list(self, ssm):
         import uuid
+
         name = f"/test/slist-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(Name=name, Value="a,b,c", Type="StringList")
@@ -544,6 +541,7 @@ class TestSSMExtendedOperations:
 
     def test_get_parameters_by_path(self, ssm):
         import uuid
+
         prefix = f"/test/path-{uuid.uuid4().hex[:8]}"
         names = [f"{prefix}/a", f"{prefix}/b", f"{prefix}/sub/c"]
         try:
@@ -566,6 +564,7 @@ class TestSSMExtendedOperations:
 
     def test_get_parameters_multiple(self, ssm):
         import uuid
+
         prefix = f"/test/multi-{uuid.uuid4().hex[:8]}"
         names = [f"{prefix}/x", f"{prefix}/y"]
         try:
@@ -580,6 +579,7 @@ class TestSSMExtendedOperations:
 
     def test_get_parameters_with_invalid(self, ssm):
         import uuid
+
         name = f"/test/valid-{uuid.uuid4().hex[:8]}"
         ssm.put_parameter(Name=name, Value="val", Type="String")
         try:
@@ -592,12 +592,11 @@ class TestSSMExtendedOperations:
 
     def test_describe_parameters_filters(self, ssm):
         import uuid
+
         name = f"/test/desc-{uuid.uuid4().hex[:8]}"
         ssm.put_parameter(Name=name, Value="val", Type="String")
         try:
-            resp = ssm.describe_parameters(
-                ParameterFilters=[{"Key": "Name", "Values": [name]}]
-            )
+            resp = ssm.describe_parameters(ParameterFilters=[{"Key": "Name", "Values": [name]}])
             names = [p["Name"] for p in resp["Parameters"]]
             assert name in names
         finally:
@@ -605,18 +604,19 @@ class TestSSMExtendedOperations:
 
     def test_put_parameter_with_tags(self, ssm):
         import uuid
+
         name = f"/test/tagged-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(
-                Name=name, Value="val", Type="String",
+                Name=name,
+                Value="val",
+                Type="String",
                 Tags=[
                     {"Key": "env", "Value": "test"},
                     {"Key": "team", "Value": "dev"},
                 ],
             )
-            resp = ssm.list_tags_for_resource(
-                ResourceType="Parameter", ResourceId=name
-            )
+            resp = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)
             tags = {t["Key"]: t["Value"] for t in resp["TagList"]}
             assert tags["env"] == "test"
         finally:
@@ -624,6 +624,7 @@ class TestSSMExtendedOperations:
 
     def test_add_remove_tags_from_parameter(self, ssm):
         import uuid
+
         name = f"/test/tag-ops-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(Name=name, Value="val", Type="String")
@@ -632,12 +633,8 @@ class TestSSMExtendedOperations:
                 ResourceId=name,
                 Tags=[{"Key": "k1", "Value": "v1"}, {"Key": "k2", "Value": "v2"}],
             )
-            ssm.remove_tags_from_resource(
-                ResourceType="Parameter", ResourceId=name, TagKeys=["k2"]
-            )
-            resp = ssm.list_tags_for_resource(
-                ResourceType="Parameter", ResourceId=name
-            )
+            ssm.remove_tags_from_resource(ResourceType="Parameter", ResourceId=name, TagKeys=["k2"])
+            resp = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)
             keys = [t["Key"] for t in resp["TagList"]]
             assert "k1" in keys
             assert "k2" not in keys
@@ -646,6 +643,7 @@ class TestSSMExtendedOperations:
 
     def test_put_parameter_overwrite(self, ssm):
         import uuid
+
         name = f"/test/overwrite-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(Name=name, Value="v1", Type="String")
@@ -658,6 +656,7 @@ class TestSSMExtendedOperations:
 
     def test_parameter_history(self, ssm):
         import uuid
+
         name = f"/test/hist-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(Name=name, Value="v1", Type="String")
@@ -671,6 +670,7 @@ class TestSSMExtendedOperations:
 
     def test_label_parameter_version(self, ssm):
         import uuid
+
         name = f"/test/label-{uuid.uuid4().hex[:8]}"
         try:
             ssm.put_parameter(Name=name, Value="v1", Type="String")
@@ -686,6 +686,7 @@ class TestSSMExtendedOperations:
 
     def test_delete_parameters_batch(self, ssm):
         import uuid
+
         prefix = f"/test/batch-del-{uuid.uuid4().hex[:8]}"
         names = [f"{prefix}/{i}" for i in range(3)]
         for n in names:

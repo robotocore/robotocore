@@ -598,7 +598,7 @@ class TestLambdaVersions:
         lam.delete_function(FunctionName=fname)
 
 
-class TestLambdaAliases:
+class TestLambdaAliasesExtended:
     """Tests for function aliases: create, get, update, list, delete, invoke."""
 
     def test_create_alias(self, lam, role):
@@ -688,9 +688,11 @@ class TestLambdaAliases:
         lam.delete_function(FunctionName=fname)
 
     def test_delete_alias(self, lam, role):
-        code = _make_zip('def handler(e, c): return "ok"')
-        fname = f"alias-del-{uuid.uuid4().hex[:8]}"
-class TestLambdaPermissions:
+        _code = _make_zip('def handler(e, c): return "ok"')
+        _fname = f"alias-del-{uuid.uuid4().hex[:8]}"
+
+
+class TestLambdaPermissionsExtended:
     def test_add_and_remove_permission(self, lam, role):
         """Test adding and removing a resource-based policy statement."""
         code = _make_zip("def handler(event, context): return {'statusCode': 200}")
@@ -893,9 +895,7 @@ class TestLambdaConcurrencyExtended:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        resp = lam.put_function_concurrency(
-            FunctionName=fname, ReservedConcurrentExecutions=5
-        )
+        resp = lam.put_function_concurrency(FunctionName=fname, ReservedConcurrentExecutions=5)
         assert resp["ReservedConcurrentExecutions"] == 5
         lam.delete_function(FunctionName=fname)
 
@@ -909,12 +909,8 @@ class TestLambdaConcurrencyExtended:
             Handler="lambda_function.handler",
             Code={"ZipFile": code},
         )
-        lam.put_function_concurrency(
-            FunctionName=fname, ReservedConcurrentExecutions=5
-        )
-        resp = lam.put_function_concurrency(
-            FunctionName=fname, ReservedConcurrentExecutions=20
-        )
+        lam.put_function_concurrency(FunctionName=fname, ReservedConcurrentExecutions=5)
+        resp = lam.put_function_concurrency(FunctionName=fname, ReservedConcurrentExecutions=20)
         assert resp["ReservedConcurrentExecutions"] == 20
         lam.delete_function(FunctionName=fname)
 
@@ -1019,9 +1015,7 @@ class TestLambdaInvokeExtended:
 
     def test_invoke_large_payload(self, lam, role):
         """Invoke with a ~256KB payload and verify response."""
-        code = _make_zip(
-            'def handler(e, c): return {"size": len(str(e)), "ok": True}'
-        )
+        code = _make_zip('def handler(e, c): return {"size": len(str(e)), "ok": True}')
         fname = f"inv-large-{uuid.uuid4().hex[:8]}"
         lam.create_function(
             FunctionName=fname,
@@ -1353,7 +1347,7 @@ class TestLambdaVersionsAndAliases:
             lam.delete_function(FunctionName=fname)
 
 
-class TestLambdaPermissions:
+class TestLambdaPermissionsV2:
     def test_add_remove_permission_get_policy(self, lam, role):
         """AddPermission, GetPolicy, RemovePermission."""
         code = _make_zip("def handler(e, c): pass")
@@ -1390,7 +1384,7 @@ class TestLambdaPermissions:
             lam.delete_function(FunctionName=fname)
 
 
-class TestLambdaConcurrencyExtended:
+class TestLambdaConcurrencyV2:
     def test_put_get_delete_concurrency(self, lam, role):
         """PutFunctionConcurrency, GetFunctionConcurrency, DeleteFunctionConcurrency."""
         code = _make_zip("def handler(e, c): pass")
@@ -1403,9 +1397,7 @@ class TestLambdaConcurrencyExtended:
             Code={"ZipFile": code},
         )
         try:
-            resp = lam.put_function_concurrency(
-                FunctionName=fname, ReservedConcurrentExecutions=5
-            )
+            resp = lam.put_function_concurrency(FunctionName=fname, ReservedConcurrentExecutions=5)
             assert resp["ReservedConcurrentExecutions"] == 5
 
             resp = lam.get_function_concurrency(FunctionName=fname)
@@ -1430,9 +1422,9 @@ class TestLambdaEventSourceMappings:
         fname = f"esm-func-{suffix}"
 
         q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
-        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])[
-            "Attributes"
-        ]["QueueArn"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
 
         code = _make_zip("def handler(e, c): pass")
         lam.create_function(
@@ -1571,7 +1563,7 @@ class TestLambdaMultiRuntime:
         with zipfile.ZipFile(node_code, "w") as zf:
             zf.writestr(
                 "index.js",
-                'exports.handler = async (event) => { return { statusCode: 200 }; };',
+                "exports.handler = async (event) => { return { statusCode: 200 }; };",
             )
         fname = f"node20-{uuid.uuid4().hex[:8]}"
         try:
@@ -1600,14 +1592,18 @@ class TestLambdaExtendedOperations:
         role_name = f"lambda-ext-role-{uuid.uuid4().hex[:8]}"
         iam.create_role(
             RoleName=role_name,
-            AssumeRolePolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
         )
         yield f"arn:aws:iam::123456789012:role/{role_name}"
         iam.delete_role(RoleName=role_name)
@@ -1616,8 +1612,11 @@ class TestLambdaExtendedOperations:
         code = _make_zip('def handler(e, c): print("hello"); return "ok"')
         fname = f"tail-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
         )
         try:
             resp = lam.invoke(FunctionName=fname, LogType="Tail")
@@ -1625,6 +1624,7 @@ class TestLambdaExtendedOperations:
             # LogResult should be present when Tail is requested
             if "LogResult" in resp:
                 import base64
+
                 logs = base64.b64decode(resp["LogResult"]).decode()
                 assert isinstance(logs, str)
         finally:
@@ -1634,12 +1634,16 @@ class TestLambdaExtendedOperations:
         code = _make_zip('def handler(e, c): return "async"')
         fname = f"async-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
         )
         try:
             resp = lam.invoke(
-                FunctionName=fname, InvocationType="Event",
+                FunctionName=fname,
+                InvocationType="Event",
                 Payload=json.dumps({"test": True}),
             )
             assert resp["StatusCode"] == 202
@@ -1650,8 +1654,11 @@ class TestLambdaExtendedOperations:
         code = _make_zip("def handler(e, c): pass")
         fname = f"dryrun-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
         )
         try:
             resp = lam.invoke(FunctionName=fname, InvocationType="DryRun")
@@ -1663,8 +1670,11 @@ class TestLambdaExtendedOperations:
         code = _make_zip("def handler(e, c): pass")
         fname = f"getfunc-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
         )
         try:
             resp = lam.get_function(FunctionName=fname)
@@ -1679,8 +1689,11 @@ class TestLambdaExtendedOperations:
         code = _make_zip("def handler(e, c): pass")
         fname = f"listfn-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
         )
         try:
             resp = lam.list_functions()
@@ -1695,8 +1708,11 @@ class TestLambdaExtendedOperations:
         )
         fname = f"envvar-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
             Environment={"Variables": {"MY_VAR": "hello"}},
         )
         try:
@@ -1710,13 +1726,14 @@ class TestLambdaExtendedOperations:
             lam.delete_function(FunctionName=fname)
 
     def test_update_function_configuration_env_vars(self, lam, role):
-        code = _make_zip(
-            'import os\ndef handler(e, c): return {"X": os.environ.get("X", "")}'
-        )
+        code = _make_zip('import os\ndef handler(e, c): return {"X": os.environ.get("X", "")}')
         fname = f"updenv-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
             Environment={"Variables": {"X": "old"}},
         )
         try:
@@ -1734,8 +1751,11 @@ class TestLambdaExtendedOperations:
         code = _make_zip('def handler(e, c): raise ValueError("boom")')
         fname = f"err-{uuid.uuid4().hex[:8]}"
         lam.create_function(
-            FunctionName=fname, Runtime="python3.12", Role=role,
-            Handler="lambda_function.handler", Code={"ZipFile": code},
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
         )
         try:
             resp = lam.invoke(FunctionName=fname)

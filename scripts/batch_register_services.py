@@ -105,20 +105,20 @@ AMBIGUOUS_SIGNING_NAMES = {
 # Signing name aliases that would conflict with existing native providers
 # These signing names are already handled by native providers in the router
 SKIP_ALIASES = {
-    "lambda",        # native lambda provider
-    "cognito-idp",   # native cognito-idp provider
+    "lambda",  # native lambda provider
+    "cognito-idp",  # native cognito-idp provider
     "cognito-identity",  # will route to cognitoidentity via alias
-    "dynamodb",      # native dynamodb provider
-    "es",            # native es provider
-    "monitoring",    # already aliased to cloudwatch
-    "email",         # already aliased to ses
-    "states",        # already aliased to stepfunctions
-    "tagging",       # already aliased to resourcegroupstaggingapi
+    "dynamodb",  # native dynamodb provider
+    "es",  # native es provider
+    "monitoring",  # already aliased to cloudwatch
+    "email",  # already aliased to ses
+    "states",  # already aliased to stepfunctions
+    "tagging",  # already aliased to resourcegroupstaggingapi
     "resource-groups",  # native resource-groups provider
-    "execute-api",   # handled by special execute-api routes
-    "s3",            # native s3 provider
-    "apigateway",    # native apigateway provider
-    "sso",           # ambiguous - would need to distinguish sso vs ssoadmin
+    "execute-api",  # handled by special execute-api routes
+    "s3",  # native s3 provider
+    "apigateway",  # native apigateway provider
+    "sso",  # ambiguous - would need to distinguish sso vs ssoadmin
 }
 
 # Human-readable descriptions for common services
@@ -267,11 +267,7 @@ def load_botocore_metadata(botocore_name):
     svc_dir = os.path.join(BOTOCORE_DATA, botocore_name)
     if not os.path.isdir(svc_dir):
         return None
-    versions = [
-        v
-        for v in sorted(os.listdir(svc_dir))
-        if os.path.isdir(os.path.join(svc_dir, v))
-    ]
+    versions = [v for v in sorted(os.listdir(svc_dir)) if os.path.isdir(os.path.join(svc_dir, v))]
     if not versions:
         return None
     latest = versions[-1]

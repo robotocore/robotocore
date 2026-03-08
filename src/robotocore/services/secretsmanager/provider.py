@@ -18,9 +18,7 @@ from starlette.responses import Response
 from robotocore.providers.moto_bridge import forward_to_moto
 
 
-async def handle_secretsmanager_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_secretsmanager_request(request: Request, region: str, account_id: str) -> Response:
     """Handle Secrets Manager requests."""
     target = request.headers.get("x-amz-target", "")
     action = target.split(".")[-1] if "." in target else ""
@@ -64,7 +62,9 @@ def _rotate_secret(params: dict, region: str, account_id: str) -> dict:
     client_request_token = params.get("ClientRequestToken")
 
     if not backend._is_valid_identifier(secret_id):
-        raise _SMError("ResourceNotFoundException", "Secrets Manager can't find the specified secret.")
+        raise _SMError(
+            "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
+        )
 
     secret = backend.secrets.get(secret_id)
     if secret is None:
@@ -74,7 +74,9 @@ def _rotate_secret(params: dict, region: str, account_id: str) -> dict:
                 secret = s
                 break
     if secret is None:
-        raise _SMError("ResourceNotFoundException", "Secrets Manager can't find the specified secret.")
+        raise _SMError(
+            "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
+        )
 
     if rotation_lambda_arn:
         secret.rotation_lambda_arn = rotation_lambda_arn
@@ -92,11 +94,11 @@ def _rotate_secret(params: dict, region: str, account_id: str) -> dict:
         "version_id": new_version_id,
         "version_stages": ["AWSPENDING"],
     }
-    if hasattr(secret, 'secret_string') and secret.secret_string is not None:
+    if hasattr(secret, "secret_string") and secret.secret_string is not None:
         secret_version["secret_string"] = secret.secret_string
 
     # Remove AWSPENDING from old versions
-    if hasattr(secret, 'remove_version_stages_from_old_versions'):
+    if hasattr(secret, "remove_version_stages_from_old_versions"):
         secret.remove_version_stages_from_old_versions(["AWSPENDING"])
     secret.versions[new_version_id] = secret_version
     secret.rotation_requested = True
@@ -125,7 +127,9 @@ def _replicate_secret_to_regions(params: dict, region: str, account_id: str) -> 
     add_regions = params.get("AddReplicaRegions", [])
 
     if not backend._is_valid_identifier(secret_id):
-        raise _SMError("ResourceNotFoundException", "Secrets Manager can't find the specified secret.")
+        raise _SMError(
+            "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
+        )
 
     secret = backend.secrets.get(secret_id)
     if secret is None:
@@ -134,15 +138,19 @@ def _replicate_secret_to_regions(params: dict, region: str, account_id: str) -> 
                 secret = s
                 break
     if secret is None:
-        raise _SMError("ResourceNotFoundException", "Secrets Manager can't find the specified secret.")
+        raise _SMError(
+            "ResourceNotFoundException", "Secrets Manager can't find the specified secret."
+        )
 
     replication_status = []
     for replica in add_regions:
-        replication_status.append({
-            "Region": replica.get("Region", ""),
-            "Status": "InSync",
-            "StatusMessage": "Secret replication successful",
-        })
+        replication_status.append(
+            {
+                "Region": replica.get("Region", ""),
+                "Status": "InSync",
+                "StatusMessage": "Secret replication successful",
+            }
+        )
 
     return {
         "ARN": secret.arn,

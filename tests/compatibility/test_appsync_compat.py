@@ -19,9 +19,7 @@ def _unique(prefix: str) -> str:
 class TestGraphQLApiCrud:
     def test_create_graphql_api(self, appsync):
         name = _unique("test-api")
-        resp = appsync.create_graphql_api(
-            name=name, authenticationType="API_KEY"
-        )
+        resp = appsync.create_graphql_api(name=name, authenticationType="API_KEY")
         api = resp["graphqlApi"]
         assert api["name"] == name
         assert "apiId" in api
@@ -29,9 +27,7 @@ class TestGraphQLApiCrud:
 
     def test_get_graphql_api(self, appsync):
         name = _unique("get-api")
-        created = appsync.create_graphql_api(
-            name=name, authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=name, authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         try:
             resp = appsync.get_graphql_api(apiId=api_id)
@@ -41,9 +37,7 @@ class TestGraphQLApiCrud:
 
     def test_list_graphql_apis(self, appsync):
         name = _unique("list-api")
-        created = appsync.create_graphql_api(
-            name=name, authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=name, authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         try:
             resp = appsync.list_graphql_apis()
@@ -54,9 +48,7 @@ class TestGraphQLApiCrud:
 
     def test_update_graphql_api(self, appsync):
         name = _unique("upd-api")
-        created = appsync.create_graphql_api(
-            name=name, authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=name, authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         try:
             new_name = _unique("updated")
@@ -69,9 +61,7 @@ class TestGraphQLApiCrud:
 
     def test_delete_graphql_api(self, appsync):
         name = _unique("del-api")
-        created = appsync.create_graphql_api(
-            name=name, authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=name, authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         appsync.delete_graphql_api(apiId=api_id)
         resp = appsync.list_graphql_apis()
@@ -82,9 +72,7 @@ class TestGraphQLApiCrud:
 class TestApiKeys:
     @pytest.fixture
     def api(self, appsync):
-        created = appsync.create_graphql_api(
-            name=_unique("key-api"), authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=_unique("key-api"), authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         yield api_id
         appsync.delete_graphql_api(apiId=api_id)
@@ -111,18 +99,14 @@ class TestApiKeys:
 class TestDataSources:
     @pytest.fixture
     def api(self, appsync):
-        created = appsync.create_graphql_api(
-            name=_unique("ds-api"), authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=_unique("ds-api"), authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         yield api_id
         appsync.delete_graphql_api(apiId=api_id)
 
     def test_create_data_source(self, appsync, api):
         name = _unique("ds")
-        resp = appsync.create_data_source(
-            apiId=api, name=name, type="NONE"
-        )
+        resp = appsync.create_data_source(apiId=api, name=name, type="NONE")
         assert resp["dataSource"]["name"] == name
 
     def test_list_data_sources(self, appsync, api):
@@ -151,7 +135,9 @@ class TestDataSources:
         name = _unique("ds-upd")
         appsync.create_data_source(apiId=api, name=name, type="NONE")
         resp = appsync.update_data_source(
-            apiId=api, name=name, type="NONE",
+            apiId=api,
+            name=name,
+            type="NONE",
             description="updated desc",
         )
         assert resp["dataSource"]["name"] == name
@@ -164,9 +150,7 @@ class TestAppSyncExtended:
 
     @pytest.fixture
     def api(self, appsync):
-        created = appsync.create_graphql_api(
-            name=_unique("ext-api"), authenticationType="API_KEY"
-        )
+        created = appsync.create_graphql_api(name=_unique("ext-api"), authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
         yield api_id
         appsync.delete_graphql_api(apiId=api_id)
@@ -190,9 +174,7 @@ class TestAppSyncExtended:
 
     def test_create_api_with_iam_auth(self, appsync):
         name = _unique("iam-api")
-        resp = appsync.create_graphql_api(
-            name=name, authenticationType="AWS_IAM"
-        )
+        resp = appsync.create_graphql_api(name=name, authenticationType="AWS_IAM")
         api_id = resp["graphqlApi"]["apiId"]
         try:
             assert resp["graphqlApi"]["authenticationType"] == "AWS_IAM"
@@ -220,14 +202,17 @@ class TestAppSyncExtended:
     def test_create_data_source_http(self, appsync, api):
         name = _unique("http-ds")
         resp = appsync.create_data_source(
-            apiId=api, name=name, type="HTTP",
+            apiId=api,
+            name=name,
+            type="HTTP",
             httpConfig={"endpoint": "https://example.com"},
         )
         assert resp["dataSource"]["type"] == "HTTP"
 
     def test_update_graphql_api_auth_type(self, appsync, api):
         resp = appsync.update_graphql_api(
-            apiId=api, name=_unique("upd-auth"),
+            apiId=api,
+            name=_unique("upd-auth"),
             authenticationType="AWS_IAM",
         )
         assert resp["graphqlApi"]["authenticationType"] == "AWS_IAM"
@@ -235,6 +220,7 @@ class TestAppSyncExtended:
     def test_start_schema_creation(self, appsync, api):
         schema = b"type Query { hello: String }"
         import base64
+
         resp = appsync.start_schema_creation(
             apiId=api,
             definition=base64.b64encode(schema),
@@ -244,9 +230,7 @@ class TestAppSyncExtended:
     def test_list_apis_returns_all(self, appsync):
         apis = []
         for i in range(3):
-            r = appsync.create_graphql_api(
-                name=_unique(f"list-{i}"), authenticationType="API_KEY"
-            )
+            r = appsync.create_graphql_api(name=_unique(f"list-{i}"), authenticationType="API_KEY")
             apis.append(r["graphqlApi"]["apiId"])
         try:
             resp = appsync.list_graphql_apis()

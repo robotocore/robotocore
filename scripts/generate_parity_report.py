@@ -217,12 +217,46 @@ def _extract_rest_route_operations(filepath: Path, service_name: str) -> list[st
     # Pattern 5: Handler function names (def _create_api, def _get_routes, etc.)
     # These are the implementation functions in REST-based providers
     aws_verbs = {
-        "create", "get", "put", "delete", "update", "list", "describe",
-        "register", "deregister", "submit", "cancel", "terminate", "start",
-        "stop", "run", "tag", "untag", "publish", "invoke", "send", "receive",
-        "admin", "initiate", "respond", "confirm", "forgot", "change", "sign",
-        "set", "add", "remove", "batch", "associate", "disassociate",
-        "enable", "disable", "schedule", "query", "scan", "execute",
+        "create",
+        "get",
+        "put",
+        "delete",
+        "update",
+        "list",
+        "describe",
+        "register",
+        "deregister",
+        "submit",
+        "cancel",
+        "terminate",
+        "start",
+        "stop",
+        "run",
+        "tag",
+        "untag",
+        "publish",
+        "invoke",
+        "send",
+        "receive",
+        "admin",
+        "initiate",
+        "respond",
+        "confirm",
+        "forgot",
+        "change",
+        "sign",
+        "set",
+        "add",
+        "remove",
+        "batch",
+        "associate",
+        "disassociate",
+        "enable",
+        "disable",
+        "schedule",
+        "query",
+        "scan",
+        "execute",
     }
     for m in re.finditer(r"^def _([a-z][a-z_]+)\(", content, re.MULTILINE):
         func_name = m.group(1)
@@ -591,12 +625,8 @@ def build_report(filter_service: str | None = None) -> dict:
             "tested_ops": sorted(valid_tested),
             "tested_count": len(valid_tested),
             "test_method_count": test_counts.get(svc_name, 0),
-            "impl_pct": (
-                len(valid_implemented) / len(botocore_ops) * 100 if botocore_ops else 0
-            ),
-            "test_pct": (
-                len(valid_tested) / len(botocore_ops) * 100 if botocore_ops else 0
-            ),
+            "impl_pct": (len(valid_implemented) / len(botocore_ops) * 100 if botocore_ops else 0),
+            "test_pct": (len(valid_tested) / len(botocore_ops) * 100 if botocore_ops else 0),
             "delegates_to_moto": delegates_to_moto,
         }
 
@@ -653,12 +683,30 @@ def print_report(report: dict) -> None:
 
     # Group by phase
     phase1 = [
-        "s3", "sqs", "sns", "dynamodb", "dynamodbstreams", "lambda",
-        "iam", "sts", "cloudformation", "cloudwatch", "logs", "kms",
+        "s3",
+        "sqs",
+        "sns",
+        "dynamodb",
+        "dynamodbstreams",
+        "lambda",
+        "iam",
+        "sts",
+        "cloudformation",
+        "cloudwatch",
+        "logs",
+        "kms",
     ]
     phase2 = [
-        "events", "kinesis", "firehose", "stepfunctions", "scheduler",
-        "apigateway", "apigatewayv2", "secretsmanager", "ssm", "s3control",
+        "events",
+        "kinesis",
+        "firehose",
+        "stepfunctions",
+        "scheduler",
+        "apigateway",
+        "apigatewayv2",
+        "secretsmanager",
+        "ssm",
+        "s3control",
     ]
 
     def print_service_row(svc_name: str, data: dict) -> None:
@@ -718,8 +766,7 @@ def print_report(report: dict) -> None:
         f"  ({_pct_color(summary['impl_pct'])})"
     )
     print(
-        f"  Operations tested:       {summary['total_tested']}"
-        f"  ({_pct_color(summary['test_pct'])})"
+        f"  Operations tested:       {summary['total_tested']}  ({_pct_color(summary['test_pct'])})"
     )
     print(f"  Compat test methods:     {summary['total_test_methods']}")
     print()
@@ -739,19 +786,14 @@ def print_report(report: dict) -> None:
             bar_width = 30
             filled = int(data["impl_pct"] / 100 * bar_width)
             bar = _green("*" * filled) + _dim("-" * (bar_width - filled))
-            print(
-                f"    {name:<24} [{bar}] "
-                f"{data['impl_pct']:>5.1f}%  "
-                f"({missing} ops missing)"
-            )
+            print(f"    {name:<24} [{bar}] {data['impl_pct']:>5.1f}%  ({missing} ops missing)")
         print()
 
     # Untested operations (services with tests but operations not covered)
     untested_gaps = [
         (name, data)
         for name, data in services.items()
-        if data["total_aws_ops"] > 0
-        and data["implemented_count"] > data["tested_count"]
+        if data["total_aws_ops"] > 0 and data["implemented_count"] > data["tested_count"]
     ]
     untested_gaps.sort(key=lambda x: x[1]["implemented_count"] - x[1]["tested_count"], reverse=True)
 
@@ -760,10 +802,7 @@ def print_report(report: dict) -> None:
         for name, data in untested_gaps[:10]:
             untested = data["implemented_count"] - data["tested_count"]
             if untested > 0:
-                print(
-                    f"    {name:<24} {untested} implemented ops"
-                    " not covered by compat tests"
-                )
+                print(f"    {name:<24} {untested} implemented ops not covered by compat tests")
         print()
 
     print(_bold(f"  {'=' * 88}"))

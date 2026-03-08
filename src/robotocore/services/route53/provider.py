@@ -26,9 +26,7 @@ _DISASSOCIATE_VPC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/disassociate
 _query_log_configs: dict[str, dict] = {}
 
 
-async def handle_route53_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_route53_request(request: Request, region: str, account_id: str) -> Response:
     """Handle Route53 requests, intercepting buggy operations."""
     path = request.url.path
 
@@ -48,25 +46,18 @@ async def handle_route53_request(
         if "HostedZoneConfig" in body_str and "Comment" not in body_str:
             # Inject an empty Comment to work around Moto's bug
             body_str = body_str.replace(
-                "<HostedZoneConfig>",
-                "<HostedZoneConfig><Comment></Comment>"
-            ).replace(
-                "</HostedZoneConfig>",
-                "</HostedZoneConfig>"
-            )
+                "<HostedZoneConfig>", "<HostedZoneConfig><Comment></Comment>"
+            ).replace("</HostedZoneConfig>", "</HostedZoneConfig>")
             # Only inject if not already present (double-check)
             if body_str.count("<Comment>") > 1:
                 body_str = body.decode("utf-8").replace(
-                    "<HostedZoneConfig>",
-                    "<HostedZoneConfig><Comment/>"
+                    "<HostedZoneConfig>", "<HostedZoneConfig><Comment/>"
                 )
 
             # Create modified request with fixed body
             from robotocore.providers.moto_bridge import forward_to_moto_with_body
 
-            return await forward_to_moto_with_body(
-                request, "route53", body_str.encode("utf-8")
-            )
+            return await forward_to_moto_with_body(request, "route53", body_str.encode("utf-8"))
 
     # AssociateVPCWithHostedZone
     m = _ASSOCIATE_VPC_RE.match(path)
@@ -101,7 +92,7 @@ def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> R
                 if rr_set.name == record_name + "." or rr_set.name == record_name:
                     if rr_set.type_ == record_type:
                         for record in rr_set.records:
-                            val = record.value if hasattr(record, 'value') else str(record)
+                            val = record.value if hasattr(record, "value") else str(record)
                             record_data.append(val)
     except Exception:
         pass
@@ -124,9 +115,7 @@ def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> R
     return Response(content=xml, status_code=200, media_type="text/xml")
 
 
-def _handle_create_query_logging_config(
-    body: bytes, region: str, account_id: str
-) -> Response:
+def _handle_create_query_logging_config(body: bytes, region: str, account_id: str) -> Response:
     """CreateQueryLoggingConfig — skip cross-service validation."""
     parsed = xmltodict.parse(body)
     req = parsed.get("CreateQueryLoggingConfigRequest", {})
@@ -150,14 +139,16 @@ def _handle_create_query_logging_config(
   </QueryLoggingConfig>
 </CreateQueryLoggingConfigResponse>"""
     return Response(
-        content=xml, status_code=201, media_type="text/xml",
-        headers={"Location": f"https://route53.amazonaws.com/2013-04-01/queryloggingconfig/{config_id}"},
+        content=xml,
+        status_code=201,
+        media_type="text/xml",
+        headers={
+            "Location": f"https://route53.amazonaws.com/2013-04-01/queryloggingconfig/{config_id}"
+        },
     )
 
 
-def _handle_associate_vpc(
-    zone_id: str, body: bytes, region: str, account_id: str
-) -> Response:
+def _handle_associate_vpc(zone_id: str, body: bytes, region: str, account_id: str) -> Response:
     """AssociateVPCWithHostedZone — store VPC association."""
     from moto.backends import get_backend
 

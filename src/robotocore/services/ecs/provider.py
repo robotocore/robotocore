@@ -34,9 +34,7 @@ class EcsStore:
         self.lock = threading.RLock()
 
 
-def _get_store(
-    region: str = "us-east-1", account_id: str = "123456789012"
-) -> EcsStore:
+def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> EcsStore:
     with _lock:
         if region not in _stores:
             _stores[region] = EcsStore(region, account_id)
@@ -64,9 +62,7 @@ class EcsError(Exception):
 # ---------------------------------------------------------------------------
 
 
-async def handle_ecs_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_ecs_request(request: Request, region: str, account_id: str) -> Response:
     """Handle an ECS API request."""
     body = await request.body()
     target = request.headers.get("x-amz-target", "")
@@ -96,9 +92,7 @@ async def handle_ecs_request(
 # ---------------------------------------------------------------------------
 
 
-def _create_cluster(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_cluster(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("clusterName", "default")
     arn = f"arn:aws:ecs:{region}:{account_id}:cluster/{name}"
 
@@ -125,9 +119,7 @@ def _create_cluster(
     return {"cluster": cluster}
 
 
-def _describe_clusters(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_clusters(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_ids = params.get("clusters", [])
     failures = []
     found = []
@@ -139,35 +131,29 @@ def _describe_clusters(
             cluster = store.clusters.get(name)
             if cluster:
                 # Update dynamic counts
-                cluster["activeServicesCount"] = len(
-                    store.services.get(name, {})
-                )
+                cluster["activeServicesCount"] = len(store.services.get(name, {}))
                 cluster["runningTasksCount"] = sum(
-                    1
-                    for t in store.tasks.get(name, {}).values()
-                    if t["lastStatus"] == "RUNNING"
+                    1 for t in store.tasks.get(name, {}).values() if t["lastStatus"] == "RUNNING"
                 )
                 found.append(cluster)
             else:
-                failures.append({
-                    "arn": cid,
-                    "reason": "MISSING",
-                })
+                failures.append(
+                    {
+                        "arn": cid,
+                        "reason": "MISSING",
+                    }
+                )
 
     return {"clusters": found, "failures": failures}
 
 
-def _list_clusters(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_clusters(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     with store.lock:
         arns = [c["clusterArn"] for c in store.clusters.values()]
     return {"clusterArns": arns}
 
 
-def _delete_cluster(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _delete_cluster(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_id = params.get("cluster", "")
     name = cluster_id.split("/")[-1] if "/" in cluster_id else cluster_id
 
@@ -190,9 +176,7 @@ def _delete_cluster(
 # ---------------------------------------------------------------------------
 
 
-def _register_task_definition(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _register_task_definition(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     family = params.get("family", "")
     if not family:
         raise EcsError("ClientException", "family is required.")
@@ -227,9 +211,7 @@ def _register_task_definition(
     return {"taskDefinition": td, "tags": td.get("tags", [])}
 
 
-def _describe_task_definition(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_task_definition(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     td_ref = params.get("taskDefinition", "")
     td = _resolve_task_definition(store, td_ref)
     if not td:
@@ -240,9 +222,7 @@ def _describe_task_definition(
     return {"taskDefinition": td, "tags": td.get("tags", [])}
 
 
-def _list_task_definitions(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_task_definitions(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     family_prefix = params.get("familyPrefix", "")
     status_filter = params.get("status", "ACTIVE")
 
@@ -271,7 +251,9 @@ def _list_task_definition_families(
                 continue
             if status_filter == "ACTIVE" and any(td["status"] == "ACTIVE" for td in revisions):
                 families.append(family)
-            elif status_filter == "INACTIVE" and any(td["status"] == "INACTIVE" for td in revisions):
+            elif status_filter == "INACTIVE" and any(
+                td["status"] == "INACTIVE" for td in revisions
+            ):
                 families.append(family)
             elif status_filter == "ALL":
                 families.append(family)
@@ -298,9 +280,7 @@ def _deregister_task_definition(
 # ---------------------------------------------------------------------------
 
 
-def _create_service(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_service(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     _require_cluster(store, cluster_name)
 
@@ -340,9 +320,7 @@ def _create_service(
     return {"service": service}
 
 
-def _describe_services(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_services(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     service_ids = params.get("services", [])
     failures = []
@@ -361,9 +339,7 @@ def _describe_services(
     return {"services": found, "failures": failures}
 
 
-def _list_services(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_services(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
 
     with store.lock:
@@ -372,9 +348,7 @@ def _list_services(
     return {"serviceArns": arns}
 
 
-def _update_service(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _update_service(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     svc_name = params.get("service", "")
     svc_name = svc_name.split("/")[-1] if "/" in svc_name else svc_name
@@ -396,9 +370,7 @@ def _update_service(
     return {"service": svc}
 
 
-def _delete_service(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _delete_service(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     svc_name = params.get("service", "")
     svc_name = svc_name.split("/")[-1] if "/" in svc_name else svc_name
@@ -424,9 +396,7 @@ def _delete_service(
 # ---------------------------------------------------------------------------
 
 
-def _run_task(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _run_task(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     _require_cluster(store, cluster_name)
 
@@ -441,9 +411,7 @@ def _run_task(
     with store.lock:
         for _ in range(count):
             task_id = _new_id()
-            task_arn = (
-                f"arn:aws:ecs:{region}:{account_id}:task/{cluster_name}/{task_id}"
-            )
+            task_arn = f"arn:aws:ecs:{region}:{account_id}:task/{cluster_name}/{task_id}"
             task = {
                 "taskArn": task_arn,
                 "taskDefinitionArn": td["taskDefinitionArn"],
@@ -458,8 +426,7 @@ def _run_task(
                 "containers": [
                     {
                         "containerArn": (
-                            f"arn:aws:ecs:{region}:{account_id}"
-                            f":container/{_new_id()}"
+                            f"arn:aws:ecs:{region}:{account_id}:container/{_new_id()}"
                         ),
                         "name": cd.get("name", ""),
                         "lastStatus": "RUNNING",
@@ -477,9 +444,7 @@ def _run_task(
     return {"tasks": tasks, "failures": []}
 
 
-def _describe_tasks(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_tasks(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     task_ids = params.get("tasks", [])
     found = []
@@ -499,9 +464,7 @@ def _describe_tasks(
     return {"tasks": found, "failures": failures}
 
 
-def _list_tasks(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_tasks(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     service_name = params.get("serviceName")
     status_filter = params.get("desiredStatus", "RUNNING")
@@ -520,9 +483,7 @@ def _list_tasks(
     return {"taskArns": arns}
 
 
-def _stop_task(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _stop_task(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
     task_id_ref = params.get("task", "")
     task_id = task_id_ref.split("/")[-1] if "/" in task_id_ref else task_id_ref
@@ -548,9 +509,7 @@ def _stop_task(
 # ---------------------------------------------------------------------------
 
 
-def _tag_resource(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _tag_resource(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     arn = params.get("resourceArn", "")
     new_tags = params.get("tags", [])
     with store.lock:
@@ -565,9 +524,7 @@ def _tag_resource(
     return {}
 
 
-def _untag_resource(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _untag_resource(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     arn = params.get("resourceArn", "")
     keys_to_remove = params.get("tagKeys", [])
     with store.lock:
@@ -576,9 +533,7 @@ def _untag_resource(
     return {}
 
 
-def _list_tags_for_resource(
-    store: EcsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_tags_for_resource(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
     arn = params.get("resourceArn", "")
     with store.lock:
         tags = store.tags.get(arn, [])
@@ -664,9 +619,7 @@ def _put_cluster_capacity_providers(
 
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "message": message})
-    return Response(
-        content=body, status_code=status, media_type="application/x-amz-json-1.1"
-    )
+    return Response(content=body, status_code=status, media_type="application/x-amz-json-1.1")
 
 
 # ---------------------------------------------------------------------------

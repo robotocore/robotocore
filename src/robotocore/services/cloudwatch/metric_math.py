@@ -129,8 +129,10 @@ def _parse_expression(
     """Parse an additive expression (handles + and -)."""
     left, pos = _parse_term(tokens, pos, data)
 
-    while pos < len(tokens) and tokens[pos] == ("op", "+") or (
-        pos < len(tokens) and tokens[pos] == ("op", "-")
+    while (
+        pos < len(tokens)
+        and tokens[pos] == ("op", "+")
+        or (pos < len(tokens) and tokens[pos] == ("op", "-"))
     ):
         op = tokens[pos][1]
         pos += 1
@@ -225,9 +227,7 @@ def _apply_function(name: str, values: list[float]) -> list[float]:
     raise MetricMathError(f"Unknown function: {name}")
 
 
-def _apply_binary_op(
-    left: list[float], right: list[float], op: str
-) -> list[float]:
+def _apply_binary_op(left: list[float], right: list[float], op: str) -> list[float]:
     """Apply a binary operator to two value lists, broadcasting scalars."""
     if len(left) == 1 and len(right) > 1:
         left = left * len(right)

@@ -221,16 +221,8 @@ def _list_targets_by_rule(store: EventsStore, params: dict, region: str, account
                 **({"RoleArn": t.role_arn} if t.role_arn else {}),
                 **({"Input": t.input} if t.input else {}),
                 **({"InputPath": t.input_path} if t.input_path else {}),
-                **(
-                    {"InputTransformer": t.input_transformer}
-                    if t.input_transformer
-                    else {}
-                ),
-                **(
-                    {"DeadLetterConfig": t.dead_letter_config}
-                    if t.dead_letter_config
-                    else {}
-                ),
+                **({"InputTransformer": t.input_transformer} if t.input_transformer else {}),
+                **({"DeadLetterConfig": t.dead_letter_config} if t.dead_letter_config else {}),
             }
             for t in targets
         ]
@@ -273,9 +265,7 @@ def _put_events(store: EventsStore, params: dict, region: str, account_id: str) 
             # Match against all rules in the bus
             for rule in bus.rules.values():
                 if rule.matches_event(event):
-                    _dispatch_to_targets(
-                        rule, event, region, account_id, store
-                    )
+                    _dispatch_to_targets(rule, event, region, account_id, store)
 
         results.append({"EventId": event["id"]})
 
@@ -336,9 +326,7 @@ def _list_tag_resource(store: EventsStore, params: dict, region: str, account_id
 # --- Archive operations ---
 
 
-def _create_archive(
-    store: EventsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _create_archive(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("ArchiveName", "")
     source_arn = params.get("EventSourceArn", "")
     description = params.get("Description", "")
@@ -369,9 +357,7 @@ def _create_archive(
     }
 
 
-def _describe_archive(
-    store: EventsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_archive(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("ArchiveName", "")
     archive = store.get_archive(name)
     if not archive:
@@ -395,9 +381,7 @@ def _describe_archive(
     return result
 
 
-def _list_archives(
-    store: EventsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_archives(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     prefix = params.get("NamePrefix")
     archives = store.list_archives(prefix)
     return {
@@ -417,9 +401,7 @@ def _list_archives(
     }
 
 
-def _delete_archive(
-    store: EventsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _delete_archive(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("ArchiveName", "")
     if not store.delete_archive(name):
         raise EventsError(
@@ -429,9 +411,7 @@ def _delete_archive(
     return {}
 
 
-def _start_replay(
-    store: EventsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _start_replay(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("ReplayName", "")
     archive_arn = params.get("EventSourceArn", "")
     destination = params.get("Destination", {})
@@ -468,9 +448,7 @@ def _start_replay(
         if bus:
             for rule in bus.rules.values():
                 if rule.matches_event(evt):
-                    _dispatch_to_targets(
-                        rule, evt, region, account_id, store
-                    )
+                    _dispatch_to_targets(rule, evt, region, account_id, store)
             replayed += 1
 
     replay.events_replayed = replayed
@@ -483,9 +461,7 @@ def _start_replay(
     }
 
 
-def _describe_replay(
-    store: EventsStore, params: dict, region: str, account_id: str
-) -> dict:
+def _describe_replay(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("ReplayName", "")
     replay = store.get_replay(name)
     if not replay:
@@ -507,9 +483,7 @@ def _describe_replay(
 # --- Input Transformer ---
 
 
-def _apply_input_transformer(
-    transformer: dict, event: dict
-) -> str:
+def _apply_input_transformer(transformer: dict, event: dict) -> str:
     """Apply an InputTransformer to an event.
 
     The transformer has:
@@ -565,7 +539,10 @@ def _resolve_jsonpath(path: str, event: dict) -> str:
 
 
 def _dispatch_to_targets(
-    rule, event: dict, region: str, account_id: str,
+    rule,
+    event: dict,
+    region: str,
+    account_id: str,
     store: EventsStore | None = None,
 ):
     """Dispatch an event to all targets of a matching rule."""
@@ -575,17 +552,20 @@ def _dispatch_to_targets(
         except Exception as exc:
             logger.exception(
                 "Error invoking target %s for rule %s",
-                target.target_id, rule.name,
+                target.target_id,
+                rule.name,
             )
             # Dead-letter queue: send failed event to DLQ
-            dlq_config = (
-                target.dead_letter_config
-                or rule.dead_letter_config
-            )
+            dlq_config = target.dead_letter_config or rule.dead_letter_config
             if dlq_config:
                 _send_to_dlq(
-                    dlq_config, event, target, rule, exc,
-                    region, account_id,
+                    dlq_config,
+                    event,
+                    target,
+                    rule,
+                    exc,
+                    region,
+                    account_id,
                 )
 
 
@@ -595,9 +575,7 @@ def _invoke_target(target, event: dict, region: str, account_id: str):
 
     # Determine input to send
     if target.input_transformer:
-        payload = _apply_input_transformer(
-            target.input_transformer, event
-        )
+        payload = _apply_input_transformer(target.input_transformer, event)
     elif target.input:
         payload = target.input
     elif target.input_path:
@@ -617,59 +595,35 @@ def _invoke_target(target, event: dict, region: str, account_id: str):
     elif ":firehose:" in arn:
         _invoke_firehose_target(arn, payload, region, account_id)
     elif ":states:" in arn:
-        _invoke_stepfunctions_target(
-            arn, payload, region, account_id
-        )
+        _invoke_stepfunctions_target(arn, payload, region, account_id)
     elif ":logs:" in arn:
         _invoke_logs_target(arn, payload, region, account_id)
     elif ":ecs:" in arn:
         _invoke_ecs_target(arn, payload, region, account_id)
     elif ":events:" in arn:
-        _invoke_eventbridge_target(
-            arn, payload, region, account_id
-        )
+        _invoke_eventbridge_target(arn, payload, region, account_id)
     elif ":execute-api:" in arn:
-        _invoke_apigateway_target(
-            arn, payload, region, account_id
-        )
+        _invoke_apigateway_target(arn, payload, region, account_id)
     elif ":codebuild:" in arn:
-        _invoke_simulated_target(
-            "codebuild", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("codebuild", arn, payload, region, account_id)
     elif ":codepipeline:" in arn:
-        _invoke_simulated_target(
-            "codepipeline", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("codepipeline", arn, payload, region, account_id)
     elif ":batch:" in arn:
-        _invoke_simulated_target(
-            "batch", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("batch", arn, payload, region, account_id)
     elif ":ssm:" in arn:
-        _invoke_simulated_target(
-            "ssm", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("ssm", arn, payload, region, account_id)
     elif ":redshift:" in arn:
-        _invoke_simulated_target(
-            "redshift", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("redshift", arn, payload, region, account_id)
     elif ":sagemaker:" in arn:
-        _invoke_simulated_target(
-            "sagemaker", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("sagemaker", arn, payload, region, account_id)
     elif ":inspector:" in arn:
-        _invoke_simulated_target(
-            "inspector", arn, payload, region, account_id
-        )
+        _invoke_simulated_target("inspector", arn, payload, region, account_id)
     else:
-        logger.warning(
-            "Unsupported EventBridge target type: %s", arn
-        )
+        logger.warning("Unsupported EventBridge target type: %s", arn)
         _log_invocation("unsupported", arn, payload)
 
 
-def _invoke_lambda_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
     """Invoke a Lambda function from EventBridge.
 
     Uses async dispatch via thread pool to avoid deadlocking the
@@ -679,9 +633,7 @@ def _invoke_lambda_target(
         invoke_lambda_async,
     )
 
-    event = (
-        json.loads(payload) if isinstance(payload, str) else payload
-    )
+    event = json.loads(payload) if isinstance(payload, str) else payload
 
     def _on_complete(result, error_type, logs):
         invocation_result = {
@@ -691,14 +643,10 @@ def _invoke_lambda_target(
         }
         _log_invocation("lambda", arn, payload, invocation_result)
 
-    invoke_lambda_async(
-        arn, event, region, account_id, callback=_on_complete
-    )
+    invoke_lambda_async(arn, event, region, account_id, callback=_on_complete)
 
 
-def _invoke_sqs_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
     """Send a message to an SQS queue from EventBridge."""
     import hashlib
 
@@ -709,9 +657,7 @@ def _invoke_sqs_target(
     store = _get_store(region)
     queue = store.get_queue(queue_name)
     if not queue:
-        logger.error(
-            "EventBridge: SQS queue not found: %s", queue_name
-        )
+        logger.error("EventBridge: SQS queue not found: %s", queue_name)
         return
 
     msg = SqsMessage(
@@ -724,9 +670,7 @@ def _invoke_sqs_target(
     logger.info("EventBridge -> SQS: %s", queue_name)
 
 
-def _invoke_sns_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_sns_target(arn: str, payload: str, region: str, account_id: str):
     """Publish to an SNS topic from EventBridge."""
     from robotocore.services.sns.provider import _get_store
 
@@ -757,9 +701,7 @@ def _invoke_sns_target(
     logger.info("EventBridge -> SNS: %s", arn)
 
 
-def _invoke_kinesis_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_kinesis_target(arn: str, payload: str, region: str, account_id: str):
     """Put a record to a Kinesis stream from EventBridge."""
     from robotocore.services.kinesis.models import _get_store
 
@@ -781,9 +723,7 @@ def _invoke_kinesis_target(
     logger.info("EventBridge -> Kinesis: %s", stream_name)
 
 
-def _invoke_firehose_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_firehose_target(arn: str, payload: str, region: str, account_id: str):
     """Put a record to a Firehose delivery stream."""
     from robotocore.services.firehose import provider as fh
 
@@ -796,32 +736,30 @@ def _invoke_firehose_target(
                 stream_name,
             )
             _log_invocation(
-                "firehose", arn, payload,
+                "firehose",
+                arn,
+                payload,
                 {"error": "stream_not_found"},
             )
             return
-        fh._stream_buffers.setdefault(stream_name, []).append(
-            payload.encode("utf-8")
-        )
+        fh._stream_buffers.setdefault(stream_name, []).append(payload.encode("utf-8"))
 
     _log_invocation("firehose", arn, payload)
     logger.info("EventBridge -> Firehose: %s", stream_name)
 
 
-def _invoke_stepfunctions_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_stepfunctions_target(arn: str, payload: str, region: str, account_id: str):
     """Start a Step Functions execution from EventBridge."""
     from robotocore.services.stepfunctions import provider as sfn
 
     with sfn._exec_lock:
         sm = sfn._state_machines.get(arn)
     if not sm:
-        logger.error(
-            "EventBridge: State machine not found: %s", arn
-        )
+        logger.error("EventBridge: State machine not found: %s", arn)
         _log_invocation(
-            "stepfunctions", arn, payload,
+            "stepfunctions",
+            arn,
+            payload,
             {"error": "state_machine_not_found"},
         )
         return
@@ -839,20 +777,18 @@ def _invoke_stepfunctions_target(
         )
         _log_invocation("stepfunctions", arn, payload, result)
     except Exception:
-        logger.exception(
-            "EventBridge: Failed to start execution: %s", arn
-        )
+        logger.exception("EventBridge: Failed to start execution: %s", arn)
         _log_invocation(
-            "stepfunctions", arn, payload,
+            "stepfunctions",
+            arn,
+            payload,
             {"error": "execution_failed"},
         )
         raise
     logger.info("EventBridge -> Step Functions: %s", arn)
 
 
-def _invoke_logs_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_logs_target(arn: str, payload: str, region: str, account_id: str):
     """Put a log event to CloudWatch Logs from EventBridge."""
     try:
         from moto.backends import get_backend
@@ -875,17 +811,13 @@ def _invoke_logs_target(
 
         # Create log group if not exists (best effort)
         try:
-            logs_backend.create_log_group(
-                log_group_name, {}
-            )
+            logs_backend.create_log_group(log_group_name, {})
         except Exception:
             pass  # already exists
 
         stream_name = f"eventbridge-{uuid.uuid4().hex[:8]}"
         try:
-            logs_backend.create_log_stream(
-                log_group_name, stream_name
-            )
+            logs_backend.create_log_stream(log_group_name, stream_name)
         except Exception:
             pass
 
@@ -901,64 +833,46 @@ def _invoke_logs_target(
         )
         _log_invocation("logs", arn, payload)
     except Exception:
-        logger.exception(
-            "EventBridge: Failed to put log events: %s", arn
-        )
-        _log_invocation(
-            "logs", arn, payload, {"error": "log_put_failed"}
-        )
+        logger.exception("EventBridge: Failed to put log events: %s", arn)
+        _log_invocation("logs", arn, payload, {"error": "log_put_failed"})
         raise
     logger.info("EventBridge -> CloudWatch Logs: %s", arn)
 
 
-def _invoke_ecs_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_ecs_target(arn: str, payload: str, region: str, account_id: str):
     """Simulate an ECS RunTask from EventBridge (log only)."""
     _log_invocation("ecs", arn, payload)
     logger.info("EventBridge -> ECS RunTask (simulated): %s", arn)
 
 
-def _invoke_eventbridge_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_eventbridge_target(arn: str, payload: str, region: str, account_id: str):
     """Forward event to another EventBridge bus."""
     # Extract bus name from ARN
     bus_name = arn.rsplit("/", 1)[-1] if "/" in arn else "default"
     store = _get_store(region, account_id)
     bus = store.get_bus(bus_name)
     if not bus:
-        logger.error(
-            "EventBridge: Target bus not found: %s", bus_name
-        )
+        logger.error("EventBridge: Target bus not found: %s", bus_name)
         _log_invocation(
-            "events", arn, payload,
+            "events",
+            arn,
+            payload,
             {"error": "bus_not_found"},
         )
         return
 
-    event = (
-        json.loads(payload) if isinstance(payload, str) else payload
-    )
+    event = json.loads(payload) if isinstance(payload, str) else payload
     for rule in bus.rules.values():
         if rule.matches_event(event):
-            _dispatch_to_targets(
-                rule, event, region, account_id, store
-            )
+            _dispatch_to_targets(rule, event, region, account_id, store)
     _log_invocation("events", arn, payload)
-    logger.info(
-        "EventBridge -> EventBridge bus: %s", bus_name
-    )
+    logger.info("EventBridge -> EventBridge bus: %s", bus_name)
 
 
-def _invoke_apigateway_target(
-    arn: str, payload: str, region: str, account_id: str
-):
+def _invoke_apigateway_target(arn: str, payload: str, region: str, account_id: str):
     """Simulate an API Gateway invocation (log only)."""
     _log_invocation("apigateway", arn, payload)
-    logger.info(
-        "EventBridge -> API Gateway (simulated): %s", arn
-    )
+    logger.info("EventBridge -> API Gateway (simulated): %s", arn)
 
 
 def _invoke_simulated_target(
@@ -970,9 +884,7 @@ def _invoke_simulated_target(
 ):
     """Simulated target invocation — log only."""
     _log_invocation(service, arn, payload)
-    logger.info(
-        "EventBridge -> %s (simulated): %s", service, arn
-    )
+    logger.info("EventBridge -> %s (simulated): %s", service, arn)
 
 
 # --- Dead Letter Queue ---
@@ -1001,9 +913,7 @@ def _send_to_dlq(
     sqs_store = _get_store(region)
     queue = sqs_store.get_queue(queue_name)
     if not queue:
-        logger.error(
-            "EventBridge DLQ: queue not found: %s", queue_name
-        )
+        logger.error("EventBridge DLQ: queue not found: %s", queue_name)
         return
 
     dlq_body = json.dumps(
@@ -1057,7 +967,11 @@ def _create_connection(store: EventsStore, params: dict, region: str, account_id
         "LastModifiedTime": time.time(),
     }
     _connections[name] = conn
-    return {"ConnectionArn": conn_arn, "ConnectionState": "AUTHORIZED", "CreationTime": conn["CreationTime"]}
+    return {
+        "ConnectionArn": conn_arn,
+        "ConnectionState": "AUTHORIZED",
+        "CreationTime": conn["CreationTime"],
+    }
 
 
 def _describe_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
@@ -1100,10 +1014,16 @@ def _create_api_destination(store: EventsStore, params: dict, region: str, accou
         "LastModifiedTime": time.time(),
     }
     _api_destinations[name] = dest
-    return {"ApiDestinationArn": dest_arn, "ApiDestinationState": "ACTIVE", "CreationTime": dest["CreationTime"]}
+    return {
+        "ApiDestinationArn": dest_arn,
+        "ApiDestinationState": "ACTIVE",
+        "CreationTime": dest["CreationTime"],
+    }
 
 
-def _describe_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+def _describe_api_destination(
+    store: EventsStore, params: dict, region: str, account_id: str
+) -> dict:
     name = params.get("Name", "")
     dest = _api_destinations.get(name)
     if not dest:

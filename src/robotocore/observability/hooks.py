@@ -57,12 +57,14 @@ def run_init_hooks(stage: str) -> list[dict]:
                 capture_output=True,
                 text=True,
             )
-            results.append({
-                "script": script.name,
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            })
+            results.append(
+                {
+                    "script": script.name,
+                    "returncode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                }
+            )
             if result.returncode != 0:
                 logger.warning(
                     "Hook %s exited with code %d: %s",
@@ -74,19 +76,23 @@ def run_init_hooks(stage: str) -> list[dict]:
                 logger.info("Hook %s completed successfully", script.name)
         except subprocess.TimeoutExpired:
             logger.error("Hook %s timed out after 30 seconds", script.name)
-            results.append({
-                "script": script.name,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": "Timeout after 30 seconds",
-            })
+            results.append(
+                {
+                    "script": script.name,
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": "Timeout after 30 seconds",
+                }
+            )
         except Exception as exc:
             logger.error("Hook %s failed: %s", script.name, exc)
-            results.append({
-                "script": script.name,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": str(exc),
-            })
+            results.append(
+                {
+                    "script": script.name,
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": str(exc),
+                }
+            )
 
     return results

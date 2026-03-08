@@ -302,9 +302,7 @@ def _update_destination(params: dict, region: str, account_id: str) -> dict:
 
         # Merge updates into existing s3_config
         s3_update = (
-            params.get("ExtendedS3DestinationUpdate")
-            or params.get("S3DestinationUpdate")
-            or {}
+            params.get("ExtendedS3DestinationUpdate") or params.get("S3DestinationUpdate") or {}
         )
         if s3_update:
             s3_config = stream.get("s3_config", {})

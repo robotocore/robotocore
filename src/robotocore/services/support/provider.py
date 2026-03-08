@@ -19,27 +19,51 @@ from robotocore.providers.moto_bridge import forward_to_moto
 
 # AWS Support service codes (subset of real ones)
 _SERVICES = [
-    {"code": "amazon-dynamodb", "name": "Amazon DynamoDB", "categories": [
-        {"code": "apis", "name": "APIs"},
-        {"code": "other", "name": "Other"},
-    ]},
-    {"code": "amazon-s3", "name": "Amazon Simple Storage Service", "categories": [
-        {"code": "general-guidance", "name": "General Guidance"},
-        {"code": "other", "name": "Other"},
-    ]},
-    {"code": "amazon-ec2", "name": "Amazon Elastic Compute Cloud", "categories": [
-        {"code": "instance-issue", "name": "Instance Issue"},
-        {"code": "other", "name": "Other"},
-    ]},
-    {"code": "amazon-rds", "name": "Amazon Relational Database Service", "categories": [
-        {"code": "other", "name": "Other"},
-    ]},
-    {"code": "amazon-sqs", "name": "Amazon Simple Queue Service", "categories": [
-        {"code": "other", "name": "Other"},
-    ]},
-    {"code": "general-info", "name": "General Info and Getting Started", "categories": [
-        {"code": "other", "name": "Other"},
-    ]},
+    {
+        "code": "amazon-dynamodb",
+        "name": "Amazon DynamoDB",
+        "categories": [
+            {"code": "apis", "name": "APIs"},
+            {"code": "other", "name": "Other"},
+        ],
+    },
+    {
+        "code": "amazon-s3",
+        "name": "Amazon Simple Storage Service",
+        "categories": [
+            {"code": "general-guidance", "name": "General Guidance"},
+            {"code": "other", "name": "Other"},
+        ],
+    },
+    {
+        "code": "amazon-ec2",
+        "name": "Amazon Elastic Compute Cloud",
+        "categories": [
+            {"code": "instance-issue", "name": "Instance Issue"},
+            {"code": "other", "name": "Other"},
+        ],
+    },
+    {
+        "code": "amazon-rds",
+        "name": "Amazon Relational Database Service",
+        "categories": [
+            {"code": "other", "name": "Other"},
+        ],
+    },
+    {
+        "code": "amazon-sqs",
+        "name": "Amazon Simple Queue Service",
+        "categories": [
+            {"code": "other", "name": "Other"},
+        ],
+    },
+    {
+        "code": "general-info",
+        "name": "General Info and Getting Started",
+        "categories": [
+            {"code": "other", "name": "Other"},
+        ],
+    },
 ]
 
 _SEVERITY_LEVELS = [
@@ -54,9 +78,7 @@ _SEVERITY_LEVELS = [
 _communications: dict[str, list[dict]] = {}
 
 
-async def handle_support_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_support_request(request: Request, region: str, account_id: str) -> Response:
     """Handle Support requests, intercepting unimplemented operations."""
     target = request.headers.get("x-amz-target", "")
     action = target.split(".")[-1] if "." in target else ""
@@ -88,9 +110,7 @@ def _describe_trusted_advisor_check_result(params: dict, region: str, account_id
     return {
         "result": {
             "checkId": check_id,
-            "timestamp": datetime.datetime.now(datetime.UTC).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
+            "timestamp": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "status": "ok",
             "resourcesSummary": {
                 "resourcesProcessed": 0,
@@ -108,21 +128,21 @@ def _describe_trusted_advisor_check_summaries(params: dict, region: str, account
     check_ids = params.get("checkIds", [])
     summaries = []
     for cid in check_ids:
-        summaries.append({
-            "checkId": cid,
-            "timestamp": datetime.datetime.now(datetime.UTC).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-            "status": "ok",
-            "hasFlaggedResources": False,
-            "resourcesSummary": {
-                "resourcesProcessed": 0,
-                "resourcesFlagged": 0,
-                "resourcesIgnored": 0,
-                "resourcesSuppressed": 0,
-            },
-            "categorySpecificSummary": {},
-        })
+        summaries.append(
+            {
+                "checkId": cid,
+                "timestamp": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "status": "ok",
+                "hasFlaggedResources": False,
+                "resourcesSummary": {
+                    "resourcesProcessed": 0,
+                    "resourcesFlagged": 0,
+                    "resourcesIgnored": 0,
+                    "resourcesSuppressed": 0,
+                },
+                "categorySpecificSummary": {},
+            }
+        )
     return {"summaries": summaries}
 
 
@@ -132,15 +152,15 @@ def _add_communication_to_case(params: dict, region: str, account_id: str) -> di
 
     if case_id not in _communications:
         _communications[case_id] = []
-    _communications[case_id].append({
-        "caseId": case_id,
-        "body": comm_body,
-        "submittedBy": "user@example.com",
-        "timeCreated": datetime.datetime.now(datetime.UTC).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ),
-        "attachmentSet": [],
-    })
+    _communications[case_id].append(
+        {
+            "caseId": case_id,
+            "body": comm_body,
+            "submittedBy": "user@example.com",
+            "timeCreated": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "attachmentSet": [],
+        }
+    )
     return {"result": True}
 
 

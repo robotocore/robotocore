@@ -30,9 +30,7 @@ class TestAutoScalingLaunchConfigOperations:
             InstanceType="t2.micro",
         )
         try:
-            resp = autoscaling.describe_launch_configurations(
-                LaunchConfigurationNames=[name]
-            )
+            resp = autoscaling.describe_launch_configurations(LaunchConfigurationNames=[name])
             configs = resp["LaunchConfigurations"]
             assert len(configs) == 1
             assert configs[0]["LaunchConfigurationName"] == name
@@ -53,9 +51,7 @@ class TestAutoScalingLaunchConfigOperations:
             InstanceType="t2.small",
         )
         try:
-            resp = autoscaling.describe_launch_configurations(
-                LaunchConfigurationNames=[name]
-            )
+            resp = autoscaling.describe_launch_configurations(LaunchConfigurationNames=[name])
             assert len(resp["LaunchConfigurations"]) == 1
             assert resp["LaunchConfigurations"][0]["LaunchConfigurationName"] == name
         finally:
@@ -69,9 +65,7 @@ class TestAutoScalingLaunchConfigOperations:
             InstanceType="t2.micro",
         )
         autoscaling.delete_launch_configuration(LaunchConfigurationName=name)
-        resp = autoscaling.describe_launch_configurations(
-            LaunchConfigurationNames=[name]
-        )
+        resp = autoscaling.describe_launch_configurations(LaunchConfigurationNames=[name])
         assert len(resp["LaunchConfigurations"]) == 0
 
 
@@ -85,9 +79,7 @@ class TestAutoScalingGroupOperations:
             InstanceType="t2.micro",
         )
         yield
-        autoscaling.delete_launch_configuration(
-            LaunchConfigurationName=self.lc_name
-        )
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
 
     def test_create_auto_scaling_group(self, autoscaling):
         name = _unique("asg")
@@ -99,18 +91,14 @@ class TestAutoScalingGroupOperations:
             AvailabilityZones=["us-east-1a"],
         )
         try:
-            resp = autoscaling.describe_auto_scaling_groups(
-                AutoScalingGroupNames=[name]
-            )
+            resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[name])
             groups = resp["AutoScalingGroups"]
             assert len(groups) == 1
             assert groups[0]["AutoScalingGroupName"] == name
             assert groups[0]["MinSize"] == 0
             assert groups[0]["MaxSize"] == 2
         finally:
-            autoscaling.delete_auto_scaling_group(
-                AutoScalingGroupName=name, ForceDelete=True
-            )
+            autoscaling.delete_auto_scaling_group(AutoScalingGroupName=name, ForceDelete=True)
 
     def test_describe_auto_scaling_groups_empty(self, autoscaling):
         resp = autoscaling.describe_auto_scaling_groups()
@@ -131,14 +119,10 @@ class TestAutoScalingGroupOperations:
                 MaxSize=5,
                 DesiredCapacity=0,
             )
-            resp = autoscaling.describe_auto_scaling_groups(
-                AutoScalingGroupNames=[name]
-            )
+            resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[name])
             assert resp["AutoScalingGroups"][0]["MaxSize"] == 5
         finally:
-            autoscaling.delete_auto_scaling_group(
-                AutoScalingGroupName=name, ForceDelete=True
-            )
+            autoscaling.delete_auto_scaling_group(AutoScalingGroupName=name, ForceDelete=True)
 
     def test_create_or_update_tags(self, autoscaling):
         name = _unique("asg-tag")
@@ -177,9 +161,7 @@ class TestAutoScalingGroupOperations:
             assert tag_map["Environment"] == "test"
             assert tag_map["Team"] == "platform"
         finally:
-            autoscaling.delete_auto_scaling_group(
-                AutoScalingGroupName=name, ForceDelete=True
-            )
+            autoscaling.delete_auto_scaling_group(AutoScalingGroupName=name, ForceDelete=True)
 
     def test_delete_auto_scaling_group(self, autoscaling):
         name = _unique("asg-del")
@@ -190,12 +172,8 @@ class TestAutoScalingGroupOperations:
             MaxSize=1,
             AvailabilityZones=["us-east-1a"],
         )
-        autoscaling.delete_auto_scaling_group(
-            AutoScalingGroupName=name, ForceDelete=True
-        )
-        resp = autoscaling.describe_auto_scaling_groups(
-            AutoScalingGroupNames=[name]
-        )
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=name, ForceDelete=True)
+        resp = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[name])
         assert len(resp["AutoScalingGroups"]) == 0
 
 
@@ -217,12 +195,8 @@ class TestAutoScalingPolicyOperations:
             AvailabilityZones=["us-east-1a"],
         )
         yield
-        autoscaling.delete_auto_scaling_group(
-            AutoScalingGroupName=self.asg_name, ForceDelete=True
-        )
-        autoscaling.delete_launch_configuration(
-            LaunchConfigurationName=self.lc_name
-        )
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
 
     def test_put_target_tracking_policy(self, autoscaling):
         policy_name = _unique("tt-policy")
@@ -281,9 +255,7 @@ class TestAutoScalingPolicyOperations:
             AdjustmentType="ChangeInCapacity",
             ScalingAdjustment=2,
         )
-        resp = autoscaling.describe_policies(
-            AutoScalingGroupName=self.asg_name
-        )
+        resp = autoscaling.describe_policies(AutoScalingGroupName=self.asg_name)
         names = [p["PolicyName"] for p in resp["ScalingPolicies"]]
         assert p1 in names
         assert p2 in names
@@ -310,18 +282,12 @@ class TestAutoScalingDescribeOperations:
             AvailabilityZones=["us-east-1a"],
         )
         try:
-            resp = autoscaling.describe_scaling_activities(
-                AutoScalingGroupName=asg_name
-            )
+            resp = autoscaling.describe_scaling_activities(AutoScalingGroupName=asg_name)
             assert "Activities" in resp
             assert isinstance(resp["Activities"], list)
         finally:
-            autoscaling.delete_auto_scaling_group(
-                AutoScalingGroupName=asg_name, ForceDelete=True
-            )
-            autoscaling.delete_launch_configuration(
-                LaunchConfigurationName=lc_name
-            )
+            autoscaling.delete_auto_scaling_group(AutoScalingGroupName=asg_name, ForceDelete=True)
+            autoscaling.delete_launch_configuration(LaunchConfigurationName=lc_name)
 
     def test_describe_scheduled_actions(self, autoscaling):
         resp = autoscaling.describe_scheduled_actions()
@@ -343,18 +309,12 @@ class TestAutoScalingDescribeOperations:
             AvailabilityZones=["us-east-1a"],
         )
         try:
-            resp = autoscaling.describe_scheduled_actions(
-                AutoScalingGroupName=asg_name
-            )
+            resp = autoscaling.describe_scheduled_actions(AutoScalingGroupName=asg_name)
             assert "ScheduledUpdateGroupActions" in resp
             assert isinstance(resp["ScheduledUpdateGroupActions"], list)
         finally:
-            autoscaling.delete_auto_scaling_group(
-                AutoScalingGroupName=asg_name, ForceDelete=True
-            )
-            autoscaling.delete_launch_configuration(
-                LaunchConfigurationName=lc_name
-            )
+            autoscaling.delete_auto_scaling_group(AutoScalingGroupName=asg_name, ForceDelete=True)
+            autoscaling.delete_launch_configuration(LaunchConfigurationName=lc_name)
 
     def test_describe_auto_scaling_instances(self, autoscaling):
         resp = autoscaling.describe_auto_scaling_instances()

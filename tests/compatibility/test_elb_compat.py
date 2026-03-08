@@ -149,9 +149,7 @@ class TestELBClassicInstances:
 
         # Verify instance is registered
         desc = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
-        instance_ids = [
-            i["InstanceId"] for i in desc["LoadBalancerDescriptions"][0]["Instances"]
-        ]
+        instance_ids = [i["InstanceId"] for i in desc["LoadBalancerDescriptions"][0]["Instances"]]
         assert instance_id in instance_ids
 
         # Deregister
@@ -161,9 +159,7 @@ class TestELBClassicInstances:
         )
 
         desc2 = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
-        instance_ids2 = [
-            i["InstanceId"] for i in desc2["LoadBalancerDescriptions"][0]["Instances"]
-        ]
+        instance_ids2 = [i["InstanceId"] for i in desc2["LoadBalancerDescriptions"][0]["Instances"]]
         assert instance_id not in instance_ids2
 
 

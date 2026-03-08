@@ -77,10 +77,12 @@ class TestImportJson:
         mgr = StateManager()
         mgr.register_native_handler("sqs", lambda: {}, lambda d: loaded.update(d))
 
-        mgr.import_json({
-            "version": "1.0",
-            "native_state": {"sqs": {"queues": ["q1", "q2"]}},
-        })
+        mgr.import_json(
+            {
+                "version": "1.0",
+                "native_state": {"sqs": {"queues": ["q1", "q2"]}},
+            }
+        )
         assert loaded == {"queues": ["q1", "q2"]}
 
     def test_import_skips_unregistered(self):
@@ -89,9 +91,11 @@ class TestImportJson:
         mgr.register_native_handler("sqs", lambda: {}, lambda d: loaded.update(d))
 
         # Import data for a service we don't have registered
-        mgr.import_json({
-            "native_state": {"unknown": {"data": 1}, "sqs": {"x": 1}},
-        })
+        mgr.import_json(
+            {
+                "native_state": {"unknown": {"data": 1}, "sqs": {"x": 1}},
+            }
+        )
         assert loaded == {"x": 1}
 
     def test_import_empty_native_state(self):

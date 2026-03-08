@@ -20,9 +20,7 @@ def stream_name():
 @pytest.fixture
 def created_stream(kinesisvideo_client, stream_name):
     """Create a stream and clean it up after the test."""
-    resp = kinesisvideo_client.create_stream(
-        StreamName=stream_name, DataRetentionInHours=24
-    )
+    resp = kinesisvideo_client.create_stream(StreamName=stream_name, DataRetentionInHours=24)
     arn = resp["StreamARN"]
     yield {"StreamName": stream_name, "StreamARN": arn}
     try:
@@ -34,9 +32,7 @@ def created_stream(kinesisvideo_client, stream_name):
 class TestKinesisVideoCompat:
     def test_create_stream(self, kinesisvideo_client):
         name = f"test-stream-{uuid.uuid4().hex[:8]}"
-        resp = kinesisvideo_client.create_stream(
-            StreamName=name, DataRetentionInHours=24
-        )
+        resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "StreamARN" in resp
         assert f"stream/{name}/" in resp["StreamARN"]
@@ -67,8 +63,7 @@ class TestKinesisVideoCompat:
     def test_list_streams_returns_stream_info_fields(self, kinesisvideo_client, created_stream):
         resp = kinesisvideo_client.list_streams()
         match = [
-            s for s in resp["StreamInfoList"]
-            if s["StreamName"] == created_stream["StreamName"]
+            s for s in resp["StreamInfoList"] if s["StreamName"] == created_stream["StreamName"]
         ]
         assert len(match) == 1
         info = match[0]

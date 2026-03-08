@@ -60,14 +60,13 @@ S3_NS = "http://s3.amazonaws.com/doc/2006-03-01/"
 # Presigned URL helpers
 # ---------------------------------------------------------------------------
 
+
 def _is_presigned_url(query_params: QueryParams) -> bool:
     """Check if the request is a presigned URL request."""
     return "X-Amz-Signature" in query_params or "Signature" in query_params
 
 
-def _strip_presigned_params(
-    request: Request, body: bytes | None = None
-) -> Request:
+def _strip_presigned_params(request: Request, body: bytes | None = None) -> Request:
     """Return a modified request with presigned URL params stripped.
 
     Converts X-Amz-Security-Token query param into a header (Moto expects it
@@ -93,27 +92,21 @@ def _strip_presigned_params(
     # If there was a security token, inject it as a header
     if security_token:
         headers = list(scope.get("headers", []))
-        headers.append(
-            (b"x-amz-security-token", security_token.encode("utf-8"))
-        )
+        headers.append((b"x-amz-security-token", security_token.encode("utf-8")))
         scope["headers"] = headers
 
     # Inject a fake Authorization header so Moto can extract region/credentials
     if not request.headers.get("authorization"):
         credential = request.query_params.get("X-Amz-Credential", "")
         if credential:
-            signed_headers = request.query_params.get(
-                "X-Amz-SignedHeaders", "host"
-            )
+            signed_headers = request.query_params.get("X-Amz-SignedHeaders", "host")
             auth_value = (
                 f"AWS4-HMAC-SHA256 Credential={credential}, "
                 f"SignedHeaders={signed_headers}, "
                 f"Signature=presigned-placeholder"
             )
         else:
-            access_key = request.query_params.get(
-                "AWSAccessKeyId", "testing"
-            )
+            access_key = request.query_params.get("AWSAccessKeyId", "testing")
             auth_value = (
                 f"AWS4-HMAC-SHA256 "
                 f"Credential={access_key}/20260101/us-east-1/s3/aws4_request, "
@@ -128,9 +121,7 @@ def _strip_presigned_params(
     # Ensure Content-Type header exists for PUT/POST
     method = scope.get("method", "GET").upper()
     if method in ("PUT", "POST"):
-        has_ct = any(
-            k == b"content-type" for k, v in scope.get("headers", [])
-        )
+        has_ct = any(k == b"content-type" for k, v in scope.get("headers", []))
         if not has_ct:
             headers = list(scope.get("headers", []))
             headers.append((b"content-type", b"application/octet-stream"))
@@ -148,6 +139,7 @@ def _strip_presigned_params(
 # CORS helpers
 # ---------------------------------------------------------------------------
 
+
 def set_bucket_cors(bucket: str, rules: list[dict]) -> None:
     with _store_lock:
         _cors_store[bucket] = rules
@@ -163,18 +155,14 @@ def delete_bucket_cors(bucket: str) -> None:
         _cors_store.pop(bucket, None)
 
 
-def _handle_cors_preflight(
-    bucket: str, request: Request
-) -> Response | None:
+def _handle_cors_preflight(bucket: str, request: Request) -> Response | None:
     """Handle OPTIONS request by checking CORS rules."""
     rules = get_bucket_cors(bucket)
     if not rules:
         return Response(status_code=403, content="CORSNotConfigured")
 
     origin = request.headers.get("origin", "")
-    req_method = request.headers.get(
-        "access-control-request-method", ""
-    )
+    req_method = request.headers.get("access-control-request-method", "")
 
     for rule in rules:
         allowed_origins = rule.get("AllowedOrigins", [])
@@ -193,13 +181,9 @@ def _handle_cors_preflight(
             "Access-Control-Allow-Methods": ", ".join(allowed_methods),
         }
         if allowed_headers:
-            headers["Access-Control-Allow-Headers"] = ", ".join(
-                allowed_headers
-            )
+            headers["Access-Control-Allow-Headers"] = ", ".join(allowed_headers)
         if expose_headers:
-            headers["Access-Control-Expose-Headers"] = ", ".join(
-                expose_headers
-            )
+            headers["Access-Control-Expose-Headers"] = ", ".join(expose_headers)
         if max_age is not None:
             headers["Access-Control-Max-Age"] = str(max_age)
         return Response(status_code=200, headers=headers)
@@ -222,10 +206,7 @@ def _parse_cors_xml(xml_str: str) -> list[dict]:
     except ET.ParseError:
         return rules
 
-    for cr in (
-        root.findall(f"{{{S3_NS}}}CORSRule")
-        + root.findall("CORSRule")
-    ):
+    for cr in root.findall(f"{{{S3_NS}}}CORSRule") + root.findall("CORSRule"):
         rule: dict = {
             "AllowedOrigins": [],
             "AllowedMethods": [],
@@ -254,9 +235,7 @@ def _parse_cors_xml(xml_str: str) -> list[dict]:
 
 def _cors_to_xml(rules: list[dict]) -> str:
     parts = ['<?xml version="1.0" encoding="UTF-8"?>']
-    parts.append(
-        f'<CORSConfiguration xmlns="{S3_NS}">'
-    )
+    parts.append(f'<CORSConfiguration xmlns="{S3_NS}">')
     for rule in rules:
         parts.append("<CORSRule>")
         for origin in rule.get("AllowedOrigins", []):
@@ -268,9 +247,7 @@ def _cors_to_xml(rules: list[dict]) -> str:
         for header in rule.get("ExposeHeaders", []):
             parts.append(f"<ExposeHeader>{header}</ExposeHeader>")
         if "MaxAgeSeconds" in rule:
-            parts.append(
-                f"<MaxAgeSeconds>{rule['MaxAgeSeconds']}</MaxAgeSeconds>"
-            )
+            parts.append(f"<MaxAgeSeconds>{rule['MaxAgeSeconds']}</MaxAgeSeconds>")
         parts.append("</CORSRule>")
     parts.append("</CORSConfiguration>")
     return "".join(parts)
@@ -279,6 +256,7 @@ def _cors_to_xml(rules: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 # Lifecycle helpers
 # ---------------------------------------------------------------------------
+
 
 def set_bucket_lifecycle(bucket: str, rules: list[dict]) -> None:
     with _store_lock:
@@ -303,9 +281,7 @@ def _parse_lifecycle_xml(xml_str: str) -> list[dict]:
     except ET.ParseError:
         return rules
 
-    for rule_el in (
-        root.findall(f"{{{S3_NS}}}Rule") + root.findall("Rule")
-    ):
+    for rule_el in root.findall(f"{{{S3_NS}}}Rule") + root.findall("Rule"):
         rule: dict = {}
         for child in rule_el:
             tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
@@ -316,21 +292,13 @@ def _parse_lifecycle_xml(xml_str: str) -> list[dict]:
             elif tag == "Filter":
                 flt: dict = {}
                 for fc in child:
-                    ftag = (
-                        fc.tag.split("}")[-1]
-                        if "}" in fc.tag
-                        else fc.tag
-                    )
+                    ftag = fc.tag.split("}")[-1] if "}" in fc.tag else fc.tag
                     if ftag == "Prefix":
                         flt["Prefix"] = fc.text or ""
                     elif ftag == "Tag":
                         tag_dict: dict = {}
                         for tc in fc:
-                            ttag = (
-                                tc.tag.split("}")[-1]
-                                if "}" in tc.tag
-                                else tc.tag
-                            )
+                            ttag = tc.tag.split("}")[-1] if "}" in tc.tag else tc.tag
                             tag_dict[ttag] = tc.text or ""
                         flt.setdefault("Tags", []).append(tag_dict)
                 rule["Filter"] = flt
@@ -339,41 +307,25 @@ def _parse_lifecycle_xml(xml_str: str) -> list[dict]:
             elif tag == "Expiration":
                 exp: dict = {}
                 for ec in child:
-                    etag = (
-                        ec.tag.split("}")[-1]
-                        if "}" in ec.tag
-                        else ec.tag
-                    )
+                    etag = ec.tag.split("}")[-1] if "}" in ec.tag else ec.tag
                     exp[etag] = ec.text or ""
                 rule["Expiration"] = exp
             elif tag == "Transition":
                 trans: dict = {}
                 for tc_el in child:
-                    ttag = (
-                        tc_el.tag.split("}")[-1]
-                        if "}" in tc_el.tag
-                        else tc_el.tag
-                    )
+                    ttag = tc_el.tag.split("}")[-1] if "}" in tc_el.tag else tc_el.tag
                     trans[ttag] = tc_el.text or ""
                 rule.setdefault("Transitions", []).append(trans)
             elif tag == "NoncurrentVersionExpiration":
                 nve: dict = {}
                 for nc in child:
-                    ntag = (
-                        nc.tag.split("}")[-1]
-                        if "}" in nc.tag
-                        else nc.tag
-                    )
+                    ntag = nc.tag.split("}")[-1] if "}" in nc.tag else nc.tag
                     nve[ntag] = nc.text or ""
                 rule["NoncurrentVersionExpiration"] = nve
             elif tag == "AbortIncompleteMultipartUpload":
                 aimu: dict = {}
                 for ac in child:
-                    atag = (
-                        ac.tag.split("}")[-1]
-                        if "}" in ac.tag
-                        else ac.tag
-                    )
+                    atag = ac.tag.split("}")[-1] if "}" in ac.tag else ac.tag
                     aimu[atag] = ac.text or ""
                 rule["AbortIncompleteMultipartUpload"] = aimu
         rules.append(rule)
@@ -382,9 +334,7 @@ def _parse_lifecycle_xml(xml_str: str) -> list[dict]:
 
 def _lifecycle_to_xml(rules: list[dict]) -> str:
     parts = ['<?xml version="1.0" encoding="UTF-8"?>']
-    parts.append(
-        f'<LifecycleConfiguration xmlns="{S3_NS}">'
-    )
+    parts.append(f'<LifecycleConfiguration xmlns="{S3_NS}">')
     for rule in rules:
         parts.append("<Rule>")
         if "ID" in rule:
@@ -431,6 +381,7 @@ def _lifecycle_to_xml(rules: list[dict]) -> str:
 # Object lock / legal hold helpers
 # ---------------------------------------------------------------------------
 
+
 def set_object_lock_config(bucket: str, config: dict) -> None:
     with _store_lock:
         _object_lock_store[bucket] = config
@@ -441,9 +392,7 @@ def get_object_lock_config(bucket: str) -> dict | None:
         return _object_lock_store.get(bucket)
 
 
-def set_object_legal_hold(
-    bucket: str, key: str, status: str
-) -> None:
+def set_object_legal_hold(bucket: str, key: str, status: str) -> None:
     with _store_lock:
         _object_legal_hold_store[f"{bucket}/{key}"] = status
 
@@ -467,17 +416,11 @@ def _parse_object_lock_xml(xml_str: str) -> dict:
         elif tag == "Rule":
             rule: dict = {}
             for rc in child:
-                rtag = (
-                    rc.tag.split("}")[-1] if "}" in rc.tag else rc.tag
-                )
+                rtag = rc.tag.split("}")[-1] if "}" in rc.tag else rc.tag
                 if rtag == "DefaultRetention":
                     retention: dict = {}
                     for dc in rc:
-                        dtag = (
-                            dc.tag.split("}")[-1]
-                            if "}" in dc.tag
-                            else dc.tag
-                        )
+                        dtag = dc.tag.split("}")[-1] if "}" in dc.tag else dc.tag
                         retention[dtag] = dc.text or ""
                     rule["DefaultRetention"] = retention
             config["Rule"] = rule
@@ -486,14 +429,9 @@ def _parse_object_lock_xml(xml_str: str) -> dict:
 
 def _object_lock_to_xml(config: dict) -> str:
     parts = ['<?xml version="1.0" encoding="UTF-8"?>']
-    parts.append(
-        f'<ObjectLockConfiguration xmlns="{S3_NS}">'
-    )
+    parts.append(f'<ObjectLockConfiguration xmlns="{S3_NS}">')
     if "ObjectLockEnabled" in config:
-        parts.append(
-            f"<ObjectLockEnabled>{config['ObjectLockEnabled']}"
-            f"</ObjectLockEnabled>"
-        )
+        parts.append(f"<ObjectLockEnabled>{config['ObjectLockEnabled']}</ObjectLockEnabled>")
     if "Rule" in config:
         parts.append("<Rule>")
         if "DefaultRetention" in config["Rule"]:
@@ -531,6 +469,7 @@ def _legal_hold_to_xml(status: str) -> str:
 # Query-param routing helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_query_param(request: Request) -> str | None:
     """Return the first S3 sub-resource query parameter, or None."""
     qs = str(request.url.query)
@@ -560,9 +499,8 @@ _S3_SUBRESOURCES = {
 # Main request handler
 # ---------------------------------------------------------------------------
 
-async def handle_s3_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+
+async def handle_s3_request(request: Request, region: str, account_id: str) -> Response:
     """Handle S3 request: delegate to Moto, then fire notifications."""
     path = request.url.path
     method = request.method.upper()
@@ -686,9 +624,8 @@ async def handle_s3_request(
 # Sub-resource handlers
 # ---------------------------------------------------------------------------
 
-async def _handle_notification_config(
-    request: Request, method: str, path: str
-) -> Response:
+
+async def _handle_notification_config(request: Request, method: str, path: str) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
@@ -697,9 +634,7 @@ async def _handle_notification_config(
     if method == "GET":
         config = get_notification_config(bucket)
         xml = _notification_config_to_xml(config)
-        return Response(
-            content=xml, status_code=200, media_type="application/xml"
-        )
+        return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
         config = _parse_notification_config_xml(body.decode())
@@ -709,9 +644,7 @@ async def _handle_notification_config(
     return Response(status_code=405)
 
 
-async def _handle_cors_config(
-    request: Request, method: str, path: str
-) -> Response:
+async def _handle_cors_config(request: Request, method: str, path: str) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
@@ -730,9 +663,7 @@ async def _handle_cors_config(
                 media_type="application/xml",
             )
         xml = _cors_to_xml(rules)
-        return Response(
-            content=xml, status_code=200, media_type="application/xml"
-        )
+        return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
         rules = _parse_cors_xml(body.decode())
@@ -745,9 +676,7 @@ async def _handle_cors_config(
     return Response(status_code=405)
 
 
-async def _handle_lifecycle_config(
-    request: Request, method: str, path: str
-) -> Response:
+async def _handle_lifecycle_config(request: Request, method: str, path: str) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
@@ -766,9 +695,7 @@ async def _handle_lifecycle_config(
                 media_type="application/xml",
             )
         xml = _lifecycle_to_xml(rules)
-        return Response(
-            content=xml, status_code=200, media_type="application/xml"
-        )
+        return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
         rules = _parse_lifecycle_xml(body.decode())
@@ -781,9 +708,7 @@ async def _handle_lifecycle_config(
     return Response(status_code=405)
 
 
-async def _handle_object_lock_config(
-    request: Request, method: str, path: str
-) -> Response:
+async def _handle_object_lock_config(request: Request, method: str, path: str) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
@@ -802,9 +727,7 @@ async def _handle_object_lock_config(
                 media_type="application/xml",
             )
         xml = _object_lock_to_xml(config)
-        return Response(
-            content=xml, status_code=200, media_type="application/xml"
-        )
+        return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
         config = _parse_object_lock_xml(body.decode())
@@ -814,9 +737,7 @@ async def _handle_object_lock_config(
     return Response(status_code=405)
 
 
-async def _handle_legal_hold(
-    request: Request, method: str, path: str
-) -> Response:
+async def _handle_legal_hold(request: Request, method: str, path: str) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
@@ -832,15 +753,12 @@ async def _handle_legal_hold(
             return Response(
                 status_code=404,
                 content=(
-                    "<Error><Code>NoSuchKey</Code>"
-                    "<Message>Legal hold not set</Message></Error>"
+                    "<Error><Code>NoSuchKey</Code><Message>Legal hold not set</Message></Error>"
                 ),
                 media_type="application/xml",
             )
         xml = _legal_hold_to_xml(status)
-        return Response(
-            content=xml, status_code=200, media_type="application/xml"
-        )
+        return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
         status = _parse_legal_hold_xml(body.decode())
@@ -850,9 +768,7 @@ async def _handle_legal_hold(
     return Response(status_code=405)
 
 
-async def _handle_logging_config(
-    request: Request, method: str, path: str
-) -> Response:
+async def _handle_logging_config(request: Request, method: str, path: str) -> Response:
     """Handle ?logging sub-resource — skip Moto's strict permission checks."""
     match = _PATH_RE.match(path)
     if not match:
@@ -865,7 +781,7 @@ async def _handle_logging_config(
         if config:
             xml = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'
-                f"<BucketLoggingStatus xmlns=\"{S3_NS}\">"
+                f'<BucketLoggingStatus xmlns="{S3_NS}">'
                 f"<LoggingEnabled>"
                 f"<TargetBucket>{config['TargetBucket']}</TargetBucket>"
                 f"<TargetPrefix>{config.get('TargetPrefix', '')}</TargetPrefix>"
@@ -873,10 +789,7 @@ async def _handle_logging_config(
                 f"</BucketLoggingStatus>"
             )
         else:
-            xml = (
-                f'<?xml version="1.0" encoding="UTF-8"?>'
-                f"<BucketLoggingStatus xmlns=\"{S3_NS}\"/>"
-            )
+            xml = f'<?xml version="1.0" encoding="UTF-8"?><BucketLoggingStatus xmlns="{S3_NS}"/>'
         return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
@@ -886,12 +799,8 @@ async def _handle_logging_config(
             ns = {"s3": S3_NS}
             le = root.find("s3:LoggingEnabled", ns) or root.find("LoggingEnabled")
             if le is not None:
-                tb = le.findtext("{%s}TargetBucket" % S3_NS) or le.findtext(
-                    "TargetBucket"
-                )
-                tp = le.findtext("{%s}TargetPrefix" % S3_NS) or le.findtext(
-                    "TargetPrefix"
-                ) or ""
+                tb = le.findtext(f"{{{S3_NS}}}TargetBucket") or le.findtext("TargetBucket")
+                tp = le.findtext(f"{{{S3_NS}}}TargetPrefix") or le.findtext("TargetPrefix") or ""
                 with _store_lock:
                     _logging_store[bucket] = {
                         "TargetBucket": tb or "",
@@ -910,6 +819,7 @@ async def _handle_logging_config(
 # Notification config XML parsing/serialization
 # ---------------------------------------------------------------------------
 
+
 def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
     """Parse S3 notification configuration XML."""
     config = NotificationConfig()
@@ -921,20 +831,13 @@ def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
 
     ns = S3_NS
 
-    for qc in (
-        root.findall(f"{{{ns}}}QueueConfiguration")
-        + root.findall("QueueConfiguration")
-    ):
+    for qc in root.findall(f"{{{ns}}}QueueConfiguration") + root.findall("QueueConfiguration"):
         queue_arn = ""
         events: list[str] = []
         filter_rules: list[dict] = []
 
         for child in qc:
-            tag = (
-                child.tag.split("}")[-1]
-                if "}" in child.tag
-                else child.tag
-            )
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if tag == "Queue":
                 queue_arn = child.text or ""
             elif tag == "Event":
@@ -947,20 +850,13 @@ def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
             entry["Filter"] = {"Key": {"FilterRules": filter_rules}}
         config.queue_configs.append(entry)
 
-    for tc in (
-        root.findall(f"{{{ns}}}TopicConfiguration")
-        + root.findall("TopicConfiguration")
-    ):
+    for tc in root.findall(f"{{{ns}}}TopicConfiguration") + root.findall("TopicConfiguration"):
         topic_arn = ""
         events = []
         filter_rules = []
 
         for child in tc:
-            tag = (
-                child.tag.split("}")[-1]
-                if "}" in child.tag
-                else child.tag
-            )
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if tag == "Topic":
                 topic_arn = child.text or ""
             elif tag == "Event":
@@ -985,11 +881,7 @@ def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
         filter_rules = []
 
         for child in lc:
-            tag = (
-                child.tag.split("}")[-1]
-                if "}" in child.tag
-                else child.tag
-            )
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if tag in ("CloudFunction", "LambdaFunctionArn"):
                 lambda_arn = child.text or ""
             elif tag == "Event":
@@ -1009,18 +901,12 @@ def _parse_filter_rules(filter_el: ET.Element) -> list[dict]:
     """Extract FilterRule elements from a Filter element."""
     filter_rules: list[dict] = []
     for rule in filter_el.iter():
-        rtag = (
-            rule.tag.split("}")[-1] if "}" in rule.tag else rule.tag
-        )
+        rtag = rule.tag.split("}")[-1] if "}" in rule.tag else rule.tag
         if rtag == "FilterRule":
             name = ""
             value = ""
             for rc in rule:
-                rctag = (
-                    rc.tag.split("}")[-1]
-                    if "}" in rc.tag
-                    else rc.tag
-                )
+                rctag = rc.tag.split("}")[-1] if "}" in rc.tag else rc.tag
                 if rctag == "Name":
                     name = rc.text or ""
                 elif rctag == "Value":
@@ -1032,9 +918,7 @@ def _parse_filter_rules(filter_el: ET.Element) -> list[dict]:
 
 def _notification_config_to_xml(config: NotificationConfig) -> str:
     parts = ['<?xml version="1.0" encoding="UTF-8"?>']
-    parts.append(
-        f'<NotificationConfiguration xmlns="{S3_NS}">'
-    )
+    parts.append(f'<NotificationConfiguration xmlns="{S3_NS}">')
 
     for qc in config.queue_configs:
         parts.append("<QueueConfiguration>")
@@ -1054,10 +938,7 @@ def _notification_config_to_xml(config: NotificationConfig) -> str:
 
     for lc in config.lambda_configs:
         parts.append("<LambdaFunctionConfiguration>")
-        parts.append(
-            f"<LambdaFunctionArn>{lc['LambdaFunctionArn']}"
-            f"</LambdaFunctionArn>"
-        )
+        parts.append(f"<LambdaFunctionArn>{lc['LambdaFunctionArn']}</LambdaFunctionArn>")
         for evt in lc.get("Events", []):
             parts.append(f"<Event>{evt}</Event>")
         _append_filter_xml(parts, lc)
@@ -1070,9 +951,7 @@ def _notification_config_to_xml(config: NotificationConfig) -> str:
 def _append_filter_xml(parts: list[str], entry: dict) -> None:
     if "Filter" in entry:
         parts.append("<Filter><S3Key>")
-        for rule in (
-            entry["Filter"].get("Key", {}).get("FilterRules", [])
-        ):
+        for rule in entry["Filter"].get("Key", {}).get("FilterRules", []):
             parts.append(
                 f"<FilterRule><Name>{rule['Name']}</Name>"
                 f"<Value>{rule['Value']}</Value></FilterRule>"

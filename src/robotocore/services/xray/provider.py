@@ -29,9 +29,7 @@ def _json_response(data: dict, status_code: int = 200) -> Response:
     )
 
 
-async def handle_xray_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_xray_request(request: Request, region: str, account_id: str) -> Response:
     """Handle X-Ray requests, intercepting operations Moto doesn't implement."""
     path = request.url.path.rstrip("/")
 
@@ -118,10 +116,13 @@ def _create_group(params: dict, region: str, account_id: str) -> dict:
         "GroupName": group_name,
         "GroupARN": group_arn,
         "FilterExpression": filter_expr,
-        "InsightsConfiguration": params.get("InsightsConfiguration", {
-            "InsightsEnabled": False,
-            "NotificationsEnabled": False,
-        }),
+        "InsightsConfiguration": params.get(
+            "InsightsConfiguration",
+            {
+                "InsightsEnabled": False,
+                "NotificationsEnabled": False,
+            },
+        ),
     }
     _groups[group_name] = group
 

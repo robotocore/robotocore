@@ -468,9 +468,7 @@ class TestStackEvents:
             "us-east-1",
             "123",
         )
-        result = _describe_stack_events(
-            store, {"StackName": "ev-stack"}, "us-east-1", "123"
-        )
+        result = _describe_stack_events(store, {"StackName": "ev-stack"}, "us-east-1", "123")
         events = result["StackEvents"]
         assert len(events) >= 2  # CREATE_IN_PROGRESS + CREATE_COMPLETE
         statuses = [e["ResourceStatus"] for e in events]
@@ -506,9 +504,7 @@ class TestListStackResources:
             physical_id="http://queue-url",
             status="CREATE_COMPLETE",
         )
-        result = _list_stack_resources(
-            store, {"StackName": "lr-stack"}, "us-east-1", "123"
-        )
+        result = _list_stack_resources(store, {"StackName": "lr-stack"}, "us-east-1", "123")
         summaries = result["StackResourceSummaries"]
         assert len(summaries) == 1
         assert summaries[0]["LogicalResourceId"] == "MyQueue"
@@ -658,7 +654,7 @@ class TestChangeSet:
 
     def test_describe_change_set(self):
         store = CfnStore()
-        create_result = _create_change_set(
+        _create_change_set(
             store,
             {"StackName": "s1", "ChangeSetName": "cs1", "ChangeSetType": "CREATE"},
             "us-east-1",
@@ -674,9 +670,7 @@ class TestChangeSet:
     def test_describe_change_set_not_found(self):
         store = CfnStore()
         with pytest.raises(CfnError) as exc_info:
-            _describe_change_set(
-                store, {"ChangeSetName": "nonexistent"}, "us-east-1", "123"
-            )
+            _describe_change_set(store, {"ChangeSetName": "nonexistent"}, "us-east-1", "123")
         assert "ChangeSetNotFoundException" in exc_info.value.code
 
     def test_delete_change_set(self):
@@ -688,9 +682,7 @@ class TestChangeSet:
             "123",
         )
         assert len(store.change_sets) == 1
-        _delete_change_set(
-            store, {"ChangeSetName": "cs1", "StackName": "s1"}, "us-east-1", "123"
-        )
+        _delete_change_set(store, {"ChangeSetName": "cs1", "StackName": "s1"}, "us-east-1", "123")
         assert len(store.change_sets) == 0
 
     def test_create_change_set_creates_stub_stack(self):

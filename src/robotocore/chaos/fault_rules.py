@@ -116,9 +116,7 @@ class FaultRuleStore:
         with self._lock:
             return [r.to_dict() for r in self._rules]
 
-    def find_matching(
-        self, service: str, operation: str | None, region: str
-    ) -> FaultRule | None:
+    def find_matching(self, service: str, operation: str | None, region: str) -> FaultRule | None:
         """Find the first matching fault rule for a request."""
         with self._lock:
             for rule in self._rules:

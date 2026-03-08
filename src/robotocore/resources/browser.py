@@ -123,9 +123,11 @@ def get_service_resources(service_name: str) -> list[dict]:
                 # Heuristic: dicts with string keys might be resource stores
                 first_key = next(iter(obj))
                 if isinstance(first_key, str):
-                    resources.append({
-                        "type": attr,
-                        "count": len(obj),
-                    })
+                    resources.append(
+                        {
+                            "type": attr,
+                            "count": len(obj),
+                        }
+                    )
 
     return resources

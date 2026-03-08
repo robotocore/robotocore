@@ -28,8 +28,28 @@ logger = logging.getLogger(__name__)
 
 # Valid retention values per AWS API docs
 _VALID_RETENTION_DAYS = {
-    1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
-    1096, 1827, 2192, 2557, 2922, 3288, 3653,
+    1,
+    3,
+    5,
+    7,
+    14,
+    30,
+    60,
+    90,
+    120,
+    150,
+    180,
+    365,
+    400,
+    545,
+    731,
+    1096,
+    1827,
+    2192,
+    2557,
+    2922,
+    3288,
+    3653,
 }
 
 
@@ -187,9 +207,7 @@ async def _filter_log_events_with_prefix(
                 400,
             )
         log_group = logs_backend.groups[log_group_name]
-        matching_streams = [
-            name for name in log_group.streams if name.startswith(prefix)
-        ]
+        matching_streams = [name for name in log_group.streams if name.startswith(prefix)]
     except Exception as e:
         return _error_response("InternalError", str(e), 500)
 
@@ -212,11 +230,14 @@ async def _filter_log_events_with_prefix(
             filter_pattern,
             interleaved,
         )
-        return _json_response(200, {
-            "events": events,
-            "nextToken": next_token_out,
-            "searchedLogStreams": searched_streams,
-        })
+        return _json_response(
+            200,
+            {
+                "events": events,
+                "nextToken": next_token_out,
+                "searchedLogStreams": searched_streams,
+            },
+        )
     except Exception as e:
         return _error_response("InternalError", str(e), 500)
 
@@ -348,9 +369,7 @@ def _put_metric_filter(params: dict, region: str, account_id: str) -> dict:
     if not filter_name:
         raise LogsError("InvalidParameterException", "filterName is required")
 
-    store.put_metric_filter(
-        log_group_name, filter_name, filter_pattern, metric_transformations
-    )
+    store.put_metric_filter(log_group_name, filter_name, filter_pattern, metric_transformations)
     return {}
 
 

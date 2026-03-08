@@ -192,8 +192,7 @@ class TestDMSSubnetGroupOperations:
         try:
             response = dms.describe_replication_subnet_groups()
             ids = [
-                g["ReplicationSubnetGroupIdentifier"]
-                for g in response["ReplicationSubnetGroups"]
+                g["ReplicationSubnetGroupIdentifier"] for g in response["ReplicationSubnetGroups"]
             ]
             assert sg_id in ids
         finally:
@@ -219,10 +218,7 @@ class TestDMSSubnetGroupOperations:
         dms.delete_replication_subnet_group(ReplicationSubnetGroupIdentifier=sg_id)
 
         response = dms.describe_replication_subnet_groups()
-        ids = [
-            g["ReplicationSubnetGroupIdentifier"]
-            for g in response["ReplicationSubnetGroups"]
-        ]
+        ids = [g["ReplicationSubnetGroupIdentifier"] for g in response["ReplicationSubnetGroups"]]
         assert sg_id not in ids
 
 

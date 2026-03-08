@@ -513,12 +513,8 @@ class TestIAMInlinePolicyExtended:
         p2 = _unique("lrp-pol2")
         try:
             iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
-            iam.put_role_policy(
-                RoleName=role_name, PolicyName=p1, PolicyDocument=SIMPLE_POLICY_DOC
-            )
-            iam.put_role_policy(
-                RoleName=role_name, PolicyName=p2, PolicyDocument=SIMPLE_POLICY_DOC
-            )
+            iam.put_role_policy(RoleName=role_name, PolicyName=p1, PolicyDocument=SIMPLE_POLICY_DOC)
+            iam.put_role_policy(RoleName=role_name, PolicyName=p2, PolicyDocument=SIMPLE_POLICY_DOC)
             resp = iam.list_role_policies(RoleName=role_name)
             assert p1 in resp["PolicyNames"]
             assert p2 in resp["PolicyNames"]
@@ -568,12 +564,8 @@ class TestIAMInlinePolicyExtended:
         p2 = _unique("lup-pol2")
         try:
             iam.create_user(UserName=user_name)
-            iam.put_user_policy(
-                UserName=user_name, PolicyName=p1, PolicyDocument=SIMPLE_POLICY_DOC
-            )
-            iam.put_user_policy(
-                UserName=user_name, PolicyName=p2, PolicyDocument=SIMPLE_POLICY_DOC
-            )
+            iam.put_user_policy(UserName=user_name, PolicyName=p1, PolicyDocument=SIMPLE_POLICY_DOC)
+            iam.put_user_policy(UserName=user_name, PolicyName=p2, PolicyDocument=SIMPLE_POLICY_DOC)
             resp = iam.list_user_policies(UserName=user_name)
             assert p1 in resp["PolicyNames"]
             assert p2 in resp["PolicyNames"]
@@ -657,9 +649,7 @@ class TestIAMAccessKeys:
             assert ak["Status"] == "Active"
         finally:
             try:
-                iam.delete_access_key(
-                    UserName=user_name, AccessKeyId=ak["AccessKeyId"]
-                )
+                iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
                 pass
             iam.delete_user(UserName=user_name)
@@ -674,9 +664,7 @@ class TestIAMAccessKeys:
             assert ak["AccessKeyId"] in key_ids
         finally:
             try:
-                iam.delete_access_key(
-                    UserName=user_name, AccessKeyId=ak["AccessKeyId"]
-                )
+                iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
                 pass
             iam.delete_user(UserName=user_name)
@@ -698,9 +686,7 @@ class TestIAMAccessKeys:
             assert key["Status"] == "Inactive"
         finally:
             try:
-                iam.delete_access_key(
-                    UserName=user_name, AccessKeyId=ak["AccessKeyId"]
-                )
+                iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
                 pass
             iam.delete_user(UserName=user_name)
@@ -710,9 +696,7 @@ class TestIAMAccessKeys:
         try:
             iam.create_user(UserName=user_name)
             ak = iam.create_access_key(UserName=user_name)["AccessKey"]
-            iam.delete_access_key(
-                UserName=user_name, AccessKeyId=ak["AccessKeyId"]
-            )
+            iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             resp = iam.list_access_keys(UserName=user_name)
             key_ids = [k["AccessKeyId"] for k in resp["AccessKeyMetadata"]]
             assert ak["AccessKeyId"] not in key_ids
@@ -912,7 +896,6 @@ class TestIAMPolicyVersionsExtended:
             iam.delete_policy(PolicyArn=arn)
 
 
-
 # Group membership
 # ---------------------------------------------------------------------------
 
@@ -995,9 +978,7 @@ class TestIAMInstanceProfileCRUD:
         iam.create_instance_profile(InstanceProfileName=profile_name)
         iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
         try:
-            iam.add_role_to_instance_profile(
-                InstanceProfileName=profile_name, RoleName=role_name
-            )
+            iam.add_role_to_instance_profile(InstanceProfileName=profile_name, RoleName=role_name)
             resp = iam.get_instance_profile(InstanceProfileName=profile_name)
             role_names = [r["RoleName"] for r in resp["InstanceProfile"]["Roles"]]
             assert role_name in role_names
@@ -1125,7 +1106,9 @@ class TestIAMServiceLinkedRole:
         try:
             resp = iam.create_service_linked_role(AWSServiceName="elasticbeanstalk.amazonaws.com")
             role = resp["Role"]
-            assert "elasticbeanstalk" in role["RoleName"].lower() or "AWSServiceRole" in role["Path"]
+            assert (
+                "elasticbeanstalk" in role["RoleName"].lower() or "AWSServiceRole" in role["Path"]
+            )
             role_name = role["RoleName"]
         except iam.exceptions.InvalidInputException:
             pytest.skip("Service linked role already exists")
@@ -1175,7 +1158,7 @@ class TestIAMSAMLProvider:
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
             ' entityID="https://idp.example.com/metadata">'
-            '<IDPSSODescriptor'
+            "<IDPSSODescriptor"
             ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
             '<KeyDescriptor use="signing">'
             '<KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">'
@@ -1189,10 +1172,10 @@ class TestIAMSAMLProvider:
             "KoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA"
             "</X509Certificate></X509Data>"
             "</KeyInfo></KeyDescriptor>"
-            '<SingleSignOnService'
+            "<SingleSignOnService"
             ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
             ' Location="https://idp.example.com/sso"/>'
-            '<SingleSignOnService'
+            "<SingleSignOnService"
             ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
             ' Location="https://idp.example.com/sso"/>'
             "</IDPSSODescriptor></EntityDescriptor>"
@@ -1249,17 +1232,19 @@ class TestIAMAccountSummary:
         assert "Policies" in summary
 
 
-class TestIAMPolicyVersionsExtended:
+class TestIAMPolicyVersionsV2:
     def test_create_list_get_delete_policy_version(self, iam):
         """CreatePolicyVersion / ListPolicyVersions / GetPolicyVersion / DeletePolicyVersion."""
         policy_name = _unique("pv-pol")
         pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
         arn = pol["Policy"]["Arn"]
         try:
-            new_doc = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
-            })
+            new_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+                }
+            )
             v2 = iam.create_policy_version(PolicyArn=arn, PolicyDocument=new_doc)
             assert v2["PolicyVersion"]["VersionId"] == "v2"
 
@@ -1391,7 +1376,7 @@ class TestIAMSSHPublicKeys:
             iam.delete_user(UserName=user_name)
 
 
-class TestIAMUserTags:
+class TestIAMUserTagsExtended:
     def test_tag_untag_list_user_tags(self, iam):
         """TagUser / UntagUser / ListUserTags."""
         user_name = _unique("tag-user")
@@ -1418,7 +1403,7 @@ class TestIAMUserTags:
             iam.delete_user(UserName=user_name)
 
 
-class TestIAMRoleTags:
+class TestIAMRoleTagsExtended:
     def test_tag_untag_list_role_tags(self, iam):
         """TagRole / UntagRole / ListRoleTags."""
         role_name = _unique("tag-role")
@@ -1472,6 +1457,7 @@ class TestIAMExtendedOperations:
     @pytest.fixture
     def iam(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("iam")
 
     def test_create_user_with_tags(self, iam):
@@ -1576,9 +1562,7 @@ class TestIAMExtendedOperations:
         iam.create_user(UserName=user)
         try:
             ak = iam.create_access_key(UserName=user)["AccessKey"]
-            iam.update_access_key(
-                UserName=user, AccessKeyId=ak["AccessKeyId"], Status="Inactive"
-            )
+            iam.update_access_key(UserName=user, AccessKeyId=ak["AccessKeyId"], Status="Inactive")
             keys = iam.list_access_keys(UserName=user)
             key = [k for k in keys["AccessKeyMetadata"] if k["AccessKeyId"] == ak["AccessKeyId"]][0]
             assert key["Status"] == "Inactive"
@@ -1593,7 +1577,8 @@ class TestIAMExtendedOperations:
         iam.create_role(RoleName=role, AssumeRolePolicyDocument=TRUST_POLICY)
         try:
             iam.put_role_policy(
-                RoleName=role, PolicyName="inline-pol",
+                RoleName=role,
+                PolicyName="inline-pol",
                 PolicyDocument=SIMPLE_POLICY_DOC,
             )
             resp = iam.get_role_policy(RoleName=role, PolicyName="inline-pol")
@@ -1614,7 +1599,8 @@ class TestIAMExtendedOperations:
         iam.create_user(UserName=user)
         try:
             iam.put_user_policy(
-                UserName=user, PolicyName="user-inline",
+                UserName=user,
+                PolicyName="user-inline",
                 PolicyDocument=SIMPLE_POLICY_DOC,
             )
             resp = iam.get_user_policy(UserName=user, PolicyName="user-inline")
@@ -1637,16 +1623,12 @@ class TestIAMExtendedOperations:
             resp = iam.create_instance_profile(InstanceProfileName=name)
             assert resp["InstanceProfile"]["InstanceProfileName"] == name
 
-            iam.add_role_to_instance_profile(
-                InstanceProfileName=name, RoleName=role
-            )
+            iam.add_role_to_instance_profile(InstanceProfileName=name, RoleName=role)
             described = iam.get_instance_profile(InstanceProfileName=name)
             roles = [r["RoleName"] for r in described["InstanceProfile"]["Roles"]]
             assert role in roles
 
-            iam.remove_role_from_instance_profile(
-                InstanceProfileName=name, RoleName=role
-            )
+            iam.remove_role_from_instance_profile(InstanceProfileName=name, RoleName=role)
             iam.delete_instance_profile(InstanceProfileName=name)
         finally:
             iam.delete_role(RoleName=role)
@@ -1947,8 +1929,14 @@ class TestIAMExtendedV2:
         resp = iam.get_account_summary()
         summary = resp["SummaryMap"]
         expected_keys = [
-            "Users", "Roles", "Groups", "Policies",
-            "UsersQuota", "RolesQuota", "GroupsQuota", "PoliciesQuota",
+            "Users",
+            "Roles",
+            "Groups",
+            "Policies",
+            "UsersQuota",
+            "RolesQuota",
+            "GroupsQuota",
+            "PoliciesQuota",
         ]
         for key in expected_keys:
             assert key in summary, f"Missing key: {key}"
@@ -1975,4 +1963,3 @@ class TestIAMExtendedV2:
             assert resp["Role"]["MaxSessionDuration"] == 7200
         finally:
             iam.delete_role(RoleName=role_name)
-

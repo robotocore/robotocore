@@ -27,9 +27,7 @@ def channel_group(mediapackagev2_client):
 def channel(mediapackagev2_client, channel_group):
     cg_name = channel_group["ChannelGroupName"]
     ch_name = f"test-ch-{uuid.uuid4().hex[:8]}"
-    resp = mediapackagev2_client.create_channel(
-        ChannelGroupName=cg_name, ChannelName=ch_name
-    )
+    resp = mediapackagev2_client.create_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
     yield resp
     try:
         mediapackagev2_client.delete_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
@@ -76,33 +74,27 @@ class TestMediaPackageV2ChannelGroups:
         mediapackagev2_client.delete_channel_group(ChannelGroupName=name)
         with pytest.raises(Exception) as exc_info:
             mediapackagev2_client.get_channel_group(ChannelGroupName=name)
-        assert "ResourceNotFoundException" in str(type(exc_info.value).__name__) or \
-            "ResourceNotFoundException" in str(exc_info.value)
+        assert "ResourceNotFoundException" in str(
+            type(exc_info.value).__name__
+        ) or "ResourceNotFoundException" in str(exc_info.value)
+
 
 class TestMediaPackageV2Channels:
     def test_create_channel(self, mediapackagev2_client, channel_group):
         cg_name = channel_group["ChannelGroupName"]
         ch_name = f"test-ch-{uuid.uuid4().hex[:8]}"
-        resp = mediapackagev2_client.create_channel(
-            ChannelGroupName=cg_name, ChannelName=ch_name
-        )
+        resp = mediapackagev2_client.create_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
         try:
             assert resp["ChannelName"] == ch_name
             assert resp["ChannelGroupName"] == cg_name
             assert "Arn" in resp
             assert "ETag" in resp
         finally:
-            mediapackagev2_client.delete_channel(
-                ChannelGroupName=cg_name, ChannelName=ch_name
-            )
+            mediapackagev2_client.delete_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
 
     def test_delete_channel(self, mediapackagev2_client, channel_group):
         cg_name = channel_group["ChannelGroupName"]
         ch_name = f"test-ch-{uuid.uuid4().hex[:8]}"
-        mediapackagev2_client.create_channel(
-            ChannelGroupName=cg_name, ChannelName=ch_name
-        )
+        mediapackagev2_client.create_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
         # Should not raise
-        mediapackagev2_client.delete_channel(
-            ChannelGroupName=cg_name, ChannelName=ch_name
-        )
+        mediapackagev2_client.delete_channel(ChannelGroupName=cg_name, ChannelName=ch_name)

@@ -195,9 +195,7 @@ class EventSourceEngine:
             if self._running:
                 return
             self._running = True
-            self._thread = threading.Thread(
-                target=self._poll_loop, daemon=True, name="lambda-esm"
-            )
+            self._thread = threading.Thread(target=self._poll_loop, daemon=True, name="lambda-esm")
             self._thread.start()
 
     def stop(self):
@@ -236,21 +234,37 @@ class EventSourceEngine:
 
                 if ":sqs:" in event_source_arn:
                     self._poll_sqs(
-                        event_source_arn, function_arn, batch_size,
-                        account_id, region, filter_criteria,
-                        bisect, max_retries, response_types,
+                        event_source_arn,
+                        function_arn,
+                        batch_size,
+                        account_id,
+                        region,
+                        filter_criteria,
+                        bisect,
+                        max_retries,
+                        response_types,
                     )
                 elif ":kinesis:" in event_source_arn:
                     self._poll_kinesis(
-                        event_source_arn, function_arn, batch_size,
-                        account_id, region, filter_criteria,
-                        bisect, max_retries,
+                        event_source_arn,
+                        function_arn,
+                        batch_size,
+                        account_id,
+                        region,
+                        filter_criteria,
+                        bisect,
+                        max_retries,
                     )
                 elif ":dynamodb:" in event_source_arn and "/stream/" in event_source_arn:
                     self._poll_dynamodb_stream(
-                        event_source_arn, function_arn, batch_size,
-                        account_id, region, filter_criteria,
-                        bisect, max_retries,
+                        event_source_arn,
+                        function_arn,
+                        batch_size,
+                        account_id,
+                        region,
+                        filter_criteria,
+                        bisect,
+                        max_retries,
                     )
             except Exception:
                 logger.exception("Error polling event source mapping")
@@ -320,9 +334,7 @@ class EventSourceEngine:
         event = {"Records": records}
 
         function_name = _extract_function_name(function_arn)
-        success, result = self._invoke_lambda_with_result(
-            function_name, event, account_id, region
-        )
+        success, result = self._invoke_lambda_with_result(function_name, event, account_id, region)
 
         if success:
             # Check for partial batch failure (ReportBatchItemFailures)
@@ -346,9 +358,7 @@ class EventSourceEngine:
                     function_name, records, account_id, region, queue, receipt_handles
                 )
 
-    def _bisect_and_retry(
-        self, function_name, records, account_id, region, queue, receipt_handles
-    ):
+    def _bisect_and_retry(self, function_name, records, account_id, region, queue, receipt_handles):
         """Split a failed batch in half and retry each half."""
         mid = len(records) // 2
         first_half = records[:mid]
@@ -382,9 +392,7 @@ class EventSourceEngine:
 
         store = _get_store(region)
         stream_name = (
-            stream_arn.rsplit("/", 1)[-1]
-            if "/" in stream_arn
-            else stream_arn.rsplit(":", 1)[-1]
+            stream_arn.rsplit("/", 1)[-1] if "/" in stream_arn else stream_arn.rsplit(":", 1)[-1]
         )
 
         stream = store.get_stream(stream_name)
@@ -433,14 +441,11 @@ class EventSourceEngine:
             # Apply filter criteria
             if filter_criteria:
                 event_records = [
-                    r for r in event_records
-                    if matches_filter_criteria(r, filter_criteria)
+                    r for r in event_records if matches_filter_criteria(r, filter_criteria)
                 ]
                 if not event_records:
                     # Advance position past filtered records
-                    self._kinesis_positions[position_key] = (
-                        records_to_send[-1].sequence_number
-                    )
+                    self._kinesis_positions[position_key] = records_to_send[-1].sequence_number
                     continue
 
             event = {"Records": event_records}
@@ -448,9 +453,7 @@ class EventSourceEngine:
             success = self._invoke_lambda(function_name, event, account_id, region)
 
             if success:
-                self._kinesis_positions[position_key] = (
-                    records_to_send[-1].sequence_number
-                )
+                self._kinesis_positions[position_key] = records_to_send[-1].sequence_number
             elif bisect and len(event_records) > 1:
                 # On failure with bisect, try first half
                 mid = len(event_records) // 2
@@ -507,14 +510,11 @@ class EventSourceEngine:
         # Apply filter criteria
         if filter_criteria:
             event_records = [
-                r for r in event_records
-                if matches_filter_criteria(r, filter_criteria)
+                r for r in event_records if matches_filter_criteria(r, filter_criteria)
             ]
             if not event_records:
                 # Advance position past filtered records
-                self._dynamo_stream_positions[position_key] = (
-                    last_idx + len(new_records)
-                )
+                self._dynamo_stream_positions[position_key] = last_idx + len(new_records)
                 return
 
         event = {"Records": event_records}
@@ -529,13 +529,9 @@ class EventSourceEngine:
             if self._invoke_lambda(function_name, first_event, account_id, region):
                 self._dynamo_stream_positions[position_key] = last_idx + mid
 
-    def _invoke_lambda(
-        self, function_name: str, event: dict, account_id: str, region: str
-    ) -> bool:
+    def _invoke_lambda(self, function_name: str, event: dict, account_id: str, region: str) -> bool:
         """Invoke a Lambda function with the given event. Returns True on success."""
-        success, _ = self._invoke_lambda_with_result(
-            function_name, event, account_id, region
-        )
+        success, _ = self._invoke_lambda_with_result(function_name, event, account_id, region)
         return success
 
     def _invoke_lambda_with_result(
@@ -585,9 +581,7 @@ class EventSourceEngine:
             )
 
             if error_type:
-                logger.warning(
-                    "Lambda %s error: %s - %s", function_name, error_type, logs
-                )
+                logger.warning("Lambda %s error: %s - %s", function_name, error_type, logs)
                 return False, result
             return True, result
         else:

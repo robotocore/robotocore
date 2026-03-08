@@ -32,9 +32,7 @@ def _collection_arn(account_id: str, region: str, collection_id: str) -> str:
     return f"arn:aws:rekognition:{region}:{account_id}:collection/{collection_id}"
 
 
-async def handle_rekognition_request(
-    request: Request, region: str, account_id: str
-) -> Response:
+async def handle_rekognition_request(request: Request, region: str, account_id: str) -> Response:
     """Handle Rekognition requests, intercepting unimplemented operations."""
     target = request.headers.get("x-amz-target", "")
     action = target.split(".")[-1] if "." in target else ""
@@ -69,7 +67,7 @@ def _create_collection(params: dict, region: str, account_id: str) -> dict:
             400,
             {
                 "__type": "ResourceAlreadyExistsException",
-                "Message": f"A collection with the specified ID already exists.",
+                "Message": "A collection with the specified ID already exists.",
             },
         )
 
@@ -119,7 +117,6 @@ def _list_collections(params: dict, region: str, account_id: str) -> dict:
     next_token = params.get("NextToken")
 
     all_ids = sorted(store.keys())
-    all_arns = [store[cid]["CollectionArn"] for cid in all_ids]
 
     start = 0
     if next_token:
@@ -130,7 +127,6 @@ def _list_collections(params: dict, region: str, account_id: str) -> dict:
 
     end = start + max_results
     result_ids = all_ids[start:end]
-    result_arns = all_arns[start:end]
 
     resp: dict = {
         "CollectionIds": result_ids,
@@ -171,7 +167,7 @@ def _tag_resource(params: dict, region: str, account_id: str) -> dict:
             400,
             {
                 "__type": "ResourceNotFoundException",
-                "Message": f"The resource with the specified ARN was not found.",
+                "Message": "The resource with the specified ARN was not found.",
             },
         )
 
@@ -189,7 +185,7 @@ def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
             400,
             {
                 "__type": "ResourceNotFoundException",
-                "Message": f"The resource with the specified ARN was not found.",
+                "Message": "The resource with the specified ARN was not found.",
             },
         )
 
@@ -205,7 +201,7 @@ def _untag_resource(params: dict, region: str, account_id: str) -> dict:
             400,
             {
                 "__type": "ResourceNotFoundException",
-                "Message": f"The resource with the specified ARN was not found.",
+                "Message": "The resource with the specified ARN was not found.",
             },
         )
 

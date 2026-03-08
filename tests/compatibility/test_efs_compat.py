@@ -131,17 +131,19 @@ class TestEFSFileSystemOperations:
     def test_put_file_system_policy(self, efs):
         fs_id = _create_fs(efs)
         fs_arn = f"arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/{fs_id}"
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "*"},
-                    "Action": ["elasticfilesystem:ClientMount"],
-                    "Resource": fs_arn,
-                }
-            ],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["elasticfilesystem:ClientMount"],
+                        "Resource": fs_arn,
+                    }
+                ],
+            }
+        )
         r = efs.put_file_system_policy(FileSystemId=fs_id, Policy=policy)
         assert r["FileSystemId"] == fs_id
         assert "Policy" in r
@@ -150,17 +152,19 @@ class TestEFSFileSystemOperations:
     def test_describe_file_system_policy(self, efs):
         fs_id = _create_fs(efs)
         fs_arn = f"arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/{fs_id}"
-        policy = json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "*"},
-                    "Action": ["elasticfilesystem:ClientMount"],
-                    "Resource": fs_arn,
-                }
-            ],
-        })
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["elasticfilesystem:ClientMount"],
+                        "Resource": fs_arn,
+                    }
+                ],
+            }
+        )
         efs.put_file_system_policy(FileSystemId=fs_id, Policy=policy)
         r = efs.describe_file_system_policy(FileSystemId=fs_id)
         assert r["FileSystemId"] == fs_id
@@ -284,11 +288,7 @@ class TestEFSLifecycleConfiguration:
         )
         r = efs.describe_lifecycle_configuration(FileSystemId=fs_id)
         assert len(r["LifecyclePolicies"]) >= 1
-        policies = {
-            k: v
-            for p in r["LifecyclePolicies"]
-            for k, v in p.items()
-        }
+        policies = {k: v for p in r["LifecyclePolicies"] for k, v in p.items()}
         assert "TransitionToIA" in policies
         assert policies["TransitionToIA"] == "AFTER_60_DAYS"
         efs.delete_file_system(FileSystemId=fs_id)

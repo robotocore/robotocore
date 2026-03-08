@@ -123,12 +123,14 @@ class StateManager:
                 meta_path = entry / "metadata.json"
                 if meta_path.exists():
                     meta = json.loads(meta_path.read_text())
-                    snapshots.append({
-                        "name": entry.name,
-                        "timestamp": meta.get("timestamp"),
-                        "saved_at": meta.get("saved_at"),
-                        "services": meta.get("moto_services", []),
-                    })
+                    snapshots.append(
+                        {
+                            "name": entry.name,
+                            "timestamp": meta.get("timestamp"),
+                            "saved_at": meta.get("saved_at"),
+                            "services": meta.get("moto_services", []),
+                        }
+                    )
                 else:
                     snapshots.append({"name": entry.name})
         return snapshots
@@ -203,9 +205,7 @@ class StateManager:
             try:
                 state["native_state"][service] = save_fn()
             except Exception:
-                logger.debug(
-                    "Could not export state for %s", service, exc_info=True
-                )
+                logger.debug("Could not export state for %s", service, exc_info=True)
         return state
 
     def import_json(self, data: dict) -> None:
@@ -278,9 +278,7 @@ class StateManager:
         except Exception:
             logger.warning("Failed to load Moto state", exc_info=True)
 
-    def _save_native_state(
-        self, path: Path, services: list[str] | None = None
-    ) -> None:
+    def _save_native_state(self, path: Path, services: list[str] | None = None) -> None:
         """Save native provider state as JSON."""
         state = {}
         for service, (save_fn, _) in self._native_handlers.items():

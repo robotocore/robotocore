@@ -113,9 +113,7 @@ def check_provider_has_conversion(provider_path: Path) -> dict:
 
     patterns = {
         "has_camel_function": bool(re.search(r"def _to_camel|def _camel_keys|camelCase", code)),
-        "has_pascal_function": bool(
-            re.search(r"def _to_pascal|def _pascal_keys|PascalCase", code)
-        ),
+        "has_pascal_function": bool(re.search(r"def _to_pascal|def _pascal_keys|PascalCase", code)),
         "has_location_name_handling": bool(re.search(r"locationName|location_name", code)),
         "returns_pascal_keys": False,
     }
@@ -149,8 +147,7 @@ def analyze_service(service_dir: str, provider_path: Path) -> dict:
 
     if needs_camel:
         has_conversion = (
-            provider_checks["has_camel_function"]
-            or service_dir in SERVICES_WITH_CAMEL_CONVERSION
+            provider_checks["has_camel_function"] or service_dir in SERVICES_WITH_CAMEL_CONVERSION
         )
         delegates_to_moto = service_dir in MOTO_DELEGATED_SERVICES
         if delegates_to_moto:

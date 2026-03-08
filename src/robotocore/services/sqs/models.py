@@ -318,9 +318,7 @@ class StandardQueue:
         if "KmsMasterKeyId" in self.attributes:
             attrs["KmsMasterKeyId"] = self.attributes["KmsMasterKeyId"]
         if "KmsDataKeyReusePeriodSeconds" in self.attributes:
-            attrs["KmsDataKeyReusePeriodSeconds"] = self.attributes[
-                "KmsDataKeyReusePeriodSeconds"
-            ]
+            attrs["KmsDataKeyReusePeriodSeconds"] = self.attributes["KmsDataKeyReusePeriodSeconds"]
         if self.is_fifo:
             attrs["FifoQueue"] = "true"
             attrs["ContentBasedDeduplication"] = self.attributes.get(

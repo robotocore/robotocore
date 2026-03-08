@@ -177,7 +177,9 @@ class TestResourceGroupsExtended:
         )
         try:
             resp = resource_groups.list_groups()
-            names = [g.get("GroupName", g.get("Name", "")) for g in resp.get("GroupIdentifiers", [])]
+            names = [
+                g.get("GroupName", g.get("Name", "")) for g in resp.get("GroupIdentifiers", [])
+            ]
             assert name in names
         finally:
             resource_groups.delete_group(GroupName=name)

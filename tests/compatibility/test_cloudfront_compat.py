@@ -49,9 +49,11 @@ def _dist_config(comment="test"):
 def _generate_public_key_pem():
     """Generate an RSA public key in PEM format."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    return key.public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
+    return (
+        key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
 
 
 class TestCloudFrontDistributionOperations:
@@ -87,9 +89,7 @@ class TestCloudFrontDistributionOperations:
         config = get_resp["Distribution"]["DistributionConfig"]
         config["Comment"] = "updated-comment"
 
-        update_resp = cf.update_distribution(
-            DistributionConfig=config, Id=dist_id, IfMatch=etag
-        )
+        update_resp = cf.update_distribution(DistributionConfig=config, Id=dist_id, IfMatch=etag)
         assert update_resp["Distribution"]["DistributionConfig"]["Comment"] == "updated-comment"
 
     def test_list_tags_for_resource(self, cf):
@@ -150,9 +150,7 @@ class TestCloudFrontDistributionOperations:
 
         # Verify it no longer appears in list (or raises on get)
         listed = cf.list_distributions()
-        listed_ids = [
-            d["Id"] for d in listed["DistributionList"].get("Items", [])
-        ]
+        listed_ids = [d["Id"] for d in listed["DistributionList"].get("Items", [])]
         assert dist_id not in listed_ids
 
 

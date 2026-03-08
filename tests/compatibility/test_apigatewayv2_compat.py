@@ -361,7 +361,7 @@ class TestApiMappings:
 
         api = apigwv2.create_api(Name=api_name, ProtocolType="HTTP")
         api_id = api["ApiId"]
-        stage = apigwv2.create_stage(ApiId=api_id, StageName="prod")
+        _stage = apigwv2.create_stage(ApiId=api_id, StageName="prod")
 
         apigwv2.create_domain_name(
             DomainName=domain_name,

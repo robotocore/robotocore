@@ -280,9 +280,7 @@ def _start_sync_execution(params: dict, region: str, account_id: str) -> dict:
     return result
 
 
-def _start_execution_internal(
-    sm_arn: str, input_data: Any, region: str, account_id: str
-) -> dict:
+def _start_execution_internal(sm_arn: str, input_data: Any, region: str, account_id: str) -> dict:
     """Internal helper for nested Step Functions execution from ASL."""
     with _exec_lock:
         sm = _state_machines.get(sm_arn)
@@ -463,7 +461,7 @@ def _describe_state_machine_for_execution(params: dict, region: str, account_id:
         sm_arn = execution.get("stateMachineArn", "")
         sm = _state_machines.get(sm_arn)
         if not sm:
-            raise SfnError("StateMachineDoesNotExist", f"State machine not found", 400)
+            raise SfnError("StateMachineDoesNotExist", "State machine not found", 400)
     return {
         "stateMachineArn": sm_arn,
         "name": sm.get("name", ""),

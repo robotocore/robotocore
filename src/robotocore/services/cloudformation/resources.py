@@ -40,9 +40,7 @@ def create_resource(resource: CfnResource, region: str, account_id: str) -> None
         handler(resource, region, account_id)
     else:
         # Unknown resource type — assign a fake physical ID
-        resource.physical_id = (
-            f"{rtype.replace('::', '-').lower()}-{uuid.uuid4().hex[:8]}"
-        )
+        resource.physical_id = f"{rtype.replace('::', '-').lower()}-{uuid.uuid4().hex[:8]}"
         resource.status = "CREATE_COMPLETE"
 
 
@@ -448,9 +446,7 @@ def _delete_lambda_function(resource: CfnResource, region: str, account_id: str)
 # --- IAM::ManagedPolicy ---
 
 
-def _create_iam_managed_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_managed_policy(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
     name = resource.properties.get(
         "ManagedPolicyName",
@@ -472,9 +468,7 @@ def _create_iam_managed_policy(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_managed_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_managed_policy(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
@@ -486,9 +480,7 @@ def _delete_iam_managed_policy(
 # --- IAM::InstanceProfile ---
 
 
-def _create_iam_instance_profile(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_instance_profile(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
     name = resource.properties.get(
         "InstanceProfileName",
@@ -501,9 +493,7 @@ def _create_iam_instance_profile(
         resource.attributes["Arn"] = profile.arn
     except Exception:
         resource.physical_id = name
-        resource.attributes["Arn"] = (
-            f"arn:aws:iam::{account_id}:instance-profile{path}{name}"
-        )
+        resource.attributes["Arn"] = f"arn:aws:iam::{account_id}:instance-profile{path}{name}"
     # Attach roles
     roles = resource.properties.get("Roles", [])
     for role_name in roles:
@@ -514,9 +504,7 @@ def _create_iam_instance_profile(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_instance_profile(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_instance_profile(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
@@ -528,13 +516,9 @@ def _delete_iam_instance_profile(
 # --- IAM::User ---
 
 
-def _create_iam_user(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_user(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
-    name = resource.properties.get(
-        "UserName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"
-    )
+    name = resource.properties.get("UserName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     path = resource.properties.get("Path", "/")
     try:
         user = iam.create_user(name, path, tags=[])
@@ -542,15 +526,11 @@ def _create_iam_user(
         resource.attributes["Arn"] = user.arn
     except Exception:
         resource.physical_id = name
-        resource.attributes["Arn"] = (
-            f"arn:aws:iam::{account_id}:user{path}{name}"
-        )
+        resource.attributes["Arn"] = f"arn:aws:iam::{account_id}:user{path}{name}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_user(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_user(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
@@ -562,13 +542,9 @@ def _delete_iam_user(
 # --- IAM::Group ---
 
 
-def _create_iam_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_group(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
-    name = resource.properties.get(
-        "GroupName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"
-    )
+    name = resource.properties.get("GroupName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     path = resource.properties.get("Path", "/")
     try:
         group = iam.create_group(name, path)
@@ -576,15 +552,11 @@ def _create_iam_group(
         resource.attributes["Arn"] = group.arn
     except Exception:
         resource.physical_id = name
-        resource.attributes["Arn"] = (
-            f"arn:aws:iam::{account_id}:group{path}{name}"
-        )
+        resource.attributes["Arn"] = f"arn:aws:iam::{account_id}:group{path}{name}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_group(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
@@ -596,9 +568,7 @@ def _delete_iam_group(
 # --- IAM::AccessKey ---
 
 
-def _create_iam_access_key(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_access_key(resource: CfnResource, region: str, account_id: str) -> None:
     iam = _moto_global_backend("iam", account_id)
     user_name = resource.properties.get("UserName", "")
     try:
@@ -611,9 +581,7 @@ def _create_iam_access_key(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_access_key(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_access_key(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         iam = _moto_global_backend("iam", account_id)
         user_name = resource.properties.get("UserName", "")
@@ -626,35 +594,24 @@ def _delete_iam_access_key(
 # --- IAM::ServiceLinkedRole ---
 
 
-def _create_iam_service_linked_role(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
-    svc_name = resource.properties.get(
-        "AWSServiceName", "unknown.amazonaws.com"
-    )
+def _create_iam_service_linked_role(resource: CfnResource, region: str, account_id: str) -> None:
+    svc_name = resource.properties.get("AWSServiceName", "unknown.amazonaws.com")
     svc_short = svc_name.split(".")[0]
     role_name = f"AWSServiceRoleFor{svc_short.capitalize()}"
-    arn = (
-        f"arn:aws:iam::{account_id}:"
-        f"role/aws-service-role/{svc_name}/{role_name}"
-    )
+    arn = f"arn:aws:iam::{account_id}:role/aws-service-role/{svc_name}/{role_name}"
     resource.physical_id = arn
     resource.attributes["Arn"] = arn
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_service_linked_role(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_service_linked_role(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- Lambda::Version ---
 
 
-def _create_lambda_version(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_lambda_version(resource: CfnResource, region: str, account_id: str) -> None:
     fn_name = resource.properties.get("FunctionName", "")
     desc = resource.properties.get("Description", "")
     try:
@@ -664,42 +621,30 @@ def _create_lambda_version(
         resource.attributes["Version"] = ver.version
     except Exception:
         version_num = "1"
-        arn = (
-            f"arn:aws:lambda:{region}:{account_id}"
-            f":function:{fn_name}:{version_num}"
-        )
+        arn = f"arn:aws:lambda:{region}:{account_id}:function:{fn_name}:{version_num}"
         resource.physical_id = arn
         resource.attributes["Version"] = version_num
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_lambda_version(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_lambda_version(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Versions are immutable
 
 
 # --- Lambda::Alias ---
 
 
-def _create_lambda_alias(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_lambda_alias(resource: CfnResource, region: str, account_id: str) -> None:
     fn_name = resource.properties.get("FunctionName", "")
     alias_name = resource.properties.get("Name", resource.logical_id)
-    arn = (
-        f"arn:aws:lambda:{region}:{account_id}"
-        f":function:{fn_name}:{alias_name}"
-    )
+    arn = f"arn:aws:lambda:{region}:{account_id}:function:{fn_name}:{alias_name}"
     resource.physical_id = arn
     resource.attributes["Arn"] = arn
     resource.attributes["AliasArn"] = arn
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_lambda_alias(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_lambda_alias(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
@@ -716,9 +661,7 @@ def _create_lambda_event_source_mapping(
             "EventSourceArn": resource.properties.get("EventSourceArn", ""),
             "BatchSize": resource.properties.get("BatchSize", 10),
             "Enabled": resource.properties.get("Enabled", True),
-            "StartingPosition": resource.properties.get(
-                "StartingPosition", "LATEST"
-            ),
+            "StartingPosition": resource.properties.get("StartingPosition", "LATEST"),
         }
         mapping = lmbda.create_event_source_mapping(spec)
         resource.physical_id = mapping.uuid
@@ -744,15 +687,11 @@ def _delete_lambda_event_source_mapping(
 # --- Lambda::Permission ---
 
 
-def _create_lambda_permission(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_lambda_permission(resource: CfnResource, region: str, account_id: str) -> None:
     fn_name = resource.properties.get("FunctionName", "")
     action = resource.properties.get("Action", "lambda:InvokeFunction")
     principal = resource.properties.get("Principal", "")
-    sid = resource.properties.get(
-        "StatementId", f"cfn-{uuid.uuid4().hex[:8]}"
-    )
+    sid = resource.properties.get("StatementId", f"cfn-{uuid.uuid4().hex[:8]}")
     try:
         lmbda = _moto_backend("lambda", account_id, region)
         lmbda.add_permission(
@@ -769,9 +708,7 @@ def _create_lambda_permission(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_lambda_permission(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_lambda_permission(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         lmbda = _moto_backend("lambda", account_id, region)
         fn_name = resource.properties.get("FunctionName", "")
@@ -784,33 +721,25 @@ def _delete_lambda_permission(
 # --- Lambda::LayerVersion ---
 
 
-def _create_lambda_layer_version(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_lambda_layer_version(resource: CfnResource, region: str, account_id: str) -> None:
     layer_name = resource.properties.get(
         "LayerName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"
     )
-    arn = (
-        f"arn:aws:lambda:{region}:{account_id}:layer:{layer_name}:1"
-    )
+    arn = f"arn:aws:lambda:{region}:{account_id}:layer:{layer_name}:1"
     resource.physical_id = arn
     resource.attributes["Arn"] = arn
     resource.attributes["LayerVersionArn"] = arn
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_lambda_layer_version(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_lambda_layer_version(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- EC2::VPC ---
 
 
-def _create_ec2_vpc(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_vpc(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     cidr = resource.properties.get("CidrBlock", "10.0.0.0/16")
     try:
@@ -826,9 +755,7 @@ def _create_ec2_vpc(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_vpc(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_vpc(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -840,9 +767,7 @@ def _delete_ec2_vpc(
 # --- EC2::Subnet ---
 
 
-def _create_ec2_subnet(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_subnet(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     vpc_id = resource.properties.get("VpcId", "")
     cidr = resource.properties.get("CidrBlock", "10.0.0.0/24")
@@ -864,9 +789,7 @@ def _create_ec2_subnet(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_subnet(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_subnet(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -878,9 +801,7 @@ def _delete_ec2_subnet(
 # --- EC2::SecurityGroup ---
 
 
-def _create_ec2_security_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_security_group(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     name = resource.properties.get(
         "GroupName",
@@ -901,9 +822,7 @@ def _create_ec2_security_group(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_security_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_security_group(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -915,9 +834,7 @@ def _delete_ec2_security_group(
 # --- EC2::InternetGateway ---
 
 
-def _create_ec2_internet_gateway(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_internet_gateway(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     try:
         igw = ec2.create_internet_gateway()
@@ -930,9 +847,7 @@ def _create_ec2_internet_gateway(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_internet_gateway(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_internet_gateway(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -944,9 +859,7 @@ def _delete_ec2_internet_gateway(
 # --- EC2::VPCGatewayAttachment ---
 
 
-def _create_ec2_vpc_gateway_attachment(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_vpc_gateway_attachment(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     igw_id = resource.properties.get("InternetGatewayId", "")
     vpc_id = resource.properties.get("VpcId", "")
@@ -958,9 +871,7 @@ def _create_ec2_vpc_gateway_attachment(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_vpc_gateway_attachment(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_vpc_gateway_attachment(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -974,9 +885,7 @@ def _delete_ec2_vpc_gateway_attachment(
 # --- EC2::RouteTable ---
 
 
-def _create_ec2_route_table(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_route_table(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     vpc_id = resource.properties.get("VpcId", "")
     try:
@@ -990,9 +899,7 @@ def _create_ec2_route_table(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_route_table(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_route_table(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -1004,9 +911,7 @@ def _delete_ec2_route_table(
 # --- EC2::Route ---
 
 
-def _create_ec2_route(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_route(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     rt_id = resource.properties.get("RouteTableId", "")
     cidr = resource.properties.get("DestinationCidrBlock", "0.0.0.0/0")
@@ -1014,7 +919,9 @@ def _create_ec2_route(
     nat_gw_id = resource.properties.get("NatGatewayId", "")
     try:
         ec2.create_route(
-            rt_id, cidr, gateway_id=gw_id or None,
+            rt_id,
+            cidr,
+            gateway_id=gw_id or None,
             nat_gateway_id=nat_gw_id or None,
         )
     except Exception:
@@ -1023,9 +930,7 @@ def _create_ec2_route(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_route(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_route(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -1048,8 +953,7 @@ def _create_ec2_subnet_route_table_assoc(
         ec2 = _moto_backend("ec2", account_id, region)
         assoc_id = ec2.associate_route_table(rt_id, subnet_id)
         resource.physical_id = (
-            assoc_id if isinstance(assoc_id, str)
-            else f"rtbassoc-{uuid.uuid4().hex[:8]}"
+            assoc_id if isinstance(assoc_id, str) else f"rtbassoc-{uuid.uuid4().hex[:8]}"
         )
     except Exception:
         resource.physical_id = f"rtbassoc-{uuid.uuid4().hex[:8]}"
@@ -1070,9 +974,7 @@ def _delete_ec2_subnet_route_table_assoc(
 # --- EC2::NatGateway ---
 
 
-def _create_ec2_nat_gateway(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_nat_gateway(resource: CfnResource, region: str, account_id: str) -> None:
     nid = f"nat-{uuid.uuid4().hex[:17]}"
     resource.physical_id = nid
     resource.attributes["NatGatewayId"] = nid
@@ -1081,18 +983,14 @@ def _create_ec2_nat_gateway(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_nat_gateway(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_nat_gateway(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- EC2::EIP ---
 
 
-def _create_ec2_eip(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_eip(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     domain = resource.properties.get("Domain", "vpc")
     try:
@@ -1108,9 +1006,7 @@ def _create_ec2_eip(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_eip(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_eip(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -1122,9 +1018,7 @@ def _delete_ec2_eip(
 # --- EC2::LaunchTemplate ---
 
 
-def _create_ec2_launch_template(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_launch_template(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "LaunchTemplateName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -1138,35 +1032,27 @@ def _create_ec2_launch_template(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_launch_template(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_launch_template(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- EC2::KeyPair ---
 
 
-def _create_ec2_key_pair(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_key_pair(resource: CfnResource, region: str, account_id: str) -> None:
     ec2 = _moto_backend("ec2", account_id, region)
     name = resource.properties.get("KeyName", resource.logical_id)
     try:
         kp = ec2.create_key_pair(name)
         resource.physical_id = name
-        resource.attributes["KeyPairId"] = getattr(
-            kp, "id", f"key-{uuid.uuid4().hex[:8]}"
-        )
+        resource.attributes["KeyPairId"] = getattr(kp, "id", f"key-{uuid.uuid4().hex[:8]}")
     except Exception:
         resource.physical_id = name
         resource.attributes["KeyPairId"] = f"key-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_key_pair(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_key_pair(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
@@ -1178,9 +1064,7 @@ def _delete_ec2_key_pair(
 # --- S3::BucketPolicy ---
 
 
-def _create_s3_bucket_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_s3_bucket_policy(resource: CfnResource, region: str, account_id: str) -> None:
     s3 = _moto_global_backend("s3", account_id)
     bucket_name = resource.properties.get("Bucket", "")
     policy = resource.properties.get("PolicyDocument", {})
@@ -1194,9 +1078,7 @@ def _create_s3_bucket_policy(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_s3_bucket_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_s3_bucket_policy(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         s3 = _moto_global_backend("s3", account_id)
         if resource.physical_id:
@@ -1225,9 +1107,7 @@ def _delete_s3_bucket_notification_config(
 # --- DynamoDB::GlobalTable ---
 
 
-def _create_dynamodb_global_table(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_dynamodb_global_table(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "TableName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -1262,9 +1142,7 @@ def _create_dynamodb_global_table(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_dynamodb_global_table(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_dynamodb_global_table(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ddb = _moto_backend("dynamodb", account_id, region)
         if resource.physical_id:
@@ -1276,26 +1154,20 @@ def _delete_dynamodb_global_table(
 # --- SQS::QueuePolicy ---
 
 
-def _create_sqs_queue_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_sqs_queue_policy(resource: CfnResource, region: str, account_id: str) -> None:
     queues = resource.properties.get("Queues", [])
     resource.physical_id = queues[0] if queues else f"qp-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_sqs_queue_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_sqs_queue_policy(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ApiGateway::RestApi ---
 
 
-def _create_apigw_rest_api(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_rest_api(resource: CfnResource, region: str, account_id: str) -> None:
     apigw = _moto_backend("apigateway", account_id, region)
     name = resource.properties.get("Name", resource.logical_id)
     desc = resource.properties.get("Description", "")
@@ -1304,9 +1176,9 @@ def _create_apigw_rest_api(
         resource.physical_id = api.id
         resource.attributes["RestApiId"] = api.id
         resource.attributes["RootResourceId"] = getattr(
-            api, "root_resource_id",
-            api.resources.get("/", SimpleNameHolder("")).id
-            if hasattr(api, "resources") else ""
+            api,
+            "root_resource_id",
+            api.resources.get("/", SimpleNameHolder("")).id if hasattr(api, "resources") else "",
         )
     except Exception:
         aid = f"api-{uuid.uuid4().hex[:8]}"
@@ -1318,13 +1190,12 @@ def _create_apigw_rest_api(
 
 class SimpleNameHolder:
     """Tiny helper so attribute lookup doesn't fail."""
+
     def __init__(self, val):
         self.id = val
 
 
-def _delete_apigw_rest_api(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_rest_api(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         apigw = _moto_backend("apigateway", account_id, region)
         if resource.physical_id:
@@ -1336,9 +1207,7 @@ def _delete_apigw_rest_api(
 # --- ApiGateway::Resource ---
 
 
-def _create_apigw_resource(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_resource(resource: CfnResource, region: str, account_id: str) -> None:
     apigw = _moto_backend("apigateway", account_id, region)
     rest_api_id = resource.properties.get("RestApiId", "")
     parent_id = resource.properties.get("ParentId", "")
@@ -1354,9 +1223,7 @@ def _create_apigw_resource(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_resource(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_resource(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         apigw = _moto_backend("apigateway", account_id, region)
         rest_api_id = resource.properties.get("RestApiId", "")
@@ -1369,18 +1236,14 @@ def _delete_apigw_resource(
 # --- ApiGateway::Method ---
 
 
-def _create_apigw_method(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_method(resource: CfnResource, region: str, account_id: str) -> None:
     apigw = _moto_backend("apigateway", account_id, region)
     rest_api_id = resource.properties.get("RestApiId", "")
     resource_id = resource.properties.get("ResourceId", "")
     http_method = resource.properties.get("HttpMethod", "GET")
     auth_type = resource.properties.get("AuthorizationType", "NONE")
     try:
-        apigw.create_method(
-            rest_api_id, resource_id, http_method, auth_type
-        )
+        apigw.create_method(rest_api_id, resource_id, http_method, auth_type)
     except Exception:
         pass
     pid = f"{rest_api_id}/{resource_id}/{http_method}"
@@ -1388,18 +1251,14 @@ def _create_apigw_method(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_method(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_method(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ApiGateway::Deployment ---
 
 
-def _create_apigw_deployment(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_deployment(resource: CfnResource, region: str, account_id: str) -> None:
     apigw = _moto_backend("apigateway", account_id, region)
     rest_api_id = resource.properties.get("RestApiId", "")
     try:
@@ -1410,94 +1269,72 @@ def _create_apigw_deployment(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_deployment(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_deployment(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ApiGateway::Stage ---
 
 
-def _create_apigw_stage(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_stage(resource: CfnResource, region: str, account_id: str) -> None:
     stage_name = resource.properties.get("StageName", "prod")
     resource.physical_id = stage_name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_stage(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_stage(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ApiGateway::ApiKey ---
 
 
-def _create_apigw_api_key(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_api_key(resource: CfnResource, region: str, account_id: str) -> None:
     kid = uuid.uuid4().hex[:20]
     resource.physical_id = kid
     resource.attributes["APIKeyId"] = kid
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_api_key(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_api_key(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ApiGateway::UsagePlan ---
 
 
-def _create_apigw_usage_plan(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_usage_plan(resource: CfnResource, region: str, account_id: str) -> None:
     pid = uuid.uuid4().hex[:10]
     resource.physical_id = pid
     resource.attributes["Id"] = pid
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_usage_plan(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_usage_plan(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ApiGateway::DomainName ---
 
 
-def _create_apigw_domain_name(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_apigw_domain_name(resource: CfnResource, region: str, account_id: str) -> None:
     domain = resource.properties.get("DomainName", resource.logical_id)
     resource.physical_id = domain
-    resource.attributes["DistributionDomainName"] = (
-        f"d{uuid.uuid4().hex[:13]}.cloudfront.net"
-    )
+    resource.attributes["DistributionDomainName"] = f"d{uuid.uuid4().hex[:13]}.cloudfront.net"
     resource.attributes["RegionalDomainName"] = (
         f"d-{uuid.uuid4().hex[:10]}.execute-api.{region}.amazonaws.com"
     )
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_apigw_domain_name(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_apigw_domain_name(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- CloudWatch::Alarm ---
 
 
-def _create_cloudwatch_alarm(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cloudwatch_alarm(resource: CfnResource, region: str, account_id: str) -> None:
     cw = _moto_backend("cloudwatch", account_id, region)
     name = resource.properties.get(
         "AlarmName",
@@ -1511,29 +1348,19 @@ def _create_cloudwatch_alarm(
             comparison_operator=resource.properties.get(
                 "ComparisonOperator", "GreaterThanThreshold"
             ),
-            evaluation_periods=resource.properties.get(
-                "EvaluationPeriods", 1
-            ),
+            evaluation_periods=resource.properties.get("EvaluationPeriods", 1),
             period=resource.properties.get("Period", 300),
             threshold=resource.properties.get("Threshold", 0),
             statistic=resource.properties.get("Statistic", "Average"),
-            description=resource.properties.get(
-                "AlarmDescription", ""
-            ),
-            actions_enabled=resource.properties.get(
-                "ActionsEnabled", True
-            ),
+            description=resource.properties.get("AlarmDescription", ""),
+            actions_enabled=resource.properties.get("ActionsEnabled", True),
             ok_actions=resource.properties.get("OKActions", []),
             alarm_actions=resource.properties.get("AlarmActions", []),
-            insufficient_data_actions=resource.properties.get(
-                "InsufficientDataActions", []
-            ),
+            insufficient_data_actions=resource.properties.get("InsufficientDataActions", []),
             dimensions=[],
             unit="",
             treat_missing_data="missing",
-            datapoints_to_alarm=resource.properties.get(
-                "DatapointsToAlarm", None
-            ),
+            datapoints_to_alarm=resource.properties.get("DatapointsToAlarm", None),
             evaluate_low_sample_count_percentile="",
             extended_statistic="",
             tags=[],
@@ -1543,15 +1370,11 @@ def _create_cloudwatch_alarm(
     except Exception:
         pass
     resource.physical_id = name
-    resource.attributes["Arn"] = (
-        f"arn:aws:cloudwatch:{region}:{account_id}:alarm:{name}"
-    )
+    resource.attributes["Arn"] = f"arn:aws:cloudwatch:{region}:{account_id}:alarm:{name}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cloudwatch_alarm(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cloudwatch_alarm(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         cw = _moto_backend("cloudwatch", account_id, region)
         if resource.physical_id:
@@ -1563,9 +1386,7 @@ def _delete_cloudwatch_alarm(
 # --- Logs::LogStream ---
 
 
-def _create_log_stream(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_log_stream(resource: CfnResource, region: str, account_id: str) -> None:
     logs = _moto_backend("logs", account_id, region)
     group_name = resource.properties.get("LogGroupName", "")
     stream_name = resource.properties.get("LogStreamName", resource.logical_id)
@@ -1577,9 +1398,7 @@ def _create_log_stream(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_log_stream(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_log_stream(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         logs = _moto_backend("logs", account_id, region)
         group_name = resource.properties.get("LogGroupName", "")
@@ -1592,34 +1411,25 @@ def _delete_log_stream(
 # --- CloudWatch::MetricFilter ---
 
 
-def _create_cloudwatch_metric_filter(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cloudwatch_metric_filter(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("FilterName", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cloudwatch_metric_filter(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cloudwatch_metric_filter(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- Events::EventBus ---
 
 
-def _create_events_event_bus(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_events_event_bus(resource: CfnResource, region: str, account_id: str) -> None:
     events = _moto_backend("events", account_id, region)
     name = resource.properties.get("Name", resource.logical_id)
     try:
         bus = events.create_event_bus(name)
-        arn = (
-            getattr(bus, "arn", None)
-            or f"arn:aws:events:{region}:{account_id}:event-bus/{name}"
-        )
+        arn = getattr(bus, "arn", None) or f"arn:aws:events:{region}:{account_id}:event-bus/{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
         resource.attributes["Name"] = name
@@ -1631,9 +1441,7 @@ def _create_events_event_bus(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_events_event_bus(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_events_event_bus(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         events = _moto_backend("events", account_id, region)
         name = resource.properties.get("Name", "")
@@ -1646,9 +1454,7 @@ def _delete_events_event_bus(
 # --- Events::Archive ---
 
 
-def _create_events_archive(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_events_archive(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "ArchiveName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -1660,18 +1466,14 @@ def _create_events_archive(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_events_archive(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_events_archive(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- StepFunctions::StateMachine ---
 
 
-def _create_sfn_state_machine(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_sfn_state_machine(resource: CfnResource, region: str, account_id: str) -> None:
     sfn = _moto_backend("stepfunctions", account_id, region)
     name = resource.properties.get(
         "StateMachineName",
@@ -1680,9 +1482,7 @@ def _create_sfn_state_machine(
     definition = resource.properties.get("DefinitionString", "{}")
     if isinstance(definition, dict):
         definition = json.dumps(definition)
-    role_arn = resource.properties.get(
-        "RoleArn", f"arn:aws:iam::{account_id}:role/sfn-role"
-    )
+    role_arn = resource.properties.get("RoleArn", f"arn:aws:iam::{account_id}:role/sfn-role")
     tags = resource.properties.get("Tags", [])
     try:
         sm = sfn.create_state_machine(name, definition, role_arn, tags)
@@ -1690,18 +1490,14 @@ def _create_sfn_state_machine(
         resource.attributes["Arn"] = sm.arn
         resource.attributes["Name"] = name
     except Exception:
-        arn = (
-            f"arn:aws:states:{region}:{account_id}:stateMachine:{name}"
-        )
+        arn = f"arn:aws:states:{region}:{account_id}:stateMachine:{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
         resource.attributes["Name"] = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_sfn_state_machine(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_sfn_state_machine(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         sfn = _moto_backend("stepfunctions", account_id, region)
         if resource.physical_id:
@@ -1713,9 +1509,7 @@ def _delete_sfn_state_machine(
 # --- StepFunctions::Activity ---
 
 
-def _create_sfn_activity(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_sfn_activity(resource: CfnResource, region: str, account_id: str) -> None:
     sfn = _moto_backend("stepfunctions", account_id, region)
     name = resource.properties.get("Name", resource.logical_id)
     try:
@@ -1736,9 +1530,7 @@ def _create_sfn_activity(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_sfn_activity(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_sfn_activity(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         sfn = _moto_backend("stepfunctions", account_id, region)
         if resource.physical_id:
@@ -1750,9 +1542,7 @@ def _delete_sfn_activity(
 # --- KMS::Alias ---
 
 
-def _create_kms_alias(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_kms_alias(resource: CfnResource, region: str, account_id: str) -> None:
     kms = _moto_backend("kms", account_id, region)
     alias_name = resource.properties.get("AliasName", "")
     target_key = resource.properties.get("TargetKeyId", "")
@@ -1764,9 +1554,7 @@ def _create_kms_alias(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_kms_alias(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_kms_alias(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         kms = _moto_backend("kms", account_id, region)
         if resource.physical_id:
@@ -1778,13 +1566,9 @@ def _delete_kms_alias(
 # --- SecretsManager::Secret ---
 
 
-def _create_secretsmanager_secret(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_secretsmanager_secret(resource: CfnResource, region: str, account_id: str) -> None:
     sm = _moto_backend("secretsmanager", account_id, region)
-    name = resource.properties.get(
-        "Name", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"
-    )
+    name = resource.properties.get("Name", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     secret_string = resource.properties.get("SecretString", "")
     desc = resource.properties.get("Description", "")
     tags = resource.properties.get("Tags", [])
@@ -1796,26 +1580,20 @@ def _create_secretsmanager_secret(
             tags=tags,
         )
         arn = (
-            getattr(result, "arn", None)
-            or result.get("ARN", "")
-            if isinstance(result, dict) else
-            f"arn:aws:secretsmanager:{region}:{account_id}:secret:{name}"
+            getattr(result, "arn", None) or result.get("ARN", "")
+            if isinstance(result, dict)
+            else f"arn:aws:secretsmanager:{region}:{account_id}:secret:{name}"
         )
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
     except Exception:
-        arn = (
-            f"arn:aws:secretsmanager:{region}:{account_id}"
-            f":secret:{name}-{uuid.uuid4().hex[:6]}"
-        )
+        arn = f"arn:aws:secretsmanager:{region}:{account_id}:secret:{name}-{uuid.uuid4().hex[:6]}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_secretsmanager_secret(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_secretsmanager_secret(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         sm = _moto_backend("secretsmanager", account_id, region)
         if resource.physical_id:
@@ -1831,26 +1609,20 @@ def _delete_secretsmanager_secret(
 # --- SSM::Document ---
 
 
-def _create_ssm_document(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ssm_document(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("Name", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ssm_document(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ssm_document(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- Kinesis::Stream ---
 
 
-def _create_kinesis_stream(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_kinesis_stream(resource: CfnResource, region: str, account_id: str) -> None:
     kinesis = _moto_backend("kinesis", account_id, region)
     name = resource.properties.get(
         "Name",
@@ -1865,15 +1637,11 @@ def _create_kinesis_stream(
     except Exception:
         pass
     resource.physical_id = name
-    resource.attributes["Arn"] = (
-        f"arn:aws:kinesis:{region}:{account_id}:stream/{name}"
-    )
+    resource.attributes["Arn"] = f"arn:aws:kinesis:{region}:{account_id}:stream/{name}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_kinesis_stream(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_kinesis_stream(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         kinesis = _moto_backend("kinesis", account_id, region)
         if resource.physical_id:
@@ -1885,9 +1653,7 @@ def _delete_kinesis_stream(
 # --- ECS::Cluster ---
 
 
-def _create_ecs_cluster(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ecs_cluster(resource: CfnResource, region: str, account_id: str) -> None:
     ecs = _moto_backend("ecs", account_id, region)
     name = resource.properties.get(
         "ClusterName",
@@ -1895,9 +1661,7 @@ def _create_ecs_cluster(
     )
     try:
         cluster = ecs.create_cluster(name)
-        arn = getattr(cluster, "arn", None) or (
-            f"arn:aws:ecs:{region}:{account_id}:cluster/{name}"
-        )
+        arn = getattr(cluster, "arn", None) or (f"arn:aws:ecs:{region}:{account_id}:cluster/{name}")
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
     except Exception:
@@ -1907,9 +1671,7 @@ def _create_ecs_cluster(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ecs_cluster(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ecs_cluster(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ecs = _moto_backend("ecs", account_id, region)
         if resource.physical_id:
@@ -1921,9 +1683,7 @@ def _delete_ecs_cluster(
 # --- ECS::TaskDefinition ---
 
 
-def _create_ecs_task_definition(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ecs_task_definition(resource: CfnResource, region: str, account_id: str) -> None:
     ecs = _moto_backend("ecs", account_id, region)
     family = resource.properties.get("Family", resource.logical_id)
     container_defs = resource.properties.get("ContainerDefinitions", [])
@@ -1933,24 +1693,18 @@ def _create_ecs_task_definition(
             container_definitions=container_defs,
         )
         arn = getattr(td, "arn", None) or (
-            f"arn:aws:ecs:{region}:{account_id}"
-            f":task-definition/{family}:1"
+            f"arn:aws:ecs:{region}:{account_id}:task-definition/{family}:1"
         )
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
     except Exception:
-        arn = (
-            f"arn:aws:ecs:{region}:{account_id}"
-            f":task-definition/{family}:1"
-        )
+        arn = f"arn:aws:ecs:{region}:{account_id}:task-definition/{family}:1"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ecs_task_definition(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ecs_task_definition(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         ecs = _moto_backend("ecs", account_id, region)
         if resource.physical_id:
@@ -1962,36 +1716,27 @@ def _delete_ecs_task_definition(
 # --- ECS::Service ---
 
 
-def _create_ecs_service(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ecs_service(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "ServiceName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
     )
     cluster = resource.properties.get("Cluster", "default")
-    arn = (
-        f"arn:aws:ecs:{region}:{account_id}"
-        f":service/{cluster}/{name}"
-    )
+    arn = f"arn:aws:ecs:{region}:{account_id}:service/{cluster}/{name}"
     resource.physical_id = arn
     resource.attributes["Arn"] = arn
     resource.attributes["Name"] = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ecs_service(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ecs_service(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- ElasticLoadBalancingV2::LoadBalancer ---
 
 
-def _create_elbv2_load_balancer(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_elbv2_load_balancer(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "Name",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"[:32],
@@ -2023,16 +1768,12 @@ def _create_elbv2_load_balancer(
         )
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
-        resource.attributes["DNSName"] = (
-            f"{name}.{region}.elb.amazonaws.com"
-        )
+        resource.attributes["DNSName"] = f"{name}.{region}.elb.amazonaws.com"
         resource.attributes["LoadBalancerName"] = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_elbv2_load_balancer(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_elbv2_load_balancer(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         elbv2 = _moto_backend("elbv2", account_id, region)
         if resource.physical_id:
@@ -2044,9 +1785,7 @@ def _delete_elbv2_load_balancer(
 # --- ElasticLoadBalancingV2::TargetGroup ---
 
 
-def _create_elbv2_target_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_elbv2_target_group(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "Name",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}"[:32],
@@ -2078,9 +1817,7 @@ def _create_elbv2_target_group(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_elbv2_target_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_elbv2_target_group(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         elbv2 = _moto_backend("elbv2", account_id, region)
         if resource.physical_id:
@@ -2092,9 +1829,7 @@ def _delete_elbv2_target_group(
 # --- ElasticLoadBalancingV2::Listener ---
 
 
-def _create_elbv2_listener(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_elbv2_listener(resource: CfnResource, region: str, account_id: str) -> None:
     arn = (
         f"arn:aws:elasticloadbalancing:{region}:{account_id}"
         f":listener/app/lb/{uuid.uuid4().hex[:16]}"
@@ -2106,18 +1841,14 @@ def _create_elbv2_listener(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_elbv2_listener(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_elbv2_listener(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- CloudFront::Distribution ---
 
 
-def _create_cloudfront_distribution(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cloudfront_distribution(resource: CfnResource, region: str, account_id: str) -> None:
     dist_id = f"E{uuid.uuid4().hex[:13].upper()}"
     domain = f"{dist_id.lower()}.cloudfront.net"
     resource.physical_id = dist_id
@@ -2126,48 +1857,34 @@ def _create_cloudfront_distribution(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cloudfront_distribution(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cloudfront_distribution(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- Route53::HostedZone ---
 
 
-def _create_route53_hosted_zone(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_route53_hosted_zone(resource: CfnResource, region: str, account_id: str) -> None:
     r53 = _moto_backend("route53", account_id, region)
     zone_name = resource.properties.get("Name", "example.com")
     try:
-        zone = r53.create_hosted_zone(
-            zone_name, private_zone=False
-        )
-        zone_id = getattr(zone, "id", None) or (
-            getattr(zone, "zone_id", None)
-        )
+        zone = r53.create_hosted_zone(zone_name, private_zone=False)
+        zone_id = getattr(zone, "id", None) or (getattr(zone, "zone_id", None))
         if not zone_id:
             zone_id = f"Z{uuid.uuid4().hex[:13].upper()}"
         resource.physical_id = zone_id
         resource.attributes["Id"] = zone_id
-        ns = getattr(zone, "nameservers", None) or [
-            f"ns-{i}.awsdns-{i:02d}.com" for i in range(4)
-        ]
+        ns = getattr(zone, "nameservers", None) or [f"ns-{i}.awsdns-{i:02d}.com" for i in range(4)]
         resource.attributes["NameServers"] = ns
     except Exception:
         zone_id = f"Z{uuid.uuid4().hex[:13].upper()}"
         resource.physical_id = zone_id
         resource.attributes["Id"] = zone_id
-        resource.attributes["NameServers"] = [
-            f"ns-{i}.awsdns-{i:02d}.com" for i in range(4)
-        ]
+        resource.attributes["NameServers"] = [f"ns-{i}.awsdns-{i:02d}.com" for i in range(4)]
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_route53_hosted_zone(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_route53_hosted_zone(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         r53 = _moto_backend("route53", account_id, region)
         if resource.physical_id:
@@ -2179,9 +1896,7 @@ def _delete_route53_hosted_zone(
 # --- Route53::RecordSet ---
 
 
-def _create_route53_record_set(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_route53_record_set(resource: CfnResource, region: str, account_id: str) -> None:
     zone_id = resource.properties.get("HostedZoneId", "")
     rec_name = resource.properties.get("Name", "")
     rec_type = resource.properties.get("Type", "A")
@@ -2190,18 +1905,14 @@ def _create_route53_record_set(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_route53_record_set(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_route53_record_set(resource: CfnResource, region: str, account_id: str) -> None:
     pass  # Simulated
 
 
 # --- CertificateManager::Certificate ---
 
 
-def _create_acm_certificate(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_acm_certificate(resource: CfnResource, region: str, account_id: str) -> None:
     acm = _moto_backend("acm", account_id, region)
     domain = resource.properties.get("DomainName", "example.com")
     try:
@@ -2211,18 +1922,13 @@ def _create_acm_certificate(
         resource.physical_id = cert_arn
         resource.attributes["Arn"] = cert_arn
     except Exception:
-        arn = (
-            f"arn:aws:acm:{region}:{account_id}"
-            f":certificate/{uuid.uuid4()}"
-        )
+        arn = f"arn:aws:acm:{region}:{account_id}:certificate/{uuid.uuid4()}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_acm_certificate(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_acm_certificate(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         acm = _moto_backend("acm", account_id, region)
         if resource.physical_id:
@@ -2234,9 +1940,7 @@ def _delete_acm_certificate(
 # --- Cognito::UserPool ---
 
 
-def _create_cognito_user_pool(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cognito_user_pool(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "UserPoolName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -2244,39 +1948,27 @@ def _create_cognito_user_pool(
     try:
         cognito = _moto_backend("cognitoidp", account_id, region)
         pool = cognito.create_user_pool(name)
-        pool_id = getattr(pool, "id", None) or (
-            getattr(pool, "user_pool_id", None)
-        )
+        pool_id = getattr(pool, "id", None) or (getattr(pool, "user_pool_id", None))
         if not pool_id:
             pool_id = f"{region}_{uuid.uuid4().hex[:9]}"
         resource.physical_id = pool_id
         resource.attributes["UserPoolId"] = pool_id
         arn = (
             getattr(pool, "arn", None)
-            or f"arn:aws:cognito-idp:{region}:{account_id}"
-            f":userpool/{pool_id}"
+            or f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}"
         )
         resource.attributes["Arn"] = arn
-        resource.attributes["ProviderName"] = (
-            f"cognito-idp.{region}.amazonaws.com/{pool_id}"
-        )
+        resource.attributes["ProviderName"] = f"cognito-idp.{region}.amazonaws.com/{pool_id}"
     except Exception:
         pool_id = f"{region}_{uuid.uuid4().hex[:9]}"
         resource.physical_id = pool_id
         resource.attributes["UserPoolId"] = pool_id
-        resource.attributes["Arn"] = (
-            f"arn:aws:cognito-idp:{region}:{account_id}"
-            f":userpool/{pool_id}"
-        )
-        resource.attributes["ProviderName"] = (
-            f"cognito-idp.{region}.amazonaws.com/{pool_id}"
-        )
+        resource.attributes["Arn"] = f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}"
+        resource.attributes["ProviderName"] = f"cognito-idp.{region}.amazonaws.com/{pool_id}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cognito_user_pool(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cognito_user_pool(resource: CfnResource, region: str, account_id: str) -> None:
     try:
         cognito = _moto_backend("cognitoidp", account_id, region)
         if resource.physical_id:
@@ -2288,9 +1980,7 @@ def _delete_cognito_user_pool(
 # --- Custom:: resources (Lambda-backed) ---
 
 
-def _create_custom_resource(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_custom_resource(resource: CfnResource, region: str, account_id: str) -> None:
     """Handle Custom:: and AWS::CloudFormation::CustomResource types."""
     service_token = resource.properties.get("ServiceToken", "")
     if service_token and ":function:" in service_token:
@@ -2299,6 +1989,7 @@ def _create_custom_resource(
             from robotocore.services.lambda_.invoke import (
                 invoke_lambda_sync,
             )
+
             event = {
                 "RequestType": "Create",
                 "ServiceToken": service_token,
@@ -2309,9 +2000,7 @@ def _create_custom_resource(
                 "LogicalResourceId": resource.logical_id,
                 "ResourceProperties": resource.properties,
             }
-            result = invoke_lambda_sync(
-                service_token, json.dumps(event), region, account_id
-            )
+            result = invoke_lambda_sync(service_token, json.dumps(event), region, account_id)
             if isinstance(result, dict):
                 resource.physical_id = result.get(
                     "PhysicalResourceId",
@@ -2321,21 +2010,15 @@ def _create_custom_resource(
                 if isinstance(data, dict):
                     resource.attributes.update(data)
             else:
-                resource.physical_id = (
-                    f"custom-{uuid.uuid4().hex[:8]}"
-                )
+                resource.physical_id = f"custom-{uuid.uuid4().hex[:8]}"
         except Exception:
-            resource.physical_id = (
-                f"custom-{uuid.uuid4().hex[:8]}"
-            )
+            resource.physical_id = f"custom-{uuid.uuid4().hex[:8]}"
     else:
         resource.physical_id = f"custom-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_custom_resource(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_custom_resource(resource: CfnResource, region: str, account_id: str) -> None:
     """Attempt to invoke Lambda for delete, but don't fail."""
     service_token = resource.properties.get("ServiceToken", "")
     if service_token and ":function:" in service_token:
@@ -2343,6 +2026,7 @@ def _delete_custom_resource(
             from robotocore.services.lambda_.invoke import (
                 invoke_lambda_sync,
             )
+
             event = {
                 "RequestType": "Delete",
                 "ServiceToken": service_token,
@@ -2354,9 +2038,7 @@ def _delete_custom_resource(
                 "PhysicalResourceId": resource.physical_id,
                 "ResourceProperties": resource.properties,
             }
-            invoke_lambda_sync(
-                service_token, json.dumps(event), region, account_id
-            )
+            invoke_lambda_sync(service_token, json.dumps(event), region, account_id)
         except Exception:
             pass
 
@@ -2364,238 +2046,182 @@ def _delete_custom_resource(
 # --- SES::EmailIdentity ---
 
 
-def _create_ses_email_identity(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ses_email_identity(resource: CfnResource, region: str, account_id: str) -> None:
     identity = resource.properties.get("EmailIdentity", resource.logical_id)
     resource.physical_id = identity
     resource.attributes["EmailIdentity"] = identity
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ses_email_identity(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ses_email_identity(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- SES::ConfigurationSet ---
 
 
-def _create_ses_configuration_set(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ses_configuration_set(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("Name", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ses_configuration_set(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ses_configuration_set(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- SES::Template ---
 
 
-def _create_ses_template(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ses_template(resource: CfnResource, region: str, account_id: str) -> None:
     tmpl = resource.properties.get("Template", {})
     name = tmpl.get("TemplateName", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ses_template(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ses_template(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- CloudWatch::Dashboard ---
 
 
-def _create_cloudwatch_dashboard(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cloudwatch_dashboard(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("DashboardName", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cloudwatch_dashboard(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cloudwatch_dashboard(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- CloudWatch::CompositeAlarm ---
 
 
-def _create_cloudwatch_composite_alarm(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cloudwatch_composite_alarm(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get(
         "AlarmName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
     )
     resource.physical_id = name
-    resource.attributes["Arn"] = (
-        f"arn:aws:cloudwatch:{region}:{account_id}:alarm:{name}"
-    )
+    resource.attributes["Arn"] = f"arn:aws:cloudwatch:{region}:{account_id}:alarm:{name}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cloudwatch_composite_alarm(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cloudwatch_composite_alarm(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Logs::SubscriptionFilter ---
 
 
-def _create_logs_subscription_filter(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_logs_subscription_filter(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("FilterName", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_logs_subscription_filter(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_logs_subscription_filter(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Logs::MetricFilter ---
 
 
-def _create_logs_metric_filter(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_logs_metric_filter(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("FilterName", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_logs_metric_filter(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_logs_metric_filter(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- EC2::SecurityGroupIngress ---
 
 
-def _create_ec2_sg_ingress(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_sg_ingress(resource: CfnResource, region: str, account_id: str) -> None:
     gid = resource.properties.get("GroupId", "")
     resource.physical_id = f"{gid}-ingress-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_sg_ingress(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_sg_ingress(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- EC2::SecurityGroupEgress ---
 
 
-def _create_ec2_sg_egress(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_sg_egress(resource: CfnResource, region: str, account_id: str) -> None:
     gid = resource.properties.get("GroupId", "")
     resource.physical_id = f"{gid}-egress-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_sg_egress(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_sg_egress(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- EC2::NetworkInterface ---
 
 
-def _create_ec2_network_interface(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_network_interface(resource: CfnResource, region: str, account_id: str) -> None:
     eni_id = f"eni-{uuid.uuid4().hex[:17]}"
     resource.physical_id = eni_id
     resource.attributes["PrimaryPrivateIpAddress"] = "10.0.0.10"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_network_interface(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_network_interface(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- EC2::Volume ---
 
 
-def _create_ec2_volume(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_volume(resource: CfnResource, region: str, account_id: str) -> None:
     vid = f"vol-{uuid.uuid4().hex[:17]}"
     resource.physical_id = vid
     resource.attributes["VolumeId"] = vid
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_volume(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_volume(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- EC2::Instance ---
 
 
-def _create_ec2_instance(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_instance(resource: CfnResource, region: str, account_id: str) -> None:
     iid = f"i-{uuid.uuid4().hex[:17]}"
     resource.physical_id = iid
     resource.attributes["InstanceId"] = iid
     resource.attributes["PrivateIp"] = "10.0.0.50"
     resource.attributes["PublicIp"] = "203.0.113.50"
-    resource.attributes["PrivateDnsName"] = (
-        f"ip-10-0-0-50.{region}.compute.internal"
-    )
+    resource.attributes["PrivateDnsName"] = f"ip-10-0-0-50.{region}.compute.internal"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_instance(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_instance(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- EC2::FlowLog ---
 
 
-def _create_ec2_flow_log(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_ec2_flow_log(resource: CfnResource, region: str, account_id: str) -> None:
     fid = f"fl-{uuid.uuid4().hex[:17]}"
     resource.physical_id = fid
     resource.attributes["Id"] = fid
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_ec2_flow_log(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_ec2_flow_log(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
@@ -2619,62 +2245,46 @@ def _delete_autoscaling_scalable_target(
 # --- ApplicationAutoScaling::ScalingPolicy ---
 
 
-def _create_autoscaling_scaling_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_autoscaling_scaling_policy(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("PolicyName", resource.logical_id)
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_autoscaling_scaling_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_autoscaling_scaling_policy(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- SNS::TopicPolicy ---
 
 
-def _create_sns_topic_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_sns_topic_policy(resource: CfnResource, region: str, account_id: str) -> None:
     topics = resource.properties.get("Topics", [])
-    resource.physical_id = (
-        topics[0] if topics else f"tp-{uuid.uuid4().hex[:8]}"
-    )
+    resource.physical_id = topics[0] if topics else f"tp-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_sns_topic_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_sns_topic_policy(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Lambda::EventInvokeConfig ---
 
 
-def _create_lambda_event_invoke_config(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_lambda_event_invoke_config(resource: CfnResource, region: str, account_id: str) -> None:
     fn_name = resource.properties.get("FunctionName", resource.logical_id)
     resource.physical_id = fn_name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_lambda_event_invoke_config(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_lambda_event_invoke_config(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Lambda::Url ---
 
 
-def _create_lambda_url(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_lambda_url(resource: CfnResource, region: str, account_id: str) -> None:
     url_id = uuid.uuid4().hex[:12]
     url = f"https://{url_id}.lambda-url.{region}.on.aws/"
     resource.physical_id = url
@@ -2682,89 +2292,67 @@ def _create_lambda_url(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_lambda_url(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_lambda_url(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- IAM::RolePolicy ---
 
 
-def _create_iam_role_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_role_policy(resource: CfnResource, region: str, account_id: str) -> None:
     role_name = resource.properties.get("RoleName", "")
     policy_name = resource.properties.get("PolicyName", resource.logical_id)
     resource.physical_id = f"{role_name}|{policy_name}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_role_policy(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_role_policy(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- IAM::UserToGroupAddition ---
 
 
-def _create_iam_user_to_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_iam_user_to_group(resource: CfnResource, region: str, account_id: str) -> None:
     group = resource.properties.get("GroupName", "")
     resource.physical_id = f"{group}-users-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_iam_user_to_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_iam_user_to_group(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- CloudFormation::WaitConditionHandle ---
 
 
-def _create_cfn_wait_condition_handle(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cfn_wait_condition_handle(resource: CfnResource, region: str, account_id: str) -> None:
     url = f"https://cloudformation-waitcondition-{region}.s3.amazonaws.com/"
     resource.physical_id = url
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cfn_wait_condition_handle(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cfn_wait_condition_handle(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- CloudFormation::WaitCondition ---
 
 
-def _create_cfn_wait_condition(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
-    resource.physical_id = (
-        f"waitcond-{uuid.uuid4().hex[:8]}"
-    )
+def _create_cfn_wait_condition(resource: CfnResource, region: str, account_id: str) -> None:
+    resource.physical_id = f"waitcond-{uuid.uuid4().hex[:8]}"
     resource.attributes["Data"] = "{}"
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cfn_wait_condition(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cfn_wait_condition(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- CloudFormation::Stack (nested stacks) ---
 
 
-def _create_cfn_stack(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cfn_stack(resource: CfnResource, region: str, account_id: str) -> None:
     stack_id = (
         f"arn:aws:cloudformation:{region}:{account_id}"
         f":stack/nested-{uuid.uuid4().hex[:8]}/{uuid.uuid4()}"
@@ -2774,88 +2362,63 @@ def _create_cfn_stack(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cfn_stack(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cfn_stack(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Cognito::UserPoolClient ---
 
 
-def _create_cognito_user_pool_client(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cognito_user_pool_client(resource: CfnResource, region: str, account_id: str) -> None:
     cid = uuid.uuid4().hex[:26]
     resource.physical_id = cid
     resource.attributes["ClientId"] = cid
-    resource.attributes["Name"] = resource.properties.get(
-        "ClientName", resource.logical_id
-    )
+    resource.attributes["Name"] = resource.properties.get("ClientName", resource.logical_id)
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cognito_user_pool_client(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cognito_user_pool_client(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Cognito::IdentityPool ---
 
 
-def _create_cognito_identity_pool(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_cognito_identity_pool(resource: CfnResource, region: str, account_id: str) -> None:
     pool_id = f"{region}:{uuid.uuid4()}"
     resource.physical_id = pool_id
     resource.attributes["Id"] = pool_id
-    resource.attributes["Name"] = resource.properties.get(
-        "IdentityPoolName", resource.logical_id
-    )
+    resource.attributes["Name"] = resource.properties.get("IdentityPoolName", resource.logical_id)
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_cognito_identity_pool(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_cognito_identity_pool(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- WAFv2::WebACL ---
 
 
-def _create_wafv2_web_acl(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_wafv2_web_acl(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("Name", resource.logical_id)
     acl_id = uuid.uuid4().hex[:36]
-    arn = (
-        f"arn:aws:wafv2:{region}:{account_id}"
-        f":regional/webacl/{name}/{acl_id}"
-    )
+    arn = f"arn:aws:wafv2:{region}:{account_id}:regional/webacl/{name}/{acl_id}"
     resource.physical_id = arn
     resource.attributes["Arn"] = arn
     resource.attributes["Id"] = acl_id
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_wafv2_web_acl(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_wafv2_web_acl(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Elasticsearch::Domain ---
 
 
-def _create_elasticsearch_domain(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_elasticsearch_domain(resource: CfnResource, region: str, account_id: str) -> None:
     name = resource.properties.get("DomainName", resource.logical_id)
-    arn = (
-        f"arn:aws:es:{region}:{account_id}:domain/{name}"
-    )
+    arn = f"arn:aws:es:{region}:{account_id}:domain/{name}"
     resource.physical_id = name
     resource.attributes["Arn"] = arn
     resource.attributes["DomainArn"] = arn
@@ -2865,18 +2428,14 @@ def _create_elasticsearch_domain(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_elasticsearch_domain(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_elasticsearch_domain(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- Redshift::Cluster ---
 
 
-def _create_redshift_cluster(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_redshift_cluster(resource: CfnResource, region: str, account_id: str) -> None:
     cid = resource.properties.get(
         "ClusterIdentifier",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -2889,18 +2448,14 @@ def _create_redshift_cluster(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_redshift_cluster(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_redshift_cluster(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- RDS::DBInstance ---
 
 
-def _create_rds_db_instance(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_rds_db_instance(resource: CfnResource, region: str, account_id: str) -> None:
     db_id = resource.properties.get(
         "DBInstanceIdentifier",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -2909,43 +2464,31 @@ def _create_rds_db_instance(
     resource.attributes["Endpoint.Address"] = (
         f"{db_id}.{uuid.uuid4().hex[:8]}.{region}.rds.amazonaws.com"
     )
-    resource.attributes["Endpoint.Port"] = str(
-        resource.properties.get("Port", 3306)
-    )
+    resource.attributes["Endpoint.Port"] = str(resource.properties.get("Port", 3306))
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_rds_db_instance(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_rds_db_instance(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- RDS::DBSubnetGroup ---
 
 
-def _create_rds_db_subnet_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
-    name = resource.properties.get(
-        "DBSubnetGroupName", resource.logical_id
-    ).lower()
+def _create_rds_db_subnet_group(resource: CfnResource, region: str, account_id: str) -> None:
+    name = resource.properties.get("DBSubnetGroupName", resource.logical_id).lower()
     resource.physical_id = name
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_rds_db_subnet_group(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_rds_db_subnet_group(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 
 # --- RDS::DBCluster ---
 
 
-def _create_rds_db_cluster(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _create_rds_db_cluster(resource: CfnResource, region: str, account_id: str) -> None:
     cid = resource.properties.get(
         "DBClusterIdentifier",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
@@ -2958,9 +2501,7 @@ def _create_rds_db_cluster(
     resource.status = "CREATE_COMPLETE"
 
 
-def _delete_rds_db_cluster(
-    resource: CfnResource, region: str, account_id: str
-) -> None:
+def _delete_rds_db_cluster(resource: CfnResource, region: str, account_id: str) -> None:
     pass
 
 

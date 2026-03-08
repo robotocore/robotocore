@@ -238,9 +238,7 @@ class TestLogsOperations:
         logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
 
         now = int(time.time() * 1000)
-        events = [
-            {"timestamp": now + i, "message": f"msg-{suffix}-{i}"} for i in range(10)
-        ]
+        events = [{"timestamp": now + i, "message": f"msg-{suffix}-{i}"} for i in range(10)]
         logs.put_log_events(
             logGroupName=log_group,
             logStreamName=stream,
@@ -321,9 +319,7 @@ class TestLogsOperations:
 
         # Get the actual ARN from describe
         desc = logs.describe_log_groups(logGroupNamePrefix=group)
-        group_arn = [
-            g["arn"] for g in desc["logGroups"] if g["logGroupName"] == group
-        ][0]
+        group_arn = [g["arn"] for g in desc["logGroups"] if g["logGroupName"] == group][0]
         # Strip trailing ":*" if present (AWS sometimes includes it)
         if group_arn.endswith(":*"):
             group_arn = group_arn[:-2]
@@ -450,10 +446,10 @@ class TestLogsOperations:
         import uuid
 
         suffix = uuid.uuid4().hex[:8]
-        filter_name = f"sf-{suffix}"
+        _filter_name = f"sf-{suffix}"
 
         # Create a lambda function ARN (doesn't need to exist for the filter)
-        dest_arn = f"arn:aws:lambda:us-east-1:000000000000:function:dummy-{suffix}"
+        _dest_arn = f"arn:aws:lambda:us-east-1:000000000000:function:dummy-{suffix}"
 
     def test_describe_log_streams(self, logs, log_group):
         """Create stream, describe_log_streams, verify stream name in list."""
@@ -552,9 +548,7 @@ class TestLogsOperations:
         logs.put_log_events(
             logGroupName=log_group,
             logStreamName=stream,
-            logEvents=[
-                {"timestamp": now + i, "message": f"MATCH-{suffix}-{i}"} for i in range(10)
-            ],
+            logEvents=[{"timestamp": now + i, "message": f"MATCH-{suffix}-{i}"} for i in range(10)],
         )
 
         response = logs.filter_log_events(
@@ -764,6 +758,7 @@ class TestLogsOperations:
             assert "retentionInDays" not in group
         finally:
             logs.delete_log_group(logGroupName=name)
+
     def test_put_describe_delete_destination(self, logs):
         """PutDestination / DescribeDestinations / DeleteDestination."""
         dest_name = _unique("dest")
@@ -778,6 +773,7 @@ class TestLogsOperations:
             assert dest_name in names
         finally:
             logs.delete_destination(destinationName=dest_name)
+
     def test_describe_queries(self, logs):
         """DescribeQueries."""
         resp = logs.describe_queries()
@@ -818,6 +814,7 @@ class TestLogsOperations:
             assert resp["tags"]["env"] == "staging"
         finally:
             logs.delete_log_group(logGroupName=name)
+
     def test_associate_disassociate_kms_key(self, logs):
         """AssociateKmsKey / DisassociateKmsKey."""
         name = _unique("/test/kms-group")
@@ -847,6 +844,7 @@ class TestLogsExtended:
     @pytest.fixture
     def logs(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("logs")
 
     def test_create_log_group_with_retention(self, logs):
@@ -929,8 +927,11 @@ class TestLogsExtended:
                 logEvents=[{"timestamp": ts, "message": "batch-1"}],
             )
             seq = resp1.get("nextSequenceToken")
-            kwargs = {"logGroupName": name, "logStreamName": stream,
-                      "logEvents": [{"timestamp": ts + 1000, "message": "batch-2"}]}
+            kwargs = {
+                "logGroupName": name,
+                "logStreamName": stream,
+                "logEvents": [{"timestamp": ts + 1000, "message": "batch-2"}],
+            }
             if seq:
                 kwargs["sequenceToken"] = seq
             logs.put_log_events(**kwargs)

@@ -64,7 +64,6 @@ class TestCognitoUserPoolOperations:
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
-
     def test_update_user_pool_client(self, cognito):
         pool_name = _unique("update-client-pool")
         pool = cognito.create_user_pool(PoolName=pool_name)["UserPool"]
@@ -263,9 +262,7 @@ class TestCognitoUserOperations:
             cognito.admin_add_user_to_group(
                 UserPoolId=pool_id, Username=username, GroupName="my-group"
             )
-            response = cognito.admin_list_groups_for_user(
-                UserPoolId=pool_id, Username=username
-            )
+            response = cognito.admin_list_groups_for_user(UserPoolId=pool_id, Username=username)
             groups = [g["GroupName"] for g in response["Groups"]]
             assert "my-group" in groups
         finally:
@@ -288,9 +285,9 @@ class TestCognitoUserOperations:
         pool = cognito.create_user_pool(PoolName=_unique("desccli-pool"))["UserPool"]
         pool_id = pool["Id"]
         try:
-            client = cognito.create_user_pool_client(
-                UserPoolId=pool_id, ClientName="desc-client"
-            )["UserPoolClient"]
+            client = cognito.create_user_pool_client(UserPoolId=pool_id, ClientName="desc-client")[
+                "UserPoolClient"
+            ]
             response = cognito.describe_user_pool_client(
                 UserPoolId=pool_id, ClientId=client["ClientId"]
             )
@@ -305,6 +302,7 @@ class TestCognitoExtended:
     @pytest.fixture
     def cognito(self):
         from tests.compatibility.conftest import make_client
+
         return make_client("cognito-idp")
 
     def test_admin_set_user_password(self, cognito):
@@ -316,8 +314,10 @@ class TestCognitoExtended:
                 UserPoolId=pool_id, Username=username, TemporaryPassword="Temp1234!"
             )
             cognito.admin_set_user_password(
-                UserPoolId=pool_id, Username=username,
-                Password="Permanent1!", Permanent=True,
+                UserPoolId=pool_id,
+                Username=username,
+                Password="Permanent1!",
+                Permanent=True,
             )
             user = cognito.admin_get_user(UserPoolId=pool_id, Username=username)
             assert user["UserStatus"] == "CONFIRMED"
@@ -374,9 +374,9 @@ class TestCognitoExtended:
         pool = cognito.create_user_pool(PoolName=_unique("updcli-pool"))["UserPool"]
         pool_id = pool["Id"]
         try:
-            client = cognito.create_user_pool_client(
-                UserPoolId=pool_id, ClientName="upd-client"
-            )["UserPoolClient"]
+            client = cognito.create_user_pool_client(UserPoolId=pool_id, ClientName="upd-client")[
+                "UserPoolClient"
+            ]
             cognito.update_user_pool_client(
                 UserPoolId=pool_id,
                 ClientId=client["ClientId"],
@@ -426,9 +426,7 @@ class TestCognitoExtended:
             cognito.admin_remove_user_from_group(
                 UserPoolId=pool_id, Username=username, GroupName="rm-group"
             )
-            resp = cognito.admin_list_groups_for_user(
-                UserPoolId=pool_id, Username=username
-            )
+            resp = cognito.admin_list_groups_for_user(UserPoolId=pool_id, Username=username)
             groups = [g["GroupName"] for g in resp["Groups"]]
             assert "rm-group" not in groups
         finally:
@@ -662,8 +660,9 @@ class TestCognitoExtendedV2:
             cognito.admin_delete_user(UserPoolId=pool_id, Username=username)
             with pytest.raises(Exception) as exc_info:
                 cognito.admin_get_user(UserPoolId=pool_id, Username=username)
-            assert "UserNotFoundException" in str(type(exc_info.value).__name__) or \
-                "UserNotFoundException" in str(exc_info.value)
+            assert "UserNotFoundException" in str(
+                type(exc_info.value).__name__
+            ) or "UserNotFoundException" in str(exc_info.value)
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
 
@@ -684,18 +683,18 @@ class TestCognitoExtendedV2:
                 UserPoolId=pool_id, Username=username, GroupName=group_name
             )
             # Verify user is in group
-            groups = cognito.admin_list_groups_for_user(
-                UserPoolId=pool_id, Username=username
-            )["Groups"]
+            groups = cognito.admin_list_groups_for_user(UserPoolId=pool_id, Username=username)[
+                "Groups"
+            ]
             assert group_name in [g["GroupName"] for g in groups]
 
             # Remove user from group
             cognito.admin_remove_user_from_group(
                 UserPoolId=pool_id, Username=username, GroupName=group_name
             )
-            groups = cognito.admin_list_groups_for_user(
-                UserPoolId=pool_id, Username=username
-            )["Groups"]
+            groups = cognito.admin_list_groups_for_user(UserPoolId=pool_id, Username=username)[
+                "Groups"
+            ]
             assert group_name not in [g["GroupName"] for g in groups]
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
@@ -721,9 +720,9 @@ class TestCognitoExtendedV2:
             cognito.admin_add_user_to_group(
                 UserPoolId=pool_id, Username=username, GroupName=group_b
             )
-            groups = cognito.admin_list_groups_for_user(
-                UserPoolId=pool_id, Username=username
-            )["Groups"]
+            groups = cognito.admin_list_groups_for_user(UserPoolId=pool_id, Username=username)[
+                "Groups"
+            ]
             group_names = [g["GroupName"] for g in groups]
             assert group_a in group_names
             assert group_b in group_names
@@ -775,15 +774,9 @@ class TestCognitoExtendedV2:
         pool = cognito.create_user_pool(PoolName=_unique("ordgrp-pool"))["UserPool"]
         pool_id = pool["Id"]
         try:
-            cognito.create_group(
-                GroupName="high-prec", UserPoolId=pool_id, Precedence=1
-            )
-            cognito.create_group(
-                GroupName="low-prec", UserPoolId=pool_id, Precedence=100
-            )
-            cognito.create_group(
-                GroupName="mid-prec", UserPoolId=pool_id, Precedence=50
-            )
+            cognito.create_group(GroupName="high-prec", UserPoolId=pool_id, Precedence=1)
+            cognito.create_group(GroupName="low-prec", UserPoolId=pool_id, Precedence=100)
+            cognito.create_group(GroupName="mid-prec", UserPoolId=pool_id, Precedence=50)
             groups = cognito.list_groups(UserPoolId=pool_id)["Groups"]
             group_names = [g["GroupName"] for g in groups]
             assert "high-prec" in group_names
@@ -860,12 +853,16 @@ class TestCognitoExtendedV2:
             user1 = _unique("grpusr1")
             user2 = _unique("grpusr2")
             cognito.admin_create_user(
-                UserPoolId=pool_id, Username=user1,
-                TemporaryPassword="TempPass1!", MessageAction="SUPPRESS",
+                UserPoolId=pool_id,
+                Username=user1,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
             )
             cognito.admin_create_user(
-                UserPoolId=pool_id, Username=user2,
-                TemporaryPassword="TempPass1!", MessageAction="SUPPRESS",
+                UserPoolId=pool_id,
+                Username=user2,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
             )
             group_name = _unique("usrgrp")
             cognito.create_group(GroupName=group_name, UserPoolId=pool_id)
@@ -875,12 +872,9 @@ class TestCognitoExtendedV2:
             cognito.admin_add_user_to_group(
                 UserPoolId=pool_id, Username=user2, GroupName=group_name
             )
-            response = cognito.list_users_in_group(
-                UserPoolId=pool_id, GroupName=group_name
-            )
+            response = cognito.list_users_in_group(UserPoolId=pool_id, GroupName=group_name)
             usernames = [u["Username"] for u in response["Users"]]
             assert user1 in usernames
             assert user2 in usernames
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
-

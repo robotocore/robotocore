@@ -101,12 +101,8 @@ class TestDSDirectoryOperations:
         """delete_directory removes the directory so it cannot be described."""
         vpc = ec2.create_vpc(CidrBlock="10.1.0.0/16")
         vpc_id = vpc["Vpc"]["VpcId"]
-        s1 = ec2.create_subnet(
-            VpcId=vpc_id, CidrBlock="10.1.1.0/24", AvailabilityZone="us-east-1a"
-        )
-        s2 = ec2.create_subnet(
-            VpcId=vpc_id, CidrBlock="10.1.2.0/24", AvailabilityZone="us-east-1b"
-        )
+        s1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.1.1.0/24", AvailabilityZone="us-east-1a")
+        s2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.1.2.0/24", AvailabilityZone="us-east-1b")
         sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
 
         resp = ds.create_directory(

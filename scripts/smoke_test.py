@@ -18,7 +18,6 @@ from io import BytesIO
 import boto3
 from botocore.config import Config
 
-
 ENDPOINT_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4566"
 REGION = "us-east-1"
 
@@ -122,10 +121,18 @@ def test_lambda():
     role_name = uid("lambda-role")
     iam.create_role(
         RoleName=role_name,
-        AssumeRolePolicyDocument=json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-        }),
+        AssumeRolePolicyDocument=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        ),
     )
     role_arn = iam.get_role(RoleName=role_name)["Role"]["Arn"]
     lam = client("lambda")
@@ -155,10 +162,18 @@ def test_iam():
     role_name = uid("role")
     iam.create_role(
         RoleName=role_name,
-        AssumeRolePolicyDocument=json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}],
-        }),
+        AssumeRolePolicyDocument=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        ),
     )
     role = iam.get_role(RoleName=role_name)
     assert role["Role"]["RoleName"] == role_name
@@ -189,10 +204,12 @@ def test_events():
 def test_stepfunctions():
     sfn = client("stepfunctions")
     name = uid("sm")
-    definition = json.dumps({
-        "StartAt": "Pass",
-        "States": {"Pass": {"Type": "Pass", "Result": "ok", "End": True}},
-    })
+    definition = json.dumps(
+        {
+            "StartAt": "Pass",
+            "States": {"Pass": {"Type": "Pass", "Result": "ok", "End": True}},
+        }
+    )
     sm = sfn.create_state_machine(
         name=name,
         definition=definition,
@@ -525,11 +542,14 @@ def main():
     # Bulk probe tests — verify routing works for all remaining services
     print("\nBulk probe tests (routing + basic operation):")
     for display_name, boto3_name, method, kwargs in BULK_PROBE_TESTS:
+
         def make_probe(b3name, meth, kw):
             def probe():
                 c = client(b3name)
                 getattr(c, meth)(**kw)
+
             return probe
+
         check(display_name, make_probe(boto3_name, method, kwargs))
 
     print("=" * 50)
