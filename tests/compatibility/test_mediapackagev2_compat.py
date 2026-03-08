@@ -92,6 +92,15 @@ class TestMediaPackageV2Channels:
         finally:
             mediapackagev2_client.delete_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
 
+    def test_get_channel(self, mediapackagev2_client, channel_group, channel):
+        cg_name = channel_group["ChannelGroupName"]
+        ch_name = channel["ChannelName"]
+        resp = mediapackagev2_client.get_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
+        assert resp["ChannelName"] == ch_name
+        assert resp["ChannelGroupName"] == cg_name
+        assert "Arn" in resp
+        assert "ETag" in resp
+
     def test_delete_channel(self, mediapackagev2_client, channel_group):
         cg_name = channel_group["ChannelGroupName"]
         ch_name = f"test-ch-{uuid.uuid4().hex[:8]}"
