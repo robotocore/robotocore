@@ -8,6 +8,7 @@ Intercepts operations that Moto doesn't implement or has bugs in:
 
 import uuid
 from urllib.parse import parse_qs
+from xml.sax.saxutils import escape as xml_escape
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -36,14 +37,14 @@ async def handle_ec2_request(request: Request, region: str, account_id: str) -> 
             xml = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'
                 f"<Response><Errors><Error><Code>NotImplemented</Code>"
-                f"<Message>{e}</Message></Error></Errors></Response>"
+                f"<Message>{xml_escape(str(e))}</Message></Error></Errors></Response>"
             )
             return Response(content=xml, status_code=501, media_type="text/xml")
         except Exception as e:
             xml = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'
                 f"<Response><Errors><Error><Code>InternalError</Code>"
-                f"<Message>{e}</Message></Error></Errors></Response>"
+                f"<Message>{xml_escape(str(e))}</Message></Error></Errors></Response>"
             )
             return Response(content=xml, status_code=500, media_type="text/xml")
 

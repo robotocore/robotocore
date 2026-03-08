@@ -54,6 +54,17 @@ def populate_context_handler(context: RequestContext) -> None:
         context.operation = target.split(".")[-1]
     else:
         action = context.request.query_params.get("Action")
+        if not action:
+            # Query-protocol services (STS, SQS, IAM, EC2, etc.) send Action
+            # in the POST form body, not URL query params.
+            content_type = headers.get("content-type", "")
+            if "x-www-form-urlencoded" in content_type:
+                from urllib.parse import parse_qs
+
+                body = getattr(context.request, "_body", b"")
+                if body:
+                    form = parse_qs(body.decode("utf-8", errors="replace"))
+                    action = form.get("Action", [None])[0]
         if action:
             context.operation = action
 
@@ -151,7 +162,7 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
     )
     diag_hdr = {"x-robotocore-diag": diag_header(exc)}
 
-    if protocol in ("json", "rest-json"):
+    if protocol in ("json", "rest-json", "smithy-rpc-v2-cbor"):
         body = json.dumps(
             {
                 "__type": error_code,
@@ -167,15 +178,29 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
             headers=diag_hdr,
         )
     else:
-        # XML format for query, rest-xml, ec2
-        # Escape the exception message to prevent XML injection
+        # XML format varies by protocol:
+        # - EC2: <Response><Errors><Error>...</Error></Errors><RequestId>...</RequestId></Response>
+        # - S3 (rest-xml): bare <Error>...</Error>
+        # - query/rest-xml (non-S3): <ErrorResponse><Error>...</Error></ErrorResponse>
         safe_message = xml_escape(str(exc))
-        body = (
-            f"<ErrorResponse><Error>"
-            f"<Code>{error_code}</Code>"
-            f"<Message>{safe_message}</Message>"
-            f"</Error></ErrorResponse>"
-        )
+        if protocol == "ec2":
+            body = (
+                f"<Response><Errors><Error>"
+                f"<Code>{error_code}</Code>"
+                f"<Message>{safe_message}</Message>"
+                f"</Error></Errors>"
+                f"<RequestId>00000000-0000-0000-0000-000000000000</RequestId>"
+                f"</Response>"
+            )
+        elif context.service_name == "s3":
+            body = f"<Error><Code>{error_code}</Code><Message>{safe_message}</Message></Error>"
+        else:
+            body = (
+                f"<ErrorResponse><Error>"
+                f"<Code>{error_code}</Code>"
+                f"<Message>{safe_message}</Message>"
+                f"</Error></ErrorResponse>"
+            )
         context.response = Response(
             content=body,
             status_code=status_code,

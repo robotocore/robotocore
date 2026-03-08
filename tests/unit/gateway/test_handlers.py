@@ -113,6 +113,8 @@ class TestPopulateContextHandler:
         captured = {}
 
         async def handler(request):
+            # Pre-read body so sync handler can access request._body
+            await request.body()
             ctx = RequestContext(request=request, service_name=service)
             populate_context_handler(ctx)
             captured["operation"] = ctx.operation
@@ -323,7 +325,9 @@ class TestErrorNormalizer:
         ctx.protocol = "rest-xml"
         error_normalizer(ctx, ValueError("xml fail"))
         assert ctx.response.status_code == 500
-        assert b"<ErrorResponse>" in ctx.response.body
+        # S3 uses bare <Error> root, not <ErrorResponse>
+        assert b"<Error>" in ctx.response.body
+        assert b"<ErrorResponse>" not in ctx.response.body
 
     def test_default_protocol_is_xml(self):
         ctx = _make_context()

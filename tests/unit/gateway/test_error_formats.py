@@ -2,7 +2,9 @@
 
 Phase 2C: Verify error responses use the correct format per protocol:
 - JSON: {"__type": "ErrorCode", "message": "..."}
-- XML: <ErrorResponse><Error><Code>...</Code><Message>...</Message></Error></ErrorResponse>
+- query XML: <ErrorResponse><Error><Code>...</Code><Message>...</Message></Error></ErrorResponse>
+- EC2: <Response><Errors><Error><Code>...</Code><Message>...</Message></Error></Errors></Response>
+- S3: <Error><Code>...</Code><Message>...</Message></Error>
 """
 
 import json
@@ -112,8 +114,9 @@ class TestRestXmlErrorFormat:
         error_normalizer(ctx, ValueError("s3 error"))
         body = ctx.response.body.decode()
         root = ET.fromstring(body)
-        assert root.tag == "ErrorResponse"
-        assert root.find("Error/Code") is not None
+        # S3 uses bare <Error> root, not <ErrorResponse>
+        assert root.tag == "Error"
+        assert root.find("Code") is not None
 
     def test_route53_rest_xml_error(self):
         ctx = _make_context("route53", "rest-xml")
@@ -124,14 +127,20 @@ class TestRestXmlErrorFormat:
 
 
 class TestEc2ProtocolErrorFormat:
-    """EC2 protocol should return XML ErrorResponse."""
+    """EC2 protocol should return <Response><Errors><Error> format."""
 
     def test_ec2_error(self):
         ctx = _make_context("ec2", "ec2")
         error_normalizer(ctx, ValueError("ec2 error"))
         body = ctx.response.body.decode()
         root = ET.fromstring(body)
-        assert root.tag == "ErrorResponse"
+        assert root.tag == "Response"
+        errors_elem = root.find("Errors")
+        assert errors_elem is not None
+        error_elem = errors_elem.find("Error")
+        assert error_elem is not None
+        assert error_elem.find("Code") is not None
+        assert error_elem.find("Message") is not None
 
 
 class TestNotImplementedErrors:
@@ -150,7 +159,8 @@ class TestNotImplementedErrors:
         error_normalizer(ctx, NotImplementedError("not yet"))
         assert ctx.response.status_code == 501
         root = ET.fromstring(ctx.response.body.decode())
-        assert root.find("Error/Code").text == "NotImplemented"
+        # S3 uses bare <Error> root
+        assert root.find("Code").text == "NotImplemented"
 
     def test_regular_error_uses_500(self):
         ctx = _make_context("dynamodb", "json")
@@ -180,7 +190,8 @@ class TestSpecialCharactersInErrors:
         # Must be valid XML (parseable)
         root = ET.fromstring(body)
         # After parsing, ET decodes the entities back
-        msg = root.find("Error/Message").text
+        # S3 uses bare <Error> root, so Message is a direct child
+        msg = root.find("Message").text
         assert "<invalid>" in msg  # ET decodes entities
 
     def test_json_special_chars(self):

@@ -640,6 +640,7 @@ def _json_response(data: dict) -> Response:
 
 def _xml_response(action: str, data: dict) -> Response:
     """Build XML response from dict for legacy query protocol."""
+    from xml.sax.saxutils import escape as xml_escape
 
     # Simple XML serialization for basic responses
     def dict_to_xml(d: dict, indent: int = 2) -> str:
@@ -650,11 +651,11 @@ def _xml_response(action: str, data: dict) -> Response:
                     if isinstance(item, dict):
                         parts.append(f"<{k}>{dict_to_xml(item, indent + 1)}</{k}>")
                     else:
-                        parts.append(f"<{k}>{item}</{k}>")
+                        parts.append(f"<{k}>{xml_escape(str(item))}</{k}>")
             elif isinstance(v, dict):
                 parts.append(f"<{k}>{dict_to_xml(v, indent + 1)}</{k}>")
             else:
-                parts.append(f"<{k}>{v}</{k}>")
+                parts.append(f"<{k}>{xml_escape(str(v))}</{k}>")
         return "".join(parts)
 
     result_name = action.replace("Response", "Result")
