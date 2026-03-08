@@ -267,3 +267,139 @@ class TestTranscribeExtended:
         finally:
             for n in names:
                 transcribe.delete_transcription_job(TranscriptionJobName=n)
+
+
+class TestTranscribeMedicalJobs:
+    """Tests for medical transcription job operations."""
+
+    @pytest.fixture
+    def transcribe(self):
+        return make_client("transcribe")
+
+    def test_start_medical_transcription_job(self, transcribe):
+        name = f"med-start-{_uid()}"
+        resp = transcribe.start_medical_transcription_job(
+            MedicalTranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            Specialty="PRIMARYCARE",
+            Type="CONVERSATION",
+        )
+        try:
+            job = resp["MedicalTranscriptionJob"]
+            assert job["MedicalTranscriptionJobName"] == name
+            assert job["LanguageCode"] == "en-US"
+        finally:
+            transcribe.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+
+    def test_get_medical_transcription_job(self, transcribe):
+        name = f"med-get-{_uid()}"
+        transcribe.start_medical_transcription_job(
+            MedicalTranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            Specialty="PRIMARYCARE",
+            Type="CONVERSATION",
+        )
+        try:
+            resp = transcribe.get_medical_transcription_job(MedicalTranscriptionJobName=name)
+            job = resp["MedicalTranscriptionJob"]
+            assert job["MedicalTranscriptionJobName"] == name
+            assert job["Specialty"] == "PRIMARYCARE"
+        finally:
+            transcribe.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+
+    def test_list_medical_transcription_jobs(self, transcribe):
+        name = f"med-list-{_uid()}"
+        transcribe.start_medical_transcription_job(
+            MedicalTranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            Specialty="PRIMARYCARE",
+            Type="CONVERSATION",
+        )
+        try:
+            resp = transcribe.list_medical_transcription_jobs()
+            job_names = [
+                j["MedicalTranscriptionJobName"]
+                for j in resp.get("MedicalTranscriptionJobSummaries", [])
+            ]
+            assert name in job_names
+        finally:
+            transcribe.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+
+    def test_delete_medical_transcription_job(self, transcribe):
+        name = f"med-del-{_uid()}"
+        transcribe.start_medical_transcription_job(
+            MedicalTranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            Specialty="PRIMARYCARE",
+            Type="CONVERSATION",
+        )
+        resp = transcribe.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestTranscribeMedicalVocabularies:
+    """Tests for medical vocabulary operations."""
+
+    @pytest.fixture
+    def transcribe(self):
+        return make_client("transcribe")
+
+    def test_create_medical_vocabulary(self, transcribe):
+        name = f"med-vocab-{_uid()}"
+        resp = transcribe.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        try:
+            assert resp["VocabularyName"] == name
+            assert resp["LanguageCode"] == "en-US"
+        finally:
+            transcribe.delete_medical_vocabulary(VocabularyName=name)
+
+    def test_get_medical_vocabulary(self, transcribe):
+        name = f"med-vocab-get-{_uid()}"
+        transcribe.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        try:
+            resp = transcribe.get_medical_vocabulary(VocabularyName=name)
+            assert resp["VocabularyName"] == name
+            assert resp["LanguageCode"] == "en-US"
+            assert "VocabularyState" in resp
+        finally:
+            transcribe.delete_medical_vocabulary(VocabularyName=name)
+
+    def test_list_medical_vocabularies(self, transcribe):
+        name = f"med-vocab-list-{_uid()}"
+        transcribe.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        try:
+            resp = transcribe.list_medical_vocabularies()
+            vocab_names = [v["VocabularyName"] for v in resp.get("Vocabularies", [])]
+            assert name in vocab_names
+        finally:
+            transcribe.delete_medical_vocabulary(VocabularyName=name)
+
+    def test_delete_medical_vocabulary(self, transcribe):
+        name = f"med-vocab-del-{_uid()}"
+        transcribe.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        resp = transcribe.delete_medical_vocabulary(VocabularyName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

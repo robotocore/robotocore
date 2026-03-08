@@ -1147,3 +1147,179 @@ class TestEventBridgeExtended:
             assert desc["RetentionDays"] == 14
         finally:
             events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventBridgeReplay:
+    """Tests for StartReplay and DescribeReplay."""
+
+    def test_start_and_describe_replay(self, events):
+        """StartReplay from an archive, then DescribeReplay to verify state."""
+        from datetime import UTC, datetime, timedelta
+
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"replay-archive-{suffix}"
+        replay_name = f"test-replay-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+            )
+            now = datetime.now(UTC)
+            archive_arn = f"arn:aws:events:us-east-1:123456789012:archive/{archive_name}"
+            resp = events.start_replay(
+                ReplayName=replay_name,
+                EventSourceArn=archive_arn,
+                EventStartTime=now - timedelta(hours=1),
+                EventEndTime=now,
+                Destination={"Arn": bus_arn},
+            )
+            assert "ReplayArn" in resp
+            assert resp["State"] in ("STARTING", "RUNNING", "COMPLETED")
+
+            desc = events.describe_replay(ReplayName=replay_name)
+            assert desc["ReplayName"] == replay_name
+            assert desc["EventSourceArn"] == archive_arn
+            assert "State" in desc
+            assert "EventStartTime" in desc
+            assert "EventEndTime" in desc
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventBridgeTagsOnBus:
+    """Tests for TagResource/UntagResource/ListTagsForResource on event buses."""
+
+    def test_tag_list_untag_on_event_bus(self, events):
+        """Tag an event bus, list tags, untag, verify removal."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"tag-bus-{suffix}"
+        try:
+            resp = events.create_event_bus(Name=bus_name)
+            bus_arn = resp["EventBusArn"]
+
+            events.tag_resource(
+                ResourceARN=bus_arn,
+                Tags=[
+                    {"Key": "project", "Value": "robotocore"},
+                    {"Key": "env", "Value": "test"},
+                ],
+            )
+
+            tags_resp = events.list_tags_for_resource(ResourceARN=bus_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["project"] == "robotocore"
+            assert tag_map["env"] == "test"
+
+            events.untag_resource(ResourceARN=bus_arn, TagKeys=["project"])
+            tags_resp2 = events.list_tags_for_resource(ResourceARN=bus_arn)
+            keys = [t["Key"] for t in tags_resp2["Tags"]]
+            assert "project" not in keys
+            assert "env" in keys
+        finally:
+            events.delete_event_bus(Name=bus_name)
+
+
+class TestEventBridgeTagsOnArchive:
+    """Tests for TagResource/ListTagsForResource on archives."""
+
+    def test_tag_and_list_tags_on_archive(self, events):
+        """Tag an archive, verify tags via ListTagsForResource."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"tag-archive-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            resp = events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+            )
+            archive_arn = resp["ArchiveArn"]
+
+            events.tag_resource(
+                ResourceARN=archive_arn,
+                Tags=[{"Key": "tier", "Value": "gold"}],
+            )
+            tags_resp = events.list_tags_for_resource(ResourceARN=archive_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["tier"] == "gold"
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventBridgeTagsOnConnection:
+    """Tests for TagResource/ListTagsForResource on connections."""
+
+    def test_tag_and_list_tags_on_connection(self, events):
+        """Tag a connection, verify tags via ListTagsForResource."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"tag-conn-{suffix}"
+        try:
+            resp = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret",
+                    }
+                },
+            )
+            conn_arn = resp["ConnectionArn"]
+
+            events.tag_resource(
+                ResourceARN=conn_arn,
+                Tags=[{"Key": "managed-by", "Value": "test"}],
+            )
+            tags_resp = events.list_tags_for_resource(ResourceARN=conn_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["managed-by"] == "test"
+        finally:
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
+class TestEventBridgeListArchivesFilters:
+    """Tests for ListArchives with NamePrefix and EventSourceArn filters."""
+
+    def test_list_archives_with_name_prefix(self, events):
+        """ListArchives filtered by NamePrefix returns matching archives."""
+        suffix = uuid.uuid4().hex[:8]
+        prefix = f"pfx-{suffix}"
+        archive_a = f"{prefix}-archive-a"
+        archive_b = f"{prefix}-archive-b"
+        other = f"other-{suffix}-archive"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            for name in (archive_a, archive_b, other):
+                events.create_archive(ArchiveName=name, EventSourceArn=bus_arn)
+
+            resp = events.list_archives(NamePrefix=prefix)
+            names = [a["ArchiveName"] for a in resp["Archives"]]
+            assert archive_a in names
+            assert archive_b in names
+            assert other not in names
+        finally:
+            for name in (archive_a, archive_b, other):
+                try:
+                    events.delete_archive(ArchiveName=name)
+                except Exception:
+                    pass
+
+    def test_list_archives_with_event_source_arn(self, events):
+        """ListArchives filtered by EventSourceArn returns matching archives."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"src-filter-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(ArchiveName=archive_name, EventSourceArn=bus_arn)
+            resp = events.list_archives(EventSourceArn=bus_arn)
+            names = [a["ArchiveName"] for a in resp["Archives"]]
+            assert archive_name in names
+        finally:
+            events.delete_archive(ArchiveName=archive_name)

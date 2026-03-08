@@ -202,8 +202,13 @@ class TestKMSOperations:
         )
         assert decrypted["Plaintext"] == b"context secret"
 
-    def test_generate_data_key_without_plaintext(self, kms):
-        _key = kms.create_key(Description="data key no pt")
+    def test_generate_data_key_without_plaintext_basic(self, kms):
+        key = kms.create_key(Description="data key no pt")
+        key_id = key["KeyMetadata"]["KeyId"]
+
+        response = kms.generate_data_key_without_plaintext(KeyId=key_id, KeySpec="AES_256")
+        assert "CiphertextBlob" in response
+        assert "KeyId" in response
 
     def test_re_encrypt(self, kms):
         key1 = kms.create_key(Description="reencrypt src")
@@ -266,27 +271,6 @@ class TestKMSOperations:
         grants = kms.list_grants(KeyId=key_id)
         grant_ids = [g["GrantId"] for g in grants["Grants"]]
         assert grant["GrantId"] not in grant_ids
-        """ReEncrypt re-encrypts ciphertext under a different key."""
-        key1 = kms.create_key(Description="re-encrypt-src")
-        key1_id = key1["KeyMetadata"]["KeyId"]
-        key2 = kms.create_key(Description="re-encrypt-dst")
-        key2_id = key2["KeyMetadata"]["KeyId"]
-
-        # Encrypt under key1
-        enc = kms.encrypt(KeyId=key1_id, Plaintext=b"reencrypt me")
-        ct1 = enc["CiphertextBlob"]
-
-        # Re-encrypt under key2
-        re_enc = kms.re_encrypt(
-            CiphertextBlob=ct1,
-            DestinationKeyId=key2_id,
-        )
-        ct2 = re_enc["CiphertextBlob"]
-        assert ct2 != ct1  # ciphertext should differ
-
-        # Decrypt should yield original plaintext
-        dec = kms.decrypt(CiphertextBlob=ct2)
-        assert dec["Plaintext"] == b"reencrypt me"
 
     def test_put_key_policy(self, kms):
         """PutKeyPolicy sets a key policy and GetKeyPolicy retrieves it."""
@@ -560,6 +544,79 @@ class TestKMSOperations:
             policy2 = get_resp2["Policy"]
             parsed2 = json.loads(policy2) if isinstance(policy2, str) else policy2
             assert parsed2["Statement"][0]["Sid"] == "Enable IAM policies"
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_get_public_key(self, kms):
+        """Test GetPublicKey for an asymmetric key."""
+        key = kms.create_key(
+            Description="get public key test",
+            KeySpec="RSA_2048",
+            KeyUsage="SIGN_VERIFY",
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.get_public_key(KeyId=key_id)
+            assert "PublicKey" in resp
+            assert "KeyId" in resp
+            assert "KeyUsage" in resp
+            assert resp["KeyUsage"] == "SIGN_VERIFY"
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_retire_grant(self, kms):
+        """Test RetireGrant removes a grant."""
+        key = kms.create_key(Description="retire grant key")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            grant = kms.create_grant(
+                KeyId=key_id,
+                GranteePrincipal="arn:aws:iam::123456789012:root",
+                Operations=["Encrypt", "Decrypt"],
+            )
+            grant_id = grant["GrantId"]
+            grant_token = grant["GrantToken"]
+
+            # Verify grant exists
+            grants = kms.list_grants(KeyId=key_id)
+            grant_ids = [g["GrantId"] for g in grants["Grants"]]
+            assert grant_id in grant_ids
+
+            # Retire the grant
+            kms.retire_grant(GrantToken=grant_token)
+
+            # Verify grant is gone
+            grants = kms.list_grants(KeyId=key_id)
+            grant_ids = [g["GrantId"] for g in grants["Grants"]]
+            assert grant_id not in grant_ids
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_mac_and_verify_mac(self, kms):
+        """Test GenerateMac and VerifyMac with HMAC key."""
+        key = kms.create_key(
+            Description="hmac key",
+            KeySpec="HMAC_256",
+            KeyUsage="GENERATE_VERIFY_MAC",
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            message = b"message to authenticate"
+            mac_resp = kms.generate_mac(
+                KeyId=key_id,
+                Message=message,
+                MacAlgorithm="HMAC_SHA_256",
+            )
+            assert "Mac" in mac_resp
+            assert "MacAlgorithm" in mac_resp
+
+            verify_resp = kms.verify_mac(
+                KeyId=key_id,
+                Message=message,
+                MacAlgorithm="HMAC_SHA_256",
+                Mac=mac_resp["Mac"],
+            )
+            assert verify_resp["MacValid"] is True
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
 

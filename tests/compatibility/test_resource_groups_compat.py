@@ -219,3 +219,16 @@ class TestResourceGroupsExtended:
         )
         resp = resource_groups.delete_group(GroupName=name)
         assert resp["Group"]["Name"] == name
+
+    def test_get_group_configuration(self, resource_groups):
+        name = f"gcfg-{_uid()}"
+        resource_groups.create_group(
+            Name=name,
+            Description="Config group",
+            ResourceQuery=RESOURCE_QUERY,
+        )
+        try:
+            resp = resource_groups.get_group_configuration(Group=name)
+            assert "GroupConfiguration" in resp
+        finally:
+            resource_groups.delete_group(GroupName=name)

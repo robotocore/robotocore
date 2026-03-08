@@ -230,3 +230,122 @@ class TestRedshiftOperations:
         resp = redshift.describe_cluster_parameter_groups()
         names = [g["ParameterGroupName"] for g in resp["ParameterGroups"]]
         assert name not in names
+
+    def test_describe_cluster_parameters(self, redshift):
+        name = f"cpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Params test",
+        )
+        try:
+            resp = redshift.describe_cluster_parameters(ParameterGroupName=name)
+            assert "Parameters" in resp
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_describe_default_cluster_parameters(self, redshift):
+        resp = redshift.describe_default_cluster_parameters(ParameterGroupFamily="redshift-1.0")
+        assert "DefaultClusterParameters" in resp
+        assert resp["DefaultClusterParameters"]["ParameterGroupFamily"] == "redshift-1.0"
+
+    def test_describe_cluster_subnet_groups_all(self, redshift):
+        resp = redshift.describe_cluster_subnet_groups()
+        assert "ClusterSubnetGroups" in resp
+
+    def test_create_and_describe_snapshot_copy_grant(self, redshift):
+        name = f"scg-{_uid()}"
+        resp = redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name)
+        assert resp["SnapshotCopyGrant"]["SnapshotCopyGrantName"] == name
+        try:
+            desc = redshift.describe_snapshot_copy_grants(SnapshotCopyGrantName=name)
+            assert len(desc["SnapshotCopyGrants"]) == 1
+            assert desc["SnapshotCopyGrants"][0]["SnapshotCopyGrantName"] == name
+        finally:
+            redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=name)
+
+    def test_describe_snapshot_copy_grants_empty(self, redshift):
+        resp = redshift.describe_snapshot_copy_grants()
+        assert "SnapshotCopyGrants" in resp
+
+    def test_create_tags_and_describe_tags(self, redshift):
+        name = f"tagpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Tag test",
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:parametergroup:{name}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "team", "Value": "platform"}],
+            )
+            resp = redshift.describe_tags(ResourceName=arn)
+            assert "TaggedResources" in resp
+            tag_map = {t["Tag"]["Key"]: t["Tag"]["Value"] for t in resp["TaggedResources"]}
+            assert tag_map.get("team") == "platform"
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_delete_tags(self, redshift):
+        name = f"deltag-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Delete tag test",
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:parametergroup:{name}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "remove", "Value": "me"}],
+            )
+            redshift.delete_tags(ResourceName=arn, TagKeys=["remove"])
+            resp = redshift.describe_tags(ResourceName=arn)
+            keys = [t["Tag"]["Key"] for t in resp["TaggedResources"]]
+            assert "remove" not in keys
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_describe_tags_all(self, redshift):
+        resp = redshift.describe_tags()
+        assert "TaggedResources" in resp
+
+    def test_describe_logging_status(self, redshift):
+        cid = f"logst-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.describe_logging_status(ClusterIdentifier=cid)
+            assert "LoggingEnabled" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_delete_cluster_subnet_group(self, redshift):
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.201.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.201.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        name = f"del-sg-{_uid()}"
+        redshift.create_cluster_subnet_group(
+            ClusterSubnetGroupName=name,
+            Description="Delete subnet group test",
+            SubnetIds=[subnet_id],
+        )
+        redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=name)
+        resp = redshift.describe_cluster_subnet_groups()
+        names = [g["ClusterSubnetGroupName"] for g in resp["ClusterSubnetGroups"]]
+        assert name not in names
+
+    def test_delete_cluster_parameter_group_not_found(self, redshift):
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_cluster_parameter_group(ParameterGroupName="nonexistent-pg-xyz")
+        assert "ClusterParameterGroupNotFound" in exc.value.response["Error"]["Code"]

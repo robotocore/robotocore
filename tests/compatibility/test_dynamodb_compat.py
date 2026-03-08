@@ -2516,3 +2516,100 @@ class TestDynamoDBAdvanced:
         )
         r = dynamodb.get_item(TableName=table, Key={"pk": {"S": "ns-1"}})
         assert set(r["Item"]["nums"]["NS"]) == {"1", "2", "3"}
+
+
+class TestBackupRestore:
+    """Tests for DynamoDB backup and restore operations."""
+
+    def test_restore_table_from_backup(self, dynamodb):
+        """CreateBackup then RestoreTableFromBackup creates a new table."""
+        src = f"backup-src-{uuid.uuid4().hex[:8]}"
+        target = f"backup-tgt-{uuid.uuid4().hex[:8]}"
+        tables_to_delete = [src]
+        try:
+            dynamodb.create_table(
+                TableName=src,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+            )
+            dynamodb.put_item(TableName=src, Item={"pk": {"S": "item-1"}, "v": {"S": "hello"}})
+
+            backup_resp = dynamodb.create_backup(TableName=src, BackupName="restore-test")
+            backup_arn = backup_resp["BackupDetails"]["BackupArn"]
+
+            restore_resp = dynamodb.restore_table_from_backup(
+                TargetTableName=target,
+                BackupArn=backup_arn,
+            )
+            tables_to_delete.append(target)
+            td = restore_resp["TableDescription"]
+            assert td["TableName"] == target
+            assert td["TableStatus"] in ("CREATING", "ACTIVE")
+
+            dynamodb.delete_backup(BackupArn=backup_arn)
+        finally:
+            for t in tables_to_delete:
+                try:
+                    dynamodb.delete_table(TableName=t)
+                except ClientError:
+                    pass
+
+    def test_restore_table_to_point_in_time(self, dynamodb):
+        """RestoreTableToPointInTime creates a restored copy of a table."""
+        src = f"pitr-src-{uuid.uuid4().hex[:8]}"
+        target = f"pitr-tgt-{uuid.uuid4().hex[:8]}"
+        tables_to_delete = [src]
+        try:
+            dynamodb.create_table(
+                TableName=src,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+            )
+
+            restore_resp = dynamodb.restore_table_to_point_in_time(
+                SourceTableName=src,
+                TargetTableName=target,
+                UseLatestRestorableTime=True,
+            )
+            tables_to_delete.append(target)
+            td = restore_resp["TableDescription"]
+            assert td["TableName"] == target
+            assert td["TableStatus"] in ("CREATING", "ACTIVE")
+        finally:
+            for t in tables_to_delete:
+                try:
+                    dynamodb.delete_table(TableName=t)
+                except ClientError:
+                    pass
+
+    def test_create_table_replica(self, dynamodb):
+        """UpdateTable with ReplicaUpdates Create adds a replica."""
+        tname = f"replica-src-{uuid.uuid4().hex[:8]}"
+        try:
+            dynamodb.create_table(
+                TableName=tname,
+                KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+                AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+                BillingMode="PAY_PER_REQUEST",
+                StreamSpecification={
+                    "StreamEnabled": True,
+                    "StreamViewType": "NEW_AND_OLD_IMAGES",
+                },
+            )
+            resp = dynamodb.update_table(
+                TableName=tname,
+                ReplicaUpdates=[{"Create": {"RegionName": "eu-west-1"}}],
+            )
+            td = resp["TableDescription"]
+            assert td["TableName"] == tname
+            # Replicas should include eu-west-1
+            if "Replicas" in td:
+                regions = [r["RegionName"] for r in td["Replicas"]]
+                assert "eu-west-1" in regions
+        finally:
+            try:
+                dynamodb.delete_table(TableName=tname)
+            except ClientError:
+                pass

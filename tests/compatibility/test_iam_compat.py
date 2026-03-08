@@ -996,8 +996,14 @@ class TestIAMInstanceProfileCRUD:
                 )
             except Exception:
                 pass
-            iam.delete_instance_profile(InstanceProfileName=profile_name)
-            iam.delete_role(RoleName=role_name)
+            try:
+                iam.delete_instance_profile(InstanceProfileName=profile_name)
+            except Exception:
+                pass
+            try:
+                iam.delete_role(RoleName=role_name)
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -1963,3 +1969,299 @@ class TestIAMExtendedV2:
             assert resp["Role"]["MaxSessionDuration"] == 7200
         finally:
             iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# OIDC provider extended operations
+# ---------------------------------------------------------------------------
+
+
+class TestIAMOIDCProviderExtended:
+    def test_list_open_id_connect_providers(self, iam):
+        """ListOpenIDConnectProviders."""
+        url = f"https://oidc-list-{uuid.uuid4().hex[:8]}.example.com"
+        thumbprint = "a" * 40
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=[thumbprint])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            listed = iam.list_open_id_connect_providers()
+            arns = [p["Arn"] for p in listed["OpenIDConnectProviderList"]]
+            assert arn in arns
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_update_open_id_connect_provider_thumbprint(self, iam):
+        """UpdateOpenIDConnectProviderThumbprint."""
+        url = f"https://oidc-thumb-{uuid.uuid4().hex[:8]}.example.com"
+        old_thumb = "a" * 40
+        new_thumb = "b" * 40
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=[old_thumb])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.update_open_id_connect_provider_thumbprint(
+                OpenIDConnectProviderArn=arn, ThumbprintList=[new_thumb]
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert new_thumb in get_resp["ThumbprintList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# SAML provider extended operations
+# ---------------------------------------------------------------------------
+
+SAML_METADATA = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
+    ' entityID="https://idp.example.com/metadata">'
+    "<IDPSSODescriptor"
+    ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+    '<KeyDescriptor use="signing">'
+    '<KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">'
+    "<X509Data><X509Certificate>"
+    "MIIDpDCCAoygAwIBAgIGAXpJOXwHMA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEG"
+    "A1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEU"
+    "MBIGA1UECwwLU1NPUHJvdmlkZXIxEzARBgNVBAMMCmRldi04NDMyNTMxHDAaBgkqhkiG9w0BCQEW"
+    "DWluZm9Ab2t0YS5jb20wHhcNMjEwNjIyMTgxNjQzWhcNMzEwNjIyMTgxNzQzWjCBkjELMAkGA1UE"
+    "BhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xDTALBgNV"
+    "BAoMBE9rdGExFDASBgNVBAsMC1NTT1Byb3ZpZGVyMRMwEQYDVQQDDApkZXYtODQzMjUzMRwwGgYJ"
+    "KoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA"
+    "</X509Certificate></X509Data>"
+    "</KeyInfo></KeyDescriptor>"
+    "<SingleSignOnService"
+    ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
+    ' Location="https://idp.example.com/sso"/>'
+    "<SingleSignOnService"
+    ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
+    ' Location="https://idp.example.com/sso"/>'
+    "</IDPSSODescriptor></EntityDescriptor>"
+)
+
+
+class TestIAMSAMLProviderExtended:
+    def test_list_saml_providers(self, iam):
+        """ListSAMLProviders."""
+        name = _unique("saml-list")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            listed = iam.list_saml_providers()
+            arns = [p["Arn"] for p in listed["SAMLProviderList"]]
+            assert arn in arns
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_update_saml_provider(self, iam):
+        """UpdateSAMLProvider."""
+        name = _unique("saml-upd")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            upd = iam.update_saml_provider(SAMLProviderArn=arn, SAMLMetadataDocument=SAML_METADATA)
+            assert "SAMLProviderArn" in upd
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Group update
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateGroup:
+    def test_update_group_rename(self, iam):
+        """UpdateGroup to rename a group."""
+        old_name = _unique("ug-old")
+        new_name = _unique("ug-new")
+        iam.create_group(GroupName=old_name)
+        try:
+            iam.update_group(GroupName=old_name, NewGroupName=new_name)
+            resp = iam.get_group(GroupName=new_name)
+            assert resp["Group"]["GroupName"] == new_name
+            with pytest.raises(iam.exceptions.NoSuchEntityException):
+                iam.get_group(GroupName=old_name)
+        finally:
+            try:
+                iam.delete_group(GroupName=new_name)
+            except Exception:
+                pass
+            try:
+                iam.delete_group(GroupName=old_name)
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Login profile update
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateLoginProfile:
+    def test_update_login_profile_password(self, iam):
+        """UpdateLoginProfile to change the password."""
+        user_name = _unique("ulp-user")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.create_login_profile(UserName=user_name, Password="OldP@ss123!")
+            iam.update_login_profile(UserName=user_name, Password="N3wP@ss456!")
+            # Verify the profile still exists
+            resp = iam.get_login_profile(UserName=user_name)
+            assert resp["LoginProfile"]["UserName"] == user_name
+        finally:
+            try:
+                iam.delete_login_profile(UserName=user_name)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_update_login_profile_password_reset(self, iam):
+        """UpdateLoginProfile with PasswordResetRequired."""
+        user_name = _unique("ulpr-user")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.create_login_profile(UserName=user_name, Password="Init@lP@ss1!")
+            iam.update_login_profile(
+                UserName=user_name,
+                Password="Upd@tedP@ss2!",
+                PasswordResetRequired=True,
+            )
+            resp = iam.get_login_profile(UserName=user_name)
+            assert resp["LoginProfile"]["PasswordResetRequired"] is True
+        finally:
+            try:
+                iam.delete_login_profile(UserName=user_name)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Virtual MFA device
+# ---------------------------------------------------------------------------
+
+
+class TestIAMVirtualMFADevice:
+    def test_create_and_delete_virtual_mfa_device(self, iam):
+        """CreateVirtualMFADevice / DeleteVirtualMFADevice."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        device = resp["VirtualMFADevice"]
+        serial = device["SerialNumber"]
+        try:
+            assert serial is not None
+            assert "Base32StringSeed" in device or "QRCodePNG" in device
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_list_virtual_mfa_devices(self, iam):
+        """ListVirtualMFADevices."""
+        name = _unique("vmfa-list")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            listed = iam.list_virtual_mfa_devices()
+            serials = [d["SerialNumber"] for d in listed["VirtualMFADevices"]]
+            assert serial in serials
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+
+# ---------------------------------------------------------------------------
+# Server certificate
+# ---------------------------------------------------------------------------
+
+_CERT_BODY = """-----BEGIN CERTIFICATE-----
+MIIBkTCB+wIJAKHBfpHYbpFTMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+c3RjYTAeFw0yMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+BnRlc3RjYTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC7o96Gj5MBHjKME0YQHMQY
+yNO0+6oGxVMed2jGFMjNGJXnOXfYJknfznPmBEBz2FBBH9CjE2EKRqgyPzJfzGkv
+AgMBAAEwDQYJKoZIhvcNAQELBQADQQBIIj60Fk5TBKpMBZDWTqH2GIcP/V0ufJh3
+yJMOkwCe5gS2s2ULGGFY5J5cZrWH2Xyb2mjYN8Cv+GZxhUEcJoK
+-----END CERTIFICATE-----"""
+
+_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
+MIIBogIBAAJBALuj3oaPkwEeMowTRhAcxBjI07T7qgbFUx53aMYUyM0Ylec5d9gm
+Sd/Oc+YEQHPYUEEf0KMTYQpGqDI/Ml/MaS8CAwEAAQJAUqwORGnMEdaQsjEHTx3q
+xXJt5M0kVNIHGMi8X0bByo+WwOlTx+hA1fsp2MNjYgBXW0h+ycswdLdG8MJxxqN
+AQIhAPH7lKGy8xyOgE3trUK+JC7JM5QjC4VTwvPjJR4ENTFfAiEAxXJQr8V1OgzE
+zKYzZJxVMBNk5DikOZF/WpWZ5CCqf2ECIFxXnHxBMHTRguVHzB2nKbSj2hQBRBS9
+eH6rJDrMPaX/AiEAxNx8TkBT7V0PJRh6qNVDzFSFPh68B3E8o3HiI+cFmEECIDvn
+5Mj6pE8USRkb3DNQ/cNHguA+pLxBJO1mZHIQoOnk
+-----END RSA PRIVATE KEY-----"""
+
+
+class TestIAMServerCertificate:
+    def test_upload_get_list_delete_server_certificate(self, iam):
+        """Upload / Get / List / Delete server certificate lifecycle."""
+        cert_name = _unique("srv-cert")
+        resp = iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            assert resp["ServerCertificateMetadata"]["ServerCertificateName"] == cert_name
+
+            get_resp = iam.get_server_certificate(ServerCertificateName=cert_name)
+            assert (
+                get_resp["ServerCertificate"]["ServerCertificateMetadata"]["ServerCertificateName"]
+                == cert_name
+            )
+
+            list_resp = iam.list_server_certificates()
+            names = [c["ServerCertificateName"] for c in list_resp["ServerCertificateMetadataList"]]
+            assert cert_name in names
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=cert_name)
+
+    def test_delete_server_certificate_removes_it(self, iam):
+        """After deletion, certificate should not appear in list."""
+        cert_name = _unique("srv-cert-del")
+        iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        iam.delete_server_certificate(ServerCertificateName=cert_name)
+        list_resp = iam.list_server_certificates()
+        names = [c["ServerCertificateName"] for c in list_resp["ServerCertificateMetadataList"]]
+        assert cert_name not in names
+
+
+# ---------------------------------------------------------------------------
+# UpdateRoleDescription standalone
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateRoleDescription:
+    def test_update_role_description_api(self, iam):
+        """UpdateRoleDescription API."""
+        role_name = _unique("urd-role")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Description="original",
+        )
+        try:
+            iam.update_role_description(RoleName=role_name, Description="new description")
+            resp = iam.get_role(RoleName=role_name)
+            assert resp["Role"]["Description"] == "new description"
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Delete user (standalone)
+# ---------------------------------------------------------------------------
+
+
+class TestIAMDeleteUser:
+    def test_delete_user_removes_from_list(self, iam):
+        """DeleteUser removes the user from ListUsers."""
+        user_name = _unique("del-user")
+        iam.create_user(UserName=user_name)
+        iam.delete_user(UserName=user_name)
+        resp = iam.list_users()
+        names = [u["UserName"] for u in resp["Users"]]
+        assert user_name not in names

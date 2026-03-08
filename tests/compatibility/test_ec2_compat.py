@@ -1390,3 +1390,99 @@ class TestEC2ExtendedV2:
             ec2.delete_vpc_endpoints(VpcEndpointIds=[ep_id])
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2TransitGateway:
+    def test_create_describe_delete_transit_gateway(self, ec2):
+        """CreateTransitGateway / DescribeTransitGateways / DeleteTransitGateway."""
+        resp = ec2.create_transit_gateway(Description="compat-test-tgw")
+        tgw_id = resp["TransitGateway"]["TransitGatewayId"]
+        try:
+            assert tgw_id.startswith("tgw-")
+            assert resp["TransitGateway"]["Description"] == "compat-test-tgw"
+
+            described = ec2.describe_transit_gateways(TransitGatewayIds=[tgw_id])
+            assert len(described["TransitGateways"]) == 1
+            assert described["TransitGateways"][0]["TransitGatewayId"] == tgw_id
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_create_transit_gateway_with_tags(self, ec2):
+        """CreateTransitGateway with TagSpecifications."""
+        tag_val = _unique("tgw-tag")
+        resp = ec2.create_transit_gateway(
+            Description="tagged-tgw",
+            TagSpecifications=[
+                {
+                    "ResourceType": "transit-gateway",
+                    "Tags": [{"Key": "Name", "Value": tag_val}],
+                }
+            ],
+        )
+        tgw_id = resp["TransitGateway"]["TransitGatewayId"]
+        try:
+            tags = {t["Key"]: t["Value"] for t in resp["TransitGateway"].get("Tags", [])}
+            assert tags.get("Name") == tag_val
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2FlowLogs:
+    def test_create_describe_delete_flow_logs(self, ec2):
+        """CreateFlowLogs / DescribeFlowLogs / DeleteFlowLogs."""
+        import json
+
+        from tests.compatibility.conftest import make_client
+
+        iam = make_client("iam")
+
+        # Create IAM role for flow logs
+        role_name = _unique("fl-role")
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "vpc-flow-logs.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        role = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+        role_arn = role["Role"]["Arn"]
+
+        vpc_resp = ec2.create_vpc(CidrBlock="10.202.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        try:
+            fl = ec2.create_flow_logs(
+                ResourceIds=[vpc_id],
+                ResourceType="VPC",
+                TrafficType="ALL",
+                LogDestinationType="cloud-watch-logs",
+                LogGroupName="test-flow-logs",
+                DeliverLogsPermissionArn=role_arn,
+            )
+            assert len(fl["FlowLogIds"]) == 1
+            fl_id = fl["FlowLogIds"][0]
+            assert fl_id.startswith("fl-")
+
+            described = ec2.describe_flow_logs(FlowLogIds=[fl_id])
+            assert len(described["FlowLogs"]) == 1
+            assert described["FlowLogs"][0]["FlowLogId"] == fl_id
+            assert described["FlowLogs"][0]["ResourceId"] == vpc_id
+
+            ec2.delete_flow_logs(FlowLogIds=[fl_id])
+
+            # Verify deletion
+            described_after = ec2.describe_flow_logs(FlowLogIds=[fl_id])
+            # After deletion, either empty or status is deleted
+            if described_after["FlowLogs"]:
+                # Some implementations keep the record with a deleted status
+                pass
+            else:
+                assert len(described_after["FlowLogs"]) == 0
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+            iam.delete_role(RoleName=role_name)

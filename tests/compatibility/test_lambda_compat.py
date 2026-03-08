@@ -1768,3 +1768,357 @@ class TestLambdaExtendedOperations:
         resp = lam.get_account_settings()
         assert "AccountLimit" in resp
         assert "AccountUsage" in resp
+
+
+class TestLambdaEventInvokeConfig:
+    """Tests for function event invoke configuration."""
+
+    def test_put_get_event_invoke_config(self, lam, role):
+        """PutFunctionEventInvokeConfig and GetFunctionEventInvokeConfig."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"eic-put-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            resp = lam.put_function_event_invoke_config(
+                FunctionName=fname,
+                MaximumRetryAttempts=1,
+                MaximumEventAgeInSeconds=120,
+            )
+            assert resp["MaximumRetryAttempts"] == 1
+            assert resp["MaximumEventAgeInSeconds"] == 120
+
+            get_resp = lam.get_function_event_invoke_config(FunctionName=fname)
+            assert get_resp["MaximumRetryAttempts"] == 1
+            assert get_resp["MaximumEventAgeInSeconds"] == 120
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_update_event_invoke_config(self, lam, role):
+        """UpdateFunctionEventInvokeConfig changes retry settings."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"eic-upd-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.put_function_event_invoke_config(
+                FunctionName=fname,
+                MaximumRetryAttempts=2,
+                MaximumEventAgeInSeconds=60,
+            )
+            resp = lam.update_function_event_invoke_config(
+                FunctionName=fname,
+                MaximumRetryAttempts=0,
+            )
+            assert resp["MaximumRetryAttempts"] == 0
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_delete_event_invoke_config(self, lam, role):
+        """DeleteFunctionEventInvokeConfig removes the config."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"eic-del-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.put_function_event_invoke_config(
+                FunctionName=fname,
+                MaximumRetryAttempts=1,
+                MaximumEventAgeInSeconds=60,
+            )
+            lam.delete_function_event_invoke_config(FunctionName=fname)
+            with pytest.raises(lam.exceptions.ClientError):
+                lam.get_function_event_invoke_config(FunctionName=fname)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaProvisionedConcurrency:
+    """Tests for provisioned concurrency configuration."""
+
+    def test_put_get_provisioned_concurrency(self, lam, role):
+        """PutProvisionedConcurrencyConfig and GetProvisionedConcurrencyConfig."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"pcc-put-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            ver = lam.publish_version(FunctionName=fname)["Version"]
+            resp = lam.put_provisioned_concurrency_config(
+                FunctionName=fname,
+                Qualifier=ver,
+                ProvisionedConcurrentExecutions=3,
+            )
+            assert resp["RequestedProvisionedConcurrentExecutions"] == 3
+
+            get_resp = lam.get_provisioned_concurrency_config(FunctionName=fname, Qualifier=ver)
+            assert get_resp["RequestedProvisionedConcurrentExecutions"] == 3
+        finally:
+            try:
+                lam.delete_provisioned_concurrency_config(FunctionName=fname, Qualifier=ver)
+            except Exception:
+                pass
+            lam.delete_function(FunctionName=fname)
+
+    def test_delete_provisioned_concurrency(self, lam, role):
+        """DeleteProvisionedConcurrencyConfig removes the config."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"pcc-del-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            ver = lam.publish_version(FunctionName=fname)["Version"]
+            lam.put_provisioned_concurrency_config(
+                FunctionName=fname,
+                Qualifier=ver,
+                ProvisionedConcurrentExecutions=5,
+            )
+            lam.delete_provisioned_concurrency_config(FunctionName=fname, Qualifier=ver)
+            with pytest.raises(lam.exceptions.ClientError):
+                lam.get_provisioned_concurrency_config(FunctionName=fname, Qualifier=ver)
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+
+class TestLambdaEventSourceMappingExtended:
+    """Extended ESM tests: get, update."""
+
+    def test_get_event_source_mapping(self, lam, role):
+        """GetEventSourceMapping returns mapping details."""
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"esm-get-q-{suffix}"
+        fname = f"esm-get-fn-{suffix}"
+
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm_uuid = None
+        try:
+            resp = lam.create_event_source_mapping(
+                EventSourceArn=q_arn, FunctionName=fname, BatchSize=10
+            )
+            esm_uuid = resp["UUID"]
+
+            get_resp = lam.get_event_source_mapping(UUID=esm_uuid)
+            assert get_resp["UUID"] == esm_uuid
+            assert get_resp["EventSourceArn"] == q_arn
+            assert get_resp["BatchSize"] == 10
+        finally:
+            if esm_uuid:
+                lam.delete_event_source_mapping(UUID=esm_uuid)
+            lam.delete_function(FunctionName=fname)
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_update_event_source_mapping(self, lam, role):
+        """UpdateEventSourceMapping changes batch size."""
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"esm-upd-q-{suffix}"
+        fname = f"esm-upd-fn-{suffix}"
+
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm_uuid = None
+        try:
+            resp = lam.create_event_source_mapping(
+                EventSourceArn=q_arn, FunctionName=fname, BatchSize=10
+            )
+            esm_uuid = resp["UUID"]
+
+            upd_resp = lam.update_event_source_mapping(UUID=esm_uuid, BatchSize=5)
+            assert upd_resp["BatchSize"] == 5
+
+            get_resp = lam.get_event_source_mapping(UUID=esm_uuid)
+            assert get_resp["BatchSize"] == 5
+        finally:
+            if esm_uuid:
+                lam.delete_event_source_mapping(UUID=esm_uuid)
+            lam.delete_function(FunctionName=fname)
+            sqs.delete_queue(QueueUrl=q_url)
+
+    def test_list_event_source_mappings_all(self, lam, role):
+        """ListEventSourceMappings without function filter returns all mappings."""
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        queue_name = f"esm-all-q-{suffix}"
+        fname = f"esm-all-fn-{suffix}"
+
+        q_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+        q_arn = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+
+        code = _make_zip("def handler(e, c): pass")
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        esm_uuid = None
+        try:
+            resp = lam.create_event_source_mapping(
+                EventSourceArn=q_arn, FunctionName=fname, BatchSize=10
+            )
+            esm_uuid = resp["UUID"]
+
+            all_resp = lam.list_event_source_mappings()
+            uuids = [m["UUID"] for m in all_resp["EventSourceMappings"]]
+            assert esm_uuid in uuids
+        finally:
+            if esm_uuid:
+                lam.delete_event_source_mapping(UUID=esm_uuid)
+            lam.delete_function(FunctionName=fname)
+            sqs.delete_queue(QueueUrl=q_url)
+
+
+class TestLambdaLayerDeletion:
+    """Tests for layer version deletion."""
+
+    def test_delete_layer_version(self, lam):
+        """DeleteLayerVersion removes a specific layer version."""
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/mod.py", "X = 1")
+        layer_name = f"del-layer-{uuid.uuid4().hex[:8]}"
+        resp = lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_code.getvalue()},
+            CompatibleRuntimes=["python3.12"],
+        )
+        version = resp["Version"]
+        lam.delete_layer_version(LayerName=layer_name, VersionNumber=version)
+        with pytest.raises(lam.exceptions.ClientError):
+            lam.get_layer_version(LayerName=layer_name, VersionNumber=version)
+
+    def test_delete_one_layer_version_keeps_others(self, lam):
+        """Deleting one layer version does not affect other versions."""
+        layer_code = io.BytesIO()
+        with zipfile.ZipFile(layer_code, "w") as zf:
+            zf.writestr("python/mod.py", "X = 1")
+        layer_name = f"del-one-layer-{uuid.uuid4().hex[:8]}"
+        lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_code.getvalue()},
+        )
+        lam.publish_layer_version(
+            LayerName=layer_name,
+            Content={"ZipFile": layer_code.getvalue()},
+        )
+        # Delete version 1, version 2 should remain
+        lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+        resp = lam.get_layer_version(LayerName=layer_name, VersionNumber=2)
+        assert resp["Version"] == 2
+
+
+class TestLambdaPermissionsWithSourceArn:
+    """Tests for permissions with SourceArn/SourceAccount."""
+
+    def test_add_permission_with_source_arn(self, lam, role):
+        """AddPermission with SourceArn and SourceAccount."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"perm-src-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.add_permission(
+                FunctionName=fname,
+                StatementId="allow-s3",
+                Action="lambda:InvokeFunction",
+                Principal="s3.amazonaws.com",
+                SourceArn="arn:aws:s3:::my-bucket",
+                SourceAccount="123456789012",
+            )
+            policy_resp = lam.get_policy(FunctionName=fname)
+            policy = json.loads(policy_resp["Policy"])
+            stmt = [s for s in policy["Statement"] if s["Sid"] == "allow-s3"][0]
+            assert stmt["Action"] == "lambda:InvokeFunction"
+            assert "s3.amazonaws.com" in json.dumps(stmt["Principal"])
+            lam.remove_permission(FunctionName=fname, StatementId="allow-s3")
+        finally:
+            lam.delete_function(FunctionName=fname)
+
+    def test_add_multiple_permissions(self, lam, role):
+        """Multiple AddPermission calls create multiple statements."""
+        code = _make_zip("def handler(e, c): pass")
+        fname = f"perm-multi-{uuid.uuid4().hex[:8]}"
+        lam.create_function(
+            FunctionName=fname,
+            Runtime="python3.12",
+            Role=role,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+        try:
+            lam.add_permission(
+                FunctionName=fname,
+                StatementId="stmt-1",
+                Action="lambda:InvokeFunction",
+                Principal="s3.amazonaws.com",
+            )
+            lam.add_permission(
+                FunctionName=fname,
+                StatementId="stmt-2",
+                Action="lambda:InvokeFunction",
+                Principal="sns.amazonaws.com",
+            )
+            policy_resp = lam.get_policy(FunctionName=fname)
+            policy = json.loads(policy_resp["Policy"])
+            sids = [s["Sid"] for s in policy["Statement"]]
+            assert "stmt-1" in sids
+            assert "stmt-2" in sids
+        finally:
+            lam.delete_function(FunctionName=fname)

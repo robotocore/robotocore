@@ -1229,3 +1229,82 @@ class TestCloudWatchOperations:
             dp = resp["Datapoints"][0]
             assert "ExtendedStatistics" in dp
             assert "p50" in dp["ExtendedStatistics"]
+
+    def test_list_tags_for_resource(self, cw):
+        """ListTagsForResource returns tags for an alarm."""
+        import uuid
+
+        alarm_name = f"tag-res-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_alarm(
+            AlarmName=alarm_name,
+            Namespace="TagResNS",
+            MetricName="M1",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        try:
+            alarms = cw.describe_alarms(AlarmNames=[alarm_name])
+            alarm_arn = alarms["MetricAlarms"][0]["AlarmArn"]
+            resp = cw.list_tags_for_resource(ResourceARN=alarm_arn)
+            assert "Tags" in resp
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "env" in tag_keys
+            assert "team" in tag_keys
+        finally:
+            cw.delete_alarms(AlarmNames=[alarm_name])
+
+    def test_put_describe_delete_insight_rules(self, cw):
+        """PutInsightRule, DescribeInsightRules, DeleteInsightRules lifecycle."""
+        import uuid
+
+        rule_name = f"rule-{uuid.uuid4().hex[:8]}"
+        rule_def = (
+            '{"Schema":{"Name":"CloudWatchLogRule","Version":1},'
+            '"LogGroupNames":["/test"],'
+            '"Contributions":{"Filters":[],"Keys":["$.key"],"ValueOf":"$.value"}}'
+        )
+        # Create rule
+        resp = cw.put_insight_rule(RuleName=rule_name, RuleDefinition=rule_def, RuleState="ENABLED")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            # Describe rules
+            resp = cw.describe_insight_rules()
+            assert "InsightRules" in resp
+            rule_names = [r["Name"] for r in resp["InsightRules"]]
+            assert rule_name in rule_names
+            # Verify state
+            rule = next(r for r in resp["InsightRules"] if r["Name"] == rule_name)
+            assert rule["State"] == "ENABLED"
+        finally:
+            # Delete rule
+            resp = cw.delete_insight_rules(RuleNames=[rule_name])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_enable_insight_rules(self, cw):
+        """DisableInsightRules and EnableInsightRules toggle state."""
+        import uuid
+
+        rule_name = f"toggle-{uuid.uuid4().hex[:8]}"
+        rule_def = (
+            '{"Schema":{"Name":"CloudWatchLogRule","Version":1},'
+            '"LogGroupNames":["/test"],'
+            '"Contributions":{"Filters":[],"Keys":["$.key"],"ValueOf":"$.value"}}'
+        )
+        cw.put_insight_rule(RuleName=rule_name, RuleDefinition=rule_def, RuleState="ENABLED")
+        try:
+            # Disable
+            resp = cw.disable_insight_rules(RuleNames=[rule_name])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Enable
+            resp = cw.enable_insight_rules(RuleNames=[rule_name])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cw.delete_insight_rules(RuleNames=[rule_name])

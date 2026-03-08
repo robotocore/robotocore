@@ -1852,3 +1852,244 @@ class TestS3AdvancedOperations:
     def test_head_bucket(self, s3, bucket):
         resp = s3.head_bucket(Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3AccelerateConfiguration:
+    """Tests for GetBucketAccelerateConfiguration / PutBucketAccelerateConfiguration."""
+
+    def test_get_bucket_accelerate_default(self, s3, bucket):
+        resp = s3.get_bucket_accelerate_configuration(Bucket=bucket)
+        # Default is no acceleration
+        assert resp.get("Status") in (None, "", "Suspended")
+
+    def test_put_bucket_accelerate_enabled(self, s3, bucket):
+        s3.put_bucket_accelerate_configuration(
+            Bucket=bucket,
+            AccelerateConfiguration={"Status": "Enabled"},
+        )
+        resp = s3.get_bucket_accelerate_configuration(Bucket=bucket)
+        assert resp["Status"] == "Enabled"
+
+    def test_put_bucket_accelerate_suspended(self, s3, bucket):
+        s3.put_bucket_accelerate_configuration(
+            Bucket=bucket,
+            AccelerateConfiguration={"Status": "Enabled"},
+        )
+        s3.put_bucket_accelerate_configuration(
+            Bucket=bucket,
+            AccelerateConfiguration={"Status": "Suspended"},
+        )
+        resp = s3.get_bucket_accelerate_configuration(Bucket=bucket)
+        assert resp["Status"] == "Suspended"
+
+
+class TestS3BucketRequestPayment:
+    """Tests for GetBucketRequestPayment."""
+
+    def test_get_bucket_request_payment_default(self, s3, bucket):
+        resp = s3.get_bucket_request_payment(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3DeleteBucketConfigurations:
+    """Tests for DeleteBucketEncryption, DeleteBucketLifecycle, DeleteBucketWebsite."""
+
+    def test_delete_bucket_encryption(self, s3, bucket):
+        s3.put_bucket_encryption(
+            Bucket=bucket,
+            ServerSideEncryptionConfiguration={
+                "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]
+            },
+        )
+        s3.delete_bucket_encryption(Bucket=bucket)
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_encryption(Bucket=bucket)
+        assert (
+            exc.value.response["Error"]["Code"] == "ServerSideEncryptionConfigurationNotFoundError"
+        )
+
+    def test_delete_bucket_lifecycle(self, s3, bucket):
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "expire-rule",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "logs/"},
+                        "Expiration": {"Days": 30},
+                    }
+                ]
+            },
+        )
+        s3.delete_bucket_lifecycle(Bucket=bucket)
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+        assert exc.value.response["Error"]["Code"] == "NoSuchLifecycleConfiguration"
+
+    def test_delete_bucket_website(self, s3, bucket):
+        s3.put_bucket_website(
+            Bucket=bucket,
+            WebsiteConfiguration={
+                "IndexDocument": {"Suffix": "index.html"},
+            },
+        )
+        s3.delete_bucket_website(Bucket=bucket)
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_website(Bucket=bucket)
+        assert "NoSuchWebsiteConfiguration" in str(exc.value)
+
+
+class TestS3ObjectLocking:
+    """Tests for object lock, legal hold, and retention."""
+
+    @pytest.fixture
+    def lock_bucket(self, s3):
+        import uuid
+
+        name = f"lock-bucket-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(
+            Bucket=name,
+            ObjectLockEnabledForBucket=True,
+        )
+        yield name
+        try:
+            versions = s3.list_object_versions(Bucket=name).get("Versions", [])
+            for v in versions:
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_put_and_get_object_lock_configuration(self, s3, lock_bucket):
+        s3.put_object_lock_configuration(
+            Bucket=lock_bucket,
+            ObjectLockConfiguration={"ObjectLockEnabled": "Enabled"},
+        )
+        resp = s3.get_object_lock_configuration(Bucket=lock_bucket)
+        assert resp["ObjectLockConfiguration"]["ObjectLockEnabled"] == "Enabled"
+
+    def test_put_object_lock_configuration_with_retention(self, s3, lock_bucket):
+        s3.put_object_lock_configuration(
+            Bucket=lock_bucket,
+            ObjectLockConfiguration={
+                "ObjectLockEnabled": "Enabled",
+                "Rule": {
+                    "DefaultRetention": {
+                        "Mode": "GOVERNANCE",
+                        "Days": 1,
+                    }
+                },
+            },
+        )
+        resp = s3.get_object_lock_configuration(Bucket=lock_bucket)
+        retention = resp["ObjectLockConfiguration"]["Rule"]["DefaultRetention"]
+        assert retention["Mode"] == "GOVERNANCE"
+        assert retention["Days"] == 1
+
+    def test_put_and_get_object_legal_hold(self, s3, lock_bucket):
+        s3.put_object(Bucket=lock_bucket, Key="legal.txt", Body=b"data")
+        s3.put_object_legal_hold(
+            Bucket=lock_bucket,
+            Key="legal.txt",
+            LegalHold={"Status": "ON"},
+        )
+        resp = s3.get_object_legal_hold(Bucket=lock_bucket, Key="legal.txt")
+        assert resp["LegalHold"]["Status"] == "ON"
+        # Turn off so we can clean up
+        s3.put_object_legal_hold(
+            Bucket=lock_bucket,
+            Key="legal.txt",
+            LegalHold={"Status": "OFF"},
+        )
+
+
+class TestS3UploadPartCopy:
+    """Tests for UploadPartCopy."""
+
+    def test_upload_part_copy(self, s3, bucket):
+        # Put source object
+        s3.put_object(Bucket=bucket, Key="source.txt", Body=b"x" * (5 * 1024 * 1024))
+
+        # Create multipart upload for destination
+        mpu = s3.create_multipart_upload(Bucket=bucket, Key="dest.txt")
+        upload_id = mpu["UploadId"]
+
+        # Copy part from source
+        resp = s3.upload_part_copy(
+            Bucket=bucket,
+            Key="dest.txt",
+            UploadId=upload_id,
+            PartNumber=1,
+            CopySource={"Bucket": bucket, "Key": "source.txt"},
+        )
+        assert "CopyPartResult" in resp
+        etag = resp["CopyPartResult"]["ETag"]
+
+        # Complete
+        s3.complete_multipart_upload(
+            Bucket=bucket,
+            Key="dest.txt",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+        )
+        head = s3.head_object(Bucket=bucket, Key="dest.txt")
+        assert head["ContentLength"] == 5 * 1024 * 1024
+
+
+class TestS3BucketNotificationConfig:
+    """Tests for GetBucketNotificationConfiguration (empty case)."""
+
+    def test_get_bucket_notification_configuration_empty(self, s3, bucket):
+        resp = s3.get_bucket_notification_configuration(Bucket=bucket)
+        # Empty notification config should return empty lists or no keys
+        assert resp.get("TopicConfigurations", []) == []
+        assert resp.get("QueueConfigurations", []) == []
+        assert resp.get("LambdaFunctionConfigurations", []) == []
+
+
+class TestS3BucketOwnershipControls:
+    """Tests for GetBucketOwnershipControls."""
+
+    def test_put_and_get_bucket_ownership_controls(self, s3, bucket):
+        s3.put_bucket_ownership_controls(
+            Bucket=bucket,
+            OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
+        )
+        resp = s3.get_bucket_ownership_controls(Bucket=bucket)
+        rules = resp["OwnershipControls"]["Rules"]
+        assert len(rules) == 1
+        assert rules[0]["ObjectOwnership"] == "BucketOwnerEnforced"
+
+
+class TestS3BucketPolicyStatus:
+    """Tests for GetBucketPolicyStatus."""
+
+    def test_get_bucket_policy_status(self, s3, bucket):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicRead",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+        resp = s3.get_bucket_policy_status(Bucket=bucket)
+        assert "PolicyStatus" in resp
+        s3.delete_bucket_policy(Bucket=bucket)
+
+
+class TestS3BucketLoggingExtended:
+    """Tests for GetBucketLogging with no logging configured."""
+
+    def test_get_bucket_logging_empty(self, s3, bucket):
+        resp = s3.get_bucket_logging(Bucket=bucket)
+        # No logging configured should have no LoggingEnabled key
+        assert resp.get("LoggingEnabled") is None

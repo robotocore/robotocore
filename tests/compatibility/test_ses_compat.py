@@ -625,3 +625,88 @@ class TestSESExtendedOperations:
         ses.verify_email_identity(EmailAddress="listed@example.com")
         resp = ses.list_verified_email_addresses()
         assert "VerifiedEmailAddresses" in resp
+
+    def test_verify_domain_dkim(self, ses):
+        resp = ses.verify_domain_dkim(Domain="dkim-domain.com")
+        assert "DkimTokens" in resp
+        assert isinstance(resp["DkimTokens"], list)
+
+    def test_set_identity_mail_from_domain(self, ses):
+        ses.verify_email_identity(EmailAddress="mailfrom-set@example.com")
+        resp = ses.set_identity_mail_from_domain(
+            Identity="mailfrom-set@example.com",
+            MailFromDomain="bounce.example.com",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_receipt_rule_set(self, ses):
+        import uuid
+
+        name = f"desc-rs-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=name)
+        try:
+            resp = ses.describe_receipt_rule_set(RuleSetName=name)
+            assert resp["Metadata"]["Name"] == name
+            assert "Rules" in resp
+        finally:
+            ses.delete_receipt_rule_set(RuleSetName=name)
+
+    def test_set_and_describe_active_receipt_rule_set(self, ses):
+        import uuid
+
+        name = f"active-rs-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=name)
+        try:
+            ses.set_active_receipt_rule_set(RuleSetName=name)
+            resp = ses.describe_active_receipt_rule_set()
+            assert resp["Metadata"]["Name"] == name
+        finally:
+            # Deactivate by calling with no name
+            ses.set_active_receipt_rule_set()
+            ses.delete_receipt_rule_set(RuleSetName=name)
+
+    def test_list_configuration_sets_v1(self, ses):
+        import uuid
+
+        name = f"cs-list-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": name})
+        try:
+            resp = ses.list_configuration_sets()
+            names = [cs["Name"] for cs in resp.get("ConfigurationSets", [])]
+            assert name in names
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_list_receipt_rule_sets(self, ses):
+        import uuid
+
+        name = f"list-rs-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=name)
+        try:
+            resp = ses.list_receipt_rule_sets()
+            names = [r["Name"] for r in resp["RuleSets"]]
+            assert name in names
+        finally:
+            ses.delete_receipt_rule_set(RuleSetName=name)
+
+    def test_describe_receipt_rule(self, ses):
+        import uuid
+
+        rs_name = f"desc-rule-rs-{uuid.uuid4().hex[:8]}"
+        rule_name = f"desc-rule-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=rs_name)
+        try:
+            ses.create_receipt_rule(
+                RuleSetName=rs_name,
+                Rule={
+                    "Name": rule_name,
+                    "Enabled": True,
+                    "Recipients": ["test@example.com"],
+                    "Actions": [],
+                },
+            )
+            resp = ses.describe_receipt_rule(RuleSetName=rs_name, RuleName=rule_name)
+            assert resp["Rule"]["Name"] == rule_name
+        finally:
+            ses.delete_receipt_rule(RuleSetName=rs_name, RuleName=rule_name)
+            ses.delete_receipt_rule_set(RuleSetName=rs_name)

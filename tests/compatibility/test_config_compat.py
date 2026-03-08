@@ -639,3 +639,63 @@ class TestConfigExtended:
             assert "env" not in tag_map2
         finally:
             config.delete_config_rule(ConfigRuleName=name)
+
+    def test_describe_configuration_recorder_status(self, config, iam):
+        role = iam.create_role(
+            RoleName="config-status-role",
+            AssumeRolePolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "config.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+        )
+        config.put_configuration_recorder(
+            ConfigurationRecorder={
+                "name": "default",
+                "roleARN": role["Role"]["Arn"],
+                "recordingGroup": {"allSupported": True},
+            }
+        )
+        try:
+            resp = config.describe_configuration_recorder_status()
+            assert "ConfigurationRecordersStatus" in resp
+        finally:
+            try:
+                config.delete_configuration_recorder(ConfigurationRecorderName="default")
+            except ClientError:
+                pass
+            iam.delete_role(RoleName="config-status-role")
+
+    def test_describe_retention_configurations(self, config):
+        config.put_retention_configuration(RetentionPeriodInDays=365)
+        resp = config.describe_retention_configurations()
+        assert "RetentionConfigurations" in resp
+        assert len(resp["RetentionConfigurations"]) >= 1
+
+    def test_list_discovered_resources(self, config, s3):
+        bucket_name = "config-disc-res-test"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = config.list_discovered_resources(resourceType="AWS::S3::Bucket")
+            assert "resourceIdentifiers" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+    def test_get_resource_config_history(self, config, s3):
+        bucket_name = "config-hist-test"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = config.get_resource_config_history(
+                resourceType="AWS::S3::Bucket",
+                resourceId=bucket_name,
+            )
+            assert "configurationItems" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)

@@ -1001,3 +1001,71 @@ class TestLogsExtended:
             logs.delete_metric_filter(logGroupName=name, filterName="error-count")
         finally:
             logs.delete_log_group(logGroupName=name)
+
+    def test_put_describe_delete_resource_policy(self, logs):
+        """PutResourcePolicy / DescribeResourcePolicies / DeleteResourcePolicy."""
+        policy_name = _unique("res-policy")
+        policy_doc = (
+            '{"Version":"2012-10-17","Statement":[{"Sid":"Route53","Effect":"Allow",'
+            '"Principal":{"Service":"route53.amazonaws.com"},'
+            '"Action":["logs:CreateLogStream","logs:PutLogEvents"],'
+            '"Resource":"*"}]}'
+        )
+        logs.put_resource_policy(policyName=policy_name, policyDocument=policy_doc)
+        try:
+            resp = logs.describe_resource_policies()
+            names = [p["policyName"] for p in resp["resourcePolicies"]]
+            assert policy_name in names
+        finally:
+            logs.delete_resource_policy(policyName=policy_name)
+        # Verify deletion
+        resp = logs.describe_resource_policies()
+        names = [p["policyName"] for p in resp["resourcePolicies"]]
+        assert policy_name not in names
+
+    def test_put_destination_policy(self, logs):
+        """PutDestination / PutDestinationPolicy / DeleteDestination."""
+        dest_name = _unique("dest-pol")
+        logs.put_destination(
+            destinationName=dest_name,
+            targetArn="arn:aws:kinesis:us-east-1:000000000000:stream/dummy",
+            roleArn="arn:aws:iam::000000000000:role/dummy",
+        )
+        try:
+            policy_doc = (
+                '{"Version":"2012-10-17","Statement":[{"Sid":"AllowSub","Effect":"Allow",'
+                '"Principal":{"AWS":"000000000000"},"Action":"logs:PutSubscriptionFilter",'
+                '"Resource":"*"}]}'
+            )
+            logs.put_destination_policy(
+                destinationName=dest_name,
+                accessPolicy=policy_doc,
+            )
+            resp = logs.describe_destinations(DestinationNamePrefix=dest_name)
+            dest = [d for d in resp["destinations"] if d["destinationName"] == dest_name][0]
+            assert "accessPolicy" in dest
+        finally:
+            logs.delete_destination(destinationName=dest_name)
+
+    def test_describe_export_tasks(self, logs):
+        """DescribeExportTasks returns a list (possibly empty)."""
+        resp = logs.describe_export_tasks()
+        assert "exportTasks" in resp
+
+    def test_stop_query(self, logs):
+        """StartQuery / StopQuery lifecycle."""
+        name = _unique("/test/stop-query")
+        logs.create_log_group(logGroupName=name)
+        try:
+            now = int(time.time())
+            start_resp = logs.start_query(
+                logGroupName=name,
+                startTime=now - 3600,
+                endTime=now,
+                queryString="fields @timestamp | limit 1",
+            )
+            query_id = start_resp["queryId"]
+            stop_resp = logs.stop_query(queryId=query_id)
+            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            logs.delete_log_group(logGroupName=name)

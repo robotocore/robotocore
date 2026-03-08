@@ -222,3 +222,227 @@ class TestSWFOperations:
         resp = swf.describe_domain(name=domain)
         assert resp["domainInfo"]["description"] == "Test domain description"
         swf.deprecate_domain(name=domain)
+
+    def test_undeprecate_domain(self, swf):
+        domain = f"undep-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.deprecate_domain(name=domain)
+        resp = swf.describe_domain(name=domain)
+        assert resp["domainInfo"]["status"] == "DEPRECATED"
+
+        swf.undeprecate_domain(name=domain)
+        resp = swf.describe_domain(name=domain)
+        assert resp["domainInfo"]["status"] == "REGISTERED"
+        swf.deprecate_domain(name=domain)
+
+    def test_undeprecate_workflow_type(self, swf):
+        domain = f"undep-wf-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_workflow_type(domain=domain, name="undep-wf", version="1.0")
+        swf.deprecate_workflow_type(
+            domain=domain, workflowType={"name": "undep-wf", "version": "1.0"}
+        )
+        # Verify deprecated
+        deprecated = swf.list_workflow_types(domain=domain, registrationStatus="DEPRECATED")
+        names = [t["workflowType"]["name"] for t in deprecated["typeInfos"]]
+        assert "undep-wf" in names
+
+        swf.undeprecate_workflow_type(
+            domain=domain, workflowType={"name": "undep-wf", "version": "1.0"}
+        )
+        # Verify re-registered
+        resp = swf.describe_workflow_type(
+            domain=domain, workflowType={"name": "undep-wf", "version": "1.0"}
+        )
+        assert resp["typeInfo"]["status"] == "REGISTERED"
+
+        swf.deprecate_workflow_type(
+            domain=domain, workflowType={"name": "undep-wf", "version": "1.0"}
+        )
+        swf.deprecate_domain(name=domain)
+
+    def test_undeprecate_activity_type(self, swf):
+        domain = f"undep-act-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_activity_type(domain=domain, name="undep-act", version="1.0")
+        swf.deprecate_activity_type(
+            domain=domain, activityType={"name": "undep-act", "version": "1.0"}
+        )
+        # Verify deprecated
+        deprecated = swf.list_activity_types(domain=domain, registrationStatus="DEPRECATED")
+        names = [t["activityType"]["name"] for t in deprecated["typeInfos"]]
+        assert "undep-act" in names
+
+        swf.undeprecate_activity_type(
+            domain=domain, activityType={"name": "undep-act", "version": "1.0"}
+        )
+        resp = swf.describe_activity_type(
+            domain=domain, activityType={"name": "undep-act", "version": "1.0"}
+        )
+        assert resp["typeInfo"]["status"] == "REGISTERED"
+
+        swf.deprecate_activity_type(
+            domain=domain, activityType={"name": "undep-act", "version": "1.0"}
+        )
+        swf.deprecate_domain(name=domain)
+
+
+class TestSWFWorkflowExecutions:
+    @pytest.fixture
+    def swf(self):
+        return make_client("swf")
+
+    def _setup_domain_and_workflow(self, swf):
+        """Helper to create a domain and workflow type with all required defaults."""
+        uid = _uid()
+        domain = f"exec-domain-{uid}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_workflow_type(
+            domain=domain,
+            name="exec-wf",
+            version="1.0",
+            defaultExecutionStartToCloseTimeout="3600",
+            defaultTaskStartToCloseTimeout="300",
+            defaultTaskList={"name": "default"},
+            defaultChildPolicy="TERMINATE",
+        )
+        return domain, uid
+
+    def test_start_workflow_execution(self, swf):
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            resp = swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-start-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            assert "runId" in resp
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-start-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_list_open_workflow_executions(self, swf):
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-open-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            resp = swf.list_open_workflow_executions(
+                domain=domain,
+                startTimeFilter={"oldestDate": "2020-01-01T00:00:00Z"},
+            )
+            wf_ids = [e["execution"]["workflowId"] for e in resp["executionInfos"]]
+            assert f"wf-open-{uid}" in wf_ids
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-open-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_terminate_and_list_closed_executions(self, swf):
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-close-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            swf.terminate_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-close-{uid}",
+                reason="testing closure",
+            )
+            resp = swf.list_closed_workflow_executions(
+                domain=domain,
+                startTimeFilter={"oldestDate": "2020-01-01T00:00:00Z"},
+            )
+            wf_ids = [e["execution"]["workflowId"] for e in resp["executionInfos"]]
+            assert f"wf-close-{uid}" in wf_ids
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_get_workflow_execution_history(self, swf):
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            run = swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-hist-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            run_id = run["runId"]
+            resp = swf.get_workflow_execution_history(
+                domain=domain,
+                execution={"workflowId": f"wf-hist-{uid}", "runId": run_id},
+            )
+            assert len(resp["events"]) >= 1
+            # First event should be WorkflowExecutionStarted
+            event_types = [e["eventType"] for e in resp["events"]]
+            assert "WorkflowExecutionStarted" in event_types
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-hist-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_signal_workflow_execution(self, swf):
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-sig-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            resp = swf.signal_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-sig-{uid}",
+                signalName="test-signal",
+                input="{}",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-sig-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_terminate_workflow_execution(self, swf):
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-term-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            resp = swf.terminate_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-term-{uid}",
+                reason="terminating for test",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify it's now in closed executions
+            closed = swf.list_closed_workflow_executions(
+                domain=domain,
+                startTimeFilter={"oldestDate": "2020-01-01T00:00:00Z"},
+            )
+            wf_ids = [e["execution"]["workflowId"] for e in closed["executionInfos"]]
+            assert f"wf-term-{uid}" in wf_ids
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)

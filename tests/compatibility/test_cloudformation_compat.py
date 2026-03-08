@@ -1577,3 +1577,35 @@ class TestCloudFormationAdvancedOps:
             assert "AWS::SNS::Topic" in types
         finally:
             cfn.delete_stack(StackName=stack_name)
+
+    def test_list_exports(self, cfn):
+        stack_name = f"exports-{uuid.uuid4().hex[:8]}"
+        template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": f"{stack_name}-q"},
+                    },
+                },
+                "Outputs": {
+                    "QueueUrl": {
+                        "Value": {"Ref": "Q"},
+                        "Export": {"Name": f"{stack_name}-url"},
+                    },
+                },
+            }
+        )
+        cfn.create_stack(StackName=stack_name, TemplateBody=template)
+        try:
+            resp = cfn.list_exports()
+            assert "Exports" in resp
+            export_names = [e["Name"] for e in resp["Exports"]]
+            assert f"{stack_name}-url" in export_names
+            # Verify export has a value
+            export = next(e for e in resp["Exports"] if e["Name"] == f"{stack_name}-url")
+            assert "Value" in export
+            assert "ExportingStackId" in export
+        finally:
+            cfn.delete_stack(StackName=stack_name)
