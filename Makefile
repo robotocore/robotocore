@@ -63,6 +63,9 @@ gap-analysis: ## Full gap analysis: robotocore vs LocalStack AND vs 100% botocor
 	@echo "══════════════════════════════════════════════════════════════════"
 	uv run python scripts/generate_parity_report.py
 
+batch-probe: ## Batch-probe all gap services against running server (requires make start)
+	uv run python scripts/batch_probe_gap.py --all
+
 parity-report: ## Generate full parity report to parity-report.json (auto-manages server)
 	$(DEV) server-start
 	ENDPOINT_URL=http://localhost:4566 uv run python scripts/generate_parity_report.py --output parity-report.json
