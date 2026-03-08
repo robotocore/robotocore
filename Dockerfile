@@ -8,6 +8,7 @@ RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

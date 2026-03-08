@@ -184,8 +184,14 @@ PROMPT
     AFTER=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
         | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d[0]['covered']}/{d[0]['total_ops']}\")" 2>/dev/null) || AFTER="?"
 
+    # Push any Moto fixes to the fork and update the lockfile
+    if (cd vendor/moto && git diff --quiet jackdanger/robotocore/all-fixes..HEAD 2>/dev/null) || true; then
+        (cd vendor/moto && git push jackdanger HEAD:robotocore/all-fixes 2>/dev/null) || true
+        uv lock 2>/dev/null || true
+    fi
+
     # Also pick up any source changes (Claude may fix the server to make tests pass)
-    git add "$TEST_FILE" vendor/moto src/robotocore/
+    git add "$TEST_FILE" src/robotocore/ uv.lock
     git commit -m "$(cat <<EOF
 Expand ${SERVICE} compat tests: ${AFTER} operations covered
 

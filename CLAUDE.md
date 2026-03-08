@@ -158,7 +158,7 @@ make status                            # Check if server is running
 
 ## Reference Materials
 
-- **vendor/moto/**: Moto source code. Key files:
+- **vendor/moto/**: Local checkout of `github.com/JackDanger/moto` (`robotocore/all-fixes` branch) for agent/dev convenience. **Not used at install time** — `uv sync` clones from the git remote. Key files:
   - `moto/core/botocore_stubber.py` — Request interception architecture
   - `moto/backends.py` — Backend registry
   - `moto/{service}/models.py` — Service implementations
@@ -236,9 +236,12 @@ When we discover a Moto bug or missing feature:
 2. Implement the fix directly in Moto's source
 3. Write a test for it in Moto's test suite
 4. Merge the branch into `robotocore/all-fixes` (our single merged branch): `git checkout robotocore/all-fixes && git merge fix/<name>`
-5. The submodule in robotocore points at `robotocore/all-fixes` on Jack's fork (`jackdanger/moto`)
-6. Do NOT open PRs to `getmoto/moto` yet — we'll batch upstream contributions later in a structured push
-7. For gaps that CANNOT be fixed in Moto (e.g., behavioral fidelity that conflicts with Moto's design), implement a native provider in `src/robotocore/services/<service>/provider.py` instead
+5. **Push to the fork**: `git push jackdanger robotocore/all-fixes` — this is the source of truth
+6. **Update the lockfile in robotocore**: `cd ../.. && uv lock` to pick up the new commit
+7. Do NOT open PRs to `getmoto/moto` yet — we'll batch upstream contributions later in a structured push
+8. For gaps that CANNOT be fixed in Moto (e.g., behavioral fidelity that conflicts with Moto's design), implement a native provider in `src/robotocore/services/<service>/provider.py` instead
+
+**How Moto is installed**: `pyproject.toml` has `moto = { git = "https://github.com/JackDanger/moto.git", branch = "robotocore/all-fixes" }`. The `vendor/moto/` checkout is only for dev/agent convenience (reading source, making fixes). Docker and CI install from the git remote. After making Moto fixes locally, always push to the fork and run `uv lock` so the lockfile pins the new commit.
 
 ### Commit cadence (CRITICAL — do this proactively)
 - **Commit after every logical phase** — don't accumulate a massive diff. After writing tests: commit. After fixing lint: commit. After changing CI: commit. Each commit should be self-contained and green.
