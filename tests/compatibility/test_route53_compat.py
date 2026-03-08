@@ -2,6 +2,7 @@
 
 import uuid
 
+import boto3
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -1580,3 +1581,122 @@ class TestRoute53AdditionalOperations:
             assert isinstance(resp["HealthCheckObservations"], list)
         finally:
             route53.delete_health_check(HealthCheckId=hc_id)
+
+
+class TestRoute53HostedZonesByVPC:
+    @pytest.fixture
+    def ec2(self):
+        return boto3.client(
+            "ec2",
+            endpoint_url="http://localhost:4566",
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+
+    def test_list_hosted_zones_by_vpc(self, route53, ec2):
+        """ListHostedZonesByVPC returns zones associated with a VPC."""
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            # Create a private hosted zone associated with the VPC
+            zone = route53.create_hosted_zone(
+                Name="vpc-test.example.com",
+                CallerReference=_unique("vpc-ref"),
+                VPC={"VPCRegion": "us-east-1", "VPCId": vpc_id},
+                HostedZoneConfig={"PrivateZone": True},
+            )
+            zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+            try:
+                resp = route53.list_hosted_zones_by_vpc(VPCId=vpc_id, VPCRegion="us-east-1")
+                assert "HostedZoneSummaries" in resp
+                zone_ids = [s["HostedZoneId"] for s in resp["HostedZoneSummaries"]]
+                assert zone_id in zone_ids
+            finally:
+                route53.delete_hosted_zone(Id=zone_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_get_dnssec(self, route53, hosted_zone):
+        """GetDNSSEC returns DNSSEC info for a hosted zone."""
+        resp = route53.get_dnssec(HostedZoneId=hosted_zone)
+        assert "Status" in resp
+        assert "KeySigningKeys" in resp
+
+    def test_test_dns_answer(self, route53, hosted_zone):
+        """TestDNSAnswer returns a simulated DNS response."""
+        resp = route53.test_dns_answer(
+            HostedZoneId=hosted_zone,
+            RecordName="example.com",
+            RecordType="A",
+        )
+        assert "ResponseCode" in resp
+        assert "RecordName" in resp
+
+    def test_associate_vpc_with_hosted_zone(self, route53, ec2):
+        """AssociateVPCWithHostedZone adds a VPC to a private zone."""
+        vpc1 = ec2.create_vpc(CidrBlock="10.1.0.0/16")
+        vpc1_id = vpc1["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.2.0.0/16")
+        vpc2_id = vpc2["Vpc"]["VpcId"]
+        try:
+            zone = route53.create_hosted_zone(
+                Name="assoc-test.example.com",
+                CallerReference=_unique("assoc-ref"),
+                VPC={"VPCRegion": "us-east-1", "VPCId": vpc1_id},
+                HostedZoneConfig={"PrivateZone": True},
+            )
+            zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+            try:
+                resp = route53.associate_vpc_with_hosted_zone(
+                    HostedZoneId=zone_id,
+                    VPC={"VPCRegion": "us-east-1", "VPCId": vpc2_id},
+                )
+                assert "ChangeInfo" in resp
+                assert resp["ChangeInfo"]["Status"] in ("PENDING", "INSYNC")
+            finally:
+                # Disassociate vpc2 before deleting zone
+                try:
+                    route53.disassociate_vpc_from_hosted_zone(
+                        HostedZoneId=zone_id,
+                        VPC={"VPCRegion": "us-east-1", "VPCId": vpc2_id},
+                    )
+                except Exception:
+                    pass
+                route53.delete_hosted_zone(Id=zone_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc1_id)
+            ec2.delete_vpc(VpcId=vpc2_id)
+
+    def test_disassociate_vpc_from_hosted_zone(self, route53, ec2):
+        """DisassociateVPCFromHostedZone removes a VPC from a private zone."""
+        vpc1 = ec2.create_vpc(CidrBlock="10.3.0.0/16")
+        vpc1_id = vpc1["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.4.0.0/16")
+        vpc2_id = vpc2["Vpc"]["VpcId"]
+        try:
+            zone = route53.create_hosted_zone(
+                Name="disassoc-test.example.com",
+                CallerReference=_unique("disassoc-ref"),
+                VPC={"VPCRegion": "us-east-1", "VPCId": vpc1_id},
+                HostedZoneConfig={"PrivateZone": True},
+            )
+            zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+            try:
+                # Associate second VPC
+                route53.associate_vpc_with_hosted_zone(
+                    HostedZoneId=zone_id,
+                    VPC={"VPCRegion": "us-east-1", "VPCId": vpc2_id},
+                )
+                # Now disassociate it
+                resp = route53.disassociate_vpc_from_hosted_zone(
+                    HostedZoneId=zone_id,
+                    VPC={"VPCRegion": "us-east-1", "VPCId": vpc2_id},
+                )
+                assert "ChangeInfo" in resp
+                assert resp["ChangeInfo"]["Status"] in ("PENDING", "INSYNC")
+            finally:
+                route53.delete_hosted_zone(Id=zone_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc1_id)
+            ec2.delete_vpc(VpcId=vpc2_id)
