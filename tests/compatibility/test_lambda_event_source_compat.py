@@ -50,7 +50,10 @@ def role(iam):
     )
     iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)
     yield f"arn:aws:iam::123456789012:role/{name}"
-    iam.delete_role(RoleName=name)
+    try:
+        iam.delete_role(RoleName=name)
+    except Exception:
+        pass
 
 
 class TestEventSourceMappingCRUD:
@@ -90,9 +93,18 @@ class TestEventSourceMappingCRUD:
         esm_uuid = esm["UUID"]
 
         # Clean up
-        lam.delete_event_source_mapping(UUID=esm_uuid)
-        lam.delete_function(FunctionName=func_name)
-        sqs.delete_queue(QueueUrl=queue_url)
+        try:
+            lam.delete_event_source_mapping(UUID=esm_uuid)
+        except Exception:
+            pass
+        try:
+            lam.delete_function(FunctionName=func_name)
+        except Exception:
+            pass
+        try:
+            sqs.delete_queue(QueueUrl=queue_url)
+        except Exception:
+            pass
 
     def test_list_event_source_mappings(self, lam, sqs, role):
         """Test listing event source mappings."""
@@ -125,9 +137,18 @@ class TestEventSourceMappingCRUD:
         uuids = [m["UUID"] for m in resp["EventSourceMappings"]]
         assert esm_uuid in uuids
 
-        lam.delete_event_source_mapping(UUID=esm_uuid)
-        lam.delete_function(FunctionName=func_name)
-        sqs.delete_queue(QueueUrl=queue_url)
+        try:
+            lam.delete_event_source_mapping(UUID=esm_uuid)
+        except Exception:
+            pass
+        try:
+            lam.delete_function(FunctionName=func_name)
+        except Exception:
+            pass
+        try:
+            sqs.delete_queue(QueueUrl=queue_url)
+        except Exception:
+            pass
 
     def test_update_event_source_mapping(self, lam, sqs, role):
         """Test updating an event source mapping."""
@@ -163,9 +184,18 @@ class TestEventSourceMappingCRUD:
         )
         assert updated["BatchSize"] == 10
 
-        lam.delete_event_source_mapping(UUID=esm_uuid)
-        lam.delete_function(FunctionName=func_name)
-        sqs.delete_queue(QueueUrl=queue_url)
+        try:
+            lam.delete_event_source_mapping(UUID=esm_uuid)
+        except Exception:
+            pass
+        try:
+            lam.delete_function(FunctionName=func_name)
+        except Exception:
+            pass
+        try:
+            sqs.delete_queue(QueueUrl=queue_url)
+        except Exception:
+            pass
 
 
 class TestSQSToLambdaTrigger:
@@ -228,7 +258,13 @@ class TestSQSToLambdaTrigger:
         assert len(messages) == 0, "Message should have been consumed by event source mapping"
 
         # Clean up
-        lam.delete_event_source_mapping(UUID=esm_uuid)
-        lam.delete_function(FunctionName=func_name)
-        sqs.delete_queue(QueueUrl=source_url)
-        sqs.delete_queue(QueueUrl=result_url)
+        for fn in [
+            lambda: lam.delete_event_source_mapping(UUID=esm_uuid),
+            lambda: lam.delete_function(FunctionName=func_name),
+            lambda: sqs.delete_queue(QueueUrl=source_url),
+            lambda: sqs.delete_queue(QueueUrl=result_url),
+        ]:
+            try:
+                fn()
+            except Exception:
+                pass

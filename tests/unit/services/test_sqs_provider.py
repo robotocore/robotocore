@@ -302,12 +302,11 @@ class TestSqsError:
 # ---------------------------------------------------------------------------
 
 
-class TestBugListDeadLetterSourceQueuesResponseKey:
-    """Bug: _list_dead_letter_source_queues returns 'queueUrls' (camelCase)
-    instead of 'QueueUrls' (PascalCase). The AWS SQS API uses PascalCase
-    for ListDeadLetterSourceQueues response."""
+class TestListDeadLetterSourceQueuesResponseKey:
+    """ListDeadLetterSourceQueues uses 'queueUrls' (camelCase) per the botocore
+    service model, unlike ListQueues which uses 'QueueUrls' (PascalCase)."""
 
-    def test_response_key_is_pascal_case(self):
+    def test_response_key_is_camel_case(self):
         store = SqsStore()
         dlq = store.create_queue("my-dlq", "us-east-1", "123456789012")
         source = store.create_queue("my-source", "us-east-1", "123456789012")
@@ -322,8 +321,9 @@ class TestBugListDeadLetterSourceQueuesResponseKey:
             "123456789012",
             mock_req,
         )
-        # AWS returns PascalCase "QueueUrls", not camelCase "queueUrls"
-        assert "QueueUrls" in result, f"Expected 'QueueUrls' but got keys: {list(result.keys())}"
+        # AWS uses camelCase "queueUrls" for this operation (confirmed by botocore model)
+        assert "queueUrls" in result, f"Expected 'queueUrls' but got keys: {list(result.keys())}"
+        assert len(result["queueUrls"]) == 1
 
 
 class TestBugSendMessageBatchFifoDedup:

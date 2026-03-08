@@ -499,7 +499,7 @@ def _list_dead_letter_source_queues(
         rp = q.redrive_policy
         if rp and rp.get("deadLetterTargetArn") == target_arn:
             source_urls.append(q.url)
-    return {"QueueUrls": source_urls}
+    return {"queueUrls": source_urls}
 
 
 def _tag_queue(

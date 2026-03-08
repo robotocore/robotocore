@@ -70,10 +70,21 @@ class TestStatePersistence:
         assert resp.json()["status"] == "saved"
 
     def test_reset_state(self):
-        """Reset clears all state."""
-        resp = requests.post(f"{ENDPOINT_URL}/_robotocore/state/reset")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "reset"
+        """Reset clears all state — save/restore around it to avoid nuking parallel tests."""
+        save_path = "/tmp/robotocore/pre-reset-state"
+        requests.post(
+            f"{ENDPOINT_URL}/_robotocore/state/save",
+            json={"path": save_path},
+        )
+        try:
+            resp = requests.post(f"{ENDPOINT_URL}/_robotocore/state/reset")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "reset"
+        finally:
+            requests.post(
+                f"{ENDPOINT_URL}/_robotocore/state/load",
+                json={"path": save_path},
+            )
 
     def test_health_endpoint(self):
         """Health endpoint always returns running status."""
