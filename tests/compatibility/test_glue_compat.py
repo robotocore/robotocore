@@ -913,3 +913,778 @@ class TestGlueSchemaVersionOps:
         )
         assert resp["SchemaArn"] == schema["arn"]
         assert "SchemaVersionId" in resp
+
+
+class TestGlueUpdateDatabase:
+    """Tests for UpdateDatabase."""
+
+    def test_update_database(self, glue):
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name, "Description": "original"})
+        try:
+            glue.update_database(
+                Name=db_name,
+                DatabaseInput={"Name": db_name, "Description": "updated"},
+            )
+            resp = glue.get_database(Name=db_name)
+            assert resp["Database"]["Description"] == "updated"
+        finally:
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueUpdateTable:
+    """Tests for UpdateTable."""
+
+    def _storage_descriptor(self, cols=None):
+        return {
+            "Columns": cols or [{"Name": "col1", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_update_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": self._storage_descriptor()},
+        )
+        try:
+            new_cols = [{"Name": "col1", "Type": "string"}, {"Name": "col2", "Type": "int"}]
+            glue.update_table(
+                DatabaseName=db_name,
+                TableInput={
+                    "Name": tbl_name,
+                    "StorageDescriptor": self._storage_descriptor(new_cols),
+                },
+            )
+            resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            col_names = [c["Name"] for c in resp["Table"]["StorageDescriptor"]["Columns"]]
+            assert "col2" in col_names
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueBatchDeleteTable:
+    """Tests for BatchDeleteTable."""
+
+    def _storage_descriptor(self):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_batch_delete_table(self, glue):
+        db_name = _unique("db")
+        tbl1 = _unique("tbl")
+        tbl2 = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        for tbl in (tbl1, tbl2):
+            glue.create_table(
+                DatabaseName=db_name,
+                TableInput={"Name": tbl, "StorageDescriptor": self._storage_descriptor()},
+            )
+        try:
+            resp = glue.batch_delete_table(DatabaseName=db_name, TablesToDelete=[tbl1, tbl2])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify tables are gone
+            with pytest.raises(ClientError) as exc:
+                glue.get_table(DatabaseName=db_name, Name=tbl1)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueSecurityConfigurationLifecycle:
+    """Tests for SecurityConfiguration CRUD."""
+
+    def test_create_and_get_security_configuration(self, glue):
+        name = _unique("secconfig")
+        resp = glue.create_security_configuration(
+            Name=name,
+            EncryptionConfiguration={
+                "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+                "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+                "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+            },
+        )
+        try:
+            assert resp["Name"] == name
+            got = glue.get_security_configuration(Name=name)
+            assert got["SecurityConfiguration"]["Name"] == name
+            assert "EncryptionConfiguration" in got["SecurityConfiguration"]
+        finally:
+            glue.delete_security_configuration(Name=name)
+
+    def test_get_security_configurations_includes_created(self, glue):
+        name = _unique("secconfig")
+        glue.create_security_configuration(
+            Name=name,
+            EncryptionConfiguration={
+                "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+                "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+                "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+            },
+        )
+        try:
+            resp = glue.get_security_configurations()
+            names = [sc["Name"] for sc in resp["SecurityConfigurations"]]
+            assert name in names
+        finally:
+            glue.delete_security_configuration(Name=name)
+
+    def test_delete_security_configuration(self, glue):
+        name = _unique("secconfig")
+        glue.create_security_configuration(
+            Name=name,
+            EncryptionConfiguration={
+                "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+                "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+                "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+            },
+        )
+        glue.delete_security_configuration(Name=name)
+        with pytest.raises(ClientError) as exc:
+            glue.get_security_configuration(Name=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueRegistryLifecycle:
+    """Tests for Registry CRUD (standalone, not just as fixture)."""
+
+    def test_create_and_get_registry(self, glue):
+        name = _unique("reg")
+        resp = glue.create_registry(RegistryName=name, Description="test registry")
+        try:
+            assert resp["RegistryName"] == name
+            got = glue.get_registry(RegistryId={"RegistryName": name})
+            assert got["RegistryName"] == name
+            assert got["Description"] == "test registry"
+        finally:
+            glue.delete_registry(RegistryId={"RegistryName": name})
+
+    def test_list_registries_includes_created(self, glue):
+        name = _unique("reg")
+        glue.create_registry(RegistryName=name, Description="for listing")
+        try:
+            resp = glue.list_registries()
+            reg_names = [r["RegistryName"] for r in resp["Registries"]]
+            assert name in reg_names
+        finally:
+            glue.delete_registry(RegistryId={"RegistryName": name})
+
+    def test_delete_registry(self, glue):
+        name = _unique("reg")
+        glue.create_registry(RegistryName=name, Description="to delete")
+        resp = glue.delete_registry(RegistryId={"RegistryName": name})
+        assert resp["RegistryName"] == name
+        with pytest.raises(ClientError) as exc:
+            glue.get_registry(RegistryId={"RegistryName": name})
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueWorkflowLifecycle:
+    """Tests for Workflow CRUD."""
+
+    def test_create_and_get_workflow(self, glue):
+        name = _unique("wf")
+        resp = glue.create_workflow(Name=name, Description="test workflow")
+        try:
+            assert resp["Name"] == name
+            got = glue.get_workflow(Name=name)
+            assert got["Workflow"]["Name"] == name
+            assert got["Workflow"]["Description"] == "test workflow"
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_list_workflows_includes_created(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name)
+        try:
+            resp = glue.list_workflows()
+            assert name in resp["Workflows"]
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_update_workflow(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name, Description="original")
+        try:
+            resp = glue.update_workflow(Name=name, Description="updated")
+            assert resp["Name"] == name
+            got = glue.get_workflow(Name=name)
+            assert got["Workflow"]["Description"] == "updated"
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_delete_workflow(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name)
+        glue.delete_workflow(Name=name)
+        with pytest.raises(ClientError) as exc:
+            glue.get_workflow(Name=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueBatchGetPartition:
+    """Tests for BatchGetPartition."""
+
+    def _make_db_and_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "string"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def _sd(self, location):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": location,
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_batch_get_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            for year in ("2023", "2024", "2025"):
+                glue.create_partition(
+                    DatabaseName=db_name,
+                    TableName=tbl_name,
+                    PartitionInput={
+                        "Values": [year],
+                        "StorageDescriptor": self._sd(f"s3://bucket/path/year={year}"),
+                    },
+                )
+            resp = glue.batch_get_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionsToGet=[
+                    {"Values": ["2023"]},
+                    {"Values": ["2025"]},
+                ],
+            )
+            assert len(resp["Partitions"]) == 2
+            values = sorted([p["Values"][0] for p in resp["Partitions"]])
+            assert values == ["2023", "2025"]
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueBatchCreatePartition:
+    """Tests for BatchCreatePartition."""
+
+    def _make_db_and_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "string"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def _sd(self, location):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": location,
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_batch_create_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            resp = glue.batch_create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInputList=[
+                    {
+                        "Values": ["2023"],
+                        "StorageDescriptor": self._sd("s3://bucket/path/year=2023"),
+                    },
+                    {
+                        "Values": ["2024"],
+                        "StorageDescriptor": self._sd("s3://bucket/path/year=2024"),
+                    },
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify partitions were created
+            parts = glue.get_partitions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(parts["Partitions"]) == 2
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueBatchDeletePartition:
+    """Tests for BatchDeletePartition."""
+
+    def _make_db_and_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "string"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def _sd(self, location):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": location,
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_batch_delete_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            for year in ("2023", "2024"):
+                glue.create_partition(
+                    DatabaseName=db_name,
+                    TableName=tbl_name,
+                    PartitionInput={
+                        "Values": [year],
+                        "StorageDescriptor": self._sd(f"s3://bucket/path/year={year}"),
+                    },
+                )
+            resp = glue.batch_delete_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionsToDelete=[{"Values": ["2023"]}, {"Values": ["2024"]}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            parts = glue.get_partitions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(parts["Partitions"]) == 0
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGluePutResourcePolicy:
+    """Tests for PutResourcePolicy / GetResourcePolicy."""
+
+    def test_put_and_get_resource_policy(self, glue):
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "glue:GetDatabase",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        glue.put_resource_policy(PolicyInJson=policy)
+        resp = glue.get_resource_policy()
+        assert "PolicyInJson" in resp
+        # Clean up
+        glue.delete_resource_policy()
+
+
+class TestGlueStartJobRun:
+    """Tests for StartJobRun and GetJobRun."""
+
+    def test_start_and_get_job_run(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            start_resp = glue.start_job_run(JobName=job_name)
+            run_id = start_resp["JobRunId"]
+            assert run_id
+
+            run_resp = glue.get_job_run(JobName=job_name, RunId=run_id)
+            assert run_resp["JobRun"]["JobName"] == job_name
+            assert run_resp["JobRun"]["Id"] == run_id
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_get_job_runs(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            glue.start_job_run(JobName=job_name)
+            resp = glue.get_job_runs(JobName=job_name)
+            assert len(resp["JobRuns"]) >= 1
+            assert resp["JobRuns"][0]["JobName"] == job_name
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGluePutDataCatalogEncryptionSettings:
+    """Tests for PutDataCatalogEncryptionSettings."""
+
+    def test_put_and_get_data_catalog_encryption_settings(self, glue):
+        glue.put_data_catalog_encryption_settings(
+            DataCatalogEncryptionSettings={
+                "ConnectionPasswordEncryption": {
+                    "ReturnConnectionPasswordEncrypted": False,
+                },
+                "EncryptionAtRest": {
+                    "CatalogEncryptionMode": "DISABLED",
+                },
+            }
+        )
+        resp = glue.get_data_catalog_encryption_settings()
+        assert "DataCatalogEncryptionSettings" in resp
+
+
+class TestGlueBatchGetJobs:
+    """Tests for BatchGetJobs."""
+
+    def test_batch_get_jobs_existing(self, glue):
+        job1 = _unique("job")
+        job2 = _unique("job")
+        for jn in (job1, job2):
+            glue.create_job(
+                Name=jn,
+                Role="arn:aws:iam::123456789012:role/glue-role",
+                Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            )
+        try:
+            resp = glue.batch_get_jobs(JobNames=[job1, job2])
+            assert len(resp["Jobs"]) == 2
+            names = sorted([j["Name"] for j in resp["Jobs"]])
+            assert job1 in names
+            assert job2 in names
+        finally:
+            for jn in (job1, job2):
+                glue.delete_job(JobName=jn)
+
+    def test_batch_get_jobs_not_found(self, glue):
+        resp = glue.batch_get_jobs(JobNames=["nonexistent-job-xyz"])
+        assert len(resp["Jobs"]) == 0
+        assert "nonexistent-job-xyz" in resp["JobsNotFound"]
+
+
+class TestGlueBatchGetCrawlers:
+    """Tests for BatchGetCrawlers."""
+
+    def test_batch_get_crawlers_existing(self, glue):
+        db_name = _unique("db")
+        c1 = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=c1,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            resp = glue.batch_get_crawlers(CrawlerNames=[c1])
+            assert len(resp["Crawlers"]) == 1
+            assert resp["Crawlers"][0]["Name"] == c1
+        finally:
+            glue.delete_crawler(Name=c1)
+            glue.delete_database(Name=db_name)
+
+    def test_batch_get_crawlers_not_found(self, glue):
+        resp = glue.batch_get_crawlers(CrawlerNames=["nonexistent-crawler-xyz"])
+        assert len(resp["Crawlers"]) == 0
+        assert "nonexistent-crawler-xyz" in resp["CrawlersNotFound"]
+
+
+class TestGlueBatchGetTriggers:
+    """Tests for BatchGetTriggers."""
+
+    def test_batch_get_triggers_existing(self, glue):
+        t1 = _unique("trigger")
+        glue.create_trigger(
+            Name=t1,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            resp = glue.batch_get_triggers(TriggerNames=[t1])
+            assert len(resp["Triggers"]) == 1
+            assert resp["Triggers"][0]["Name"] == t1
+        finally:
+            glue.delete_trigger(Name=t1)
+
+    def test_batch_get_triggers_not_found(self, glue):
+        resp = glue.batch_get_triggers(TriggerNames=["nonexistent-trigger-xyz"])
+        assert len(resp["Triggers"]) == 0
+        assert "nonexistent-trigger-xyz" in resp["TriggersNotFound"]
+
+
+class TestGlueBatchGetWorkflows:
+    """Tests for BatchGetWorkflows."""
+
+    def test_batch_get_workflows_existing(self, glue):
+        w1 = _unique("wf")
+        glue.create_workflow(Name=w1, Description="for batch get")
+        try:
+            resp = glue.batch_get_workflows(Names=[w1])
+            assert len(resp["Workflows"]) == 1
+            assert resp["Workflows"][0]["Name"] == w1
+        finally:
+            glue.delete_workflow(Name=w1)
+
+    def test_batch_get_workflows_not_found(self, glue):
+        resp = glue.batch_get_workflows(Names=["nonexistent-wf-xyz"])
+        assert len(resp["Workflows"]) == 0
+        assert "nonexistent-wf-xyz" in resp["MissingWorkflows"]
+
+
+class TestGlueCrawlerStartStop:
+    """Tests for StartCrawler and StopCrawler."""
+
+    def test_start_crawler(self, glue):
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            resp = glue.start_crawler(Name=crawler_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_stop_crawler(self, glue):
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            glue.start_crawler(Name=crawler_name)
+            resp = glue.stop_crawler(Name=crawler_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_start_nonexistent_crawler_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.start_crawler(Name="fake-crawler-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_stop_nonexistent_crawler_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.stop_crawler(Name="fake-crawler-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueCreateConnection:
+    """Tests for CreateConnection and GetConnection (without Delete which is not implemented)."""
+
+    def test_create_connection(self, glue):
+        conn_name = _unique("conn")
+        resp = glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_and_get_connection(self, glue):
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        resp = glue.get_connection(Name=conn_name)
+        assert resp["Connection"]["Name"] == conn_name
+        assert "ConnectionProperties" in resp["Connection"]
+
+
+class TestGlueDeleteTableVersion:
+    """Tests for DeleteTableVersion."""
+
+    def _storage_descriptor(self):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_delete_table_version(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": self._storage_descriptor()},
+        )
+        try:
+            versions = glue.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+            version_id = versions["TableVersions"][0]["VersionId"]
+            resp = glue.delete_table_version(
+                DatabaseName=db_name, TableName=tbl_name, VersionId=str(version_id)
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_delete_table_version_nonexistent_db(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.delete_table_version(
+                DatabaseName="fake-db-xyz", TableName="fake-tbl", VersionId="1"
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueJobWithTags:
+    """Tests for creating a job with tags and verifying them."""
+
+    def test_create_job_and_tag(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            Tags={"env": "test", "project": "glue-compat"},
+        )
+        try:
+            job_arn = f"arn:aws:glue:us-east-1:123456789012:job/{job_name}"
+            resp = glue.get_tags(ResourceArn=job_arn)
+            assert resp["Tags"]["env"] == "test"
+            assert resp["Tags"]["project"] == "glue-compat"
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueMultipleJobRuns:
+    """Tests for multiple job runs on the same job."""
+
+    def test_multiple_job_runs(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            run1 = glue.start_job_run(JobName=job_name)
+            run2 = glue.start_job_run(JobName=job_name)
+            assert run1["JobRunId"] != run2["JobRunId"]
+
+            runs = glue.get_job_runs(JobName=job_name)
+            assert len(runs["JobRuns"]) >= 2
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueBatchDeleteJobs:
+    """Tests for batch job deletion via individual DeleteJob calls."""
+
+    def test_delete_multiple_jobs(self, glue):
+        """Create and delete multiple jobs, verify all gone."""
+        jobs = [_unique("job") for _ in range(3)]
+        for jn in jobs:
+            glue.create_job(
+                Name=jn,
+                Role="arn:aws:iam::123456789012:role/glue-role",
+                Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            )
+        for jn in jobs:
+            glue.delete_job(JobName=jn)
+        for jn in jobs:
+            with pytest.raises(ClientError) as exc:
+                glue.get_job(JobName=jn)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"

@@ -3423,3 +3423,978 @@ class TestEC2VpcAttributeToggle:
             assert attr2["EnableDnsSupport"]["Value"] is True
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2CarrierGatewayCRUD:
+    """CarrierGateway create / describe-by-id / delete."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_describe_delete_carrier_gateway(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.create_carrier_gateway(VpcId=vpc_id)
+            cagw_id = resp["CarrierGateway"]["CarrierGatewayId"]
+            assert cagw_id.startswith("cagw-")
+
+            described = ec2.describe_carrier_gateways(CarrierGatewayIds=[cagw_id])
+            assert len(described["CarrierGateways"]) == 1
+            assert described["CarrierGateways"][0]["VpcId"] == vpc_id
+
+            ec2.delete_carrier_gateway(CarrierGatewayId=cagw_id)
+            after = ec2.describe_carrier_gateways(CarrierGatewayIds=[cagw_id])
+            remaining = [c for c in after["CarrierGateways"] if c.get("State") != "deleted"]
+            assert len(remaining) == 0
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_carrier_gateway_has_tags(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.91.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.create_carrier_gateway(
+                VpcId=vpc_id,
+                TagSpecifications=[
+                    {
+                        "ResourceType": "carrier-gateway",
+                        "Tags": [{"Key": "Name", "Value": "test-cagw"}],
+                    }
+                ],
+            )
+            cagw_id = resp["CarrierGateway"]["CarrierGatewayId"]
+            described = ec2.describe_carrier_gateways(CarrierGatewayIds=[cagw_id])
+            tags = described["CarrierGateways"][0].get("Tags", [])
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map.get("Name") == "test-cagw"
+            ec2.delete_carrier_gateway(CarrierGatewayId=cagw_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ReplaceNetworkAclAssociation:
+    """ReplaceNetworkAclAssociation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_network_acl_association(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.92.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.92.1.0/24")
+            sub_id = sub["Subnet"]["SubnetId"]
+
+            acls = ec2.describe_network_acls(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+            default_acl = acls["NetworkAcls"][0]
+            assoc_id = default_acl["Associations"][0]["NetworkAclAssociationId"]
+
+            new_acl = ec2.create_network_acl(VpcId=vpc_id)
+            new_acl_id = new_acl["NetworkAcl"]["NetworkAclId"]
+
+            resp = ec2.replace_network_acl_association(
+                AssociationId=assoc_id, NetworkAclId=new_acl_id
+            )
+            new_assoc_id = resp["NewAssociationId"]
+            assert new_assoc_id.startswith("aclassoc-")
+            assert new_assoc_id != assoc_id
+
+            # Restore default so we can clean up
+            ec2.replace_network_acl_association(
+                AssociationId=new_assoc_id,
+                NetworkAclId=default_acl["NetworkAclId"],
+            )
+            ec2.delete_network_acl(NetworkAclId=new_acl_id)
+            ec2.delete_subnet(SubnetId=sub_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ConsoleAndPassword:
+    """GetConsoleOutput / GetPasswordData."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_get_console_output(self, ec2):
+        inst = ec2.run_instances(
+            ImageId="ami-12345678", MinCount=1, MaxCount=1, InstanceType="t2.micro"
+        )
+        iid = inst["Instances"][0]["InstanceId"]
+        try:
+            resp = ec2.get_console_output(InstanceId=iid)
+            assert "InstanceId" in resp
+            assert resp["InstanceId"] == iid
+            assert "Output" in resp or "Timestamp" in resp
+        finally:
+            ec2.terminate_instances(InstanceIds=[iid])
+
+    def test_get_password_data(self, ec2):
+        inst = ec2.run_instances(
+            ImageId="ami-12345678", MinCount=1, MaxCount=1, InstanceType="t2.micro"
+        )
+        iid = inst["Instances"][0]["InstanceId"]
+        try:
+            resp = ec2.get_password_data(InstanceId=iid)
+            assert "InstanceId" in resp
+            assert resp["InstanceId"] == iid
+            assert "PasswordData" in resp
+        finally:
+            ec2.terminate_instances(InstanceIds=[iid])
+
+
+class TestEC2TransitGatewayRouteTableCRUD:
+    """Transit gateway route table lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_describe_delete_tgw_route_table(self, ec2):
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            assert rtb_id.startswith("tgw-rtb-")
+
+            described = ec2.describe_transit_gateway_route_tables(
+                TransitGatewayRouteTableIds=[rtb_id]
+            )
+            assert len(described["TransitGatewayRouteTables"]) == 1
+            assert described["TransitGatewayRouteTables"][0]["TransitGatewayId"] == tgw_id
+
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_create_tgw_route_table_with_tags(self, ec2):
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(
+                TransitGatewayId=tgw_id,
+                TagSpecifications=[
+                    {
+                        "ResourceType": "transit-gateway-route-table",
+                        "Tags": [{"Key": "Env", "Value": "test"}],
+                    }
+                ],
+            )
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            tags = rtb["TransitGatewayRouteTable"].get("Tags", [])
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map.get("Env") == "test"
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2TransitGatewayVpcAttachmentCRUD:
+    """Transit gateway VPC attachment lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_describe_delete_tgw_vpc_attachment(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.93.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.93.1.0/24")
+        sub_id = sub["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            assert att_id.startswith("tgw-attach-")
+            assert att["TransitGatewayVpcAttachment"]["VpcId"] == vpc_id
+
+            described = ec2.describe_transit_gateway_vpc_attachments(
+                TransitGatewayAttachmentIds=[att_id]
+            )
+            assert len(described["TransitGatewayVpcAttachments"]) == 1
+            assert described["TransitGatewayVpcAttachments"][0]["TransitGatewayId"] == tgw_id
+
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_tgw_vpc_attachment_has_subnet_ids(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.94.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.94.1.0/24")
+        sub_id = sub["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            assert sub_id in att["TransitGatewayVpcAttachment"]["SubnetIds"]
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2TransitGatewayPeeringCRUD:
+    """Transit gateway peering attachment lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_accept_describe_delete_tgw_peering(self, ec2):
+        tgw1 = ec2.create_transit_gateway()
+        tgw1_id = tgw1["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()
+        tgw2_id = tgw2["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1_id,
+                PeerTransitGatewayId=tgw2_id,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+            assert att_id.startswith("tgw-attach-")
+
+            ec2.accept_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+
+            described = ec2.describe_transit_gateway_peering_attachments(
+                TransitGatewayAttachmentIds=[att_id]
+            )
+            assert len(described["TransitGatewayPeeringAttachments"]) == 1
+
+            ec2.delete_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1_id)
+
+    def test_tgw_peering_has_requester_and_accepter(self, ec2):
+        tgw1 = ec2.create_transit_gateway()
+        tgw1_id = tgw1["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()
+        tgw2_id = tgw2["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1_id,
+                PeerTransitGatewayId=tgw2_id,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+            peer = att["TransitGatewayPeeringAttachment"]
+            assert "RequesterTgwInfo" in peer
+            assert "AccepterTgwInfo" in peer
+            assert peer["RequesterTgwInfo"]["TransitGatewayId"] == tgw1_id
+            ec2.delete_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1_id)
+
+
+class TestEC2TransitGatewayRoutes:
+    """Transit gateway static routes."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_search_delete_tgw_route(self, ec2):
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+
+            route = ec2.create_transit_gateway_route(
+                DestinationCidrBlock="10.99.0.0/16",
+                TransitGatewayRouteTableId=rtb_id,
+                Blackhole=True,
+            )
+            assert route["Route"]["DestinationCidrBlock"] == "10.99.0.0/16"
+            assert route["Route"]["Type"] == "static"
+            assert route["Route"]["State"] == "blackhole"
+
+            searched = ec2.search_transit_gateway_routes(
+                TransitGatewayRouteTableId=rtb_id,
+                Filters=[{"Name": "type", "Values": ["static"]}],
+            )
+            assert len(searched["Routes"]) >= 1
+            cidrs = [r["DestinationCidrBlock"] for r in searched["Routes"]]
+            assert "10.99.0.0/16" in cidrs
+
+            ec2.delete_transit_gateway_route(
+                DestinationCidrBlock="10.99.0.0/16",
+                TransitGatewayRouteTableId=rtb_id,
+            )
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2TransitGatewayRouteTableAssociation:
+    """Associate / disassociate TGW route table with attachment."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_disassociate_tgw_route_table(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.95.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.95.1.0/24")
+        sub_id = sub["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+
+            assoc = ec2.associate_transit_gateway_route_table(
+                TransitGatewayRouteTableId=rtb_id,
+                TransitGatewayAttachmentId=att_id,
+            )
+            assert "Association" in assoc
+            assert assoc["Association"]["TransitGatewayRouteTableId"] == rtb_id
+
+            ec2.disassociate_transit_gateway_route_table(
+                TransitGatewayRouteTableId=rtb_id,
+                TransitGatewayAttachmentId=att_id,
+            )
+
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2SpotInstanceCRUD:
+    """Spot instance request / describe-by-id / cancel."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_request_describe_cancel_spot_instances(self, ec2):
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={
+                "ImageId": "ami-12345678",
+                "InstanceType": "t2.micro",
+            },
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        assert sir_id.startswith("sir-")
+
+        described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        assert len(described["SpotInstanceRequests"]) == 1
+        assert described["SpotInstanceRequests"][0]["SpotPrice"].startswith("0.01")
+
+        cancelled = ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        assert len(cancelled["CancelledSpotInstanceRequests"]) == 1
+        assert cancelled["CancelledSpotInstanceRequests"][0]["SpotInstanceRequestId"] == sir_id
+
+    def test_spot_instance_request_has_launch_spec(self, ec2):
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.02",
+            InstanceCount=1,
+            LaunchSpecification={
+                "ImageId": "ami-12345678",
+                "InstanceType": "m5.large",
+            },
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            sir = resp["SpotInstanceRequests"][0]
+            assert sir["LaunchSpecification"]["InstanceType"] == "m5.large"
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+
+class TestEC2HostsCRUD:
+    """AllocateHosts / DescribeHosts / ModifyHosts / ReleaseHosts."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_allocate_describe_modify_release_hosts(self, ec2):
+        resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a", InstanceType="m5.large", Quantity=1
+        )
+        host_id = resp["HostIds"][0]
+        assert host_id.startswith("h-")
+
+        described = ec2.describe_hosts(HostIds=[host_id])
+        assert len(described["Hosts"]) == 1
+        assert described["Hosts"][0]["HostId"] == host_id
+
+        ec2.modify_hosts(HostIds=[host_id], AutoPlacement="on")
+        after = ec2.describe_hosts(HostIds=[host_id])
+        assert after["Hosts"][0]["AutoPlacement"] == "on"
+
+        ec2.release_hosts(HostIds=[host_id])
+
+    def test_allocate_hosts_with_tags(self, ec2):
+        resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a",
+            InstanceType="c5.large",
+            Quantity=1,
+            TagSpecifications=[
+                {
+                    "ResourceType": "dedicated-host",
+                    "Tags": [{"Key": "Team", "Value": "infra"}],
+                }
+            ],
+        )
+        host_id = resp["HostIds"][0]
+        try:
+            described = ec2.describe_hosts(HostIds=[host_id])
+            tags = described["Hosts"][0].get("Tags", [])
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map.get("Team") == "infra"
+        finally:
+            ec2.release_hosts(HostIds=[host_id])
+
+
+class TestEC2SnapshotAttributeModify:
+    """ModifySnapshotAttribute with add/remove permissions."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_snapshot_attribute_add_remove(self, ec2):
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+
+            ec2.modify_snapshot_attribute(
+                SnapshotId=snap_id,
+                Attribute="createVolumePermission",
+                OperationType="add",
+                UserIds=["111122223333"],
+            )
+            perms = ec2.describe_snapshot_attribute(
+                SnapshotId=snap_id, Attribute="createVolumePermission"
+            )
+            assert len(perms["CreateVolumePermissions"]) == 1
+            assert perms["CreateVolumePermissions"][0]["UserId"] == "111122223333"
+
+            ec2.modify_snapshot_attribute(
+                SnapshotId=snap_id,
+                Attribute="createVolumePermission",
+                OperationType="remove",
+                UserIds=["111122223333"],
+            )
+            perms_after = ec2.describe_snapshot_attribute(
+                SnapshotId=snap_id, Attribute="createVolumePermission"
+            )
+            assert len(perms_after["CreateVolumePermissions"]) == 0
+
+            ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2DescribeListOpsNew:
+    """Describe/list operations returning empty collections — verify server contact."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_fleets_list(self, ec2):
+        resp = ec2.describe_fleets()
+        assert "Fleets" in resp
+        assert isinstance(resp["Fleets"], list)
+
+    def test_describe_spot_fleet_requests_list(self, ec2):
+        resp = ec2.describe_spot_fleet_requests()
+        assert "SpotFleetRequestConfigs" in resp
+        assert isinstance(resp["SpotFleetRequestConfigs"], list)
+
+    def test_describe_snapshot_tier_status_list(self, ec2):
+        resp = ec2.describe_snapshot_tier_status()
+        assert "SnapshotTierStatuses" in resp
+        assert isinstance(resp["SnapshotTierStatuses"], list)
+
+    def test_describe_vpc_endpoint_service_configurations_list(self, ec2):
+        resp = ec2.describe_vpc_endpoint_service_configurations()
+        assert "ServiceConfigurations" in resp
+        assert isinstance(resp["ServiceConfigurations"], list)
+
+    def test_describe_addresses_attribute_list(self, ec2):
+        resp = ec2.describe_addresses_attribute()
+        assert "Addresses" in resp
+        assert isinstance(resp["Addresses"], list)
+
+    def test_describe_vpn_connections_list(self, ec2):
+        resp = ec2.describe_vpn_connections()
+        assert "VpnConnections" in resp
+        assert isinstance(resp["VpnConnections"], list)
+
+
+class TestEC2EbsEncryptionSettings:
+    """EBS encryption default settings."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_enable_disable_ebs_encryption(self, ec2):
+        resp = ec2.enable_ebs_encryption_by_default()
+        assert resp["EbsEncryptionByDefault"] is True
+
+        check = ec2.get_ebs_encryption_by_default()
+        assert check["EbsEncryptionByDefault"] is True
+
+        resp2 = ec2.disable_ebs_encryption_by_default()
+        assert resp2["EbsEncryptionByDefault"] is False
+
+        check2 = ec2.get_ebs_encryption_by_default()
+        assert check2["EbsEncryptionByDefault"] is False
+
+    def test_get_ebs_encryption_by_default_returns_bool(self, ec2):
+        resp = ec2.get_ebs_encryption_by_default()
+        assert "EbsEncryptionByDefault" in resp
+        assert isinstance(resp["EbsEncryptionByDefault"], bool)
+
+
+class TestEC2PrefixListEntries:
+    """GetManagedPrefixListEntries."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_get_managed_prefix_list_entries_single(self, ec2):
+        pl = ec2.create_managed_prefix_list(
+            PrefixListName=_unique("test-pl"),
+            MaxEntries=5,
+            AddressFamily="IPv4",
+            Entries=[{"Cidr": "10.0.0.0/8", "Description": "RFC1918"}],
+        )
+        pl_id = pl["PrefixList"]["PrefixListId"]
+        try:
+            entries = ec2.get_managed_prefix_list_entries(PrefixListId=pl_id)
+            assert len(entries["Entries"]) == 1
+            assert entries["Entries"][0]["Cidr"] == "10.0.0.0/8"
+            assert entries["Entries"][0]["Description"] == "RFC1918"
+        finally:
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+
+    def test_get_prefix_list_entries_multiple(self, ec2):
+        pl = ec2.create_managed_prefix_list(
+            PrefixListName=_unique("test-pl-multi"),
+            MaxEntries=10,
+            AddressFamily="IPv4",
+            Entries=[
+                {"Cidr": "10.0.0.0/8", "Description": "RFC1918-10"},
+                {"Cidr": "172.16.0.0/12", "Description": "RFC1918-172"},
+                {"Cidr": "192.168.0.0/16", "Description": "RFC1918-192"},
+            ],
+        )
+        pl_id = pl["PrefixList"]["PrefixListId"]
+        try:
+            entries = ec2.get_managed_prefix_list_entries(PrefixListId=pl_id)
+            assert len(entries["Entries"]) == 3
+            cidrs = {e["Cidr"] for e in entries["Entries"]}
+            assert "10.0.0.0/8" in cidrs
+            assert "172.16.0.0/12" in cidrs
+            assert "192.168.0.0/16" in cidrs
+        finally:
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+
+
+class TestEC2InstanceTypeOfferingsNew:
+    """DescribeInstanceTypeOfferings."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_instance_type_offerings_has_entries(self, ec2):
+        resp = ec2.describe_instance_type_offerings()
+        assert "InstanceTypeOfferings" in resp
+        assert len(resp["InstanceTypeOfferings"]) > 0
+        first = resp["InstanceTypeOfferings"][0]
+        assert "InstanceType" in first
+        assert "LocationType" in first
+
+    def test_describe_instance_type_offerings_filter(self, ec2):
+        resp = ec2.describe_instance_type_offerings(
+            LocationType="availability-zone",
+            Filters=[{"Name": "instance-type", "Values": ["t2.micro"]}],
+        )
+        assert "InstanceTypeOfferings" in resp
+        for offering in resp["InstanceTypeOfferings"]:
+            assert offering["InstanceType"] == "t2.micro"
+
+
+class TestEC2ModifyTransitGateway:
+    """ModifyTransitGateway."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_transit_gateway_description(self, ec2):
+        tgw = ec2.create_transit_gateway(Description="original")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            ec2.modify_transit_gateway(TransitGatewayId=tgw_id, Description="modified")
+            described = ec2.describe_transit_gateways(TransitGatewayIds=[tgw_id])
+            assert len(described["TransitGateways"]) == 1
+            assert described["TransitGateways"][0]["Description"] == "modified"
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2TransitGatewayPropagation:
+    """Enable/disable TGW route table propagation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_enable_disable_tgw_route_table_propagation(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.110.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.110.1.0/24")
+        sub_id = sub["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+
+            resp = ec2.enable_transit_gateway_route_table_propagation(
+                TransitGatewayRouteTableId=rtb_id,
+                TransitGatewayAttachmentId=att_id,
+            )
+            assert "Propagation" in resp
+
+            ec2.disable_transit_gateway_route_table_propagation(
+                TransitGatewayRouteTableId=rtb_id,
+                TransitGatewayAttachmentId=att_id,
+            )
+
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2VpcEndpointInterfaceCRUD:
+    """VPC endpoint (Interface type) lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_describe_delete_interface_endpoint(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.111.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.111.1.0/24")
+        sub_id = sub["Subnet"]["SubnetId"]
+        try:
+            ep = ec2.create_vpc_endpoint(
+                VpcId=vpc_id,
+                ServiceName="com.amazonaws.us-east-1.execute-api",
+                VpcEndpointType="Interface",
+                SubnetIds=[sub_id],
+            )
+            vpce_id = ep["VpcEndpoint"]["VpcEndpointId"]
+            assert vpce_id.startswith("vpce-")
+            assert ep["VpcEndpoint"]["VpcEndpointType"] == "Interface"
+
+            described = ec2.describe_vpc_endpoints(VpcEndpointIds=[vpce_id])
+            assert len(described["VpcEndpoints"]) == 1
+            assert described["VpcEndpoints"][0]["VpcId"] == vpc_id
+
+            ec2.delete_vpc_endpoints(VpcEndpointIds=[vpce_id])
+        finally:
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_vpc_endpoint_services(self, ec2):
+        resp = ec2.describe_vpc_endpoint_services()
+        assert "ServiceNames" in resp
+        assert len(resp["ServiceNames"]) > 0
+        assert any("s3" in s for s in resp["ServiceNames"])
+
+
+class TestEC2ModifyVpcEndpointPolicy:
+    """ModifyVpcEndpoint to update policy."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_vpc_endpoint_policy(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.112.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            ep = ec2.create_vpc_endpoint(
+                VpcId=vpc_id,
+                ServiceName="com.amazonaws.us-east-1.s3",
+                VpcEndpointType="Gateway",
+            )
+            vpce_id = ep["VpcEndpoint"]["VpcEndpointId"]
+
+            policy = (
+                '{"Statement":[{"Effect":"Allow","Principal":"*",'
+                '"Action":"s3:GetObject","Resource":"*"}]}'
+            )
+            ec2.modify_vpc_endpoint(VpcEndpointId=vpce_id, PolicyDocument=policy)
+
+            described = ec2.describe_vpc_endpoints(VpcEndpointIds=[vpce_id])
+            assert len(described["VpcEndpoints"]) == 1
+            # Policy should be set (may be normalized)
+            assert described["VpcEndpoints"][0].get("PolicyDocument") is not None
+
+            ec2.delete_vpc_endpoints(VpcEndpointIds=[vpce_id])
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2UpdateSecurityGroupRuleDescriptions:
+    """UpdateSecurityGroupRuleDescriptionsIngress / Egress."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_update_sg_rule_descriptions_ingress(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.113.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sg = ec2.create_security_group(
+                GroupName=_unique("sg-desc"),
+                Description="test",
+                VpcId=vpc_id,
+            )
+            sg_id = sg["GroupId"]
+            ec2.authorize_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpRanges": [{"CidrIp": "10.0.0.0/8", "Description": "original"}],
+                    }
+                ],
+            )
+            resp = ec2.update_security_group_rule_descriptions_ingress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpRanges": [{"CidrIp": "10.0.0.0/8", "Description": "updated"}],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_update_sg_rule_descriptions_egress(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.114.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sg = ec2.create_security_group(
+                GroupName=_unique("sg-egr-desc"),
+                Description="test",
+                VpcId=vpc_id,
+            )
+            sg_id = sg["GroupId"]
+            ec2.authorize_security_group_egress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 8080,
+                        "ToPort": 8080,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "original"}],
+                    }
+                ],
+            )
+            resp = ec2.update_security_group_rule_descriptions_egress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 8080,
+                        "ToPort": 8080,
+                        "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "updated"}],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2TagsOnTransitGateway:
+    """CreateTags / DeleteTags on transit gateway."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_delete_tags_on_transit_gateway(self, ec2):
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            ec2.create_tags(
+                Resources=[tgw_id],
+                Tags=[{"Key": "Env", "Value": "staging"}],
+            )
+            tags = ec2.describe_tags(Filters=[{"Name": "resource-id", "Values": [tgw_id]}])
+            assert len(tags["Tags"]) >= 1
+            tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+            assert tag_map.get("Env") == "staging"
+
+            ec2.delete_tags(Resources=[tgw_id], Tags=[{"Key": "Env"}])
+            tags_after = ec2.describe_tags(
+                Filters=[
+                    {"Name": "resource-id", "Values": [tgw_id]},
+                    {"Name": "key", "Values": ["Env"]},
+                ]
+            )
+            assert len(tags_after["Tags"]) == 0
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2ModifyTransitGatewayVpcAttachment:
+    """ModifyTransitGatewayVpcAttachment to add subnets."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_tgw_vpc_attachment_add_subnet(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.115.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.115.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        sub1_id = sub1["Subnet"]["SubnetId"]
+        sub2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.115.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sub2_id = sub2["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub1_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+
+            modified = ec2.modify_transit_gateway_vpc_attachment(
+                TransitGatewayAttachmentId=att_id, AddSubnetIds=[sub2_id]
+            )
+            subnet_ids = modified["TransitGatewayVpcAttachment"]["SubnetIds"]
+            assert sub2_id in subnet_ids
+
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+            ec2.delete_subnet(SubnetId=sub2_id)
+            ec2.delete_subnet(SubnetId=sub1_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ModifySubnetAttributeDns:
+    """ModifySubnetAttribute EnableResourceNameDnsARecordOnLaunch."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_subnet_attribute_dns_a_record(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.116.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.116.1.0/24")
+            sub_id = sub["Subnet"]["SubnetId"]
+
+            ec2.modify_subnet_attribute(
+                SubnetId=sub_id,
+                EnableResourceNameDnsARecordOnLaunch={"Value": True},
+            )
+            described = ec2.describe_subnets(SubnetIds=[sub_id])
+            assert described["Subnets"][0]["SubnetId"] == sub_id
+
+            ec2.delete_subnet(SubnetId=sub_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2DescribeSubnetsFiltered:
+    """DescribeSubnets with VPC filter."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_subnets_filtered_by_vpc(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.117.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub1 = ec2.create_subnet(
+                VpcId=vpc_id,
+                CidrBlock="10.117.1.0/24",
+                AvailabilityZone="us-east-1a",
+            )
+            sub2 = ec2.create_subnet(
+                VpcId=vpc_id,
+                CidrBlock="10.117.2.0/24",
+                AvailabilityZone="us-east-1b",
+            )
+            subs = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+            assert len(subs["Subnets"]) == 2
+            subnet_ids = {s["SubnetId"] for s in subs["Subnets"]}
+            assert sub1["Subnet"]["SubnetId"] in subnet_ids
+            assert sub2["Subnet"]["SubnetId"] in subnet_ids
+
+            ec2.delete_subnet(SubnetId=sub2["Subnet"]["SubnetId"])
+            ec2.delete_subnet(SubnetId=sub1["Subnet"]["SubnetId"])
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)

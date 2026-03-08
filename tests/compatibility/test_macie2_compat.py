@@ -92,3 +92,42 @@ class TestMacie2AutoCoverage:
         """EnableOrganizationAdminAccount succeeds."""
         resp = client.enable_organization_admin_account(adminAccountId="111122223333")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestMacie2Lifecycle:
+    """Tests for Macie enable/disable lifecycle."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("macie2")
+
+    def test_enable_disable_enable_cycle(self, client):
+        """Enable, disable, then re-enable Macie session."""
+        client.enable_macie()
+        session = client.get_macie_session()
+        assert "status" in session
+
+        client.disable_macie()
+
+        # Re-enable
+        client.enable_macie()
+        session2 = client.get_macie_session()
+        assert "status" in session2
+
+    def test_get_macie_session_has_expected_fields(self, client):
+        """GetMacieSession returns session with status and serviceRole."""
+        client.enable_macie()
+        resp = client.get_macie_session()
+        assert "status" in resp
+        assert "createdAt" in resp
+
+    def test_get_administrator_account_response_structure(self, client):
+        """GetAdministratorAccount returns 200 with expected structure."""
+        resp = client.get_administrator_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_organization_admin_accounts_returns_list(self, client):
+        """ListOrganizationAdminAccounts returns adminAccounts list."""
+        resp = client.list_organization_admin_accounts()
+        assert "adminAccounts" in resp
+        assert isinstance(resp["adminAccounts"], list)

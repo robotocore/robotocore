@@ -212,10 +212,167 @@ class TestDsLDAPSSettings:
 
 
 class TestDsSettings:
-    """Test DescribeSettings operation."""
+    """Test DescribeSettings and UpdateSettings operations."""
 
     def test_describe_settings_simple_ad_rejected(self, ds, directory):
         """DescribeSettings on SimpleAD raises InvalidParameterException."""
         with pytest.raises(ClientError) as exc_info:
             ds.describe_settings(DirectoryId=directory)
         assert exc_info.value.response["Error"]["Code"] == "InvalidParameterException"
+
+    def test_describe_settings_microsoft_ad(self, ds, ec2):
+        """DescribeSettings on MicrosoftAD returns directory settings."""
+        vpc = ec2.create_vpc(CidrBlock="10.70.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.70.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.70.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.create_microsoft_ad(
+            Name="settings.example.com",
+            Password="P@ssw0rd!",
+            VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        dir_id = resp["DirectoryId"]
+        try:
+            settings_resp = ds.describe_settings(DirectoryId=dir_id)
+            assert settings_resp["DirectoryId"] == dir_id
+            assert "SettingEntries" in settings_resp
+            assert isinstance(settings_resp["SettingEntries"], list)
+            assert len(settings_resp["SettingEntries"]) > 0
+            # Check structure of a setting entry
+            entry = settings_resp["SettingEntries"][0]
+            assert "Name" in entry
+            assert "Type" in entry
+            assert "AppliedValue" in entry
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass
+
+    def test_update_settings_microsoft_ad(self, ds, ec2):
+        """UpdateSettings on MicrosoftAD returns the directory ID."""
+        vpc = ec2.create_vpc(CidrBlock="10.71.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.71.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.71.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.create_microsoft_ad(
+            Name="updsettings.example.com",
+            Password="P@ssw0rd!",
+            VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        dir_id = resp["DirectoryId"]
+        try:
+            upd = ds.update_settings(
+                DirectoryId=dir_id,
+                Settings=[{"Name": "TLS_1_0", "Value": "Disable"}],
+            )
+            assert upd["DirectoryId"] == dir_id
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass
+
+
+class TestDsMicrosoftAD:
+    """Test Microsoft AD directory operations."""
+
+    def test_create_microsoft_ad(self, ds, ec2):
+        """CreateMicrosoftAD returns a DirectoryId and creates a MicrosoftAD type directory."""
+        vpc = ec2.create_vpc(CidrBlock="10.72.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.72.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.72.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.create_microsoft_ad(
+            Name="msad.example.com",
+            Password="P@ssw0rd!",
+            VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        dir_id = resp["DirectoryId"]
+        assert dir_id.startswith("d-")
+        try:
+            desc = ds.describe_directories(DirectoryIds=[dir_id])
+            d = desc["DirectoryDescriptions"][0]
+            assert d["DirectoryId"] == dir_id
+            assert d["Type"] == "MicrosoftAD"
+            assert d["Name"] == "msad.example.com"
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass
+
+
+class TestDsSso:
+    """Test SSO enable/disable operations."""
+
+    def test_disable_sso(self, ds, directory):
+        """DisableSso on a directory succeeds."""
+        resp = ds.disable_sso(DirectoryId=directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_enable_sso_without_alias_raises(self, ds, directory):
+        """EnableSso without an alias raises ClientException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.enable_sso(DirectoryId=directory)
+        assert exc_info.value.response["Error"]["Code"] == "ClientException"
+
+    def test_disable_sso_nonexistent_raises(self, ds):
+        """DisableSso with a nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.disable_sso(DirectoryId="d-0000000000")
+        err = exc_info.value.response["Error"]["Code"]
+        assert err in ("EntityDoesNotExistException", "ValidationException")
+
+
+class TestDsLogSubscription:
+    """Test log subscription operations."""
+
+    def test_delete_log_subscription_nonexistent(self, ds, directory):
+        """DeleteLogSubscription for a directory with no subscription raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.delete_log_subscription(DirectoryId=directory)
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsDeleteTrust:
+    """Test trust deletion with nonexistent trust."""
+
+    def test_delete_trust_nonexistent(self, ds):
+        """DeleteTrust with a nonexistent trust ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.delete_trust(TrustId="t-0000000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"

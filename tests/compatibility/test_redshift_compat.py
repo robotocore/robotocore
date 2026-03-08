@@ -692,3 +692,176 @@ class TestRedshiftClusterLifecycle:
         desc = redshift.describe_snapshot_schedules(ScheduleIdentifier=sid)
         assert len(desc["SnapshotSchedules"]) == 1
         assert desc["SnapshotSchedules"][0]["ScheduleIdentifier"] == sid
+
+    def test_enable_and_disable_logging(self, redshift):
+        cid = f"log-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.enable_logging(
+                ClusterIdentifier=cid,
+                LogDestinationType="cloudwatch",
+                LogExports=["connectionlog", "userlog"],
+            )
+            assert resp["LoggingEnabled"] is True
+
+            resp2 = redshift.disable_logging(ClusterIdentifier=cid)
+            assert resp2["LoggingEnabled"] is False
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_tags_on_cluster(self, redshift):
+        cid = f"ctag-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:cluster:{cid}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "k1", "Value": "v1"}, {"Key": "k2", "Value": "v2"}],
+            )
+            resp = redshift.describe_tags(ResourceName=arn)
+            tag_map = {t["Tag"]["Key"]: t["Tag"]["Value"] for t in resp["TaggedResources"]}
+            assert tag_map["k1"] == "v1"
+            assert tag_map["k2"] == "v2"
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_delete_tags_on_cluster(self, redshift):
+        cid = f"dtag-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:cluster:{cid}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "del1", "Value": "a"}, {"Key": "keep1", "Value": "b"}],
+            )
+            redshift.delete_tags(ResourceName=arn, TagKeys=["del1"])
+            resp = redshift.describe_tags(ResourceName=arn)
+            keys = [t["Tag"]["Key"] for t in resp["TaggedResources"]]
+            assert "del1" not in keys
+            assert "keep1" in keys
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_events_with_source_type(self, redshift):
+        resp = redshift.describe_events(SourceType="cluster")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_cluster_snapshots_all(self, redshift):
+        resp = redshift.describe_cluster_snapshots()
+        assert "Snapshots" in resp
+        assert isinstance(resp["Snapshots"], list)
+
+    def test_describe_cluster_security_groups_by_name(self, redshift):
+        name = f"csg-fn-{_uid()}"
+        redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="Filter test",
+        )
+        try:
+            resp = redshift.describe_cluster_security_groups(
+                ClusterSecurityGroupName=name,
+            )
+            assert len(resp["ClusterSecurityGroups"]) == 1
+            assert resp["ClusterSecurityGroups"][0]["ClusterSecurityGroupName"] == name
+        finally:
+            redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+    def test_describe_cluster_subnet_groups_by_name(self, redshift):
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.220.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.220.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        name = f"sng-fn-{_uid()}"
+        redshift.create_cluster_subnet_group(
+            ClusterSubnetGroupName=name,
+            Description="Filter test",
+            SubnetIds=[subnet_id],
+        )
+        try:
+            resp = redshift.describe_cluster_subnet_groups(
+                ClusterSubnetGroupName=name,
+            )
+            assert len(resp["ClusterSubnetGroups"]) == 1
+            assert resp["ClusterSubnetGroups"][0]["ClusterSubnetGroupName"] == name
+        finally:
+            redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=name)
+
+    def test_describe_cluster_parameters_by_group(self, redshift):
+        name = f"cpg-fn-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Filter test",
+        )
+        try:
+            resp = redshift.describe_cluster_parameters(ParameterGroupName=name)
+            assert "Parameters" in resp
+            assert isinstance(resp["Parameters"], list)
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_describe_snapshot_schedules_by_id(self, redshift):
+        sid = f"ss-fn-{_uid()}"
+        redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        try:
+            resp = redshift.describe_snapshot_schedules(ScheduleIdentifier=sid)
+            assert len(resp["SnapshotSchedules"]) == 1
+            assert resp["SnapshotSchedules"][0]["ScheduleIdentifier"] == sid
+        finally:
+            pass  # no delete_snapshot_schedule available
+
+    def test_describe_snapshot_copy_grants_by_name(self, redshift):
+        name = f"scg-fn-{_uid()}"
+        redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name)
+        try:
+            resp = redshift.describe_snapshot_copy_grants(SnapshotCopyGrantName=name)
+            assert len(resp["SnapshotCopyGrants"]) == 1
+            assert resp["SnapshotCopyGrants"][0]["SnapshotCopyGrantName"] == name
+        finally:
+            redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=name)
+
+    def test_describe_tags_by_resource_type(self, redshift):
+        """DescribeTags with ResourceType filter requires resources to exist."""
+        name = f"tagrt-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Tag resource type test",
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:parametergroup:{name}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "rtype", "Value": "test"}],
+            )
+            resp = redshift.describe_tags(ResourceType="parametergroup")
+            assert "TaggedResources" in resp
+            assert any(t["Tag"]["Key"] == "rtype" for t in resp["TaggedResources"])
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)

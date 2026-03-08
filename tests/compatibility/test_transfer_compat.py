@@ -110,6 +110,85 @@ class TestTransferServerOperations:
             transfer.delete_server(ServerId=server_id)
 
 
+class TestTransferUserOperations:
+    """Tests for Transfer Family user CRUD operations."""
+
+    def test_create_user(self, transfer):
+        """CreateUser returns ServerId and UserName."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            user_resp = transfer.create_user(
+                ServerId=server_id,
+                UserName="testuser",
+                Role="arn:aws:iam::123456789012:role/transfer-role",
+            )
+            assert user_resp["ServerId"] == server_id
+            assert user_resp["UserName"] == "testuser"
+        finally:
+            try:
+                transfer.delete_user(ServerId=server_id, UserName="testuser")
+            except ClientError:
+                pass
+            transfer.delete_server(ServerId=server_id)
+
+    def test_describe_user(self, transfer):
+        """DescribeUser returns user details including Arn and Role."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.create_user(
+                ServerId=server_id,
+                UserName="descuser",
+                Role="arn:aws:iam::123456789012:role/transfer-role",
+                HomeDirectory="/home/descuser",
+            )
+            desc = transfer.describe_user(ServerId=server_id, UserName="descuser")
+            user = desc["User"]
+            assert user["UserName"] == "descuser"
+            assert "Arn" in user
+            assert user["Role"] == "arn:aws:iam::123456789012:role/transfer-role"
+            assert desc["ServerId"] == server_id
+        finally:
+            try:
+                transfer.delete_user(ServerId=server_id, UserName="descuser")
+            except ClientError:
+                pass
+            transfer.delete_server(ServerId=server_id)
+
+    def test_delete_user(self, transfer):
+        """DeleteUser removes the user; subsequent describe raises error."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.create_user(
+                ServerId=server_id,
+                UserName="deluser",
+                Role="arn:aws:iam::123456789012:role/transfer-role",
+            )
+            transfer.delete_user(ServerId=server_id, UserName="deluser")
+            with pytest.raises(ClientError):
+                transfer.describe_user(ServerId=server_id, UserName="deluser")
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_describe_nonexistent_server_raises(self, transfer):
+        """DescribeServer with a nonexistent server ID raises an error."""
+        with pytest.raises(ClientError):
+            transfer.describe_server(ServerId="s-000000000000000000")
+
+    def test_list_servers_contains_created(self, transfer):
+        """ListServers includes a newly created server."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            listed = transfer.list_servers()
+            server_ids = [s["ServerId"] for s in listed["Servers"]]
+            assert server_id in server_ids
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+
 class TestTransferAutoCoverage:
     """Auto-generated coverage tests for transfer."""
 

@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -434,3 +435,154 @@ class TestSesv2AutoCoverage:
             assert len(resp["MessageId"]) > 0
         finally:
             client.delete_email_identity(EmailIdentity=email)
+
+    def test_send_email_html_body(self, client):
+        """SendEmail with HTML body returns a MessageId."""
+        email = f"{_uid('html')}@example.com"
+        client.create_email_identity(EmailIdentity=email)
+        try:
+            resp = client.send_email(
+                FromEmailAddress=email,
+                Destination={"ToAddresses": ["to@example.com"]},
+                Content={
+                    "Simple": {
+                        "Subject": {"Data": "HTML Test"},
+                        "Body": {"Html": {"Data": "<h1>Hello</h1>"}},
+                    }
+                },
+            )
+            assert "MessageId" in resp
+            assert len(resp["MessageId"]) > 0
+        finally:
+            client.delete_email_identity(EmailIdentity=email)
+
+    def test_send_email_multiple_recipients(self, client):
+        """SendEmail with CC and BCC."""
+        email = f"{_uid('multi')}@example.com"
+        client.create_email_identity(EmailIdentity=email)
+        try:
+            resp = client.send_email(
+                FromEmailAddress=email,
+                Destination={
+                    "ToAddresses": ["to1@example.com", "to2@example.com"],
+                    "CcAddresses": ["cc@example.com"],
+                    "BccAddresses": ["bcc@example.com"],
+                },
+                Content={
+                    "Simple": {
+                        "Subject": {"Data": "Multi recipient test"},
+                        "Body": {"Text": {"Data": "Hello all"}},
+                    }
+                },
+            )
+            assert "MessageId" in resp
+        finally:
+            client.delete_email_identity(EmailIdentity=email)
+
+    def test_get_configuration_set_details(self, client):
+        """GetConfigurationSet returns detailed attributes."""
+        name = _uid("cfgdet")
+        client.create_configuration_set(ConfigurationSetName=name)
+        try:
+            resp = client.get_configuration_set(ConfigurationSetName=name)
+            assert resp["ConfigurationSetName"] == name
+            assert "SendingOptions" in resp
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_get_email_identity_dkim_attributes(self, client):
+        """GetEmailIdentity returns DkimAttributes for a domain."""
+        domain = f"{_uid('dkim')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        try:
+            resp = client.get_email_identity(EmailIdentity=domain)
+            assert "DkimAttributes" in resp
+            assert "SigningEnabled" in resp["DkimAttributes"]
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_tag_email_identity_and_list_tags(self, client):
+        """TagResource on an identity, then ListTagsForResource to verify."""
+        domain = f"{_uid('dtag')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        arn = f"arn:aws:ses:us-east-1:123456789012:identity/{domain}"
+        try:
+            client.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "project", "Value": "robotocore"}],
+            )
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "project" in tag_keys
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_get_email_identity_not_found(self, client):
+        """GetEmailIdentity for nonexistent identity returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_email_identity(EmailIdentity="nonexistent-xyz.example.com")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_email_template_not_found(self, client):
+        """GetEmailTemplate for nonexistent template returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_email_template(TemplateName="nonexistent-xyz-tmpl")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_contact_list_not_found(self, client):
+        """GetContactList for nonexistent list returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_contact_list(ContactListName="nonexistent-xyz-cl")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_dedicated_ip_pool_not_found(self, client):
+        """GetDedicatedIpPool for nonexistent pool returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_dedicated_ip_pool(PoolName="nonexistent-xyz-pool")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_configuration_set_not_found(self, client):
+        """GetConfigurationSet for nonexistent set returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.get_configuration_set(ConfigurationSetName="nonexistent-xyz-cs")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_create_contact_with_topics(self, client):
+        """CreateContact with topic preferences and verify via GetContact."""
+        cl_name = _uid("cltop")
+        email = f"{_uid('ct')}@example.com"
+        client.create_contact_list(
+            ContactListName=cl_name,
+            Topics=[
+                {
+                    "TopicName": "updates",
+                    "DisplayName": "Updates",
+                    "DefaultSubscriptionStatus": "OPT_IN",
+                }
+            ],
+        )
+        try:
+            client.create_contact(
+                ContactListName=cl_name,
+                EmailAddress=email,
+                TopicPreferences=[{"TopicName": "updates", "SubscriptionStatus": "OPT_OUT"}],
+            )
+            resp = client.get_contact(ContactListName=cl_name, EmailAddress=email)
+            assert resp["EmailAddress"] == email
+            prefs = resp.get("TopicPreferences", [])
+            assert any(p["TopicName"] == "updates" for p in prefs)
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_list_configuration_sets_after_multiple(self, client):
+        """ListConfigurationSets returns all created sets."""
+        names = [_uid("mcs") for _ in range(3)]
+        for n in names:
+            client.create_configuration_set(ConfigurationSetName=n)
+        try:
+            resp = client.list_configuration_sets()
+            for n in names:
+                assert n in resp["ConfigurationSets"]
+        finally:
+            for n in names:
+                client.delete_configuration_set(ConfigurationSetName=n)
