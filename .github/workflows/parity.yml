@@ -19,15 +19,29 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
           done
+          curl -f http://localhost:4566/_robotocore/health
       - name: Run parity tests
         env:
           AWS_ENDPOINT_URL: http://localhost:4566
-        run: uv run pytest tests/parity/ -v --tb=short
+        run: uv run pytest tests/parity/ -v --tb=short --junitxml=results-parity.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-parity
+          path: results-parity.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-parity
+          path: .robotocore.log

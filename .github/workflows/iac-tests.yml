@@ -15,6 +15,7 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,22 +23,39 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.x"
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
-          sleep 3
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
       - name: Run Terraform IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/iac/terraform/ -q --tb=short
+          uv run pytest tests/iac/terraform/ -q --tb=short --junitxml=results-iac-terraform.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-iac-terraform
+          path: results-iac-terraform.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-iac-terraform
+          path: .robotocore.log
 
   cloudformation:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,19 +63,36 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
-          sleep 3
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
       - name: Run CloudFormation IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/iac/cloudformation/ -q --tb=short
+          uv run pytest tests/iac/cloudformation/ -q --tb=short --junitxml=results-iac-cloudformation.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-iac-cloudformation
+          path: results-iac-cloudformation.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-iac-cloudformation
+          path: .robotocore.log
 
   cdk:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,19 +104,36 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
-          sleep 3
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
       - name: Run CDK IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/iac/cdk/ -q --tb=short
+          uv run pytest tests/iac/cdk/ -q --tb=short --junitxml=results-iac-cdk.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-iac-cdk
+          path: results-iac-cdk.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-iac-cdk
+          path: .robotocore.log
 
   pulumi:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,19 +142,36 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
-          sleep 3
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
       - name: Run Pulumi IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/iac/pulumi/ -q --tb=short
+          uv run pytest tests/iac/pulumi/ -q --tb=short --junitxml=results-iac-pulumi.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-iac-pulumi
+          path: results-iac-pulumi.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-iac-pulumi
+          path: .robotocore.log
 
   serverless:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,19 +183,36 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
-          sleep 3
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
       - name: Run Serverless Framework IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/iac/serverless/ -q --tb=short
+          uv run pytest tests/iac/serverless/ -q --tb=short --junitxml=results-iac-serverless.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-iac-serverless
+          path: results-iac-serverless.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-iac-serverless
+          path: .robotocore.log
 
   sam:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,13 +224,29 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
-          sleep 3
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
       - name: Run SAM IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/iac/sam/ -q --tb=short
+          uv run pytest tests/iac/sam/ -q --tb=short --junitxml=results-iac-sam.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-iac-sam
+          path: results-iac-sam.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-iac-sam
+          path: .robotocore.log

@@ -11,6 +11,7 @@ jobs:
   app-tests:
     name: "Real-world app tests"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,18 +19,32 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
           done
+          curl -f http://localhost:4566/_robotocore/health
       - name: Run app integration tests
         env:
           AWS_ENDPOINT_URL: http://localhost:4566
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_DEFAULT_REGION: us-east-1
-        run: uv run pytest tests/apps/ -v --tb=short
+        run: uv run pytest tests/apps/ -v --tb=short --junitxml=results-app-tests.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-app-tests
+          path: results-app-tests.xml
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-app-tests
+          path: .robotocore.log
