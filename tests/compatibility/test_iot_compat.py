@@ -2255,3 +2255,257 @@ class TestIoTDimensionCrud:
         iot.delete_dimension(name=name)
         resp = iot.list_dimensions()
         assert name not in resp.get("dimensionNames", [])
+
+
+class TestIoTDynamicThingGroupOperations:
+    """Tests for dynamic thing group CRUD."""
+
+    def test_create_dynamic_thing_group(self, iot):
+        """CreateDynamicThingGroup returns group name and ARN."""
+        name = _unique("dyngrp")
+        resp = iot.create_dynamic_thing_group(
+            thingGroupName=name,
+            queryString="thingName:*",
+        )
+        assert resp["thingGroupName"] == name
+        assert "thingGroupArn" in resp
+        iot.delete_dynamic_thing_group(thingGroupName=name)
+
+    def test_update_dynamic_thing_group(self, iot):
+        """UpdateDynamicThingGroup updates the query string."""
+        name = _unique("dyngrp")
+        iot.create_dynamic_thing_group(
+            thingGroupName=name,
+            queryString="thingName:*",
+        )
+        resp = iot.update_dynamic_thing_group(
+            thingGroupName=name,
+            thingGroupProperties={"thingGroupDescription": "updated"},
+        )
+        assert "version" in resp
+        iot.delete_dynamic_thing_group(thingGroupName=name)
+
+    def test_delete_dynamic_thing_group(self, iot):
+        """DeleteDynamicThingGroup removes the group."""
+        name = _unique("dyngrp")
+        iot.create_dynamic_thing_group(
+            thingGroupName=name,
+            queryString="thingName:*",
+        )
+        iot.delete_dynamic_thing_group(thingGroupName=name)
+        # Group should not appear in list
+        resp = iot.list_thing_groups()
+        names = [g["groupName"] for g in resp["thingGroups"]]
+        assert name not in names
+
+
+class TestIoTPackageOperations:
+    """Tests for IoT package CRUD."""
+
+    def test_create_package(self, iot):
+        """CreatePackage returns package name and ARN."""
+        name = _unique("pkg")
+        resp = iot.create_package(packageName=name)
+        assert resp["packageName"] == name
+        assert "packageArn" in resp
+        iot.delete_package(packageName=name)
+
+    def test_get_package(self, iot):
+        """GetPackage returns package details."""
+        name = _unique("pkg")
+        iot.create_package(packageName=name)
+        resp = iot.get_package(packageName=name)
+        assert resp["packageName"] == name
+        assert "packageArn" in resp
+        iot.delete_package(packageName=name)
+
+    def test_update_package(self, iot):
+        """UpdatePackage updates the package description."""
+        name = _unique("pkg")
+        iot.create_package(packageName=name)
+        iot.update_package(packageName=name, description="updated desc")
+        resp = iot.get_package(packageName=name)
+        assert resp.get("description") == "updated desc"
+        iot.delete_package(packageName=name)
+
+    def test_create_package_version(self, iot):
+        """CreatePackageVersion returns version name."""
+        name = _unique("pkg")
+        iot.create_package(packageName=name)
+        resp = iot.create_package_version(packageName=name, versionName="v1")
+        assert resp["packageName"] == name
+        assert resp["versionName"] == "v1"
+        iot.delete_package_version(packageName=name, versionName="v1")
+        iot.delete_package(packageName=name)
+
+    def test_get_package_version(self, iot):
+        """GetPackageVersion returns version details."""
+        name = _unique("pkg")
+        iot.create_package(packageName=name)
+        iot.create_package_version(packageName=name, versionName="v1")
+        resp = iot.get_package_version(packageName=name, versionName="v1")
+        assert resp["packageName"] == name
+        assert resp["versionName"] == "v1"
+        iot.delete_package_version(packageName=name, versionName="v1")
+        iot.delete_package(packageName=name)
+
+    def test_list_package_versions(self, iot):
+        """ListPackageVersions includes created version."""
+        name = _unique("pkg")
+        iot.create_package(packageName=name)
+        iot.create_package_version(packageName=name, versionName="v1")
+        resp = iot.list_package_versions(packageName=name)
+        assert "packageVersionSummaries" in resp
+        versions = [v["versionName"] for v in resp["packageVersionSummaries"]]
+        assert "v1" in versions
+        iot.delete_package_version(packageName=name, versionName="v1")
+        iot.delete_package(packageName=name)
+
+    def test_get_package_configuration(self, iot):
+        """GetPackageConfiguration returns configuration."""
+        resp = iot.get_package_configuration()
+        assert "versionUpdateByJobsConfig" in resp
+
+
+class TestIoTEventConfigAndLogging:
+    """Tests for event configurations and logging."""
+
+    def test_describe_event_configurations(self, iot):
+        """DescribeEventConfigurations returns event types."""
+        resp = iot.describe_event_configurations()
+        assert "eventConfigurations" in resp
+
+    def test_get_logging_options(self, iot):
+        """GetLoggingOptions returns log level."""
+        resp = iot.get_logging_options()
+        # May have roleArn and logLevel or be empty, but key should exist
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_set_and_get_v2_logging_options(self, iot):
+        """SetV2LoggingOptions and GetV2LoggingOptions work together."""
+        iot.set_v2_logging_options(defaultLogLevel="WARN", disableAllLogs=False)
+        resp = iot.get_v2_logging_options()
+        assert resp.get("defaultLogLevel") == "WARN"
+
+    def test_describe_index(self, iot):
+        """DescribeIndex returns index info."""
+        resp = iot.describe_index(indexName="AWS_Things")
+        assert resp["indexName"] == "AWS_Things"
+        assert "indexStatus" in resp
+
+    def test_list_indices(self, iot):
+        """ListIndices returns at least one index."""
+        resp = iot.list_indices()
+        assert "indexNames" in resp
+        assert len(resp["indexNames"]) >= 1
+
+    def test_list_outgoing_certificates(self, iot):
+        """ListOutgoingCertificates returns response."""
+        resp = iot.list_outgoing_certificates()
+        assert "outgoingCertificates" in resp
+
+    def test_list_ca_certificates(self, iot):
+        """ListCACertificates returns response."""
+        resp = iot.list_ca_certificates()
+        assert "certificates" in resp
+
+
+class TestIoTStreamOperations:
+    """Tests for IoT Stream CRUD."""
+
+    def test_update_stream_nonexistent(self, iot):
+        """UpdateStream on nonexistent stream raises error."""
+        with pytest.raises(ClientError) as exc:
+            iot.update_stream(
+                streamId="nonexistent-stream",
+                files=[{"fileId": 1, "s3Location": {"bucket": "b", "key": "k"}}],
+                roleArn="arn:aws:iam::123456789012:role/fake",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIoTValidateSecurityProfileBehaviors:
+    """Tests for ValidateSecurityProfileBehaviors."""
+
+    def test_validate_security_profile_behaviors(self, iot):
+        """ValidateSecurityProfileBehaviors returns valid result."""
+        resp = iot.validate_security_profile_behaviors(
+            behaviors=[
+                {
+                    "name": "test-behavior",
+                    "metric": "aws:message-byte-size",
+                    "criteria": {
+                        "comparisonOperator": "less-than",
+                        "value": {"count": 100},
+                        "consecutiveDatapointsToAlarm": 1,
+                        "consecutiveDatapointsToClear": 1,
+                    },
+                }
+            ]
+        )
+        assert "valid" in resp
+        assert resp["valid"] is True
+
+
+class TestIoTSecurityProfileTargets:
+    """Tests for security profile target operations."""
+
+    def test_list_security_profiles_for_target(self, iot):
+        """ListSecurityProfilesForTarget returns response."""
+        resp = iot.list_security_profiles_for_target(
+            securityProfileTargetArn="arn:aws:iot:us-east-1:123456789012:all/things"
+        )
+        assert "securityProfileTargetMappings" in resp
+
+    def test_list_targets_for_security_profile(self, iot):
+        """ListTargetsForSecurityProfile returns response."""
+        name = _unique("sp")
+        iot.create_security_profile(securityProfileName=name)
+        resp = iot.list_targets_for_security_profile(securityProfileName=name)
+        assert "securityProfileTargets" in resp
+        iot.delete_security_profile(securityProfileName=name)
+
+
+class TestIoTScheduledAuditUpdate:
+    """Tests for UpdateScheduledAudit."""
+
+    def test_update_scheduled_audit(self, iot):
+        """UpdateScheduledAudit updates the audit schedule."""
+        name = _unique("sa")
+        iot.create_scheduled_audit(
+            scheduledAuditName=name,
+            frequency="DAILY",
+            targetCheckNames=["CA_CERTIFICATE_EXPIRING_CHECK"],
+        )
+        resp = iot.update_scheduled_audit(
+            scheduledAuditName=name,
+            frequency="WEEKLY",
+            dayOfWeek="MON",
+        )
+        assert "scheduledAuditArn" in resp
+        desc = iot.describe_scheduled_audit(scheduledAuditName=name)
+        assert desc["frequency"] == "WEEKLY"
+        iot.delete_scheduled_audit(scheduledAuditName=name)
+
+
+class TestIoTMitigationActionUpdate:
+    """Tests for UpdateMitigationAction."""
+
+    def test_update_mitigation_action(self, iot):
+        """UpdateMitigationAction updates the action."""
+        name = _unique("ma")
+        iot.create_mitigation_action(
+            actionName=name,
+            roleArn="arn:aws:iam::123456789012:role/fake",
+            actionParams={
+                "publishFindingToSnsParams": {
+                    "topicArn": "arn:aws:sns:us-east-1:123456789012:topic"
+                }
+            },
+        )
+        resp = iot.update_mitigation_action(
+            actionName=name,
+            roleArn="arn:aws:iam::123456789012:role/fake2",
+        )
+        assert "actionArn" in resp
+        iot.delete_mitigation_action(actionName=name)
