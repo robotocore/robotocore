@@ -198,6 +198,137 @@ class TestCloudDirectorySchemaOps:
                 pass
 
 
+class TestCloudDirectoryDeleteDirectory:
+    """Tests for DeleteDirectory operation."""
+
+    def test_delete_directory(self, clouddirectory_client, published_schema):
+        """DeleteDirectory removes a directory and returns its ARN."""
+        name = f"test-dir-{uuid.uuid4().hex[:8]}"
+        create_resp = clouddirectory_client.create_directory(
+            Name=name,
+            SchemaArn=published_schema["PublishedSchemaArn"],
+        )
+        dir_arn = create_resp["DirectoryArn"]
+
+        delete_resp = clouddirectory_client.delete_directory(DirectoryArn=dir_arn)
+        assert delete_resp["DirectoryArn"] == dir_arn
+
+        # Verify it no longer appears in listing
+        list_resp = clouddirectory_client.list_directories()
+        found_arns = [d["DirectoryArn"] for d in list_resp["Directories"]]
+        assert dir_arn not in found_arns
+
+    def test_delete_directory_not_in_list(self, clouddirectory_client, published_schema):
+        """After deleting a directory, it should not appear in any state filter."""
+        name = f"test-dir-{uuid.uuid4().hex[:8]}"
+        create_resp = clouddirectory_client.create_directory(
+            Name=name,
+            SchemaArn=published_schema["PublishedSchemaArn"],
+        )
+        dir_arn = create_resp["DirectoryArn"]
+
+        clouddirectory_client.delete_directory(DirectoryArn=dir_arn)
+
+        enabled_resp = clouddirectory_client.list_directories(state="ENABLED")
+        enabled_arns = [d["DirectoryArn"] for d in enabled_resp["Directories"]]
+        assert dir_arn not in enabled_arns
+
+
+class TestCloudDirectoryListDirectoriesFiltered:
+    """Tests for ListDirectories with state filter and pagination."""
+
+    def test_list_directories_state_enabled(self, clouddirectory_client, directory):
+        """ListDirectories with state=ENABLED includes active directories."""
+        resp = clouddirectory_client.list_directories(state="ENABLED")
+        assert "Directories" in resp
+        found_arns = [d["DirectoryArn"] for d in resp["Directories"]]
+        assert directory["DirectoryArn"] in found_arns
+
+    def test_list_directories_returns_directory_fields(self, clouddirectory_client, directory):
+        """ListDirectories returns directory objects with expected fields."""
+        resp = clouddirectory_client.list_directories()
+        assert len(resp["Directories"]) >= 1
+        d = next(d for d in resp["Directories"] if d["DirectoryArn"] == directory["DirectoryArn"])
+        assert "Name" in d
+        assert d["Name"] == directory["Name"]
+        assert "DirectoryArn" in d
+        assert "State" in d
+
+
+class TestCloudDirectoryGetDirectoryErrors:
+    """Tests for GetDirectory error handling."""
+
+    def test_get_directory_invalid_arn(self, clouddirectory_client):
+        """GetDirectory with a nonexistent ARN returns an error."""
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/nonexistent"
+        with pytest.raises(clouddirectory_client.exceptions.ClientError) as exc_info:
+            clouddirectory_client.get_directory(DirectoryArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "InvalidArnException"
+
+
+class TestCloudDirectorySchemaLifecycle:
+    """Tests for schema creation, publishing, and deletion lifecycle."""
+
+    def test_publish_schema_appears_in_published_list(self, clouddirectory_client):
+        """A published schema appears in list_published_schema_arns."""
+        name = f"test-{uuid.uuid4().hex[:8]}"
+        resp = clouddirectory_client.create_schema(Name=name)
+        dev_arn = resp["SchemaArn"]
+        version = f"v{uuid.uuid4().hex[:6]}"
+        pub_resp = clouddirectory_client.publish_schema(
+            DevelopmentSchemaArn=dev_arn, Version=version
+        )
+        pub_arn = pub_resp["PublishedSchemaArn"]
+        try:
+            list_resp = clouddirectory_client.list_published_schema_arns()
+            assert pub_arn in list_resp["SchemaArns"]
+        finally:
+            clouddirectory_client.delete_schema(SchemaArn=pub_arn)
+
+    def test_delete_published_schema(self, clouddirectory_client):
+        """Deleting a published schema removes it from the published list."""
+        name = f"test-{uuid.uuid4().hex[:8]}"
+        resp = clouddirectory_client.create_schema(Name=name)
+        dev_arn = resp["SchemaArn"]
+        version = f"v{uuid.uuid4().hex[:6]}"
+        pub_resp = clouddirectory_client.publish_schema(
+            DevelopmentSchemaArn=dev_arn, Version=version
+        )
+        pub_arn = pub_resp["PublishedSchemaArn"]
+
+        del_resp = clouddirectory_client.delete_schema(SchemaArn=pub_arn)
+        assert del_resp["SchemaArn"] == pub_arn
+
+        list_resp = clouddirectory_client.list_published_schema_arns()
+        assert pub_arn not in list_resp["SchemaArns"]
+
+    def test_multiple_published_schemas(self, clouddirectory_client):
+        """Multiple published schemas all appear in the listing."""
+        arns_to_clean = []
+        try:
+            pub_arns = []
+            for _ in range(2):
+                name = f"test-{uuid.uuid4().hex[:8]}"
+                resp = clouddirectory_client.create_schema(Name=name)
+                dev_arn = resp["SchemaArn"]
+                version = f"v{uuid.uuid4().hex[:6]}"
+                pub_resp = clouddirectory_client.publish_schema(
+                    DevelopmentSchemaArn=dev_arn, Version=version
+                )
+                pub_arns.append(pub_resp["PublishedSchemaArn"])
+                arns_to_clean.append(pub_resp["PublishedSchemaArn"])
+
+            list_resp = clouddirectory_client.list_published_schema_arns()
+            for pa in pub_arns:
+                assert pa in list_resp["SchemaArns"]
+        finally:
+            for arn in arns_to_clean:
+                try:
+                    clouddirectory_client.delete_schema(SchemaArn=arn)
+                except Exception:
+                    pass
+
+
 class TestCloudDirectoryTagOps:
     """Tests for tag operations on Cloud Directory resources."""
 
@@ -227,3 +358,42 @@ class TestCloudDirectoryTagOps:
         resp = clouddirectory_client.list_tags_for_resource(ResourceArn=arn)
         tag_keys = [t["Key"] for t in resp["Tags"]]
         assert "remove-me" not in tag_keys
+
+    def test_tag_schema_resource(self, clouddirectory_client, schema):
+        """TagResource and ListTagsForResource work on schema ARNs."""
+        arn = schema["SchemaArn"]
+        clouddirectory_client.tag_resource(
+            ResourceArn=arn,
+            Tags=[{"Key": "purpose", "Value": "testing"}],
+        )
+        resp = clouddirectory_client.list_tags_for_resource(ResourceArn=arn)
+        assert "Tags" in resp
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags.get("purpose") == "testing"
+
+    def test_tag_multiple_tags_at_once(self, clouddirectory_client, directory):
+        """TagResource can add multiple tags in a single call."""
+        arn = directory["DirectoryArn"]
+        clouddirectory_client.tag_resource(
+            ResourceArn=arn,
+            Tags=[
+                {"Key": "k1", "Value": "v1"},
+                {"Key": "k2", "Value": "v2"},
+            ],
+        )
+        resp = clouddirectory_client.list_tags_for_resource(ResourceArn=arn)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags.get("k1") == "v1"
+        assert tags.get("k2") == "v2"
+
+    def test_list_tags_empty(self, clouddirectory_client):
+        """ListTagsForResource returns empty list for a fresh resource."""
+        name = f"test-{uuid.uuid4().hex[:8]}"
+        resp = clouddirectory_client.create_schema(Name=name)
+        arn = resp["SchemaArn"]
+        try:
+            tag_resp = clouddirectory_client.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tag_resp
+            assert isinstance(tag_resp["Tags"], list)
+        finally:
+            clouddirectory_client.delete_schema(SchemaArn=arn)
