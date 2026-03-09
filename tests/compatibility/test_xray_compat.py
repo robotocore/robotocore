@@ -228,3 +228,158 @@ class TestXRayTraceOperations:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_multiple_trace_segments(self, xray):
+        """PutTraceSegments with multiple segments in one call."""
+        trace_id = _make_trace_id()
+        seg1 = _make_segment_doc(trace_id, name="seg-a")
+        seg2 = _make_segment_doc(trace_id, name="seg-b")
+        resp = xray.put_trace_segments(TraceSegmentDocuments=[seg1, seg2])
+        assert "UnprocessedTraceSegments" in resp
+        assert isinstance(resp["UnprocessedTraceSegments"], list)
+
+    def test_get_trace_summaries_has_approximate_time(self, xray):
+        """GetTraceSummaries response includes ApproximateTime."""
+        now = time.time()
+        resp = xray.get_trace_summaries(StartTime=now - 3600, EndTime=now)
+        assert "TraceSummaries" in resp
+        assert "ApproximateTime" in resp
+
+
+class TestXRaySamplingRuleTagging:
+    """Tests for tagging sampling rules."""
+
+    def test_tag_and_list_tags_sampling_rule(self, xray):
+        """Tag a sampling rule and verify via ListTagsForResource."""
+        rule_name = _unique("trule")
+        resp = xray.create_sampling_rule(
+            SamplingRule={
+                "RuleName": rule_name,
+                "ResourceARN": "*",
+                "Priority": 1002,
+                "FixedRate": 0.05,
+                "ReservoirSize": 1,
+                "ServiceName": "*",
+                "ServiceType": "*",
+                "Host": "*",
+                "HTTPMethod": "*",
+                "URLPath": "*",
+                "Version": 1,
+            }
+        )
+        rule_arn = resp["SamplingRuleRecord"]["SamplingRule"]["RuleARN"]
+        try:
+            xray.tag_resource(
+                ResourceARN=rule_arn,
+                Tags=[{"Key": "team", "Value": "platform"}],
+            )
+            tags_resp = xray.list_tags_for_resource(ResourceARN=rule_arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["team"] == "platform"
+        finally:
+            xray.delete_sampling_rule(RuleName=rule_name)
+
+    def test_untag_sampling_rule(self, xray):
+        """Untag a sampling rule removes the tag."""
+        rule_name = _unique("urule")
+        resp = xray.create_sampling_rule(
+            SamplingRule={
+                "RuleName": rule_name,
+                "ResourceARN": "*",
+                "Priority": 1003,
+                "FixedRate": 0.05,
+                "ReservoirSize": 1,
+                "ServiceName": "*",
+                "ServiceType": "*",
+                "Host": "*",
+                "HTTPMethod": "*",
+                "URLPath": "*",
+                "Version": 1,
+            }
+        )
+        rule_arn = resp["SamplingRuleRecord"]["SamplingRule"]["RuleARN"]
+        try:
+            xray.tag_resource(
+                ResourceARN=rule_arn,
+                Tags=[{"Key": "env", "Value": "dev"}, {"Key": "keep", "Value": "yes"}],
+            )
+            xray.untag_resource(ResourceARN=rule_arn, TagKeys=["env"])
+            tags_resp = xray.list_tags_for_resource(ResourceARN=rule_arn)
+            tag_keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "env" not in tag_keys
+            assert "keep" in tag_keys
+        finally:
+            xray.delete_sampling_rule(RuleName=rule_name)
+
+
+class TestXRayGroupWithFilter:
+    """Tests for groups with filter expressions."""
+
+    def test_create_group_with_filter(self, xray):
+        """CreateGroup with FilterExpression stores it."""
+        group_name = _unique("fgrp")
+        resp = xray.create_group(
+            GroupName=group_name,
+            FilterExpression='service("test-svc")',
+        )
+        group = resp["Group"]
+        assert group["GroupName"] == group_name
+        assert "FilterExpression" in group
+        group_arn = group["GroupARN"]
+
+        # Verify via GetGroup
+        get_resp = xray.get_group(GroupName=group_name)
+        assert get_resp["Group"]["FilterExpression"] == 'service("test-svc")'
+
+        xray.delete_group(GroupARN=group_arn)
+
+    def test_get_group_by_arn(self, xray):
+        """GetGroup can be called with GroupARN instead of GroupName."""
+        group_name = _unique("garngrp")
+        resp = xray.create_group(GroupName=group_name)
+        group_arn = resp["Group"]["GroupARN"]
+
+        get_resp = xray.get_group(GroupARN=group_arn)
+        assert get_resp["Group"]["GroupName"] == group_name
+
+        xray.delete_group(GroupARN=group_arn)
+
+
+class TestXRayEncryptionConfigRoundTrip:
+    """Tests for encryption config changes."""
+
+    def test_put_then_get_encryption_config(self, xray):
+        """PutEncryptionConfig NONE then GetEncryptionConfig matches."""
+        xray.put_encryption_config(Type="NONE")
+        resp = xray.get_encryption_config()
+        assert resp["EncryptionConfig"]["Type"] == "NONE"
+
+
+class TestXRaySamplingRuleDetails:
+    """Tests for sampling rule structure and fields."""
+
+    def test_sampling_rule_has_rule_arn(self, xray):
+        """Created sampling rule has RuleARN field."""
+        rule_name = _unique("arnrule")
+        resp = xray.create_sampling_rule(
+            SamplingRule={
+                "RuleName": rule_name,
+                "ResourceARN": "*",
+                "Priority": 1004,
+                "FixedRate": 0.02,
+                "ReservoirSize": 3,
+                "ServiceName": "*",
+                "ServiceType": "*",
+                "Host": "*",
+                "HTTPMethod": "*",
+                "URLPath": "*",
+                "Version": 1,
+            }
+        )
+        record = resp["SamplingRuleRecord"]
+        assert "RuleARN" in record["SamplingRule"]
+        assert record["SamplingRule"]["RuleName"] == rule_name
+        assert record["SamplingRule"]["FixedRate"] == 0.02
+        assert record["SamplingRule"]["ReservoirSize"] == 3
+
+        xray.delete_sampling_rule(RuleName=rule_name)

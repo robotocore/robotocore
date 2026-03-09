@@ -1626,3 +1626,501 @@ class TestSSMSendCommandExtended:
             )
         finally:
             ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+
+class TestSSMOpsItemCRUD:
+    """OpsItem create, get, update, describe lifecycle."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_create_and_get_ops_item(self, ssm):
+        """CreateOpsItem / GetOpsItem full lifecycle."""
+        resp = ssm.create_ops_item(
+            Title="Test OpsItem CRUD",
+            Description="Testing create and get",
+            Source="compat-test",
+        )
+        ops_item_id = resp["OpsItemId"]
+        assert ops_item_id.startswith("oi-")
+
+        get_resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert get_resp["OpsItem"]["OpsItemId"] == ops_item_id
+        assert get_resp["OpsItem"]["Title"] == "Test OpsItem CRUD"
+        assert get_resp["OpsItem"]["Description"] == "Testing create and get"
+        assert get_resp["OpsItem"]["Source"] == "compat-test"
+        assert get_resp["OpsItem"]["Status"] == "Open"
+
+    def test_update_ops_item_status(self, ssm):
+        """UpdateOpsItem changes status."""
+        resp = ssm.create_ops_item(
+            Title="Update Status Test",
+            Description="Will be resolved",
+            Source="compat-test",
+        )
+        ops_item_id = resp["OpsItemId"]
+
+        ssm.update_ops_item(
+            OpsItemId=ops_item_id,
+            Status="Resolved",
+        )
+        get_resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert get_resp["OpsItem"]["Status"] == "Resolved"
+
+    def test_update_ops_item_title(self, ssm):
+        """UpdateOpsItem changes title."""
+        resp = ssm.create_ops_item(
+            Title="Original Title",
+            Description="desc",
+            Source="compat-test",
+        )
+        ops_item_id = resp["OpsItemId"]
+
+        ssm.update_ops_item(
+            OpsItemId=ops_item_id,
+            Title="Updated Title",
+        )
+        get_resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert get_resp["OpsItem"]["Title"] == "Updated Title"
+
+    def test_describe_ops_items_finds_created(self, ssm):
+        """DescribeOpsItems finds a created OpsItem."""
+        resp = ssm.create_ops_item(
+            Title="Describe Test",
+            Description="desc",
+            Source="compat-test",
+        )
+        ops_item_id = resp["OpsItemId"]
+
+        desc = ssm.describe_ops_items(
+            OpsItemFilters=[{"Key": "OpsItemId", "Values": [ops_item_id], "Operator": "Equal"}]
+        )
+        assert len(desc["OpsItemSummaries"]) >= 1
+        found_ids = [o["OpsItemId"] for o in desc["OpsItemSummaries"]]
+        assert ops_item_id in found_ids
+
+
+class TestSSMAssociationCRUD:
+    """Association create, describe, list, update, delete lifecycle."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _create_doc(self, ssm, name=None):
+        import json
+
+        name = name or _unique("assoc-doc")
+        content = json.dumps(
+            {
+                "schemaVersion": "2.2",
+                "description": "Association test doc",
+                "mainSteps": [
+                    {
+                        "action": "aws:runShellScript",
+                        "name": "run",
+                        "inputs": {"runCommand": ["echo hi"]},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(
+            Content=content, Name=name, DocumentType="Command", DocumentFormat="JSON"
+        )
+        return name
+
+    def test_create_and_describe_association(self, ssm):
+        """CreateAssociation / DescribeAssociation."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+            assert assoc_id is not None
+
+            desc = ssm.describe_association(AssociationId=assoc_id)
+            assert desc["AssociationDescription"]["AssociationId"] == assoc_id
+            assert desc["AssociationDescription"]["Name"] == doc_name
+        finally:
+            ssm.delete_association(AssociationId=assoc_id)
+            ssm.delete_document(Name=doc_name)
+
+    def test_list_associations(self, ssm):
+        """ListAssociations finds created association."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+
+            list_resp = ssm.list_associations(
+                AssociationFilterList=[{"key": "Name", "value": doc_name}]
+            )
+            assert "Associations" in list_resp
+            found_ids = [a["AssociationId"] for a in list_resp["Associations"]]
+            assert assoc_id in found_ids
+        finally:
+            ssm.delete_association(AssociationId=assoc_id)
+            ssm.delete_document(Name=doc_name)
+
+    def test_update_association(self, ssm):
+        """UpdateAssociation changes schedule expression."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+
+            upd = ssm.update_association(
+                AssociationId=assoc_id,
+                ScheduleExpression="rate(1 hour)",
+            )
+            assert upd["AssociationDescription"]["ScheduleExpression"] == "rate(1 hour)"
+        finally:
+            ssm.delete_association(AssociationId=assoc_id)
+            ssm.delete_document(Name=doc_name)
+
+    def test_delete_association(self, ssm):
+        """DeleteAssociation removes association."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+
+            ssm.delete_association(AssociationId=assoc_id)
+            # Describe should fail after deletion
+            with pytest.raises(Exception):
+                ssm.describe_association(AssociationId=assoc_id)
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMActivation:
+    """Activation create, describe, delete."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_create_and_describe_activation(self, ssm):
+        """CreateActivation / DescribeActivations."""
+        resp = ssm.create_activation(
+            IamRole="SSMServiceRole",
+            RegistrationLimit=5,
+            Description="Test activation",
+        )
+        activation_id = resp["ActivationId"]
+        assert activation_id is not None
+        assert "ActivationCode" in resp
+
+        desc = ssm.describe_activations(
+            Filters=[{"FilterKey": "ActivationIds", "FilterValues": [activation_id]}]
+        )
+        assert len(desc["ActivationList"]) >= 1
+        found_ids = [a["ActivationId"] for a in desc["ActivationList"]]
+        assert activation_id in found_ids
+
+    def test_delete_activation(self, ssm):
+        """DeleteActivation removes activation."""
+        resp = ssm.create_activation(
+            IamRole="SSMServiceRole",
+            RegistrationLimit=1,
+        )
+        activation_id = resp["ActivationId"]
+        ssm.delete_activation(ActivationId=activation_id)
+
+        desc = ssm.describe_activations(
+            Filters=[{"FilterKey": "ActivationIds", "FilterValues": [activation_id]}]
+        )
+        # After deletion, the activation should not appear (or appear as deleted)
+        active_ids = [a["ActivationId"] for a in desc["ActivationList"] if not a.get("Expired")]
+        assert activation_id not in active_ids
+
+
+class TestSSMPatchBaselineCRUD:
+    """Extended patch baseline operations."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_create_patch_baseline_with_description(self, ssm):
+        """CreatePatchBaseline with description and OS."""
+        name = _unique("pb-desc2")
+        resp = ssm.create_patch_baseline(
+            Name=name,
+            Description="Detailed baseline",
+            OperatingSystem="AMAZON_LINUX_2",
+        )
+        baseline_id = resp["BaselineId"]
+        assert baseline_id.startswith("pb-")
+
+        desc = ssm.describe_patch_baselines()
+        found = [b for b in desc["BaselineIdentities"] if b["BaselineId"] == baseline_id]
+        assert len(found) == 1
+        assert found[0]["BaselineName"] == name
+        ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+
+class TestSSMResourceDataSync:
+    """ResourceDataSync create, list, delete."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_create_and_list_resource_data_sync(self, ssm):
+        """CreateResourceDataSync / ListResourceDataSync."""
+        sync_name = _unique("rds")
+        ssm.create_resource_data_sync(
+            SyncName=sync_name,
+            S3Destination={
+                "BucketName": "my-bucket",
+                "SyncFormat": "JsonSerDe",
+                "Region": "us-east-1",
+            },
+        )
+        try:
+            resp = ssm.list_resource_data_sync()
+            assert "ResourceDataSyncItems" in resp
+            names = [s["SyncName"] for s in resp["ResourceDataSyncItems"]]
+            assert sync_name in names
+        finally:
+            ssm.delete_resource_data_sync(SyncName=sync_name)
+
+    def test_delete_resource_data_sync(self, ssm):
+        """DeleteResourceDataSync removes sync."""
+        sync_name = _unique("rds-del")
+        ssm.create_resource_data_sync(
+            SyncName=sync_name,
+            S3Destination={
+                "BucketName": "my-bucket",
+                "SyncFormat": "JsonSerDe",
+                "Region": "us-east-1",
+            },
+        )
+        ssm.delete_resource_data_sync(SyncName=sync_name)
+        resp = ssm.list_resource_data_sync()
+        names = [s["SyncName"] for s in resp["ResourceDataSyncItems"]]
+        assert sync_name not in names
+
+
+class TestSSMAutomation:
+    """Automation execution operations."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_start_and_describe_automation_execution(self, ssm):
+        """StartAutomationExecution / DescribeAutomationExecutions."""
+        resp = ssm.start_automation_execution(
+            DocumentName="AWS-RestartEC2Instance",
+            Parameters={"InstanceId": ["i-00000000"]},
+        )
+        execution_id = resp["AutomationExecutionId"]
+        assert execution_id is not None
+
+        desc = ssm.describe_automation_executions(
+            Filters=[{"Key": "ExecutionId", "Values": [execution_id]}]
+        )
+        assert len(desc["AutomationExecutionMetadataList"]) >= 1
+        found_ids = [e["AutomationExecutionId"] for e in desc["AutomationExecutionMetadataList"]]
+        assert execution_id in found_ids
+
+
+class TestSSMOpsItemExtended:
+    """Extended OpsItem operations: priority, severity, notifications."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_create_ops_item_with_priority(self, ssm):
+        """CreateOpsItem with Priority field."""
+        resp = ssm.create_ops_item(
+            Title="Priority OpsItem",
+            Description="High priority item",
+            Source="compat-test",
+            Priority=1,
+        )
+        ops_item_id = resp["OpsItemId"]
+        get_resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert get_resp["OpsItem"]["Priority"] == 1
+
+    def test_create_ops_item_with_severity(self, ssm):
+        """CreateOpsItem with Severity field."""
+        resp = ssm.create_ops_item(
+            Title="Severity OpsItem",
+            Description="Critical severity",
+            Source="compat-test",
+            Severity="1",
+        )
+        ops_item_id = resp["OpsItemId"]
+        get_resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert get_resp["OpsItem"]["Severity"] == "1"
+
+    def test_update_ops_item_description(self, ssm):
+        """UpdateOpsItem changes description."""
+        resp = ssm.create_ops_item(
+            Title="Desc Update",
+            Description="Original",
+            Source="compat-test",
+        )
+        ops_item_id = resp["OpsItemId"]
+        ssm.update_ops_item(
+            OpsItemId=ops_item_id,
+            Description="Updated description",
+        )
+        get_resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert get_resp["OpsItem"]["Description"] == "Updated description"
+
+
+class TestSSMDocumentCRUDExtended:
+    """Extended document CRUD: create with different formats, tags on create."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _doc_content(self, desc="Test doc"):
+        import json
+
+        return json.dumps(
+            {
+                "schemaVersion": "2.2",
+                "description": desc,
+                "mainSteps": [
+                    {
+                        "action": "aws:runShellScript",
+                        "name": "run",
+                        "inputs": {"runCommand": ["echo hi"]},
+                    }
+                ],
+            }
+        )
+
+    def test_create_document_automation_type(self, ssm):
+        """CreateDocument with Automation type."""
+        import json
+
+        doc_name = _unique("doc-auto")
+        content = json.dumps(
+            {
+                "schemaVersion": "0.3",
+                "description": "Automation doc",
+                "mainSteps": [
+                    {
+                        "name": "step1",
+                        "action": "aws:sleep",
+                        "inputs": {"Duration": "PT1S"},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(
+            Content=content,
+            Name=doc_name,
+            DocumentType="Automation",
+            DocumentFormat="JSON",
+        )
+        try:
+            desc = ssm.describe_document(Name=doc_name)
+            assert desc["Document"]["Name"] == doc_name
+            assert desc["Document"]["DocumentType"] == "Automation"
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_get_document_content(self, ssm):
+        """GetDocument returns parseable content."""
+        import json
+
+        doc_name = _unique("doc-content")
+        ssm.create_document(
+            Content=self._doc_content("content test"),
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.get_document(Name=doc_name)
+            assert resp["Name"] == doc_name
+            content = json.loads(resp["Content"])
+            assert content["description"] == "content test"
+            assert content["schemaVersion"] == "2.2"
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMAssociationExtended:
+    """Extended association tests."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _create_doc(self, ssm):
+        import json
+
+        name = _unique("assoc-ext-doc")
+        content = json.dumps(
+            {
+                "schemaVersion": "2.2",
+                "description": "Association extended test",
+                "mainSteps": [
+                    {
+                        "action": "aws:runShellScript",
+                        "name": "run",
+                        "inputs": {"runCommand": ["echo test"]},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(
+            Content=content, Name=name, DocumentType="Command", DocumentFormat="JSON"
+        )
+        return name
+
+    def test_create_association_with_schedule(self, ssm):
+        """CreateAssociation with ScheduleExpression."""
+        doc_name = self._create_doc(ssm)
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+                ScheduleExpression="rate(30 minutes)",
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+            assert resp["AssociationDescription"]["ScheduleExpression"] == "rate(30 minutes)"
+
+            desc = ssm.describe_association(AssociationId=assoc_id)
+            assert desc["AssociationDescription"]["ScheduleExpression"] == "rate(30 minutes)"
+        finally:
+            ssm.delete_association(AssociationId=assoc_id)
+            ssm.delete_document(Name=doc_name)
+
+    def test_create_association_with_association_name(self, ssm):
+        """CreateAssociation with AssociationName."""
+        doc_name = self._create_doc(ssm)
+        assoc_name = _unique("assoc-named")
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+                AssociationName=assoc_name,
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+            assert resp["AssociationDescription"]["AssociationName"] == assoc_name
+        finally:
+            ssm.delete_association(AssociationId=assoc_id)
+            ssm.delete_document(Name=doc_name)

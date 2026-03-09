@@ -384,3 +384,97 @@ class TestCloudTrailInsightSelectors:
             InsightSelectors=[],
         )
         assert resp.get("InsightSelectors", []) == []
+
+
+class TestCloudTrailDescribeTrailsByName:
+    """Tests for DescribeTrails with trailNameList filter."""
+
+    def test_describe_trails_by_name(self, cloudtrail, trail_with_bucket):
+        """describe_trails with trailNameList returns only the named trail."""
+        trail_name, _, _ = trail_with_bucket
+        resp = cloudtrail.describe_trails(trailNameList=[trail_name])
+        trail_names = [t["Name"] for t in resp["trailList"]]
+        assert trail_name in trail_names
+
+    def test_describe_trails_by_arn(self, cloudtrail, trail_with_bucket):
+        """describe_trails with trailNameList using ARN returns the trail."""
+        trail_name, _, trail_arn = trail_with_bucket
+        resp = cloudtrail.describe_trails(trailNameList=[trail_arn])
+        trail_names = [t["Name"] for t in resp["trailList"]]
+        assert trail_name in trail_names
+
+
+class TestCloudTrailCreateTrailWithTags:
+    """Tests for CreateTrail with inline tags."""
+
+    def test_create_trail_with_tags(self, cloudtrail, s3):
+        """create_trail with TagsList applies tags immediately."""
+        bucket = _unique("ct-bucket")
+        trail = _unique("ct-trail")
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = cloudtrail.create_trail(
+                Name=trail,
+                S3BucketName=bucket,
+                TagsList=[
+                    {"Key": "team", "Value": "platform"},
+                    {"Key": "stage", "Value": "dev"},
+                ],
+            )
+            trail_arn = resp["TrailARN"]
+            tags_resp = cloudtrail.list_tags(ResourceIdList=[trail_arn])
+            tags = {t["Key"]: t["Value"] for t in tags_resp["ResourceTagList"][0]["TagsList"]}
+            assert tags["team"] == "platform"
+            assert tags["stage"] == "dev"
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_create_trail_multi_region(self, cloudtrail, s3):
+        """create_trail with IsMultiRegionTrail=True returns the flag."""
+        bucket = _unique("ct-bucket")
+        trail = _unique("ct-trail")
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = cloudtrail.create_trail(Name=trail, S3BucketName=bucket, IsMultiRegionTrail=True)
+            assert resp["IsMultiRegionTrail"] is True
+            get_resp = cloudtrail.get_trail(Name=trail)
+            assert get_resp["Trail"]["IsMultiRegionTrail"] is True
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)
+
+
+class TestCloudTrailMultipleTags:
+    """Tests for adding multiple tag batches."""
+
+    def test_add_tags_twice_merges(self, cloudtrail, trail_with_bucket):
+        """Adding tags in two calls merges them."""
+        _, _, trail_arn = trail_with_bucket
+        cloudtrail.add_tags(
+            ResourceId=trail_arn,
+            TagsList=[{"Key": "a", "Value": "1"}],
+        )
+        cloudtrail.add_tags(
+            ResourceId=trail_arn,
+            TagsList=[{"Key": "b", "Value": "2"}],
+        )
+        resp = cloudtrail.list_tags(ResourceIdList=[trail_arn])
+        tags = {t["Key"]: t["Value"] for t in resp["ResourceTagList"][0]["TagsList"]}
+        assert tags["a"] == "1"
+        assert tags["b"] == "2"
+
+    def test_add_tags_overwrites_existing(self, cloudtrail, trail_with_bucket):
+        """Adding a tag with an existing key overwrites the value."""
+        _, _, trail_arn = trail_with_bucket
+        cloudtrail.add_tags(
+            ResourceId=trail_arn,
+            TagsList=[{"Key": "env", "Value": "old"}],
+        )
+        cloudtrail.add_tags(
+            ResourceId=trail_arn,
+            TagsList=[{"Key": "env", "Value": "new"}],
+        )
+        resp = cloudtrail.list_tags(ResourceIdList=[trail_arn])
+        tags = {t["Key"]: t["Value"] for t in resp["ResourceTagList"][0]["TagsList"]}
+        assert tags["env"] == "new"

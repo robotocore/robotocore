@@ -1018,3 +1018,102 @@ class TestSesv2AutoCoverage:
             assert matching[0]["IdentityType"] == "EMAIL_ADDRESS"
         finally:
             client.delete_email_identity(EmailIdentity=email)
+
+    def test_put_account_sending_attributes(self, client):
+        """PutAccountSendingAttributes toggles sending enabled."""
+        resp = client.put_account_sending_attributes(SendingEnabled=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_account_suppression_attributes(self, client):
+        """PutAccountSuppressionAttributes sets suppressed reasons."""
+        resp = client.put_account_suppression_attributes(SuppressedReasons=["BOUNCE"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_account_details(self, client):
+        """PutAccountDetails sets mail type and website URL."""
+        resp = client.put_account_details(
+            MailType="MARKETING",
+            WebsiteURL="https://example.com",
+            UseCaseDescription="Testing robotocore",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_configuration_set_sending_options(self, client):
+        """PutConfigurationSetSendingOptions toggles sending on a config set."""
+        cs_name = _uid("cssend")
+        client.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            resp = client.put_configuration_set_sending_options(
+                ConfigurationSetName=cs_name, SendingEnabled=True
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_put_configuration_set_reputation_options(self, client):
+        """PutConfigurationSetReputationOptions enables reputation metrics."""
+        cs_name = _uid("csrep")
+        client.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            resp = client.put_configuration_set_reputation_options(
+                ConfigurationSetName=cs_name, ReputationMetricsEnabled=True
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_create_and_delete_event_destination(self, client):
+        """CreateConfigurationSetEventDestination + Delete round-trip."""
+        cs_name = _uid("csed")
+        client.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            client.create_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestinationName="dest1",
+                EventDestination={
+                    "Enabled": True,
+                    "MatchingEventTypes": ["SEND"],
+                    "SnsDestination": {"TopicArn": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+            resp = client.get_configuration_set_event_destinations(ConfigurationSetName=cs_name)
+            assert len(resp["EventDestinations"]) == 1
+            assert resp["EventDestinations"][0]["Name"] == "dest1"
+
+            client.delete_configuration_set_event_destination(
+                ConfigurationSetName=cs_name, EventDestinationName="dest1"
+            )
+            resp2 = client.get_configuration_set_event_destinations(ConfigurationSetName=cs_name)
+            assert len(resp2["EventDestinations"]) == 0
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_update_configuration_set_event_destination(self, client):
+        """UpdateConfigurationSetEventDestination changes event types."""
+        cs_name = _uid("csud")
+        client.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            client.create_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestinationName="upd-dest",
+                EventDestination={
+                    "Enabled": True,
+                    "MatchingEventTypes": ["SEND"],
+                    "SnsDestination": {"TopicArn": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+            client.update_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestinationName="upd-dest",
+                EventDestination={
+                    "Enabled": False,
+                    "MatchingEventTypes": ["SEND", "DELIVERY"],
+                    "SnsDestination": {"TopicArn": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+            resp = client.get_configuration_set_event_destinations(ConfigurationSetName=cs_name)
+            dest = resp["EventDestinations"][0]
+            assert dest["Enabled"] is False
+            assert "DELIVERY" in dest["MatchingEventTypes"]
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)

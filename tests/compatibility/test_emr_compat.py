@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import datetime
 
 import pytest
 from botocore.exceptions import ClientError
@@ -440,17 +441,291 @@ class TestEMRListSupportedInstanceTypes:
         assert isinstance(resp["SupportedInstanceTypes"], list)
 
 
+class TestEMRRunJobFlowVariants:
+    """Tests for RunJobFlow with different configurations."""
+
+    def test_run_job_flow_with_tags(self, emr):
+        """RunJobFlow with Tags creates cluster with tags attached."""
+        name = _unique("tagged-cluster")
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+            Tags=[
+                {"Key": "Env", "Value": "test"},
+                {"Key": "App", "Value": "robotocore"},
+            ],
+        )
+        cid = resp["JobFlowId"]
+        desc = emr.describe_cluster(ClusterId=cid)
+        tags = {t["Key"]: t["Value"] for t in desc["Cluster"]["Tags"]}
+        assert tags["Env"] == "test"
+        assert tags["App"] == "robotocore"
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_run_job_flow_with_bootstrap_actions(self, emr):
+        """RunJobFlow with BootstrapActions stores them on the cluster."""
+        name = _unique("bootstrap-cluster")
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+            BootstrapActions=[
+                {
+                    "Name": "install-deps",
+                    "ScriptBootstrapAction": {
+                        "Path": "s3://my-bucket/bootstrap.sh",
+                        "Args": ["--verbose"],
+                    },
+                }
+            ],
+        )
+        cid = resp["JobFlowId"]
+        ba = emr.list_bootstrap_actions(ClusterId=cid)
+        assert len(ba["BootstrapActions"]) == 1
+        assert ba["BootstrapActions"][0]["Name"] == "install-deps"
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_run_job_flow_with_configurations(self, emr):
+        """RunJobFlow with Configurations stores them on the cluster."""
+        name = _unique("config-cluster")
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+            Configurations=[
+                {
+                    "Classification": "spark-defaults",
+                    "Properties": {"spark.executor.memory": "2g"},
+                }
+            ],
+        )
+        cid = resp["JobFlowId"]
+        desc = emr.describe_cluster(ClusterId=cid)
+        configs = desc["Cluster"].get("Configurations", [])
+        assert len(configs) >= 1
+        assert configs[0]["Classification"] == "spark-defaults"
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_run_job_flow_with_inline_steps(self, emr):
+        """RunJobFlow with Steps creates cluster with steps already added."""
+        name = _unique("steps-cluster")
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+            Steps=[
+                {
+                    "Name": "inline-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {
+                        "Jar": "command-runner.jar",
+                        "Args": ["echo", "inline"],
+                    },
+                }
+            ],
+        )
+        cid = resp["JobFlowId"]
+        steps = emr.list_steps(ClusterId=cid)
+        step_names = [s["Name"] for s in steps["Steps"]]
+        assert "inline-step" in step_names
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+
+class TestEMRDescribeClusterDetails:
+    """Tests for detailed DescribeCluster field verification."""
+
+    def test_describe_cluster_release_label(self, emr, cluster_id):
+        """DescribeCluster returns the correct ReleaseLabel."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["ReleaseLabel"] == "emr-6.10.0"
+
+    def test_describe_cluster_service_role(self, emr, cluster_id):
+        """DescribeCluster returns the ServiceRole."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["ServiceRole"] == "EMR_DefaultRole"
+
+    def test_describe_cluster_has_arn(self, emr, cluster_id):
+        """DescribeCluster includes a valid ClusterArn."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        arn = desc["Cluster"]["ClusterArn"]
+        assert arn.startswith("arn:aws:elasticmapreduce:")
+        assert cluster_id in arn
+
+    def test_describe_cluster_termination_protected_default(self, emr, cluster_id):
+        """DescribeCluster shows TerminationProtected defaults to False."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["TerminationProtected"] is False
+
+    def test_describe_cluster_auto_terminate_default(self, emr, cluster_id):
+        """DescribeCluster shows AutoTerminate defaults to False for keep-alive clusters."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["AutoTerminate"] is False
+
+
+class TestEMRListClustersFiltered:
+    """Tests for ListClusters with filters."""
+
+    def test_list_clusters_by_state(self, emr, cluster_id):
+        """ListClusters with ClusterStates filter returns matching clusters."""
+        resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        assert "Clusters" in resp
+        cluster_ids = [c["Id"] for c in resp["Clusters"]]
+        assert cluster_id in cluster_ids
+
+    def test_list_clusters_by_created_after(self, emr, cluster_id):
+        """ListClusters with CreatedAfter filter returns clusters."""
+        resp = emr.list_clusters(CreatedAfter=datetime(2020, 1, 1))
+        assert "Clusters" in resp
+        assert len(resp["Clusters"]) >= 1
+
+
+class TestEMRTagOverwrite:
+    """Tests for EMR tag overwrite behavior."""
+
+    def test_add_tags_overwrites_existing(self, emr, cluster_id):
+        """AddTags with same key overwrites the value."""
+        emr.add_tags(
+            ResourceId=cluster_id,
+            Tags=[{"Key": "Stage", "Value": "dev"}],
+        )
+        emr.add_tags(
+            ResourceId=cluster_id,
+            Tags=[{"Key": "Stage", "Value": "prod"}],
+        )
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        tags = {t["Key"]: t["Value"] for t in desc["Cluster"]["Tags"]}
+        assert tags["Stage"] == "prod"
+
+
+class TestEMRSecurityConfigEncryption:
+    """Tests for security configurations with encryption details."""
+
+    def test_security_config_with_full_encryption(self, emr):
+        """Security configuration stores full encryption settings."""
+        name = _unique("full-encrypt")
+        config = json.dumps(
+            {
+                "EncryptionConfiguration": {
+                    "EnableInTransitEncryption": True,
+                    "InTransitEncryptionConfiguration": {
+                        "TLSCertificateConfiguration": {
+                            "CertificateProviderType": "PEM",
+                            "S3Object": "s3://bucket/certs.zip",
+                        }
+                    },
+                    "EnableAtRestEncryption": True,
+                    "AtRestEncryptionConfiguration": {
+                        "S3EncryptionConfiguration": {"EncryptionMode": "SSE-S3"},
+                        "LocalDiskEncryptionConfiguration": {
+                            "EncryptionKeyProviderType": "AwsKms",
+                            "AwsKmsKey": "arn:aws:kms:us-east-1:123456789012:key/abc",
+                        },
+                    },
+                }
+            }
+        )
+        emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        resp = emr.describe_security_configuration(Name=name)
+        parsed = json.loads(resp["SecurityConfiguration"])
+        enc = parsed["EncryptionConfiguration"]
+        assert enc["EnableInTransitEncryption"] is True
+        assert enc["EnableAtRestEncryption"] is True
+        emr.delete_security_configuration(Name=name)
+
+
+class TestEMRModifyInstanceGroupsWithParams:
+    """Tests for ModifyInstanceGroups with actual parameters."""
+
+    def test_modify_instance_groups_resize(self, emr, cluster_id):
+        """ModifyInstanceGroups resizes an instance group."""
+        igs = emr.list_instance_groups(ClusterId=cluster_id)
+        assert len(igs["InstanceGroups"]) > 0
+        ig_id = igs["InstanceGroups"][0]["Id"]
+        resp = emr.modify_instance_groups(
+            InstanceGroups=[{"InstanceGroupId": ig_id, "InstanceCount": 2}]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEMRStepDetails:
+    """Tests for step configuration details."""
+
+    def test_step_jar_and_args(self, emr, cluster_id):
+        """Steps preserve custom Jar path and arguments."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "custom-jar-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {
+                        "Jar": "s3://my-bucket/my-jar.jar",
+                        "Args": ["arg1", "arg2"],
+                    },
+                }
+            ],
+        )
+        step_id = add["StepIds"][0]
+        step = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        config = step["Step"]["Config"]
+        assert config["Jar"] == "s3://my-bucket/my-jar.jar"
+        assert config["Args"] == ["arg1", "arg2"]
+
+    def test_step_has_status(self, emr, cluster_id):
+        """Steps have a Status with a State field."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "status-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {
+                        "Jar": "command-runner.jar",
+                        "Args": ["echo", "hi"],
+                    },
+                }
+            ],
+        )
+        step_id = add["StepIds"][0]
+        step = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        assert "State" in step["Step"]["Status"]
+
+
 class TestEmrAutoCoverage:
     """Auto-generated coverage tests for emr."""
 
     @pytest.fixture
     def client(self):
         return make_client("emr")
-
-    def test_describe_job_flows(self, client):
-        """DescribeJobFlows returns a response."""
-        resp = client.describe_job_flows()
-        assert "JobFlows" in resp
 
     def test_get_block_public_access_configuration(self, client):
         """GetBlockPublicAccessConfiguration returns a response."""
@@ -462,6 +737,7 @@ class TestEmrAutoCoverage:
         resp = client.list_release_labels()
         assert "ReleaseLabels" in resp
 
-    def test_modify_instance_groups(self, client):
-        """ModifyInstanceGroups returns a response."""
-        client.modify_instance_groups()
+    def test_modify_instance_groups_no_args(self, client):
+        """ModifyInstanceGroups with no args succeeds."""
+        resp = client.modify_instance_groups()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

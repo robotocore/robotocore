@@ -1525,3 +1525,284 @@ class TestRedshiftAdditionalCoverage:
         finally:
             ec2.delete_subnet(SubnetId=subnet_id)
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestRedshiftNewCoverage:
+    """New tests for previously untested Redshift operations."""
+
+    @pytest.fixture
+    def redshift(self):
+        return make_client("redshift")
+
+    def test_modify_cluster_not_found(self, redshift):
+        """ModifyCluster raises error for nonexistent cluster."""
+        with pytest.raises(ClientError) as exc:
+            redshift.modify_cluster(
+                ClusterIdentifier=f"nonexistent-{_uid()}",
+                AllowVersionUpgrade=False,
+            )
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_pause_cluster_not_found(self, redshift):
+        """PauseCluster raises error for nonexistent cluster."""
+        with pytest.raises(ClientError) as exc:
+            redshift.pause_cluster(ClusterIdentifier=f"nonexistent-{_uid()}")
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_resume_cluster_not_found(self, redshift):
+        """ResumeCluster raises error for nonexistent cluster."""
+        with pytest.raises(ClientError) as exc:
+            redshift.resume_cluster(ClusterIdentifier=f"nonexistent-{_uid()}")
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_create_cluster_with_parameter_group(self, redshift):
+        """CreateCluster with a custom parameter group."""
+        pg = f"clpg-{_uid()}"
+        cid = f"clpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=pg,
+            ParameterGroupFamily="redshift-1.0",
+            Description="For cluster test",
+        )
+        try:
+            resp = redshift.create_cluster(
+                ClusterIdentifier=cid,
+                NodeType="dc2.large",
+                MasterUsername="admin",
+                MasterUserPassword="Password1!",
+                NumberOfNodes=1,
+                ClusterType="single-node",
+                ClusterParameterGroupName=pg,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+            pg_status = resp["Cluster"].get("ClusterParameterGroups", [])
+            pg_names = [p["ParameterGroupName"] for p in pg_status]
+            assert pg in pg_names
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+            redshift.delete_cluster_parameter_group(ParameterGroupName=pg)
+
+    def test_describe_cluster_db_revisions_on_cluster(self, redshift):
+        """DescribeClusterDbRevisions with ClusterIdentifier filter."""
+        cid = f"dbrev-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.describe_cluster_db_revisions(ClusterIdentifier=cid)
+            assert "ClusterDbRevisions" in resp
+            assert isinstance(resp["ClusterDbRevisions"], list)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_cluster_with_subnet_group(self, redshift):
+        """CreateCluster with a custom subnet group."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.251.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.251.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        sng = f"clsng-{_uid()}"
+        cid = f"clsng-{_uid()}"
+        redshift.create_cluster_subnet_group(
+            ClusterSubnetGroupName=sng,
+            Description="For cluster test",
+            SubnetIds=[subnet_id],
+        )
+        try:
+            resp = redshift.create_cluster(
+                ClusterIdentifier=cid,
+                NodeType="dc2.large",
+                MasterUsername="admin",
+                MasterUserPassword="Password1!",
+                NumberOfNodes=1,
+                ClusterType="single-node",
+                ClusterSubnetGroupName=sng,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+            assert resp["Cluster"]["ClusterSubnetGroupName"] == sng
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+            redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=sng)
+
+    def test_get_cluster_credentials_auto_create(self, redshift):
+        """GetClusterCredentials with AutoCreate creates a new user."""
+        cid = f"autocr-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.get_cluster_credentials(
+                DbUser="newuser",
+                ClusterIdentifier=cid,
+                AutoCreate=True,
+            )
+            assert "DbUser" in resp
+            assert "DbPassword" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_tracks_structure(self, redshift):
+        """DescribeClusterTracks returns maintenance tracks with structure."""
+        resp = redshift.describe_cluster_tracks()
+        assert "MaintenanceTracks" in resp
+        assert isinstance(resp["MaintenanceTracks"], list)
+
+    def test_describe_authentication_profiles_structure(self, redshift):
+        """DescribeAuthenticationProfiles returns empty list by default."""
+        resp = redshift.describe_authentication_profiles()
+        assert "AuthenticationProfiles" in resp
+        assert isinstance(resp["AuthenticationProfiles"], list)
+
+    def test_get_cluster_credentials_with_db_groups(self, redshift):
+        """GetClusterCredentials with DbGroups parameter."""
+        cid = f"dbgrp-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.get_cluster_credentials(
+                DbUser="admin",
+                ClusterIdentifier=cid,
+                DbGroups=["analysts", "readonly"],
+            )
+            assert "DbUser" in resp
+            assert "DbPassword" in resp
+            assert "Expiration" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_cluster_with_security_group(self, redshift):
+        """CreateCluster with a ClusterSecurityGroup."""
+        sg = f"clsg-{_uid()}"
+        cid = f"clsg-{_uid()}"
+        redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=sg,
+            Description="For cluster test",
+        )
+        try:
+            resp = redshift.create_cluster(
+                ClusterIdentifier=cid,
+                NodeType="dc2.large",
+                MasterUsername="admin",
+                MasterUserPassword="Password1!",
+                NumberOfNodes=1,
+                ClusterType="single-node",
+                ClusterSecurityGroups=[sg],
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+            redshift.delete_cluster_security_group(ClusterSecurityGroupName=sg)
+
+    def test_modify_cluster_allow_version_upgrade(self, redshift):
+        """ModifyCluster to change AllowVersionUpgrade."""
+        cid = f"modvu-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_cluster(
+                ClusterIdentifier=cid,
+                AllowVersionUpgrade=True,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+            assert resp["Cluster"]["AllowVersionUpgrade"] is True
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_events_with_duration(self, redshift):
+        """DescribeEvents with Duration parameter."""
+        resp = redshift.describe_events(Duration=60)
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_event_subscriptions_empty(self, redshift):
+        """DescribeEventSubscriptions returns empty list by default."""
+        resp = redshift.describe_event_subscriptions()
+        assert "EventSubscriptionsList" in resp
+        assert isinstance(resp["EventSubscriptionsList"], list)
+
+    def test_create_snapshot_with_tags(self, redshift):
+        """CreateClusterSnapshot with tags attached."""
+        cid = f"sntag-{_uid()}"
+        snap = f"sntag-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.create_cluster_snapshot(
+                SnapshotIdentifier=snap,
+                ClusterIdentifier=cid,
+                Tags=[{"Key": "backup", "Value": "daily"}],
+            )
+            assert resp["Snapshot"]["SnapshotIdentifier"] == snap
+            tags = {t["Key"]: t["Value"] for t in resp["Snapshot"].get("Tags", [])}
+            assert tags.get("backup") == "daily"
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_parameter_groups_default(self, redshift):
+        """DescribeClusterParameterGroups includes the default group."""
+        resp = redshift.describe_cluster_parameter_groups()
+        names = [g["ParameterGroupName"] for g in resp["ParameterGroups"]]
+        assert "default.redshift-1.0" in names
+
+    def test_create_cluster_snapshot_duplicate_error(self, redshift):
+        """Creating a duplicate snapshot raises an error."""
+        cid = f"dupsnp-{_uid()}"
+        snap = f"dupsnp-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+            with pytest.raises(ClientError) as exc:
+                redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+            assert "AlreadyExists" in exc.value.response["Error"]["Code"]
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_hsm_client_certificates_empty(self, redshift):
+        """DescribeHsmClientCertificates returns list."""
+        resp = redshift.describe_hsm_client_certificates()
+        assert "HsmClientCertificates" in resp
+        assert isinstance(resp["HsmClientCertificates"], list)
+
+    def test_describe_hsm_configurations_empty(self, redshift):
+        """DescribeHsmConfigurations returns list."""
+        resp = redshift.describe_hsm_configurations()
+        assert "HsmConfigurations" in resp
+        assert isinstance(resp["HsmConfigurations"], list)
