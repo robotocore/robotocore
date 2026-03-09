@@ -25,8 +25,8 @@ if [ -d /etc/robotocore/init/boot.d ]; then
     done
 fi
 
-# Start the server
-exec uv run uvicorn robotocore.gateway.app:app \
+# Start the server (use venv python directly — uv is not in the runtime image)
+exec /app/.venv/bin/python -m uvicorn robotocore.gateway.app:app \
     --host "${ROBOTOCORE_HOST:-0.0.0.0}" \
     --port "${ROBOTOCORE_PORT:-4566}" \
     "$@"
