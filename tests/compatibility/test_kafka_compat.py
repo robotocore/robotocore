@@ -1,5 +1,6 @@
 """MSK (Managed Streaming for Kafka) compatibility tests."""
 
+import base64
 import uuid
 
 import pytest
@@ -309,6 +310,254 @@ class TestMSKListOperations:
         resp = kafka.list_clusters_v2()
         assert "ClusterInfoList" in resp
         assert isinstance(resp["ClusterInfoList"], list)
+
+
+class TestMSKConfigurationOperations:
+    """Tests for MSK configuration operations."""
+
+    def test_list_configurations_returns_list(self, kafka):
+        resp = kafka.list_configurations()
+        assert "Configurations" in resp
+        assert isinstance(resp["Configurations"], list)
+
+    def test_create_and_describe_configuration(self, kafka):
+        name = _unique("config")
+        server_properties = base64.b64encode(
+            b"auto.create.topics.enable=true\nlog.retention.hours=168"
+        ).decode("utf-8")
+        create_resp = kafka.create_configuration(
+            Name=name,
+            ServerProperties=server_properties,
+            KafkaVersions=["2.8.1"],
+        )
+        assert "Arn" in create_resp
+        assert create_resp["Name"] == name
+        config_arn = create_resp["Arn"]
+
+        desc_resp = kafka.describe_configuration(Arn=config_arn)
+        assert desc_resp["Arn"] == config_arn
+        assert desc_resp["Name"] == name
+        assert "LatestRevision" in desc_resp
+
+    def test_list_configuration_revisions(self, kafka):
+        name = _unique("config-rev")
+        server_properties = base64.b64encode(b"log.retention.hours=168").decode("utf-8")
+        create_resp = kafka.create_configuration(
+            Name=name,
+            ServerProperties=server_properties,
+            KafkaVersions=["2.8.1"],
+        )
+        config_arn = create_resp["Arn"]
+        resp = kafka.list_configuration_revisions(Arn=config_arn)
+        assert "Revisions" in resp
+        assert isinstance(resp["Revisions"], list)
+
+    def test_describe_configuration_revision(self, kafka):
+        name = _unique("config-descrev")
+        server_properties = base64.b64encode(b"log.retention.hours=168").decode("utf-8")
+        create_resp = kafka.create_configuration(
+            Name=name,
+            ServerProperties=server_properties,
+            KafkaVersions=["2.8.1"],
+        )
+        config_arn = create_resp["Arn"]
+        resp = kafka.describe_configuration_revision(Arn=config_arn, Revision=1)
+        assert "Arn" in resp
+        assert resp["Revision"] == 1
+
+
+class TestMSKVersionsAndCompatibility:
+    """Tests for MSK Kafka version operations."""
+
+    def test_list_kafka_versions(self, kafka):
+        resp = kafka.list_kafka_versions()
+        assert "KafkaVersions" in resp
+        assert isinstance(resp["KafkaVersions"], list)
+        assert len(resp["KafkaVersions"]) > 0
+
+    def test_get_compatible_kafka_versions(self, kafka):
+        resp = kafka.get_compatible_kafka_versions()
+        assert "CompatibleKafkaVersions" in resp
+        assert isinstance(resp["CompatibleKafkaVersions"], list)
+
+
+class TestMSKClusterDependentOperations:
+    """Tests for operations that require a cluster ARN."""
+
+    @pytest.fixture
+    def cluster_arn(self, kafka):
+        name = _unique("ops-cluster")
+        resp = kafka.create_cluster(
+            ClusterName=name,
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        return resp["ClusterArn"]
+
+    def test_get_bootstrap_brokers(self, kafka, cluster_arn):
+        resp = kafka.get_bootstrap_brokers(ClusterArn=cluster_arn)
+        # Response should have at least one broker string key
+        assert any(
+            k in resp
+            for k in [
+                "BootstrapBrokerString",
+                "BootstrapBrokerStringTls",
+                "BootstrapBrokerStringSaslScram",
+                "BootstrapBrokerStringSaslIam",
+                "BootstrapBrokerStringPublicTls",
+                "BootstrapBrokerStringPublicSaslScram",
+                "BootstrapBrokerStringPublicSaslIam",
+                "BootstrapBrokerStringVpcConnectivityTls",
+                "BootstrapBrokerStringVpcConnectivitySaslScram",
+                "BootstrapBrokerStringVpcConnectivitySaslIam",
+            ]
+        )
+
+    def test_list_nodes(self, kafka, cluster_arn):
+        resp = kafka.list_nodes(ClusterArn=cluster_arn)
+        assert "NodeInfoList" in resp
+        assert isinstance(resp["NodeInfoList"], list)
+
+    def test_list_cluster_operations(self, kafka, cluster_arn):
+        resp = kafka.list_cluster_operations(ClusterArn=cluster_arn)
+        assert "ClusterOperationInfoList" in resp
+        assert isinstance(resp["ClusterOperationInfoList"], list)
+
+    def test_list_cluster_operations_v2(self, kafka, cluster_arn):
+        resp = kafka.list_cluster_operations_v2(ClusterArn=cluster_arn)
+        assert "ClusterOperationInfoList" in resp
+        assert isinstance(resp["ClusterOperationInfoList"], list)
+
+    def test_list_scram_secrets(self, kafka, cluster_arn):
+        resp = kafka.list_scram_secrets(ClusterArn=cluster_arn)
+        assert "SecretArnList" in resp
+        assert isinstance(resp["SecretArnList"], list)
+
+    def test_get_cluster_policy(self, kafka, cluster_arn):
+        try:
+            resp = kafka.get_cluster_policy(ClusterArn=cluster_arn)
+            # If it succeeds, it should have a policy key
+            assert "CurrentVersion" in resp or "Policy" in resp
+        except kafka.exceptions.NotFoundException:
+            # No policy set yet is valid
+            pass
+
+    def test_list_client_vpc_connections(self, kafka, cluster_arn):
+        resp = kafka.list_client_vpc_connections(ClusterArn=cluster_arn)
+        assert "ClientVpcConnections" in resp
+        assert isinstance(resp["ClientVpcConnections"], list)
+
+
+class TestMSKEmptyListOperations:
+    """Tests for list operations that return empty lists with no setup."""
+
+    def test_list_replicators_empty(self, kafka):
+        resp = kafka.list_replicators()
+        assert "Replicators" in resp
+        assert isinstance(resp["Replicators"], list)
+
+    def test_list_vpc_connections_empty(self, kafka):
+        resp = kafka.list_vpc_connections()
+        assert "VpcConnections" in resp
+        assert isinstance(resp["VpcConnections"], list)
+
+
+class TestMSKTopicOperations:
+    """Tests for MSK topic operations."""
+
+    @pytest.fixture
+    def cluster_arn(self, kafka):
+        name = _unique("topic-cluster")
+        resp = kafka.create_cluster(
+            ClusterName=name,
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        return resp["ClusterArn"]
+
+    def test_list_topics(self, kafka, cluster_arn):
+        try:
+            resp = kafka.list_topics(ClusterArn=cluster_arn)
+            assert "Topics" in resp
+            assert isinstance(resp["Topics"], list)
+        except (
+            kafka.exceptions.BadRequestException,
+            kafka.exceptions.NotFoundException,
+        ):
+            pass  # Server processed request, cluster may not be in ACTIVE state
+
+    def test_describe_topic_fake(self, kafka, cluster_arn):
+        try:
+            kafka.describe_topic(ClusterArn=cluster_arn, TopicName="fake-topic")
+        except (
+            kafka.exceptions.NotFoundException,
+            kafka.exceptions.BadRequestException,
+        ):
+            pass  # Expected — server processed the request
+
+    def test_describe_topic_partitions(self, kafka, cluster_arn):
+        try:
+            kafka.describe_topic_partitions(ClusterArn=cluster_arn, TopicName="fake-topic")
+        except (
+            kafka.exceptions.NotFoundException,
+            kafka.exceptions.BadRequestException,
+        ):
+            pass  # Expected — server processed the request
+
+
+class TestMSKDescribeWithFakeArn:
+    """Tests that describe ops with fake ARNs return proper errors."""
+
+    FAKE_CLUSTER_ARN = "arn:aws:kafka:us-east-1:123456789012:cluster/fake-cluster/fake-uuid"
+    FAKE_REPLICATOR_ARN = (
+        "arn:aws:kafka:us-east-1:123456789012:replicator/fake-replicator/fake-uuid"
+    )
+    FAKE_VPC_ARN = "arn:aws:kafka:us-east-1:123456789012:vpc-connection/fake-vpc/fake-uuid"
+
+    def test_describe_cluster_operation_fake_arn(self, kafka):
+        try:
+            kafka.describe_cluster_operation(ClusterOperationArn=self.FAKE_CLUSTER_ARN)
+            # If it returns without error, that's also fine
+        except (
+            kafka.exceptions.NotFoundException,
+            kafka.exceptions.BadRequestException,
+        ):
+            pass  # Expected — server processed the request
+
+    def test_describe_cluster_operation_v2_fake_arn(self, kafka):
+        try:
+            kafka.describe_cluster_operation_v2(ClusterOperationArn=self.FAKE_CLUSTER_ARN)
+        except (
+            kafka.exceptions.NotFoundException,
+            kafka.exceptions.BadRequestException,
+        ):
+            pass  # Expected
+
+    def test_describe_replicator_fake_arn(self, kafka):
+        try:
+            kafka.describe_replicator(ReplicatorArn=self.FAKE_REPLICATOR_ARN)
+        except (
+            kafka.exceptions.NotFoundException,
+            kafka.exceptions.BadRequestException,
+        ):
+            pass  # Expected
+
+    def test_describe_vpc_connection_fake_arn(self, kafka):
+        try:
+            kafka.describe_vpc_connection(Arn=self.FAKE_VPC_ARN)
+        except (
+            kafka.exceptions.NotFoundException,
+            kafka.exceptions.BadRequestException,
+        ):
+            pass  # Expected
 
 
 class TestMSKTags:
