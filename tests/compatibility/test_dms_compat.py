@@ -1314,6 +1314,404 @@ class TestDMSEndpointEngines:
         dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
 
 
+class TestDMSDescribeOperationsExpanded:
+    """Tests for Describe operations that return lists/metadata without requiring resources."""
+
+    def test_describe_account_attributes(self, dms):
+        """DescribeAccountAttributes returns account quota information."""
+        response = dms.describe_account_attributes()
+        assert "AccountQuotas" in response
+        assert isinstance(response["AccountQuotas"], list)
+
+    def test_describe_account_attributes_has_quota_names(self, dms):
+        """DescribeAccountAttributes quotas have AccountQuotaName field."""
+        response = dms.describe_account_attributes()
+        if len(response["AccountQuotas"]) > 0:
+            quota = response["AccountQuotas"][0]
+            assert "AccountQuotaName" in quota
+
+    def test_describe_certificates_empty(self, dms):
+        """DescribeCertificates returns empty list when none exist."""
+        response = dms.describe_certificates()
+        assert "Certificates" in response
+        assert isinstance(response["Certificates"], list)
+
+    def test_describe_endpoint_types(self, dms):
+        """DescribeEndpointTypes returns supported endpoint types."""
+        response = dms.describe_endpoint_types()
+        assert "SupportedEndpointTypes" in response
+        assert isinstance(response["SupportedEndpointTypes"], list)
+
+    def test_describe_endpoint_types_has_engine_info(self, dms):
+        """DescribeEndpointTypes entries have EngineName and SupportsCDC."""
+        response = dms.describe_endpoint_types()
+        if len(response["SupportedEndpointTypes"]) > 0:
+            entry = response["SupportedEndpointTypes"][0]
+            assert "EngineName" in entry
+
+    def test_describe_event_categories(self, dms):
+        """DescribeEventCategories returns event category groups."""
+        response = dms.describe_event_categories()
+        assert "EventCategoryGroupList" in response
+        assert isinstance(response["EventCategoryGroupList"], list)
+
+    def test_describe_event_subscriptions_empty(self, dms):
+        """DescribeEventSubscriptions returns empty list when none exist."""
+        response = dms.describe_event_subscriptions()
+        assert "EventSubscriptionsList" in response
+        assert isinstance(response["EventSubscriptionsList"], list)
+
+    def test_describe_events_empty(self, dms):
+        """DescribeEvents returns empty event list."""
+        response = dms.describe_events()
+        assert "Events" in response
+        assert isinstance(response["Events"], list)
+
+    def test_describe_orderable_replication_instances(self, dms):
+        """DescribeOrderableReplicationInstances returns available instance types."""
+        response = dms.describe_orderable_replication_instances()
+        assert "OrderableReplicationInstances" in response
+        assert isinstance(response["OrderableReplicationInstances"], list)
+
+    def test_describe_pending_maintenance_actions_empty(self, dms):
+        """DescribePendingMaintenanceActions returns empty list."""
+        response = dms.describe_pending_maintenance_actions()
+        assert "PendingMaintenanceActions" in response
+        assert isinstance(response["PendingMaintenanceActions"], list)
+
+    def test_describe_replication_task_assessment_results_empty(self, dms):
+        """DescribeReplicationTaskAssessmentResults returns empty list."""
+        response = dms.describe_replication_task_assessment_results()
+        assert "ReplicationTaskAssessmentResults" in response
+        assert isinstance(response["ReplicationTaskAssessmentResults"], list)
+
+    def test_describe_applicable_individual_assessments(self, dms):
+        """DescribeApplicableIndividualAssessments returns list of assessment names."""
+        response = dms.describe_applicable_individual_assessments()
+        assert "IndividualAssessmentNames" in response
+        assert isinstance(response["IndividualAssessmentNames"], list)
+
+    def test_describe_replication_task_assessment_runs_empty(self, dms):
+        """DescribeReplicationTaskAssessmentRuns returns empty list."""
+        response = dms.describe_replication_task_assessment_runs()
+        assert "ReplicationTaskAssessmentRuns" in response
+        assert isinstance(response["ReplicationTaskAssessmentRuns"], list)
+
+    def test_describe_replication_task_individual_assessments_empty(self, dms):
+        """DescribeReplicationTaskIndividualAssessments returns empty list."""
+        response = dms.describe_replication_task_individual_assessments()
+        assert "ReplicationTaskIndividualAssessments" in response
+        assert isinstance(response["ReplicationTaskIndividualAssessments"], list)
+
+    def test_describe_replications_empty(self, dms):
+        """DescribeReplications returns empty list."""
+        response = dms.describe_replications()
+        assert "Replications" in response
+        assert isinstance(response["Replications"], list)
+
+    def test_describe_replication_configs_empty(self, dms):
+        """DescribeReplicationConfigs returns empty list."""
+        response = dms.describe_replication_configs()
+        assert "ReplicationConfigs" in response
+        assert isinstance(response["ReplicationConfigs"], list)
+
+    def test_describe_fleet_advisor_collectors_empty(self, dms):
+        """DescribeFleetAdvisorCollectors returns empty list."""
+        response = dms.describe_fleet_advisor_collectors()
+        assert "Collectors" in response
+        assert isinstance(response["Collectors"], list)
+
+    def test_describe_fleet_advisor_databases_empty(self, dms):
+        """DescribeFleetAdvisorDatabases returns empty list."""
+        response = dms.describe_fleet_advisor_databases()
+        assert "Databases" in response
+        assert isinstance(response["Databases"], list)
+
+    def test_describe_fleet_advisor_schemas_empty(self, dms):
+        """DescribeFleetAdvisorSchemas returns empty list."""
+        response = dms.describe_fleet_advisor_schemas()
+        assert "FleetAdvisorSchemas" in response
+        assert isinstance(response["FleetAdvisorSchemas"], list)
+
+    def test_describe_fleet_advisor_lsa_analysis_empty(self, dms):
+        """DescribeFleetAdvisorLsaAnalysis returns empty list."""
+        response = dms.describe_fleet_advisor_lsa_analysis()
+        assert "Analysis" in response
+        assert isinstance(response["Analysis"], list)
+
+    def test_describe_fleet_advisor_schema_object_summary_empty(self, dms):
+        """DescribeFleetAdvisorSchemaObjectSummary returns empty list."""
+        response = dms.describe_fleet_advisor_schema_object_summary()
+        assert "FleetAdvisorSchemaObjects" in response
+        assert isinstance(response["FleetAdvisorSchemaObjects"], list)
+
+    def test_describe_recommendations_empty(self, dms):
+        """DescribeRecommendations returns empty list."""
+        response = dms.describe_recommendations()
+        assert "Recommendations" in response
+        assert isinstance(response["Recommendations"], list)
+
+    def test_describe_recommendation_limitations_empty(self, dms):
+        """DescribeRecommendationLimitations returns empty list."""
+        response = dms.describe_recommendation_limitations()
+        assert "Limitations" in response
+        assert isinstance(response["Limitations"], list)
+
+    def test_describe_instance_profiles_empty(self, dms):
+        """DescribeInstanceProfiles returns empty list."""
+        response = dms.describe_instance_profiles()
+        assert "InstanceProfiles" in response
+        assert isinstance(response["InstanceProfiles"], list)
+
+    def test_describe_data_providers_empty(self, dms):
+        """DescribeDataProviders returns empty list."""
+        response = dms.describe_data_providers()
+        assert "DataProviders" in response
+        assert isinstance(response["DataProviders"], list)
+
+    def test_describe_migration_projects_empty(self, dms):
+        """DescribeMigrationProjects returns empty list."""
+        response = dms.describe_migration_projects()
+        assert "MigrationProjects" in response
+        assert isinstance(response["MigrationProjects"], list)
+
+    def test_describe_extension_pack_associations_empty(self, dms):
+        """DescribeExtensionPackAssociations returns empty list."""
+        response = dms.describe_extension_pack_associations(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+    def test_describe_metadata_model_assessments_empty(self, dms):
+        """DescribeMetadataModelAssessments returns empty list."""
+        response = dms.describe_metadata_model_assessments(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+    def test_describe_metadata_model_conversions_empty(self, dms):
+        """DescribeMetadataModelConversions returns empty list."""
+        response = dms.describe_metadata_model_conversions(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+    def test_describe_metadata_model_exports_as_script_empty(self, dms):
+        """DescribeMetadataModelExportsAsScript returns empty list."""
+        response = dms.describe_metadata_model_exports_as_script(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+    def test_describe_metadata_model_exports_to_target_empty(self, dms):
+        """DescribeMetadataModelExportsToTarget returns empty list."""
+        response = dms.describe_metadata_model_exports_to_target(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+    def test_describe_metadata_model_imports_empty(self, dms):
+        """DescribeMetadataModelImports returns empty list."""
+        response = dms.describe_metadata_model_imports(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+    def test_describe_data_migrations_empty(self, dms):
+        """DescribeDataMigrations returns empty list."""
+        response = dms.describe_data_migrations()
+        assert "DataMigrations" in response
+        assert isinstance(response["DataMigrations"], list)
+
+    def test_describe_endpoint_settings(self, dms):
+        """DescribeEndpointSettings returns settings for a given engine."""
+        response = dms.describe_endpoint_settings(EngineName="mysql")
+        assert "EndpointSettings" in response
+        assert isinstance(response["EndpointSettings"], list)
+
+    def test_describe_endpoint_settings_postgres(self, dms):
+        """DescribeEndpointSettings returns settings for postgres engine."""
+        response = dms.describe_endpoint_settings(EngineName="postgres")
+        assert "EndpointSettings" in response
+        assert isinstance(response["EndpointSettings"], list)
+
+
+class TestDMSDescribeWithResourceParams:
+    """Tests for Describe operations that need existing resources."""
+
+    def test_describe_replication_instance_task_logs(self, dms):
+        """DescribeReplicationInstanceTaskLogs returns task log list for an instance."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        try:
+            log_resp = dms.describe_replication_instance_task_logs(
+                ReplicationInstanceArn=ri_arn,
+            )
+            assert "ReplicationInstanceTaskLogs" in log_resp
+            assert isinstance(log_resp["ReplicationInstanceTaskLogs"], list)
+        finally:
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+    def test_describe_table_statistics(self, dms):
+        """DescribeTableStatistics returns table stats for a replication task."""
+        uid = uuid.uuid4().hex[:8]
+        src = dms.create_endpoint(
+            EndpointIdentifier=f"src-{uid}",
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        tgt = dms.create_endpoint(
+            EndpointIdentifier=f"tgt-{uid}",
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=f"ri-{uid}",
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        task = dms.create_replication_task(
+            ReplicationTaskIdentifier=f"task-{uid}",
+            SourceEndpointArn=src["Endpoint"]["EndpointArn"],
+            TargetEndpointArn=tgt["Endpoint"]["EndpointArn"],
+            ReplicationInstanceArn=ri["ReplicationInstance"]["ReplicationInstanceArn"],
+            MigrationType="full-load",
+            TableMappings='{"rules":[]}',
+        )
+        task_arn = task["ReplicationTask"]["ReplicationTaskArn"]
+        try:
+            stats_resp = dms.describe_table_statistics(
+                ReplicationTaskArn=task_arn,
+            )
+            assert "TableStatistics" in stats_resp
+            assert isinstance(stats_resp["TableStatistics"], list)
+        finally:
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+            dms.delete_endpoint(EndpointArn=src["Endpoint"]["EndpointArn"])
+            dms.delete_endpoint(EndpointArn=tgt["Endpoint"]["EndpointArn"])
+            dms.delete_replication_instance(
+                ReplicationInstanceArn=ri["ReplicationInstance"]["ReplicationInstanceArn"]
+            )
+
+
+class TestDMSDescribeMetadataModelCreations:
+    """Tests for DescribeMetadataModelCreations."""
+
+    def test_describe_metadata_model_creations_empty(self, dms):
+        """DescribeMetadataModelCreations returns empty list for nonexistent project."""
+        response = dms.describe_metadata_model_creations(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "Requests" in response
+        assert isinstance(response["Requests"], list)
+
+
+class TestDMSDescribeConversionAndMetadata:
+    """Tests for conversion config, metadata model, and target selection operations."""
+
+    def test_describe_conversion_configuration(self, dms):
+        """DescribeConversionConfiguration returns config for a migration project."""
+        response = dms.describe_conversion_configuration(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
+        assert "ConversionConfiguration" in response
+        assert "MigrationProjectIdentifier" in response
+
+    def test_describe_replication_table_statistics(self, dms):
+        """DescribeReplicationTableStatistics returns stats list."""
+        response = dms.describe_replication_table_statistics(
+            ReplicationConfigArn="arn:aws:dms:us-east-1:123456789012:replication-config:nonexistent"
+        )
+        assert "ReplicationTableStatistics" in response
+        assert isinstance(response["ReplicationTableStatistics"], list)
+
+    def test_get_target_selection_rules(self, dms):
+        """GetTargetSelectionRules returns target selection rules."""
+        response = dms.get_target_selection_rules(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent",
+            SelectionRules='{"rules":[]}',
+        )
+        assert "TargetSelectionRules" in response
+
+    def test_describe_metadata_model(self, dms):
+        """DescribeMetadataModel returns metadata for a migration project."""
+        response = dms.describe_metadata_model(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent",
+            SelectionRules='{"rules":[]}',
+            Origin="SOURCE",
+        )
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_metadata_model_children(self, dms):
+        """DescribeMetadataModelChildren returns children for a migration project."""
+        response = dms.describe_metadata_model_children(
+            MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent",
+            SelectionRules='{"rules":[]}',
+            Origin="SOURCE",
+        )
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_refresh_schemas_status(self, dms):
+        """DescribeRefreshSchemasStatus returns status for an endpoint."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        ep_arn = resp["Endpoint"]["EndpointArn"]
+        try:
+            status_resp = dms.describe_refresh_schemas_status(EndpointArn=ep_arn)
+            assert "RefreshSchemasStatus" in status_resp
+        finally:
+            dms.delete_endpoint(EndpointArn=ep_arn)
+
+
+class TestDMSDescribeSchemas:
+    """Tests for DescribeSchemas with an endpoint."""
+
+    def test_describe_schemas_for_endpoint(self, dms):
+        """DescribeSchemas returns schema list for an endpoint."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        ep_arn = resp["Endpoint"]["EndpointArn"]
+        try:
+            schema_resp = dms.describe_schemas(EndpointArn=ep_arn)
+            assert "Schemas" in schema_resp
+            assert isinstance(schema_resp["Schemas"], list)
+        finally:
+            dms.delete_endpoint(EndpointArn=ep_arn)
+
+
 class TestDMSReplicationInstanceSubnetGroup:
     """Tests for creating replication instance in a subnet group."""
 
