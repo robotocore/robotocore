@@ -2065,3 +2065,130 @@ class TestIoTMiscListOperations:
         except ClientError:
             # Expected if immediate delete not allowed
             iot.deprecate_thing_type(thingTypeName=name, undoDeprecate=True)
+
+
+class TestIoTWorkingButUntestedOps:
+    """Tests for operations confirmed working by probe but not yet covered."""
+
+    def test_delete_job_execution_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.delete_job_execution(jobId="fake-job-id", thingName="fake-thing", executionNumber=1)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_ota_update_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.delete_ota_update(otaUpdateId="fake-ota-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_stream_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.delete_stream(streamId="fake-stream-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_audit_finding_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_audit_finding(findingId="fake-finding-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_audit_mitigation_actions_task_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_audit_mitigation_actions_task(taskId="fake-task-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_audit_suppression_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_audit_suppression(
+                checkName="FAKE_CHECK",
+                resourceIdentifier={
+                    "deviceCertificateId": "a" * 64,
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_audit_task_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_audit_task(taskId="fake-task-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_detect_mitigation_actions_task_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_detect_mitigation_actions_task(taskId="fake-task-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_managed_job_template_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_managed_job_template(templateName="fake-template")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_stream_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_stream(streamId="fake-stream-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_thing_registration_task_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_thing_registration_task(taskId="fake-task-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_statistics(self, iot):
+        resp = iot.get_statistics(queryString="*")
+        assert "statistics" in resp
+        assert "count" in resp["statistics"]
+
+    def test_get_topic_rule_destination_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.get_topic_rule_destination(
+                arn="arn:aws:iot:us-east-1:123456789012:ruledestination/fake"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_audit_mitigation_actions_executions(self, iot):
+        resp = iot.list_audit_mitigation_actions_executions(
+            taskId="fake-task-id", findingId="fake-finding-id"
+        )
+        assert "actionsExecutions" in resp
+
+    def test_list_audit_mitigation_actions_tasks(self, iot):
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=1)
+        resp = iot.list_audit_mitigation_actions_tasks(startTime=start, endTime=now)
+        assert "tasks" in resp
+
+    def test_list_detect_mitigation_actions_executions(self, iot):
+        resp = iot.list_detect_mitigation_actions_executions()
+        assert "actionsExecutions" in resp
+
+    def test_list_detect_mitigation_actions_tasks(self, iot):
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=1)
+        resp = iot.list_detect_mitigation_actions_tasks(startTime=start, endTime=now)
+        assert "tasks" in resp
+
+    def test_list_metric_values(self, iot):
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=1)
+        resp = iot.list_metric_values(
+            thingName="fake-thing",
+            metricName="fake-metric",
+            startTime=start,
+            endTime=now,
+        )
+        assert "metricDatumList" in resp
+
+    def test_list_related_resources_for_audit_finding(self, iot):
+        resp = iot.list_related_resources_for_audit_finding(findingId="fake-finding-id")
+        assert "relatedResources" in resp
+
+    def test_list_violation_events(self, iot):
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=1)
+        resp = iot.list_violation_events(startTime=start, endTime=now)
+        assert "violationEvents" in resp
+
+    def test_update_fleet_metric_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.update_fleet_metric(
+                metricName="fake-metric",
+                indexName="AWS_Things",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
