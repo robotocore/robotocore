@@ -169,3 +169,412 @@ class TestGlacierJobOperations:
             assert "checksum" in response
         finally:
             glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_delete_archive(self, glacier):
+        """delete_archive removes an archive from a vault."""
+        name = f"delarch-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            upload = glacier.upload_archive(accountId="-", vaultName=name, body=b"delete me")
+            archive_id = upload["archiveId"]
+            resp = glacier.delete_archive(accountId="-", vaultName=name, archiveId=archive_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+
+class TestGlacierTagOperations:
+    def test_add_tags_to_vault(self, glacier):
+        """add_tags_to_vault attaches tags to a vault."""
+        name = f"tag-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            resp = glacier.add_tags_to_vault(
+                accountId="-",
+                vaultName=name,
+                Tags={"Env": "test", "Team": "dev"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_list_tags_for_vault(self, glacier):
+        """list_tags_for_vault returns tags."""
+        name = f"ltag-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            glacier.add_tags_to_vault(
+                accountId="-",
+                vaultName=name,
+                Tags={"Env": "test"},
+            )
+            resp = glacier.list_tags_for_vault(accountId="-", vaultName=name)
+            assert "Tags" in resp
+            assert resp["Tags"]["Env"] == "test"
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_remove_tags_from_vault(self, glacier):
+        """remove_tags_from_vault removes specified tags."""
+        name = f"rmtag-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            glacier.add_tags_to_vault(
+                accountId="-",
+                vaultName=name,
+                Tags={"Env": "test", "Team": "dev"},
+            )
+            resp = glacier.remove_tags_from_vault(accountId="-", vaultName=name, TagKeys=["Env"])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+            tags = glacier.list_tags_for_vault(accountId="-", vaultName=name)
+            assert "Env" not in tags["Tags"]
+            assert tags["Tags"]["Team"] == "dev"
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+
+class TestGlacierDataRetrievalPolicy:
+    def test_get_data_retrieval_policy(self, glacier):
+        """get_data_retrieval_policy returns a policy."""
+        resp = glacier.get_data_retrieval_policy(accountId="-")
+        assert "Policy" in resp
+
+    def test_set_data_retrieval_policy(self, glacier):
+        """set_data_retrieval_policy sets retrieval rules."""
+        resp = glacier.set_data_retrieval_policy(
+            accountId="-",
+            Policy={"Rules": [{"Strategy": "FreeTier"}]},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestGlacierVaultAccessPolicy:
+    def test_set_vault_access_policy(self, glacier):
+        """set_vault_access_policy sets an access policy on a vault."""
+        name = f"ap-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "glacier:ListJobs",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                        }
+                    ],
+                }
+            )
+            resp = glacier.set_vault_access_policy(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_get_vault_access_policy(self, glacier):
+        """get_vault_access_policy retrieves a vault's access policy."""
+        name = f"gap-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "glacier:ListJobs",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                        }
+                    ],
+                }
+            )
+            glacier.set_vault_access_policy(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            resp = glacier.get_vault_access_policy(accountId="-", vaultName=name)
+            assert "policy" in resp
+            assert "Policy" in resp["policy"]
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_delete_vault_access_policy(self, glacier):
+        """delete_vault_access_policy removes a vault's access policy."""
+        name = f"dap-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "glacier:ListJobs",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                        }
+                    ],
+                }
+            )
+            glacier.set_vault_access_policy(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            resp = glacier.delete_vault_access_policy(accountId="-", vaultName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+
+class TestGlacierVaultNotifications:
+    def test_set_vault_notifications(self, glacier):
+        """set_vault_notifications configures notifications for a vault."""
+        name = f"notif-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            resp = glacier.set_vault_notifications(
+                accountId="-",
+                vaultName=name,
+                vaultNotificationConfig={
+                    "SNSTopic": "arn:aws:sns:us-east-1:123456789012:glacier-notif",
+                    "Events": [
+                        "ArchiveRetrievalCompleted",
+                        "InventoryRetrievalCompleted",
+                    ],
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_get_vault_notifications(self, glacier):
+        """get_vault_notifications returns notification config."""
+        name = f"gnotif-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            glacier.set_vault_notifications(
+                accountId="-",
+                vaultName=name,
+                vaultNotificationConfig={
+                    "SNSTopic": "arn:aws:sns:us-east-1:123456789012:glacier-notif",
+                    "Events": ["ArchiveRetrievalCompleted"],
+                },
+            )
+            resp = glacier.get_vault_notifications(accountId="-", vaultName=name)
+            assert "vaultNotificationConfig" in resp
+            assert "SNSTopic" in resp["vaultNotificationConfig"]
+            assert "Events" in resp["vaultNotificationConfig"]
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_delete_vault_notifications(self, glacier):
+        """delete_vault_notifications removes notification config."""
+        name = f"dnotif-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            glacier.set_vault_notifications(
+                accountId="-",
+                vaultName=name,
+                vaultNotificationConfig={
+                    "SNSTopic": "arn:aws:sns:us-east-1:123456789012:glacier-notif",
+                    "Events": ["ArchiveRetrievalCompleted"],
+                },
+            )
+            resp = glacier.delete_vault_notifications(accountId="-", vaultName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+
+class TestGlacierVaultLock:
+    def test_initiate_vault_lock(self, glacier):
+        """initiate_vault_lock starts the lock process."""
+        name = f"lock-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": "*",
+                            "Action": "glacier:DeleteArchive",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                            "Condition": {"NumericLessThan": {"glacier:ArchiveAgeinDays": "365"}},
+                        }
+                    ],
+                }
+            )
+            resp = glacier.initiate_vault_lock(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 201
+            assert "lockId" in resp
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_get_vault_lock(self, glacier):
+        """get_vault_lock returns lock state."""
+        name = f"glock-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": "*",
+                            "Action": "glacier:DeleteArchive",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                        }
+                    ],
+                }
+            )
+            glacier.initiate_vault_lock(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            resp = glacier.get_vault_lock(accountId="-", vaultName=name)
+            assert "Policy" in resp
+            assert "State" in resp
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_abort_vault_lock(self, glacier):
+        """abort_vault_lock cancels a pending lock."""
+        name = f"alock-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": "*",
+                            "Action": "glacier:DeleteArchive",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                        }
+                    ],
+                }
+            )
+            glacier.initiate_vault_lock(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            resp = glacier.abort_vault_lock(accountId="-", vaultName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_complete_vault_lock(self, glacier):
+        """complete_vault_lock finalizes a vault lock."""
+        name = f"clock-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            import json
+
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": "*",
+                            "Action": "glacier:DeleteArchive",
+                            "Resource": f"arn:aws:glacier:us-east-1:123456789012:vaults/{name}",
+                        }
+                    ],
+                }
+            )
+            init_resp = glacier.initiate_vault_lock(
+                accountId="-",
+                vaultName=name,
+                policy={"Policy": policy_doc},
+            )
+            lock_id = init_resp["lockId"]
+            resp = glacier.complete_vault_lock(accountId="-", vaultName=name, lockId=lock_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+
+class TestGlacierMultipartUpload:
+    def test_initiate_multipart_upload(self, glacier):
+        """initiate_multipart_upload starts a multipart upload."""
+        name = f"mpu-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            resp = glacier.initiate_multipart_upload(
+                accountId="-",
+                vaultName=name,
+                partSize="1048576",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 201
+            assert "uploadId" in resp
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_list_multipart_uploads(self, glacier):
+        """list_multipart_uploads returns upload list."""
+        name = f"lmpu-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            glacier.initiate_multipart_upload(
+                accountId="-",
+                vaultName=name,
+                partSize="1048576",
+            )
+            resp = glacier.list_multipart_uploads(accountId="-", vaultName=name)
+            assert "UploadsList" in resp
+            assert len(resp["UploadsList"]) >= 1
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_abort_multipart_upload(self, glacier):
+        """abort_multipart_upload cancels an in-progress upload."""
+        name = f"ampu-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            init = glacier.initiate_multipart_upload(
+                accountId="-",
+                vaultName=name,
+                partSize="1048576",
+            )
+            upload_id = init["uploadId"]
+            resp = glacier.abort_multipart_upload(accountId="-", vaultName=name, uploadId=upload_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_list_provisioned_capacity(self, glacier):
+        """list_provisioned_capacity returns capacity list."""
+        resp = glacier.list_provisioned_capacity(accountId="-")
+        assert "ProvisionedCapacityList" in resp
+        assert isinstance(resp["ProvisionedCapacityList"], list)
