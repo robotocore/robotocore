@@ -65,7 +65,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.uv.sources]
-moto = { git = "https://github.com/JackDanger/moto.git", branch = "robotocore/all-fixes" }
+moto = { git = "https://github.com/JackDanger/moto.git", branch = "master" }
 
 [tool.mypy]
 python_version = "3.12"

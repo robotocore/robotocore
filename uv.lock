@@ -746,7 +746,7 @@ wheels = [
 [[package]]
 name = "moto"
 version = "5.1.22.dev0"
-source = { git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes#016a6c1716490e1784217f0b2261487b0a53e696" }
+source = { git = "https://github.com/JackDanger/moto.git?branch=master#016a6c1716490e1784217f0b2261487b0a53e696" }
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },
@@ -1355,7 +1355,7 @@ requires-dist = [
     { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.5" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1" },
-    { name = "moto", extras = ["all"], git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes" },
+    { name = "moto", extras = ["all"], git = "https://github.com/JackDanger/moto.git?branch=master" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },

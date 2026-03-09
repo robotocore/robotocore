@@ -185,8 +185,8 @@ PROMPT
         | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d[0]['covered']}/{d[0]['total_ops']}\")" 2>/dev/null) || AFTER="?"
 
     # Push any Moto fixes to the fork and update the lockfile
-    if (cd vendor/moto && git diff --quiet jackdanger/robotocore/all-fixes..HEAD 2>/dev/null) || true; then
-        (cd vendor/moto && git push jackdanger HEAD:robotocore/all-fixes 2>/dev/null) || true
+    if (cd vendor/moto && git diff --quiet jackdanger/master..HEAD 2>/dev/null) || true; then
+        (cd vendor/moto && git push jackdanger HEAD:master 2>/dev/null) || true
         uv lock 2>/dev/null || true
     fi
 
