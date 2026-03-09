@@ -457,36 +457,461 @@ class TestOpensearchAutoCoverage:
         """DescribeInboundConnections returns a response."""
         resp = client.describe_inbound_connections()
         assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
 
     def test_describe_outbound_connections(self, client):
         """DescribeOutboundConnections returns a response."""
         resp = client.describe_outbound_connections()
         assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
 
     def test_describe_packages(self, client):
         """DescribePackages returns a response."""
         resp = client.describe_packages()
         assert "PackageDetailsList" in resp
+        assert isinstance(resp["PackageDetailsList"], list)
 
     def test_describe_reserved_instance_offerings(self, client):
         """DescribeReservedInstanceOfferings returns a response."""
         resp = client.describe_reserved_instance_offerings()
         assert "ReservedInstanceOfferings" in resp
+        assert isinstance(resp["ReservedInstanceOfferings"], list)
 
     def test_describe_reserved_instances(self, client):
         """DescribeReservedInstances returns a response."""
         resp = client.describe_reserved_instances()
         assert "ReservedInstances" in resp
+        assert isinstance(resp["ReservedInstances"], list)
 
     def test_get_default_application_setting(self, client):
         """GetDefaultApplicationSetting returns a response."""
-        client.get_default_application_setting()
+        resp = client.get_default_application_setting()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_applications(self, client):
         """ListApplications returns a response."""
         resp = client.list_applications()
         assert "ApplicationSummaries" in resp
+        assert isinstance(resp["ApplicationSummaries"], list)
 
     def test_list_direct_query_data_sources(self, client):
         """ListDirectQueryDataSources returns a response."""
-        client.list_direct_query_data_sources()
+        resp = client.list_direct_query_data_sources()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestOpenSearchDomainOptions:
+    """Tests for domain creation with various configuration options."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_create_domain_with_advanced_security(self, opensearch):
+        """CreateDomain with AdvancedSecurityOptions."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                AdvancedSecurityOptions={
+                    "Enabled": True,
+                    "InternalUserDatabaseEnabled": True,
+                    "MasterUserOptions": {
+                        "MasterUserName": "admin",
+                        "MasterUserPassword": "Admin1234!",
+                    },
+                },
+                NodeToNodeEncryptionOptions={"Enabled": True},
+                EncryptionAtRestOptions={"Enabled": True},
+                DomainEndpointOptions={"EnforceHTTPS": True},
+            )
+            status = resp["DomainStatus"]
+            assert status["DomainName"] == name
+            assert status["AdvancedSecurityOptions"]["Enabled"] is True
+            assert status["AdvancedSecurityOptions"]["InternalUserDatabaseEnabled"] is True
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_create_domain_with_snapshot_options(self, opensearch):
+        """CreateDomain with SnapshotOptions."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                SnapshotOptions={"AutomatedSnapshotStartHour": 3},
+            )
+            status = resp["DomainStatus"]
+            assert status["SnapshotOptions"]["AutomatedSnapshotStartHour"] == 3
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_create_domain_with_advanced_options(self, opensearch):
+        """CreateDomain with AdvancedOptions map."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                AdvancedOptions={"rest.action.multi.allow_explicit_index": "true"},
+            )
+            status = resp["DomainStatus"]
+            assert status["AdvancedOptions"]["rest.action.multi.allow_explicit_index"] == "true"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_create_domain_with_log_publishing(self, opensearch):
+        """CreateDomain with LogPublishingOptions."""
+        name = _unique_domain()
+        log_arn = "arn:aws:logs:us-east-1:123456789012:log-group:test"
+        try:
+            resp = opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                LogPublishingOptions={
+                    "INDEX_SLOW_LOGS": {
+                        "CloudWatchLogsLogGroupArn": log_arn,
+                        "Enabled": True,
+                    }
+                },
+            )
+            status = resp["DomainStatus"]
+            logs = status["LogPublishingOptions"]["INDEX_SLOW_LOGS"]
+            assert logs["CloudWatchLogsLogGroupArn"] == log_arn
+            assert logs["Enabled"] is True
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_create_domain_with_domain_endpoint_options(self, opensearch):
+        """CreateDomain with DomainEndpointOptions EnforceHTTPS."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                DomainEndpointOptions={"EnforceHTTPS": True},
+            )
+            status = resp["DomainStatus"]
+            assert status["DomainEndpointOptions"]["EnforceHTTPS"] is True
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_create_domain_elasticsearch_engine(self, opensearch):
+        """CreateDomain with Elasticsearch engine version."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="Elasticsearch_7.10",
+            )
+            status = resp["DomainStatus"]
+            assert status["EngineVersion"] == "Elasticsearch_7.10"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_domain_has_endpoint(self, opensearch):
+        """DescribeDomain returns Endpoint field."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.describe_domain(DomainName=name)
+            status = resp["DomainStatus"]
+            assert "Endpoint" in status
+            assert name in status["Endpoint"]
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_domain_created_and_not_deleted(self, opensearch):
+        """DescribeDomain shows Created=True, Deleted=False."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.describe_domain(DomainName=name)
+            status = resp["DomainStatus"]
+            assert status["Created"] is True
+            assert status["Deleted"] is False
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_domain_has_domain_id(self, opensearch):
+        """DescribeDomain returns DomainId with account prefix."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.describe_domain(DomainName=name)
+            status = resp["DomainStatus"]
+            assert "DomainId" in status
+            # DomainId format: accountid/domainname
+            assert "/" in status["DomainId"]
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_domain_upgrade_processing_false(self, opensearch):
+        """DescribeDomain shows UpgradeProcessing=False for new domain."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.describe_domain(DomainName=name)
+            status = resp["DomainStatus"]
+            assert status["UpgradeProcessing"] is False
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+
+class TestOpenSearchDomainConfig:
+    """Tests for DescribeDomainConfig with deeper field assertions."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_describe_domain_config_cluster_config_values(self, opensearch):
+        """DescribeDomainConfig returns ClusterConfig with correct values."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                ClusterConfig={
+                    "InstanceType": "t3.small.search",
+                    "InstanceCount": 1,
+                },
+            )
+            resp = opensearch.describe_domain_config(DomainName=name)
+            cc = resp["DomainConfig"]["ClusterConfig"]["Options"]
+            assert cc["InstanceType"] == "t3.small.search"
+            assert cc["InstanceCount"] == 1
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_describe_domain_config_ebs_values(self, opensearch):
+        """DescribeDomainConfig returns EBSOptions with correct values."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(
+                DomainName=name,
+                EngineVersion="OpenSearch_2.5",
+                EBSOptions={
+                    "EBSEnabled": True,
+                    "VolumeType": "gp2",
+                    "VolumeSize": 10,
+                },
+            )
+            resp = opensearch.describe_domain_config(DomainName=name)
+            ebs = resp["DomainConfig"]["EBSOptions"]["Options"]
+            assert ebs["EBSEnabled"] is True
+            assert ebs["VolumeType"] == "gp2"
+            assert ebs["VolumeSize"] == 10
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_describe_domain_config_engine_version_status(self, opensearch):
+        """DescribeDomainConfig EngineVersion has Options and Status."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.describe_domain_config(DomainName=name)
+            ev = resp["DomainConfig"]["EngineVersion"]
+            assert ev["Options"] == "OpenSearch_2.5"
+            assert "Status" in ev
+            assert ev["Status"]["State"] == "Active"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_describe_domain_config_has_all_sections(self, opensearch):
+        """DescribeDomainConfig returns all expected config sections."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.describe_domain_config(DomainName=name)
+            config = resp["DomainConfig"]
+            expected_keys = [
+                "EngineVersion",
+                "ClusterConfig",
+                "EBSOptions",
+                "AccessPolicies",
+                "SnapshotOptions",
+                "AdvancedOptions",
+                "EncryptionAtRestOptions",
+                "NodeToNodeEncryptionOptions",
+            ]
+            for key in expected_keys:
+                assert key in config, f"Missing config key: {key}"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_update_domain_config_ebs_options(self, opensearch):
+        """UpdateDomainConfig with EBSOptions applies changes."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.update_domain_config(
+                DomainName=name,
+                EBSOptions={
+                    "EBSEnabled": True,
+                    "VolumeType": "gp3",
+                    "VolumeSize": 20,
+                },
+            )
+            ebs = resp["DomainConfig"]["EBSOptions"]["Options"]
+            assert ebs["EBSEnabled"] is True
+            assert ebs["VolumeType"] == "gp3"
+            assert ebs["VolumeSize"] == 20
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_update_domain_config_snapshot_options(self, opensearch):
+        """UpdateDomainConfig with SnapshotOptions."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.update_domain_config(
+                DomainName=name,
+                SnapshotOptions={"AutomatedSnapshotStartHour": 5},
+            )
+            assert "DomainConfig" in resp
+            snap = resp["DomainConfig"]["SnapshotOptions"]["Options"]
+            assert snap["AutomatedSnapshotStartHour"] == 5
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_update_domain_config_advanced_options(self, opensearch):
+        """UpdateDomainConfig with AdvancedOptions."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.update_domain_config(
+                DomainName=name,
+                AdvancedOptions={"rest.action.multi.allow_explicit_index": "false"},
+            )
+            assert "DomainConfig" in resp
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+
+class TestOpenSearchVersions:
+    """Tests for version-related operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_list_versions_contains_opensearch(self, opensearch):
+        """ListVersions includes OpenSearch versions."""
+        resp = opensearch.list_versions()
+        versions = resp["Versions"]
+        opensearch_versions = [v for v in versions if v.startswith("OpenSearch_")]
+        assert len(opensearch_versions) > 0
+
+    def test_list_versions_contains_elasticsearch(self, opensearch):
+        """ListVersions includes Elasticsearch versions."""
+        resp = opensearch.list_versions()
+        versions = resp["Versions"]
+        es_versions = [v for v in versions if v.startswith("Elasticsearch_")]
+        assert len(es_versions) > 0
+
+    def test_get_compatible_versions_structure(self, opensearch):
+        """GetCompatibleVersions returns entries with SourceVersion and TargetVersions."""
+        resp = opensearch.get_compatible_versions()
+        versions = resp["CompatibleVersions"]
+        assert len(versions) > 0
+        for entry in versions:
+            assert "SourceVersion" in entry
+            assert "TargetVersions" in entry
+            assert isinstance(entry["TargetVersions"], list)
+            assert len(entry["TargetVersions"]) > 0
+
+    def test_get_compatible_versions_for_domain(self, opensearch):
+        """GetCompatibleVersions with DomainName returns domain-specific versions."""
+        name = _unique_domain()
+        try:
+            opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            resp = opensearch.get_compatible_versions(DomainName=name)
+            assert "CompatibleVersions" in resp
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+
+class TestOpenSearchErrorHandling:
+    """Tests for error conditions."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_describe_nonexistent_domain_raises(self, opensearch):
+        """DescribeDomain for nonexistent domain raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain(DomainName="nonexistent-domain-xyz")
+
+    def test_describe_domain_config_nonexistent_raises(self, opensearch):
+        """DescribeDomainConfig for nonexistent domain raises error."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain_config(DomainName="nonexistent-domain-xyz")
+
+    def test_delete_nonexistent_domain_raises(self, opensearch):
+        """DeleteDomain for nonexistent domain raises error."""
+        with pytest.raises(Exception):
+            opensearch.delete_domain(DomainName="nonexistent-domain-xyz")
+
+    def test_update_nonexistent_domain_raises(self, opensearch):
+        """UpdateDomainConfig for nonexistent domain raises error."""
+        with pytest.raises(Exception):
+            opensearch.update_domain_config(
+                DomainName="nonexistent-domain-xyz",
+                ClusterConfig={"InstanceType": "t3.small.search"},
+            )
+
+
+class TestOpenSearchTagOperations:
+    """Deeper tag operation tests."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_tag_overwrite(self, opensearch):
+        """AddTags with same key overwrites value."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            arn = resp["DomainStatus"]["ARN"]
+            opensearch.add_tags(ARN=arn, TagList=[{"Key": "env", "Value": "dev"}])
+            opensearch.add_tags(ARN=arn, TagList=[{"Key": "env", "Value": "prod"}])
+            tags = opensearch.list_tags(ARN=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "prod"
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_remove_all_tags(self, opensearch):
+        """RemoveTags can remove all tags."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            arn = resp["DomainStatus"]["ARN"]
+            opensearch.add_tags(
+                ARN=arn,
+                TagList=[
+                    {"Key": "a", "Value": "1"},
+                    {"Key": "b", "Value": "2"},
+                ],
+            )
+            opensearch.remove_tags(ARN=arn, TagKeys=["a", "b"])
+            tags = opensearch.list_tags(ARN=arn)
+            assert len(tags["TagList"]) == 0
+        finally:
+            opensearch.delete_domain(DomainName=name)
+
+    def test_list_tags_empty_domain(self, opensearch):
+        """ListTags on domain with no tags returns empty list."""
+        name = _unique_domain()
+        try:
+            resp = opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+            arn = resp["DomainStatus"]["ARN"]
+            tags = opensearch.list_tags(ARN=arn)
+            assert "TagList" in tags
+            assert isinstance(tags["TagList"], list)
+        finally:
+            opensearch.delete_domain(DomainName=name)
