@@ -2891,3 +2891,223 @@ class TestGlueWorkflowStopAndUpdate:
                 ProfileId="fake-profile",
             )
         assert "Error" in exc.value.response
+
+
+class TestGlueCatalogCRUD:
+    """Tests for CreateCatalog, DeleteCatalog, UpdateCatalog."""
+
+    def test_create_and_delete_catalog(self, glue):
+        """CreateCatalog creates a catalog, DeleteCatalog removes it."""
+        name = _unique("cat")
+        glue.create_catalog(
+            Name=name,
+            CatalogInput={"Description": "test catalog"},
+        )
+        # Verify it exists
+        resp = glue.get_catalog(CatalogId=name)
+        assert resp["Catalog"]["CatalogId"] == name
+
+        # Delete it
+        glue.delete_catalog(CatalogId=name)
+
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            glue.get_catalog(CatalogId=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_catalog(self, glue):
+        """UpdateCatalog modifies a catalog's description."""
+        name = _unique("cat")
+        glue.create_catalog(
+            Name=name,
+            CatalogInput={"Description": "original"},
+        )
+        try:
+            glue.update_catalog(
+                CatalogId=name,
+                CatalogInput={"Description": "updated"},
+            )
+            resp = glue.get_catalog(CatalogId=name)
+            assert resp["Catalog"]["CatalogId"] == name
+        finally:
+            glue.delete_catalog(CatalogId=name)
+
+    def test_update_catalog_not_found(self, glue):
+        """UpdateCatalog for nonexistent catalog raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_catalog(
+                CatalogId="nonexistent-catalog-xyz",
+                CatalogInput={"Description": "nope"},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueBlueprintUpdate:
+    """Tests for UpdateBlueprint."""
+
+    def test_update_blueprint(self, glue):
+        """UpdateBlueprint modifies a blueprint's location."""
+        name = _unique("bp")
+        glue.create_blueprint(
+            Name=name,
+            BlueprintLocation="s3://test-bucket/blueprint.py",
+        )
+        try:
+            resp = glue.update_blueprint(
+                Name=name,
+                BlueprintLocation="s3://test-bucket/blueprint-v2.py",
+            )
+            assert resp["Name"] == name
+        finally:
+            glue.delete_blueprint(Name=name)
+
+    def test_update_blueprint_not_found(self, glue):
+        """UpdateBlueprint for nonexistent blueprint raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_blueprint(
+                Name="nonexistent-bp-xyz",
+                BlueprintLocation="s3://test-bucket/nope.py",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueClassifierUpdate:
+    """Tests for UpdateClassifier."""
+
+    def test_update_classifier(self, glue):
+        """UpdateClassifier modifies a classifier's pattern."""
+        name = _unique("clf")
+        glue.create_classifier(
+            GrokClassifier={
+                "Classification": "test",
+                "Name": name,
+                "GrokPattern": "%{COMBINEDAPACHELOG}",
+            }
+        )
+        try:
+            glue.update_classifier(
+                GrokClassifier={
+                    "Name": name,
+                    "Classification": "updated",
+                    "GrokPattern": "%{COMMONAPACHELOG}",
+                }
+            )
+            resp = glue.get_classifier(Name=name)
+            assert resp["Classifier"]["GrokClassifier"]["Name"] == name
+        finally:
+            glue.delete_classifier(Name=name)
+
+
+class TestGlueDataQualityRulesetUpdate:
+    """Tests for UpdateDataQualityRuleset."""
+
+    def test_update_data_quality_ruleset(self, glue):
+        """UpdateDataQualityRuleset modifies a ruleset."""
+        name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            glue.update_data_quality_ruleset(
+                Name=name,
+                Ruleset='Rules = [ IsComplete "col2" ]',
+            )
+            resp = glue.get_data_quality_ruleset(Name=name)
+            assert resp["Name"] == name
+        finally:
+            glue.delete_data_quality_ruleset(Name=name)
+
+    def test_update_data_quality_ruleset_not_found(self, glue):
+        """UpdateDataQualityRuleset for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_data_quality_ruleset(
+                Name="nonexistent-dqr-xyz",
+                Ruleset='Rules = [ IsComplete "col1" ]',
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueMLTransformUpdate:
+    """Tests for UpdateMLTransform."""
+
+    def test_update_ml_transform(self, glue):
+        """UpdateMLTransform modifies a transform's description."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        resp = glue.create_ml_transform(
+            Name=_unique("mlt"),
+            InputRecordTables=[{"DatabaseName": db_name, "TableName": tbl_name}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "col1"},
+            },
+            Role="arn:aws:iam::123456789012:role/GlueRole",
+        )
+        transform_id = resp["TransformId"]
+        try:
+            update_resp = glue.update_ml_transform(
+                TransformId=transform_id,
+                Description="updated description",
+            )
+            assert update_resp["TransformId"] == transform_id
+        finally:
+            glue.delete_ml_transform(TransformId=transform_id)
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_update_ml_transform_not_found(self, glue):
+        """UpdateMLTransform for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_ml_transform(
+                TransformId="nonexistent-id-xyz",
+                Description="nope",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueUsageProfileUpdate:
+    """Tests for UpdateUsageProfile."""
+
+    def test_update_usage_profile(self, glue):
+        """UpdateUsageProfile modifies a usage profile."""
+        name = _unique("up")
+        glue.create_usage_profile(Name=name, Configuration={})
+        try:
+            glue.update_usage_profile(
+                Name=name,
+                Configuration={
+                    "SessionConfiguration": {
+                        "IdleTimeout": {"DefaultValue": "60"},
+                    }
+                },
+            )
+            resp = glue.get_usage_profile(Name=name)
+            assert resp["Name"] == name
+        finally:
+            glue.delete_usage_profile(Name=name)
+
+    def test_update_usage_profile_not_found(self, glue):
+        """UpdateUsageProfile for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_usage_profile(
+                Name="nonexistent-up-xyz",
+                Configuration={},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"

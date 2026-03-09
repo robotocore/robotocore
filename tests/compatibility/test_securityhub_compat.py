@@ -1040,6 +1040,88 @@ class TestSecurityHubV2Operations:
         assert isinstance(resp["TrendsMetrics"], list)
 
 
+class TestSecurityHubV2Crud:
+    """Tests for SecurityHub V2 create/delete operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_batch_update_findings_v2(self, client):
+        """BatchUpdateFindingsV2 returns response with ProcessedFindings."""
+        resp = client.batch_update_findings_v2()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_aggregator_v2(self, client):
+        """CreateAggregatorV2 creates and returns an aggregator."""
+        resp = client.create_aggregator_v2(RegionLinkingMode="ALL_REGIONS")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_ticket_v2(self, client):
+        """CreateTicketV2 returns a response."""
+        resp = client.create_ticket_v2(
+            ConnectorId="fake-connector-id",
+            FindingMetadataUid="fake-finding-uid",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_aggregator_v2_nonexistent(self, client):
+        """DeleteAggregatorV2 raises ResourceNotFoundException for fake ARN."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:aggregator/fake"
+        with pytest.raises(ClientError) as exc:
+            client.delete_aggregator_v2(AggregatorV2Arn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_automation_rule_v2_nonexistent(self, client):
+        """DeleteAutomationRuleV2 raises ResourceNotFoundException for fake ID."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_automation_rule_v2(Identifier="fake-rule-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_connector_v2_nonexistent(self, client):
+        """DeleteConnectorV2 raises ResourceNotFoundException for fake ID."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_connector_v2(ConnectorId="fake-connector-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_enable_disable_security_hub_v2(self, client):
+        """EnableSecurityHubV2 and DisableSecurityHubV2 work."""
+        enable_resp = client.enable_security_hub_v2()
+        assert enable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        disable_resp = client.disable_security_hub_v2()
+        assert disable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_register_connector_v2(self, client):
+        """RegisterConnectorV2 returns a response."""
+        resp = client.register_connector_v2(
+            AuthCode="fake-auth-code",
+            AuthState="fake-auth-state",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_aggregator_v2_nonexistent(self, client):
+        """UpdateAggregatorV2 raises ResourceNotFoundException for fake ARN."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:aggregator/fake"
+        with pytest.raises(ClientError) as exc:
+            client.update_aggregator_v2(
+                AggregatorV2Arn=fake_arn,
+                RegionLinkingMode="ALL_REGIONS",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_automation_rule_v2_nonexistent(self, client):
+        """UpdateAutomationRuleV2 raises ResourceNotFoundException for fake ID."""
+        with pytest.raises(ClientError) as exc:
+            client.update_automation_rule_v2(Identifier="fake-rule-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_connector_v2_nonexistent(self, client):
+        """UpdateConnectorV2 raises ResourceNotFoundException for fake ID."""
+        with pytest.raises(ClientError) as exc:
+            client.update_connector_v2(ConnectorId="fake-connector-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestSecurityHubInsightCrud:
     """Tests for insight create/update/delete lifecycle."""
 

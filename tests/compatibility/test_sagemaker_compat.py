@@ -4971,3 +4971,280 @@ class TestSageMakerInferenceComponentCRUD:
             sagemaker.delete_endpoint(EndpointName=ep_name)
             sagemaker.delete_endpoint_config(EndpointConfigName=epc_name)
             sagemaker.delete_model(ModelName=model_name)
+
+
+class TestSageMakerUpdateCodeRepository:
+    def test_update_code_repository(self, sagemaker):
+        name = _uid("repo")
+        sagemaker.create_code_repository(
+            CodeRepositoryName=name,
+            GitConfig={"RepositoryUrl": "https://github.com/example/repo.git"},
+        )
+        try:
+            resp = sagemaker.update_code_repository(
+                CodeRepositoryName=name,
+                GitConfig={
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:fake"
+                },
+            )
+            assert "CodeRepositoryArn" in resp
+        finally:
+            sagemaker.delete_code_repository(CodeRepositoryName=name)
+
+
+class TestSageMakerUpdateWorkteam:
+    def test_update_workteam_not_found(self, sagemaker):
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_workteam(
+                WorkteamName="fake-wt-update",
+                Description="updated description",
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestSageMakerQueryLineage:
+    def test_query_lineage_empty(self, sagemaker):
+        resp = sagemaker.query_lineage()
+        assert (
+            "Vertices" in resp
+            or "Edges" in resp
+            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        )
+
+
+class TestSageMakerCreatePresignedMlflowTrackingServerUrl:
+    def test_create_presigned_mlflow_tracking_server_url(self, sagemaker):
+        name = _uid("mlf")
+        sagemaker.create_mlflow_tracking_server(
+            TrackingServerName=name,
+            ArtifactStoreUri="s3://my-bucket/mlflow",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        try:
+            resp = sagemaker.create_presigned_mlflow_tracking_server_url(
+                TrackingServerName=name,
+            )
+            assert "AuthorizedUrl" in resp
+        finally:
+            sagemaker.delete_mlflow_tracking_server(TrackingServerName=name)
+
+
+class TestSageMakerCreateMlflowApp:
+    def test_create_and_delete_mlflow_app(self, sagemaker):
+        name = _uid("mla")
+        resp = sagemaker.create_mlflow_app(
+            Name=name,
+            ArtifactStoreUri="s3://my-bucket/mlflow-app",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "Arn" in resp
+        arn = resp["Arn"]
+        del_resp = sagemaker.delete_mlflow_app(Arn=arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerUpdateMlflowApp:
+    def test_update_mlflow_app_not_found(self, sagemaker):
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_mlflow_app(
+                Arn="arn:aws:sagemaker:us-east-1:123456789012:mlflow-app/fake-app",
+            )
+        assert exc.value.response["Error"]["Code"] in ("ValidationException", "ResourceNotFound")
+
+
+class TestSageMakerCreatePartnerApp:
+    def test_create_and_delete_partner_app(self, sagemaker):
+        name = _uid("pa")
+        resp = sagemaker.create_partner_app(
+            Name=name,
+            Type="lakera-guard",
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            Tier="Standard",
+            AuthType="IAM",
+        )
+        assert "Arn" in resp
+        arn = resp["Arn"]
+        del_resp = sagemaker.delete_partner_app(Arn=arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerCreatePartnerAppPresignedUrl:
+    def test_create_partner_app_presigned_url(self, sagemaker):
+        name = _uid("pa")
+        resp = sagemaker.create_partner_app(
+            Name=name,
+            Type="lakera-guard",
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            Tier="Standard",
+            AuthType="IAM",
+        )
+        arn = resp["Arn"]
+        try:
+            url_resp = sagemaker.create_partner_app_presigned_url(Arn=arn)
+            assert url_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_partner_app(Arn=arn)
+
+
+class TestSageMakerCreateTrainingPlan:
+    def test_create_training_plan(self, sagemaker):
+        name = _uid("tp")
+        resp = sagemaker.create_training_plan(
+            TrainingPlanName=name,
+            TrainingPlanOfferingId="trn1-32xl-1mo",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerCreateHubContentPresignedUrls:
+    def test_create_hub_content_presigned_urls(self, sagemaker):
+        hub_name = _uid("hub")
+        sagemaker.create_hub(HubName=hub_name, HubDescription="Test hub for presigned urls")
+        try:
+            resp = sagemaker.create_hub_content_presigned_urls(
+                HubName=hub_name,
+                HubContentType="Model",
+                HubContentName="fake-model",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_hub(HubName=hub_name)
+
+
+class TestSageMakerCreateHubContentReference:
+    def test_create_hub_content_reference(self, sagemaker):
+        hub_name = _uid("hub")
+        sagemaker.create_hub(HubName=hub_name, HubDescription="Test hub for ref")
+        try:
+            resp = sagemaker.create_hub_content_reference(
+                HubName=hub_name,
+                SageMakerPublicHubContentArn="arn:aws:sagemaker:us-east-1:123456789012:hub-content/fake/Model/fake-model/1.0.0",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_hub(HubName=hub_name)
+
+
+class TestSageMakerUpdateHubContentReference:
+    def test_update_hub_content_reference(self, sagemaker):
+        hub_name = _uid("hub")
+        sagemaker.create_hub(HubName=hub_name, HubDescription="Test hub for update ref")
+        try:
+            resp = sagemaker.update_hub_content_reference(
+                HubName=hub_name,
+                HubContentName="fake-ref",
+                HubContentType="Model",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_hub(HubName=hub_name)
+
+
+class TestSageMakerImportHubContent:
+    def test_import_hub_content(self, sagemaker):
+        hub_name = _uid("hub")
+        sagemaker.create_hub(HubName=hub_name, HubDescription="Test hub for import")
+        try:
+            resp = sagemaker.import_hub_content(
+                HubContentName="imported-model",
+                HubContentType="Model",
+                DocumentSchemaVersion="1.0.0",
+                HubName=hub_name,
+                HubContentDocument="{}",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_hub(HubName=hub_name)
+
+
+class TestSageMakerClusterSchedulerConfig:
+    def test_create_and_delete_cluster_scheduler_config(self, sagemaker):
+        name = _uid("csc")
+        resp = sagemaker.create_cluster_scheduler_config(
+            Name=name,
+            ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
+            SchedulerConfig={"PriorityClasses": []},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        del_resp = sagemaker.delete_cluster_scheduler_config(
+            ClusterSchedulerConfigId=name,
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerComputeQuota:
+    def test_create_and_delete_compute_quota(self, sagemaker):
+        name = _uid("cq")
+        resp = sagemaker.create_compute_quota(
+            Name=name,
+            ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
+            ComputeQuotaConfig={"ComputeQuotaResources": []},
+            ComputeQuotaTarget={
+                "FairShareWeight": 1,
+                "TeamName": "test-team",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        del_resp = sagemaker.delete_compute_quota(ComputeQuotaId=name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerUpdatePipelineVersion:
+    def test_update_pipeline_version(self, sagemaker):
+        resp = sagemaker.update_pipeline_version(
+            PipelineArn="arn:aws:sagemaker:us-east-1:123456789012:pipeline/fake-pipeline",
+            PipelineVersionId=1,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerAttachDetachClusterNodeVolume:
+    def test_attach_cluster_node_volume(self, sagemaker):
+        resp = sagemaker.attach_cluster_node_volume(
+            ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
+            NodeId="fake-node-id",
+            VolumeId="vol-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_detach_cluster_node_volume(self, sagemaker):
+        resp = sagemaker.detach_cluster_node_volume(
+            ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
+            NodeId="fake-node-id",
+            VolumeId="vol-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerStartSession:
+    def test_start_session(self, sagemaker):
+        resp = sagemaker.start_session(
+            ResourceIdentifier="arn:aws:sagemaker:us-east-1:123456789012:image-version/fake/1",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerCreatePresignedMlflowAppUrl:
+    def test_create_presigned_mlflow_app_url(self, sagemaker):
+        name = _uid("mla")
+        resp = sagemaker.create_mlflow_app(
+            Name=name,
+            ArtifactStoreUri="s3://my-bucket/mlflow-presigned",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        arn = resp["Arn"]
+        try:
+            url_resp = sagemaker.create_presigned_mlflow_app_url(Arn=arn)
+            assert "AuthorizedUrl" in url_resp
+        finally:
+            sagemaker.delete_mlflow_app(Arn=arn)
+
+
+class TestSageMakerRenderUiTemplate:
+    def test_render_ui_template(self, sagemaker):
+        resp = sagemaker.render_ui_template(
+            UiTemplate={"Content": "<html><body>Test</body></html>"},
+            Task={"Input": '{"key": "value"}'},
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "RenderedContent" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200

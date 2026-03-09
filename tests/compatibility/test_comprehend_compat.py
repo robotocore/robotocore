@@ -624,3 +624,205 @@ class TestComprehendJobOps:
         fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
         resp = client.delete_flywheel(FlywheelArn=fake_arn)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_flywheel_iteration_nonexistent(self, client):
+        """StartFlywheelIteration with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        with pytest.raises(ClientError) as exc:
+            client.start_flywheel_iteration(FlywheelArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_flywheel_nonexistent(self, client):
+        """UpdateFlywheel with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        with pytest.raises(ClientError) as exc:
+            client.update_flywheel(FlywheelArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_dataset_nonexistent_flywheel(self, client):
+        """CreateDataset with nonexistent flywheel raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        with pytest.raises(ClientError) as exc:
+            client.create_dataset(
+                FlywheelArn=fake_arn,
+                DatasetName=f"test-ds-{_uid()}",
+                DatasetType="TRAIN",
+                InputDataConfig={
+                    "DataFormat": "COMPREHEND_CSV",
+                    "DocumentClassifierInputDataConfig": {
+                        "S3Uri": "s3://fake-bucket/data.csv",
+                    },
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_document_classifier(self, client):
+        """CreateDocumentClassifier returns a classifier ARN."""
+        name = f"test-cls-{_uid()}"
+        resp = client.create_document_classifier(
+            DocumentClassifierName=name,
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            InputDataConfig={
+                "DataFormat": "COMPREHEND_CSV",
+                "S3Uri": "s3://fake-bucket/training-data.csv",
+            },
+            LanguageCode="en",
+        )
+        assert "DocumentClassifierArn" in resp
+        assert name in resp["DocumentClassifierArn"]
+
+    def test_create_entity_recognizer(self, client):
+        """CreateEntityRecognizer returns an entity recognizer ARN."""
+        name = f"test-rec-{_uid()}"
+        resp = client.create_entity_recognizer(
+            RecognizerName=name,
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            InputDataConfig={
+                "DataFormat": "COMPREHEND_CSV",
+                "EntityTypes": [{"Type": "PERSON"}],
+                "Documents": {"S3Uri": "s3://fake-bucket/docs.csv"},
+                "EntityList": {"S3Uri": "s3://fake-bucket/entities.csv"},
+            },
+            LanguageCode="en",
+        )
+        assert "EntityRecognizerArn" in resp
+        assert name in resp["EntityRecognizerArn"]
+
+    def test_create_flywheel(self, client):
+        """CreateFlywheel returns a flywheel ARN."""
+        name = f"test-fw-{_uid()}"
+        resp = client.create_flywheel(
+            FlywheelName=name,
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            DataLakeS3Uri="s3://fake-bucket/datalake/",
+        )
+        assert "FlywheelArn" in resp
+        assert name in resp["FlywheelArn"]
+
+    def test_import_model(self, client):
+        """ImportModel accepts a source model ARN."""
+        source_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+        resp = client.import_model(SourceModelArn=source_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ModelArn" in resp
+
+    def test_start_dominant_language_detection_job(self, client):
+        """StartDominantLanguageDetectionJob returns a job ID."""
+        resp = client.start_dominant_language_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_entities_detection_job(self, client):
+        """StartEntitiesDetectionJob returns a job ID."""
+        resp = client.start_entities_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_key_phrases_detection_job(self, client):
+        """StartKeyPhrasesDetectionJob returns a job ID."""
+        resp = client.start_key_phrases_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_pii_entities_detection_job(self, client):
+        """StartPiiEntitiesDetectionJob returns a job ID."""
+        resp = client.start_pii_entities_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            Mode="ONLY_OFFSETS",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_sentiment_detection_job(self, client):
+        """StartSentimentDetectionJob returns a job ID."""
+        resp = client.start_sentiment_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_targeted_sentiment_detection_job(self, client):
+        """StartTargetedSentimentDetectionJob returns a job ID."""
+        resp = client.start_targeted_sentiment_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_topics_detection_job(self, client):
+        """StartTopicsDetectionJob returns a job ID."""
+        resp = client.start_topics_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp
+
+    def test_start_document_classification_job(self, client):
+        """StartDocumentClassificationJob returns a job ID."""
+        resp = client.start_document_classification_job(
+            DocumentClassifierArn=(
+                "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+            ),
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp

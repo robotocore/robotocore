@@ -1,8 +1,10 @@
 """API Gateway v2 (HTTP APIs) compatibility tests."""
 
+import json
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -803,7 +805,6 @@ class TestReimportApi:
     """Tests for reimport_api operation."""
 
     def test_reimport_api(self, apigwv2):
-        import json
 
         api = apigwv2.create_api(Name=_unique("reimport-api"), ProtocolType="HTTP")
         api_id = api["ApiId"]
@@ -1255,3 +1256,203 @@ class TestRouteResponseAdvanced:
             RouteResponseId=rr["RouteResponseId"],
         )
         assert resp["RouteResponseKey"] == "$default"
+
+
+class TestPortalCrud:
+    """Tests for Portal create/update/delete/disable/preview/publish operations."""
+
+    def test_create_portal_raises(self, apigwv2):
+        """CreatePortal raises NotFoundException (route not registered)."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.create_portal(
+                Authorization={"None": {}},
+                PortalContent={
+                    "DisplayName": "Test Portal",
+                    "Theme": {
+                        "CustomColors": {
+                            "AccentColor": "#FF0000",
+                            "NavigationColor": "#000000",
+                            "HeaderColor": "#111111",
+                            "ErrorValidationColor": "#EE0000",
+                            "TextColor": "#222222",
+                            "BackgroundColor": "#FFFFFF",
+                        }
+                    },
+                },
+                EndpointConfiguration={"None": {}},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_portal_nonexistent(self, apigwv2):
+        """DeletePortal with a fake portal ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.delete_portal(PortalId="fake-portal-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_portal_nonexistent(self, apigwv2):
+        """UpdatePortal with a fake portal ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.update_portal(PortalId="fake-portal-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_disable_portal_nonexistent(self, apigwv2):
+        """DisablePortal with a fake portal ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.disable_portal(PortalId="fake-portal-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_preview_portal_nonexistent(self, apigwv2):
+        """PreviewPortal with a fake portal ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.preview_portal(PortalId="fake-portal-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_publish_portal_nonexistent(self, apigwv2):
+        """PublishPortal with a fake portal ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.publish_portal(PortalId="fake-portal-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPortalProductCrud:
+    """Tests for PortalProduct create/update/delete operations."""
+
+    def test_create_portal_product_nonexistent(self, apigwv2):
+        """CreatePortalProduct raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.create_portal_product(
+                DisplayName="test-pp",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_portal_product_nonexistent(self, apigwv2):
+        """DeletePortalProduct with a fake ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.delete_portal_product(PortalProductId="fake-pp-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_portal_product_nonexistent(self, apigwv2):
+        """UpdatePortalProduct with a fake ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.update_portal_product(PortalProductId="fake-pp-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_portal_product_sharing_policy_nonexistent(self, apigwv2):
+        """DeletePortalProductSharingPolicy with fake ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.delete_portal_product_sharing_policy(PortalProductId="fake-pp-id-000")
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_portal_product_sharing_policy_nonexistent(self, apigwv2):
+        """PutPortalProductSharingPolicy with fake ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.put_portal_product_sharing_policy(
+                PortalProductId="fake-pp-id-000",
+                PolicyDocument="{}",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestProductPageCrud:
+    """Tests for ProductPage create/update/delete operations."""
+
+    def test_create_product_page_nonexistent(self, apigwv2):
+        """CreateProductPage with a fake portal product ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.create_product_page(
+                PortalProductId="fake-pp-id-000",
+                DisplayContent={"Title": "Test Page", "Body": "test body"},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_product_page_nonexistent(self, apigwv2):
+        """DeleteProductPage with fake IDs raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.delete_product_page(
+                PortalProductId="fake-pp-id-000",
+                ProductPageId="fake-page-id-000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_product_page_nonexistent(self, apigwv2):
+        """UpdateProductPage with fake IDs raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.update_product_page(
+                PortalProductId="fake-pp-id-000",
+                ProductPageId="fake-page-id-000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestProductRestEndpointPageCrud:
+    """Tests for ProductRestEndpointPage create/update/delete operations."""
+
+    def test_create_product_rest_endpoint_page_nonexistent(self, apigwv2):
+        """CreateProductRestEndpointPage with fake ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.create_product_rest_endpoint_page(
+                PortalProductId="fake-pp-id-000",
+                RestEndpointIdentifier={
+                    "IdentifierParts": {
+                        "Path": "/test",
+                        "RestApiId": "fake-api",
+                        "Method": "GET",
+                        "Stage": "dev",
+                    }
+                },
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_product_rest_endpoint_page_nonexistent(self, apigwv2):
+        """DeleteProductRestEndpointPage with fake IDs raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.delete_product_rest_endpoint_page(
+                PortalProductId="fake-pp-id-000",
+                ProductRestEndpointPageId="fake-rep-id-000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_product_rest_endpoint_page_nonexistent(self, apigwv2):
+        """UpdateProductRestEndpointPage with fake IDs raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.update_product_rest_endpoint_page(
+                PortalProductId="fake-pp-id-000",
+                ProductRestEndpointPageId="fake-rep-id-000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestRoutingRuleCrud:
+    """Tests for RoutingRule create/delete/put operations."""
+
+    def test_create_routing_rule_nonexistent_domain(self, apigwv2):
+        """CreateRoutingRule with a fake domain raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.create_routing_rule(
+                DomainName="fake-nonexistent.example.com",
+                Conditions=[],
+                Actions=[{"InvokeApi": {"ApiId": "fake-api-id", "Stage": "dev"}}],
+                Priority=1,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_routing_rule_nonexistent(self, apigwv2):
+        """DeleteRoutingRule with fake IDs raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.delete_routing_rule(
+                DomainName="fake-nonexistent.example.com",
+                RoutingRuleId="fake-rule-id-000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_routing_rule_nonexistent(self, apigwv2):
+        """PutRoutingRule with fake IDs raises NotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            apigwv2.put_routing_rule(
+                DomainName="fake-nonexistent.example.com",
+                RoutingRuleId="fake-rule-id-000",
+                Conditions=[],
+                Actions=[{"InvokeApi": {"ApiId": "fake-api-id", "Stage": "dev"}}],
+                Priority=1,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotFoundException"

@@ -840,3 +840,314 @@ class TestCloudDirectoryBatchOps:
         )
         assert "Responses" in resp
         assert isinstance(resp["Responses"], list)
+
+
+class TestCloudDirectoryObjectMutations:
+    """Tests for object attach/detach/delete and facet mutations."""
+
+    def test_delete_object(self, clouddirectory_client, directory):
+        """DeleteObject removes an unattached object."""
+        create_resp = clouddirectory_client.create_object(
+            DirectoryArn=directory["DirectoryArn"],
+            SchemaFacets=[],
+        )
+        obj_id = create_resp["ObjectIdentifier"]
+        del_resp = clouddirectory_client.delete_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": f"${obj_id}"},
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_attach_object(self, clouddirectory_client, directory):
+        """AttachObject attaches a child to parent and returns AttachedObjectIdentifier."""
+        child_resp = clouddirectory_client.create_object(
+            DirectoryArn=directory["DirectoryArn"],
+            SchemaFacets=[],
+        )
+        child_id = child_resp["ObjectIdentifier"]
+        link_name = f"link-{uuid.uuid4().hex[:6]}"
+        attach_resp = clouddirectory_client.attach_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ParentReference={"Selector": "/"},
+            ChildReference={"Selector": f"${child_id}"},
+            LinkName=link_name,
+        )
+        assert "AttachedObjectIdentifier" in attach_resp
+        # cleanup: detach then delete
+        clouddirectory_client.detach_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ParentReference={"Selector": "/"},
+            LinkName=link_name,
+        )
+        clouddirectory_client.delete_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": f"${child_id}"},
+        )
+
+    def test_detach_object(self, clouddirectory_client, directory):
+        """DetachObject detaches a child and returns DetachedObjectIdentifier."""
+        child_resp = clouddirectory_client.create_object(
+            DirectoryArn=directory["DirectoryArn"],
+            SchemaFacets=[],
+        )
+        child_id = child_resp["ObjectIdentifier"]
+        link_name = f"link-{uuid.uuid4().hex[:6]}"
+        clouddirectory_client.attach_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ParentReference={"Selector": "/"},
+            ChildReference={"Selector": f"${child_id}"},
+            LinkName=link_name,
+        )
+        detach_resp = clouddirectory_client.detach_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ParentReference={"Selector": "/"},
+            LinkName=link_name,
+        )
+        assert "DetachedObjectIdentifier" in detach_resp
+        # cleanup
+        clouddirectory_client.delete_object(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": f"${child_id}"},
+        )
+
+    def test_attach_policy_not_found(self, clouddirectory_client):
+        """AttachPolicy with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.attach_policy(
+                DirectoryArn=fake_arn,
+                PolicyReference={"Selector": "/"},
+                ObjectReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_detach_policy_not_found(self, clouddirectory_client):
+        """DetachPolicy with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.detach_policy(
+                DirectoryArn=fake_arn,
+                PolicyReference={"Selector": "/"},
+                ObjectReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_add_facet_to_object_not_found(self, clouddirectory_client):
+        """AddFacetToObject with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.add_facet_to_object(
+                DirectoryArn=fake_arn,
+                SchemaFacet={"SchemaArn": fake_arn, "FacetName": "fake"},
+                ObjectReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_remove_facet_from_object_not_found(self, clouddirectory_client):
+        """RemoveFacetFromObject with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.remove_facet_from_object(
+                DirectoryArn=fake_arn,
+                SchemaFacet={"SchemaArn": fake_arn, "FacetName": "fake"},
+                ObjectReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_object_attributes_not_found(self, clouddirectory_client):
+        """UpdateObjectAttributes with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.update_object_attributes(
+                DirectoryArn=fake_arn,
+                ObjectReference={"Selector": "/"},
+                AttributeUpdates=[],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudDirectoryIndexOps:
+    """Tests for index operations."""
+
+    def test_create_index(self, clouddirectory_client, directory):
+        """CreateIndex creates an index and returns ObjectIdentifier."""
+        applied_arn = directory["AppliedSchemaArn"]
+        resp = clouddirectory_client.create_index(
+            DirectoryArn=directory["DirectoryArn"],
+            OrderedIndexedAttributeList=[
+                {
+                    "SchemaArn": applied_arn,
+                    "FacetName": "fake",
+                    "Name": "attr1",
+                },
+            ],
+            IsUnique=False,
+        )
+        assert "ObjectIdentifier" in resp
+
+    def test_attach_to_index_not_found(self, clouddirectory_client):
+        """AttachToIndex with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.attach_to_index(
+                DirectoryArn=fake_arn,
+                IndexReference={"Selector": "/"},
+                TargetReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_detach_from_index_not_found(self, clouddirectory_client):
+        """DetachFromIndex with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.detach_from_index(
+                DirectoryArn=fake_arn,
+                IndexReference={"Selector": "/"},
+                TargetReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_index_not_found(self, clouddirectory_client):
+        """ListIndex with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.list_index(
+                DirectoryArn=fake_arn,
+                IndexReference={"Selector": "/"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudDirectoryTypedLinkMutations:
+    """Tests for typed link attach/detach and update operations."""
+
+    def test_attach_typed_link_not_found(self, clouddirectory_client):
+        """AttachTypedLink with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.attach_typed_link(
+                DirectoryArn=fake_arn,
+                SourceObjectReference={"Selector": "/"},
+                TargetObjectReference={"Selector": "/"},
+                TypedLinkFacet={
+                    "SchemaArn": fake_arn,
+                    "TypedLinkName": "fake",
+                },
+                Attributes=[],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_detach_typed_link_not_found(self, clouddirectory_client):
+        """DetachTypedLink with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.detach_typed_link(
+                DirectoryArn=fake_arn,
+                TypedLinkSpecifier={
+                    "TypedLinkFacet": {
+                        "SchemaArn": fake_arn,
+                        "TypedLinkName": "fake",
+                    },
+                    "SourceObjectReference": {"Selector": "/"},
+                    "TargetObjectReference": {"Selector": "/"},
+                    "IdentityAttributeValues": [],
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_link_attributes_not_found(self, clouddirectory_client):
+        """UpdateLinkAttributes with fake directory ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.update_link_attributes(
+                DirectoryArn=fake_arn,
+                TypedLinkSpecifier={
+                    "TypedLinkFacet": {
+                        "SchemaArn": fake_arn,
+                        "TypedLinkName": "fake",
+                    },
+                    "SourceObjectReference": {"Selector": "/"},
+                    "TargetObjectReference": {"Selector": "/"},
+                    "IdentityAttributeValues": [],
+                },
+                AttributeUpdates=[],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_typed_link_facet(self, clouddirectory_client, schema):
+        """UpdateTypedLinkFacet modifies a typed link facet."""
+        facet_name = f"TLFacet{uuid.uuid4().hex[:6]}"
+        clouddirectory_client.create_typed_link_facet(
+            SchemaArn=schema["SchemaArn"],
+            Facet={
+                "Name": facet_name,
+                "Attributes": [
+                    {
+                        "Name": "linkattr",
+                        "Type": "STRING",
+                        "RequiredBehavior": "REQUIRED_ALWAYS",
+                    },
+                ],
+                "IdentityAttributeOrder": ["linkattr"],
+            },
+        )
+        resp = clouddirectory_client.update_typed_link_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+            AttributeUpdates=[],
+            IdentityAttributeOrder=["linkattr"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudDirectorySchemaUpgrade:
+    """Tests for UpgradeAppliedSchema and UpgradePublishedSchema."""
+
+    def test_upgrade_applied_schema_not_found(self, clouddirectory_client):
+        """UpgradeAppliedSchema with fake ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:schema/published/fake/1"
+        fake_dir = "arn:aws:clouddirectory:us-east-1:123456789012:directory/fakedir123"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.upgrade_applied_schema(
+                PublishedSchemaArn=fake_arn,
+                DirectoryArn=fake_dir,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_upgrade_published_schema_not_found(self, clouddirectory_client):
+        """UpgradePublishedSchema with fake ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_dev = "arn:aws:clouddirectory:us-east-1:123456789012:schema/development/fake"
+        fake_pub = "arn:aws:clouddirectory:us-east-1:123456789012:schema/published/fake/1"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.upgrade_published_schema(
+                DevelopmentSchemaArn=fake_dev,
+                PublishedSchemaArn=fake_pub,
+                MinorVersion="1",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

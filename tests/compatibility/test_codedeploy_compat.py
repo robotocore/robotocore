@@ -568,3 +568,70 @@ class TestCodedeployAutoCoverage:
         """DeleteResourcesByExternalId returns a response."""
         resp = client.delete_resources_by_external_id(externalId="nonexistent-id")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_git_hub_account_token(self, client):
+        """DeleteGitHubAccountToken with nonexistent token."""
+        resp = client.delete_git_hub_account_token(tokenName="nonexistent-token")
+        assert "tokenName" in resp
+
+    def test_continue_deployment_nonexistent(self, client):
+        """ContinueDeployment with nonexistent deployment returns error."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.continue_deployment(deploymentId="d-XXXXXXXXX")
+
+    def test_skip_wait_time_for_instance_termination(self, client):
+        """SkipWaitTimeForInstanceTermination with nonexistent deployment."""
+        # This operation is deprecated but still functional
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.skip_wait_time_for_instance_termination(deploymentId="d-XXXXXXXXX")
+
+    def test_put_lifecycle_event_hook_execution_status(self, client):
+        """PutLifecycleEventHookExecutionStatus with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.put_lifecycle_event_hook_execution_status(
+                deploymentId="d-XXXXXXXXX",
+                lifecycleEventHookExecutionId="fake-exec-id",
+                status="Succeeded",
+            )
+
+    def test_batch_get_deployment_targets_nonexistent(self, client):
+        """BatchGetDeploymentTargets with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.batch_get_deployment_targets(
+                deploymentId="d-XXXXXXXXX",
+                targetIds=["fake-target-id"],
+            )
+
+    def test_get_deployment_target_nonexistent(self, client):
+        """GetDeploymentTarget with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.get_deployment_target(
+                deploymentId="d-XXXXXXXXX",
+                targetId="fake-target-id",
+            )
+
+    def test_list_deployment_targets_nonexistent(self, client):
+        """ListDeploymentTargets with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.list_deployment_targets(deploymentId="d-XXXXXXXXX")
+
+    def test_batch_get_deployment_instances_nonexistent(self, client):
+        """BatchGetDeploymentInstances with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.batch_get_deployment_instances(
+                deploymentId="d-XXXXXXXXX",
+                instanceIds=["i-fake"],
+            )
+
+    def test_list_deployment_instances_nonexistent(self, client):
+        """ListDeploymentInstances with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.list_deployment_instances(deploymentId="d-XXXXXXXXX")
+
+    def test_get_deployment_instance_nonexistent(self, client):
+        """GetDeploymentInstance with nonexistent deployment."""
+        with pytest.raises(client.exceptions.DeploymentDoesNotExistException):
+            client.get_deployment_instance(
+                deploymentId="d-XXXXXXXXX",
+                instanceId="i-fake",
+            )
