@@ -124,13 +124,18 @@ def put_and_read_kinesis_record(
     )
     shard_iter = iter_resp["ShardIterator"]
 
-    # Read records (retry a few times for eventual consistency)
-    for _ in range(5):
+    # Read records (retry with deadline for eventual consistency)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
         records_resp = client.get_records(ShardIterator=shard_iter, Limit=10)
         records = records_resp.get("Records", [])
         if records:
             record = records[-1]  # most recent
-            assert record["Data"] == data, f"Kinesis data mismatch: {record['Data']!r} != {data!r}"
+            # Kinesis returns Data as bytes; normalize for comparison
+            record_data = record["Data"]
+            if isinstance(record_data, str):
+                record_data = record_data.encode("utf-8")
+            assert record_data == data, f"Kinesis data mismatch: {record_data!r} != {data!r}"
             return record
         shard_iter = records_resp["NextShardIterator"]
         time.sleep(0.5)
