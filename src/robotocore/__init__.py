@@ -1,3 +1,5 @@
 """Robotocore: Free, open-source AWS emulator built on Moto."""
 
-__version__ = "0.1.0"
+# CalVer: YYYY.M.D — updated automatically by CI on each release.
+# Between releases, this reflects the last tagged version.
+__version__ = "2026.3.8"

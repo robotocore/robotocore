@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0  # need tags for CalVer
 
       # Multi-arch Docker build
       - name: Set up QEMU
@@ -42,27 +43,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # For tagged releases: versioned + latest tags
-      # For main pushes: latest only
-      - name: Determine tags
-        id: tags
+      # CalVer: YYYY.M.D, with .N suffix for same-day releases
+      - name: Compute version
+        id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # Manual tag push — use the tag as-is
             VERSION="${GITHUB_REF#refs/tags/v}"
-            echo "TAGS<<EOF" >> $GITHUB_OUTPUT
-            echo "robotocore/robotocore:${VERSION}" >> $GITHUB_OUTPUT
-            echo "robotocore/robotocore:latest" >> $GITHUB_OUTPUT
-            echo "ghcr.io/${{ github.repository }}:${VERSION}" >> $GITHUB_OUTPUT
-            echo "ghcr.io/${{ github.repository }}:latest" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "is_tag=true" >> $GITHUB_OUTPUT
           else
-            echo "TAGS<<EOF" >> $GITHUB_OUTPUT
-            echo "robotocore/robotocore:latest" >> $GITHUB_OUTPUT
-            echo "ghcr.io/${{ github.repository }}:latest" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "is_tag=false" >> $GITHUB_OUTPUT
+            # Auto-version from date
+            BASE="$(date -u +%Y.%-m.%-d)"
+            # Check for existing tags today
+            EXISTING=$(git tag -l "v${BASE}" "v${BASE}.*" | wc -l | tr -d ' ')
+            if [ "$EXISTING" -eq 0 ]; then
+              VERSION="$BASE"
+            else
+              VERSION="${BASE}.${EXISTING}"
+            fi
           fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
+
+      # Update __version__ in source before building
+      - name: Set version in source
+        run: |
+          sed -i "s/__version__ = \".*\"/__version__ = \"${{ steps.version.outputs.VERSION }}\"/" \
+            src/robotocore/__init__.py
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -70,13 +76,25 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.TAGS }}
+          tags: |
+            robotocore/robotocore:${{ steps.version.outputs.VERSION }}
+            robotocore/robotocore:latest
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # GitHub Release (only for tagged versions)
+      # Tag the commit (only for auto-versioned main pushes)
+      - name: Create git tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          git tag "v${{ steps.version.outputs.VERSION }}"
+          git push origin "v${{ steps.version.outputs.VERSION }}"
+
+      # GitHub Release
       - name: Create GitHub Release
-        if: steps.tags.outputs.is_tag == 'true'
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: v${{ steps.version.outputs.VERSION }}
           generate_release_notes: true

@@ -243,7 +243,7 @@ When we discover a Moto bug or missing feature:
 - **Commit after every logical phase** — don't accumulate a massive diff. After writing tests: commit. After fixing lint: commit. After changing CI: commit. Each commit should be self-contained and green.
 - **Maximum ~200 lines between commits.** If you've written 200+ lines of new code, stop and commit before continuing.
 - **Run tests before committing.** `uv run pytest <changed files> -q --tb=short` to verify, then `git add` + `git commit`.
-- **Push after every commit.** Always `git push` immediately after committing. This keeps the remote up to date, triggers CI, and publishes a new `:latest` Docker image automatically. Every push to main is a release.
+- **Push after every commit.** Always `git push` immediately after committing. This keeps the remote up to date, triggers CI, and publishes a new Docker image automatically. Every push to main is a release — CI auto-tags with CalVer (`vYYYY.M.D`) and publishes versioned + `:latest` Docker images to Docker Hub and GHCR.
 - **Never stop to summarize** — if the plan has more steps, keep executing. A summary is only appropriate when the plan is fully complete.
 - **Prompt log**: Every commit includes a prompt log entry in `prompts/`. Follow the format in `prompts/PROMPTLOG.md` (the spec lives in this repo). One file per session phase, named `prompts/{timestamp}-{slug}.md` with YAML frontmatter. Include both human prompts and assistant reasoning for non-obvious decisions.
 

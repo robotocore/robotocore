@@ -2,7 +2,7 @@
         docker-build docker-run docker-compare parity-report gap-analysis clean \
         start stop status smoke help test-quality validate-tests lint-project \
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
-        test-iac-pulumi test-iac-serverless test-iac-sam
+        test-iac-pulumi test-iac-serverless test-iac-sam release
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
@@ -120,6 +120,19 @@ docker-run: docker-build ## Build and run Docker container on port 4566
 
 docker-compare: ## Run robotocore + LocalStack side-by-side for comparison
 	docker compose --profile localstack up
+
+## ── Release ─────────────────────────────────────────────────────────────────
+
+release: ## Tag and push a CalVer release (auto-publishes Docker images via CI)
+	@VERSION=$$(date -u +%Y.%-m.%-d) && \
+	EXISTING=$$(git tag -l "v$$VERSION" "v$$VERSION.*" | wc -l | tr -d ' ') && \
+	if [ "$$EXISTING" -gt 0 ]; then VERSION="$$VERSION.$$EXISTING"; fi && \
+	echo "Releasing v$$VERSION" && \
+	sed -i '' "s/__version__ = \".*\"/__version__ = \"$$VERSION\"/" src/robotocore/__init__.py && \
+	git add src/robotocore/__init__.py && \
+	git commit -m "Release v$$VERSION" && \
+	git tag "v$$VERSION" && \
+	git push origin main "v$$VERSION"
 
 ## ── Misc ─────────────────────────────────────────────────────────────────────
 
