@@ -667,3 +667,268 @@ class TestSWFWorkflowExecutions:
                 domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
             )
             swf.deprecate_domain(name=domain)
+
+    def test_count_closed_workflow_executions(self, swf):
+        """CountClosedWorkflowExecutions returns count of closed executions."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-cntclosed-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-cntclosed-{uid}")
+            resp = swf.count_closed_workflow_executions(
+                domain=domain,
+                startTimeFilter={"oldestDate": "2020-01-01T00:00:00Z"},
+            )
+            assert "count" in resp
+            assert resp["count"] >= 1
+            assert "truncated" in resp
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_count_open_workflow_executions(self, swf):
+        """CountOpenWorkflowExecutions returns count of open executions."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-cntopen-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            resp = swf.count_open_workflow_executions(
+                domain=domain,
+                startTimeFilter={"oldestDate": "2020-01-01T00:00:00Z"},
+            )
+            assert "count" in resp
+            assert resp["count"] >= 1
+            assert "truncated" in resp
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-cntopen-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_request_cancel_workflow_execution(self, swf):
+        """RequestCancelWorkflowExecution sends a cancel request."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-cancel-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            resp = swf.request_cancel_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-cancel-{uid}",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-cancel-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_signal_workflow_execution_without_input(self, swf):
+        """SignalWorkflowExecution works without the optional input parameter."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-sig2-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            resp = swf.signal_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-sig2-{uid}",
+                signalName="test-signal-no-input",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-sig2-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+
+class TestSWFTagging:
+    @pytest.fixture
+    def swf(self):
+        return make_client("swf")
+
+    def test_tag_and_list_tags_for_resource(self, swf):
+        """TagResource and ListTagsForResource work on domains."""
+        domain = f"tag-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            # Get domain ARN from describe
+            desc = swf.describe_domain(name=domain)
+            domain_arn = desc["domainInfo"]["arn"]
+
+            swf.tag_resource(
+                resourceArn=domain_arn,
+                tags=[
+                    {"key": "env", "value": "test"},
+                    {"key": "project", "value": "robotocore"},
+                ],
+            )
+            resp = swf.list_tags_for_resource(resourceArn=domain_arn)
+            assert "tags" in resp
+            tag_dict = {t["key"]: t["value"] for t in resp["tags"]}
+            assert tag_dict["env"] == "test"
+            assert tag_dict["project"] == "robotocore"
+        finally:
+            swf.deprecate_domain(name=domain)
+
+    def test_untag_resource(self, swf):
+        """UntagResource removes tags from a domain."""
+        domain = f"untag-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            desc = swf.describe_domain(name=domain)
+            domain_arn = desc["domainInfo"]["arn"]
+
+            swf.tag_resource(
+                resourceArn=domain_arn,
+                tags=[
+                    {"key": "env", "value": "test"},
+                    {"key": "project", "value": "robotocore"},
+                ],
+            )
+            swf.untag_resource(resourceArn=domain_arn, tagKeys=["env"])
+            resp = swf.list_tags_for_resource(resourceArn=domain_arn)
+            tag_keys = [t["key"] for t in resp["tags"]]
+            assert "env" not in tag_keys
+            assert "project" in tag_keys
+        finally:
+            swf.deprecate_domain(name=domain)
+
+
+class TestSWFDeleteTypes:
+    @pytest.fixture
+    def swf(self):
+        return make_client("swf")
+
+    def test_delete_activity_type(self, swf):
+        """DeleteActivityType removes a deprecated activity type."""
+        domain = f"delact-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            swf.register_activity_type(domain=domain, name="del-act", version="1.0")
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "del-act", "version": "1.0"}
+            )
+            resp = swf.delete_activity_type(
+                domain=domain, activityType={"name": "del-act", "version": "1.0"}
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Should not appear in deprecated list anymore
+            deprecated = swf.list_activity_types(domain=domain, registrationStatus="DEPRECATED")
+            names = [t["activityType"]["name"] for t in deprecated["typeInfos"]]
+            assert "del-act" not in names
+        finally:
+            swf.deprecate_domain(name=domain)
+
+    def test_delete_workflow_type(self, swf):
+        """DeleteWorkflowType removes a deprecated workflow type."""
+        domain = f"delwf-domain-{_uid()}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            swf.register_workflow_type(domain=domain, name="del-wf", version="1.0")
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "del-wf", "version": "1.0"}
+            )
+            resp = swf.delete_workflow_type(
+                domain=domain, workflowType={"name": "del-wf", "version": "1.0"}
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Should not appear in deprecated list anymore
+            deprecated = swf.list_workflow_types(domain=domain, registrationStatus="DEPRECATED")
+            names = [t["workflowType"]["name"] for t in deprecated["typeInfos"]]
+            assert "del-wf" not in names
+        finally:
+            swf.deprecate_domain(name=domain)
+
+
+class TestSWFRespondActivityTaskCanceled:
+    @pytest.fixture
+    def swf(self):
+        return make_client("swf")
+
+    def _setup_activity_task(self, swf):
+        """Set up domain, workflow, activity, start execution, schedule and poll activity task."""
+        uid = _uid()
+        domain = f"cancel-domain-{uid}"
+        task_list = f"cancel-list-{uid}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        swf.register_workflow_type(
+            domain=domain,
+            name="cancel-wf",
+            version="1.0",
+            defaultExecutionStartToCloseTimeout="3600",
+            defaultTaskStartToCloseTimeout="300",
+            defaultTaskList={"name": task_list},
+            defaultChildPolicy="TERMINATE",
+        )
+        swf.register_activity_type(
+            domain=domain,
+            name="cancel-activity",
+            version="1.0",
+            defaultTaskStartToCloseTimeout="300",
+            defaultTaskHeartbeatTimeout="60",
+            defaultTaskList={"name": task_list},
+            defaultTaskScheduleToStartTimeout="300",
+            defaultTaskScheduleToCloseTimeout="600",
+        )
+        swf.start_workflow_execution(
+            domain=domain,
+            workflowId=f"wf-{uid}",
+            workflowType={"name": "cancel-wf", "version": "1.0"},
+            taskList={"name": task_list},
+        )
+        decision = swf.poll_for_decision_task(domain=domain, taskList={"name": task_list})
+        swf.respond_decision_task_completed(
+            taskToken=decision["taskToken"],
+            decisions=[
+                {
+                    "decisionType": "ScheduleActivityTask",
+                    "scheduleActivityTaskDecisionAttributes": {
+                        "activityType": {"name": "cancel-activity", "version": "1.0"},
+                        "activityId": f"activity-{uid}",
+                        "taskList": {"name": task_list},
+                    },
+                }
+            ],
+        )
+        activity = swf.poll_for_activity_task(domain=domain, taskList={"name": task_list})
+        return domain, uid, task_list, activity["taskToken"]
+
+    def test_respond_activity_task_canceled(self, swf):
+        """RespondActivityTaskCanceled marks an activity task as canceled."""
+        domain, uid, task_list, task_token = self._setup_activity_task(swf)
+        try:
+            resp = swf.respond_activity_task_canceled(
+                taskToken=task_token, details="canceled by test"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-{uid}")
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "cancel-activity", "version": "1.0"}
+            )
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "cancel-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)

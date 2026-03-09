@@ -620,6 +620,28 @@ class TestSTSExtended:
         finally:
             iam.delete_role(RoleName=role_name)
 
+    def test_assume_root(self, sts):
+        """AssumeRoot returns temporary credentials for a target principal."""
+        response = sts.assume_root(
+            TargetPrincipal="arn:aws:organizations::123456789012:account/o-test/123456789012",
+            TaskPolicyArn={"arn": "arn:aws:iam::aws:policy/root-task/IAMAuditRootUserCredentials"},
+        )
+        assert "Credentials" in response
+        creds = response["Credentials"]
+        assert "AccessKeyId" in creds
+        assert "SecretAccessKey" in creds
+        assert "SessionToken" in creds
+
+    def test_get_delegated_access_token(self, sts):
+        """GetDelegatedAccessToken returns temporary credentials."""
+        response = sts.get_delegated_access_token(TradeInToken="dummy-trade-in-token")
+        assert "Credentials" in response
+        creds = response["Credentials"]
+        assert "AccessKeyId" in creds
+        assert "SecretAccessKey" in creds
+        assert "SessionToken" in creds
+        assert "Expiration" in creds
+
     def test_assume_role_with_saml_with_duration(self, sts):
         """AssumeRoleWithSAML with DurationSeconds."""
         import uuid

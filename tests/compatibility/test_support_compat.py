@@ -143,3 +143,68 @@ class TestSupportAutoCoverage:
         check_id = checks_resp["checks"][0]["id"]
         resp = client.describe_trusted_advisor_check_summaries(checkIds=[check_id])
         assert "summaries" in resp
+
+
+class TestSupportNewOperations:
+    """Tests for newly implemented support operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("support")
+
+    def test_describe_supported_languages(self, client):
+        """DescribeSupportedLanguages returns a list of supported languages."""
+        resp = client.describe_supported_languages(
+            issueType="customer-service",
+            serviceCode="general-info",
+            categoryCode="using-aws",
+        )
+        assert "supportedLanguages" in resp
+        langs = resp["supportedLanguages"]
+        assert len(langs) > 0
+        codes = [lang["code"] for lang in langs]
+        assert "en" in codes
+
+    def test_describe_create_case_options(self, client):
+        """DescribeCreateCaseOptions returns language availability."""
+        resp = client.describe_create_case_options(
+            issueType="customer-service",
+            serviceCode="general-info",
+            categoryCode="using-aws",
+            language="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "languageAvailability" in resp
+
+    def test_add_attachments_to_set(self, client):
+        """AddAttachmentsToSet creates an attachment set and returns set ID."""
+        resp = client.add_attachments_to_set(
+            attachments=[{"fileName": "test.txt", "data": b"hello world"}]
+        )
+        assert "attachmentSetId" in resp
+        assert len(resp["attachmentSetId"]) > 0
+        assert "expiryTime" in resp
+
+    def test_add_attachments_to_existing_set(self, client):
+        """AddAttachmentsToSet can add to an existing set."""
+        resp1 = client.add_attachments_to_set(
+            attachments=[{"fileName": "file1.txt", "data": b"first file"}]
+        )
+        set_id = resp1["attachmentSetId"]
+        resp2 = client.add_attachments_to_set(
+            attachmentSetId=set_id,
+            attachments=[{"fileName": "file2.txt", "data": b"second file"}],
+        )
+        assert resp2["attachmentSetId"] == set_id
+
+    def test_describe_trusted_advisor_check_refresh_statuses(self, client):
+        """DescribeTrustedAdvisorCheckRefreshStatuses returns statuses for check IDs."""
+        checks_resp = client.describe_trusted_advisor_checks(language="en")
+        check_ids = [c["id"] for c in checks_resp["checks"][:2]]
+        resp = client.describe_trusted_advisor_check_refresh_statuses(checkIds=check_ids)
+        assert "statuses" in resp
+        assert len(resp["statuses"]) == len(check_ids)
+        for status in resp["statuses"]:
+            assert "checkId" in status
+            assert "status" in status
+            assert status["checkId"] in check_ids
