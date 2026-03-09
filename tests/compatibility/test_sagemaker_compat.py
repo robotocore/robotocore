@@ -3954,6 +3954,580 @@ class TestSageMakerBatchOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestSageMakerActionCRUD:
+    def test_create_action(self, sagemaker):
+        name = _uid("action")
+        resp = sagemaker.create_action(
+            ActionName=name,
+            Source={"SourceUri": "s3://my-bucket/my-source"},
+            ActionType="ModelDeployment",
+        )
+        assert "ActionArn" in resp
+        sagemaker.delete_action(ActionName=name)
+
+    def test_delete_action(self, sagemaker):
+        name = _uid("action")
+        sagemaker.create_action(
+            ActionName=name,
+            Source={"SourceUri": "s3://my-bucket/del-source"},
+            ActionType="ModelDeployment",
+        )
+        resp = sagemaker.delete_action(ActionName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerAppImageConfigCRUD:
+    def test_create_app_image_config(self, sagemaker):
+        name = _uid("appimg")
+        resp = sagemaker.create_app_image_config(AppImageConfigName=name)
+        assert "AppImageConfigArn" in resp
+        sagemaker.delete_app_image_config(AppImageConfigName=name)
+
+    def test_delete_app_image_config(self, sagemaker):
+        name = _uid("appimg")
+        sagemaker.create_app_image_config(AppImageConfigName=name)
+        resp = sagemaker.delete_app_image_config(AppImageConfigName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerArtifactCRUD:
+    def test_create_artifact(self, sagemaker):
+        resp = sagemaker.create_artifact(
+            Source={"SourceUri": f"s3://my-bucket/{_uid('artifact')}"},
+            ArtifactType="Dataset",
+        )
+        assert "ArtifactArn" in resp
+        sagemaker.delete_artifact(ArtifactArn=resp["ArtifactArn"])
+
+    def test_delete_artifact(self, sagemaker):
+        resp = sagemaker.create_artifact(
+            Source={"SourceUri": f"s3://my-bucket/{_uid('art-del')}"},
+            ArtifactType="Dataset",
+        )
+        del_resp = sagemaker.delete_artifact(ArtifactArn=resp["ArtifactArn"])
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerContextCRUD:
+    def test_create_context(self, sagemaker):
+        name = _uid("ctx")
+        resp = sagemaker.create_context(
+            ContextName=name,
+            Source={"SourceUri": "s3://my-bucket/my-ctx-source"},
+            ContextType="Endpoint",
+        )
+        assert "ContextArn" in resp
+        sagemaker.delete_context(ContextName=name)
+
+    def test_delete_context(self, sagemaker):
+        name = _uid("ctx")
+        sagemaker.create_context(
+            ContextName=name,
+            Source={"SourceUri": "s3://my-bucket/del-ctx"},
+            ContextType="Endpoint",
+        )
+        resp = sagemaker.delete_context(ContextName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerCodeRepositoryCRUD:
+    def test_create_code_repository(self, sagemaker):
+        name = _uid("repo")
+        resp = sagemaker.create_code_repository(
+            CodeRepositoryName=name,
+            GitConfig={"RepositoryUrl": "https://github.com/example/repo.git"},
+        )
+        assert "CodeRepositoryArn" in resp
+        sagemaker.delete_code_repository(CodeRepositoryName=name)
+
+    def test_delete_code_repository(self, sagemaker):
+        name = _uid("repo")
+        sagemaker.create_code_repository(
+            CodeRepositoryName=name,
+            GitConfig={"RepositoryUrl": "https://github.com/example/del-repo.git"},
+        )
+        resp = sagemaker.delete_code_repository(CodeRepositoryName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerImageCRUD:
+    def test_create_image(self, sagemaker):
+        name = _uid("img")
+        resp = sagemaker.create_image(
+            ImageName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "ImageArn" in resp
+        sagemaker.delete_image(ImageName=name)
+
+    def test_delete_image(self, sagemaker):
+        name = _uid("img")
+        sagemaker.create_image(
+            ImageName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        resp = sagemaker.delete_image(ImageName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerProjectCRUD:
+    def test_create_project(self, sagemaker):
+        name = _uid("proj")
+        resp = sagemaker.create_project(
+            ProjectName=name,
+            ServiceCatalogProvisioningDetails={"ProductId": "prod-abc123"},
+        )
+        assert "ProjectArn" in resp
+        sagemaker.delete_project(ProjectName=name)
+
+    def test_delete_project(self, sagemaker):
+        name = _uid("proj")
+        sagemaker.create_project(
+            ProjectName=name,
+            ServiceCatalogProvisioningDetails={"ProductId": "prod-abc123"},
+        )
+        resp = sagemaker.delete_project(ProjectName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerWorkforceCRUD:
+    def test_create_workforce(self, sagemaker):
+        name = _uid("wf")
+        resp = sagemaker.create_workforce(WorkforceName=name)
+        assert "WorkforceArn" in resp
+        sagemaker.delete_workforce(WorkforceName=name)
+
+    def test_delete_workforce(self, sagemaker):
+        name = _uid("wf")
+        sagemaker.create_workforce(WorkforceName=name)
+        resp = sagemaker.delete_workforce(WorkforceName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerStudioLifecycleConfigCRUD:
+    def test_create_studio_lifecycle_config(self, sagemaker):
+        name = _uid("slc")
+        resp = sagemaker.create_studio_lifecycle_config(
+            StudioLifecycleConfigName=name,
+            StudioLifecycleConfigContent="echo hello",
+            StudioLifecycleConfigAppType="JupyterServer",
+        )
+        assert "StudioLifecycleConfigArn" in resp
+        sagemaker.delete_studio_lifecycle_config(StudioLifecycleConfigName=name)
+
+    def test_delete_studio_lifecycle_config(self, sagemaker):
+        name = _uid("slc")
+        sagemaker.create_studio_lifecycle_config(
+            StudioLifecycleConfigName=name,
+            StudioLifecycleConfigContent="echo hello",
+            StudioLifecycleConfigAppType="JupyterServer",
+        )
+        resp = sagemaker.delete_studio_lifecycle_config(StudioLifecycleConfigName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeviceFleetCRUD:
+    def test_create_device_fleet(self, sagemaker):
+        name = _uid("df")
+        resp = sagemaker.create_device_fleet(
+            DeviceFleetName=name,
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/device-output"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_device_fleet(DeviceFleetName=name)
+
+    def test_delete_device_fleet(self, sagemaker):
+        name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=name,
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/device-output"},
+        )
+        resp = sagemaker.delete_device_fleet(DeviceFleetName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerHubCRUD:
+    def test_create_hub(self, sagemaker):
+        name = _uid("hub")
+        resp = sagemaker.create_hub(
+            HubName=name,
+            HubDescription="Test hub",
+        )
+        assert "HubArn" in resp
+        sagemaker.delete_hub(HubName=name)
+
+    def test_delete_hub(self, sagemaker):
+        name = _uid("hub")
+        sagemaker.create_hub(HubName=name, HubDescription="Del hub")
+        resp = sagemaker.delete_hub(HubName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerHumanTaskUiCRUD:
+    def test_create_human_task_ui(self, sagemaker):
+        name = _uid("htui")
+        resp = sagemaker.create_human_task_ui(
+            HumanTaskUiName=name,
+            UiTemplate={"Content": "<html>task template</html>"},
+        )
+        assert "HumanTaskUiArn" in resp
+        sagemaker.delete_human_task_ui(HumanTaskUiName=name)
+
+    def test_delete_human_task_ui(self, sagemaker):
+        name = _uid("htui")
+        sagemaker.create_human_task_ui(
+            HumanTaskUiName=name,
+            UiTemplate={"Content": "<html>del template</html>"},
+        )
+        resp = sagemaker.delete_human_task_ui(HumanTaskUiName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerFlowDefinitionCRUD:
+    def test_create_flow_definition(self, sagemaker):
+        name = _uid("flow")
+        resp = sagemaker.create_flow_definition(
+            FlowDefinitionName=name,
+            OutputConfig={"S3OutputPath": "s3://my-bucket/flow-output"},
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            HumanLoopConfig={
+                "WorkteamArn": "arn:aws:sagemaker:us-east-1:123456789012:workteam/default/test",
+                "HumanTaskUiArn": "arn:aws:sagemaker:us-east-1:123456789012:human-task-ui/test",
+                "TaskTitle": "Test Task",
+                "TaskDescription": "Test",
+                "TaskCount": 1,
+            },
+        )
+        assert "FlowDefinitionArn" in resp
+        sagemaker.delete_flow_definition(FlowDefinitionName=name)
+
+    def test_delete_flow_definition(self, sagemaker):
+        name = _uid("flow")
+        sagemaker.create_flow_definition(
+            FlowDefinitionName=name,
+            OutputConfig={"S3OutputPath": "s3://my-bucket/flow-output"},
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            HumanLoopConfig={
+                "WorkteamArn": "arn:aws:sagemaker:us-east-1:123456789012:workteam/default/test",
+                "HumanTaskUiArn": "arn:aws:sagemaker:us-east-1:123456789012:human-task-ui/test",
+                "TaskTitle": "Test Task",
+                "TaskDescription": "Test",
+                "TaskCount": 1,
+            },
+        )
+        resp = sagemaker.delete_flow_definition(FlowDefinitionName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerMonitoringScheduleCRUD:
+    def test_create_monitoring_schedule(self, sagemaker):
+        name = _uid("ms")
+        resp = sagemaker.create_monitoring_schedule(
+            MonitoringScheduleName=name,
+            MonitoringScheduleConfig={
+                "MonitoringJobDefinition": {
+                    "MonitoringInputs": [
+                        {
+                            "EndpointInput": {
+                                "EndpointName": "fake-endpoint",
+                                "LocalPath": "/opt/ml/input",
+                            }
+                        }
+                    ],
+                    "MonitoringOutputConfig": {
+                        "MonitoringOutputs": [
+                            {
+                                "S3Output": {
+                                    "S3Uri": "s3://my-bucket/mon-output",
+                                    "LocalPath": "/opt/ml/output",
+                                }
+                            }
+                        ]
+                    },
+                    "MonitoringResources": {
+                        "ClusterConfig": {
+                            "InstanceCount": 1,
+                            "InstanceType": "ml.m4.xlarge",
+                            "VolumeSizeInGB": 10,
+                        }
+                    },
+                    "MonitoringAppSpecification": {
+                        "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+                    },
+                    "RoleArn": "arn:aws:iam::123456789012:role/SageMakerRole",
+                }
+            },
+        )
+        assert "MonitoringScheduleArn" in resp
+        sagemaker.delete_monitoring_schedule(MonitoringScheduleName=name)
+
+    def test_delete_monitoring_schedule(self, sagemaker):
+        name = _uid("ms")
+        sagemaker.create_monitoring_schedule(
+            MonitoringScheduleName=name,
+            MonitoringScheduleConfig={
+                "MonitoringJobDefinition": {
+                    "MonitoringInputs": [
+                        {
+                            "EndpointInput": {
+                                "EndpointName": "fake-endpoint",
+                                "LocalPath": "/opt/ml/input",
+                            }
+                        }
+                    ],
+                    "MonitoringOutputConfig": {
+                        "MonitoringOutputs": [
+                            {
+                                "S3Output": {
+                                    "S3Uri": "s3://my-bucket/mon-output",
+                                    "LocalPath": "/opt/ml/output",
+                                }
+                            }
+                        ]
+                    },
+                    "MonitoringResources": {
+                        "ClusterConfig": {
+                            "InstanceCount": 1,
+                            "InstanceType": "ml.m4.xlarge",
+                            "VolumeSizeInGB": 10,
+                        }
+                    },
+                    "MonitoringAppSpecification": {
+                        "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+                    },
+                    "RoleArn": "arn:aws:iam::123456789012:role/SageMakerRole",
+                }
+            },
+        )
+        resp = sagemaker.delete_monitoring_schedule(MonitoringScheduleName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteAlgorithm:
+    def test_delete_algorithm_no_error(self, sagemaker):
+        """DeleteAlgorithm with fake name should not raise (server returns 200)."""
+        resp = sagemaker.delete_algorithm(AlgorithmName="fake-algo-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteAssociation:
+    def test_delete_association(self, sagemaker):
+        """Create two artifacts, associate them, then delete the association."""
+        src = sagemaker.create_artifact(
+            Source={"SourceUri": f"s3://my-bucket/{_uid('assoc-src')}"},
+            ArtifactType="Dataset",
+        )
+        dst = sagemaker.create_artifact(
+            Source={"SourceUri": f"s3://my-bucket/{_uid('assoc-dst')}"},
+            ArtifactType="Model",
+        )
+        sagemaker.add_association(
+            SourceArn=src["ArtifactArn"],
+            DestinationArn=dst["ArtifactArn"],
+        )
+        resp = sagemaker.delete_association(
+            SourceArn=src["ArtifactArn"],
+            DestinationArn=dst["ArtifactArn"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_artifact(ArtifactArn=src["ArtifactArn"])
+        sagemaker.delete_artifact(ArtifactArn=dst["ArtifactArn"])
+
+
+class TestSageMakerDeleteFeatureGroup:
+    def test_delete_feature_group_no_error(self, sagemaker):
+        """DeleteFeatureGroup with fake name returns 200."""
+        resp = sagemaker.delete_feature_group(FeatureGroupName="fake-fg-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteModelPackage:
+    def test_delete_model_package(self, sagemaker):
+        grp_name = _uid("mpg")
+        sagemaker.create_model_package_group(ModelPackageGroupName=grp_name)
+        pkg = sagemaker.create_model_package(ModelPackageGroupName=grp_name)
+        resp = sagemaker.delete_model_package(ModelPackageName=pkg["ModelPackageArn"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_model_package_group(ModelPackageGroupName=grp_name)
+
+
+class TestSageMakerDeleteModelPackageGroup:
+    def test_delete_model_package_group(self, sagemaker):
+        name = _uid("mpg")
+        sagemaker.create_model_package_group(ModelPackageGroupName=name)
+        resp = sagemaker.delete_model_package_group(ModelPackageGroupName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteModelPackageGroupPolicy:
+    def test_delete_model_package_group_policy(self, sagemaker):
+        name = _uid("mpgp")
+        sagemaker.create_model_package_group(ModelPackageGroupName=name)
+        try:
+            resp = sagemaker.delete_model_package_group_policy(ModelPackageGroupName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_model_package_group(ModelPackageGroupName=name)
+
+
+class TestSageMakerDeleteInferenceExperiment:
+    def test_delete_inference_experiment_no_error(self, sagemaker):
+        """DeleteInferenceExperiment with fake name returns 200."""
+        resp = sagemaker.delete_inference_experiment(Name="fake-ie-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteProcessingJob:
+    def test_delete_processing_job_no_error(self, sagemaker):
+        """DeleteProcessingJob with fake name returns 200."""
+        resp = sagemaker.delete_processing_job(ProcessingJobName="fake-pj-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteTrainingJob:
+    def test_delete_training_job_no_error(self, sagemaker):
+        """DeleteTrainingJob with fake name returns 200."""
+        resp = sagemaker.delete_training_job(TrainingJobName="fake-tj-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteWorkteam:
+    def test_delete_workteam(self, sagemaker):
+        resp = sagemaker.delete_workteam(WorkteamName="fake-wt-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerEdgeDeploymentPlanCRUD:
+    def test_create_edge_deployment_plan(self, sagemaker):
+        name = _uid("edp")
+        df_name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=df_name,
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/device-output"},
+        )
+        try:
+            resp = sagemaker.create_edge_deployment_plan(
+                EdgeDeploymentPlanName=name,
+                DeviceFleetName=df_name,
+                ModelConfigs=[
+                    {
+                        "ModelHandle": "model-handle",
+                        "EdgePackagingJobName": "fake-epj",
+                    }
+                ],
+            )
+            assert "EdgeDeploymentPlanArn" in resp
+            sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=name)
+        finally:
+            sagemaker.delete_device_fleet(DeviceFleetName=df_name)
+
+    def test_delete_edge_deployment_plan(self, sagemaker):
+        name = _uid("edp")
+        df_name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=df_name,
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/device-output"},
+        )
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=name,
+            DeviceFleetName=df_name,
+            ModelConfigs=[
+                {
+                    "ModelHandle": "model-handle",
+                    "EdgePackagingJobName": "fake-epj",
+                }
+            ],
+        )
+        resp = sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_device_fleet(DeviceFleetName=df_name)
+
+
+class TestSageMakerEdgeDeploymentStageCRUD:
+    def test_create_edge_deployment_stage(self, sagemaker):
+        edp_name = _uid("edp")
+        df_name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=df_name,
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/device-output"},
+        )
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=edp_name,
+            DeviceFleetName=df_name,
+            ModelConfigs=[
+                {
+                    "ModelHandle": "model-handle",
+                    "EdgePackagingJobName": "fake-epj",
+                }
+            ],
+        )
+        try:
+            resp = sagemaker.create_edge_deployment_stage(
+                EdgeDeploymentPlanName=edp_name,
+                Stages=[
+                    {
+                        "StageName": "stage1",
+                        "DeviceSelectionConfig": {
+                            "DeviceSubsetType": "PERCENTAGE",
+                            "Percentage": 100,
+                        },
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=edp_name)
+            sagemaker.delete_device_fleet(DeviceFleetName=df_name)
+
+    def test_delete_edge_deployment_stage(self, sagemaker):
+        edp_name = _uid("edp")
+        df_name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=df_name,
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/device-output"},
+        )
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=edp_name,
+            DeviceFleetName=df_name,
+            ModelConfigs=[
+                {
+                    "ModelHandle": "model-handle",
+                    "EdgePackagingJobName": "fake-epj",
+                }
+            ],
+            Stages=[
+                {
+                    "StageName": "stage1",
+                    "DeviceSelectionConfig": {
+                        "DeviceSubsetType": "PERCENTAGE",
+                        "Percentage": 100,
+                    },
+                }
+            ],
+        )
+        resp = sagemaker.delete_edge_deployment_stage(
+            EdgeDeploymentPlanName=edp_name,
+            StageName="stage1",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=edp_name)
+        sagemaker.delete_device_fleet(DeviceFleetName=df_name)
+
+
+class TestSageMakerEdgePackagingJobCRUD:
+    def test_create_edge_packaging_job(self, sagemaker):
+        name = _uid("epj")
+        resp = sagemaker.create_edge_packaging_job(
+            EdgePackagingJobName=name,
+            CompilationJobName="fake-compilation-job",
+            ModelName="fake-model",
+            ModelVersion="1.0",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/edge-output"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestSageMakerMiscOperations:
     """Tests for Send*, Add*, Search*, Put*, Register*, Deregister*, Enable*, Disable*."""
 
@@ -4021,3 +4595,379 @@ class TestSageMakerMiscOperations:
         )
         assert "TrainingPlanOfferings" in resp
         assert isinstance(resp["TrainingPlanOfferings"], list)
+
+
+class TestSageMakerImageVersionCRUD:
+    def test_create_image_version(self, sagemaker):
+        img_name = _uid("img")
+        sagemaker.create_image(
+            ImageName=img_name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        try:
+            resp = sagemaker.create_image_version(
+                BaseImage="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest",
+                ImageName=img_name,
+            )
+            assert "ImageVersionArn" in resp
+        finally:
+            sagemaker.delete_image(ImageName=img_name)
+
+    def test_delete_image_version(self, sagemaker):
+        img_name = _uid("img")
+        sagemaker.create_image(
+            ImageName=img_name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        sagemaker.create_image_version(
+            BaseImage="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest",
+            ImageName=img_name,
+        )
+        resp = sagemaker.delete_image_version(ImageName=img_name, Version=1)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_image(ImageName=img_name)
+
+
+class TestSageMakerPresignedNotebookInstanceUrl:
+    def test_create_presigned_notebook_instance_url(self, sagemaker):
+        name = _uid("nb")
+        sagemaker.create_notebook_instance(
+            NotebookInstanceName=name,
+            InstanceType="ml.t2.medium",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        try:
+            resp = sagemaker.create_presigned_notebook_instance_url(NotebookInstanceName=name)
+            assert "AuthorizedUrl" in resp
+        finally:
+            sagemaker.stop_notebook_instance(NotebookInstanceName=name)
+            sagemaker.delete_notebook_instance(NotebookInstanceName=name)
+
+
+class TestSageMakerMlflowTrackingServerCRUD:
+    def test_create_mlflow_tracking_server(self, sagemaker):
+        name = _uid("mlf")
+        resp = sagemaker.create_mlflow_tracking_server(
+            TrackingServerName=name,
+            ArtifactStoreUri="s3://my-bucket/mlflow",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "TrackingServerArn" in resp
+        sagemaker.delete_mlflow_tracking_server(TrackingServerName=name)
+
+    def test_delete_mlflow_tracking_server(self, sagemaker):
+        name = _uid("mlf")
+        sagemaker.create_mlflow_tracking_server(
+            TrackingServerName=name,
+            ArtifactStoreUri="s3://my-bucket/mlflow",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        resp = sagemaker.delete_mlflow_tracking_server(TrackingServerName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteInferenceComponent:
+    def test_delete_inference_component_no_error(self, sagemaker):
+        resp = sagemaker.delete_inference_component(InferenceComponentName="fake-ic-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteOptimizationJob:
+    def test_delete_optimization_job_no_error(self, sagemaker):
+        resp = sagemaker.delete_optimization_job(OptimizationJobName="fake-oj-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteHubContent:
+    def test_delete_hub_content(self, sagemaker):
+        name = _uid("hub")
+        sagemaker.create_hub(HubName=name, HubDescription="Test hub for content")
+        try:
+            resp = sagemaker.delete_hub_content(
+                HubName=name,
+                HubContentName="fake-content",
+                HubContentType="Model",
+                HubContentVersion="1.0.0",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_hub(HubName=name)
+
+
+class TestSageMakerDeleteHubContentReference:
+    def test_delete_hub_content_reference(self, sagemaker):
+        name = _uid("hub")
+        sagemaker.create_hub(HubName=name, HubDescription="Test hub for ref")
+        try:
+            resp = sagemaker.delete_hub_content_reference(
+                HubName=name,
+                HubContentName="fake-ref",
+                HubContentType="Model",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sagemaker.delete_hub(HubName=name)
+
+
+class TestSageMakerUserProfileCRUD:
+    def test_create_user_profile(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        try:
+            up_name = _uid("up")
+            resp = sagemaker.create_user_profile(
+                DomainId=domain_id,
+                UserProfileName=up_name,
+            )
+            assert "UserProfileArn" in resp
+            sagemaker.delete_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        finally:
+            sagemaker.delete_domain(DomainId=domain_id)
+
+    def test_delete_user_profile(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        up_name = _uid("up")
+        sagemaker.create_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        resp = sagemaker.delete_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_domain(DomainId=domain_id)
+
+
+class TestSageMakerSpaceCRUD:
+    def test_create_space(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        try:
+            sp_name = _uid("sp")
+            resp = sagemaker.create_space(
+                DomainId=domain_id,
+                SpaceName=sp_name,
+            )
+            assert "SpaceArn" in resp
+            sagemaker.delete_space(DomainId=domain_id, SpaceName=sp_name)
+        finally:
+            sagemaker.delete_domain(DomainId=domain_id)
+
+    def test_delete_space(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        sp_name = _uid("sp")
+        sagemaker.create_space(DomainId=domain_id, SpaceName=sp_name)
+        resp = sagemaker.delete_space(DomainId=domain_id, SpaceName=sp_name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_domain(DomainId=domain_id)
+
+
+class TestSageMakerAppCRUD:
+    def test_create_app(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        up_name = _uid("up")
+        sagemaker.create_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        try:
+            app_name = _uid("app")
+            resp = sagemaker.create_app(
+                DomainId=domain_id,
+                UserProfileName=up_name,
+                AppType="JupyterServer",
+                AppName=app_name,
+            )
+            assert "AppArn" in resp
+            sagemaker.delete_app(
+                DomainId=domain_id,
+                UserProfileName=up_name,
+                AppType="JupyterServer",
+                AppName=app_name,
+            )
+        finally:
+            sagemaker.delete_user_profile(DomainId=domain_id, UserProfileName=up_name)
+            sagemaker.delete_domain(DomainId=domain_id)
+
+    def test_delete_app(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        up_name = _uid("up")
+        sagemaker.create_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        app_name = _uid("app")
+        sagemaker.create_app(
+            DomainId=domain_id,
+            UserProfileName=up_name,
+            AppType="JupyterServer",
+            AppName=app_name,
+        )
+        resp = sagemaker.delete_app(
+            DomainId=domain_id,
+            UserProfileName=up_name,
+            AppType="JupyterServer",
+            AppName=app_name,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sagemaker.delete_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        sagemaker.delete_domain(DomainId=domain_id)
+
+
+class TestSageMakerPresignedDomainUrl:
+    def test_create_presigned_domain_url(self, sagemaker):
+        domain_name = _uid("dom")
+        dom = sagemaker.create_domain(
+            DomainName=domain_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = dom["DomainArn"].split("/")[-1]
+        up_name = _uid("up")
+        sagemaker.create_user_profile(DomainId=domain_id, UserProfileName=up_name)
+        try:
+            resp = sagemaker.create_presigned_domain_url(
+                DomainId=domain_id,
+                UserProfileName=up_name,
+            )
+            assert "AuthorizedUrl" in resp
+        finally:
+            sagemaker.delete_user_profile(DomainId=domain_id, UserProfileName=up_name)
+            sagemaker.delete_domain(DomainId=domain_id)
+
+
+class TestSageMakerModelCardExportJobCRUD:
+    def test_create_model_card_export_job(self, sagemaker):
+        card_name = _uid("mc")
+        sagemaker.create_model_card(
+            ModelCardName=card_name,
+            Content='{"model_overview": {}}',
+            ModelCardStatus="Draft",
+        )
+        try:
+            resp = sagemaker.create_model_card_export_job(
+                ModelCardName=card_name,
+                ModelCardExportJobName=_uid("mcxj"),
+                OutputConfig={"S3OutputPath": "s3://my-bucket/mc-export"},
+            )
+            assert "ModelCardExportJobArn" in resp
+        finally:
+            sagemaker.delete_model_card(ModelCardName=card_name)
+
+
+class TestSageMakerInferenceRecommendationsJobCRUD:
+    def test_create_inference_recommendations_job(self, sagemaker):
+        name = _uid("irj")
+        resp = sagemaker.create_inference_recommendations_job(
+            JobName=name,
+            JobType="Default",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            InputConfig={
+                "ModelPackageVersionArn": (
+                    "arn:aws:sagemaker:us-east-1:123456789012:model-package/fake-pkg/1"
+                ),
+            },
+        )
+        assert "JobArn" in resp
+
+
+class TestSageMakerOptimizationJobCRUD:
+    def test_create_optimization_job(self, sagemaker):
+        name = _uid("oj")
+        resp = sagemaker.create_optimization_job(
+            OptimizationJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            ModelSource={
+                "S3": {"S3Uri": "s3://my-bucket/model.tar.gz"},
+            },
+            DeploymentInstanceType="ml.g5.xlarge",
+            OptimizationConfigs=[
+                {"ModelQuantizationConfig": {"Image": "fake-image"}},
+            ],
+            OutputConfig={"S3OutputLocation": "s3://my-bucket/opt-output"},
+            StoppingCondition={"MaxRuntimeInSeconds": 3600},
+        )
+        assert "OptimizationJobArn" in resp
+        sagemaker.delete_optimization_job(OptimizationJobName=name)
+
+
+class TestSageMakerInferenceComponentCRUD:
+    def test_create_inference_component(self, sagemaker):
+        # Need an endpoint config + endpoint first
+        model_name = _uid("model")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        epc_name = _uid("epc")
+        sagemaker.create_endpoint_config(
+            EndpointConfigName=epc_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InstanceType": "ml.m4.xlarge",
+                    "InitialInstanceCount": 1,
+                }
+            ],
+        )
+        ep_name = _uid("ep")
+        sagemaker.create_endpoint(EndpointName=ep_name, EndpointConfigName=epc_name)
+        try:
+            ic_name = _uid("ic")
+            resp = sagemaker.create_inference_component(
+                InferenceComponentName=ic_name,
+                EndpointName=ep_name,
+                VariantName="v1",
+                Specification={
+                    "ModelName": model_name,
+                    "ComputeResourceRequirements": {"MinMemoryRequiredInMb": 512},
+                },
+                RuntimeConfig={"CopyCount": 1},
+            )
+            assert "InferenceComponentArn" in resp
+            sagemaker.delete_inference_component(InferenceComponentName=ic_name)
+        finally:
+            sagemaker.delete_endpoint(EndpointName=ep_name)
+            sagemaker.delete_endpoint_config(EndpointConfigName=epc_name)
+            sagemaker.delete_model(ModelName=model_name)
