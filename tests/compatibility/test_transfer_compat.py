@@ -1232,3 +1232,247 @@ class TestTransferTagOperations:
             assert tags_resp["Tags"] == []
         finally:
             transfer.delete_server(ServerId=server_id)
+
+
+class TestTransferAccessOperations:
+    """Tests for Transfer Family access CRUD operations."""
+
+    def test_create_and_describe_access(self, transfer):
+        """CreateAccess/DescribeAccess with external ID."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        ext_id = "S-1-1-12-1234567890-123456789-123456789-1234"
+        try:
+            create_resp = transfer.create_access(
+                ServerId=server_id,
+                ExternalId=ext_id,
+                Role="arn:aws:iam::123456789012:role/transfer-role",
+                HomeDirectory="/bucket",
+            )
+            assert create_resp["ServerId"] == server_id
+            assert create_resp["ExternalId"] == ext_id
+
+            desc = transfer.describe_access(ServerId=server_id, ExternalId=ext_id)
+            assert desc["ServerId"] == server_id
+            access = desc["Access"]
+            assert access["ExternalId"] == ext_id
+            assert access["Role"] == "arn:aws:iam::123456789012:role/transfer-role"
+            assert access["HomeDirectory"] == "/bucket"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_accesses_contains_created(self, transfer):
+        """ListAccesses includes a newly created access."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        ext_id = "S-1-1-12-1111111111-222222222-333333333-4444"
+        try:
+            transfer.create_access(
+                ServerId=server_id,
+                ExternalId=ext_id,
+                Role="arn:aws:iam::123456789012:role/r",
+                HomeDirectory="/bucket",
+            )
+            listed = transfer.list_accesses(ServerId=server_id)
+            assert "Accesses" in listed
+            ext_ids = [a["ExternalId"] for a in listed["Accesses"]]
+            assert ext_id in ext_ids
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_accesses_empty(self, transfer):
+        """ListAccesses on server with no accesses returns empty list."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            listed = transfer.list_accesses(ServerId=server_id)
+            assert listed["Accesses"] == []
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+
+class TestTransferAgreementOperations:
+    """Tests for Transfer Family agreement CRUD operations."""
+
+    def test_create_and_describe_agreement(self, transfer):
+        """CreateAgreement/DescribeAgreement full lifecycle."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        local = transfer.create_profile(As2Id=_unique("local"), ProfileType="LOCAL")
+        partner = transfer.create_profile(As2Id=_unique("partner"), ProfileType="PARTNER")
+        try:
+            ag_resp = transfer.create_agreement(
+                ServerId=server_id,
+                LocalProfileId=local["ProfileId"],
+                PartnerProfileId=partner["ProfileId"],
+                BaseDirectory="/bucket",
+                AccessRole="arn:aws:iam::123456789012:role/transfer-role",
+            )
+            agreement_id = ag_resp["AgreementId"]
+            assert len(agreement_id) > 0
+
+            desc = transfer.describe_agreement(ServerId=server_id, AgreementId=agreement_id)
+            agreement = desc["Agreement"]
+            assert agreement["AgreementId"] == agreement_id
+            assert agreement["LocalProfileId"] == local["ProfileId"]
+            assert agreement["PartnerProfileId"] == partner["ProfileId"]
+            assert agreement["BaseDirectory"] == "/bucket"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+            transfer.delete_profile(ProfileId=local["ProfileId"])
+            transfer.delete_profile(ProfileId=partner["ProfileId"])
+
+    def test_list_agreements_contains_created(self, transfer):
+        """ListAgreements includes a newly created agreement."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        local = transfer.create_profile(As2Id=_unique("local"), ProfileType="LOCAL")
+        partner = transfer.create_profile(As2Id=_unique("partner"), ProfileType="PARTNER")
+        try:
+            ag_resp = transfer.create_agreement(
+                ServerId=server_id,
+                LocalProfileId=local["ProfileId"],
+                PartnerProfileId=partner["ProfileId"],
+                BaseDirectory="/bucket",
+                AccessRole="arn:aws:iam::123456789012:role/r",
+            )
+            listed = transfer.list_agreements(ServerId=server_id)
+            assert "Agreements" in listed
+            ag_ids = [a["AgreementId"] for a in listed["Agreements"]]
+            assert ag_resp["AgreementId"] in ag_ids
+        finally:
+            transfer.delete_server(ServerId=server_id)
+            transfer.delete_profile(ProfileId=local["ProfileId"])
+            transfer.delete_profile(ProfileId=partner["ProfileId"])
+
+    def test_list_agreements_empty(self, transfer):
+        """ListAgreements on server with no agreements returns empty list."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            listed = transfer.list_agreements(ServerId=server_id)
+            assert listed["Agreements"] == []
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+
+class TestTransferConnectorOperations:
+    """Tests for Transfer Family connector CRUD operations."""
+
+    def test_create_and_describe_connector(self, transfer):
+        """CreateConnector/DescribeConnector full lifecycle."""
+        local = transfer.create_profile(As2Id=_unique("local"), ProfileType="LOCAL")
+        partner = transfer.create_profile(As2Id=_unique("partner"), ProfileType="PARTNER")
+        try:
+            conn_resp = transfer.create_connector(
+                Url="sftp://example.com",
+                As2Config={
+                    "LocalProfileId": local["ProfileId"],
+                    "PartnerProfileId": partner["ProfileId"],
+                    "Compression": "ZLIB",
+                    "EncryptionAlgorithm": "AES256_CBC",
+                    "SigningAlgorithm": "SHA256",
+                    "MdnSigningAlgorithm": "SHA256",
+                    "MdnResponse": "SYNC",
+                    "MessageSubject": "test-message",
+                },
+                AccessRole="arn:aws:iam::123456789012:role/connector-role",
+            )
+            connector_id = conn_resp["ConnectorId"]
+            assert len(connector_id) > 0
+
+            desc = transfer.describe_connector(ConnectorId=connector_id)
+            connector = desc["Connector"]
+            assert connector["ConnectorId"] == connector_id
+            assert connector["Url"] == "sftp://example.com"
+            assert connector["AccessRole"] == "arn:aws:iam::123456789012:role/connector-role"
+        finally:
+            transfer.delete_connector(ConnectorId=connector_id)
+            transfer.delete_profile(ProfileId=local["ProfileId"])
+            transfer.delete_profile(ProfileId=partner["ProfileId"])
+
+    def test_delete_connector(self, transfer):
+        """DeleteConnector removes the connector."""
+        local = transfer.create_profile(As2Id=_unique("local"), ProfileType="LOCAL")
+        partner = transfer.create_profile(As2Id=_unique("partner"), ProfileType="PARTNER")
+        try:
+            conn_resp = transfer.create_connector(
+                Url="sftp://example.com",
+                As2Config={
+                    "LocalProfileId": local["ProfileId"],
+                    "PartnerProfileId": partner["ProfileId"],
+                    "Compression": "ZLIB",
+                    "EncryptionAlgorithm": "AES256_CBC",
+                    "SigningAlgorithm": "SHA256",
+                    "MdnSigningAlgorithm": "SHA256",
+                    "MdnResponse": "SYNC",
+                },
+                AccessRole="arn:aws:iam::123456789012:role/r",
+            )
+            connector_id = conn_resp["ConnectorId"]
+            transfer.delete_connector(ConnectorId=connector_id)
+            with pytest.raises(ClientError):
+                transfer.describe_connector(ConnectorId=connector_id)
+        finally:
+            transfer.delete_profile(ProfileId=local["ProfileId"])
+            transfer.delete_profile(ProfileId=partner["ProfileId"])
+
+    def test_list_connectors_contains_created(self, transfer):
+        """ListConnectors includes a newly created connector."""
+        local = transfer.create_profile(As2Id=_unique("local"), ProfileType="LOCAL")
+        partner = transfer.create_profile(As2Id=_unique("partner"), ProfileType="PARTNER")
+        try:
+            conn_resp = transfer.create_connector(
+                Url="sftp://example.com",
+                As2Config={
+                    "LocalProfileId": local["ProfileId"],
+                    "PartnerProfileId": partner["ProfileId"],
+                    "Compression": "ZLIB",
+                    "EncryptionAlgorithm": "AES256_CBC",
+                    "SigningAlgorithm": "SHA256",
+                    "MdnSigningAlgorithm": "SHA256",
+                    "MdnResponse": "SYNC",
+                },
+                AccessRole="arn:aws:iam::123456789012:role/r",
+            )
+            connector_id = conn_resp["ConnectorId"]
+            listed = transfer.list_connectors()
+            conn_ids = [c["ConnectorId"] for c in listed["Connectors"]]
+            assert connector_id in conn_ids
+            transfer.delete_connector(ConnectorId=connector_id)
+        finally:
+            transfer.delete_profile(ProfileId=local["ProfileId"])
+            transfer.delete_profile(ProfileId=partner["ProfileId"])
+
+
+class TestTransferExecutionOperations:
+    """Tests for Transfer Family execution operations."""
+
+    def test_describe_execution_returns_status(self, transfer):
+        """DescribeExecution returns execution status for a workflow."""
+        wf = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "exec-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ]
+        )
+        workflow_id = wf["WorkflowId"]
+        fake_exec_id = "a" * 36
+        try:
+            desc = transfer.describe_execution(ExecutionId=fake_exec_id, WorkflowId=workflow_id)
+            assert desc["WorkflowId"] == workflow_id
+            assert "Execution" in desc
+            assert desc["Execution"]["ExecutionId"] == fake_exec_id
+            assert "Status" in desc["Execution"]
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
