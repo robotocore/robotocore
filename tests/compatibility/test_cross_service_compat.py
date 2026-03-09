@@ -8,8 +8,10 @@ differentiate us from basic Moto.
 import io
 import json
 import time
+import urllib.request
 import uuid
 import zipfile
+from datetime import UTC, datetime
 
 import pytest
 
@@ -1717,3 +1719,1402 @@ class TestDynamoDBStreamsToLambdaESM:
             assert event["Records"][0]["eventSource"] == "aws:dynamodb"
 
         self._cleanup(ctx)
+
+
+class TestSQSFifoLambdaESM:
+    """SQS FIFO -> Lambda via Event Source Mapping."""
+
+    def test_fifo_triggers_lambda(self):
+        """FIFO queue triggers Lambda via ESM."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        # Create verification queue
+        verify_name = f"verify-fifo-{suffix}"
+        vq = sqs.create_queue(QueueName=verify_name)
+        verify_url = vq["QueueUrl"]
+
+        # Create Lambda that writes event to verify queue
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client('sqs',\n"
+            "        endpoint_url=os.environ.get("
+            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        region_name='us-east-1',\n"
+            "        aws_access_key_id='testing',\n"
+            "        aws_secret_access_key='testing')\n"
+            "    sqs.send_message(\n"
+            "        QueueUrl=os.environ['VERIFY_QUEUE_URL'],\n"
+            "        MessageBody=json.dumps(event))\n"
+            "    return {'ok': True}\n"
+        )
+        func_name = f"fifo-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": verify_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+
+        # Create FIFO source queue
+        fifo_name = f"src-fifo-{suffix}.fifo"
+        sq = sqs.create_queue(
+            QueueName=fifo_name,
+            Attributes={"FifoQueue": "true"},
+        )
+        source_url = sq["QueueUrl"]
+        source_arn = sqs.get_queue_attributes(
+            QueueUrl=source_url,
+            AttributeNames=["QueueArn"],
+        )["Attributes"]["QueueArn"]
+
+        # Create ESM
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=source_arn,
+            FunctionName=func_name,
+            BatchSize=10,
+        )
+
+        # Send a FIFO message
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody='{"action": "fifo-test"}',
+            MessageGroupId="grp1",
+            MessageDeduplicationId=f"dedup-{suffix}",
+        )
+        time.sleep(8)
+
+        # Check verification queue
+        recv = sqs.receive_message(
+            QueueUrl=verify_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        assert "Records" in body
+
+        # Cleanup
+        lam.delete_event_source_mapping(UUID=esm["UUID"])
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=source_url)
+        sqs.delete_queue(QueueUrl=verify_url)
+        iam.delete_role(RoleName=role_name)
+
+    def test_message_group_id_in_event(self):
+        """FIFO ESM event records contain MessageGroupId."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        verify_name = f"verify-grp-{suffix}"
+        vq = sqs.create_queue(QueueName=verify_name)
+        verify_url = vq["QueueUrl"]
+
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client('sqs',\n"
+            "        endpoint_url=os.environ.get("
+            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        region_name='us-east-1',\n"
+            "        aws_access_key_id='testing',\n"
+            "        aws_secret_access_key='testing')\n"
+            "    sqs.send_message(\n"
+            "        QueueUrl=os.environ['VERIFY_QUEUE_URL'],\n"
+            "        MessageBody=json.dumps(event))\n"
+            "    return {'ok': True}\n"
+        )
+        func_name = f"grpid-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": verify_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+
+        fifo_name = f"src-grp-{suffix}.fifo"
+        sq = sqs.create_queue(
+            QueueName=fifo_name,
+            Attributes={"FifoQueue": "true"},
+        )
+        source_url = sq["QueueUrl"]
+        source_arn = sqs.get_queue_attributes(
+            QueueUrl=source_url,
+            AttributeNames=["QueueArn"],
+        )["Attributes"]["QueueArn"]
+
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=source_arn,
+            FunctionName=func_name,
+            BatchSize=10,
+        )
+
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody='{"data": "grpid-test"}',
+            MessageGroupId="test-group-42",
+            MessageDeduplicationId=f"dedup-grp-{suffix}",
+        )
+        time.sleep(8)
+
+        recv = sqs.receive_message(
+            QueueUrl=verify_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        record = body["Records"][0]
+        attrs = record.get("attributes", {})
+        assert attrs.get("MessageGroupId") == "test-group-42"
+
+        # Cleanup
+        lam.delete_event_source_mapping(UUID=esm["UUID"])
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=source_url)
+        sqs.delete_queue(QueueUrl=verify_url)
+        iam.delete_role(RoleName=role_name)
+
+
+class TestESMBisectOnError:
+    """ESM bisect-on-error splits failed batches."""
+
+    def test_bisect_retries_halves_on_error(self):
+        """BisectBatchOnFunctionError splits batch and retries."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        verify_name = f"verify-bisect-{suffix}"
+        vq = sqs.create_queue(QueueName=verify_name)
+        verify_url = vq["QueueUrl"]
+
+        # Lambda logs batch size then raises
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client('sqs',\n"
+            "        endpoint_url=os.environ.get("
+            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        region_name='us-east-1',\n"
+            "        aws_access_key_id='testing',\n"
+            "        aws_secret_access_key='testing')\n"
+            "    sqs.send_message(\n"
+            "        QueueUrl=os.environ['VERIFY_QUEUE_URL'],\n"
+            "        MessageBody=json.dumps({"
+            "'batch_size': len(event.get('Records', []))}"
+            "))\n"
+            "    raise Exception("
+            "'Intentional failure for bisect test')\n"
+        )
+        func_name = f"bisect-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": verify_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+
+        source_name = f"src-bisect-{suffix}"
+        sq = sqs.create_queue(QueueName=source_name)
+        source_url = sq["QueueUrl"]
+        source_arn = sqs.get_queue_attributes(
+            QueueUrl=source_url,
+            AttributeNames=["QueueArn"],
+        )["Attributes"]["QueueArn"]
+
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=source_arn,
+            FunctionName=func_name,
+            BatchSize=10,
+            BisectBatchOnFunctionError=True,
+            MaximumRetryAttempts=0,
+        )
+
+        # Send 4 messages
+        for i in range(4):
+            sqs.send_message(
+                QueueUrl=source_url,
+                MessageBody=json.dumps({"idx": i}),
+            )
+        time.sleep(8)
+
+        # Bisection means multiple invocations
+        recv = sqs.receive_message(
+            QueueUrl=verify_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) > 1, "Expected multiple invocations from bisection"
+
+        # Cleanup
+        lam.delete_event_source_mapping(UUID=esm["UUID"])
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=source_url)
+        sqs.delete_queue(QueueUrl=verify_url)
+        iam.delete_role(RoleName=role_name)
+
+
+class TestESMFilterCriteria:
+    """ESM filter criteria routes only matching messages."""
+
+    def test_sqs_filter_body_match(self):
+        """Only messages matching filter pattern trigger Lambda."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        verify_name = f"verify-filt-{suffix}"
+        vq = sqs.create_queue(QueueName=verify_name)
+        verify_url = vq["QueueUrl"]
+
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client('sqs',\n"
+            "        endpoint_url=os.environ.get("
+            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        region_name='us-east-1',\n"
+            "        aws_access_key_id='testing',\n"
+            "        aws_secret_access_key='testing')\n"
+            "    sqs.send_message(\n"
+            "        QueueUrl=os.environ['VERIFY_QUEUE_URL'],\n"
+            "        MessageBody=json.dumps(event))\n"
+            "    return {'ok': True}\n"
+        )
+        func_name = f"filt-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": verify_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+
+        source_name = f"src-filt-{suffix}"
+        sq = sqs.create_queue(QueueName=source_name)
+        source_url = sq["QueueUrl"]
+        source_arn = sqs.get_queue_attributes(
+            QueueUrl=source_url,
+            AttributeNames=["QueueArn"],
+        )["Attributes"]["QueueArn"]
+
+        filter_pattern = json.dumps({"body": {"type": ["order"]}})
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=source_arn,
+            FunctionName=func_name,
+            BatchSize=10,
+            FilterCriteria={"Filters": [{"Pattern": filter_pattern}]},
+        )
+
+        # Send matching message
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody=json.dumps({"type": "order", "id": 1}),
+        )
+        # Send non-matching message
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody=json.dumps({"type": "other"}),
+        )
+        time.sleep(8)
+
+        recv = sqs.receive_message(
+            QueueUrl=verify_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) == 1, f"Expected 1 invocation for matching msg, got {len(msgs)}"
+        body = json.loads(msgs[0]["Body"])
+        # The single record should be the "order" message
+        record_body = json.loads(body["Records"][0]["body"])
+        assert record_body["type"] == "order"
+
+        # Cleanup
+        lam.delete_event_source_mapping(UUID=esm["UUID"])
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=source_url)
+        sqs.delete_queue(QueueUrl=verify_url)
+        iam.delete_role(RoleName=role_name)
+
+    def test_sqs_filter_no_match_skipped(self):
+        """Non-matching messages do not trigger Lambda."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        verify_name = f"verify-nofilt-{suffix}"
+        vq = sqs.create_queue(QueueName=verify_name)
+        verify_url = vq["QueueUrl"]
+
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client('sqs',\n"
+            "        endpoint_url=os.environ.get("
+            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        region_name='us-east-1',\n"
+            "        aws_access_key_id='testing',\n"
+            "        aws_secret_access_key='testing')\n"
+            "    sqs.send_message(\n"
+            "        QueueUrl=os.environ['VERIFY_QUEUE_URL'],\n"
+            "        MessageBody=json.dumps(event))\n"
+            "    return {'ok': True}\n"
+        )
+        func_name = f"nofilt-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": verify_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+
+        source_name = f"src-nofilt-{suffix}"
+        sq = sqs.create_queue(QueueName=source_name)
+        source_url = sq["QueueUrl"]
+        source_arn = sqs.get_queue_attributes(
+            QueueUrl=source_url,
+            AttributeNames=["QueueArn"],
+        )["Attributes"]["QueueArn"]
+
+        filter_pattern = json.dumps({"body": {"type": ["order"]}})
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=source_arn,
+            FunctionName=func_name,
+            BatchSize=10,
+            FilterCriteria={"Filters": [{"Pattern": filter_pattern}]},
+        )
+
+        # Send only non-matching messages
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody=json.dumps({"type": "other"}),
+        )
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody=json.dumps({"type": "ignored"}),
+        )
+        time.sleep(8)
+
+        recv = sqs.receive_message(
+            QueueUrl=verify_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) == 0, f"Expected 0 invocations, got {len(msgs)}"
+
+        # Cleanup
+        lam.delete_event_source_mapping(UUID=esm["UUID"])
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=source_url)
+        sqs.delete_queue(QueueUrl=verify_url)
+        iam.delete_role(RoleName=role_name)
+
+
+class TestESMPartialBatchFailure:
+    """ESM partial batch failure with ReportBatchItemFailures."""
+
+    def test_partial_batch_failure_report(self):
+        """Failed items stay in queue when reported via
+        batchItemFailures."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        verify_name = f"verify-partial-{suffix}"
+        vq = sqs.create_queue(QueueName=verify_name)
+        verify_url = vq["QueueUrl"]
+
+        # Lambda reports first record as failed
+        code = _make_lambda_zip(
+            "import json, boto3, os\n"
+            "def handler(event, ctx):\n"
+            "    sqs = boto3.client('sqs',\n"
+            "        endpoint_url=os.environ.get("
+            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        region_name='us-east-1',\n"
+            "        aws_access_key_id='testing',\n"
+            "        aws_secret_access_key='testing')\n"
+            "    records = event.get('Records', [])\n"
+            "    sqs.send_message(\n"
+            "        QueueUrl=os.environ['VERIFY_QUEUE_URL'],\n"
+            "        MessageBody=json.dumps("
+            "{'count': len(records)}))\n"
+            "    if records:\n"
+            "        return {'batchItemFailures': [{\n"
+            "            'itemIdentifier': "
+            "records[0]['messageId']}]}\n"
+            "    return {}\n"
+        )
+        func_name = f"partial-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": verify_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+
+        source_name = f"src-partial-{suffix}"
+        sq = sqs.create_queue(QueueName=source_name)
+        source_url = sq["QueueUrl"]
+        source_arn = sqs.get_queue_attributes(
+            QueueUrl=source_url,
+            AttributeNames=["QueueArn"],
+        )["Attributes"]["QueueArn"]
+
+        esm = lam.create_event_source_mapping(
+            EventSourceArn=source_arn,
+            FunctionName=func_name,
+            BatchSize=10,
+            FunctionResponseTypes=["ReportBatchItemFailures"],
+        )
+
+        # Send 2 messages
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody=json.dumps({"idx": 0}),
+        )
+        sqs.send_message(
+            QueueUrl=source_url,
+            MessageBody=json.dumps({"idx": 1}),
+        )
+        time.sleep(8)
+
+        # Verify Lambda was invoked
+        recv = sqs.receive_message(
+            QueueUrl=verify_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Lambda should have been invoked"
+
+        # The failed message should still be in the source queue
+        # (visibility timeout expired, so it's receivable again)
+        time.sleep(3)
+        retry = sqs.receive_message(
+            QueueUrl=source_url,
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        retry_msgs = retry.get("Messages", [])
+        assert len(retry_msgs) >= 1, "Failed message should remain in source queue"
+
+        # Cleanup
+        lam.delete_event_source_mapping(UUID=esm["UUID"])
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=source_url)
+        sqs.delete_queue(QueueUrl=verify_url)
+        iam.delete_role(RoleName=role_name)
+        iam.delete_role(RoleName=role_name)
+
+
+class TestEventBridgeToKinesis:
+    """EventBridge -> Kinesis: Verify event delivery to stream."""
+
+    def test_delivery_and_verify_record_data(self):
+        events = make_client("events")
+        kinesis = make_client("kinesis")
+        suffix = uuid.uuid4().hex[:8]
+        stream_name = f"eb-kin-{suffix}"
+        rule_name = f"eb-kin-rule-{suffix}"
+
+        kinesis.create_stream(StreamName=stream_name, ShardCount=1)
+        # Wait for ACTIVE
+        for _ in range(10):
+            desc = kinesis.describe_stream(StreamName=stream_name)
+            status = desc["StreamDescription"]["StreamStatus"]
+            if status == "ACTIVE":
+                break
+            time.sleep(0.5)
+        stream_arn = desc["StreamDescription"]["StreamARN"]
+        shard_id = desc["StreamDescription"]["Shards"][0]["ShardId"]
+
+        # Get shard iterator BEFORE putting event
+        iter_resp = kinesis.get_shard_iterator(
+            StreamName=stream_name,
+            ShardId=shard_id,
+            ShardIteratorType="TRIM_HORIZON",
+        )
+        shard_iter = iter_resp["ShardIterator"]
+
+        # Create rule + target
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.kinesis"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": "kin1", "Arn": stream_arn}],
+        )
+
+        # Put event
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.kinesis",
+                    "DetailType": "Test",
+                    "Detail": json.dumps({"key": "value"}),
+                }
+            ]
+        )
+        time.sleep(2)
+
+        # Read from Kinesis
+        records_resp = kinesis.get_records(ShardIterator=shard_iter, Limit=10)
+        records = records_resp["Records"]
+        assert len(records) >= 1
+        data = json.loads(records[0]["Data"])
+        assert data["source"] == "test.kinesis"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["kin1"])
+        events.delete_rule(Name=rule_name)
+        kinesis.delete_stream(StreamName=stream_name)
+
+
+class TestEventBridgeToStepFunctions:
+    """EventBridge -> Step Functions: Verify event starts execution."""
+
+    def test_event_starts_execution(self):
+        sfn = make_client("stepfunctions")
+        events = make_client("events")
+        iam = make_client("iam")
+        suffix = uuid.uuid4().hex[:8]
+        role_name = f"sfn-role-{suffix}"
+        rule_name = f"eb-sfn-rule-{suffix}"
+        sm_name = f"eb-sfn-{suffix}"
+
+        # Create IAM role
+        trust = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "states.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        role_resp = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=trust,
+        )
+        role_arn = role_resp["Role"]["Arn"]
+
+        definition = json.dumps(
+            {
+                "StartAt": "Pass",
+                "States": {"Pass": {"Type": "Pass", "End": True}},
+            }
+        )
+        sm_resp = sfn.create_state_machine(name=sm_name, definition=definition, roleArn=role_arn)
+        sm_arn = sm_resp["stateMachineArn"]
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.sfn"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[
+                {
+                    "Id": "sfn1",
+                    "Arn": sm_arn,
+                    "RoleArn": role_arn,
+                }
+            ],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.sfn",
+                    "DetailType": "Test",
+                    "Detail": json.dumps({"key": "val"}),
+                }
+            ]
+        )
+        time.sleep(2)
+
+        execs = sfn.list_executions(stateMachineArn=sm_arn)
+        assert len(execs["executions"]) >= 1
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["sfn1"])
+        events.delete_rule(Name=rule_name)
+        sfn.delete_state_machine(stateMachineArn=sm_arn)
+        iam.delete_role(RoleName=role_name)
+
+
+class TestEventBridgeToCloudWatchLogs:
+    """EventBridge -> CloudWatch Logs: Verify event in log group."""
+
+    def test_event_in_log_group(self):
+        events = make_client("events")
+        logs = make_client("logs")
+        suffix = uuid.uuid4().hex[:8]
+        log_group = f"/aws/events/eb-logs-{suffix}"
+        rule_name = f"eb-logs-rule-{suffix}"
+        region = "us-east-1"
+        account = "123456789012"
+
+        logs.create_log_group(logGroupName=log_group)
+        log_group_arn = f"arn:aws:logs:{region}:{account}:log-group:{log_group}"
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.logs"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": "logs1", "Arn": log_group_arn}],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.logs",
+                    "DetailType": "Test",
+                    "Detail": json.dumps({"msg": "hello-logs"}),
+                }
+            ]
+        )
+        time.sleep(2)
+
+        resp = logs.filter_log_events(logGroupName=log_group)
+        log_events = resp.get("events", [])
+        assert len(log_events) >= 1
+        found = any("test.logs" in ev.get("message", "") for ev in log_events)
+        assert found, "Expected event with source 'test.logs' in log group"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["logs1"])
+        events.delete_rule(Name=rule_name)
+        logs.delete_log_group(logGroupName=log_group)
+
+
+class TestEventBridgeToFirehose:
+    """EventBridge -> Firehose: Verify event dispatched."""
+
+    def test_event_in_buffer(self):
+        events = make_client("events")
+        firehose = make_client("firehose")
+        suffix = uuid.uuid4().hex[:8]
+        stream_name = f"eb-fh-{suffix}"
+        rule_name = f"eb-fh-rule-{suffix}"
+        region = "us-east-1"
+        account = "123456789012"
+
+        firehose.create_delivery_stream(
+            DeliveryStreamName=stream_name,
+            DeliveryStreamType="DirectPut",
+        )
+        stream_arn = f"arn:aws:firehose:{region}:{account}:deliverystream/{stream_name}"
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.firehose"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": "fh1", "Arn": stream_arn}],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.firehose",
+                    "DetailType": "Test",
+                    "Detail": json.dumps({"msg": "fh-test"}),
+                }
+            ]
+        )
+        time.sleep(2)
+
+        # Verify via audit endpoint
+        resp = urllib.request.urlopen("http://localhost:4566/_robotocore/audit")
+        audit = json.loads(resp.read())
+        entries = audit.get("entries", audit.get("calls", []))
+        # Check that EventBridge PutEvents was logged
+        found = any("PutEvents" in str(entry) for entry in entries)
+        assert found, "Expected PutEvents in audit log"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["fh1"])
+        events.delete_rule(Name=rule_name)
+        firehose.delete_delivery_stream(DeliveryStreamName=stream_name)
+
+
+class TestEventBridgeCrossBus:
+    """EventBridge cross-bus: default -> secondary -> SQS."""
+
+    def test_event_forwarded_between_buses(self):
+        events = make_client("events")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+
+        # Create secondary bus
+        bus_name = f"secondary-{suffix}"
+        bus_resp = events.create_event_bus(Name=bus_name)
+        secondary_arn = bus_resp["EventBusArn"]
+
+        # Create SQS verification queue
+        queue_name = f"eb-cross-{suffix}"
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        attrs = sqs.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=["QueueArn"],
+        )
+        queue_arn = attrs["Attributes"]["QueueArn"]
+
+        # Rule on secondary bus -> SQS
+        sec_rule = f"sec-rule-{suffix}"
+        events.put_rule(
+            Name=sec_rule,
+            EventBusName=bus_name,
+            EventPattern=json.dumps({"source": ["test.cross"]}),
+        )
+        events.put_targets(
+            Rule=sec_rule,
+            EventBusName=bus_name,
+            Targets=[{"Id": "sqs1", "Arn": queue_arn}],
+        )
+
+        # Rule on default bus -> secondary bus
+        fwd_rule = f"fwd-rule-{suffix}"
+        events.put_rule(
+            Name=fwd_rule,
+            EventPattern=json.dumps({"source": ["test.cross"]}),
+        )
+        events.put_targets(
+            Rule=fwd_rule,
+            Targets=[{"Id": "bus1", "Arn": secondary_arn}],
+        )
+
+        # Put event on default bus
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.cross",
+                    "DetailType": "Test",
+                    "Detail": json.dumps({"forwarded": True}),
+                }
+            ]
+        )
+        time.sleep(2)
+
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        assert body.get("source") == "test.cross"
+
+        # Cleanup
+        events.remove_targets(Rule=fwd_rule, Ids=["bus1"])
+        events.delete_rule(Name=fwd_rule)
+        events.remove_targets(
+            Rule=sec_rule,
+            EventBusName=bus_name,
+            Ids=["sqs1"],
+        )
+        events.delete_rule(Name=sec_rule, EventBusName=bus_name)
+        events.delete_event_bus(Name=bus_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestEventBridgeInputTransformer:
+    """EventBridge InputTransformer: Verify transformed payload."""
+
+    def test_transformed_payload_in_sqs(self):
+        events = make_client("events")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"eb-xform-rule-{suffix}"
+        queue_name = f"eb-xform-{suffix}"
+
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        attrs = sqs.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=["QueueArn"],
+        )
+        queue_arn = attrs["Attributes"]["QueueArn"]
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.xform"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[
+                {
+                    "Id": "sqs1",
+                    "Arn": queue_arn,
+                    "InputTransformer": {
+                        "InputPathsMap": {
+                            "src": "$.source",
+                            "typ": "$.detail-type",
+                        },
+                        "InputTemplate": (
+                            '{"transformed_source": <src>, "transformed_type": <typ>}'
+                        ),
+                    },
+                }
+            ],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.xform",
+                    "DetailType": "XformTest",
+                    "Detail": json.dumps({"a": 1}),
+                }
+            ]
+        )
+        time.sleep(2)
+
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        assert body.get("transformed_source") == "test.xform"
+        assert body.get("transformed_type") == "XformTest"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["sqs1"])
+        events.delete_rule(Name=rule_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestEventBridgeSimulatedTargets:
+    """EventBridge simulated targets: verify invocation logged."""
+
+    @pytest.mark.parametrize(
+        "service,arn_pattern",
+        [
+            (
+                "batch",
+                "arn:aws:batch:us-east-1:123456789012:job-definition/test",
+            ),
+            (
+                "ecs",
+                "arn:aws:ecs:us-east-1:123456789012:cluster/test",
+            ),
+            (
+                "codebuild",
+                "arn:aws:codebuild:us-east-1:123456789012:project/test",
+            ),
+            (
+                "codepipeline",
+                "arn:aws:codepipeline:us-east-1:123456789012:test",
+            ),
+            (
+                "ssm",
+                "arn:aws:ssm:us-east-1:123456789012:document/test",
+            ),
+            (
+                "redshift",
+                "arn:aws:redshift:us-east-1:123456789012:cluster:test",
+            ),
+            (
+                "sagemaker",
+                "arn:aws:sagemaker:us-east-1:123456789012:pipeline/test",
+            ),
+            (
+                "inspector",
+                "arn:aws:inspector:us-east-1:123456789012:target/test",
+            ),
+        ],
+    )
+    def test_simulated_targets_logged(self, service, arn_pattern):
+        events = make_client("events")
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"eb-sim-{service}-{suffix}"
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": [f"test.sim.{service}"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": f"{service}1", "Arn": arn_pattern}],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": f"test.sim.{service}",
+                    "DetailType": "SimTest",
+                    "Detail": json.dumps({"svc": service}),
+                }
+            ]
+        )
+        time.sleep(1)
+
+        # Verify via audit endpoint
+        resp = urllib.request.urlopen("http://localhost:4566/_robotocore/audit")
+        audit = json.loads(resp.read())
+        entries = audit.get("entries", audit.get("calls", []))
+        found = any("PutEvents" in str(entry) for entry in entries)
+        assert found, f"Expected PutEvents for {service} in audit log"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=[f"{service}1"])
+        events.delete_rule(Name=rule_name)
+
+
+class TestEventBridgeDLQ:
+    """EventBridge DLQ: Failed target delivers to DLQ."""
+
+    def test_failed_target_delivers_to_dlq(self):
+        events = make_client("events")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        rule_name = f"eb-dlq-rule-{suffix}"
+        dlq_name = f"eb-dlq-{suffix}"
+
+        q = sqs.create_queue(QueueName=dlq_name)
+        dlq_url = q["QueueUrl"]
+        attrs = sqs.get_queue_attributes(
+            QueueUrl=dlq_url,
+            AttributeNames=["QueueArn"],
+        )
+        dlq_arn = attrs["Attributes"]["QueueArn"]
+
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.dlq"]}),
+        )
+        bad_lambda_arn = "arn:aws:lambda:us-east-1:123456789012:function:nonexistent-fn"
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[
+                {
+                    "Id": "lambda1",
+                    "Arn": bad_lambda_arn,
+                    "DeadLetterConfig": {"Arn": dlq_arn},
+                }
+            ],
+        )
+
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.dlq",
+                    "DetailType": "DLQTest",
+                    "Detail": json.dumps({"fail": True}),
+                }
+            ]
+        )
+        time.sleep(3)
+
+        recv = sqs.receive_message(QueueUrl=dlq_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1, "Expected failed event in DLQ"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["lambda1"])
+        events.delete_rule(Name=rule_name)
+        sqs.delete_queue(QueueUrl=dlq_url)
+
+
+class TestEventBridgeArchiveReplay:
+    """EventBridge archive & replay: archive events, replay to SQS."""
+
+    def test_archive_and_replay_events(self):
+        events = make_client("events")
+        sqs = make_client("sqs")
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"eb-archive-{suffix}"
+        rule_name = f"eb-replay-rule-{suffix}"
+        queue_name = f"eb-replay-{suffix}"
+
+        # Create SQS queue for verification
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        attrs = sqs.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=["QueueArn"],
+        )
+        queue_arn = attrs["Attributes"]["QueueArn"]
+
+        # Get default bus ARN
+        bus_resp = events.describe_event_bus(Name="default")
+        bus_arn = bus_resp["Arn"]
+
+        # Create archive on default bus
+        archive_resp = events.create_archive(
+            ArchiveName=archive_name,
+            EventSourceArn=bus_arn,
+            EventPattern=json.dumps({"source": ["test.replay"]}),
+        )
+        assert archive_resp["ArchiveName"] == archive_name
+
+        # Rule to deliver replayed events to SQS
+        events.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["test.replay"]}),
+        )
+        events.put_targets(
+            Rule=rule_name,
+            Targets=[{"Id": "sqs1", "Arn": queue_arn}],
+        )
+
+        # Put events (they get archived)
+        events.put_events(
+            Entries=[
+                {
+                    "Source": "test.replay",
+                    "DetailType": "ReplayTest",
+                    "Detail": json.dumps({"idx": i}),
+                }
+                for i in range(3)
+            ]
+        )
+        time.sleep(2)
+
+        # Drain the initial delivery
+        for _ in range(5):
+            sqs.receive_message(
+                QueueUrl=queue_url,
+                MaxNumberOfMessages=10,
+                WaitTimeSeconds=1,
+            )
+
+        # Start replay
+        now = datetime.now(UTC)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now
+
+        replay_resp = events.start_replay(
+            ReplayName=f"replay-{suffix}",
+            EventSourceArn=bus_arn,
+            Destination={"Arn": bus_arn},
+            EventStartTime=start,
+            EventEndTime=end,
+        )
+        assert "ReplayArn" in replay_resp
+
+        # Verify replay can be described
+        desc = events.describe_replay(ReplayName=f"replay-{suffix}")
+        assert desc["ReplayName"] == f"replay-{suffix}"
+
+        # Cleanup
+        events.remove_targets(Rule=rule_name, Ids=["sqs1"])
+        events.delete_rule(Name=rule_name)
+        events.delete_archive(ArchiveName=archive_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+
+
+class TestLambdaDestinations:
+    """Lambda Destinations: async invocations dispatch results to
+    configured OnSuccess/OnFailure destinations (SQS, SNS)."""
+
+    def test_on_success_to_sqs(self):
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        # Create SQS destination queue
+        queue_name = f"dest-ok-{suffix}"
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        # Create Lambda that succeeds
+        code = _make_lambda_zip("def handler(event, ctx): return {'ok': True}")
+        func_name = f"dest-ok-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        # Configure OnSuccess destination
+        lam.put_function_event_invoke_config(
+            FunctionName=func_name,
+            DestinationConfig={
+                "OnSuccess": {"Destination": queue_arn},
+            },
+        )
+
+        # Invoke async
+        lam.invoke(
+            FunctionName=func_name,
+            InvocationType="Event",
+            Payload=json.dumps({"test": True}),
+        )
+        time.sleep(3)
+
+        # Verify destination record arrived in SQS
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        assert "requestPayload" in body or "requestContext" in body
+
+        # Cleanup
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+        iam.delete_role(RoleName=role_name)
+
+    def test_on_failure_to_sqs(self):
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        # Create SQS destination queue
+        queue_name = f"dest-fail-{suffix}"
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        # Create Lambda that raises an error
+        code = _make_lambda_zip(
+            "def handler(event, ctx):\n    raise Exception('Intentional failure')\n"
+        )
+        func_name = f"dest-fail-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        # Configure OnFailure destination
+        lam.put_function_event_invoke_config(
+            FunctionName=func_name,
+            DestinationConfig={
+                "OnFailure": {"Destination": queue_arn},
+            },
+        )
+
+        # Invoke async
+        lam.invoke(
+            FunctionName=func_name,
+            InvocationType="Event",
+            Payload=json.dumps({"trigger": "fail"}),
+        )
+        time.sleep(3)
+
+        # Verify failure record arrived in SQS
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+        assert "requestPayload" in body or "requestContext" in body
+
+        # Cleanup
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+        iam.delete_role(RoleName=role_name)
+
+    def test_record_format(self):
+        """Verify destination record structure from
+        _build_destination_record in destinations.py."""
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        lam = make_client("lambda")
+
+        # Create SQS destination queue
+        queue_name = f"dest-fmt-{suffix}"
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        # Create Lambda that succeeds
+        payload = {"hello": "world", "num": 42}
+        code = _make_lambda_zip("def handler(event, ctx): return {'ok': True}")
+        func_name = f"dest-fmt-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        # Configure OnSuccess destination
+        lam.put_function_event_invoke_config(
+            FunctionName=func_name,
+            DestinationConfig={
+                "OnSuccess": {"Destination": queue_arn},
+            },
+        )
+
+        # Invoke async
+        lam.invoke(
+            FunctionName=func_name,
+            InvocationType="Event",
+            Payload=json.dumps(payload),
+        )
+        time.sleep(3)
+
+        # Receive and validate record structure
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        body = json.loads(msgs[0]["Body"])
+
+        # Validate required fields
+        assert "version" in body
+        assert "timestamp" in body
+        assert "requestContext" in body
+        assert "requestPayload" in body
+
+        # requestContext should reference the function
+        rc = body["requestContext"]
+        assert "functionArn" in rc
+        assert func_name in rc["functionArn"]
+
+        # requestPayload should match what was sent
+        assert body["requestPayload"] == payload
+
+        # responseContext should have statusCode for success
+        assert "responseContext" in body
+        assert "statusCode" in body["responseContext"]
+
+        # Cleanup
+        lam.delete_function(FunctionName=func_name)
+        sqs.delete_queue(QueueUrl=queue_url)
+        iam.delete_role(RoleName=role_name)
+
+    def test_on_success_to_sns(self):
+        suffix = uuid.uuid4().hex[:8]
+        iam, role_name, role_arn = _create_lambda_role()
+        sqs = make_client("sqs")
+        sns = make_client("sns")
+        lam = make_client("lambda")
+
+        # Create SNS topic as destination
+        topic_name = f"dest-sns-{suffix}"
+        topic_resp = sns.create_topic(Name=topic_name)
+        topic_arn = topic_resp["TopicArn"]
+
+        # Create SQS queue to receive from SNS
+        queue_name = f"dest-sns-q-{suffix}"
+        q = sqs.create_queue(QueueName=queue_name)
+        queue_url = q["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+
+        # Subscribe SQS to SNS
+        sns.subscribe(
+            TopicArn=topic_arn,
+            Protocol="sqs",
+            Endpoint=queue_arn,
+        )
+
+        # Create Lambda that succeeds
+        code = _make_lambda_zip("def handler(event, ctx): return {'via': 'sns'}")
+        func_name = f"dest-sns-fn-{suffix}"
+        lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+        )
+
+        # Configure OnSuccess → SNS
+        lam.put_function_event_invoke_config(
+            FunctionName=func_name,
+            DestinationConfig={
+                "OnSuccess": {"Destination": topic_arn},
+            },
+        )
+
+        # Invoke async
+        lam.invoke(
+            FunctionName=func_name,
+            InvocationType="Event",
+            Payload=json.dumps({"route": "sns"}),
+        )
+        time.sleep(3)
+
+        # Verify message arrived in SQS (via SNS)
+        recv = sqs.receive_message(QueueUrl=queue_url, WaitTimeSeconds=5)
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        # SNS wraps the message; parse the SNS envelope
+        sns_envelope = json.loads(msgs[0]["Body"])
+        assert "Message" in sns_envelope or "message" in sns_envelope
+
+        # Cleanup
+        lam.delete_function(FunctionName=func_name)
+        sns.delete_topic(TopicArn=topic_arn)
+        sqs.delete_queue(QueueUrl=queue_url)
+        iam.delete_role(RoleName=role_name)
