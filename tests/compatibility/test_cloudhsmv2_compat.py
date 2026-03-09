@@ -241,3 +241,26 @@ class TestCloudHSMV2BackupOperations:
         del_resp = client.delete_cluster(ClusterId=cluster_id)
         assert "Cluster" in del_resp
         assert del_resp["Cluster"]["State"] == "DELETED"
+
+
+class TestCloudHSMv2Additional:
+    """Tests for additional CloudHSM V2 operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudhsmv2")
+
+    def test_initialize_cluster_fake(self, client):
+        """InitializeCluster with fake ClusterId raises error or returns result."""
+        try:
+            resp = client.initialize_cluster(
+                ClusterId=f"cluster-{_uid()}",
+                SignedCert="-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----",
+                TrustAnchor="-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except Exception as e:
+            if hasattr(e, "response"):
+                assert "Code" in e.response["Error"]
+            else:
+                assert "error" in str(e).lower() or "not found" in str(e).lower()

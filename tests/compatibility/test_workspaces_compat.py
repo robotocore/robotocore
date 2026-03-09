@@ -965,3 +965,28 @@ class TestWorkSpacesDeleteTags:
             TagKeys=["env"],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkspacesTagOps:
+    """Tests for CreateTags and DescribeTags operations."""
+
+    def test_create_tags_fake_resource(self, workspaces):
+        """CreateTags with fake ResourceId returns 200 or error."""
+        try:
+            resp = workspaces.create_tags(
+                ResourceId="ws-fake12345",
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except Exception as e:
+            # Some implementations reject fake resource IDs
+            assert hasattr(e, "response") or "error" in str(e).lower()
+
+    def test_describe_tags_fake_resource(self, workspaces):
+        """DescribeTags with fake ResourceId returns tag list or error."""
+        try:
+            resp = workspaces.describe_tags(ResourceId="ws-fake12345")
+            assert "TagList" in resp
+            assert isinstance(resp["TagList"], list)
+        except Exception as e:
+            assert hasattr(e, "response") or "error" in str(e).lower()

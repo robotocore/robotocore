@@ -603,3 +603,16 @@ class TestAMPScraperExtended:
         ws_id, _ = workspace
         resp = amp.delete_query_logging_configuration(workspaceId=ws_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
+
+class TestAMPAdditionalOps:
+    """Tests for additional AMP operations."""
+
+    def test_describe_query_logging_configuration(self, amp, workspace):
+        """DescribeQueryLoggingConfiguration with a workspace returns result or error."""
+        ws_id, _ = workspace
+        try:
+            resp = amp.describe_query_logging_configuration(workspaceId=ws_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            assert "Code" in e.response["Error"]

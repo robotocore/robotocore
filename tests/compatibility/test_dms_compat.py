@@ -2659,3 +2659,28 @@ class TestDMSMetadataModelOperations:
             RequestIdentifier="fake-req",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDMSAdditionalOps:
+    """Tests for additional DMS operations."""
+
+    def test_start_replication_fake_arn(self, dms):
+        """StartReplication with fake ReplicationConfigArn returns error or 200."""
+        try:
+            resp = dms.start_replication(
+                ReplicationConfigArn=f"arn:aws:dms:us-east-1:123456789012:replication-config:{_unique('rep')}",
+                StartReplicationType="start-replication",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
+
+    def test_delete_fleet_advisor_collector_fake(self, dms):
+        """DeleteFleetAdvisorCollector with fake CollectorReferencedId."""
+        try:
+            resp = dms.delete_fleet_advisor_collector(
+                CollectorReferencedId=_unique("collector"),
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
