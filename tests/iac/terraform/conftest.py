@@ -37,9 +37,13 @@ def terraform_dir(request, tmp_path_factory, test_run_id, terraform_available, t
     src_dir = Path(request.fspath).parent
     work_dir = tmp_path_factory.mktemp(f"tf-{test_run_id}")
 
-    # Copy all .tf files into the work dir
+    # Copy all .tf files and supporting source files into the work dir
     for tf_file in src_dir.glob("*.tf"):
         shutil.copy2(tf_file, work_dir / tf_file.name)
+    for py_file in src_dir.glob("*.py"):
+        if py_file.name.startswith("test_"):
+            continue  # Don't copy test files into the Terraform work dir
+        shutil.copy2(py_file, work_dir / py_file.name)
 
     # Write provider override pointing at robotocore
     generate_terraform_provider_override(work_dir, ENDPOINT_URL)
