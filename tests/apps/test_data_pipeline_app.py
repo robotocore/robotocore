@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+pytestmark = pytest.mark.apps
+
 # Counter for generating unique timestamps within a test run
 _ts_counter = 0
 
