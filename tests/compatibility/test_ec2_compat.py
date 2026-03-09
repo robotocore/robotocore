@@ -5967,3 +5967,114 @@ class TestEC2SpotFleetAllocationStrategies:
             "cancelled_running",
             "cancelled_terminating",
         )
+
+
+class TestEC2TransitGatewayPeeringAdvanced:
+    """Advanced transit gateway peering attachment tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_tgw_peering_with_tags(self, ec2):
+        """CreateTransitGatewayPeeringAttachment with TagSpecifications."""
+        tgw1 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1,
+                PeerTransitGatewayId=tgw2,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+                TagSpecifications=[
+                    {
+                        "ResourceType": "transit-gateway-attachment",
+                        "Tags": [{"Key": "Purpose", "Value": "peering-test"}],
+                    }
+                ],
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+            tags = att["TransitGatewayPeeringAttachment"].get("Tags", [])
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map.get("Purpose") == "peering-test"
+            ec2.delete_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1)
+
+    def test_tgw_peering_accept_state_available(self, ec2):
+        """AcceptTransitGatewayPeeringAttachment sets state to available."""
+        tgw1 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1,
+                PeerTransitGatewayId=tgw2,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+
+            accepted = ec2.accept_transit_gateway_peering_attachment(
+                TransitGatewayAttachmentId=att_id
+            )
+            assert accepted["TransitGatewayPeeringAttachment"]["State"] == "available"
+
+            described = ec2.describe_transit_gateway_peering_attachments(
+                TransitGatewayAttachmentIds=[att_id]
+            )
+            assert described["TransitGatewayPeeringAttachments"][0]["State"] == "available"
+
+            ec2.delete_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1)
+
+    def test_tgw_peering_accepter_info_details(self, ec2):
+        """Peering attachment has correct AccepterTgwInfo with region and owner."""
+        tgw1 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1,
+                PeerTransitGatewayId=tgw2,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+            peer = att["TransitGatewayPeeringAttachment"]
+
+            accepter = peer["AccepterTgwInfo"]
+            assert accepter["TransitGatewayId"] == tgw2
+            assert accepter["Region"] == "us-east-1"
+            assert accepter["OwnerId"] == "123456789012"
+
+            requester = peer["RequesterTgwInfo"]
+            assert requester["TransitGatewayId"] == tgw1
+            assert requester["Region"] == "us-east-1"
+
+            ec2.delete_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1)
+
+    def test_tgw_peering_delete_state(self, ec2):
+        """DeleteTransitGatewayPeeringAttachment returns deleted state."""
+        tgw1 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1,
+                PeerTransitGatewayId=tgw2,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+
+            deleted = ec2.delete_transit_gateway_peering_attachment(
+                TransitGatewayAttachmentId=att_id
+            )
+            assert deleted["TransitGatewayPeeringAttachment"]["State"] == "deleted"
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1)
