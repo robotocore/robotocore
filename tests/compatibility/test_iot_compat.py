@@ -2509,3 +2509,64 @@ class TestIoTMitigationActionUpdate:
         )
         assert "actionArn" in resp
         iot.delete_mitigation_action(actionName=name)
+
+
+class TestIoTDefaultAuthorizerOperations:
+    """Tests for SetDefaultAuthorizer, DescribeDefaultAuthorizer."""
+
+    def test_set_and_describe_default_authorizer(self, iot):
+        """Set a default authorizer and describe it."""
+        auth_name = _unique("auth")
+        iot.create_authorizer(
+            authorizerName=auth_name,
+            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:fake",
+        )
+        iot.set_default_authorizer(authorizerName=auth_name)
+        resp = iot.describe_default_authorizer()
+        assert resp["authorizerDescription"]["authorizerName"] == auth_name
+        iot.delete_authorizer(authorizerName=auth_name)
+
+
+class TestIoTProvisioningTemplateVersionDelete:
+    """Tests for DeleteProvisioningTemplateVersion."""
+
+    def test_delete_provisioning_template_version(self, iot):
+        """Create a provisioning template, add a version, then delete the version."""
+        tpl_name = _unique("tpl")
+        body = json.dumps(
+            {
+                "Parameters": {"SerialNumber": {"Type": "String"}},
+                "Resources": {
+                    "thing": {
+                        "Type": "AWS::IoT::Thing",
+                        "Properties": {"ThingName": {"Ref": "SerialNumber"}},
+                    }
+                },
+            }
+        )
+        iot.create_provisioning_template(
+            templateName=tpl_name,
+            templateBody=body,
+            provisioningRoleArn="arn:aws:iam::123456789012:role/fake",
+        )
+        v_resp = iot.create_provisioning_template_version(
+            templateName=tpl_name,
+            templateBody=body,
+        )
+        version_id = v_resp["versionId"]
+        iot.delete_provisioning_template_version(templateName=tpl_name, versionId=version_id)
+        # Verify the version is gone
+        versions_resp = iot.list_provisioning_template_versions(templateName=tpl_name)
+        version_ids = [v["versionId"] for v in versions_resp["versions"]]
+        assert version_id not in version_ids
+        iot.delete_provisioning_template(templateName=tpl_name)
+
+
+class TestIoTGetOTAUpdateOperation:
+    """Tests for GetOTAUpdate."""
+
+    def test_get_ota_update_nonexistent(self, iot):
+        """GetOTAUpdate returns ResourceNotFoundException for missing update."""
+        with pytest.raises(ClientError) as exc:
+            iot.get_ota_update(otaUpdateId="nonexistent-ota-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

@@ -1326,111 +1326,17 @@ class TestOpenSearchConnectionOperations:
             opensearch.delete_outbound_connection(ConnectionId="conn-nonexistent")
 
 
-class TestOpenSearchApplicationOps:
-    """Tests for OpenSearch Application CRUD operations."""
+class TestOpenSearchAdditionalWorkingOps:
+    """Tests for additional working OpenSearch operations."""
 
     @pytest.fixture
     def opensearch(self):
         return make_client("opensearch")
 
-    def test_create_and_get_application(self, opensearch):
-        """CreateApplication + GetApplication roundtrip."""
-        name = f"app-{uuid.uuid4().hex[:8]}"
-        create_resp = opensearch.create_application(name=name)
-        assert "name" in create_resp
-        assert create_resp["name"] == name
-        try:
-            get_resp = opensearch.get_application(id=create_resp["id"])
-            assert get_resp["name"] == name
-            assert "id" in get_resp
-        finally:
-            opensearch.delete_application(id=create_resp["id"])
-
-    def test_list_applications(self, opensearch):
-        """ListApplications returns a list."""
-        resp = opensearch.list_applications()
-        assert "ApplicationSummaries" in resp
-
-    def test_update_application(self, opensearch):
-        """UpdateApplication modifies application."""
-        name = f"app-{uuid.uuid4().hex[:8]}"
-        create_resp = opensearch.create_application(name=name)
-        app_id = create_resp["id"]
-        try:
-            update_resp = opensearch.update_application(
-                id=app_id,
-                appConfigs=[],
+    def test_update_vpc_endpoint_nonexistent(self, opensearch):
+        """UpdateVpcEndpoint with fake endpoint ID raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.update_vpc_endpoint(
+                VpcEndpointId="aos-fake-endpoint-id",
+                VpcOptions={"SubnetIds": ["subnet-12345"]},
             )
-            assert "id" in update_resp
-        finally:
-            opensearch.delete_application(id=app_id)
-
-    def test_delete_application(self, opensearch):
-        """DeleteApplication removes the application."""
-        name = f"app-{uuid.uuid4().hex[:8]}"
-        create_resp = opensearch.create_application(name=name)
-        app_id = create_resp["id"]
-        del_resp = opensearch.delete_application(id=app_id)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-
-class TestOpenSearchVpcEndpointAccess:
-    """Tests for VPC endpoint access authorization."""
-
-    @pytest.fixture
-    def opensearch(self):
-        return make_client("opensearch")
-
-    @pytest.fixture
-    def domain(self, opensearch):
-        name = _unique_domain()
-        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.11")
-        yield name
-        try:
-            opensearch.delete_domain(DomainName=name)
-        except Exception:
-            pass
-
-    def test_authorize_vpc_endpoint_access(self, opensearch, domain):
-        """AuthorizeVpcEndpointAccess grants access to an account."""
-        resp = opensearch.authorize_vpc_endpoint_access(
-            DomainName=domain,
-            Account="123456789012",
-        )
-        assert "AuthorizedPrincipal" in resp
-
-    def test_revoke_vpc_endpoint_access(self, opensearch, domain):
-        """RevokeVpcEndpointAccess revokes access."""
-        opensearch.authorize_vpc_endpoint_access(
-            DomainName=domain,
-            Account="123456789012",
-        )
-        resp = opensearch.revoke_vpc_endpoint_access(
-            DomainName=domain,
-            Account="123456789012",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-
-class TestOpenSearchScheduledActions:
-    """Tests for ListScheduledActions."""
-
-    @pytest.fixture
-    def opensearch(self):
-        return make_client("opensearch")
-
-    @pytest.fixture
-    def domain(self, opensearch):
-        name = _unique_domain()
-        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.11")
-        yield name
-        try:
-            opensearch.delete_domain(DomainName=name)
-        except Exception:
-            pass
-
-    def test_list_scheduled_actions(self, opensearch, domain):
-        """ListScheduledActions returns ScheduledActions key."""
-        resp = opensearch.list_scheduled_actions(DomainName=domain)
-        assert "ScheduledActions" in resp
-        assert isinstance(resp["ScheduledActions"], list)

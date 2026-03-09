@@ -3845,3 +3845,804 @@ class TestIAMMFADeviceTags:
             assert isinstance(resp["Tags"], list)
         finally:
             iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Service-specific credentials full lifecycle
+# ---------------------------------------------------------------------------
+
+
+class TestIAMServiceSpecificCredentialLifecycle:
+    def test_create_list_service_specific_credentials(self, iam):
+        """CreateServiceSpecificCredential + ListServiceSpecificCredentials."""
+        user_name = _unique("ssc-list")
+        iam.create_user(UserName=user_name)
+        try:
+            create_resp = iam.create_service_specific_credential(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred = create_resp["ServiceSpecificCredential"]
+            cred_id = cred["ServiceSpecificCredentialId"]
+
+            list_resp = iam.list_service_specific_credentials(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            ids = [
+                c["ServiceSpecificCredentialId"] for c in list_resp["ServiceSpecificCredentials"]
+            ]
+            assert cred_id in ids
+        finally:
+            try:
+                iam.delete_service_specific_credential(
+                    UserName=user_name,
+                    ServiceSpecificCredentialId=cred_id,
+                )
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_update_service_specific_credential(self, iam):
+        """UpdateServiceSpecificCredential changes status to Inactive."""
+        user_name = _unique("ssc-upd")
+        iam.create_user(UserName=user_name)
+        try:
+            create_resp = iam.create_service_specific_credential(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred_id = create_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"]
+
+            iam.update_service_specific_credential(
+                UserName=user_name,
+                ServiceSpecificCredentialId=cred_id,
+                Status="Inactive",
+            )
+            list_resp = iam.list_service_specific_credentials(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred = next(
+                c
+                for c in list_resp["ServiceSpecificCredentials"]
+                if c["ServiceSpecificCredentialId"] == cred_id
+            )
+            assert cred["Status"] == "Inactive"
+        finally:
+            try:
+                iam.delete_service_specific_credential(
+                    UserName=user_name,
+                    ServiceSpecificCredentialId=cred_id,
+                )
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_delete_service_specific_credential(self, iam):
+        """DeleteServiceSpecificCredential removes the credential."""
+        user_name = _unique("ssc-del")
+        iam.create_user(UserName=user_name)
+        try:
+            create_resp = iam.create_service_specific_credential(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred_id = create_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"]
+
+            iam.delete_service_specific_credential(
+                UserName=user_name,
+                ServiceSpecificCredentialId=cred_id,
+            )
+            list_resp = iam.list_service_specific_credentials(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            ids = [
+                c["ServiceSpecificCredentialId"] for c in list_resp["ServiceSpecificCredentials"]
+            ]
+            assert cred_id not in ids
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_reset_service_specific_credential(self, iam):
+        """ResetServiceSpecificCredential returns new password."""
+        user_name = _unique("ssc-rst")
+        iam.create_user(UserName=user_name)
+        try:
+            create_resp = iam.create_service_specific_credential(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred_id = create_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"]
+
+            reset_resp = iam.reset_service_specific_credential(
+                UserName=user_name,
+                ServiceSpecificCredentialId=cred_id,
+            )
+            assert "ServiceSpecificCredential" in reset_resp
+            assert reset_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"] == cred_id
+        finally:
+            try:
+                iam.delete_service_specific_credential(
+                    UserName=user_name,
+                    ServiceSpecificCredentialId=cred_id,
+                )
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Path-based listing
+# ---------------------------------------------------------------------------
+
+
+class TestIAMPathBasedListing:
+    def test_list_users_with_path_prefix(self, iam):
+        """ListUsers with PathPrefix filters by path."""
+        user_name = _unique("pathlist-usr")
+        iam.create_user(UserName=user_name, Path="/engineering/backend/")
+        try:
+            resp = iam.list_users(PathPrefix="/engineering/")
+            names = [u["UserName"] for u in resp["Users"]]
+            assert user_name in names
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_list_roles_with_path_prefix(self, iam):
+        """ListRoles with PathPrefix filters by path."""
+        role_name = _unique("pathlist-role")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/services/lambda/",
+        )
+        try:
+            resp = iam.list_roles(PathPrefix="/services/")
+            names = [r["RoleName"] for r in resp["Roles"]]
+            assert role_name in names
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_list_groups_with_path_prefix(self, iam):
+        """ListGroups with PathPrefix filters by path."""
+        group_name = _unique("pathlist-grp")
+        iam.create_group(GroupName=group_name, Path="/teams/backend/")
+        try:
+            resp = iam.list_groups(PathPrefix="/teams/")
+            names = [g["GroupName"] for g in resp["Groups"]]
+            assert group_name in names
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+    def test_list_policies_with_path_prefix(self, iam):
+        """ListPolicies with PathPrefix filters by path."""
+        policy_name = _unique("pathlist-pol")
+        pol = iam.create_policy(
+            PolicyName=policy_name,
+            PolicyDocument=SIMPLE_POLICY_DOC,
+            Path="/app/",
+        )
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.list_policies(PathPrefix="/app/", Scope="Local")
+            names = [p["PolicyName"] for p in resp["Policies"]]
+            assert policy_name in names
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Role with Path
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCreateRoleWithPath:
+    def test_create_role_with_path(self, iam):
+        """CreateRole with custom Path sets the path correctly."""
+        role_name = _unique("pathrole")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/custom/path/",
+        )
+        try:
+            resp = iam.get_role(RoleName=role_name)
+            assert resp["Role"]["Path"] == "/custom/path/"
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Delete role standalone
+# ---------------------------------------------------------------------------
+
+
+class TestIAMDeleteRole:
+    def test_delete_role_removes_from_list(self, iam):
+        """DeleteRole removes the role from ListRoles."""
+        role_name = _unique("delrole")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        iam.delete_role(RoleName=role_name)
+        resp = iam.list_roles()
+        names = [r["RoleName"] for r in resp["Roles"]]
+        assert role_name not in names
+
+    def test_delete_role_nonexistent_raises(self, iam):
+        """DeleteRole on a non-existent role raises NoSuchEntity."""
+        with pytest.raises(iam.exceptions.NoSuchEntityException):
+            iam.delete_role(RoleName="no-such-role-xyz-" + uuid.uuid4().hex[:8])
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Delete group standalone
+# ---------------------------------------------------------------------------
+
+
+class TestIAMDeleteGroup:
+    def test_delete_group_nonexistent_raises(self, iam):
+        """DeleteGroup on a non-existent group raises NoSuchEntity."""
+        with pytest.raises(iam.exceptions.NoSuchEntityException):
+            iam.delete_group(GroupName="no-such-group-" + uuid.uuid4().hex[:8])
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: UpdateGroup with NewPath
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUpdateGroupPath:
+    def test_update_group_path(self, iam):
+        """UpdateGroup with NewPath changes the group's path."""
+        group_name = _unique("ugpath")
+        iam.create_group(GroupName=group_name, Path="/old/")
+        try:
+            iam.update_group(GroupName=group_name, NewPath="/new/path/")
+            resp = iam.get_group(GroupName=group_name)
+            assert resp["Group"]["Path"] == "/new/path/"
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Create policy with Description and Tags
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCreatePolicyExtended:
+    def test_create_policy_with_description(self, iam):
+        """CreatePolicy with Description sets the description."""
+        policy_name = _unique("descrpol")
+        pol = iam.create_policy(
+            PolicyName=policy_name,
+            PolicyDocument=SIMPLE_POLICY_DOC,
+            Description="A test policy with description",
+        )
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.get_policy(PolicyArn=arn)
+            assert resp["Policy"]["Description"] == "A test policy with description"
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+    def test_create_policy_with_tags(self, iam):
+        """CreatePolicy with Tags sets tags on the policy."""
+        policy_name = _unique("tagpol")
+        pol = iam.create_policy(
+            PolicyName=policy_name,
+            PolicyDocument=SIMPLE_POLICY_DOC,
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.list_policy_tags(PolicyArn=arn)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["env"] == "test"
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+    def test_create_policy_with_path(self, iam):
+        """CreatePolicy with Path sets the path."""
+        policy_name = _unique("pathpol")
+        pol = iam.create_policy(
+            PolicyName=policy_name,
+            PolicyDocument=SIMPLE_POLICY_DOC,
+            Path="/custom/policy/",
+        )
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.get_policy(PolicyArn=arn)
+            assert resp["Policy"]["Path"] == "/custom/policy/"
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: ListInstanceProfilesForRole edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestIAMListInstanceProfilesForRoleEdge:
+    def test_list_instance_profiles_for_role_none(self, iam):
+        """ListInstanceProfilesForRole returns empty when no profiles."""
+        role_name = _unique("lipfr-none")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            resp = iam.list_instance_profiles_for_role(RoleName=role_name)
+            assert resp["InstanceProfiles"] == []
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_list_instance_profiles_for_role_multiple(self, iam):
+        """ListInstanceProfilesForRole with multiple profiles."""
+        role_name = _unique("lipfr-multi")
+        prof1 = _unique("lipfr-p1")
+        prof2 = _unique("lipfr-p2")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        iam.create_instance_profile(InstanceProfileName=prof1)
+        iam.create_instance_profile(InstanceProfileName=prof2)
+        try:
+            iam.add_role_to_instance_profile(InstanceProfileName=prof1, RoleName=role_name)
+            iam.add_role_to_instance_profile(InstanceProfileName=prof2, RoleName=role_name)
+            resp = iam.list_instance_profiles_for_role(RoleName=role_name)
+            names = [ip["InstanceProfileName"] for ip in resp["InstanceProfiles"]]
+            assert prof1 in names
+            assert prof2 in names
+        finally:
+            for p in [prof1, prof2]:
+                try:
+                    iam.remove_role_from_instance_profile(InstanceProfileName=p, RoleName=role_name)
+                except Exception:
+                    pass
+                try:
+                    iam.delete_instance_profile(InstanceProfileName=p)
+                except Exception:
+                    pass
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: GetRole trust policy content validation
+# ---------------------------------------------------------------------------
+
+
+class TestIAMGetRoleTrustPolicy:
+    def test_get_role_trust_policy_content(self, iam):
+        """GetRole returns parsed trust policy with correct principal."""
+        role_name = _unique("trust-role")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            resp = iam.get_role(RoleName=role_name)
+            doc = resp["Role"]["AssumeRolePolicyDocument"]
+            assert doc["Version"] == "2012-10-17"
+            assert len(doc["Statement"]) == 1
+            stmt = doc["Statement"][0]
+            assert stmt["Effect"] == "Allow"
+            assert stmt["Action"] == "sts:AssumeRole"
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Simulate custom policy with detail
+# ---------------------------------------------------------------------------
+
+
+class TestIAMSimulatePolicyExtended:
+    def test_simulate_custom_policy_allowed(self, iam):
+        """SimulateCustomPolicy returns allowed for matching action."""
+        resp = iam.simulate_custom_policy(
+            PolicyInputList=[SIMPLE_POLICY_DOC],
+            ActionNames=["s3:GetObject"],
+        )
+        assert len(resp["EvaluationResults"]) == 1
+        result = resp["EvaluationResults"][0]
+        assert result["EvalActionName"] == "s3:GetObject"
+        assert result["EvalDecision"] in ("allowed", "implicitDeny", "explicitDeny")
+
+    def test_simulate_custom_policy_denied(self, iam):
+        """SimulateCustomPolicy returns denied for non-matching action."""
+        deny_policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Deny", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        resp = iam.simulate_custom_policy(
+            PolicyInputList=[deny_policy],
+            ActionNames=["s3:GetObject"],
+        )
+        assert len(resp["EvaluationResults"]) == 1
+        result = resp["EvaluationResults"][0]
+        assert result["EvalDecision"] == "explicitDeny"
+
+    def test_simulate_custom_policy_multiple_actions(self, iam):
+        """SimulateCustomPolicy with multiple actions."""
+        resp = iam.simulate_custom_policy(
+            PolicyInputList=[SIMPLE_POLICY_DOC],
+            ActionNames=["s3:GetObject", "s3:PutObject", "ec2:DescribeInstances"],
+        )
+        assert len(resp["EvaluationResults"]) == 3
+        action_names = [r["EvalActionName"] for r in resp["EvaluationResults"]]
+        assert "s3:GetObject" in action_names
+        assert "s3:PutObject" in action_names
+        assert "ec2:DescribeInstances" in action_names
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Login profile lifecycle detail
+# ---------------------------------------------------------------------------
+
+
+class TestIAMLoginProfileExtended:
+    def test_create_login_profile_password_reset_required(self, iam):
+        """CreateLoginProfile with PasswordResetRequired=True."""
+        user_name = _unique("lp-reset")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.create_login_profile(
+                UserName=user_name,
+                Password="Test@12345678",
+                PasswordResetRequired=True,
+            )
+            assert resp["LoginProfile"]["PasswordResetRequired"] is True
+        finally:
+            iam.delete_login_profile(UserName=user_name)
+            iam.delete_user(UserName=user_name)
+
+    def test_delete_login_profile_makes_it_gone(self, iam):
+        """After DeleteLoginProfile, GetLoginProfile raises NoSuchEntity."""
+        user_name = _unique("lp-delgone")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.create_login_profile(UserName=user_name, Password="Test@12345678")
+            iam.delete_login_profile(UserName=user_name)
+            with pytest.raises(iam.exceptions.NoSuchEntityException):
+                iam.get_login_profile(UserName=user_name)
+        finally:
+            try:
+                iam.delete_login_profile(UserName=user_name)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Deactivate MFA standalone
+# ---------------------------------------------------------------------------
+
+
+class TestIAMDeactivateMFADevice:
+    def test_deactivate_mfa_device_removes_from_list(self, iam):
+        """DeactivateMFADevice removes the device from ListMFADevices."""
+        user_name = _unique("deact-mfa")
+        mfa_name = _unique("deact-dev")
+        iam.create_user(UserName=user_name)
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.enable_mfa_device(
+                UserName=user_name,
+                SerialNumber=serial,
+                AuthenticationCode1="123456",
+                AuthenticationCode2="654321",
+            )
+            # Verify enabled
+            listed = iam.list_mfa_devices(UserName=user_name)
+            assert any(d["SerialNumber"] == serial for d in listed["MFADevices"])
+
+            # Deactivate
+            iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            listed2 = iam.list_mfa_devices(UserName=user_name)
+            assert not any(d["SerialNumber"] == serial for d in listed2["MFADevices"])
+        finally:
+            try:
+                iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            except Exception:
+                pass
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: GetUser for non-existent user
+# ---------------------------------------------------------------------------
+
+
+class TestIAMGetUserErrors:
+    def test_get_user_nonexistent_raises(self, iam):
+        """GetUser on a non-existent user raises NoSuchEntity."""
+        with pytest.raises(iam.exceptions.NoSuchEntityException):
+            iam.get_user(UserName="no-such-user-" + uuid.uuid4().hex[:8])
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: CreateUser duplicate raises error
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCreateUserDuplicate:
+    def test_create_user_duplicate_raises(self, iam):
+        """CreateUser with an existing name raises EntityAlreadyExists."""
+        user_name = _unique("dup-user")
+        iam.create_user(UserName=user_name)
+        try:
+            with pytest.raises(iam.exceptions.EntityAlreadyExistsException):
+                iam.create_user(UserName=user_name)
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: CreateRole duplicate raises error
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCreateRoleDuplicate:
+    def test_create_role_duplicate_raises(self, iam):
+        """CreateRole with an existing name raises EntityAlreadyExists."""
+        role_name = _unique("dup-role")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            with pytest.raises(iam.exceptions.EntityAlreadyExistsException):
+                iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: CreateGroup duplicate raises error
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCreateGroupDuplicate:
+    def test_create_group_duplicate_raises(self, iam):
+        """CreateGroup with an existing name raises EntityAlreadyExists."""
+        group_name = _unique("dup-grp")
+        iam.create_group(GroupName=group_name)
+        try:
+            with pytest.raises(iam.exceptions.EntityAlreadyExistsException):
+                iam.create_group(GroupName=group_name)
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: ListEntitiesForPolicy with users and groups
+# ---------------------------------------------------------------------------
+
+
+class TestIAMListEntitiesForPolicyExtended:
+    def test_list_entities_for_policy_user_and_group(self, iam):
+        """ListEntitiesForPolicy returns users and groups attached to a policy."""
+        user_name = _unique("lefp-usr")
+        group_name = _unique("lefp-grp")
+        policy_name = _unique("lefp-pol")
+        iam.create_user(UserName=user_name)
+        iam.create_group(GroupName=group_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_user_policy(UserName=user_name, PolicyArn=arn)
+            iam.attach_group_policy(GroupName=group_name, PolicyArn=arn)
+            resp = iam.list_entities_for_policy(PolicyArn=arn)
+            user_names = [u["UserName"] for u in resp.get("PolicyUsers", [])]
+            group_names = [g["GroupName"] for g in resp.get("PolicyGroups", [])]
+            assert user_name in user_names
+            assert group_name in group_names
+        finally:
+            iam.detach_user_policy(UserName=user_name, PolicyArn=arn)
+            iam.detach_group_policy(GroupName=group_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_user(UserName=user_name)
+            iam.delete_group(GroupName=group_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: AccountAuthorizationDetails with Group filter
+# ---------------------------------------------------------------------------
+
+
+class TestIAMAccountAuthorizationDetailsGroup:
+    def test_get_account_authorization_details_group_filter(self, iam):
+        """GetAccountAuthorizationDetails with Filter=[Group]."""
+        group_name = _unique("aad-grp")
+        iam.create_group(GroupName=group_name)
+        try:
+            resp = iam.get_account_authorization_details(Filter=["Group"])
+            assert "GroupDetailList" in resp
+            group_names = [g["GroupName"] for g in resp.get("GroupDetailList", [])]
+            assert group_name in group_names
+            # Should not have user or role details
+            assert len(resp.get("UserDetailList", [])) == 0
+            assert len(resp.get("RoleDetailList", [])) == 0
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: DeletePolicy standalone
+# ---------------------------------------------------------------------------
+
+
+class TestIAMDeletePolicy:
+    def test_delete_policy_removes_from_list(self, iam):
+        """DeletePolicy removes the policy from ListPolicies."""
+        policy_name = _unique("delpol")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        iam.delete_policy(PolicyArn=arn)
+        resp = iam.list_policies(Scope="Local")
+        names = [p["PolicyName"] for p in resp["Policies"]]
+        assert policy_name not in names
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: CreateGroup with Path
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCreateGroupWithPath:
+    def test_create_group_with_path(self, iam):
+        """CreateGroup with Path sets the path."""
+        group_name = _unique("pathgrp")
+        iam.create_group(GroupName=group_name, Path="/division/team/")
+        try:
+            resp = iam.get_group(GroupName=group_name)
+            assert resp["Group"]["Path"] == "/division/team/"
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: User ARN format
+# ---------------------------------------------------------------------------
+
+
+class TestIAMUserArnFormat:
+    def test_user_arn_contains_account_and_name(self, iam):
+        """CreateUser returns an ARN with the correct format."""
+        user_name = _unique("arn-user")
+        resp = iam.create_user(UserName=user_name)
+        try:
+            arn = resp["User"]["Arn"]
+            assert arn.startswith("arn:aws:iam:")
+            assert user_name in arn
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Role ARN format
+# ---------------------------------------------------------------------------
+
+
+class TestIAMRoleArnFormat:
+    def test_role_arn_contains_account_and_name(self, iam):
+        """CreateRole returns an ARN with the correct format."""
+        role_name = _unique("arn-role")
+        resp = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            arn = resp["Role"]["Arn"]
+            assert arn.startswith("arn:aws:iam:")
+            assert role_name in arn
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Policy ARN format
+# ---------------------------------------------------------------------------
+
+
+class TestIAMPolicyArnFormat:
+    def test_policy_arn_contains_account_and_name(self, iam):
+        """CreatePolicy returns an ARN with the correct format."""
+        policy_name = _unique("arn-pol")
+        resp = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = resp["Policy"]["Arn"]
+        try:
+            assert arn.startswith("arn:aws:iam:")
+            assert policy_name in arn
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: GetPolicy attachment count
+# ---------------------------------------------------------------------------
+
+
+class TestIAMPolicyAttachmentCount:
+    def test_policy_attachment_count_increments(self, iam):
+        """GetPolicy AttachmentCount reflects attached entities."""
+        policy_name = _unique("attcnt-pol")
+        role_name = _unique("attcnt-role")
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            resp_before = iam.get_policy(PolicyArn=arn)
+            assert resp_before["Policy"]["AttachmentCount"] == 0
+
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=arn)
+            resp_after = iam.get_policy(PolicyArn=arn)
+            assert resp_after["Policy"]["AttachmentCount"] == 1
+        finally:
+            iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
+            iam.delete_policy(PolicyArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Credential report CSV content
+# ---------------------------------------------------------------------------
+
+
+class TestIAMCredentialReportContent:
+    def test_credential_report_contains_user(self, iam):
+        """GetCredentialReport CSV content includes created users."""
+        import time
+
+        user_name = _unique("cr-user")
+        iam.create_user(UserName=user_name)
+        try:
+            for _ in range(10):
+                gen = iam.generate_credential_report()
+                if gen["State"] == "COMPLETE":
+                    break
+                time.sleep(0.5)
+            resp = iam.get_credential_report()
+            content = resp["Content"]
+            if isinstance(content, bytes):
+                content = content.decode("utf-8")
+            assert user_name in content
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: Multiple access keys per user
+# ---------------------------------------------------------------------------
+
+
+class TestIAMMultipleAccessKeys:
+    def test_multiple_access_keys_per_user(self, iam):
+        """A user can have multiple access keys."""
+        user_name = _unique("multi-ak")
+        iam.create_user(UserName=user_name)
+        try:
+            ak1 = iam.create_access_key(UserName=user_name)["AccessKey"]
+            ak2 = iam.create_access_key(UserName=user_name)["AccessKey"]
+            resp = iam.list_access_keys(UserName=user_name)
+            ids = [k["AccessKeyId"] for k in resp["AccessKeyMetadata"]]
+            assert ak1["AccessKeyId"] in ids
+            assert ak2["AccessKeyId"] in ids
+            assert len(ids) >= 2
+        finally:
+            for ak in [ak1, ak2]:
+                try:
+                    iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
+                except Exception:
+                    pass
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: ListVirtualMFADevices with AssignmentStatus
+# ---------------------------------------------------------------------------
+
+
+class TestIAMListVirtualMFADevicesFiltered:
+    def test_list_virtual_mfa_devices_unassigned(self, iam):
+        """ListVirtualMFADevices with AssignmentStatus=Unassigned."""
+        mfa_name = _unique("vmfa-unassign")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            listed = iam.list_virtual_mfa_devices(AssignmentStatus="Unassigned")
+            serials = [d["SerialNumber"] for d in listed["VirtualMFADevices"]]
+            assert serial in serials
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)

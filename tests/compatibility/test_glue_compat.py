@@ -4239,3 +4239,396 @@ class TestGlueResumeWorkflowRun:
         with pytest.raises(ClientError) as exc:
             glue.resume_workflow_run(Name="nonexistent-wf-xyz", RunId="fake-run", NodeIds=["node1"])
         assert "Error" in exc.value.response
+
+
+class TestGlueGetConnections:
+    """Tests for GetConnections."""
+
+    def test_get_connections_empty(self, glue):
+        """GetConnections returns a ConnectionList."""
+        resp = glue.get_connections()
+        assert "ConnectionList" in resp
+
+    def test_get_connections_after_create(self, glue):
+        """GetConnections includes a created connection."""
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        try:
+            resp = glue.get_connections()
+            names = [c["Name"] for c in resp["ConnectionList"]]
+            assert conn_name in names
+        finally:
+            glue.delete_connection(ConnectionName=conn_name)
+
+
+class TestGlueGetPartitionIndexes:
+    """Tests for GetPartitionIndexes."""
+
+    def test_get_partition_indexes(self, glue):
+        """GetPartitionIndexes returns indexes for a table."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "int"}],
+            },
+        )
+        try:
+            resp = glue.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
+            assert "PartitionIndexDescriptorList" in resp
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_partition_indexes_nonexistent_db(self, glue):
+        """GetPartitionIndexes for nonexistent db returns empty list."""
+        resp = glue.get_partition_indexes(DatabaseName="fake-db-xyz", TableName="fake-tbl")
+        assert "PartitionIndexDescriptorList" in resp
+
+
+class TestGlueGetSchema:
+    """Tests for GetSchema and GetSchemaByDefinition."""
+
+    def test_get_schema(self, glue):
+        """GetSchema retrieves schema details by registry and schema name."""
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            resp = glue.get_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            assert resp["SchemaName"] == schema_name
+            assert resp["DataFormat"] == "AVRO"
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_get_schema_not_found(self, glue):
+        """GetSchema for nonexistent schema raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_schema(
+                SchemaId={"SchemaName": "nonexistent-schema-xyz", "RegistryName": "nonexistent-reg"}
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_schema_by_definition(self, glue):
+        """GetSchemaByDefinition finds a schema by its definition."""
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        definition = '{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=definition,
+        )
+        try:
+            resp = glue.get_schema_by_definition(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaDefinition=definition,
+            )
+            assert "SchemaVersionId" in resp
+            assert resp["DataFormat"] == "AVRO"
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+
+class TestGlueGetTableVersion:
+    """Tests for GetTableVersion."""
+
+    def _storage_descriptor(self):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_get_table_version(self, glue):
+        """GetTableVersion retrieves a specific table version."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": self._storage_descriptor()},
+        )
+        try:
+            versions = glue.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+            version_id = versions["TableVersions"][0]["VersionId"]
+            resp = glue.get_table_version(
+                DatabaseName=db_name, TableName=tbl_name, VersionId=str(version_id)
+            )
+            assert "TableVersion" in resp
+            assert resp["TableVersion"]["Table"]["Name"] == tbl_name
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_table_version_nonexistent_db(self, glue):
+        """GetTableVersion for nonexistent db raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_table_version(DatabaseName="fake-db-xyz", TableName="fake-tbl", VersionId="1")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueGetTriggers:
+    """Tests for GetTriggers."""
+
+    def test_get_triggers_empty(self, glue):
+        """GetTriggers returns a Triggers list."""
+        resp = glue.get_triggers()
+        assert "Triggers" in resp
+
+    def test_get_triggers_after_create(self, glue):
+        """GetTriggers includes a created trigger."""
+        name = _unique("trig")
+        glue.create_trigger(
+            Name=name,
+            Type="ON_DEMAND",
+            Actions=[{"JobName": "fake-job"}],
+        )
+        try:
+            resp = glue.get_triggers()
+            names = [t["Name"] for t in resp["Triggers"]]
+            assert name in names
+        finally:
+            glue.delete_trigger(Name=name)
+
+
+class TestGlueListCrawlers:
+    """Tests for ListCrawlers."""
+
+    def test_list_crawlers_empty(self, glue):
+        """ListCrawlers returns CrawlerNames."""
+        resp = glue.list_crawlers()
+        assert "CrawlerNames" in resp
+
+
+class TestGlueListCrawls:
+    """Tests for ListCrawls."""
+
+    def test_list_crawls_nonexistent_crawler(self, glue):
+        """ListCrawls for nonexistent crawler raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.list_crawls(CrawlerName="nonexistent-crawler-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueListJobs:
+    """Tests for ListJobs."""
+
+    def test_list_jobs_empty(self, glue):
+        """ListJobs returns JobNames."""
+        resp = glue.list_jobs()
+        assert "JobNames" in resp
+
+    def test_list_jobs_after_create(self, glue):
+        """ListJobs includes a created job."""
+        name = _unique("job")
+        glue.create_job(
+            Name=name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.list_jobs()
+            assert name in resp["JobNames"]
+        finally:
+            glue.delete_job(JobName=name)
+
+
+class TestGlueListTriggers:
+    """Tests for ListTriggers."""
+
+    def test_list_triggers_empty(self, glue):
+        """ListTriggers returns TriggerNames."""
+        resp = glue.list_triggers()
+        assert "TriggerNames" in resp
+
+    def test_list_triggers_after_create(self, glue):
+        """ListTriggers includes a created trigger."""
+        name = _unique("trig")
+        glue.create_trigger(
+            Name=name,
+            Type="ON_DEMAND",
+            Actions=[{"JobName": "fake-job"}],
+        )
+        try:
+            resp = glue.list_triggers()
+            assert name in resp["TriggerNames"]
+        finally:
+            glue.delete_trigger(Name=name)
+
+
+class TestGlueUpdateSchema:
+    """Tests for UpdateSchema."""
+
+    def test_update_schema_compatibility(self, glue):
+        """UpdateSchema modifies schema compatibility."""
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            resp = glue.update_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                Compatibility="BACKWARD",
+            )
+            assert resp["SchemaName"] == schema_name
+            # Verify the update took effect
+            get_resp = glue.get_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name}
+            )
+            assert get_resp["Compatibility"] == "BACKWARD"
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_update_schema_nonexistent(self, glue):
+        """UpdateSchema for nonexistent schema raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_schema(
+                SchemaId={
+                    "SchemaName": "nonexistent-schema-xyz",
+                    "RegistryName": "nonexistent-reg",
+                },
+                Compatibility="FULL",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+
+class TestGlueBatchGetBlueprints:
+    """Tests for BatchGetBlueprints."""
+
+    def test_batch_get_blueprints(self, glue):
+        """BatchGetBlueprints returns results for created blueprints."""
+        bp_name = _unique("bp")
+        glue.create_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            resp = glue.batch_get_blueprints(Names=[bp_name])
+            assert "Blueprints" in resp
+            assert len(resp["Blueprints"]) == 1
+            assert resp["Blueprints"][0]["Name"] == bp_name
+        finally:
+            glue.delete_blueprint(Name=bp_name)
+
+    def test_batch_get_blueprints_missing(self, glue):
+        """BatchGetBlueprints returns MissingBlueprints for unknown names."""
+        resp = glue.batch_get_blueprints(Names=["nonexistent-bp-xyz"])
+        assert "MissingBlueprints" in resp
+        assert "nonexistent-bp-xyz" in resp["MissingBlueprints"]
+
+
+class TestGlueBatchGetCustomEntityTypes:
+    """Tests for BatchGetCustomEntityTypes."""
+
+    def test_batch_get_custom_entity_types(self, glue):
+        """BatchGetCustomEntityTypes returns results for created types."""
+        cet_name = _unique("cet")
+        glue.create_custom_entity_type(Name=cet_name, RegexString="\\d{3}-\\d{2}-\\d{4}")
+        try:
+            resp = glue.batch_get_custom_entity_types(Names=[cet_name])
+            assert "CustomEntityTypes" in resp
+            assert len(resp["CustomEntityTypes"]) == 1
+            assert resp["CustomEntityTypes"][0]["Name"] == cet_name
+        finally:
+            glue.delete_custom_entity_type(Name=cet_name)
+
+
+class TestGlueBatchGetDevEndpoints:
+    """Tests for BatchGetDevEndpoints."""
+
+    def test_batch_get_dev_endpoints(self, glue):
+        """BatchGetDevEndpoints returns DevEndpoints list."""
+        resp = glue.batch_get_dev_endpoints(DevEndpointNames=["nonexistent-de-xyz"])
+        assert "DevEndpoints" in resp or "DevEndpointsNotFound" in resp
+
+
+class TestGlueBatchStopJobRun:
+    """Tests for BatchStopJobRun."""
+
+    def test_batch_stop_job_run_nonexistent(self, glue):
+        """BatchStopJobRun for nonexistent job raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.batch_stop_job_run(JobName="fake-job-xyz", JobRunIds=["fake-run-id"])
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueCreatePartitionIndex:
+    """Tests for CreatePartitionIndex."""
+
+    def test_create_partition_index(self, glue):
+        """CreatePartitionIndex adds an index to a partitioned table."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "int"}],
+            },
+        )
+        try:
+            resp = glue.create_partition_index(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionIndex={"Keys": ["year"], "IndexName": "idx-year"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)

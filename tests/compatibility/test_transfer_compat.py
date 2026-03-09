@@ -1787,3 +1787,336 @@ class TestTransferIdentityProvider:
             assert "Url" in result
         finally:
             transfer.delete_server(ServerId=server_id)
+
+
+class TestTransferHostKeyOperations:
+    """Tests for Transfer Family host key operations."""
+
+    def test_import_host_key(self, transfer):
+        """ImportHostKey adds a host key to a server."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            hk = transfer.import_host_key(
+                ServerId=server_id,
+                HostKeyBody=(
+                    "-----BEGIN RSA PRIVATE KEY-----\n"
+                    "MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGcY5unA67hqxnfp/Imt\n"
+                    "-----END RSA PRIVATE KEY-----"
+                ),
+            )
+            assert "HostKeyId" in hk
+            assert "ServerId" in hk
+            assert hk["ServerId"] == server_id
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_describe_host_key(self, transfer):
+        """DescribeHostKey returns host key details."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            hk = transfer.import_host_key(
+                ServerId=server_id,
+                HostKeyBody=(
+                    "-----BEGIN RSA PRIVATE KEY-----\n"
+                    "MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGcY5unA67hqxnfp/Imt\n"
+                    "-----END RSA PRIVATE KEY-----"
+                ),
+            )
+            host_key_id = hk["HostKeyId"]
+            desc = transfer.describe_host_key(
+                ServerId=server_id,
+                HostKeyId=host_key_id,
+            )
+            assert "HostKey" in desc
+            assert desc["HostKey"]["HostKeyId"] == host_key_id
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_delete_host_key(self, transfer):
+        """DeleteHostKey removes a host key from a server."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            hk = transfer.import_host_key(
+                ServerId=server_id,
+                HostKeyBody=(
+                    "-----BEGIN RSA PRIVATE KEY-----\n"
+                    "MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGcY5unA67hqxnfp/Imt\n"
+                    "-----END RSA PRIVATE KEY-----"
+                ),
+            )
+            host_key_id = hk["HostKeyId"]
+            transfer.delete_host_key(ServerId=server_id, HostKeyId=host_key_id)
+            # Verify it's gone
+            with pytest.raises(ClientError):
+                transfer.describe_host_key(ServerId=server_id, HostKeyId=host_key_id)
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_update_host_key(self, transfer):
+        """UpdateHostKey modifies a host key description."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            hk = transfer.import_host_key(
+                ServerId=server_id,
+                HostKeyBody=(
+                    "-----BEGIN RSA PRIVATE KEY-----\n"
+                    "MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGcY5unA67hqxnfp/Imt\n"
+                    "-----END RSA PRIVATE KEY-----"
+                ),
+            )
+            host_key_id = hk["HostKeyId"]
+            update_resp = transfer.update_host_key(
+                ServerId=server_id,
+                HostKeyId=host_key_id,
+                Description="updated-desc",
+            )
+            assert "HostKeyId" in update_resp
+            assert "ServerId" in update_resp
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_describe_host_key_nonexistent_server(self, transfer):
+        """DescribeHostKey raises error for nonexistent server."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.describe_host_key(
+                ServerId="s-00000000000000000",
+                HostKeyId="hostkey-0000000000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ServerNotFound",
+        )
+
+
+class TestTransferWebAppOperations:
+    """Tests for Transfer Family web app operations."""
+
+    def test_create_web_app(self, transfer):
+        """CreateWebApp returns a WebAppId."""
+        resp = transfer.create_web_app(
+            IdentityProviderDetails={
+                "IdentityCenterConfig": {
+                    "InstanceArn": "arn:aws:sso:::instance/ssoins-fake123",
+                }
+            },
+        )
+        assert "WebAppId" in resp
+        web_app_id = resp["WebAppId"]
+        assert len(web_app_id) > 0
+        # cleanup
+        try:
+            transfer.delete_web_app(WebAppId=web_app_id)
+        except ClientError:
+            pass
+
+    def test_describe_web_app(self, transfer):
+        """DescribeWebApp returns web app details."""
+        create_resp = transfer.create_web_app(
+            IdentityProviderDetails={
+                "IdentityCenterConfig": {
+                    "InstanceArn": "arn:aws:sso:::instance/ssoins-fake123",
+                }
+            },
+        )
+        web_app_id = create_resp["WebAppId"]
+        try:
+            desc = transfer.describe_web_app(WebAppId=web_app_id)
+            assert "WebApp" in desc
+            assert desc["WebApp"]["WebAppId"] == web_app_id
+        finally:
+            try:
+                transfer.delete_web_app(WebAppId=web_app_id)
+            except ClientError:
+                pass
+
+    def test_delete_web_app(self, transfer):
+        """DeleteWebApp removes a web app."""
+        create_resp = transfer.create_web_app(
+            IdentityProviderDetails={
+                "IdentityCenterConfig": {
+                    "InstanceArn": "arn:aws:sso:::instance/ssoins-fake123",
+                }
+            },
+        )
+        web_app_id = create_resp["WebAppId"]
+        transfer.delete_web_app(WebAppId=web_app_id)
+        with pytest.raises(ClientError) as exc_info:
+            transfer.describe_web_app(WebAppId=web_app_id)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_web_app_nonexistent(self, transfer):
+        """DescribeWebApp raises ResourceNotFoundException for unknown ID."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.describe_web_app(WebAppId="webapp-000000000000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_web_app_nonexistent(self, transfer):
+        """UpdateWebApp raises ResourceNotFoundException for unknown ID."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_web_app(WebAppId="webapp-000000000000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_web_app_customization_nonexistent(self, transfer):
+        """DescribeWebAppCustomization raises for unknown web app."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.describe_web_app_customization(
+                WebAppId="webapp-000000000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_web_app_customization_nonexistent(self, transfer):
+        """DeleteWebAppCustomization raises for unknown web app."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.delete_web_app_customization(
+                WebAppId="webapp-000000000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_web_app_customization_nonexistent(self, transfer):
+        """UpdateWebAppCustomization raises for unknown web app."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_web_app_customization(
+                WebAppId="webapp-000000000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestTransferConnectorAdvancedOperations:
+    """Tests for connector-related operations that need params."""
+
+    def test_test_connection_nonexistent(self, transfer):
+        """TestConnection raises ResourceNotFoundException for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.test_connection(ConnectorId="c-00000000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_file_transfer_nonexistent(self, transfer):
+        """StartFileTransfer raises ResourceNotFoundException for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.start_file_transfer(
+                ConnectorId="c-00000000000000000000",
+                SendFilePaths=["/test/file.txt"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_directory_listing_nonexistent(self, transfer):
+        """StartDirectoryListing raises ResourceNotFoundException for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.start_directory_listing(
+                ConnectorId="c-00000000000000000000",
+                RemoteDirectoryPath="/remote",
+                OutputDirectoryPath="/output",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_file_transfer_results_nonexistent(self, transfer):
+        """ListFileTransferResults raises for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.list_file_transfer_results(
+                ConnectorId="c-00000000000000000000",
+                TransferId="t-00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_remote_delete_nonexistent(self, transfer):
+        """StartRemoteDelete raises ResourceNotFoundException for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.start_remote_delete(
+                ConnectorId="c-00000000000000000000",
+                DeletePath="/test/file.txt",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_remote_move_nonexistent(self, transfer):
+        """StartRemoteMove raises ResourceNotFoundException for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.start_remote_move(
+                ConnectorId="c-00000000000000000000",
+                SourcePath="/test/file.txt",
+                TargetPath="/dest/file.txt",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestTransferMiscOperations:
+    """Tests for miscellaneous operations that need params."""
+
+    def test_update_certificate_nonexistent(self, transfer):
+        """UpdateCertificate raises ResourceNotFoundException for fake cert."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_certificate(
+                CertificateId="c-00000000000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_connector_nonexistent(self, transfer):
+        """UpdateConnector raises ResourceNotFoundException for fake connector."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_connector(
+                ConnectorId="c-00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_profile_nonexistent(self, transfer):
+        """UpdateProfile raises ResourceNotFoundException for fake profile."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_profile(
+                ProfileId="p-00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_send_workflow_step_state_nonexistent(self, transfer):
+        """SendWorkflowStepState raises ResourceNotFoundException for fake workflow."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.send_workflow_step_state(
+                WorkflowId="w-00000000000000000000",
+                ExecutionId="00000000-0000-0000-0000-000000000000",
+                Token="fake-token-value",
+                Status="SUCCESS",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_access_nonexistent_server(self, transfer):
+        """DeleteAccess raises error for nonexistent server."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.delete_access(
+                ServerId="s-00000000000000000",
+                ExternalId="fake-external-id",
+            )
+        err_code = exc_info.value.response["Error"]["Code"]
+        assert err_code in ("ResourceNotFoundException", "ServerNotFound")
+
+    def test_update_access_nonexistent_server(self, transfer):
+        """UpdateAccess raises error for nonexistent server."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_access(
+                ServerId="s-00000000000000000",
+                ExternalId="fake-external-id",
+                Role="arn:aws:iam::123456789012:role/fake-role",
+            )
+        err_code = exc_info.value.response["Error"]["Code"]
+        assert err_code in ("ResourceNotFoundException", "ServerNotFound")
+
+    def test_delete_agreement_nonexistent_server(self, transfer):
+        """DeleteAgreement raises error for nonexistent server."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.delete_agreement(
+                AgreementId="a-00000000000000000000",
+                ServerId="s-00000000000000000",
+            )
+        err_code = exc_info.value.response["Error"]["Code"]
+        assert err_code in ("ResourceNotFoundException", "ServerNotFound")
+
+    def test_update_agreement_nonexistent_server(self, transfer):
+        """UpdateAgreement raises error for nonexistent server."""
+        with pytest.raises(ClientError) as exc_info:
+            transfer.update_agreement(
+                AgreementId="a-00000000000000000000",
+                ServerId="s-00000000000000000",
+            )
+        err_code = exc_info.value.response["Error"]["Code"]
+        assert err_code in ("ResourceNotFoundException", "ServerNotFound")

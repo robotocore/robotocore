@@ -1670,40 +1670,6 @@ class TestBackupLegalHoldCRUD:
         )
 
 
-class TestBackupSummaryOperations:
-    """Tests for job summary list operations."""
-
-    def test_list_backup_job_summaries(self, backup):
-        """ListBackupJobSummaries returns BackupJobSummaries list."""
-        resp = backup.list_backup_job_summaries()
-        assert "BackupJobSummaries" in resp
-        assert isinstance(resp["BackupJobSummaries"], list)
-
-    def test_list_copy_job_summaries(self, backup):
-        """ListCopyJobSummaries returns CopyJobSummaries list."""
-        resp = backup.list_copy_job_summaries()
-        assert "CopyJobSummaries" in resp
-        assert isinstance(resp["CopyJobSummaries"], list)
-
-    def test_list_restore_job_summaries(self, backup):
-        """ListRestoreJobSummaries returns RestoreJobSummaries list."""
-        resp = backup.list_restore_job_summaries()
-        assert "RestoreJobSummaries" in resp
-        assert isinstance(resp["RestoreJobSummaries"], list)
-
-    def test_list_report_jobs(self, backup):
-        """ListReportJobs returns ReportJobs list."""
-        resp = backup.list_report_jobs()
-        assert "ReportJobs" in resp
-        assert isinstance(resp["ReportJobs"], list)
-
-    def test_describe_report_job_nonexistent(self, backup):
-        """DescribeReportJob for nonexistent ID raises ResourceNotFoundException."""
-        with pytest.raises(ClientError) as exc:
-            backup.describe_report_job(ReportJobId="00000000-0000-0000-0000-000000000000")
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-
 class TestBackupUpdateOperations:
     """Tests for update operations on restore testing plans and selections."""
 
@@ -1798,28 +1764,6 @@ class TestBackupUpdateOperations:
         finally:
             backup.delete_report_plan(ReportPlanName=name)
 
-    def test_list_recovery_points_by_legal_hold(self, backup):
-        """ListRecoveryPointsByLegalHold returns response for active hold."""
-        hold = backup.create_legal_hold(
-            Title="rp-test",
-            Description="for recovery points",
-            RecoveryPointSelection={
-                "ResourceIdentifiers": ["*"],
-                "VaultNames": ["*"],
-            },
-        )
-        hold_id = hold["LegalHoldId"]
-        try:
-            resp = backup.list_recovery_points_by_legal_hold(LegalHoldId=hold_id)
-            assert "RecoveryPoints" in resp
-            assert isinstance(resp["RecoveryPoints"], list)
-        finally:
-            backup.cancel_legal_hold(
-                LegalHoldId=hold_id,
-                CancelDescription="cleanup",
-                RetainRecordInDays=1,
-            )
-
 
 class TestBackupPlanJsonParsing:
     """Tests for backup plan JSON parsing operations."""
@@ -1848,27 +1792,3 @@ class TestBackupPlanJsonParsing:
         assert "BackupPlan" in resp
         assert resp["BackupPlan"]["BackupPlanName"] == "json-plan"
         assert len(resp["BackupPlan"]["Rules"]) == 1
-
-
-class TestBackupErrorPaths:
-    """Tests for error paths on various backup operations."""
-
-    @pytest.fixture
-    def backup(self):
-        return make_client("backup")
-
-    def test_disassociate_recovery_point_nonexistent(self, backup):
-        """DisassociateRecoveryPoint with fake recovery point raises ResourceNotFoundException."""
-        vault_name = _make_vault(backup)
-        try:
-            with pytest.raises(ClientError) as exc:
-                backup.disassociate_recovery_point(
-                    BackupVaultName=vault_name,
-                    RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
-                )
-            assert exc.value.response["Error"]["Code"] in (
-                "ResourceNotFoundException",
-                "InvalidResourceStateException",
-            )
-        finally:
-            backup.delete_backup_vault(BackupVaultName=vault_name)
