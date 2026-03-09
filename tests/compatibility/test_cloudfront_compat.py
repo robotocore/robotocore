@@ -867,3 +867,289 @@ class TestCloudFrontFunctionErrors:
         with pytest.raises(cf.exceptions.ClientError) as exc_info:
             cf.get_function(Name="nonexistent-func-12345")
         assert exc_info.value.response["Error"]["Code"] is not None
+
+
+class TestCloudFrontConfigGetters:
+    """Tests for *Config getter operations (return config without full resource wrapper)."""
+
+    def test_get_cache_policy_config(self, cf):
+        name = _unique("cpol")
+        create_resp = cf.create_cache_policy(
+            CachePolicyConfig={
+                "Name": name,
+                "MinTTL": 60,
+                "DefaultTTL": 86400,
+                "MaxTTL": 31536000,
+                "ParametersInCacheKeyAndForwardedToOrigin": {
+                    "EnableAcceptEncodingGzip": True,
+                    "HeadersConfig": {"HeaderBehavior": "none"},
+                    "CookiesConfig": {"CookieBehavior": "none"},
+                    "QueryStringsConfig": {"QueryStringBehavior": "none"},
+                },
+            }
+        )
+        policy_id = create_resp["CachePolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        resp = cf.get_cache_policy_config(Id=policy_id)
+        assert resp["CachePolicyConfig"]["Name"] == name
+        assert resp["CachePolicyConfig"]["MinTTL"] == 60
+        assert "ETag" in resp
+
+        cf.delete_cache_policy(Id=policy_id, IfMatch=etag)
+
+    def test_get_origin_access_control_config(self, cf):
+        name = _unique("oac")
+        create_resp = cf.create_origin_access_control(
+            OriginAccessControlConfig={
+                "Name": name,
+                "Description": "config test",
+                "SigningProtocol": "sigv4",
+                "SigningBehavior": "always",
+                "OriginAccessControlOriginType": "s3",
+            }
+        )
+        oac_id = create_resp["OriginAccessControl"]["Id"]
+
+        resp = cf.get_origin_access_control_config(Id=oac_id)
+        assert resp["OriginAccessControlConfig"]["Name"] == name
+        assert "ETag" in resp
+
+    def test_get_response_headers_policy_config(self, cf):
+        name = _unique("rhpol")
+        create_resp = cf.create_response_headers_policy(
+            ResponseHeadersPolicyConfig={
+                "Name": name,
+                "Comment": "config test",
+                "SecurityHeadersConfig": {
+                    "XSSProtection": {"Override": True, "Protection": True},
+                },
+            }
+        )
+        policy_id = create_resp["ResponseHeadersPolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        resp = cf.get_response_headers_policy_config(Id=policy_id)
+        assert resp["ResponseHeadersPolicyConfig"]["Name"] == name
+        assert "ETag" in resp
+
+        cf.delete_response_headers_policy(Id=policy_id, IfMatch=etag)
+
+    def test_get_key_group_config(self, cf):
+        pub_pem = _generate_public_key_pem()
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": _unique("pk"),
+                "EncodedKey": pub_pem,
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+        name = _unique("kg")
+        kg_resp = cf.create_key_group(KeyGroupConfig={"Name": name, "Items": [pk_id]})
+        kg_id = kg_resp["KeyGroup"]["Id"]
+
+        resp = cf.get_key_group_config(Id=kg_id)
+        assert resp["KeyGroupConfig"]["Name"] == name
+        assert pk_id in resp["KeyGroupConfig"]["Items"]
+        assert "ETag" in resp
+
+    def test_get_public_key_config(self, cf):
+        pub_pem = _generate_public_key_pem()
+        name = _unique("pk")
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": name,
+                "EncodedKey": pub_pem,
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+
+        resp = cf.get_public_key_config(Id=pk_id)
+        assert resp["PublicKeyConfig"]["Name"] == name
+        assert "ETag" in resp
+
+
+class TestCloudFrontListOperationsExtended:
+    """Tests for List operations not covered by existing tests."""
+
+    def test_list_cloud_front_origin_access_identities(self, cf):
+        resp = cf.list_cloud_front_origin_access_identities()
+        assert "CloudFrontOriginAccessIdentityList" in resp
+
+    def test_list_streaming_distributions(self, cf):
+        resp = cf.list_streaming_distributions()
+        assert "StreamingDistributionList" in resp
+
+    def test_list_origin_request_policies(self, cf):
+        resp = cf.list_origin_request_policies()
+        assert "OriginRequestPolicyList" in resp
+
+    def test_list_continuous_deployment_policies(self, cf):
+        resp = cf.list_continuous_deployment_policies()
+        assert "ContinuousDeploymentPolicyList" in resp
+
+    def test_list_field_level_encryption_configs(self, cf):
+        resp = cf.list_field_level_encryption_configs()
+        assert "FieldLevelEncryptionList" in resp
+
+    def test_list_field_level_encryption_profiles(self, cf):
+        resp = cf.list_field_level_encryption_profiles()
+        assert "FieldLevelEncryptionProfileList" in resp
+
+    def test_list_realtime_log_configs(self, cf):
+        resp = cf.list_realtime_log_configs()
+        assert "RealtimeLogConfigs" in resp
+
+    def test_list_conflicting_aliases(self, cf):
+        resp = cf.list_conflicting_aliases(DistributionId="EDISTFAKE123", Alias="example.com")
+        assert "ConflictingAliasesList" in resp
+
+    def test_list_distributions_by_cache_policy_id(self, cf):
+        resp = cf.list_distributions_by_cache_policy_id(CachePolicyId="fake-policy-id")
+        assert "DistributionIdList" in resp
+
+    def test_list_distributions_by_key_group(self, cf):
+        resp = cf.list_distributions_by_key_group(KeyGroupId="fake-key-group-id")
+        assert "DistributionIdList" in resp
+
+    def test_list_distributions_by_origin_request_policy_id(self, cf):
+        resp = cf.list_distributions_by_origin_request_policy_id(
+            OriginRequestPolicyId="fake-policy-id"
+        )
+        assert "DistributionIdList" in resp
+
+    def test_list_distributions_by_realtime_log_config(self, cf):
+        resp = cf.list_distributions_by_realtime_log_config()
+        assert "DistributionList" in resp
+
+    def test_list_distributions_by_response_headers_policy_id(self, cf):
+        resp = cf.list_distributions_by_response_headers_policy_id(
+            ResponseHeadersPolicyId="fake-policy-id"
+        )
+        assert "DistributionIdList" in resp
+
+    def test_list_distributions_by_web_acl_id(self, cf):
+        resp = cf.list_distributions_by_web_acl_id(WebACLId="fake-web-acl-id")
+        assert "DistributionList" in resp
+
+
+class TestCloudFrontOriginAccessIdentity:
+    """Tests for CloudFront Origin Access Identity (legacy OAI)."""
+
+    def _create_oai(self, cf):
+        ref = str(uuid.uuid4())
+        resp = cf.create_cloud_front_origin_access_identity(
+            CloudFrontOriginAccessIdentityConfig={
+                "CallerReference": ref,
+                "Comment": "test oai",
+            }
+        )
+        return resp["CloudFrontOriginAccessIdentity"]["Id"]
+
+    def test_create_and_get_origin_access_identity(self, cf):
+        oai_id = self._create_oai(cf)
+        resp = cf.get_cloud_front_origin_access_identity(Id=oai_id)
+        assert resp["CloudFrontOriginAccessIdentity"]["Id"] == oai_id
+        assert "ETag" in resp
+
+    def test_get_origin_access_identity_config(self, cf):
+        oai_id = self._create_oai(cf)
+        resp = cf.get_cloud_front_origin_access_identity_config(Id=oai_id)
+        assert resp["CloudFrontOriginAccessIdentityConfig"]["Comment"] == "test oai"
+        assert "ETag" in resp
+
+
+class TestCloudFrontOriginRequestPolicy:
+    """Tests for Origin Request Policy operations."""
+
+    def _create_origin_request_policy(self, cf):
+        name = _unique("orp")
+        resp = cf.create_origin_request_policy(
+            OriginRequestPolicyConfig={
+                "Name": name,
+                "Comment": "test policy",
+                "HeadersConfig": {"HeaderBehavior": "none"},
+                "CookiesConfig": {"CookieBehavior": "none"},
+                "QueryStringsConfig": {"QueryStringBehavior": "none"},
+            }
+        )
+        return resp["OriginRequestPolicy"]["Id"], name, resp["ETag"]
+
+    def test_create_and_get_origin_request_policy(self, cf):
+        policy_id, name, etag = self._create_origin_request_policy(cf)
+        resp = cf.get_origin_request_policy(Id=policy_id)
+        assert resp["OriginRequestPolicy"]["Id"] == policy_id
+        assert resp["OriginRequestPolicy"]["OriginRequestPolicyConfig"]["Name"] == name
+
+        cf.delete_origin_request_policy(Id=policy_id, IfMatch=etag)
+
+    def test_get_origin_request_policy_config(self, cf):
+        policy_id, name, etag = self._create_origin_request_policy(cf)
+        resp = cf.get_origin_request_policy_config(Id=policy_id)
+        assert resp["OriginRequestPolicyConfig"]["Name"] == name
+        assert "ETag" in resp
+
+        cf.delete_origin_request_policy(Id=policy_id, IfMatch=etag)
+
+
+class TestCloudFrontStreamingDistributionErrors:
+    """Tests for streaming distribution error paths (working ops)."""
+
+    def test_get_nonexistent_streaming_distribution(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_streaming_distribution(Id="ENONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchStreamingDistribution"
+
+    def test_get_nonexistent_streaming_distribution_config(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_streaming_distribution_config(Id="ENONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchStreamingDistribution"
+
+
+class TestCloudFrontMonitoringSubscription:
+    """Tests for monitoring subscription operations."""
+
+    def test_get_monitoring_subscription_nonexistent(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_monitoring_subscription(DistributionId="ENONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+
+class TestCloudFrontFieldLevelEncryption:
+    """Tests for field-level encryption error paths (working ops)."""
+
+    def test_get_nonexistent_field_level_encryption(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_field_level_encryption(Id="EFLE123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchFieldLevelEncryptionConfig"
+
+    def test_get_nonexistent_field_level_encryption_config(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_field_level_encryption_config(Id="EFLE123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchFieldLevelEncryptionConfig"
+
+    def test_get_nonexistent_field_level_encryption_profile(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_field_level_encryption_profile(Id="EFLEP123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchFieldLevelEncryptionProfile"
+
+    def test_get_nonexistent_field_level_encryption_profile_config(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_field_level_encryption_profile_config(Id="EFLEP123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchFieldLevelEncryptionProfile"
+
+
+class TestCloudFrontContinuousDeployment:
+    """Tests for continuous deployment policy error paths."""
+
+    def test_get_nonexistent_continuous_deployment_policy(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_continuous_deployment_policy(Id="ECDP123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchContinuousDeploymentPolicy"
+
+    def test_get_nonexistent_continuous_deployment_policy_config(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_continuous_deployment_policy_config(Id="ECDP123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchContinuousDeploymentPolicy"
