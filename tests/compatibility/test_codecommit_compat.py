@@ -752,3 +752,56 @@ class TestCodeCommitTagOperations:
             assert tag_resp["tags"]["project"] == "compat"
         finally:
             codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitPullRequestApprovalOperations:
+    """Tests for pull request approval and override state operations."""
+
+    def test_get_pull_request_approval_states(self, codecommit):
+        """GetPullRequestApprovalStates returns approvals list for a PR."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            create_resp = codecommit.create_pull_request(
+                title="Approval states test",
+                targets=[
+                    {
+                        "repositoryName": name,
+                        "sourceReference": "feature",
+                        "destinationReference": "main",
+                    }
+                ],
+            )
+            pr_id = create_resp["pullRequest"]["pullRequestId"]
+            # revisionId may not be returned by Moto; use a placeholder
+            rev_id = create_resp["pullRequest"].get("revisionId", "MISSING")
+            resp = codecommit.get_pull_request_approval_states(
+                pullRequestId=pr_id, revisionId=rev_id
+            )
+            assert "approvals" in resp
+            assert isinstance(resp["approvals"], list)
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_get_pull_request_override_state(self, codecommit):
+        """GetPullRequestOverrideState returns override info for a PR."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            create_resp = codecommit.create_pull_request(
+                title="Override state test",
+                targets=[
+                    {
+                        "repositoryName": name,
+                        "sourceReference": "feature",
+                        "destinationReference": "main",
+                    }
+                ],
+            )
+            pr_id = create_resp["pullRequest"]["pullRequestId"]
+            rev_id = create_resp["pullRequest"].get("revisionId", "MISSING")
+            resp = codecommit.get_pull_request_override_state(
+                pullRequestId=pr_id, revisionId=rev_id
+            )
+            assert "overridden" in resp
+            assert isinstance(resp["overridden"], bool)
+        finally:
+            codecommit.delete_repository(repositoryName=name)

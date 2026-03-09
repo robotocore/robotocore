@@ -518,3 +518,81 @@ class TestInspector2CisAndCoverage:
         assert resp["aggregationType"] == "FINDING_TYPE"
         assert "responses" in resp
         assert isinstance(resp["responses"], list)
+
+
+class TestInspector2CisScanReports:
+    """Tests for CIS scan report and result detail operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_get_cis_scan_report(self, client):
+        """GetCisScanReport returns status for a non-existent scan."""
+        resp = client.get_cis_scan_report(
+            scanArn="arn:aws:inspector2:us-east-1:123456789012:cis-scan/fake-scan-id"
+        )
+        assert "status" in resp
+        assert resp["status"] == "NO_FINDINGS_FOUND"
+
+    def test_get_cis_scan_result_details(self, client):
+        """GetCisScanResultDetails returns empty results for non-existent scan."""
+        resp = client.get_cis_scan_result_details(
+            scanArn="arn:aws:inspector2:us-east-1:123456789012:cis-scan/fake",
+            accountId="123456789012",
+            targetResourceId="i-1234567890abcdef0",
+        )
+        assert "scanResultDetails" in resp
+        assert isinstance(resp["scanResultDetails"], list)
+
+    def test_get_clusters_for_image(self, client):
+        """GetClustersForImage returns empty cluster list for non-existent image."""
+        resp = client.get_clusters_for_image(
+            filter={"resourceId": "arn:aws:ecr:us-east-1:123456789012:repository/test-repo"}
+        )
+        assert "cluster" in resp
+        assert isinstance(resp["cluster"], list)
+
+    def test_get_code_security_integration(self, client):
+        """GetCodeSecurityIntegration returns 200 for non-existent integration."""
+        resp = client.get_code_security_integration(
+            integrationArn="arn:aws:inspector2:us-east-1:123456789012:code-security-integration/fake"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_code_security_scan_configuration(self, client):
+        """GetCodeSecurityScanConfiguration returns 200 for non-existent config."""
+        resp = client.get_code_security_scan_configuration(
+            scanConfigurationArn="arn:aws:inspector2:us-east-1:123456789012:code-security-scan-config/fake"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_cis_scan_results_aggregated_by_checks(self, client):
+        """ListCisScanResultsAggregatedByChecks returns check aggregations."""
+        resp = client.list_cis_scan_results_aggregated_by_checks(
+            scanArn="arn:aws:inspector2:us-east-1:123456789012:cis-scan/fake"
+        )
+        assert "checkAggregations" in resp
+        assert isinstance(resp["checkAggregations"], list)
+
+    def test_list_cis_scan_results_aggregated_by_target_resource(self, client):
+        """ListCisScanResultsAggregatedByTargetResource returns target aggregations."""
+        resp = client.list_cis_scan_results_aggregated_by_target_resource(
+            scanArn="arn:aws:inspector2:us-east-1:123456789012:cis-scan/fake"
+        )
+        assert "targetResourceAggregations" in resp
+        assert isinstance(resp["targetResourceAggregations"], list)
+
+    def test_list_code_security_scan_configuration_associations(self, client):
+        """ListCodeSecurityScanConfigurationAssociations returns associations."""
+        resp = client.list_code_security_scan_configuration_associations(
+            scanConfigurationArn="arn:aws:inspector2:us-east-1:123456789012:code-security-scan-config/fake"
+        )
+        assert "associations" in resp
+        assert isinstance(resp["associations"], list)
+
+    def test_list_code_security_scan_configurations(self, client):
+        """ListCodeSecurityScanConfigurations returns configurations list."""
+        resp = client.list_code_security_scan_configurations()
+        assert "configurations" in resp
+        assert isinstance(resp["configurations"], list)

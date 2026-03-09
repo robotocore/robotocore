@@ -319,3 +319,16 @@ class TestLakeFormationDescribeResource:
             assert resp["ResourceInfo"]["ResourceArn"] == resource_arn
         finally:
             client.deregister_resource(ResourceArn=resource_arn)
+
+
+class TestLakeFormationGetResourceLFTags:
+    """Tests for GetResourceLFTags operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_get_resource_lf_tags_catalog(self, client):
+        """GetResourceLFTags for the Catalog resource returns a response."""
+        resp = client.get_resource_lf_tags(Resource={"Catalog": {}})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

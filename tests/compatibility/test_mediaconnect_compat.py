@@ -347,3 +347,71 @@ class TestMediaConnectVpcInterfaces:
             FlowArn=flow["arn"], VpcInterfaceName="vpc-remove"
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestMediaConnectListOperations:
+    """Tests for various List operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("mediaconnect")
+
+    def test_list_bridges(self, client):
+        """ListBridges returns empty bridges list."""
+        resp = client.list_bridges()
+        assert "Bridges" in resp
+        assert isinstance(resp["Bridges"], list)
+
+    def test_list_entitlements(self, client):
+        """ListEntitlements returns entitlements list."""
+        resp = client.list_entitlements()
+        assert "Entitlements" in resp
+        assert isinstance(resp["Entitlements"], list)
+
+    def test_list_gateway_instances(self, client):
+        """ListGatewayInstances returns instances list."""
+        resp = client.list_gateway_instances()
+        assert "Instances" in resp
+        assert isinstance(resp["Instances"], list)
+
+    def test_list_gateways(self, client):
+        """ListGateways returns gateways list."""
+        resp = client.list_gateways()
+        assert "Gateways" in resp
+        assert isinstance(resp["Gateways"], list)
+
+    def test_list_offerings(self, client):
+        """ListOfferings returns offerings with expected structure."""
+        resp = client.list_offerings()
+        assert "Offerings" in resp
+        assert isinstance(resp["Offerings"], list)
+        # Moto provides default offerings
+        if resp["Offerings"]:
+            offering = resp["Offerings"][0]
+            assert "OfferingArn" in offering
+            assert "CurrencyCode" in offering
+            assert "PricePerUnit" in offering
+
+    def test_list_reservations(self, client):
+        """ListReservations returns reservations list."""
+        resp = client.list_reservations()
+        assert "Reservations" in resp
+        assert isinstance(resp["Reservations"], list)
+
+    def test_list_router_inputs(self, client):
+        """ListRouterInputs returns router inputs list."""
+        resp = client.list_router_inputs()
+        assert "RouterInputs" in resp
+        assert isinstance(resp["RouterInputs"], list)
+
+    def test_list_router_network_interfaces(self, client):
+        """ListRouterNetworkInterfaces returns network interfaces list."""
+        resp = client.list_router_network_interfaces()
+        assert "RouterNetworkInterfaces" in resp
+        assert isinstance(resp["RouterNetworkInterfaces"], list)
+
+    def test_list_router_outputs(self, client):
+        """ListRouterOutputs returns router outputs list."""
+        resp = client.list_router_outputs()
+        assert "RouterOutputs" in resp
+        assert isinstance(resp["RouterOutputs"], list)

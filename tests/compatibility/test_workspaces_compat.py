@@ -421,3 +421,39 @@ class TestWorkSpacesPoolSessionOperations:
         with pytest.raises(ClientError) as exc:
             workspaces.describe_workspaces_pool_sessions(PoolId="wspool-fake12345")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesClientBrandingOperations:
+    """Tests for WorkSpaces client branding operations."""
+
+    def test_describe_client_branding_nonexistent(self, workspaces):
+        """DescribeClientBranding for nonexistent directory raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_client_branding(ResourceId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesConnectionAliasPermissionOperations:
+    """Tests for WorkSpaces connection alias permission operations."""
+
+    def test_describe_connection_alias_permissions_nonexistent(self, workspaces):
+        """DescribeConnectionAliasPermissions raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_connection_alias_permissions(AliasId="wsca-fake12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesCustomImageImportOperations:
+    """Tests for WorkSpaces custom workspace image import operations."""
+
+    def test_describe_custom_workspace_image_import_nonexistent(self, workspaces):
+        """DescribeCustomWorkspaceImageImport raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_custom_workspace_image_import(ImageId="wsi-fake12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

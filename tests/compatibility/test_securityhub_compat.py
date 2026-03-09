@@ -996,3 +996,42 @@ class TestSecurityHubV2Operations:
         with pytest.raises(ClientError) as exc:
             client.list_automation_rules_v2()
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_aggregator_v2_nonexistent(self, client):
+        """GetAggregatorV2 raises ResourceNotFoundException for fake ARN."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:aggregator/fake"
+        with pytest.raises(ClientError) as exc:
+            client.get_aggregator_v2(AggregatorV2Arn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_finding_statistics_v2(self, client):
+        """GetFindingStatisticsV2 returns GroupByResults."""
+        resp = client.get_finding_statistics_v2(GroupByRules=[{"GroupByField": "SeverityLabel"}])
+        assert "GroupByResults" in resp
+        assert isinstance(resp["GroupByResults"], list)
+
+    def test_get_findings_trends_v2(self, client):
+        """GetFindingsTrendsV2 returns TrendsMetrics."""
+        import datetime
+
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=7)
+        resp = client.get_findings_trends_v2(StartTime=start, EndTime=now)
+        assert "TrendsMetrics" in resp
+        assert isinstance(resp["TrendsMetrics"], list)
+
+    def test_get_resources_statistics_v2(self, client):
+        """GetResourcesStatisticsV2 returns GroupByResults."""
+        resp = client.get_resources_statistics_v2(GroupByRules=[{"GroupByField": "ResourceType"}])
+        assert "GroupByResults" in resp
+        assert isinstance(resp["GroupByResults"], list)
+
+    def test_get_resources_trends_v2(self, client):
+        """GetResourcesTrendsV2 returns TrendsMetrics."""
+        import datetime
+
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=7)
+        resp = client.get_resources_trends_v2(StartTime=start, EndTime=now)
+        assert "TrendsMetrics" in resp
+        assert isinstance(resp["TrendsMetrics"], list)

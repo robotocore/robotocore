@@ -244,3 +244,28 @@ class TestDataSyncTaskExecutions:
             datasync.delete_task(TaskArn=task_arn)
             datasync.delete_location(LocationArn=src)
             datasync.delete_location(LocationArn=dst)
+
+
+class TestDataSyncLocationSmbOperations:
+    """Tests for DataSync SMB location operations."""
+
+    def test_create_and_describe_location_smb(self, datasync):
+        """CreateLocationSmb creates a location, DescribeLocationSmb returns its details."""
+        create_resp = datasync.create_location_smb(
+            Subdirectory="/share",
+            ServerHostname="smb.example.com",
+            User="admin",
+            Password="password123",
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+
+        desc = datasync.describe_location_smb(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "AgentArns" in desc
+        assert isinstance(desc["AgentArns"], list)
+        assert desc["User"] == "admin"
+
+        datasync.delete_location(LocationArn=arn)
