@@ -1,0 +1,221 @@
+name: Nightly
+
+on:
+  schedule:
+    # 4am UTC daily
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  full-iac:
+    name: "nightly: all IaC frameworks"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g serverless aws-cdk
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+      - uses: pulumi/actions@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.3
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+          cache: true
+      - run: uv sync --all-extras
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run all IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/ -v --tb=short
+          --junitxml=results-nightly-iac.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-iac-results
+          path: results-nightly-iac.xml
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-server-log-iac
+          path: .robotocore.log
+
+  full-parity:
+    name: "nightly: parity + compatibility"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+          cache: true
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run parity tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          AWS_ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/parity/ tests/compatibility/
+          -v --tb=short
+          --junitxml=results-nightly-parity.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-parity-results
+          path: results-nightly-parity.xml
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-server-log-parity
+          path: .robotocore.log
+
+  full-coverage:
+    name: "nightly: full coverage report"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.3
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+          cache: true
+      - run: uv sync --extra dev
+      - name: Run unit tests with coverage
+        run: >
+          uv run pytest tests/unit/ -n4 -q --tb=short
+          --cov=src/robotocore
+          --cov-report=xml:coverage.xml
+          --cov-report=html:htmlcov
+          --junitxml=results-nightly-unit.xml
+      - name: Coverage summary
+        run: |
+          uv run coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-coverage
+          path: |
+            coverage.xml
+            htmlcov/
+            results-nightly-unit.xml
+
+  test-timing:
+    name: "nightly: test timing analysis"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.3
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+          cache: true
+      - run: uv sync --extra dev
+      - name: Run unit tests with timing
+        run: >
+          uv run pytest tests/unit/ -n4 -q --tb=short
+          --junitxml=results-timing.xml
+      - name: Analyze slow tests
+        run: |
+          echo "## Slowest Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | Time |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('results-timing.xml')
+          cases = []
+          for tc in tree.iter('testcase'):
+              name = f\"{tc.get('classname', '')}.{tc.get('name', '')}\"
+              t = float(tc.get('time', 0))
+              cases.append((t, name))
+          cases.sort(reverse=True)
+          for t, name in cases[:20]:
+              print(f'| {name} | {t:.2f}s |')
+          " >> $GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-timing
+          path: results-timing.xml
+
+  notify:
+    name: "nightly: notify on failure"
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [full-iac, full-parity, full-coverage, test-timing]
+    steps:
+      - name: Create failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run_url = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().slice(0, 10);
+            // Check if there's already an open nightly failure issue
+            const existing = await github.rest.issues.listForRepo({
+              owner, repo,
+              labels: 'nightly-failure',
+              state: 'open',
+            });
+            if (existing.data.length > 0) {
+              // Comment on existing issue
+              await github.rest.issues.createComment({
+                owner, repo,
+                issue_number: existing.data[0].number,
+                body: `Nightly run failed again on ${today}: ${run_url}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner, repo,
+                title: `Nightly CI failure: ${today}`,
+                body: `The nightly CI run failed.\n\n**Run:** ${run_url}\n\nCheck the logs for details.`,
+                labels: ['nightly-failure'],
+              });
+            }
