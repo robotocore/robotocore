@@ -5349,3 +5349,114 @@ class TestEC2DescribeListOperations:
         resp = ec2.describe_instance_credit_specifications()
         assert "InstanceCreditSpecifications" in resp
         assert isinstance(resp["InstanceCreditSpecifications"], list)
+
+
+class TestEC2VpcClassicLinkToggle:
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_enable_disable_vpc_classic_link(self, ec2):
+        """EnableVpcClassicLink / DisableVpcClassicLink on a VPC."""
+        vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.enable_vpc_classic_link(VpcId=vpc_id)
+            assert "Return" in resp
+
+            resp2 = ec2.disable_vpc_classic_link(VpcId=vpc_id)
+            assert "Return" in resp2
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_enable_disable_vpc_classic_link_dns_support(self, ec2):
+        """EnableVpcClassicLinkDnsSupport / DisableVpcClassicLinkDnsSupport."""
+        vpc = ec2.create_vpc(CidrBlock="10.91.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.enable_vpc_classic_link_dns_support(VpcId=vpc_id)
+            assert "Return" in resp
+
+            resp2 = ec2.disable_vpc_classic_link_dns_support(VpcId=vpc_id)
+            assert "Return" in resp2
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2InstanceAttributeExtended:
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def instance_id(self, ec2):
+        run = ec2.run_instances(
+            ImageId="ami-12c6146b", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = run["Instances"][0]["InstanceId"]
+        yield inst_id
+        ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instance_attribute_sriov_net_support(self, ec2, instance_id):
+        """DescribeInstanceAttribute for sriovNetSupport."""
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="sriovNetSupport")
+        assert resp["InstanceId"] == instance_id
+        assert "SriovNetSupport" in resp
+
+    def test_describe_instance_attribute_group_set(self, ec2, instance_id):
+        """DescribeInstanceAttribute for groupSet."""
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="groupSet")
+        assert resp["InstanceId"] == instance_id
+        assert "Groups" in resp
+        assert isinstance(resp["Groups"], list)
+
+    def test_describe_instance_attribute_ebs_optimized(self, ec2, instance_id):
+        """DescribeInstanceAttribute for ebsOptimized."""
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="ebsOptimized")
+        assert resp["InstanceId"] == instance_id
+        assert "EbsOptimized" in resp
+
+    def test_modify_instance_attribute_disable_api_stop(self, ec2, instance_id):
+        """ModifyInstanceAttribute to set disableApiStop, then verify."""
+        ec2.modify_instance_attribute(InstanceId=instance_id, DisableApiStop={"Value": True})
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="disableApiStop")
+        assert resp["InstanceId"] == instance_id
+        assert resp["DisableApiStop"]["Value"] is True
+
+    def test_get_instance_uefi_data(self, ec2, instance_id):
+        """GetInstanceUefiData returns for a valid instance."""
+        resp = ec2.get_instance_uefi_data(InstanceId=instance_id)
+        assert resp["InstanceId"] == instance_id
+
+    def test_create_snapshots_from_instance(self, ec2, instance_id):
+        """CreateSnapshots creates snapshots of all volumes on an instance."""
+        resp = ec2.create_snapshots(
+            InstanceSpecification={"InstanceId": instance_id, "ExcludeBootVolume": False}
+        )
+        assert "Snapshots" in resp
+        assert len(resp["Snapshots"]) >= 1
+        snap_id = resp["Snapshots"][0]["SnapshotId"]
+        assert snap_id.startswith("snap-")
+        # Cleanup
+        for s in resp["Snapshots"]:
+            ec2.delete_snapshot(SnapshotId=s["SnapshotId"])
+
+
+class TestEC2VpcAttributeExtended:
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_vpc_attribute_network_address_usage_metrics(self, ec2):
+        """DescribeVpcAttribute for enableNetworkAddressUsageMetrics."""
+        vpc = ec2.create_vpc(CidrBlock="10.92.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.describe_vpc_attribute(
+                VpcId=vpc_id, Attribute="enableNetworkAddressUsageMetrics"
+            )
+            assert resp["VpcId"] == vpc_id
+            assert "EnableNetworkAddressUsageMetrics" in resp
+            assert isinstance(resp["EnableNetworkAddressUsageMetrics"]["Value"], bool)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)

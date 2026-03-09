@@ -1691,3 +1691,332 @@ class TestLogsAnomalyDetector:
             client.get_log_anomaly_detector(
                 anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:fake-id"
             )
+
+
+class TestLogsMetricFilterCRUD:
+    """Full CRUD lifecycle tests for metric filters."""
+
+    def test_metric_filter_create_describe_delete(self, logs):
+        """Create, describe, and delete a metric filter."""
+        group = f"/test/mf-crud-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.put_metric_filter(
+                logGroupName=group,
+                filterName="error-count",
+                filterPattern="ERROR",
+                metricTransformations=[
+                    {
+                        "metricName": "ErrorCount",
+                        "metricNamespace": "TestApp",
+                        "metricValue": "1",
+                    }
+                ],
+            )
+            resp = logs.describe_metric_filters(logGroupName=group)
+            assert len(resp["metricFilters"]) == 1
+            mf = resp["metricFilters"][0]
+            assert mf["filterName"] == "error-count"
+            assert mf["filterPattern"] == "ERROR"
+            assert mf["metricTransformations"][0]["metricName"] == "ErrorCount"
+
+            logs.delete_metric_filter(logGroupName=group, filterName="error-count")
+            resp2 = logs.describe_metric_filters(logGroupName=group)
+            assert len(resp2["metricFilters"]) == 0
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_metric_filter_update_overwrites(self, logs):
+        """Putting a metric filter with the same name overwrites it."""
+        group = f"/test/mf-upd-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.put_metric_filter(
+                logGroupName=group,
+                filterName="my-filter",
+                filterPattern="ERROR",
+                metricTransformations=[
+                    {"metricName": "E", "metricNamespace": "NS", "metricValue": "1"}
+                ],
+            )
+            logs.put_metric_filter(
+                logGroupName=group,
+                filterName="my-filter",
+                filterPattern="FATAL",
+                metricTransformations=[
+                    {"metricName": "F", "metricNamespace": "NS", "metricValue": "1"}
+                ],
+            )
+            resp = logs.describe_metric_filters(logGroupName=group, filterNamePrefix="my-filter")
+            assert len(resp["metricFilters"]) == 1
+            assert resp["metricFilters"][0]["filterPattern"] == "FATAL"
+            assert resp["metricFilters"][0]["metricTransformations"][0]["metricName"] == "F"
+        finally:
+            try:
+                logs.delete_metric_filter(logGroupName=group, filterName="my-filter")
+            except Exception:
+                pass
+            logs.delete_log_group(logGroupName=group)
+
+    def test_multiple_metric_filters_on_group(self, logs):
+        """Multiple metric filters on the same log group."""
+        group = f"/test/mf-multi-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            for name, pattern in [("mf-a", "ERROR"), ("mf-b", "WARN"), ("mf-c", "FATAL")]:
+                logs.put_metric_filter(
+                    logGroupName=group,
+                    filterName=name,
+                    filterPattern=pattern,
+                    metricTransformations=[
+                        {"metricName": name, "metricNamespace": "NS", "metricValue": "1"}
+                    ],
+                )
+            resp = logs.describe_metric_filters(logGroupName=group)
+            assert len(resp["metricFilters"]) == 3
+            names = {mf["filterName"] for mf in resp["metricFilters"]}
+            assert names == {"mf-a", "mf-b", "mf-c"}
+        finally:
+            for name in ["mf-a", "mf-b", "mf-c"]:
+                try:
+                    logs.delete_metric_filter(logGroupName=group, filterName=name)
+                except Exception:
+                    pass
+            logs.delete_log_group(logGroupName=group)
+
+
+class TestLogsSubscriptionFilterCRUD:
+    """Full CRUD lifecycle tests for subscription filters."""
+
+    def test_subscription_filter_create_describe_delete(self, logs):
+        """Create, describe, and delete a subscription filter."""
+        group = f"/test/sf-crud-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        dest_arn = "arn:aws:lambda:us-east-1:123456789012:function:fake"
+        try:
+            logs.put_subscription_filter(
+                logGroupName=group,
+                filterName="sf-test",
+                filterPattern="ERROR",
+                destinationArn=dest_arn,
+            )
+            resp = logs.describe_subscription_filters(logGroupName=group)
+            assert len(resp["subscriptionFilters"]) == 1
+            sf = resp["subscriptionFilters"][0]
+            assert sf["filterName"] == "sf-test"
+            assert sf["filterPattern"] == "ERROR"
+            assert sf["destinationArn"] == dest_arn
+
+            logs.delete_subscription_filter(logGroupName=group, filterName="sf-test")
+            resp2 = logs.describe_subscription_filters(logGroupName=group)
+            assert len(resp2["subscriptionFilters"]) == 0
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_subscription_filter_describe_with_prefix(self, logs):
+        """Describe subscription filters with filterNamePrefix."""
+        group = f"/test/sf-pfx-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        dest_arn = "arn:aws:lambda:us-east-1:123456789012:function:fake"
+        try:
+            logs.put_subscription_filter(
+                logGroupName=group,
+                filterName="prefix-alpha",
+                filterPattern="ERROR",
+                destinationArn=dest_arn,
+            )
+            resp = logs.describe_subscription_filters(
+                logGroupName=group, filterNamePrefix="prefix-"
+            )
+            assert len(resp["subscriptionFilters"]) >= 1
+            assert resp["subscriptionFilters"][0]["filterName"] == "prefix-alpha"
+        finally:
+            try:
+                logs.delete_subscription_filter(logGroupName=group, filterName="prefix-alpha")
+            except Exception:
+                pass
+            logs.delete_log_group(logGroupName=group)
+
+
+class TestLogsTagCRUD:
+    """Full CRUD tests for log group tagging (both old and new APIs)."""
+
+    def test_tag_resource_and_list_tags_for_resource(self, logs):
+        """Tag a log group via new API and list tags."""
+        group = f"/test/tag-new-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        arn = f"arn:aws:logs:us-east-1:000000000000:log-group:{group}"
+        try:
+            logs.tag_resource(resourceArn=arn, tags={"env": "test", "project": "roboto"})
+            resp = logs.list_tags_for_resource(resourceArn=arn)
+            assert resp["tags"]["env"] == "test"
+            assert resp["tags"]["project"] == "roboto"
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_untag_resource(self, logs):
+        """Untag a log group via new API."""
+        group = f"/test/untag-new-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        arn = f"arn:aws:logs:us-east-1:000000000000:log-group:{group}"
+        try:
+            logs.tag_resource(resourceArn=arn, tags={"keep": "yes", "remove": "yes"})
+            logs.untag_resource(resourceArn=arn, tagKeys=["remove"])
+            resp = logs.list_tags_for_resource(resourceArn=arn)
+            assert "keep" in resp["tags"]
+            assert "remove" not in resp["tags"]
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_tag_log_group_old_api(self, logs):
+        """Tag and list tags via the old TagLogGroup/ListTagsLogGroup API."""
+        group = f"/test/tag-old-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.tag_log_group(logGroupName=group, tags={"old-key": "old-val"})
+            resp = logs.list_tags_log_group(logGroupName=group)
+            assert resp["tags"]["old-key"] == "old-val"
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_untag_log_group_old_api(self, logs):
+        """Untag via the old UntagLogGroup API."""
+        group = f"/test/untag-old-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.tag_log_group(logGroupName=group, tags={"keep": "yes", "drop": "yes"})
+            logs.untag_log_group(logGroupName=group, tags=["drop"])
+            resp = logs.list_tags_log_group(logGroupName=group)
+            assert "keep" in resp["tags"]
+            assert "drop" not in resp["tags"]
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_create_log_group_with_tags(self, logs):
+        """Create a log group with initial tags."""
+        group = f"/test/init-tags-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group, tags={"created": "with-tags"})
+        try:
+            resp = logs.list_tags_log_group(logGroupName=group)
+            assert resp["tags"]["created"] == "with-tags"
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+
+class TestLogsRetentionCRUD:
+    """Focused retention policy tests."""
+
+    def test_put_and_verify_retention(self, logs):
+        """Put retention policy and verify via describe."""
+        group = f"/test/ret-put-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.put_retention_policy(logGroupName=group, retentionInDays=30)
+            resp = logs.describe_log_groups(logGroupNamePrefix=group)
+            grp = [g for g in resp["logGroups"] if g["logGroupName"] == group][0]
+            assert grp["retentionInDays"] == 30
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_delete_retention_removes_field(self, logs):
+        """Delete retention policy removes retentionInDays from describe."""
+        group = f"/test/ret-del-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.put_retention_policy(logGroupName=group, retentionInDays=7)
+            logs.delete_retention_policy(logGroupName=group)
+            resp = logs.describe_log_groups(logGroupNamePrefix=group)
+            grp = [g for g in resp["logGroups"] if g["logGroupName"] == group][0]
+            assert "retentionInDays" not in grp
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_update_retention_changes_value(self, logs):
+        """Updating retention policy changes the value."""
+        group = f"/test/ret-upd-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            logs.put_retention_policy(logGroupName=group, retentionInDays=7)
+            logs.put_retention_policy(logGroupName=group, retentionInDays=90)
+            resp = logs.describe_log_groups(logGroupNamePrefix=group)
+            grp = [g for g in resp["logGroups"] if g["logGroupName"] == group][0]
+            assert grp["retentionInDays"] == 90
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+
+class TestLogsEventsCRUD:
+    """Focused log event put/get/filter tests."""
+
+    def test_put_and_get_multiple_events(self, logs):
+        """Put multiple events and retrieve them."""
+        group = f"/test/evt-multi-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        stream = "test-stream"
+        logs.create_log_stream(logGroupName=group, logStreamName=stream)
+        try:
+            now = int(time.time() * 1000)
+            logs.put_log_events(
+                logGroupName=group,
+                logStreamName=stream,
+                logEvents=[
+                    {"timestamp": now, "message": "event-one"},
+                    {"timestamp": now + 1, "message": "event-two"},
+                    {"timestamp": now + 2, "message": "event-three"},
+                ],
+            )
+            resp = logs.get_log_events(logGroupName=group, logStreamName=stream)
+            messages = [e["message"] for e in resp["events"]]
+            assert "event-one" in messages
+            assert "event-two" in messages
+            assert "event-three" in messages
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_filter_log_events_with_pattern(self, logs):
+        """Filter log events using a pattern."""
+        group = f"/test/evt-filt-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        stream = "filter-stream"
+        logs.create_log_stream(logGroupName=group, logStreamName=stream)
+        try:
+            now = int(time.time() * 1000)
+            logs.put_log_events(
+                logGroupName=group,
+                logStreamName=stream,
+                logEvents=[
+                    {"timestamp": now, "message": "ERROR critical failure"},
+                    {"timestamp": now + 1, "message": "INFO all ok"},
+                    {"timestamp": now + 2, "message": "ERROR another issue"},
+                ],
+            )
+            resp = logs.filter_log_events(logGroupName=group, filterPattern="ERROR")
+            messages = [e["message"] for e in resp["events"]]
+            assert len(messages) >= 1
+            assert all("ERROR" in m for m in messages)
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_get_log_events_with_start_time(self, logs):
+        """Get log events filtered by startTime."""
+        group = f"/test/evt-time-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        stream = "time-stream"
+        logs.create_log_stream(logGroupName=group, logStreamName=stream)
+        try:
+            now = int(time.time() * 1000)
+            logs.put_log_events(
+                logGroupName=group,
+                logStreamName=stream,
+                logEvents=[
+                    {"timestamp": now - 10000, "message": "old-event"},
+                    {"timestamp": now, "message": "recent-event"},
+                ],
+            )
+            resp = logs.get_log_events(
+                logGroupName=group, logStreamName=stream, startTime=now - 1000
+            )
+            messages = [e["message"] for e in resp["events"]]
+            assert "recent-event" in messages
+        finally:
+            logs.delete_log_group(logGroupName=group)

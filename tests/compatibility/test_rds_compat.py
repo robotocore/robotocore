@@ -1861,3 +1861,196 @@ class TestRDSDBProxyTargetRegistration:
         )
         assert "DBProxyTargetGroup" in resp
         assert resp["DBProxyTargetGroup"]["TargetGroupName"] == "default"
+
+
+class TestRDSEventSubscriptionCRUD:
+    """Full CRUD lifecycle for event subscriptions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_event_subscription_by_name(self, client):
+        """DescribeEventSubscriptions returns a specific subscription by name."""
+        name = _unique("compat-esub")
+        client.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        try:
+            resp = client.describe_event_subscriptions(SubscriptionName=name)
+            subs = resp["EventSubscriptionsList"]
+            assert len(subs) == 1
+            sub = subs[0]
+            assert sub["CustSubscriptionId"] == name
+            assert sub["SnsTopicArn"] == "arn:aws:sns:us-east-1:123456789012:test-topic"
+        finally:
+            try:
+                client.delete_event_subscription(SubscriptionName=name)
+            except ClientError:
+                pass
+
+    def test_event_subscription_lifecycle(self, client):
+        """Create → describe → delete → verify gone."""
+        name = _unique("compat-esub")
+        # Create
+        create_resp = client.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        assert create_resp["EventSubscription"]["CustSubscriptionId"] == name
+
+        # Describe - should be in the list
+        list_resp = client.describe_event_subscriptions()
+        sub_names = [s["CustSubscriptionId"] for s in list_resp["EventSubscriptionsList"]]
+        assert name in sub_names
+
+        # Delete
+        del_resp = client.delete_event_subscription(SubscriptionName=name)
+        assert "EventSubscription" in del_resp
+
+        # Verify gone
+        list_resp2 = client.describe_event_subscriptions()
+        sub_names2 = [s["CustSubscriptionId"] for s in list_resp2["EventSubscriptionsList"]]
+        assert name not in sub_names2
+
+    def test_delete_nonexistent_event_subscription(self, client):
+        """Deleting a nonexistent event subscription raises an error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_event_subscription(SubscriptionName="nonexistent-sub-12345")
+        assert exc.value.response["Error"]["Code"] in (
+            "SubscriptionNotFound",
+            "SubscriptionNotFoundFault",
+        )
+
+
+class TestRDSOptionGroupCRUDLifecycle:
+    """Full CRUD lifecycle for option groups."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_option_group_create_describe_delete(self, client):
+        """Create → describe by name → verify fields → delete → verify gone."""
+        name = _unique("compat-og")
+        # Create
+        create_resp = client.create_option_group(
+            OptionGroupName=name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="lifecycle test",
+        )
+        assert create_resp["OptionGroup"]["OptionGroupName"] == name
+        assert create_resp["OptionGroup"]["EngineName"] == "mysql"
+
+        try:
+            # Describe by name
+            desc_resp = client.describe_option_groups(OptionGroupName=name)
+            groups = desc_resp["OptionGroupsList"]
+            assert len(groups) == 1
+            og = groups[0]
+            assert og["OptionGroupName"] == name
+            assert og["EngineName"] == "mysql"
+            assert og["MajorEngineVersion"] == "8.0"
+            assert og["OptionGroupDescription"] == "lifecycle test"
+            assert "OptionGroupArn" in og
+            assert isinstance(og["Options"], list)
+        finally:
+            # Delete
+            client.delete_option_group(OptionGroupName=name)
+
+        # Verify gone
+        with pytest.raises(ClientError) as exc:
+            client.describe_option_groups(OptionGroupName=name)
+        assert exc.value.response["Error"]["Code"] in (
+            "OptionGroupNotFoundFault",
+            "InternalError",
+        )
+
+    def test_option_group_arn_format(self, client):
+        """Option group ARN follows expected format."""
+        name = _unique("compat-og")
+        resp = client.create_option_group(
+            OptionGroupName=name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="arn test",
+        )
+        try:
+            arn = resp["OptionGroup"]["OptionGroupArn"]
+            assert arn.startswith("arn:aws:rds:")
+            assert f":og:{name}" in arn
+        finally:
+            try:
+                client.delete_option_group(OptionGroupName=name)
+            except ClientError:
+                pass
+
+
+class TestRDSTagsCRUD:
+    """Comprehensive tags CRUD on parameter groups (lighter-weight than DB instances)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_tags_on_parameter_group(self, client):
+        """Add, list, and remove tags on a parameter group."""
+        name = _unique("compat-pg")
+        client.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="mysql8.0",
+            Description="tag test",
+        )
+        arn = f"arn:aws:rds:us-east-1:123456789012:pg:{name}"
+        try:
+            # Add tags
+            client.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            )
+            # List tags
+            resp = client.list_tags_for_resource(ResourceName=arn)
+            tag_map = {t["Key"]: t["Value"] for t in resp["TagList"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "platform"
+
+            # Remove one tag
+            client.remove_tags_from_resource(ResourceName=arn, TagKeys=["team"])
+            resp2 = client.list_tags_for_resource(ResourceName=arn)
+            keys = [t["Key"] for t in resp2["TagList"]]
+            assert "team" not in keys
+            assert "env" in keys
+        finally:
+            try:
+                client.delete_db_parameter_group(DBParameterGroupName=name)
+            except ClientError:
+                pass
+
+    def test_tags_on_option_group(self, client):
+        """Add and list tags on an option group."""
+        name = _unique("compat-og")
+        resp = client.create_option_group(
+            OptionGroupName=name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="tag test",
+        )
+        arn = resp["OptionGroup"]["OptionGroupArn"]
+        try:
+            client.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[{"Key": "purpose", "Value": "testing"}],
+            )
+            tag_resp = client.list_tags_for_resource(ResourceName=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tag_resp["TagList"]}
+            assert tag_map["purpose"] == "testing"
+        finally:
+            try:
+                client.delete_option_group(OptionGroupName=name)
+            except ClientError:
+                pass

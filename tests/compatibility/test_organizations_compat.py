@@ -482,6 +482,55 @@ class TestOrganizationsDelegatedAdmin:
         assert "ssm.amazonaws.com" in principals
 
 
+class TestOrganizationsOUCRUD:
+    """Tests for full OU lifecycle including delete."""
+
+    def test_delete_organizational_unit(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        name = _unique("DelOU")
+        ou = orgs.create_organizational_unit(ParentId=root_id, Name=name)
+        ou_id = ou["OrganizationalUnit"]["Id"]
+
+        orgs.delete_organizational_unit(OrganizationalUnitId=ou_id)
+
+        ous = orgs.list_organizational_units_for_parent(ParentId=root_id)["OrganizationalUnits"]
+        ou_ids = [o["Id"] for o in ous]
+        assert ou_id not in ou_ids
+
+    def test_delete_organizational_unit_not_found(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        with pytest.raises(orgs.exceptions.ClientError) as exc_info:
+            orgs.delete_organizational_unit(OrganizationalUnitId="ou-0000-00000000")
+        # Server returns an error (code varies by implementation)
+        assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] >= 400
+
+    def test_ou_full_lifecycle(self, orgs):
+        """Create -> describe -> update -> list -> delete OU."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        name = _unique("LifeOU")
+        ou = orgs.create_organizational_unit(ParentId=root_id, Name=name)
+        ou_id = ou["OrganizationalUnit"]["Id"]
+        assert ou["OrganizationalUnit"]["Name"] == name
+
+        desc = orgs.describe_organizational_unit(OrganizationalUnitId=ou_id)
+        assert desc["OrganizationalUnit"]["Id"] == ou_id
+
+        new_name = _unique("RenamedOU")
+        upd = orgs.update_organizational_unit(OrganizationalUnitId=ou_id, Name=new_name)
+        assert upd["OrganizationalUnit"]["Name"] == new_name
+
+        ous = orgs.list_organizational_units_for_parent(ParentId=root_id)["OrganizationalUnits"]
+        assert ou_id in [o["Id"] for o in ous]
+
+        orgs.delete_organizational_unit(OrganizationalUnitId=ou_id)
+        ous_after = orgs.list_organizational_units_for_parent(ParentId=root_id)[
+            "OrganizationalUnits"
+        ]
+        assert ou_id not in [o["Id"] for o in ous_after]
+
+
 class TestOrganizationsOUExtra:
     """Tests for OU describe/update operations."""
 
@@ -550,6 +599,179 @@ class TestOrganizationsAccountOps:
         orgs.close_account(AccountId=acct_id)
         resp = orgs.describe_account(AccountId=acct_id)
         assert resp["Account"]["Status"] in ("SUSPENDED", "PENDING_CLOSURE")
+
+
+class TestOrganizationsPolicyCRUD:
+    """Tests for full policy lifecycle including delete and OU attach."""
+
+    def test_delete_policy(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        name = _unique("DelPol")
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Delete test",
+            Name=name,
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        orgs.delete_policy(PolicyId=policy_id)
+
+        policies = orgs.list_policies(Filter="SERVICE_CONTROL_POLICY")["Policies"]
+        policy_ids = [p["Id"] for p in policies]
+        assert policy_id not in policy_ids
+
+    def test_policy_full_lifecycle(self, orgs):
+        """Create -> describe -> update -> list -> delete policy."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        name = _unique("LifePol")
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Lifecycle",
+            Name=name,
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+        assert created["Policy"]["PolicySummary"]["Name"] == name
+
+        desc = orgs.describe_policy(PolicyId=policy_id)
+        assert desc["Policy"]["PolicySummary"]["Id"] == policy_id
+
+        new_name = _unique("UpdatedPol")
+        upd = orgs.update_policy(PolicyId=policy_id, Name=new_name, Description="Updated")
+        assert upd["Policy"]["PolicySummary"]["Name"] == new_name
+        assert upd["Policy"]["PolicySummary"]["Description"] == "Updated"
+
+        policies = orgs.list_policies(Filter="SERVICE_CONTROL_POLICY")["Policies"]
+        assert policy_id in [p["Id"] for p in policies]
+
+        orgs.delete_policy(PolicyId=policy_id)
+        policies_after = orgs.list_policies(Filter="SERVICE_CONTROL_POLICY")["Policies"]
+        assert policy_id not in [p["Id"] for p in policies_after]
+
+    def test_attach_policy_to_ou(self, orgs):
+        """Attach and detach a policy to/from an OU."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        ou = orgs.create_organizational_unit(ParentId=root_id, Name=_unique("PolOU"))
+        ou_id = ou["OrganizationalUnit"]["Id"]
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="OU attach",
+            Name=_unique("OUPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        orgs.attach_policy(PolicyId=policy_id, TargetId=ou_id)
+
+        # Verify via list_targets_for_policy
+        targets = orgs.list_targets_for_policy(PolicyId=policy_id)["Targets"]
+        target_ids = [t["TargetId"] for t in targets]
+        assert ou_id in target_ids
+
+        # Verify via list_policies_for_target
+        pols = orgs.list_policies_for_target(TargetId=ou_id, Filter="SERVICE_CONTROL_POLICY")[
+            "Policies"
+        ]
+        pol_ids = [p["Id"] for p in pols]
+        assert policy_id in pol_ids
+
+        # Detach and verify
+        orgs.detach_policy(PolicyId=policy_id, TargetId=ou_id)
+        pols_after = orgs.list_policies_for_target(TargetId=ou_id, Filter="SERVICE_CONTROL_POLICY")[
+            "Policies"
+        ]
+        pol_ids_after = [p["Id"] for p in pols_after]
+        assert policy_id not in pol_ids_after
+
+    def test_attach_policy_to_account(self, orgs):
+        """Attach a policy to a member account."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        email = f"{_unique('polacct')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("PolAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Account attach",
+            Name=_unique("AcctPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        orgs.attach_policy(PolicyId=policy_id, TargetId=acct_id)
+
+        pols = orgs.list_policies_for_target(TargetId=acct_id, Filter="SERVICE_CONTROL_POLICY")[
+            "Policies"
+        ]
+        pol_ids = [p["Id"] for p in pols]
+        assert policy_id in pol_ids
+
+    def test_tag_policy(self, orgs):
+        """Tag a policy resource."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        )
+        created = orgs.create_policy(
+            Content=policy_doc,
+            Description="Tag test",
+            Name=_unique("TagPol"),
+            Type="SERVICE_CONTROL_POLICY",
+        )
+        policy_id = created["Policy"]["PolicySummary"]["Id"]
+
+        orgs.tag_resource(ResourceId=policy_id, Tags=[{"Key": "env", "Value": "test"}])
+
+        resp = orgs.list_tags_for_resource(ResourceId=policy_id)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "test"
+
+        orgs.untag_resource(ResourceId=policy_id, TagKeys=["env"])
+        resp2 = orgs.list_tags_for_resource(ResourceId=policy_id)
+        tag_keys = [t["Key"] for t in resp2["Tags"]]
+        assert "env" not in tag_keys
 
 
 class TestOrganizationsPolicyExtra:

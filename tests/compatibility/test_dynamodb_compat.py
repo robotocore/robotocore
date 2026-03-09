@@ -2133,6 +2133,31 @@ class TestDynamoDBMoreOperations:
         finally:
             dynamodb.delete_table(TableName=name)
 
+    def test_update_table_provisioned_throughput(self, dynamodb):
+        """UpdateTable to change ProvisionedThroughput."""
+        name = f"pt-table-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+        )
+        try:
+            resp = dynamodb.update_table(
+                TableName=name,
+                ProvisionedThroughput={"ReadCapacityUnits": 10, "WriteCapacityUnits": 10},
+            )
+            pt = resp["TableDescription"]["ProvisionedThroughput"]
+            assert pt["ReadCapacityUnits"] == 10
+            assert pt["WriteCapacityUnits"] == 10
+            # Verify via DescribeTable
+            desc = dynamodb.describe_table(TableName=name)
+            pt2 = desc["Table"]["ProvisionedThroughput"]
+            assert pt2["ReadCapacityUnits"] == 10
+            assert pt2["WriteCapacityUnits"] == 10
+        finally:
+            dynamodb.delete_table(TableName=name)
+
     def test_transact_write_items(self, dynamodb, table):
         """TransactWriteItems with Put and ConditionCheck."""
         dynamodb.transact_write_items(
