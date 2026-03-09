@@ -848,3 +848,157 @@ class TestECRErrorPaths:
             assert "RepositoryAlreadyExistsException" in str(exc_info.value)
         finally:
             ecr.delete_repository(repositoryName=repo_name)
+
+
+class TestECRRepositoryCreationTemplates:
+    """Tests for ECR repository creation template CRUD operations."""
+
+    def test_create_repository_creation_template(self, ecr):
+        """CreateRepositoryCreationTemplate creates a template."""
+        prefix = _unique("tmpl")
+        resp = ecr.create_repository_creation_template(
+            prefix=prefix,
+            appliedFor=["REPLICATION"],
+        )
+        assert "repositoryCreationTemplate" in resp
+        assert resp["repositoryCreationTemplate"]["prefix"] == prefix
+        assert "REPLICATION" in resp["repositoryCreationTemplate"]["appliedFor"]
+        # cleanup
+        ecr.delete_repository_creation_template(prefix=prefix)
+
+    def test_describe_repository_creation_templates(self, ecr):
+        """DescribeRepositoryCreationTemplates lists created templates."""
+        prefix = _unique("desc-tmpl")
+        ecr.create_repository_creation_template(
+            prefix=prefix,
+            appliedFor=["REPLICATION"],
+        )
+        try:
+            resp = ecr.describe_repository_creation_templates()
+            assert "repositoryCreationTemplates" in resp
+            prefixes = [t["prefix"] for t in resp["repositoryCreationTemplates"]]
+            assert prefix in prefixes
+        finally:
+            ecr.delete_repository_creation_template(prefix=prefix)
+
+    def test_update_repository_creation_template(self, ecr):
+        """UpdateRepositoryCreationTemplate modifies appliedFor."""
+        prefix = _unique("upd-tmpl")
+        ecr.create_repository_creation_template(
+            prefix=prefix,
+            appliedFor=["REPLICATION"],
+        )
+        try:
+            resp = ecr.update_repository_creation_template(
+                prefix=prefix,
+                appliedFor=["REPLICATION", "PULL_THROUGH_CACHE"],
+            )
+            assert "repositoryCreationTemplate" in resp
+            applied = resp["repositoryCreationTemplate"]["appliedFor"]
+            assert "REPLICATION" in applied
+            assert "PULL_THROUGH_CACHE" in applied
+        finally:
+            ecr.delete_repository_creation_template(prefix=prefix)
+
+    def test_delete_repository_creation_template(self, ecr):
+        """DeleteRepositoryCreationTemplate removes the template."""
+        prefix = _unique("del-tmpl")
+        ecr.create_repository_creation_template(
+            prefix=prefix,
+            appliedFor=["REPLICATION"],
+        )
+        resp = ecr.delete_repository_creation_template(prefix=prefix)
+        assert "repositoryCreationTemplate" in resp
+        assert resp["repositoryCreationTemplate"]["prefix"] == prefix
+        # Verify it's gone
+        desc = ecr.describe_repository_creation_templates()
+        prefixes = [t["prefix"] for t in desc["repositoryCreationTemplates"]]
+        assert prefix not in prefixes
+
+
+class TestECRValidatePullThroughCacheRule:
+    """Tests for ValidatePullThroughCacheRule operation."""
+
+    def test_validate_pull_through_cache_rule(self, ecr):
+        """ValidatePullThroughCacheRule validates an existing rule."""
+        prefix = _unique("val-ptcr")
+        ecr.create_pull_through_cache_rule(
+            ecrRepositoryPrefix=prefix,
+            upstreamRegistryUrl="public.ecr.aws",
+        )
+        try:
+            resp = ecr.validate_pull_through_cache_rule(ecrRepositoryPrefix=prefix)
+            assert resp["ecrRepositoryPrefix"] == prefix
+            assert resp["isValid"] is True
+        finally:
+            ecr.delete_pull_through_cache_rule(ecrRepositoryPrefix=prefix)
+
+
+class TestECRLifecyclePolicyPreview:
+    """Tests for StartLifecyclePolicyPreview and GetLifecyclePolicyPreview."""
+
+    def test_start_lifecycle_policy_preview(self, ecr):
+        """StartLifecyclePolicyPreview starts a preview."""
+        repo_name = _unique("slpp")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            policy = json.dumps(
+                {
+                    "rules": [
+                        {
+                            "rulePriority": 1,
+                            "description": "Remove old untagged",
+                            "selection": {
+                                "tagStatus": "untagged",
+                                "countType": "sinceImagePushed",
+                                "countUnit": "days",
+                                "countNumber": 7,
+                            },
+                            "action": {"type": "expire"},
+                        }
+                    ]
+                }
+            )
+            ecr.put_lifecycle_policy(
+                repositoryName=repo_name,
+                lifecyclePolicyText=policy,
+            )
+            resp = ecr.start_lifecycle_policy_preview(repositoryName=repo_name)
+            assert resp["repositoryName"] == repo_name
+            assert resp["status"] in ("IN_PROGRESS", "COMPLETE")
+        finally:
+            ecr.delete_repository(repositoryName=repo_name, force=True)
+
+    def test_get_lifecycle_policy_preview(self, ecr):
+        """GetLifecyclePolicyPreview returns preview results."""
+        repo_name = _unique("glpp")
+        ecr.create_repository(repositoryName=repo_name)
+        try:
+            policy = json.dumps(
+                {
+                    "rules": [
+                        {
+                            "rulePriority": 1,
+                            "description": "Remove old untagged",
+                            "selection": {
+                                "tagStatus": "untagged",
+                                "countType": "sinceImagePushed",
+                                "countUnit": "days",
+                                "countNumber": 7,
+                            },
+                            "action": {"type": "expire"},
+                        }
+                    ]
+                }
+            )
+            ecr.put_lifecycle_policy(
+                repositoryName=repo_name,
+                lifecyclePolicyText=policy,
+            )
+            ecr.start_lifecycle_policy_preview(repositoryName=repo_name)
+            resp = ecr.get_lifecycle_policy_preview(repositoryName=repo_name)
+            assert resp["repositoryName"] == repo_name
+            assert resp["status"] in ("IN_PROGRESS", "COMPLETE")
+            assert "previewResults" in resp
+        finally:
+            ecr.delete_repository(repositoryName=repo_name, force=True)
