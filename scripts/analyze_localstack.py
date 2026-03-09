@@ -399,9 +399,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
         else:
             robotocore_ops = set()
             if service in robotocore_providers:
-                robotocore_ops = set(
-                    extract_robotocore_operations(robotocore_providers[service])
-                )
+                robotocore_ops = set(extract_robotocore_operations(robotocore_providers[service]))
             has_provider = service in robotocore_providers
 
         missing_ops = community_ops - robotocore_ops

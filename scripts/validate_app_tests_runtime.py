@@ -79,8 +79,13 @@ def collect_test_ids(filepath: str) -> list[str]:
     """Collect all test IDs from a file using pytest --collect-only."""
     result = subprocess.run(
         [
-            "uv", "run", "pytest", filepath,
-            "--collect-only", "-q", "--no-header",
+            "uv",
+            "run",
+            "pytest",
+            filepath,
+            "--collect-only",
+            "-q",
+            "--no-header",
         ],
         capture_output=True,
         text=True,
@@ -105,7 +110,13 @@ def run_single_test(test_id: str) -> dict:
 
     result = subprocess.run(
         [
-            "uv", "run", "pytest", test_id, "-x", "--no-header", "-q",
+            "uv",
+            "run",
+            "pytest",
+            test_id,
+            "-x",
+            "--no-header",
+            "-q",
             "--tb=short",
         ],
         capture_output=True,
@@ -123,8 +134,7 @@ def run_single_test(test_id: str) -> dict:
     after_entries = get_audit_entries()
     # Find new entries
     new_entries = [
-        e for e in after_entries
-        if e.get("id", e.get("timestamp", "")) not in before_ids
+        e for e in after_entries if e.get("id", e.get("timestamp", "")) not in before_ids
     ]
 
     # If we can't track by ID, fall back to count delta
@@ -222,9 +232,9 @@ def print_report(results: list[dict]) -> int:
         all_services.update(r.get("services_exercised", []))
         total_calls += r.get("total_api_calls", 0)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"{r['file']}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(
             f"  Tests: {r['total_tests']} | "
             f"Passed: {r.get('passed', 0)} | "
@@ -233,7 +243,7 @@ def print_report(results: list[dict]) -> int:
         )
         print(
             f"  Server contact: {r.get('contacted_server', 0)}/{r['total_tests']} "
-            f"({r.get('contacted_server', 0)*100//max(r['total_tests'],1)}%)"
+            f"({r.get('contacted_server', 0) * 100 // max(r['total_tests'], 1)}%)"
         )
         print(f"  API calls: {r.get('total_api_calls', 0)}")
         print(f"  Services: {', '.join(r.get('services_exercised', []))}")
@@ -243,9 +253,9 @@ def print_report(results: list[dict]) -> int:
             for tid in r["no_contact_tests"]:
                 print(f"    - {tid}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Total tests: {total_tests}")
     print(f"  Server contact: {total_contacted}/{total_tests}")
     print(f"  No contact: {total_no_contact}")
