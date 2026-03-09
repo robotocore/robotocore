@@ -6078,3 +6078,83 @@ class TestEC2TransitGatewayPeeringAdvanced:
         finally:
             ec2.delete_transit_gateway(TransitGatewayId=tgw2)
             ec2.delete_transit_gateway(TransitGatewayId=tgw1)
+
+
+class TestEC2IpamCrud:
+    """IPAM create/describe/delete lifecycle tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_ipam_returns_200(self, ec2):
+        """CreateIpam returns HTTP 200."""
+        resp = ec2.create_ipam()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_ipams_returns_200(self, ec2):
+        """DescribeIpams returns HTTP 200 after creating one."""
+        ec2.create_ipam()
+        resp = ec2.describe_ipams()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2TrafficMirrorCrud:
+    """Traffic Mirror create/delete lifecycle tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_and_describe_traffic_mirror_filter(self, ec2):
+        """CreateTrafficMirrorFilter + DescribeTrafficMirrorFilters."""
+        create_resp = ec2.create_traffic_mirror_filter()
+        assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        desc_resp = ec2.describe_traffic_mirror_filters()
+        assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_traffic_mirror_target_with_eni(self, ec2):
+        """CreateTrafficMirrorTarget with a real ENI."""
+        vpc = ec2.create_vpc(CidrBlock="10.51.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.51.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            eni = ec2.create_network_interface(SubnetId=subnet_id)
+            eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+            resp = ec2.create_traffic_mirror_target(NetworkInterfaceId=eni_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2VerifiedAccessCrud:
+    """Verified Access create/delete lifecycle tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_and_describe_verified_access_instance(self, ec2):
+        """CreateVerifiedAccessInstance + DescribeVerifiedAccessInstances."""
+        create_resp = ec2.create_verified_access_instance()
+        assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        desc_resp = ec2.describe_verified_access_instances()
+        assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2InstanceEventWindowCrud:
+    """Instance Event Window create/delete lifecycle tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_and_describe_instance_event_window(self, ec2):
+        """CreateInstanceEventWindow + DescribeInstanceEventWindows."""
+        create_resp = ec2.create_instance_event_window(CronExpression="* 0-4 * * SAT,SUN")
+        assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        desc_resp = ec2.describe_instance_event_windows()
+        assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
