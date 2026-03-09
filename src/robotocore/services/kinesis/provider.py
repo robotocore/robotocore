@@ -399,10 +399,10 @@ def _increase_retention(store: KinesisStore, params: dict, region: str, account_
         )
 
     hours = params.get("RetentionPeriodHours", 48)
-    if hours <= stream.retention_hours:
+    if hours < stream.retention_hours:
         raise KinesisError(
             "InvalidArgumentException",
-            f"Retention period {hours} must be greater than current {stream.retention_hours}.",
+            f"Retention period {hours} must be >= current {stream.retention_hours}.",
         )
     stream.retention_hours = hours
     return {}

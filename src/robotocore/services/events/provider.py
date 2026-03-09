@@ -779,8 +779,9 @@ def _invoke_firehose_target(arn: str, payload: str, region: str, account_id: str
 
     stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]
 
+    stream_key = (account_id, region, stream_name)
     with fh._lock:
-        if stream_name not in fh._delivery_streams:
+        if stream_key not in fh._delivery_streams:
             logger.error(
                 "EventBridge: Firehose stream not found: %s",
                 stream_name,
@@ -792,7 +793,7 @@ def _invoke_firehose_target(arn: str, payload: str, region: str, account_id: str
                 {"error": "stream_not_found"},
             )
             return
-        fh._stream_buffers.setdefault(stream_name, []).append(payload.encode("utf-8"))
+        fh._stream_buffers.setdefault(stream_key, []).append(payload.encode("utf-8"))
 
     _log_invocation("firehose", arn, payload)
     logger.info("EventBridge -> Firehose: %s", stream_name)

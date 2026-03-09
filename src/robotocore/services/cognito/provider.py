@@ -1138,6 +1138,22 @@ def _add_custom_attributes(store: CognitoStore, params: dict, region: str, accou
     return {}
 
 
+def _get_user_pool_mfa_config(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    with store.lock:
+        pool = store.pools.get(pool_id)
+        if not pool:
+            raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} not found")
+        result: dict = {"MfaConfiguration": pool.get("MfaConfiguration", "OFF")}
+        if "SmsMfaConfiguration" in pool:
+            result["SmsMfaConfiguration"] = pool["SmsMfaConfiguration"]
+        if "SoftwareTokenMfaConfiguration" in pool:
+            result["SoftwareTokenMfaConfiguration"] = pool["SoftwareTokenMfaConfiguration"]
+    return result
+
+
 def _set_user_pool_mfa_config(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -1276,6 +1292,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "AdminUpdateUserAttributes": _admin_update_user_attributes,
     "UpdateGroup": _update_group,
     "AddCustomAttributes": _add_custom_attributes,
+    "GetUserPoolMfaConfig": _get_user_pool_mfa_config,
     "SetUserPoolMfaConfig": _set_user_pool_mfa_config,
     "ListUsersInGroup": _list_users_in_group,
     "TagResource": _tag_resource,
