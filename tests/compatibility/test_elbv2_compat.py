@@ -1047,6 +1047,92 @@ class TestELBv2ListenerAdvanced:
         assert listener["LoadBalancerArn"] == lb_listener_tg["lb_arn"]
 
 
+class TestELBv2TargetHealthEmpty:
+    """Tests for DescribeTargetHealth on empty target groups."""
+
+    def test_describe_target_health_empty(self, elbv2, vpc_with_subnets):
+        """DescribeTargetHealth on TG with no registered targets returns empty list."""
+        name = _unique("tg")
+        tg = elbv2.create_target_group(
+            Name=name,
+            Protocol="HTTP",
+            Port=80,
+            VpcId=vpc_with_subnets["vpc_id"],
+        )
+        tg_arn = tg["TargetGroups"][0]["TargetGroupArn"]
+        try:
+            r = elbv2.describe_target_health(TargetGroupArn=tg_arn)
+            assert "TargetHealthDescriptions" in r
+            assert len(r["TargetHealthDescriptions"]) == 0
+        finally:
+            elbv2.delete_target_group(TargetGroupArn=tg_arn)
+
+
+class TestELBv2MultiResourceTags:
+    """Tests for tag operations across multiple resources."""
+
+    def test_describe_tags_multiple_resources(self, elbv2, lb_listener_tg):
+        """DescribeTags returns tag descriptions for multiple resources."""
+        lb_arn = lb_listener_tg["lb_arn"]
+        tg_arn = lb_listener_tg["tg_arn"]
+        elbv2.add_tags(
+            ResourceArns=[lb_arn],
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        elbv2.add_tags(
+            ResourceArns=[tg_arn],
+            Tags=[{"Key": "role", "Value": "backend"}],
+        )
+        r = elbv2.describe_tags(ResourceArns=[lb_arn, tg_arn])
+        assert len(r["TagDescriptions"]) == 2
+        arns = [td["ResourceArn"] for td in r["TagDescriptions"]]
+        assert lb_arn in arns
+        assert tg_arn in arns
+
+
+class TestELBv2SSLPoliciesFiltered:
+    """Tests for DescribeSSLPolicies with filters."""
+
+    def test_describe_ssl_policies_by_lb_type(self, elbv2):
+        """DescribeSSLPolicies with LoadBalancerType filter."""
+        r = elbv2.describe_ssl_policies(LoadBalancerType="application")
+        assert "SslPolicies" in r
+        assert len(r["SslPolicies"]) > 0
+        policy = r["SslPolicies"][0]
+        assert "Name" in policy
+        assert "Ciphers" in policy
+
+
+class TestELBv2RuleMultiCondition:
+    """Tests for rules with multiple conditions."""
+
+    def test_rule_with_path_and_host_conditions(self, elbv2, lb_listener_tg):
+        """CreateRule with both path-pattern and host-header conditions."""
+        resp = elbv2.create_rule(
+            ListenerArn=lb_listener_tg["listener_arn"],
+            Conditions=[
+                {"Field": "path-pattern", "Values": ["/api/*"]},
+                {"Field": "host-header", "Values": ["api.example.com"]},
+            ],
+            Priority=90,
+            Actions=[
+                {
+                    "Type": "forward",
+                    "TargetGroupArn": lb_listener_tg["tg_arn"],
+                }
+            ],
+        )
+        rule = resp["Rules"][0]
+        rule_arn = rule["RuleArn"]
+        try:
+            assert len(rule["Conditions"]) == 2
+            fields = {c["Field"] for c in rule["Conditions"]}
+            assert "path-pattern" in fields
+            assert "host-header" in fields
+        finally:
+            elbv2.delete_rule(RuleArn=rule_arn)
+
+
 class TestELBv2RuleAdvanced:
     """Advanced rule tests."""
 

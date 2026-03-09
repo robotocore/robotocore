@@ -825,3 +825,134 @@ class TestAutoScalingLoadBalancerDescribe:
         )
         assert "LoadBalancerTargetGroups" in resp
         assert isinstance(resp["LoadBalancerTargetGroups"], list)
+
+
+class TestAutoScalingExecutePolicy:
+    """Tests for ExecutePolicy."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("ep-lc")
+        self.asg_name = _unique("ep-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=3,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_execute_policy(self, autoscaling):
+        """ExecutePolicy triggers a scaling policy."""
+        policy_name = _unique("exec-pol")
+        autoscaling.put_scaling_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            PolicyType="SimpleScaling",
+            AdjustmentType="ChangeInCapacity",
+            ScalingAdjustment=1,
+        )
+        resp = autoscaling.execute_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            HonorCooldown=False,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_execute_policy_no_honor_cooldown(self, autoscaling):
+        """ExecutePolicy with HonorCooldown=True still succeeds."""
+        policy_name = _unique("exec-cool")
+        autoscaling.put_scaling_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            PolicyType="SimpleScaling",
+            AdjustmentType="ChangeInCapacity",
+            ScalingAdjustment=1,
+        )
+        resp = autoscaling.execute_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            HonorCooldown=True,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAutoScalingStepScalingPolicy:
+    """Tests for PutScalingPolicy with StepScaling type."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("ss-lc")
+        self.asg_name = _unique("ss-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=5,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_put_step_scaling_policy(self, autoscaling):
+        """PutScalingPolicy with StepScaling type creates the policy."""
+        policy_name = _unique("step-pol")
+        resp = autoscaling.put_scaling_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            PolicyType="StepScaling",
+            AdjustmentType="ChangeInCapacity",
+            StepAdjustments=[
+                {"MetricIntervalLowerBound": 0, "ScalingAdjustment": 1},
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify via describe
+        desc = autoscaling.describe_policies(
+            AutoScalingGroupName=self.asg_name,
+            PolicyNames=[policy_name],
+        )
+        policies = desc["ScalingPolicies"]
+        assert len(policies) == 1
+        assert policies[0]["PolicyType"] == "StepScaling"
+        assert len(policies[0]["StepAdjustments"]) == 1
+
+    def test_put_step_scaling_policy_multiple_steps(self, autoscaling):
+        """StepScaling with multiple step adjustments stores all steps."""
+        policy_name = _unique("multi-step")
+        autoscaling.put_scaling_policy(
+            AutoScalingGroupName=self.asg_name,
+            PolicyName=policy_name,
+            PolicyType="StepScaling",
+            AdjustmentType="ChangeInCapacity",
+            StepAdjustments=[
+                {
+                    "MetricIntervalLowerBound": 0,
+                    "MetricIntervalUpperBound": 20,
+                    "ScalingAdjustment": 1,
+                },
+                {"MetricIntervalLowerBound": 20, "ScalingAdjustment": 2},
+            ],
+        )
+        desc = autoscaling.describe_policies(
+            AutoScalingGroupName=self.asg_name,
+            PolicyNames=[policy_name],
+        )
+        policies = desc["ScalingPolicies"]
+        assert len(policies) == 1
+        assert len(policies[0]["StepAdjustments"]) == 2

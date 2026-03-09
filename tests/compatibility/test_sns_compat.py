@@ -1364,3 +1364,88 @@ class TestSNSOptInPhoneNumber:
         """OptInPhoneNumber returns successfully."""
         resp = sns.opt_in_phone_number(phoneNumber="+15555550100")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSNSErrorHandling:
+    """Tests for SNS error handling on nonexistent resources."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    def test_delete_nonexistent_topic_succeeds(self, sns):
+        """DeleteTopic on nonexistent topic returns 200 (idempotent)."""
+        resp = sns.delete_topic(TopicArn="arn:aws:sns:us-east-1:123456789012:nonexistent-topic")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_topic_attributes_nonexistent(self, sns):
+        """GetTopicAttributes on nonexistent topic raises NotFound."""
+        with pytest.raises(ClientError) as exc:
+            sns.get_topic_attributes(
+                TopicArn="arn:aws:sns:us-east-1:123456789012:nonexistent-topic"
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFound"
+
+
+class TestSNSFilterPolicyScope:
+    """Tests for FilterPolicyScope subscription attribute."""
+
+    @pytest.fixture
+    def sns(self):
+        return make_client("sns")
+
+    @pytest.fixture
+    def sqs(self):
+        return make_client("sqs")
+
+    def test_subscribe_with_filter_policy_scope_message_body(self, sns, sqs):
+        """Subscribe with FilterPolicyScope=MessageBody stores the scope."""
+        topic = sns.create_topic(Name=f"fps-{uuid.uuid4().hex[:8]}")
+        topic_arn = topic["TopicArn"]
+        qurl = sqs.create_queue(QueueName=f"fps-q-{uuid.uuid4().hex[:8]}")["QueueUrl"]
+        qarn = sqs.get_queue_attributes(QueueUrl=qurl, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+        try:
+            sub = sns.subscribe(
+                TopicArn=topic_arn,
+                Protocol="sqs",
+                Endpoint=qarn,
+                Attributes={
+                    "FilterPolicy": json.dumps({"color": ["red"]}),
+                    "FilterPolicyScope": "MessageBody",
+                },
+            )
+            sub_arn = sub["SubscriptionArn"]
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)
+            assert attrs["Attributes"]["FilterPolicyScope"] == "MessageBody"
+            sns.unsubscribe(SubscriptionArn=sub_arn)
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+            sqs.delete_queue(QueueUrl=qurl)
+
+    def test_subscribe_with_filter_policy_scope_message_attributes(self, sns, sqs):
+        """Subscribe with FilterPolicyScope=MessageAttributes stores the scope."""
+        topic = sns.create_topic(Name=f"fps-ma-{uuid.uuid4().hex[:8]}")
+        topic_arn = topic["TopicArn"]
+        qurl = sqs.create_queue(QueueName=f"fps-maq-{uuid.uuid4().hex[:8]}")["QueueUrl"]
+        qarn = sqs.get_queue_attributes(QueueUrl=qurl, AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
+        try:
+            sub = sns.subscribe(
+                TopicArn=topic_arn,
+                Protocol="sqs",
+                Endpoint=qarn,
+                Attributes={
+                    "FilterPolicy": json.dumps({"color": ["blue"]}),
+                    "FilterPolicyScope": "MessageAttributes",
+                },
+            )
+            sub_arn = sub["SubscriptionArn"]
+            attrs = sns.get_subscription_attributes(SubscriptionArn=sub_arn)
+            assert attrs["Attributes"]["FilterPolicyScope"] == "MessageAttributes"
+            sns.unsubscribe(SubscriptionArn=sub_arn)
+        finally:
+            sns.delete_topic(TopicArn=topic_arn)
+            sqs.delete_queue(QueueUrl=qurl)

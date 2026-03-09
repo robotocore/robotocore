@@ -741,3 +741,9 @@ class TestEmrAutoCoverage:
         """ModifyInstanceGroups with no args succeeds."""
         resp = client.modify_instance_groups()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_job_flows(self, client):
+        """DescribeJobFlows returns job flow list."""
+        resp = client.describe_job_flows()
+        assert "JobFlows" in resp
+        assert isinstance(resp["JobFlows"], list)

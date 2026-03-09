@@ -665,6 +665,284 @@ class TestWAFv2RuleGroupOperations:
         assert exc.value.response["Error"]["Code"] == "WAFNonexistentItemException"
 
 
+class TestWAFv2IPSetTagging:
+    """Tests for TagResource/UntagResource/ListTagsForResource on IP sets."""
+
+    def test_tag_and_untag_ip_set(self, wafv2):
+        name = _unique("tag-ipset")
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV4",
+            Addresses=["10.0.0.0/8"],
+        )
+        summary = resp["Summary"]
+        ip_arn = summary["ARN"]
+        try:
+            wafv2.tag_resource(
+                ResourceARN=ip_arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "sec"}],
+            )
+            tags_resp = wafv2.list_tags_for_resource(ResourceARN=ip_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["TagInfoForResource"]["TagList"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "sec"
+
+            wafv2.untag_resource(ResourceARN=ip_arn, TagKeys=["env"])
+            tags_resp2 = wafv2.list_tags_for_resource(ResourceARN=ip_arn)
+            keys = [t["Key"] for t in tags_resp2["TagInfoForResource"]["TagList"]]
+            assert "env" not in keys
+            assert "team" in keys
+        finally:
+            get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_ip_set(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+    def test_create_ip_set_with_tags(self, wafv2):
+        name = _unique("tagged-ipset")
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV4",
+            Addresses=["172.16.0.0/12"],
+            Tags=[{"Key": "created-by", "Value": "compat-test"}],
+        )
+        summary = resp["Summary"]
+        try:
+            tags = wafv2.list_tags_for_resource(ResourceARN=summary["ARN"])
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagInfoForResource"]["TagList"]}
+            assert tag_map["created-by"] == "compat-test"
+        finally:
+            get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_ip_set(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+
+class TestWAFv2RegexPatternSetTagging:
+    """Tests for tagging on regex pattern sets."""
+
+    def test_tag_and_untag_regex_pattern_set(self, wafv2):
+        name = _unique("tag-regex")
+        resp = wafv2.create_regex_pattern_set(
+            Name=name,
+            Scope="REGIONAL",
+            RegularExpressionList=[{"RegexString": "^test"}],
+        )
+        summary = resp["Summary"]
+        regex_arn = summary["ARN"]
+        try:
+            wafv2.tag_resource(
+                ResourceARN=regex_arn,
+                Tags=[{"Key": "team", "Value": "security"}],
+            )
+            tags = wafv2.list_tags_for_resource(ResourceARN=regex_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagInfoForResource"]["TagList"]}
+            assert tag_map["team"] == "security"
+
+            wafv2.untag_resource(ResourceARN=regex_arn, TagKeys=["team"])
+            tags2 = wafv2.list_tags_for_resource(ResourceARN=regex_arn)
+            assert len(tags2["TagInfoForResource"]["TagList"]) == 0
+        finally:
+            get_resp = wafv2.get_regex_pattern_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_regex_pattern_set(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+    def test_create_regex_pattern_set_with_tags(self, wafv2):
+        name = _unique("tagged-regex")
+        resp = wafv2.create_regex_pattern_set(
+            Name=name,
+            Scope="REGIONAL",
+            RegularExpressionList=[{"RegexString": ".*"}],
+            Tags=[{"Key": "purpose", "Value": "testing"}],
+        )
+        summary = resp["Summary"]
+        try:
+            tags = wafv2.list_tags_for_resource(ResourceARN=summary["ARN"])
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagInfoForResource"]["TagList"]}
+            assert tag_map["purpose"] == "testing"
+        finally:
+            get_resp = wafv2.get_regex_pattern_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_regex_pattern_set(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+
+class TestWAFv2RuleGroupTagging:
+    """Tests for tagging on rule groups."""
+
+    def test_tag_and_untag_rule_group(self, wafv2):
+        name = _unique("tag-rg")
+        resp = wafv2.create_rule_group(
+            Name=name,
+            Scope="REGIONAL",
+            Capacity=100,
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        rg_arn = summary["ARN"]
+        try:
+            wafv2.tag_resource(
+                ResourceARN=rg_arn,
+                Tags=[{"Key": "dept", "Value": "eng"}, {"Key": "env", "Value": "staging"}],
+            )
+            tags = wafv2.list_tags_for_resource(ResourceARN=rg_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagInfoForResource"]["TagList"]}
+            assert tag_map["dept"] == "eng"
+            assert tag_map["env"] == "staging"
+
+            wafv2.untag_resource(ResourceARN=rg_arn, TagKeys=["dept"])
+            tags2 = wafv2.list_tags_for_resource(ResourceARN=rg_arn)
+            keys = [t["Key"] for t in tags2["TagInfoForResource"]["TagList"]]
+            assert "dept" not in keys
+            assert "env" in keys
+        finally:
+            get_resp = wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_rule_group(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+    def test_create_rule_group_with_tags(self, wafv2):
+        name = _unique("tagged-rg")
+        resp = wafv2.create_rule_group(
+            Name=name,
+            Scope="REGIONAL",
+            Capacity=50,
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+            Tags=[{"Key": "managed", "Value": "true"}],
+        )
+        summary = resp["Summary"]
+        try:
+            tags = wafv2.list_tags_for_resource(ResourceARN=summary["ARN"])
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagInfoForResource"]["TagList"]}
+            assert tag_map["managed"] == "true"
+        finally:
+            get_resp = wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_rule_group(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+
+class TestWAFv2PermissionPolicy:
+    """Tests for PutPermissionPolicy, GetPermissionPolicy, DeletePermissionPolicy."""
+
+    def test_put_get_delete_permission_policy(self, wafv2):
+        import json
+
+        name = _unique("pp-rg")
+        resp = wafv2.create_rule_group(
+            Name=name,
+            Scope="REGIONAL",
+            Capacity=100,
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        rg_arn = summary["ARN"]
+        try:
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowAccess",
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": "wafv2:GetRuleGroup",
+                            "Resource": rg_arn,
+                        }
+                    ],
+                }
+            )
+            put_resp = wafv2.put_permission_policy(ResourceArn=rg_arn, Policy=policy)
+            assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            get_resp = wafv2.get_permission_policy(ResourceArn=rg_arn)
+            assert "Policy" in get_resp
+            parsed = json.loads(get_resp["Policy"])
+            assert parsed["Statement"][0]["Sid"] == "AllowAccess"
+
+            del_resp = wafv2.delete_permission_policy(ResourceArn=rg_arn)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            with pytest.raises(ClientError) as exc:
+                wafv2.get_permission_policy(ResourceArn=rg_arn)
+            assert exc.value.response["Error"]["Code"] in (
+                "WAFNonexistentItemException",
+                "WAFInternalErrorException",
+            )
+        finally:
+            get_rg = wafv2.get_rule_group(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_rule_group(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_rg["LockToken"],
+            )
+
+
+class TestWAFv2CheckCapacity:
+    """Test CheckCapacity operation."""
+
+    def test_check_capacity_with_byte_match(self, wafv2):
+        resp = wafv2.check_capacity(
+            Scope="REGIONAL",
+            Rules=[
+                {
+                    "Name": "block-bad",
+                    "Priority": 1,
+                    "Statement": {
+                        "ByteMatchStatement": {
+                            "SearchString": b"bad",
+                            "FieldToMatch": {"UriPath": {}},
+                            "TextTransformations": [{"Priority": 0, "Type": "NONE"}],
+                            "PositionalConstraint": "CONTAINS",
+                        }
+                    },
+                    "Action": {"Block": {}},
+                    "VisibilityConfig": {
+                        "SampledRequestsEnabled": True,
+                        "CloudWatchMetricsEnabled": True,
+                        "MetricName": "block-bad",
+                    },
+                }
+            ],
+        )
+        assert "Capacity" in resp
+        assert resp["Capacity"] >= 1
+
+
 class TestWAFv2AdditionalOperations:
     """Tests for DescribeManagedRuleGroup and GetPermissionPolicy."""
 

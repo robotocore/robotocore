@@ -2280,6 +2280,221 @@ class TestCloudFormationStackPolicy:
         assert exc.value.response["Error"]["Code"] == "ValidationError"
 
 
+class TestCloudFormationStackSetDetails:
+    """Tests for StackSet creation options and error handling."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def _unique_name(self, prefix):
+        return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+    def _simple_template(self):
+        return json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyQueue": {"Type": "AWS::SQS::Queue"},
+                },
+            }
+        )
+
+    def test_create_stack_set_with_tags(self, client):
+        """CreateStackSet with tags stores tags on the stack set."""
+        name = self._unique_name("ss-tags")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "dev"}],
+            )
+            resp = client.describe_stack_set(StackSetName=name)
+            tags = {t["Key"]: t["Value"] for t in resp["StackSet"]["Tags"]}
+            assert tags["env"] == "test"
+            assert tags["team"] == "dev"
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_create_stack_set_with_description(self, client):
+        """CreateStackSet with description stores description."""
+        name = self._unique_name("ss-desc")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+                Description="My test stack set",
+            )
+            resp = client.describe_stack_set(StackSetName=name)
+            assert resp["StackSet"]["Description"] == "My test stack set"
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_create_stack_set_permission_model(self, client):
+        """CreateStackSet with PermissionModel stores the model."""
+        name = self._unique_name("ss-perm")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+                PermissionModel="SELF_MANAGED",
+            )
+            resp = client.describe_stack_set(StackSetName=name)
+            assert resp["StackSet"]["PermissionModel"] == "SELF_MANAGED"
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_list_stack_sets_contains_created(self, client):
+        """ListStackSets includes a newly created stack set."""
+        name = self._unique_name("ss-list")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.list_stack_sets()
+            names = [s["StackSetName"] for s in resp["Summaries"]]
+            assert name in names
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_list_stack_sets_with_status_filter(self, client):
+        """ListStackSets with Status=ACTIVE includes newly created set."""
+        name = self._unique_name("ss-filt")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.list_stack_sets(Status="ACTIVE")
+            assert "Summaries" in resp
+            names = [s["StackSetName"] for s in resp["Summaries"]]
+            assert name in names
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_describe_stack_set_not_found(self, client):
+        """DescribeStackSet for nonexistent stack set returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_stack_set(StackSetName="nonexistent-ss")
+        assert exc.value.response["Error"]["Code"] == "StackSetNotFoundException"
+
+    def test_describe_change_set_not_found(self, client):
+        """DescribeChangeSet for nonexistent change set returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_change_set(
+                StackName="nonexistent-stack", ChangeSetName="nonexistent-cs"
+            )
+        assert exc.value.response["Error"]["Code"] == "ChangeSetNotFoundException"
+
+    def test_list_stack_sets_summary_fields(self, client):
+        """ListStackSets summaries include expected fields."""
+        name = self._unique_name("ss-fields")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+            )
+            resp = client.list_stack_sets()
+            summary = next(s for s in resp["Summaries"] if s["StackSetName"] == name)
+            assert "StackSetId" in summary
+            assert "Status" in summary
+            assert summary["Status"] == "ACTIVE"
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_change_set_describe_fields(self, client):
+        """DescribeChangeSet returns expected fields."""
+        stack_name = self._unique_name("cs-fields")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        tmpl = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "Q": {
+                        "Type": "AWS::SQS::Queue",
+                        "Properties": {"QueueName": queue_name},
+                    },
+                },
+            }
+        )
+        try:
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=tmpl,
+                ChangeSetType="CREATE",
+            )
+            resp = client.describe_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            assert resp["ChangeSetName"] == cs_name
+            assert resp["StackName"] == stack_name
+            assert "ChangeSetId" in resp
+            assert "StackId" in resp
+            assert "Status" in resp
+        finally:
+            try:
+                client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
+            except Exception:
+                pass
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_update_stack_set_description(self, client):
+        """UpdateStackSet can change description."""
+        name = self._unique_name("ss-upd")
+        try:
+            client.create_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+                Description="original",
+            )
+            client.update_stack_set(
+                StackSetName=name,
+                TemplateBody=self._simple_template(),
+                Description="updated",
+            )
+            resp = client.describe_stack_set(StackSetName=name)
+            assert resp["StackSet"]["Description"] == "updated"
+        finally:
+            try:
+                client.delete_stack_set(StackSetName=name)
+            except Exception:
+                pass
+
+    def test_delete_stack_set_then_describe_raises(self, client):
+        """Deleted stack set raises StackSetNotFoundException."""
+        name = self._unique_name("ss-del-desc")
+        client.create_stack_set(
+            StackSetName=name,
+            TemplateBody=self._simple_template(),
+        )
+        client.delete_stack_set(StackSetName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_stack_set(StackSetName=name)
+        assert exc.value.response["Error"]["Code"] == "StackSetNotFoundException"
+
+
 class TestCloudFormationImports:
     """Tests for ListImports."""
 

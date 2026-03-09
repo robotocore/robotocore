@@ -1471,6 +1471,98 @@ class TestEventsGapStubs:
         assert "Endpoints" in resp
 
 
+class TestEventBridgeDeleteConnection:
+    """Test DeleteConnection lifecycle."""
+
+    def test_delete_connection_lifecycle(self, events):
+        """Create, describe, delete, verify ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"del-conn-{suffix}"
+        try:
+            resp = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret123",
+                    }
+                },
+            )
+            assert "ConnectionArn" in resp
+
+            desc = events.describe_connection(Name=conn_name)
+            assert desc["Name"] == conn_name
+
+            del_resp = events.delete_connection(Name=conn_name)
+            assert del_resp["ConnectionState"] in (
+                "DELETING",
+                "DEAUTHORIZING",
+                "DEAUTHORIZED",
+            )
+
+            with pytest.raises(ClientError) as exc:
+                events.describe_connection(Name=conn_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        except Exception:
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+            raise
+
+
+class TestEventBridgeDeleteApiDestination:
+    """Test DeleteApiDestination lifecycle."""
+
+    def test_delete_api_destination_lifecycle(self, events):
+        """Create, describe, delete, verify ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"del-dest-conn-{suffix}"
+        dest_name = f"del-dest-{suffix}"
+        try:
+            conn = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret",
+                    }
+                },
+            )
+            conn_arn = conn["ConnectionArn"]
+
+            events.create_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/api",
+                HttpMethod="POST",
+            )
+
+            desc = events.describe_api_destination(Name=dest_name)
+            assert desc["Name"] == dest_name
+
+            events.delete_api_destination(Name=dest_name)
+
+            with pytest.raises(ClientError) as exc:
+                events.describe_api_destination(Name=dest_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            try:
+                events.delete_api_destination(Name=dest_name)
+            except Exception:
+                pass
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
 class TestEventsAutoCoverage:
     """Auto-generated coverage tests for events."""
 

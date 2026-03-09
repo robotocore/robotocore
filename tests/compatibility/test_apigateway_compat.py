@@ -1472,3 +1472,241 @@ class TestAPIGatewayDeleteOperations:
         )
         assert "ResponseMetadata" in resp
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAPIGatewayApiKeyLifecycle:
+    """Full CRUD lifecycle for API keys with deletion verification."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    def test_delete_api_key_verified(self, apigw):
+        """DeleteApiKey removes the key and GetApiKey returns NotFoundException."""
+        import uuid
+
+        from botocore.exceptions import ClientError
+
+        key = apigw.create_api_key(name=f"del-verify-{uuid.uuid4().hex[:8]}", enabled=True)
+        key_id = key["id"]
+        assert key["enabled"] is True
+
+        apigw.delete_api_key(apiKey=key_id)
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_api_key(apiKey=key_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_api_key_include_value(self, apigw):
+        """GetApiKey with includeValue returns the API key value."""
+        import uuid
+
+        key = apigw.create_api_key(
+            name=f"val-key-{uuid.uuid4().hex[:8]}",
+            enabled=True,
+            value=f"custom-key-{uuid.uuid4().hex}",
+        )
+        key_id = key["id"]
+        try:
+            got = apigw.get_api_key(apiKey=key_id, includeValue=True)
+            assert "value" in got
+            assert len(got["value"]) > 0
+        finally:
+            apigw.delete_api_key(apiKey=key_id)
+
+
+class TestAPIGatewayUsagePlanLifecycle:
+    """Full CRUD lifecycle for usage plans with deletion verification."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    def test_delete_usage_plan_verified(self, apigw):
+        """DeleteUsagePlan removes the plan and GetUsagePlan returns NotFoundException."""
+        import uuid
+
+        from botocore.exceptions import ClientError
+
+        plan = apigw.create_usage_plan(name=f"del-plan-{uuid.uuid4().hex[:8]}")
+        plan_id = plan["id"]
+        apigw.delete_usage_plan(usagePlanId=plan_id)
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_usage_plan(usagePlanId=plan_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_usage_plan_with_quota(self, apigw):
+        """Create a usage plan with quota settings and verify them."""
+        import uuid
+
+        plan = apigw.create_usage_plan(
+            name=f"quota-plan-{uuid.uuid4().hex[:8]}",
+            throttle={"burstLimit": 200, "rateLimit": 100.0},
+            quota={"limit": 5000, "period": "MONTH"},
+        )
+        plan_id = plan["id"]
+        try:
+            assert plan["throttle"]["burstLimit"] == 200
+            assert plan["quota"]["limit"] == 5000
+            assert plan["quota"]["period"] == "MONTH"
+
+            got = apigw.get_usage_plan(usagePlanId=plan_id)
+            assert got["quota"]["limit"] == 5000
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan_id)
+
+
+class TestAPIGatewayUsagePlanKeyLifecycle:
+    """Full CRUD lifecycle for usage plan keys."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    def test_usage_plan_key_full_lifecycle(self, apigw):
+        """Create, get, list, delete usage plan key with verification."""
+        import uuid
+
+        plan = apigw.create_usage_plan(name=f"upk-lifecycle-{uuid.uuid4().hex[:8]}")
+        key = apigw.create_api_key(name=f"upk-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        try:
+            # Create
+            upk = apigw.create_usage_plan_key(
+                usagePlanId=plan["id"],
+                keyId=key["id"],
+                keyType="API_KEY",
+            )
+            assert upk["id"] == key["id"]
+            assert upk["type"] == "API_KEY"
+
+            # Get
+            got = apigw.get_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
+            assert got["id"] == key["id"]
+
+            # List
+            keys = apigw.get_usage_plan_keys(usagePlanId=plan["id"])
+            key_ids = [k["id"] for k in keys["items"]]
+            assert key["id"] in key_ids
+
+            # Delete
+            apigw.delete_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
+            keys_after = apigw.get_usage_plan_keys(usagePlanId=plan["id"])
+            key_ids_after = [k["id"] for k in keys_after.get("items", [])]
+            assert key["id"] not in key_ids_after
+        finally:
+            try:
+                apigw.delete_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
+            except Exception:
+                pass
+            apigw.delete_api_key(apiKey=key["id"])
+            apigw.delete_usage_plan(usagePlanId=plan["id"])
+
+
+class TestAPIGatewayVpcLinkLifecycle:
+    """Full CRUD lifecycle for VPC links."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    def test_vpc_link_full_lifecycle(self, apigw):
+        """Create, get, list, delete VPC link with verification."""
+        import uuid
+
+        nlb_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            f":loadbalancer/net/nlb-{uuid.uuid4().hex[:8]}/abc123"
+        )
+        created = apigw.create_vpc_link(
+            name=f"lifecycle-link-{uuid.uuid4().hex[:8]}",
+            targetArns=[nlb_arn],
+            description="Lifecycle test VPC link",
+        )
+        link_id = created["id"]
+        try:
+            assert created["name"].startswith("lifecycle-link-")
+            assert "id" in created
+
+            # Get
+            got = apigw.get_vpc_link(vpcLinkId=link_id)
+            assert got["id"] == link_id
+            assert got["description"] == "Lifecycle test VPC link"
+
+            # List
+            links = apigw.get_vpc_links()
+            link_ids = [lnk["id"] for lnk in links["items"]]
+            assert link_id in link_ids
+
+            # Delete
+            apigw.delete_vpc_link(vpcLinkId=link_id)
+            links_after = apigw.get_vpc_links()
+            link_ids_after = [lnk["id"] for lnk in links_after["items"]]
+            assert link_id not in link_ids_after
+        except Exception:
+            try:
+                apigw.delete_vpc_link(vpcLinkId=link_id)
+            except Exception:
+                pass
+            raise
+
+
+class TestAPIGatewayRequestValidatorLifecycle:
+    """Full CRUD lifecycle for request validators."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api(self, apigw):
+        import uuid
+
+        resp = apigw.create_rest_api(
+            name=f"rv-api-{uuid.uuid4().hex[:8]}",
+            description="Request validator test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_request_validator_full_lifecycle(self, apigw, api):
+        """Create, get, list, update, delete request validator with verification."""
+        validator = apigw.create_request_validator(
+            restApiId=api,
+            name="lifecycle-validator",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        val_id = validator["id"]
+
+        # Verify create
+        assert validator["name"] == "lifecycle-validator"
+        assert validator["validateRequestBody"] is True
+        assert validator["validateRequestParameters"] is False
+
+        # Get
+        got = apigw.get_request_validator(restApiId=api, requestValidatorId=val_id)
+        assert got["id"] == val_id
+        assert got["name"] == "lifecycle-validator"
+
+        # List
+        validators = apigw.get_request_validators(restApiId=api)
+        val_ids = [v["id"] for v in validators["items"]]
+        assert val_id in val_ids
+
+        # Update
+        updated = apigw.update_request_validator(
+            restApiId=api,
+            requestValidatorId=val_id,
+            patchOperations=[
+                {"op": "replace", "path": "/validateRequestParameters", "value": "true"},
+            ],
+        )
+        assert updated["validateRequestParameters"] is True
+
+        # Delete
+        apigw.delete_request_validator(restApiId=api, requestValidatorId=val_id)
+        validators_after = apigw.get_request_validators(restApiId=api)
+        val_ids_after = [v["id"] for v in validators_after["items"]]
+        assert val_id not in val_ids_after

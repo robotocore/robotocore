@@ -383,6 +383,97 @@ class TestEFSMountTargetOperations:
         efs.delete_file_system(FileSystemId=fs_id)
 
 
+class TestEFSMountTargetSecurityGroupOperations:
+    @pytest.fixture(autouse=True)
+    def setup_vpc(self, efs):
+        """Create a VPC and subnet for mount target security group tests."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.50.0.0/16")
+        self.vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=self.vpc_id, CidrBlock="10.50.1.0/24")
+        self.subnet_id = subnet["Subnet"]["SubnetId"]
+        self.ec2 = ec2
+        yield
+        try:
+            ec2.delete_subnet(SubnetId=self.subnet_id)
+        except Exception:
+            pass
+        try:
+            ec2.delete_vpc(VpcId=self.vpc_id)
+        except Exception:
+            pass
+
+    def test_modify_and_describe_mount_target_security_groups(self, efs):
+        """Modify then describe mount target security groups."""
+        fs_id = _create_fs(efs)
+        mt = efs.create_mount_target(FileSystemId=fs_id, SubnetId=self.subnet_id)
+        mt_id = mt["MountTargetId"]
+        sg = self.ec2.create_security_group(
+            GroupName=_unique("sg"),
+            Description="efs sg test",
+            VpcId=self.vpc_id,
+        )
+        sg_id = sg["GroupId"]
+        efs.modify_mount_target_security_groups(MountTargetId=mt_id, SecurityGroups=[sg_id])
+        r = efs.describe_mount_target_security_groups(MountTargetId=mt_id)
+        assert "SecurityGroups" in r
+        assert sg_id in r["SecurityGroups"]
+        efs.delete_mount_target(MountTargetId=mt_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+        self.ec2.delete_security_group(GroupId=sg_id)
+
+    def test_create_mount_target_with_security_group(self, efs):
+        """CreateMountTarget with SecurityGroups sets them on the mount target."""
+        fs_id = _create_fs(efs)
+        sg = self.ec2.create_security_group(
+            GroupName=_unique("sg"),
+            Description="efs create sg test",
+            VpcId=self.vpc_id,
+        )
+        sg_id = sg["GroupId"]
+        mt = efs.create_mount_target(
+            FileSystemId=fs_id,
+            SubnetId=self.subnet_id,
+            SecurityGroups=[sg_id],
+        )
+        mt_id = mt["MountTargetId"]
+        r = efs.describe_mount_target_security_groups(MountTargetId=mt_id)
+        assert "SecurityGroups" in r
+        assert sg_id in r["SecurityGroups"]
+        efs.delete_mount_target(MountTargetId=mt_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+        self.ec2.delete_security_group(GroupId=sg_id)
+
+    def test_modify_mount_target_security_groups_multiple(self, efs):
+        """ModifyMountTargetSecurityGroups can set multiple security groups."""
+        fs_id = _create_fs(efs)
+        mt = efs.create_mount_target(FileSystemId=fs_id, SubnetId=self.subnet_id)
+        mt_id = mt["MountTargetId"]
+        sg1 = self.ec2.create_security_group(
+            GroupName=_unique("sg1"),
+            Description="efs sg test 1",
+            VpcId=self.vpc_id,
+        )
+        sg2 = self.ec2.create_security_group(
+            GroupName=_unique("sg2"),
+            Description="efs sg test 2",
+            VpcId=self.vpc_id,
+        )
+        sg1_id = sg1["GroupId"]
+        sg2_id = sg2["GroupId"]
+        efs.modify_mount_target_security_groups(
+            MountTargetId=mt_id, SecurityGroups=[sg1_id, sg2_id]
+        )
+        r = efs.describe_mount_target_security_groups(MountTargetId=mt_id)
+        assert "SecurityGroups" in r
+        assert sg1_id in r["SecurityGroups"]
+        assert sg2_id in r["SecurityGroups"]
+        efs.delete_mount_target(MountTargetId=mt_id)
+        efs.delete_file_system(FileSystemId=fs_id)
+        self.ec2.delete_security_group(GroupId=sg1_id)
+        self.ec2.delete_security_group(GroupId=sg2_id)
+
+
 class TestEFSBackupPolicy:
     def test_describe_backup_policy_not_found(self, efs):
         """DescribeBackupPolicy on a FS with no backup policy raises PolicyNotFound."""
