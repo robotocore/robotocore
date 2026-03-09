@@ -520,10 +520,6 @@ def tier_analysis():
     print("  ROBOTOCORE vs LOCALSTACK — TIER COMPARISON".center(w))
     print("=" * w)
     print()
-    print("  Robotocore is MIT-licensed and free forever.")
-    print("  Every service below works out of the box —")
-    print("  no registration, no API key.")
-    print()
 
     def _tier_header(title: str, svcs: list, impl: int, total: int):
         print("-" * w)
@@ -537,7 +533,7 @@ def tier_analysis():
     comm_impl = sum(s["impl"] for s in comm)
     comm_total = sum(s["total"] for s in comm)
     _tier_header(
-        "COMMUNITY — free in both LocalStack and Robotocore",
+        "COMMUNITY (free tier in LocalStack)",
         comm,
         comm_impl,
         comm_total,
@@ -550,7 +546,7 @@ def tier_analysis():
     base_total = sum(s["total"] for s in base)
     print()
     _tier_header(
-        "BASE — LocalStack charges $30+/mo. Robotocore: FREE.",
+        "BASE ($30+/mo in LocalStack)",
         base,
         base_impl,
         base_total,
@@ -563,7 +559,7 @@ def tier_analysis():
     ult_total = sum(s["total"] for s in ult)
     print()
     _tier_header(
-        "ULTIMATE — LocalStack charges $70+/mo. Robotocore: FREE.",
+        "ULTIMATE ($70+/mo in LocalStack)",
         ult,
         ult_impl,
         ult_total,
@@ -576,7 +572,7 @@ def tier_analysis():
     extra_total = sum(s["total"] for s in extra)
     print()
     _tier_header(
-        "NOT IN LOCALSTACK — Robotocore-only (via Moto). FREE.",
+        "NOT IN LOCALSTACK (Robotocore-only, via Moto)",
         extra,
         extra_impl,
         extra_total,
@@ -587,9 +583,6 @@ def tier_analysis():
     total_svcs = len(comm) + len(base) + len(ult) + len(extra)
     total_impl = comm_impl + base_impl + ult_impl + extra_impl
     total_ops = comm_total + base_total + ult_total + extra_total
-    paid_svcs = len(base) + len(ult) + len(extra)
-    paid_impl = base_impl + ult_impl + extra_impl
-
     print()
     print("=" * w)
     print("  SUMMARY".center(w))
@@ -598,17 +591,12 @@ def tier_analysis():
     pct_str = _pct(total_impl, total_ops)
     print(f"  Total ops implemented:   {total_impl}/{total_ops} ({pct_str})")
     print()
-    print(f"  Services free in both:   {len(comm)}")
-    print(f"  Paid in LS, free in RC:  {paid_svcs}  ({paid_impl} ops)")
-    print(f"    Base ($30+/mo):        {len(base)} svcs, {base_impl} ops")
-    print(f"    Ultimate ($70+/mo):    {len(ult)} svcs, {ult_impl} ops")
-    print(f"    Not in LS at all:      {len(extra)} svcs, {extra_impl} ops")
+    print(f"  LS Community overlap:    {len(comm)} services")
+    print(f"  LS Base overlap:         {len(base)} services, {base_impl} ops")
+    print(f"  LS Ultimate overlap:     {len(ult)} services, {ult_impl} ops")
+    print(f"  Robotocore-only:         {len(extra)} services, {extra_impl} ops")
     print()
-    print("  To get what Robotocore gives free, LocalStack")
-    print("  costs $70+/month — and still won't cover the")
-    print(f"  {len(extra)} Robotocore-only services.")
-    print()
-    print("  Source: localstack.cloud/pricing-comparison")
+    print("  Source: localstack.cloud/pricing-comparison (March 2026)")
     print("=" * w)
 
 
