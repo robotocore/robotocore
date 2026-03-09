@@ -482,3 +482,25 @@ class TestEFSBackupPolicy:
             efs.describe_backup_policy(FileSystemId=fs_id)
         assert exc.value.response["Error"]["Code"] == "PolicyNotFound"
         efs.delete_file_system(FileSystemId=fs_id)
+
+
+class TestEFSAccountPreferences:
+    def test_describe_account_preferences(self, efs):
+        resp = efs.describe_account_preferences()
+        assert "ResourceIdPreference" in resp
+
+
+class TestEFSReplicationConfigurations:
+    def test_describe_replication_configurations(self, efs):
+        resp = efs.describe_replication_configurations()
+        assert "Replications" in resp
+
+
+class TestEFSDescribeTags:
+    def test_describe_tags(self, efs):
+        fs_id = _create_fs(efs, Tags=[{"Key": "Env", "Value": "test"}])
+        resp = efs.describe_tags(FileSystemId=fs_id)
+        assert "Tags" in resp
+        tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tag_map["Env"] == "test"
+        efs.delete_file_system(FileSystemId=fs_id)

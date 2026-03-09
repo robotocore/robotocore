@@ -1710,3 +1710,128 @@ class TestAPIGatewayRequestValidatorLifecycle:
         validators_after = apigw.get_request_validators(restApiId=api)
         val_ids_after = [v["id"] for v in validators_after["items"]]
         assert val_id not in val_ids_after
+
+
+class TestAPIGatewayDocumentationParts:
+    """Tests for Documentation Parts CRUD."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_api(self, apigw):
+        self.apigw = apigw
+        resp = apigw.create_rest_api(name="doc-parts-api", description="Doc parts test")
+        self.api_id = resp["id"]
+        yield
+        apigw.delete_rest_api(restApiId=self.api_id)
+
+    def test_create_and_get_documentation_part(self, apigw):
+        resp = apigw.create_documentation_part(
+            restApiId=self.api_id,
+            location={"type": "API"},
+            properties='{"description": "My API"}',
+        )
+        part_id = resp["id"]
+        assert part_id is not None
+
+        got = apigw.get_documentation_part(restApiId=self.api_id, documentationPartId=part_id)
+        assert got["id"] == part_id
+        assert got["properties"] == '{"description": "My API"}'
+
+    def test_get_documentation_parts(self, apigw):
+        apigw.create_documentation_part(
+            restApiId=self.api_id,
+            location={"type": "API"},
+            properties='{"description": "List test"}',
+        )
+        resp = apigw.get_documentation_parts(restApiId=self.api_id)
+        assert "items" in resp
+        assert len(resp["items"]) >= 1
+
+    def test_update_documentation_part(self, apigw):
+        created = apigw.create_documentation_part(
+            restApiId=self.api_id,
+            location={"type": "API"},
+            properties='{"description": "Original"}',
+        )
+        part_id = created["id"]
+        updated = apigw.update_documentation_part(
+            restApiId=self.api_id,
+            documentationPartId=part_id,
+            patchOperations=[
+                {"op": "replace", "path": "/properties", "value": '{"description": "Updated"}'},
+            ],
+        )
+        assert updated["properties"] == '{"description": "Updated"}'
+
+    def test_delete_documentation_part(self, apigw):
+        created = apigw.create_documentation_part(
+            restApiId=self.api_id,
+            location={"type": "API"},
+            properties='{"description": "To delete"}',
+        )
+        part_id = created["id"]
+        apigw.delete_documentation_part(restApiId=self.api_id, documentationPartId=part_id)
+        resp = apigw.get_documentation_parts(restApiId=self.api_id)
+        ids = [p["id"] for p in resp["items"]]
+        assert part_id not in ids
+
+
+class TestAPIGatewayDocumentationVersions:
+    """Tests for Documentation Versions."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_api(self, apigw):
+        self.apigw = apigw
+        resp = apigw.create_rest_api(name="doc-ver-api", description="Doc version test")
+        self.api_id = resp["id"]
+        # Create a doc part so we have something to version
+        apigw.create_documentation_part(
+            restApiId=self.api_id,
+            location={"type": "API"},
+            properties='{"description": "Versioned API"}',
+        )
+        yield
+        apigw.delete_rest_api(restApiId=self.api_id)
+
+    def test_create_and_get_documentation_version(self, apigw):
+        resp = apigw.create_documentation_version(
+            restApiId=self.api_id,
+            documentationVersion="1.0",
+            description="First version",
+        )
+        assert resp["version"] == "1.0"
+
+        got = apigw.get_documentation_version(restApiId=self.api_id, documentationVersion="1.0")
+        assert got["version"] == "1.0"
+        assert got["description"] == "First version"
+
+    def test_get_documentation_versions(self, apigw):
+        apigw.create_documentation_version(
+            restApiId=self.api_id,
+            documentationVersion="2.0",
+            description="Second version",
+        )
+        resp = apigw.get_documentation_versions(restApiId=self.api_id)
+        assert "items" in resp
+        versions = [v["version"] for v in resp["items"]]
+        assert "2.0" in versions
+
+
+class TestAPIGatewayClientCertificates:
+    """Tests for Client Certificates."""
+
+    def test_generate_and_get_client_certificate(self, apigw):
+        resp = apigw.generate_client_certificate(description="Test cert")
+        cert_id = resp["clientCertificateId"]
+        assert cert_id is not None
+
+        got = apigw.get_client_certificate(clientCertificateId=cert_id)
+        assert got["clientCertificateId"] == cert_id
+        assert got["description"] == "Test cert"
+
+    def test_get_client_certificates(self, apigw):
+        cert = apigw.generate_client_certificate(description="List cert")
+        cert_id = cert["clientCertificateId"]
+        resp = apigw.get_client_certificates()
+        assert "items" in resp
+        ids = [c["clientCertificateId"] for c in resp["items"]]
+        assert cert_id in ids

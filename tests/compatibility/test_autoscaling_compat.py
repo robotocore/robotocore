@@ -885,6 +885,155 @@ class TestAutoScalingExecutePolicy:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestAutoScalingDescribeTypes:
+    """Tests for various Describe*Types operations."""
+
+    def test_describe_account_limits(self, autoscaling):
+        resp = autoscaling.describe_account_limits()
+        assert "MaxNumberOfAutoScalingGroups" in resp
+        assert "MaxNumberOfLaunchConfigurations" in resp
+        assert isinstance(resp["MaxNumberOfAutoScalingGroups"], int)
+        assert isinstance(resp["MaxNumberOfLaunchConfigurations"], int)
+
+    def test_describe_adjustment_types(self, autoscaling):
+        resp = autoscaling.describe_adjustment_types()
+        assert "AdjustmentTypes" in resp
+        type_names = [t["AdjustmentType"] for t in resp["AdjustmentTypes"]]
+        assert "ChangeInCapacity" in type_names
+        assert "ExactCapacity" in type_names
+        assert "PercentChangeInCapacity" in type_names
+
+    def test_describe_auto_scaling_notification_types(self, autoscaling):
+        resp = autoscaling.describe_auto_scaling_notification_types()
+        assert "AutoScalingNotificationTypes" in resp
+        assert isinstance(resp["AutoScalingNotificationTypes"], list)
+        assert len(resp["AutoScalingNotificationTypes"]) > 0
+
+    def test_describe_lifecycle_hook_types(self, autoscaling):
+        resp = autoscaling.describe_lifecycle_hook_types()
+        assert "LifecycleHookTypes" in resp
+        assert isinstance(resp["LifecycleHookTypes"], list)
+        assert len(resp["LifecycleHookTypes"]) > 0
+
+    def test_describe_scaling_process_types(self, autoscaling):
+        resp = autoscaling.describe_scaling_process_types()
+        assert "Processes" in resp
+        assert isinstance(resp["Processes"], list)
+        assert len(resp["Processes"]) > 0
+        # Verify known process types exist
+        process_names = [p["ProcessName"] for p in resp["Processes"]]
+        assert "Launch" in process_names
+        assert "Terminate" in process_names
+
+    def test_describe_termination_policy_types(self, autoscaling):
+        resp = autoscaling.describe_termination_policy_types()
+        assert "TerminationPolicyTypes" in resp
+        assert isinstance(resp["TerminationPolicyTypes"], list)
+        assert len(resp["TerminationPolicyTypes"]) > 0
+
+    def test_describe_metric_collection_types(self, autoscaling):
+        resp = autoscaling.describe_metric_collection_types()
+        assert "Metrics" in resp
+        assert "Granularities" in resp
+        assert isinstance(resp["Metrics"], list)
+        assert isinstance(resp["Granularities"], list)
+        assert len(resp["Metrics"]) > 0
+        assert len(resp["Granularities"]) > 0
+
+
+class TestAutoScalingNotificationConfiguration:
+    """Tests for PutNotificationConfiguration and DescribeNotificationConfigurations."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("notif-lc")
+        self.asg_name = _unique("notif-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_put_and_describe_notification_configuration(self, autoscaling):
+        topic_arn = "arn:aws:sns:us-east-1:123456789012:test-notif-topic"
+        autoscaling.put_notification_configuration(
+            AutoScalingGroupName=self.asg_name,
+            TopicARN=topic_arn,
+            NotificationTypes=["autoscaling:EC2_INSTANCE_LAUNCH"],
+        )
+        resp = autoscaling.describe_notification_configurations(
+            AutoScalingGroupNames=[self.asg_name],
+        )
+        assert "NotificationConfigurations" in resp
+        configs = resp["NotificationConfigurations"]
+        assert len(configs) >= 1
+        found = [c for c in configs if c["TopicARN"] == topic_arn]
+        assert len(found) >= 1
+        assert found[0]["AutoScalingGroupName"] == self.asg_name
+
+
+class TestAutoScalingInstanceRefresh:
+    """Tests for StartInstanceRefresh, DescribeInstanceRefreshes, CancelInstanceRefresh."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("ir-lc")
+        self.asg_name = _unique("ir-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_start_and_describe_instance_refresh(self, autoscaling):
+        resp = autoscaling.start_instance_refresh(
+            AutoScalingGroupName=self.asg_name,
+            Strategy="Rolling",
+        )
+        assert "InstanceRefreshId" in resp
+        refresh_id = resp["InstanceRefreshId"]
+
+        desc = autoscaling.describe_instance_refreshes(
+            AutoScalingGroupName=self.asg_name,
+        )
+        assert "InstanceRefreshes" in desc
+        assert len(desc["InstanceRefreshes"]) >= 1
+        ids = [r["InstanceRefreshId"] for r in desc["InstanceRefreshes"]]
+        assert refresh_id in ids
+
+    def test_cancel_instance_refresh(self, autoscaling):
+        start = autoscaling.start_instance_refresh(
+            AutoScalingGroupName=self.asg_name,
+            Strategy="Rolling",
+        )
+        assert "InstanceRefreshId" in start
+
+        cancel = autoscaling.cancel_instance_refresh(
+            AutoScalingGroupName=self.asg_name,
+        )
+        assert "InstanceRefreshId" in cancel
+
+
 class TestAutoScalingStepScalingPolicy:
     """Tests for PutScalingPolicy with StepScaling type."""
 

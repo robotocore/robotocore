@@ -1674,3 +1674,23 @@ class TestEventBridgeTestEventPattern:
             ),
         )
         assert resp["Result"] is False
+
+
+class TestEventBridgeEndpointAndPartnerOps:
+    """Tests for DescribeEndpoint, ListPartnerEventSources, ListPartnerEventSourceAccounts."""
+
+    def test_describe_endpoint(self, events):
+        resp = events.describe_endpoint(Name="test-endpoint")
+        assert "Name" in resp
+        assert "Arn" in resp
+        assert resp["Name"] == "test-endpoint"
+
+    def test_list_partner_event_sources(self, events):
+        resp = events.list_partner_event_sources(NamePrefix="aws.partner")
+        assert "PartnerEventSources" in resp
+        assert isinstance(resp["PartnerEventSources"], list)
+
+    def test_list_partner_event_source_accounts(self, events):
+        resp = events.list_partner_event_source_accounts(EventSourceName="aws.partner/example/test")
+        assert "PartnerEventSourceAccounts" in resp
+        assert isinstance(resp["PartnerEventSourceAccounts"], list)
