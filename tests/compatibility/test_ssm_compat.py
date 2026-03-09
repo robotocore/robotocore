@@ -2450,3 +2450,153 @@ class TestSSMOpsMetadataOperations:
         )
         assert "ResourceId" in resp
         assert "Metadata" in resp
+
+    def test_create_and_delete_ops_metadata(self, ssm):
+        """CreateOpsMetadata creates metadata, DeleteOpsMetadata removes it."""
+        resource_id = f"/ops-meta-{uuid.uuid4().hex[:8]}"
+        create_resp = ssm.create_ops_metadata(ResourceId=resource_id)
+        assert "OpsMetadataArn" in create_resp
+        arn = create_resp["OpsMetadataArn"]
+
+        del_resp = ssm.delete_ops_metadata(OpsMetadataArn=arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_ops_metadata(self, ssm):
+        """UpdateOpsMetadata updates metadata for a resource."""
+        resource_id = f"/ops-meta-upd-{uuid.uuid4().hex[:8]}"
+        create_resp = ssm.create_ops_metadata(ResourceId=resource_id)
+        arn = create_resp["OpsMetadataArn"]
+        try:
+            upd_resp = ssm.update_ops_metadata(
+                OpsMetadataArn=arn,
+                MetadataToUpdate={"key1": {"Value": "val1"}},
+            )
+            assert "OpsMetadataArn" in upd_resp
+        finally:
+            ssm.delete_ops_metadata(OpsMetadataArn=arn)
+
+
+class TestSSMInventoryAndPatches:
+    """Tests for SSM inventory and instance patch operations."""
+
+    def test_describe_instance_patches(self, ssm):
+        """DescribeInstancePatches returns patches list for an instance."""
+        resp = ssm.describe_instance_patches(InstanceId="i-1234567890abcdef0")
+        assert "Patches" in resp
+        assert isinstance(resp["Patches"], list)
+
+    def test_list_inventory_entries(self, ssm):
+        """ListInventoryEntries returns entries for a given instance and type."""
+        resp = ssm.list_inventory_entries(
+            InstanceId="i-1234567890abcdef0",
+            TypeName="AWS:Application",
+        )
+        assert "TypeName" in resp
+        assert "InstanceId" in resp
+
+    def test_delete_inventory(self, ssm):
+        """DeleteInventory returns a deletion ID."""
+        resp = ssm.delete_inventory(TypeName="Custom:TestInventory")
+        assert "DeletionId" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSSMDocumentVersions:
+    """Tests for SSM document version operations."""
+
+    def test_list_document_versions(self, ssm):
+        """ListDocumentVersions returns version list for a document."""
+        doc_name = f"TestDoc-{uuid.uuid4().hex[:8]}"
+        ssm.create_document(
+            Content='{"schemaVersion":"2.2","mainSteps":[]}',
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.list_document_versions(Name=doc_name)
+            assert "DocumentVersions" in resp
+            assert isinstance(resp["DocumentVersions"], list)
+            assert len(resp["DocumentVersions"]) >= 1
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_list_document_metadata_history(self, ssm):
+        """ListDocumentMetadataHistory returns metadata for a document."""
+        doc_name = f"TestDocMeta-{uuid.uuid4().hex[:8]}"
+        ssm.create_document(
+            Content='{"schemaVersion":"2.2","mainSteps":[]}',
+            Name=doc_name,
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.list_document_metadata_history(
+                Name=doc_name,
+                DocumentVersion="1",
+                Metadata="DocumentReviews",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMAssociationVersions:
+    """Tests for SSM association version operations."""
+
+    def test_list_association_versions(self, ssm):
+        """ListAssociationVersions for a real association returns versions."""
+        # Create an association first
+        assoc_resp = ssm.create_association(
+            Name="AWS-RunShellScript",
+            Parameters={"commands": ["echo hello"]},
+        )
+        assoc_id = assoc_resp["AssociationDescription"]["AssociationId"]
+        try:
+            ver_resp = ssm.list_association_versions(AssociationId=assoc_id)
+            assert "AssociationVersions" in ver_resp
+            assert isinstance(ver_resp["AssociationVersions"], list)
+            assert len(ver_resp["AssociationVersions"]) >= 1
+        finally:
+            ssm.delete_association(AssociationId=assoc_id)
+
+
+class TestSSMMaintenanceWindowTarget:
+    """Tests for SSM maintenance window target operations."""
+
+    def test_describe_maintenance_windows_for_target(self, ssm):
+        """DescribeMaintenanceWindowsForTarget returns window identities."""
+        resp = ssm.describe_maintenance_windows_for_target(
+            Targets=[{"Key": "InstanceIds", "Values": ["i-1234567890abcdef0"]}],
+            ResourceType="INSTANCE",
+        )
+        assert "WindowIdentities" in resp
+        assert isinstance(resp["WindowIdentities"], list)
+
+
+class TestSSMOpsItemOps:
+    """Tests for SSM OpsItem operations."""
+
+    def test_delete_ops_item(self, ssm):
+        """DeleteOpsItem with a valid OpsItemId returns 200."""
+        # Create an OpsItem first
+        create_resp = ssm.create_ops_item(
+            Title="Test OpsItem",
+            Source="test",
+            Description="test ops item for deletion",
+        )
+        ops_item_id = create_resp["OpsItemId"]
+        del_resp = ssm.delete_ops_item(OpsItemId=ops_item_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSSMResourcePolicyOps:
+    """Tests for SSM resource policy operations."""
+
+    def test_get_resource_policies(self, ssm):
+        """GetResourcePolicies returns policies list."""
+        resp = ssm.get_resource_policies(
+            ResourceArn="arn:aws:ssm:us-east-1:123456789012:parameter/test-param"
+        )
+        assert "Policies" in resp
+        assert isinstance(resp["Policies"], list)
