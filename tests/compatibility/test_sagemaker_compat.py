@@ -5248,3 +5248,31 @@ class TestSageMakerRenderUiTemplate:
             RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
         )
         assert "RenderedContent" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerAdditionalOps:
+    def test_list_auto_ml_jobs(self, sagemaker):
+        resp = sagemaker.list_auto_ml_jobs()
+        assert "AutoMLJobSummaries" in resp
+
+    def test_describe_auto_ml_job(self, sagemaker):
+        resp = sagemaker.describe_auto_ml_job(AutoMLJobName=f"fake-job-{uuid.uuid4().hex[:8]}")
+        assert "AutoMLJobName" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_auto_ml_job_v2_not_found(self, sagemaker):
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_auto_ml_job_v2(AutoMLJobName=f"fake-job-{uuid.uuid4().hex[:8]}")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_list_model_bias_job_definitions(self, sagemaker):
+        resp = sagemaker.list_model_bias_job_definitions()
+        assert "JobDefinitionSummaries" in resp
+
+    def test_list_model_explainability_job_definitions(self, sagemaker):
+        resp = sagemaker.list_model_explainability_job_definitions()
+        assert "JobDefinitionSummaries" in resp
+
+    def test_list_model_quality_job_definitions(self, sagemaker):
+        resp = sagemaker.list_model_quality_job_definitions()
+        assert "JobDefinitionSummaries" in resp

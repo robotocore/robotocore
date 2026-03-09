@@ -1048,3 +1048,71 @@ class TestNeptuneModifyEventSubscription:
         with pytest.raises(ClientError) as exc_info:
             neptune.modify_event_subscription(SubscriptionName="nonexistent-sub")
         assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+
+class TestNeptuneDescribeOps:
+    """Additional describe/list operations returning empty results."""
+
+    def test_describe_db_cluster_snapshots_empty(self, neptune):
+        resp = neptune.describe_db_cluster_snapshots()
+        assert "DBClusterSnapshots" in resp
+        assert isinstance(resp["DBClusterSnapshots"], list)
+
+    def test_describe_db_subnet_groups_all(self, neptune):
+        resp = neptune.describe_db_subnet_groups()
+        assert "DBSubnetGroups" in resp
+        assert isinstance(resp["DBSubnetGroups"], list)
+
+
+class TestNeptuneClusterEndpointLifecycle:
+    """Tests for ModifyDBClusterEndpoint and DeleteDBClusterEndpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, neptune, subnet_ids):
+        self.neptune = neptune
+        self.sg_name = _unique("epl-sg")
+        self.cluster_id = _unique("epl-cl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=self.sg_name,
+            DBSubnetGroupDescription="endpoint lifecycle tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=self.sg_name,
+        )
+        yield
+        neptune.delete_db_cluster(DBClusterIdentifier=self.cluster_id, SkipFinalSnapshot=True)
+        neptune.delete_db_subnet_group(DBSubnetGroupName=self.sg_name)
+
+    def test_modify_db_cluster_endpoint(self, neptune):
+        ep_id = _unique("epl-ep")
+        neptune.create_db_cluster_endpoint(
+            DBClusterIdentifier=self.cluster_id,
+            DBClusterEndpointIdentifier=ep_id,
+            EndpointType="READER",
+        )
+        try:
+            resp = neptune.modify_db_cluster_endpoint(
+                DBClusterEndpointIdentifier=ep_id,
+                EndpointType="ANY",
+            )
+            assert resp["DBClusterEndpointIdentifier"] == ep_id
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                neptune.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
+            except Exception:
+                pass
+
+    def test_delete_db_cluster_endpoint(self, neptune):
+        ep_id = _unique("epl-ep")
+        neptune.create_db_cluster_endpoint(
+            DBClusterIdentifier=self.cluster_id,
+            DBClusterEndpointIdentifier=ep_id,
+            EndpointType="READER",
+        )
+        resp = neptune.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
+        assert resp["DBClusterEndpointIdentifier"] == ep_id
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
