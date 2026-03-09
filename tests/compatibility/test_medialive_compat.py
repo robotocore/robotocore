@@ -909,9 +909,11 @@ class TestMediaLiveInputSecurityGroups:
         )
         sg_id = resp["SecurityGroup"]["Id"]
         try:
-            listed = medialive.list_input_security_groups()
-            ids = [sg["Id"] for sg in listed["InputSecurityGroups"]]
-            assert sg_id in ids
+            all_ids = []
+            paginator = medialive.get_paginator("list_input_security_groups")
+            for page in paginator.paginate():
+                all_ids.extend(sg["Id"] for sg in page["InputSecurityGroups"])
+            assert sg_id in all_ids
         finally:
             medialive.delete_input_security_group(InputSecurityGroupId=sg_id)
 
@@ -1037,9 +1039,11 @@ class TestMediaLiveMultiplexCRUD:
         resp = self._make_multiplex(medialive)
         mux_id = resp["Multiplex"]["Id"]
         try:
-            listed = medialive.list_multiplexes()
-            ids = [m["Id"] for m in listed["Multiplexes"]]
-            assert mux_id in ids
+            all_ids = []
+            paginator = medialive.get_paginator("list_multiplexes")
+            for page in paginator.paginate():
+                all_ids.extend(m["Id"] for m in page["Multiplexes"])
+            assert mux_id in all_ids
         finally:
             medialive.delete_multiplex(MultiplexId=mux_id)
 

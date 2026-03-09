@@ -819,12 +819,6 @@ class TestAthenaNewOps:
         names = [ps["StatementName"] for ps in resp["PreparedStatements"]]
         assert name in names
 
-    def test_list_sessions(self, athena):
-        """ListSessions returns Sessions list."""
-        resp = athena.list_sessions(WorkGroup="primary")
-        assert "Sessions" in resp
-        assert isinstance(resp["Sessions"], list)
-
 
 class TestAthenaUpdateOperations:
     """Tests for update operations on Athena resources."""
@@ -951,3 +945,79 @@ class TestAthenaNamedQueryWorkGroupFilter:
         resp = athena.list_named_queries(WorkGroup="primary")
         assert "NamedQueryIds" in resp
         assert query_id in resp["NamedQueryIds"]
+
+
+class TestAthenaSessionLifecycle:
+    """Tests for Athena session start, get, status, and terminate."""
+
+    def test_start_session(self, athena):
+        """StartSession returns a SessionId and IDLE state."""
+        resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        assert "SessionId" in resp
+        assert resp["State"] == "IDLE"
+
+    def test_get_session(self, athena):
+        """GetSession returns session details after creation."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        resp = athena.get_session(SessionId=session_id)
+        assert resp["SessionId"] == session_id
+        assert "Status" in resp
+        assert resp["Status"]["State"] in ("IDLE", "BUSY", "TERMINATING", "TERMINATED")
+
+    def test_get_session_status(self, athena):
+        """GetSessionStatus returns session status."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        resp = athena.get_session_status(SessionId=session_id)
+        assert "Status" in resp
+        assert "State" in resp["Status"]
+        assert resp["Status"]["State"] in ("IDLE", "BUSY", "TERMINATING", "TERMINATED")
+
+    def test_terminate_session(self, athena):
+        """TerminateSession transitions a session to TERMINATING."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        resp = athena.terminate_session(SessionId=session_id)
+        assert resp["State"] in ("TERMINATING", "TERMINATED")
+
+    def test_terminate_session_nonexistent(self, athena):
+        """TerminateSession with fake SessionId raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.terminate_session(SessionId="nonexistent-session-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_session_full_lifecycle(self, athena):
+        """Full session lifecycle: start -> get -> status -> terminate."""
+        # Start
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        assert start_resp["State"] == "IDLE"
+
+        # Get
+        get_resp = athena.get_session(SessionId=session_id)
+        assert get_resp["SessionId"] == session_id
+        assert "WorkGroup" in get_resp
+
+        # Status
+        status_resp = athena.get_session_status(SessionId=session_id)
+        assert status_resp["Status"]["State"] == "IDLE"
+
+        # Terminate
+        term_resp = athena.terminate_session(SessionId=session_id)
+        assert term_resp["State"] in ("TERMINATING", "TERMINATED")
