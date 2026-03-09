@@ -629,3 +629,61 @@ class TestElastiCacheTagsOnUser:
             assert "drop" not in tag_keys
         finally:
             elasticache.delete_user(UserId=user_id)
+
+
+class TestElastiCacheDescribeExtended:
+    def test_describe_cache_engine_versions(self, elasticache):
+        resp = elasticache.describe_cache_engine_versions()
+        assert "CacheEngineVersions" in resp
+        assert isinstance(resp["CacheEngineVersions"], list)
+
+    def test_describe_cache_engine_versions_redis(self, elasticache):
+        resp = elasticache.describe_cache_engine_versions(Engine="redis")
+        assert "CacheEngineVersions" in resp
+        for v in resp["CacheEngineVersions"]:
+            assert v["Engine"] == "redis"
+
+    def test_describe_cache_parameter_groups(self, elasticache):
+        resp = elasticache.describe_cache_parameter_groups()
+        assert "CacheParameterGroups" in resp
+        assert isinstance(resp["CacheParameterGroups"], list)
+
+    def test_describe_cache_parameters(self, elasticache):
+        # Use the default parameter group which always exists
+        resp = elasticache.describe_cache_parameters(CacheParameterGroupName="default.redis7")
+        assert "Parameters" in resp
+        assert isinstance(resp["Parameters"], list)
+
+    def test_describe_events(self, elasticache):
+        resp = elasticache.describe_events()
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_events_with_source_type(self, elasticache):
+        resp = elasticache.describe_events(SourceType="cache-cluster")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_service_updates(self, elasticache):
+        resp = elasticache.describe_service_updates()
+        assert "ServiceUpdates" in resp
+        assert isinstance(resp["ServiceUpdates"], list)
+
+    def test_describe_update_actions(self, elasticache):
+        resp = elasticache.describe_update_actions()
+        assert "UpdateActions" in resp
+        assert isinstance(resp["UpdateActions"], list)
+
+
+class TestElastiCacheUserGroupOperations:
+    def test_describe_user_groups(self, elasticache):
+        resp = elasticache.describe_user_groups()
+        assert "UserGroups" in resp
+        assert isinstance(resp["UserGroups"], list)
+
+
+class TestElastiCacheServerlessCaches:
+    def test_describe_serverless_caches(self, elasticache):
+        resp = elasticache.describe_serverless_caches()
+        assert "ServerlessCaches" in resp
+        assert isinstance(resp["ServerlessCaches"], list)

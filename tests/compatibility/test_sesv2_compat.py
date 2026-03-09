@@ -1143,3 +1143,129 @@ class TestSesv2AutoCoverage:
             assert "DELIVERY" in dest["MatchingEventTypes"]
         finally:
             client.delete_configuration_set(ConfigurationSetName=cs_name)
+
+
+class TestSESv2SuppressedDestinations:
+    def test_list_suppressed_destinations(self, sesv2):
+        resp = sesv2.list_suppressed_destinations()
+        assert "SuppressedDestinationSummaries" in resp
+        assert isinstance(resp["SuppressedDestinationSummaries"], list)
+
+    def test_put_and_get_suppressed_destination(self, sesv2):
+        email = f"{_uid('sup')}@example.com"
+        sesv2.put_suppressed_destination(
+            EmailAddress=email,
+            Reason="BOUNCE",
+        )
+        try:
+            resp = sesv2.get_suppressed_destination(EmailAddress=email)
+            assert "SuppressedDestination" in resp
+            dest = resp["SuppressedDestination"]
+            assert dest["EmailAddress"] == email
+            assert dest["Reason"] == "BOUNCE"
+        finally:
+            sesv2.delete_suppressed_destination(EmailAddress=email)
+
+    def test_delete_suppressed_destination(self, sesv2):
+        email = f"{_uid('sup')}@example.com"
+        sesv2.put_suppressed_destination(
+            EmailAddress=email,
+            Reason="COMPLAINT",
+        )
+        sesv2.delete_suppressed_destination(EmailAddress=email)
+        # After deletion, getting should fail
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_suppressed_destination(EmailAddress=email)
+        assert exc.value.response["Error"]["Code"] in (
+            "NotFoundException",
+            "BadRequestException",
+            "InvalidParameterValue",
+        )
+
+    def test_put_suppressed_destination_complaint_reason(self, sesv2):
+        email = f"{_uid('sup')}@example.com"
+        sesv2.put_suppressed_destination(
+            EmailAddress=email,
+            Reason="COMPLAINT",
+        )
+        try:
+            resp = sesv2.get_suppressed_destination(EmailAddress=email)
+            assert resp["SuppressedDestination"]["Reason"] == "COMPLAINT"
+        finally:
+            sesv2.delete_suppressed_destination(EmailAddress=email)
+
+
+class TestSESv2DeliverabilityAndBlacklist:
+    def test_get_deliverability_dashboard_options(self, sesv2):
+        resp = sesv2.get_deliverability_dashboard_options()
+        assert "DashboardEnabled" in resp
+
+    def test_get_blacklist_reports(self, sesv2):
+        resp = sesv2.get_blacklist_reports(BlacklistItemNames=["test-item"])
+        assert "BlacklistReport" in resp
+
+    def test_get_dedicated_ips(self, sesv2):
+        resp = sesv2.get_dedicated_ips()
+        assert "DedicatedIps" in resp
+        assert isinstance(resp["DedicatedIps"], list)
+
+
+class TestSESv2DedicatedIpWarmup:
+    def test_put_dedicated_ip_warmup_attributes(self, sesv2):
+        resp = sesv2.put_dedicated_ip_warmup_attributes(
+            Ip="1.2.3.4",
+            WarmupPercentage=50,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2MultiRegionEndpoints:
+    def test_list_multi_region_endpoints(self, sesv2):
+        resp = sesv2.list_multi_region_endpoints()
+        assert "MultiRegionEndpoints" in resp
+        assert isinstance(resp["MultiRegionEndpoints"], list)
+
+
+class TestSESv2ConfigurationSetVdm:
+    def test_put_configuration_set_vdm_options(self, sesv2):
+        cs_name = _uid("cs")
+        sesv2.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            sesv2.put_configuration_set_vdm_options(
+                ConfigurationSetName=cs_name,
+                VdmOptions={
+                    "DashboardOptions": {"EngagementMetrics": "ENABLED"},
+                },
+            )
+            # Verify by getting the configuration set
+            resp = sesv2.get_configuration_set(ConfigurationSetName=cs_name)
+            assert "ConfigurationSetName" in resp
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs_name)
+
+
+class TestSESv2EmailIdentityExtended:
+    def test_put_email_identity_configuration_set_attributes(self, sesv2):
+        email = f"{_uid('id')}@example.com"
+        sesv2.create_email_identity(EmailIdentity=email)
+        try:
+            sesv2.put_email_identity_configuration_set_attributes(
+                EmailIdentity=email,
+            )
+            # Should succeed without error
+            got = sesv2.get_email_identity(EmailIdentity=email)
+            assert got["IdentityType"] == "EMAIL_ADDRESS"
+        finally:
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+    def test_put_email_identity_dkim_signing_attributes(self, sesv2):
+        domain = f"{_uid('dom')}.example.com"
+        sesv2.create_email_identity(EmailIdentity=domain)
+        try:
+            resp = sesv2.put_email_identity_dkim_signing_attributes(
+                EmailIdentity=domain,
+                SigningAttributesOrigin="AWS_SES",
+            )
+            assert "DkimStatus" in resp or "DkimTokens" in resp
+        finally:
+            sesv2.delete_email_identity(EmailIdentity=domain)
