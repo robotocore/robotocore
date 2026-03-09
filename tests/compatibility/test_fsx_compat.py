@@ -284,3 +284,119 @@ class TestFSxFileSystemAliases:
         with pytest.raises(ClientError) as exc:
             fsx.describe_file_system_aliases(FileSystemId="fs-does-not-exist")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_associate_file_system_aliases(self, fsx):
+        """AssociateFileSystemAliases returns Aliases list."""
+        resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = resp["FileSystem"]["FileSystemId"]
+        try:
+            alias_resp = fsx.associate_file_system_aliases(
+                FileSystemId=fs_id,
+                Aliases=["accounting.example.com"],
+            )
+            assert "Aliases" in alias_resp
+            assert isinstance(alias_resp["Aliases"], list)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_disassociate_file_system_aliases(self, fsx):
+        """DisassociateFileSystemAliases returns Aliases list."""
+        resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = resp["FileSystem"]["FileSystemId"]
+        try:
+            disassoc_resp = fsx.disassociate_file_system_aliases(
+                FileSystemId=fs_id,
+                Aliases=["accounting.example.com"],
+            )
+            assert "Aliases" in disassoc_resp
+            assert isinstance(disassoc_resp["Aliases"], list)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+
+class TestFSxUpdateOps:
+    """Tests for FSx update operations."""
+
+    def test_update_file_system(self, fsx):
+        """UpdateFileSystem modifies a file system."""
+        resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = resp["FileSystem"]["FileSystemId"]
+        try:
+            upd_resp = fsx.update_file_system(
+                FileSystemId=fs_id,
+                LustreConfiguration={"WeeklyMaintenanceStartTime": "1:00:00"},
+            )
+            assert "FileSystem" in upd_resp
+            assert upd_resp["FileSystem"]["FileSystemId"] == fs_id
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_update_file_system_nonexistent(self, fsx):
+        """UpdateFileSystem for nonexistent fs raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.update_file_system(
+                FileSystemId="fs-does-not-exist",
+                LustreConfiguration={"WeeklyMaintenanceStartTime": "1:00:00"},
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "BadRequest", "FileSystemNotFound")
+
+
+class TestFSxSnapshotOps:
+    """Tests for FSx snapshot operations."""
+
+    def test_delete_snapshot_nonexistent(self, fsx):
+        """DeleteSnapshot for nonexistent snapshot raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.delete_snapshot(SnapshotId="fsvolsnap-does-not-exist")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "SnapshotNotFound",
+        )
+
+
+class TestFSxFileSystemFromBackup:
+    """Tests for creating file system from backup."""
+
+    def test_create_file_system_from_backup_nonexistent(self, fsx):
+        """CreateFileSystemFromBackup with nonexistent backup raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.create_file_system_from_backup(
+                BackupId="backup-does-not-exist",
+                SubnetIds=["subnet-00000001"],
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "BackupNotFound", "BadRequest")
+
+
+class TestFSxVolumeOps:
+    """Tests for FSx volume operations."""
+
+    def test_create_volume_from_backup_nonexistent(self, fsx):
+        """CreateVolumeFromBackup with nonexistent backup raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.create_volume_from_backup(
+                BackupId="backup-does-not-exist",
+                Name="test-vol",
+                OntapConfiguration={
+                    "SizeInMegabytes": 1024,
+                    "StorageVirtualMachineId": "svm-0123456789abcdef0",
+                },
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "BackupNotFound", "BadRequest")
