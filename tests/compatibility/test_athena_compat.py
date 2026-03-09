@@ -382,19 +382,17 @@ class TestAthenaNamedQueryAdvanced:
         finally:
             athena.delete_work_group(WorkGroup=wg_name)
 
-    def test_create_multiple_named_queries(self, athena):
-        """Creating multiple named queries succeeds."""
-        ids = []
-        for i in range(3):
-            name = _unique(f"nq{i}")
-            resp = athena.create_named_query(
-                Name=name,
-                Database="default",
-                QueryString=f"SELECT {i}",
-            )
-            ids.append(resp["NamedQueryId"])
-        assert len(ids) == 3
-        assert len(set(ids)) == 3  # all unique
+    def test_named_query_database_field(self, athena):
+        """Named query preserves the Database field."""
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="test_db",
+            QueryString="SELECT * FROM test_db.my_table",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.get_named_query(NamedQueryId=query_id)
+        assert resp["NamedQuery"]["Database"] == "test_db"
 
     def test_get_named_query_nonexistent_raises(self, athena):
         """GetNamedQuery with a fake ID raises an error."""
