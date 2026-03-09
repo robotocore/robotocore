@@ -2632,3 +2632,54 @@ class TestGlueGetOperations:
                 "EntityNotFoundException",
                 "InvalidInputException",
             )
+
+
+class TestGlueEntityRecords:
+    """Tests for GetEntityRecords operation."""
+
+    def test_get_entity_records(self, glue):
+        """GetEntityRecords returns a Records list."""
+        resp = glue.get_entity_records(
+            EntityName="fake-entity",
+            ConnectionName="fake-conn",
+            Limit=10,
+        )
+        assert "Records" in resp
+
+
+class TestGlueMLTaskRuns:
+    """Tests for GetMLTaskRun and GetMLTaskRuns operations."""
+
+    def test_get_ml_task_run_nonexistent(self, glue):
+        """GetMLTaskRun for nonexistent transform raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_task_run(TransformId="fake-transform", TaskRunId="fake-task")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_ml_task_runs_nonexistent(self, glue):
+        """GetMLTaskRuns for nonexistent transform raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_task_runs(TransformId="fake-transform")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueGetMapping:
+    """Tests for GetMapping operation."""
+
+    def test_get_mapping(self, glue):
+        """GetMapping returns a Mapping list."""
+        resp = glue.get_mapping(
+            Source={"DatabaseName": "fake-db", "TableName": "fake-table"},
+        )
+        assert "Mapping" in resp
+        assert isinstance(resp["Mapping"], list)
+
+
+class TestGlueGetStatement:
+    """Tests for GetStatement operation."""
+
+    def test_get_statement_nonexistent_session(self, glue):
+        """GetStatement for nonexistent session raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_statement(SessionId="fake-session", Id=0)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"

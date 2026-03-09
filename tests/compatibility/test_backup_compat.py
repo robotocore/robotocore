@@ -1010,3 +1010,27 @@ class TestBackupDescribeOperations:
                 RestoreTestingSelectionName="fake-sel",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_restore_testing_selections(self, client):
+        """ListRestoreTestingSelections returns selections for a plan."""
+        plan_name = _unique("plan")
+        client.create_restore_testing_plan(
+            RestoreTestingPlan={
+                "RestoreTestingPlanName": plan_name,
+                "ScheduleExpression": "cron(0 12 * * ? *)",
+                "RecoveryPointSelection": {
+                    "Algorithm": "LATEST_WITHIN_WINDOW",
+                    "IncludeVaults": ["*"],
+                    "RecoveryPointTypes": ["CONTINUOUS"],
+                    "SelectionWindowDays": 7,
+                },
+            }
+        )
+        try:
+            resp = client.list_restore_testing_selections(
+                RestoreTestingPlanName=plan_name,
+            )
+            assert "RestoreTestingSelections" in resp
+            assert isinstance(resp["RestoreTestingSelections"], list)
+        finally:
+            client.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)

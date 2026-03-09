@@ -2283,3 +2283,9 @@ class TestRedshiftAdditionalOps:
         )
         assert "ReservedNodeConfigurationOptionList" in resp
         assert isinstance(resp["ReservedNodeConfigurationOptionList"], list)
+
+    def test_get_identity_center_auth_token(self, redshift):
+        """GetIdentityCenterAuthToken returns a token and expiration."""
+        resp = redshift.get_identity_center_auth_token(ClusterIds=["fake-cluster"])
+        assert "Token" in resp
+        assert "ExpirationTime" in resp

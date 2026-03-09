@@ -318,3 +318,12 @@ class TestConnectListOps:
         resp = connect.list_security_profiles(InstanceId=instance_id)
         assert "SecurityProfileSummaryList" in resp
         assert isinstance(resp["SecurityProfileSummaryList"], list)
+
+    def test_list_use_cases(self, connect, instance_id):
+        """ListUseCases returns use case list for an integration association."""
+        resp = connect.list_use_cases(
+            InstanceId=instance_id,
+            IntegrationAssociationId="fake-ia-id",
+        )
+        assert "UseCaseSummaryList" in resp
+        assert isinstance(resp["UseCaseSummaryList"], list)

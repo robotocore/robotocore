@@ -1769,3 +1769,38 @@ class TestIoTDescribeAndListOperations:
         """ListStreams returns stream list."""
         resp = iot.list_streams()
         assert "streams" in resp
+
+
+class TestIoTMitigationActions:
+    """Tests for IoT mitigation action operations."""
+
+    def test_describe_mitigation_action_nonexistent(self, iot):
+        """DescribeMitigationAction for nonexistent action raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.describe_mitigation_action(actionName="nonexistent-action")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_and_describe_mitigation_action(self, iot):
+        """Create a mitigation action and describe it."""
+        action_name = _unique("action")
+        resp = iot.create_mitigation_action(
+            actionName=action_name,
+            roleArn="arn:aws:iam::123456789012:role/test-role",
+            actionParams={
+                "publishFindingToSnsParams": {
+                    "topicArn": "arn:aws:sns:us-east-1:123456789012:test-topic",
+                }
+            },
+        )
+        assert "actionArn" in resp
+        assert "actionId" in resp
+
+        try:
+            desc = iot.describe_mitigation_action(actionName=action_name)
+            assert desc["actionName"] == action_name
+            assert "actionArn" in desc
+            assert "actionId" in desc
+            assert "roleArn" in desc
+            assert "actionParams" in desc
+        finally:
+            iot.delete_mitigation_action(actionName=action_name)

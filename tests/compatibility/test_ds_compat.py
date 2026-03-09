@@ -857,3 +857,35 @@ class TestDsDescribeWithDirectory:
         with pytest.raises(ClientError) as exc:
             ds.describe_ca_enrollment_policy(DirectoryId="d-0000000000")
         assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsIpRoutes:
+    """Tests for ListIpRoutes operation."""
+
+    def test_list_ip_routes_nonexistent(self, ds):
+        """ListIpRoutes for nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.list_ip_routes(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_list_ip_routes_empty(self, ds, directory):
+        """ListIpRoutes for a real directory returns an empty IpRoutesInfo list."""
+        resp = ds.list_ip_routes(DirectoryId=directory)
+        assert "IpRoutesInfo" in resp
+        assert isinstance(resp["IpRoutesInfo"], list)
+
+
+class TestDsSchemaExtensions:
+    """Tests for ListSchemaExtensions operation."""
+
+    def test_list_schema_extensions_nonexistent(self, ds):
+        """ListSchemaExtensions for nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.list_schema_extensions(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_list_schema_extensions_empty(self, ds, directory):
+        """ListSchemaExtensions for a real directory returns empty SchemaExtensionsInfo."""
+        resp = ds.list_schema_extensions(DirectoryId=directory)
+        assert "SchemaExtensionsInfo" in resp
+        assert isinstance(resp["SchemaExtensionsInfo"], list)

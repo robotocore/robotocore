@@ -802,3 +802,13 @@ class TestGuardDutyUsageOperations:
             UsageCriteria={"DataSources": ["FLOW_LOGS"]},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyInvitationOperations:
+    """Tests for invitation operations."""
+
+    def test_list_invitations(self, guardduty):
+        """ListInvitations returns an Invitations list."""
+        resp = guardduty.list_invitations()
+        assert "Invitations" in resp
+        assert isinstance(resp["Invitations"], list)
