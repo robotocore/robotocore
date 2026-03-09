@@ -6205,3 +6205,13 @@ class TestEC2AdditionalDescribeOps:
         )
         assert "HistoryRecords" in resp
         assert isinstance(resp["HistoryRecords"], list)
+
+    def test_describe_stale_security_groups(self, ec2):
+        """DescribeStaleSecurityGroups returns stale groups for a VPC."""
+        # Get the default VPC
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])
+        vpc_id = vpcs["Vpcs"][0]["VpcId"]
+
+        resp = ec2.describe_stale_security_groups(VpcId=vpc_id)
+        assert "StaleSecurityGroupSet" in resp
+        assert isinstance(resp["StaleSecurityGroupSet"], list)

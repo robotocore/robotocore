@@ -994,3 +994,148 @@ class TestEKSAccessEntryOperations:
         with pytest.raises(ClientError) as exc_info:
             eks.list_access_entries(clusterName="nonexistent-cluster")
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_access_entry(self, eks):
+        """CreateAccessEntry creates an access entry on a cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            principal_arn = "arn:aws:iam::123456789012:role/test-access-role"
+            resp = eks.create_access_entry(
+                clusterName=cluster_name,
+                principalArn=principal_arn,
+            )
+            entry = resp["accessEntry"]
+            assert entry["clusterName"] == cluster_name
+            assert entry["principalArn"] == principal_arn
+            assert "accessEntryArn" in entry
+
+            # Verify it appears in list
+            list_resp = eks.list_access_entries(clusterName=cluster_name)
+            assert principal_arn in list_resp["accessEntries"]
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSAddonCRUD:
+    """Tests for EKS addon create and delete operations."""
+
+    def test_create_and_delete_addon(self, eks):
+        """CreateAddon installs an addon, DeleteAddon removes it."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            addon_name = "vpc-cni"
+            resp = eks.create_addon(
+                clusterName=cluster_name,
+                addonName=addon_name,
+            )
+            addon = resp["addon"]
+            assert addon["addonName"] == addon_name
+            assert addon["clusterName"] == cluster_name
+            assert "addonArn" in addon
+
+            # Verify in list
+            list_resp = eks.list_addons(clusterName=cluster_name)
+            assert addon_name in list_resp["addons"]
+
+            # Delete
+            del_resp = eks.delete_addon(clusterName=cluster_name, addonName=addon_name)
+            assert del_resp["addon"]["addonName"] == addon_name
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_delete_addon_nonexistent(self, eks):
+        """DeleteAddon on nonexistent addon raises ResourceNotFoundException."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.delete_addon(clusterName=cluster_name, addonName="nonexistent-addon")
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSPodIdentityCRUD:
+    """Tests for EKS Pod Identity association create and delete."""
+
+    def test_create_and_delete_pod_identity_association(self, eks):
+        """CreatePodIdentityAssociation creates, delete removes."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.create_pod_identity_association(
+                clusterName=cluster_name,
+                namespace="default",
+                serviceAccount="my-service-account",
+                roleArn="arn:aws:iam::123456789012:role/pod-identity-role",
+            )
+            assoc = resp["association"]
+            assert assoc["clusterName"] == cluster_name
+            assert assoc["namespace"] == "default"
+            assert assoc["serviceAccount"] == "my-service-account"
+            assert "associationId" in assoc
+            assoc_id = assoc["associationId"]
+
+            # Verify in list
+            list_resp = eks.list_pod_identity_associations(clusterName=cluster_name)
+            assoc_ids = [a["associationId"] for a in list_resp["associations"]]
+            assert assoc_id in assoc_ids
+
+            # Delete
+            del_resp = eks.delete_pod_identity_association(
+                clusterName=cluster_name, associationId=assoc_id
+            )
+            assert del_resp["association"]["associationId"] == assoc_id
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_delete_pod_identity_association_nonexistent(self, eks):
+        """DeletePodIdentityAssociation with fake ID raises error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.delete_pod_identity_association(
+                    clusterName=cluster_name,
+                    associationId="nonexistent-id",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            eks.delete_cluster(name=cluster_name)

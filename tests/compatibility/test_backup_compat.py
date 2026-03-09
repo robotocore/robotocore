@@ -1034,3 +1034,196 @@ class TestBackupDescribeOperations:
             assert isinstance(resp["RestoreTestingSelections"], list)
         finally:
             client.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)
+
+
+class TestBackupVaultPolicyAndNotifications:
+    """Tests for vault access policy and notification operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("backup")
+
+    def test_put_and_delete_backup_vault_access_policy(self, client):
+        """PutBackupVaultAccessPolicy sets a policy, DeleteBackupVaultAccessPolicy removes it."""
+        vault_name = _make_vault(client)
+        try:
+            import json
+
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": "*",
+                            "Action": "backup:DeleteRecoveryPoint",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+            resp = client.put_backup_vault_access_policy(BackupVaultName=vault_name, Policy=policy)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify the policy is set
+            get_resp = client.get_backup_vault_access_policy(BackupVaultName=vault_name)
+            assert "Policy" in get_resp
+
+            # Delete the policy
+            del_resp = client.delete_backup_vault_access_policy(BackupVaultName=vault_name)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify it's gone
+            with pytest.raises(ClientError) as exc:
+                client.get_backup_vault_access_policy(BackupVaultName=vault_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            client.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_put_and_delete_backup_vault_notifications(self, client):
+        """PutBackupVaultNotifications sets notifications, delete removes."""
+        vault_name = _make_vault(client)
+        try:
+            resp = client.put_backup_vault_notifications(
+                BackupVaultName=vault_name,
+                SNSTopicArn="arn:aws:sns:us-east-1:123456789012:backup-notifications",
+                BackupVaultEvents=["BACKUP_JOB_COMPLETED", "RESTORE_JOB_COMPLETED"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify notifications are set
+            get_resp = client.get_backup_vault_notifications(BackupVaultName=vault_name)
+            expected_arn = "arn:aws:sns:us-east-1:123456789012:backup-notifications"
+            assert get_resp["SNSTopicArn"] == expected_arn
+            assert "BACKUP_JOB_COMPLETED" in get_resp["BackupVaultEvents"]
+
+            # Delete notifications
+            del_resp = client.delete_backup_vault_notifications(BackupVaultName=vault_name)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify they're gone
+            with pytest.raises(ClientError) as exc:
+                client.get_backup_vault_notifications(BackupVaultName=vault_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            client.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_delete_backup_vault_access_policy_nonexistent(self, client):
+        """DeleteBackupVaultAccessPolicy on nonexistent vault raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_backup_vault_access_policy(BackupVaultName="fake-vault-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_backup_vault_notifications_nonexistent(self, client):
+        """DeleteBackupVaultNotifications on nonexistent vault raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_backup_vault_notifications(BackupVaultName="fake-vault-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupRestoreTestingSelectionCRUD:
+    """Tests for restore testing selection create/delete operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("backup")
+
+    def _make_plan(self, client, plan_name=None):
+        plan_name = plan_name or _unique("plan")
+        client.create_restore_testing_plan(
+            RestoreTestingPlan={
+                "RestoreTestingPlanName": plan_name,
+                "ScheduleExpression": "cron(0 12 * * ? *)",
+                "RecoveryPointSelection": {
+                    "Algorithm": "LATEST_WITHIN_WINDOW",
+                    "IncludeVaults": ["*"],
+                    "RecoveryPointTypes": ["CONTINUOUS"],
+                    "SelectionWindowDays": 7,
+                },
+            }
+        )
+        return plan_name
+
+    def test_create_and_delete_restore_testing_selection(self, client):
+        """CreateRestoreTestingSelection creates, delete removes."""
+        plan_name = self._make_plan(client)
+        sel_name = _unique("sel")
+        try:
+            resp = client.create_restore_testing_selection(
+                RestoreTestingPlanName=plan_name,
+                RestoreTestingSelection={
+                    "RestoreTestingSelectionName": sel_name,
+                    "ProtectedResourceType": "DynamoDB",
+                    "IamRoleArn": "arn:aws:iam::123456789012:role/backup-role",
+                },
+            )
+            assert "RestoreTestingSelectionName" in resp
+            assert resp["RestoreTestingSelectionName"] == sel_name
+
+            # Delete it
+            del_resp = client.delete_restore_testing_selection(
+                RestoreTestingPlanName=plan_name,
+                RestoreTestingSelectionName=sel_name,
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        finally:
+            client.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)
+
+    def test_delete_restore_testing_selection_nonexistent(self, client):
+        """DeleteRestoreTestingSelection for nonexistent plan succeeds silently."""
+        resp = client.delete_restore_testing_selection(
+            RestoreTestingPlanName="fake-plan",
+            RestoreTestingSelectionName="fake-sel",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestBackupSettingsOperations:
+    """Tests for UpdateGlobalSettings and UpdateRegionSettings."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("backup")
+
+    def test_update_global_settings(self, client):
+        """UpdateGlobalSettings sets global settings."""
+        resp = client.update_global_settings(GlobalSettings={"isCrossAccountBackupEnabled": "true"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify
+        get_resp = client.describe_global_settings()
+        assert "GlobalSettings" in get_resp
+
+    def test_update_region_settings(self, client):
+        """UpdateRegionSettings modifies region opt-in settings."""
+        resp = client.update_region_settings(ResourceTypeOptInPreference={"DynamoDB": True})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify
+        get_resp = client.describe_region_settings()
+        assert "ResourceTypeOptInPreference" in get_resp
+
+
+class TestBackupCopyJobOperations:
+    """Tests for StartCopyJob."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("backup")
+
+    def test_start_copy_job_returns_copy_job_id(self, client):
+        """StartCopyJob returns a CopyJobId."""
+        vault_name = _make_vault(client)
+        try:
+            resp = client.start_copy_job(
+                RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake-rp",
+                SourceBackupVaultName=vault_name,
+                DestinationBackupVaultArn=(
+                    "arn:aws:backup:us-east-1:123456789012:backup-vault:" + vault_name
+                ),
+                IamRoleArn="arn:aws:iam::123456789012:role/backup-role",
+            )
+            assert "CopyJobId" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_backup_vault(BackupVaultName=vault_name)

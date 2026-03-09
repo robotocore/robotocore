@@ -608,3 +608,232 @@ class TestMediaLiveThumbnailOperations:
         finally:
             medialive.delete_channel(ChannelId=ch_id)
             medialive.delete_input(InputId=inp_id)
+
+
+class TestMediaLiveBatchScheduleOperations:
+    """Tests for BatchUpdateSchedule and DeleteSchedule."""
+
+    def _make_channel_with_input(self, medialive):
+        """Helper: create input + channel, return (channel_id, input_id)."""
+        inp_resp = medialive.create_input(
+            Name=_uid("inp"),
+            Type="URL_PULL",
+            Sources=[{"Url": "http://example.com/stream"}],
+        )
+        inp_id = inp_resp["Input"]["Id"]
+        ch_resp = medialive.create_channel(
+            Name=_uid("ch"),
+            InputAttachments=[{"InputId": inp_id}],
+            Destinations=[{"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}],
+            EncoderSettings={
+                "AudioDescriptions": [],
+                "OutputGroups": [
+                    {
+                        "OutputGroupSettings": {
+                            "ArchiveGroupSettings": {"Destination": {"DestinationRefId": "dest1"}}
+                        },
+                        "Outputs": [
+                            {
+                                "OutputSettings": {
+                                    "ArchiveOutputSettings": {
+                                        "ContainerSettings": {"M2tsSettings": {}}
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                ],
+                "TimecodeConfig": {"Source": "EMBEDDED"},
+                "VideoDescriptions": [{"Name": "video_1"}],
+            },
+            InputSpecification={
+                "Codec": "AVC",
+                "Resolution": "HD",
+                "MaximumBitrate": "MAX_20_MBPS",
+            },
+            RoleArn="arn:aws:iam::123456789012:role/MediaLiveRole",
+        )
+        return ch_resp["Channel"]["Id"], inp_id
+
+    def test_batch_update_schedule_empty(self, medialive):
+        """BatchUpdateSchedule with empty Creates and Deletes succeeds."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.batch_update_schedule(
+                ChannelId=ch_id,
+                Creates={"ScheduleActions": []},
+            )
+            assert "Creates" in resp
+            assert "ScheduleActions" in resp["Creates"]
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)
+
+    def test_batch_update_schedule_add_action(self, medialive):
+        """BatchUpdateSchedule can add a pause action."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.batch_update_schedule(
+                ChannelId=ch_id,
+                Creates={
+                    "ScheduleActions": [
+                        {
+                            "ActionName": "pause-action",
+                            "ScheduleActionStartSettings": {
+                                "ImmediateModeScheduleActionStartSettings": {}
+                            },
+                            "ScheduleActionSettings": {
+                                "PauseStateSettings": {
+                                    "Pipelines": [
+                                        {"PipelineId": "PIPELINE_0"},
+                                    ]
+                                }
+                            },
+                        }
+                    ]
+                },
+            )
+            assert "Creates" in resp
+            created = resp["Creates"]["ScheduleActions"]
+            assert len(created) >= 1
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)
+
+    def test_delete_schedule(self, medialive):
+        """DeleteSchedule clears the schedule for a channel."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.delete_schedule(ChannelId=ch_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)
+
+
+class TestMediaLivePartnerInput:
+    """Tests for CreatePartnerInput."""
+
+    def test_create_partner_input(self, medialive):
+        """CreatePartnerInput creates a partner input from an existing input."""
+        inp_resp = medialive.create_input(
+            Name=_uid("inp"),
+            Type="URL_PULL",
+            Sources=[{"Url": "http://example.com/stream"}],
+        )
+        inp_id = inp_resp["Input"]["Id"]
+        try:
+            resp = medialive.create_partner_input(
+                InputId=inp_id,
+                RequestId=_uid("req"),
+            )
+            assert "Input" in resp
+            partner_id = resp["Input"]["Id"]
+            assert partner_id != inp_id
+            # Cleanup partner input
+            medialive.delete_input(InputId=partner_id)
+        finally:
+            medialive.delete_input(InputId=inp_id)
+
+
+class TestMediaLiveReservationOperations:
+    """Tests for PurchaseOffering, DeleteReservation, UpdateReservation."""
+
+    def test_delete_reservation_not_found(self, medialive):
+        """DeleteReservation for nonexistent ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            medialive.delete_reservation(ReservationId="nonexistent-reservation-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_reservation_not_found(self, medialive):
+        """UpdateReservation for nonexistent ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            medialive.update_reservation(
+                ReservationId="nonexistent-reservation-id",
+                Name="new-name",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_purchase_offering_not_found(self, medialive):
+        """PurchaseOffering with nonexistent offering raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            medialive.purchase_offering(
+                OfferingId="nonexistent-offering-id",
+                Count=1,
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveChannelAdvanced:
+    """Tests for RestartChannelPipelines and UpdateChannelClass."""
+
+    def _make_channel_with_input(self, medialive):
+        """Helper: create input + channel, return (channel_id, input_id)."""
+        inp_resp = medialive.create_input(
+            Name=_uid("inp"),
+            Type="URL_PULL",
+            Sources=[{"Url": "http://example.com/stream"}],
+        )
+        inp_id = inp_resp["Input"]["Id"]
+        ch_resp = medialive.create_channel(
+            Name=_uid("ch"),
+            InputAttachments=[{"InputId": inp_id}],
+            Destinations=[{"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}],
+            EncoderSettings={
+                "AudioDescriptions": [],
+                "OutputGroups": [
+                    {
+                        "OutputGroupSettings": {
+                            "ArchiveGroupSettings": {"Destination": {"DestinationRefId": "dest1"}}
+                        },
+                        "Outputs": [
+                            {
+                                "OutputSettings": {
+                                    "ArchiveOutputSettings": {
+                                        "ContainerSettings": {"M2tsSettings": {}}
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                ],
+                "TimecodeConfig": {"Source": "EMBEDDED"},
+                "VideoDescriptions": [{"Name": "video_1"}],
+            },
+            InputSpecification={
+                "Codec": "AVC",
+                "Resolution": "HD",
+                "MaximumBitrate": "MAX_20_MBPS",
+            },
+            RoleArn="arn:aws:iam::123456789012:role/MediaLiveRole",
+        )
+        return ch_resp["Channel"]["Id"], inp_id
+
+    def test_update_channel_class(self, medialive):
+        """UpdateChannelClass changes the channel class."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.update_channel_class(
+                ChannelId=ch_id,
+                ChannelClass="SINGLE_PIPELINE",
+                Destinations=[{"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}],
+            )
+            assert "Channel" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)
+
+    def test_restart_channel_pipelines(self, medialive):
+        """RestartChannelPipelines returns channel state."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.restart_channel_pipelines(
+                ChannelId=ch_id,
+                PipelineIds=["PIPELINE_0"],
+            )
+            assert "State" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)

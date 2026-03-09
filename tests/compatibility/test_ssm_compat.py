@@ -2438,3 +2438,15 @@ class TestSSMDescribeOperations:
         """DescribeInstanceAssociationsStatus returns associations list."""
         resp = ssm.describe_instance_associations_status(InstanceId="i-1234567890abcdef0")
         assert "InstanceAssociationStatusInfos" in resp
+
+
+class TestSSMOpsMetadataOperations:
+    """Tests for OpsMetadata operations."""
+
+    def test_get_ops_metadata(self, ssm):
+        """GetOpsMetadata returns metadata for a given ARN."""
+        resp = ssm.get_ops_metadata(
+            OpsMetadataArn="arn:aws:ssm:us-east-1:123456789012:opsmetadata/fake-metadata"
+        )
+        assert "ResourceId" in resp
+        assert "Metadata" in resp
