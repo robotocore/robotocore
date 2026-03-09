@@ -61,3 +61,27 @@ Launched 10 worktree agents covering 16 services:
 8. EKS + Neptune (11 + 14 ops)
 9. ECS + RDS (17 + 24 ops)
 10. CloudFront + AutoScaling (10 + 8 ops)
+
+### Results
+
+**Wave 1 batch (wave 2 services)**: 310 tests pass across 4 files
+- GuardDuty: 43 tests (+31 new), filters/IP sets/threat intel/tagging
+- Redshift: 122 tests (+55 new), snapshots/parameters/scheduled actions/credentials
+- Backup: 34 tests (+19 new), plans/frameworks/report plans/jobs
+- SSM: 111 tests (+25 new), associations/OpsItems/activations
+
+**Wave 2 batch**: 275 tests pass
+- Logs, EKS, Neptune, ECS expanded
+- ECR, ELB, Greengrass expanded
+
+**Wave 3 (CRUD patterns)**: 446 tests pass
+- IoT: +251 lines (things, policies, certificates, topic rules)
+- Glue: +258 lines (databases, tables, crawlers, jobs, connections)
+- SageMaker: +276 lines (models, endpoints, notebooks, experiments)
+- CloudTrail: +154 lines (trails CRUD, logging, event selectors)
+- DS: +124 lines (directories, tags, snapshots)
+
+**Coverage: 38.0% → 38.7% (3,498 → 3,562, +64 ops)**
+
+Key insight: Most remaining untested ops return 501 (not implemented in Moto).
+The realistic ceiling without more Moto implementation work is ~40-42%.
