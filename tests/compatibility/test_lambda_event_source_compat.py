@@ -48,8 +48,8 @@ def role(iam):
             ],
         }
     )
-    iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)
-    yield f"arn:aws:iam::123456789012:role/{name}"
+    resp = iam.create_role(RoleName=name, AssumeRolePolicyDocument=trust)
+    yield resp["Role"]["Arn"]
     try:
         iam.delete_role(RoleName=name)
     except Exception:
