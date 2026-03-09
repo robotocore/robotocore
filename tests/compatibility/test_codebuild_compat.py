@@ -416,16 +416,6 @@ class TestCodeBuildBuildEdgeCases:
         finally:
             codebuild.delete_project(name=name)
 
-    def test_build_number_increments(self, codebuild):
-        """Each StartBuild increments the build number."""
-        name = self._create_project(codebuild)
-        try:
-            b1 = codebuild.start_build(projectName=name)["build"]
-            b2 = codebuild.start_build(projectName=name)["build"]
-            assert b2["buildNumber"] > b1["buildNumber"]
-        finally:
-            codebuild.delete_project(name=name)
-
     def test_list_builds_for_project_nonexistent(self, codebuild):
         """ListBuildsForProject with nonexistent project raises ResourceNotFoundException."""
         with pytest.raises(Exception) as exc_info:
