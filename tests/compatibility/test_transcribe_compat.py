@@ -498,3 +498,185 @@ class TestTranscribeAutoCoverage:
         """ListVocabularyFilters returns a response."""
         resp = client.list_vocabulary_filters()
         assert "VocabularyFilters" in resp
+
+
+class TestTranscribeVocabularyFilterCRUD:
+    """Tests for VocabularyFilter CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("transcribe")
+
+    def test_create_vocabulary_filter(self, client):
+        """CreateVocabularyFilter creates and returns a filter."""
+        name = f"filter-{_uid()}"
+        resp = client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["bad", "words"],
+        )
+        assert resp["VocabularyFilterName"] == name
+        assert resp["LanguageCode"] == "en-US"
+        client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    def test_get_vocabulary_filter(self, client):
+        """GetVocabularyFilter returns filter details."""
+        name = f"filter-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["test"],
+        )
+        try:
+            resp = client.get_vocabulary_filter(VocabularyFilterName=name)
+            assert resp["VocabularyFilterName"] == name
+            assert resp["LanguageCode"] == "en-US"
+        finally:
+            client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    def test_list_vocabulary_filters_with_created(self, client):
+        """ListVocabularyFilters includes a created filter."""
+        name = f"filter-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["test"],
+        )
+        try:
+            resp = client.list_vocabulary_filters()
+            names = [f["VocabularyFilterName"] for f in resp["VocabularyFilters"]]
+            assert name in names
+        finally:
+            client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    def test_update_vocabulary_filter(self, client):
+        """UpdateVocabularyFilter updates the filter."""
+        name = f"filter-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["old"],
+        )
+        try:
+            resp = client.update_vocabulary_filter(
+                VocabularyFilterName=name,
+                Words=["new", "words"],
+            )
+            assert resp["VocabularyFilterName"] == name
+        finally:
+            client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    def test_delete_vocabulary_filter(self, client):
+        """DeleteVocabularyFilter removes the filter."""
+        name = f"filter-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["test"],
+        )
+        client.delete_vocabulary_filter(VocabularyFilterName=name)
+        resp = client.list_vocabulary_filters()
+        names = [f["VocabularyFilterName"] for f in resp["VocabularyFilters"]]
+        assert name not in names
+
+    def test_get_vocabulary_filter_nonexistent(self, client):
+        """GetVocabularyFilter for nonexistent raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_vocabulary_filter(VocabularyFilterName="no-such-filter")
+        assert exc.value.response["Error"]["Code"] in (
+            "BadRequestException",
+            "NotFoundException",
+        )
+
+
+class TestTranscribeLanguageModelCRUD:
+    """Tests for LanguageModel CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("transcribe")
+
+    def test_create_language_model(self, client):
+        """CreateLanguageModel creates a model."""
+        name = f"model-{_uid()}"
+        resp = client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        assert resp["ModelName"] == name
+        assert resp["LanguageCode"] == "en-US"
+        client.delete_language_model(ModelName=name)
+
+    def test_describe_language_model(self, client):
+        """DescribeLanguageModel returns model details."""
+        name = f"model-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        try:
+            resp = client.describe_language_model(ModelName=name)
+            model = resp["LanguageModel"]
+            assert model["ModelName"] == name
+            assert model["LanguageCode"] == "en-US"
+        finally:
+            client.delete_language_model(ModelName=name)
+
+    def test_list_language_models(self, client):
+        """ListLanguageModels includes created model."""
+        name = f"model-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        try:
+            resp = client.list_language_models()
+            names = [m["ModelName"] for m in resp.get("Models", [])]
+            assert name in names
+        finally:
+            client.delete_language_model(ModelName=name)
+
+    def test_delete_language_model(self, client):
+        """DeleteLanguageModel removes the model."""
+        name = f"model-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        client.delete_language_model(ModelName=name)
+        resp = client.list_language_models()
+        names = [m["ModelName"] for m in resp.get("Models", [])]
+        assert name not in names
+
+    def test_describe_language_model_nonexistent(self, client):
+        """DescribeLanguageModel for nonexistent raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.describe_language_model(ModelName="no-such-model")
+        assert exc.value.response["Error"]["Code"] in (
+            "BadRequestException",
+            "NotFoundException",
+        )

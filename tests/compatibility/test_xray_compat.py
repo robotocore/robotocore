@@ -383,3 +383,114 @@ class TestXRaySamplingRuleDetails:
         assert record["SamplingRule"]["ReservoirSize"] == 3
 
         xray.delete_sampling_rule(RuleName=rule_name)
+
+
+class TestXRayResourcePolicyOperations:
+    """Tests for PutResourcePolicy / ListResourcePolicies / DeleteResourcePolicy."""
+
+    def test_put_and_list_resource_policy(self, xray):
+        """PutResourcePolicy creates a policy, ListResourcePolicies returns it."""
+        policy_name = _unique("pol")
+        doc = '{"Version":"2012-10-17","Statement":[]}'
+        put_resp = xray.put_resource_policy(PolicyName=policy_name, PolicyDocument=doc)
+        policy = put_resp["ResourcePolicy"]
+        assert policy["PolicyName"] == policy_name
+        assert "PolicyRevisionId" in policy
+
+        list_resp = xray.list_resource_policies()
+        names = [p["PolicyName"] for p in list_resp["ResourcePolicies"]]
+        assert policy_name in names
+
+        # Cleanup
+        xray.delete_resource_policy(PolicyName=policy_name)
+
+    def test_delete_resource_policy_with_revision_id(self, xray):
+        """DeleteResourcePolicy succeeds when given matching PolicyRevisionId."""
+        policy_name = _unique("delpol")
+        doc = '{"Version":"2012-10-17","Statement":[]}'
+        put_resp = xray.put_resource_policy(PolicyName=policy_name, PolicyDocument=doc)
+        rev_id = put_resp["ResourcePolicy"]["PolicyRevisionId"]
+
+        del_resp = xray.delete_resource_policy(PolicyName=policy_name, PolicyRevisionId=rev_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify it's gone
+        list_resp = xray.list_resource_policies()
+        names = [p["PolicyName"] for p in list_resp["ResourcePolicies"]]
+        assert policy_name not in names
+
+    def test_delete_resource_policy_wrong_revision_raises(self, xray):
+        """DeleteResourcePolicy with wrong revision ID raises error."""
+        policy_name = _unique("badrev")
+        doc = '{"Version":"2012-10-17","Statement":[]}'
+        xray.put_resource_policy(PolicyName=policy_name, PolicyDocument=doc)
+
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            xray.delete_resource_policy(PolicyName=policy_name, PolicyRevisionId="wrong-id")
+        assert "InvalidPolicyRevisionId" in str(exc_info.value)
+
+        # Cleanup
+        xray.delete_resource_policy(PolicyName=policy_name)
+
+    def test_put_resource_policy_update(self, xray):
+        """PutResourcePolicy with same name updates the policy."""
+        policy_name = _unique("uppol")
+        doc1 = '{"Version":"2012-10-17","Statement":[]}'
+        resp1 = xray.put_resource_policy(PolicyName=policy_name, PolicyDocument=doc1)
+        rev1 = resp1["ResourcePolicy"]["PolicyRevisionId"]
+
+        doc2 = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow"}]}'
+        resp2 = xray.put_resource_policy(PolicyName=policy_name, PolicyDocument=doc2)
+        rev2 = resp2["ResourcePolicy"]["PolicyRevisionId"]
+        assert rev1 != rev2
+
+        # Cleanup
+        xray.delete_resource_policy(PolicyName=policy_name)
+
+
+class TestXRayInsightSummaries:
+    """Tests for GetInsightSummaries."""
+
+    def test_get_insight_summaries_returns_empty_list(self, xray):
+        """GetInsightSummaries returns empty list when no insights exist."""
+        now = time.time()
+        resp = xray.get_insight_summaries(StartTime=now - 3600, EndTime=now)
+        assert "InsightSummaries" in resp
+        assert isinstance(resp["InsightSummaries"], list)
+
+
+class TestXRayGetSamplingTargets:
+    """Tests for GetSamplingTargets."""
+
+    def test_get_sampling_targets_returns_structure(self, xray):
+        """GetSamplingTargets returns expected top-level keys."""
+        resp = xray.get_sampling_targets(
+            SamplingStatisticsDocuments=[
+                {
+                    "RuleName": "Default",
+                    "ClientID": "abcdef0123456789abcdef01",
+                    "Timestamp": time.time(),
+                    "RequestCount": 100,
+                    "SampledCount": 5,
+                    "BorrowCount": 0,
+                }
+            ]
+        )
+        assert "SamplingTargetDocuments" in resp
+        assert "LastRuleModification" in resp
+        assert "UnprocessedStatistics" in resp
+        assert isinstance(resp["SamplingTargetDocuments"], list)
+        assert isinstance(resp["UnprocessedStatistics"], list)
+
+
+class TestXRayTimeSeriesServiceStatistics:
+    """Tests for GetTimeSeriesServiceStatistics."""
+
+    def test_get_time_series_service_statistics_returns_empty(self, xray):
+        """GetTimeSeriesServiceStatistics returns empty list with no data."""
+        now = time.time()
+        resp = xray.get_time_series_service_statistics(StartTime=now - 3600, EndTime=now)
+        assert "TimeSeriesServiceStatistics" in resp
+        assert isinstance(resp["TimeSeriesServiceStatistics"], list)
