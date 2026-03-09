@@ -1,0 +1,3 @@
+name: cicd-pipeline
+runtime: python
+description: S3 artifact bucket and IAM role for CI/CD pipeline
