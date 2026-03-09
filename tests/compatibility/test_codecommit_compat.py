@@ -805,3 +805,695 @@ class TestCodeCommitPullRequestApprovalOperations:
             assert isinstance(resp["overridden"], bool)
         finally:
             codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitFileWriteOperations:
+    """Tests for PutFile and DeleteFile operations."""
+
+    def test_put_file(self, codecommit):
+        """PutFile adds a new file to a repo."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.put_file(
+                repositoryName=name,
+                branchName="main",
+                fileContent=b"new file content",
+                filePath="newfile.txt",
+                commitMessage="Add new file",
+                parentCommitId=commit_id,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+            assert "blobId" in resp
+            assert "treeId" in resp
+            # Verify the file exists
+            get_resp = codecommit.get_file(repositoryName=name, filePath="newfile.txt")
+            content = get_resp["fileContent"]
+            # fileContent may be bytes or base64-encoded
+            if isinstance(content, bytes):
+                assert content == b"new file content"
+            else:
+                assert base64.b64decode(content) == b"new file content"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_delete_file(self, codecommit):
+        """DeleteFile removes a file from a repo."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.delete_file(
+                repositoryName=name,
+                branchName="main",
+                filePath="README.md",
+                parentCommitId=commit_id,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+            assert resp["filePath"] == "README.md"
+            # Verify file is gone
+            with pytest.raises(botocore.exceptions.ClientError):
+                codecommit.get_file(repositoryName=name, filePath="README.md")
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitBranchWriteOperations:
+    """Tests for DeleteBranch and UpdateDefaultBranch."""
+
+    def test_delete_branch(self, codecommit):
+        """DeleteBranch removes a branch."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.delete_branch(repositoryName=name, branchName="feature")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "deletedBranch" in resp
+            assert resp["deletedBranch"]["branchName"] == "feature"
+            # Verify branch is gone
+            branches = codecommit.list_branches(repositoryName=name)
+            assert "feature" not in branches["branches"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_update_default_branch(self, codecommit):
+        """UpdateDefaultBranch changes the default branch."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.update_default_branch(
+                repositoryName=name, defaultBranchName="feature"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            repo = codecommit.get_repository(repositoryName=name)
+            assert repo["repositoryMetadata"]["defaultBranch"] == "feature"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitTagWriteOperations:
+    """Tests for TagResource and UntagResource."""
+
+    def test_tag_resource(self, codecommit):
+        """TagResource adds tags to a repo."""
+        name = _unique("repo")
+        try:
+            create_resp = codecommit.create_repository(repositoryName=name)
+            arn = create_resp["repositoryMetadata"]["Arn"]
+            resp = codecommit.tag_resource(resourceArn=arn, tags={"team": "backend", "env": "test"})
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            tags = codecommit.list_tags_for_resource(resourceArn=arn)
+            assert tags["tags"]["team"] == "backend"
+            assert tags["tags"]["env"] == "test"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_untag_resource(self, codecommit):
+        """UntagResource removes tags from a repo."""
+        name = _unique("repo")
+        try:
+            create_resp = codecommit.create_repository(
+                repositoryName=name, tags={"team": "backend", "env": "test"}
+            )
+            arn = create_resp["repositoryMetadata"]["Arn"]
+            resp = codecommit.untag_resource(resourceArn=arn, tagKeys=["team"])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            tags = codecommit.list_tags_for_resource(resourceArn=arn)
+            assert "team" not in tags["tags"]
+            assert tags["tags"]["env"] == "test"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitTriggerWriteOperations:
+    """Tests for PutRepositoryTriggers and TestRepositoryTriggers."""
+
+    def test_put_repository_triggers(self, codecommit):
+        """PutRepositoryTriggers sets triggers on a repo."""
+        name, _ = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.put_repository_triggers(
+                repositoryName=name,
+                triggers=[
+                    {
+                        "name": "my-trigger",
+                        "destinationArn": "arn:aws:sns:us-east-1:123456789012:my-topic",
+                        "events": ["all"],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "configurationId" in resp
+            # Verify the trigger was set
+            get_resp = codecommit.get_repository_triggers(repositoryName=name)
+            assert len(get_resp["triggers"]) == 1
+            assert get_resp["triggers"][0]["name"] == "my-trigger"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_test_repository_triggers(self, codecommit):
+        """TestRepositoryTriggers validates trigger config."""
+        name, _ = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.test_repository_triggers(
+                repositoryName=name,
+                triggers=[
+                    {
+                        "name": "test-trigger",
+                        "destinationArn": "arn:aws:sns:us-east-1:123456789012:my-topic",
+                        "events": ["all"],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "successfulExecutions" in resp
+            assert "failedExecutions" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitApprovalRuleTemplateMutations:
+    """Tests for approval rule template update operations."""
+
+    def test_update_approval_rule_template_name(self, codecommit):
+        """UpdateApprovalRuleTemplateName renames a template."""
+        old_name = _unique("template")
+        new_name = _unique("template-renamed")
+        try:
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=old_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.update_approval_rule_template_name(
+                oldApprovalRuleTemplateName=old_name,
+                newApprovalRuleTemplateName=new_name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["approvalRuleTemplate"]["approvalRuleTemplateName"] == new_name
+        finally:
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=new_name)
+
+    def test_update_approval_rule_template_content(self, codecommit):
+        """UpdateApprovalRuleTemplateContent updates template content."""
+        template_name = _unique("template")
+        try:
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.update_approval_rule_template_content(
+                approvalRuleTemplateName=template_name,
+                newRuleContent=APPROVAL_RULE_CONTENT_2,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "approvalRuleTemplate" in resp
+        finally:
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+
+    def test_update_approval_rule_template_description(self, codecommit):
+        """UpdateApprovalRuleTemplateDescription updates template description."""
+        template_name = _unique("template")
+        try:
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.update_approval_rule_template_description(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateDescription="Updated description",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["approvalRuleTemplate"]["approvalRuleTemplateName"] == template_name
+        finally:
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+
+    def test_batch_associate_approval_rule_template(self, codecommit):
+        """BatchAssociateApprovalRuleTemplateWithRepositories associates template with repos."""
+        name = _unique("repo")
+        template_name = _unique("template")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.batch_associate_approval_rule_template_with_repositories(
+                approvalRuleTemplateName=template_name,
+                repositoryNames=[name],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "associatedRepositoryNames" in resp
+            assert "errors" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+
+    def test_batch_disassociate_approval_rule_template(self, codecommit):
+        """BatchDisassociateApprovalRuleTemplateFromRepositories removes associations."""
+        name = _unique("repo")
+        template_name = _unique("template")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            codecommit.associate_approval_rule_template_with_repository(
+                approvalRuleTemplateName=template_name,
+                repositoryName=name,
+            )
+            resp = codecommit.batch_disassociate_approval_rule_template_from_repositories(
+                approvalRuleTemplateName=template_name,
+                repositoryNames=[name],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "disassociatedRepositoryNames" in resp
+            assert "errors" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+
+    def test_disassociate_approval_rule_template_from_repository(self, codecommit):
+        """DisassociateApprovalRuleTemplateFromRepository removes single association."""
+        name = _unique("repo")
+        template_name = _unique("template")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            codecommit.associate_approval_rule_template_with_repository(
+                approvalRuleTemplateName=template_name,
+                repositoryName=name,
+            )
+            resp = codecommit.disassociate_approval_rule_template_from_repository(
+                approvalRuleTemplateName=template_name,
+                repositoryName=name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify it's no longer associated
+            list_resp = codecommit.list_associated_approval_rule_templates_for_repository(
+                repositoryName=name
+            )
+            assert template_name not in list_resp["approvalRuleTemplateNames"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+
+
+def _create_pr(cc, name=None):
+    """Create repo with feature branch and a PR.
+
+    Returns (name, pr_id, rev_id, main_commit, feature_commit).
+    """
+    name, main_commit, feature_commit = _create_repo_with_feature_branch(cc, name)
+    create_resp = cc.create_pull_request(
+        title="Test PR",
+        description="A test pull request",
+        targets=[
+            {
+                "repositoryName": name,
+                "sourceReference": "feature",
+                "destinationReference": "main",
+            }
+        ],
+    )
+    pr = create_resp["pullRequest"]
+    return name, pr["pullRequestId"], pr.get("revisionId", "MISSING"), main_commit, feature_commit
+
+
+class TestCodeCommitCommentMutations:
+    """Tests for comment mutation operations."""
+
+    def test_update_comment(self, codecommit):
+        """UpdateComment modifies comment content."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            comment_resp = codecommit.post_comment_for_compared_commit(
+                repositoryName=name,
+                afterCommitId=commit_id,
+                content="original comment",
+            )
+            comment_id = comment_resp["comment"]["commentId"]
+            resp = codecommit.update_comment(commentId=comment_id, content="updated comment")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["comment"]["commentId"] == comment_id
+            assert resp["comment"]["content"] == "updated comment"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_delete_comment_content(self, codecommit):
+        """DeleteCommentContent removes comment content."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            comment_resp = codecommit.post_comment_for_compared_commit(
+                repositoryName=name,
+                afterCommitId=commit_id,
+                content="will be deleted",
+            )
+            comment_id = comment_resp["comment"]["commentId"]
+            resp = codecommit.delete_comment_content(commentId=comment_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["comment"]["commentId"] == comment_id
+            assert resp["comment"]["deleted"] is True
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_put_comment_reaction(self, codecommit):
+        """PutCommentReaction adds a reaction to a comment."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            comment_resp = codecommit.post_comment_for_compared_commit(
+                repositoryName=name,
+                afterCommitId=commit_id,
+                content="react to this",
+            )
+            comment_id = comment_resp["comment"]["commentId"]
+            resp = codecommit.put_comment_reaction(commentId=comment_id, reactionValue=":thumbsup:")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_post_comment_reply(self, codecommit):
+        """PostCommentReply adds a reply to a comment."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            comment_resp = codecommit.post_comment_for_compared_commit(
+                repositoryName=name,
+                afterCommitId=commit_id,
+                content="parent comment",
+            )
+            comment_id = comment_resp["comment"]["commentId"]
+            resp = codecommit.post_comment_reply(inReplyTo=comment_id, content="reply comment")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["comment"]["content"] == "reply comment"
+            assert "commentId" in resp["comment"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitPRCommentOperations:
+    """Tests for PR comment and reaction operations."""
+
+    def test_post_comment_for_pull_request(self, codecommit):
+        """PostCommentForPullRequest adds a comment to a PR."""
+        name, pr_id, rev_id, main_commit, feature_commit = _create_pr(codecommit)
+        try:
+            resp = codecommit.post_comment_for_pull_request(
+                pullRequestId=pr_id,
+                repositoryName=name,
+                beforeCommitId=main_commit,
+                afterCommitId=feature_commit,
+                content="PR comment",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["comment"]["content"] == "PR comment"
+            assert "commentId" in resp["comment"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitPRMutations:
+    """Tests for pull request mutation operations."""
+
+    def test_update_pull_request_title(self, codecommit):
+        """UpdatePullRequestTitle changes PR title."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.update_pull_request_title(pullRequestId=pr_id, title="Updated Title")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["pullRequest"]["title"] == "Updated Title"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_update_pull_request_description(self, codecommit):
+        """UpdatePullRequestDescription changes PR description."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.update_pull_request_description(
+                pullRequestId=pr_id, description="Updated description"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["pullRequest"]["description"] == "Updated description"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_update_pull_request_status(self, codecommit):
+        """UpdatePullRequestStatus closes a PR."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.update_pull_request_status(
+                pullRequestId=pr_id, pullRequestStatus="CLOSED"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitPRApprovalRules:
+    """Tests for PR approval rule CRUD operations."""
+
+    def test_create_pull_request_approval_rule(self, codecommit):
+        """CreatePullRequestApprovalRule adds an approval rule to a PR."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.create_pull_request_approval_rule(
+                pullRequestId=pr_id,
+                approvalRuleName="my-rule",
+                approvalRuleContent=APPROVAL_RULE_CONTENT,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["approvalRule"]["approvalRuleName"] == "my-rule"
+            assert "approvalRuleId" in resp["approvalRule"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_delete_pull_request_approval_rule(self, codecommit):
+        """DeletePullRequestApprovalRule removes an approval rule from a PR."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            codecommit.create_pull_request_approval_rule(
+                pullRequestId=pr_id,
+                approvalRuleName="rule-to-delete",
+                approvalRuleContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.delete_pull_request_approval_rule(
+                pullRequestId=pr_id, approvalRuleName="rule-to-delete"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "approvalRuleId" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_update_pull_request_approval_rule_content(self, codecommit):
+        """UpdatePullRequestApprovalRuleContent updates rule content on a PR."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            codecommit.create_pull_request_approval_rule(
+                pullRequestId=pr_id,
+                approvalRuleName="rule-to-update",
+                approvalRuleContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.update_pull_request_approval_rule_content(
+                pullRequestId=pr_id,
+                approvalRuleName="rule-to-update",
+                newRuleContent=APPROVAL_RULE_CONTENT_2,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["approvalRule"]["approvalRuleName"] == "rule-to-update"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_evaluate_pull_request_approval_rules(self, codecommit):
+        """EvaluatePullRequestApprovalRules evaluates approval rules on a PR."""
+        name, pr_id, rev_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.evaluate_pull_request_approval_rules(
+                pullRequestId=pr_id, revisionId=rev_id
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "evaluation" in resp
+            assert "approved" in resp["evaluation"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_update_pull_request_approval_state(self, codecommit):
+        """UpdatePullRequestApprovalState sets approval state on a PR."""
+        name, pr_id, rev_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.update_pull_request_approval_state(
+                pullRequestId=pr_id, revisionId=rev_id, approvalState="APPROVE"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_override_pull_request_approval_rules(self, codecommit):
+        """OverridePullRequestApprovalRules overrides approval requirements."""
+        name, pr_id, rev_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.override_pull_request_approval_rules(
+                pullRequestId=pr_id, revisionId=rev_id, overrideStatus="OVERRIDE"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitBatchGetCommits:
+    """Tests for BatchGetCommits operation."""
+
+    def test_batch_get_commits(self, codecommit):
+        """BatchGetCommits returns details for multiple commits."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.batch_get_commits(
+                commitIds=[main_commit, feature_commit],
+                repositoryName=name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commits" in resp
+            assert len(resp["commits"]) == 2
+            commit_ids = {c["commitId"] for c in resp["commits"]}
+            assert main_commit in commit_ids
+            assert feature_commit in commit_ids
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitMergeWriteOperations:
+    """Tests for merge operations that modify branches."""
+
+    def test_merge_branches_by_fast_forward(self, codecommit):
+        """MergeBranchesByFastForward merges feature into main via FF."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.merge_branches_by_fast_forward(
+                repositoryName=name,
+                sourceCommitSpecifier="feature",
+                destinationCommitSpecifier="main",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_merge_branches_by_squash(self, codecommit):
+        """MergeBranchesBySquash squash-merges branches."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.merge_branches_by_squash(
+                repositoryName=name,
+                sourceCommitSpecifier="feature",
+                destinationCommitSpecifier="main",
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Squash merge",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_merge_branches_by_three_way(self, codecommit):
+        """MergeBranchesByThreeWay three-way-merges branches."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.merge_branches_by_three_way(
+                repositoryName=name,
+                sourceCommitSpecifier="feature",
+                destinationCommitSpecifier="main",
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Three-way merge",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_create_unreferenced_merge_commit(self, codecommit):
+        """CreateUnreferencedMergeCommit creates a merge commit without updating a ref."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.create_unreferenced_merge_commit(
+                repositoryName=name,
+                sourceCommitSpecifier=feature_commit,
+                destinationCommitSpecifier=main_commit,
+                mergeOption="THREE_WAY_MERGE",
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Unreferenced merge",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+            assert "treeId" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_batch_describe_merge_conflicts(self, codecommit):
+        """BatchDescribeMergeConflicts returns conflict info for multiple files."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.batch_describe_merge_conflicts(
+                repositoryName=name,
+                sourceCommitSpecifier=feature_commit,
+                destinationCommitSpecifier=main_commit,
+                mergeOption="THREE_WAY_MERGE",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "conflicts" in resp
+            assert isinstance(resp["conflicts"], list)
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitMergePROperations:
+    """Tests for merging pull requests."""
+
+    def test_merge_pull_request_by_fast_forward(self, codecommit):
+        """MergePullRequestByFastForward merges a PR via FF."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.merge_pull_request_by_fast_forward(
+                pullRequestId=pr_id,
+                repositoryName=name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "pullRequest" in resp
+            assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_merge_pull_request_by_squash(self, codecommit):
+        """MergePullRequestBySquash squash-merges a PR."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.merge_pull_request_by_squash(
+                pullRequestId=pr_id,
+                repositoryName=name,
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Squash merge PR",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "pullRequest" in resp
+            assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_merge_pull_request_by_three_way(self, codecommit):
+        """MergePullRequestByThreeWay three-way-merges a PR."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.merge_pull_request_by_three_way(
+                pullRequestId=pr_id,
+                repositoryName=name,
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Three-way merge PR",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "pullRequest" in resp
+            assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
