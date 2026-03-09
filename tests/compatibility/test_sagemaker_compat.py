@@ -1932,3 +1932,279 @@ class TestSageMakerDeleteOperations:
         )
         resp = sagemaker.delete_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerSearchFiltered:
+    """Search with filters and additional resource types."""
+
+    def test_search_experiment_with_filter(self, sagemaker):
+        """Search Experiment with SearchExpression filter."""
+        name = _uid("exp")
+        sagemaker.create_experiment(ExperimentName=name)
+        try:
+            resp = sagemaker.search(
+                Resource="Experiment",
+                SearchExpression={
+                    "Filters": [
+                        {
+                            "Name": "ExperimentName",
+                            "Operator": "Equals",
+                            "Value": name,
+                        }
+                    ]
+                },
+            )
+            assert "Results" in resp
+            results = resp["Results"]
+            assert len(results) >= 1
+            matched = results[0]["Experiment"]["ExperimentName"]
+            assert matched == name
+        finally:
+            sagemaker.delete_experiment(ExperimentName=name)
+
+    def test_search_feature_group(self, sagemaker):
+        """Search FeatureGroup resource type returns results."""
+        resp = sagemaker.search(Resource="FeatureGroup")
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_search_project_resource(self, sagemaker):
+        """Search Project resource type returns results list."""
+        resp = sagemaker.search(Resource="Project")
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+
+class TestSageMakerListFiltered:
+    """List operations with filter parameters."""
+
+    def test_list_models_with_name_contains_param(self, sagemaker):
+        """list_models accepts NameContains parameter without error."""
+        name = _uid("mdl")
+        sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        try:
+            resp = sagemaker.list_models(NameContains=name)
+            assert "Models" in resp
+            names = [m["ModelName"] for m in resp["Models"]]
+            assert name in names
+        finally:
+            sagemaker.delete_model(ModelName=name)
+
+    def test_list_training_jobs_status_filter(self, sagemaker):
+        """list_training_jobs with StatusEquals filters by status."""
+        resp = sagemaker.list_training_jobs(StatusEquals="Completed")
+        assert "TrainingJobSummaries" in resp
+        assert isinstance(resp["TrainingJobSummaries"], list)
+
+    def test_list_endpoints_sorted(self, sagemaker):
+        """list_endpoints with SortBy and SortOrder."""
+        resp = sagemaker.list_endpoints(SortBy="Name", SortOrder="Ascending")
+        assert "Endpoints" in resp
+        assert isinstance(resp["Endpoints"], list)
+
+
+class TestSageMakerTagsOnEndpoint:
+    """Tags on endpoint resources."""
+
+    def test_add_and_list_tags_on_endpoint(self, sagemaker):
+        """add_tags and list_tags work on endpoint ARNs."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        ep_name = _uid("ep")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                }
+            ],
+        )
+        sagemaker.create_endpoint(EndpointName=ep_name, EndpointConfigName=ec_name)
+        try:
+            ep_arn = sagemaker.describe_endpoint(EndpointName=ep_name)["EndpointArn"]
+            sagemaker.add_tags(
+                ResourceArn=ep_arn,
+                Tags=[{"Key": "env", "Value": "staging"}],
+            )
+            tags_resp = sagemaker.list_tags(ResourceArn=ep_arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["env"] == "staging"
+        finally:
+            sagemaker.delete_endpoint(EndpointName=ep_name)
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)
+
+    def test_delete_tags_on_endpoint(self, sagemaker):
+        """delete_tags removes tags from an endpoint."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        ep_name = _uid("ep")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                }
+            ],
+        )
+        sagemaker.create_endpoint(EndpointName=ep_name, EndpointConfigName=ec_name)
+        try:
+            ep_arn = sagemaker.describe_endpoint(EndpointName=ep_name)["EndpointArn"]
+            sagemaker.add_tags(
+                ResourceArn=ep_arn,
+                Tags=[
+                    {"Key": "env", "Value": "staging"},
+                    {"Key": "team", "Value": "ml"},
+                ],
+            )
+            sagemaker.delete_tags(ResourceArn=ep_arn, TagKeys=["env"])
+            tags_resp = sagemaker.list_tags(ResourceArn=ep_arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "env" not in keys
+            assert "team" in keys
+        finally:
+            sagemaker.delete_endpoint(EndpointName=ep_name)
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)
+
+
+class TestSageMakerCreateWithTags:
+    """Create resources with inline Tags parameter."""
+
+    def test_create_model_with_tags(self, sagemaker):
+        """create_model with Tags attaches tags at creation time."""
+        name = _uid("model")
+        resp = sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+            Tags=[{"Key": "env", "Value": "prod"}, {"Key": "team", "Value": "ds"}],
+        )
+        arn = resp["ModelArn"]
+        try:
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["env"] == "prod"
+            assert tags["team"] == "ds"
+        finally:
+            sagemaker.delete_model(ModelName=name)
+
+    def test_create_notebook_with_tags(self, sagemaker):
+        """create_notebook_instance with Tags attaches tags at creation time."""
+        name = _uid("nb")
+        sagemaker.create_notebook_instance(
+            NotebookInstanceName=name,
+            InstanceType="ml.t2.medium",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            Tags=[{"Key": "team", "Value": "ml"}],
+        )
+        try:
+            desc = sagemaker.describe_notebook_instance(NotebookInstanceName=name)
+            arn = desc["NotebookInstanceArn"]
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["team"] == "ml"
+        finally:
+            sagemaker.stop_notebook_instance(NotebookInstanceName=name)
+            sagemaker.delete_notebook_instance(NotebookInstanceName=name)
+
+    def test_create_endpoint_config_with_tags(self, sagemaker):
+        """create_endpoint_config with Tags attaches tags at creation time."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        resp = sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                }
+            ],
+            Tags=[{"Key": "cost-center", "Value": "123"}],
+        )
+        arn = resp["EndpointConfigArn"]
+        try:
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["cost-center"] == "123"
+        finally:
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)
+
+
+class TestSageMakerEndpointConfigDetails:
+    """Deeper assertions on endpoint config describe."""
+
+    def test_describe_endpoint_config_production_variants(self, sagemaker):
+        """describe_endpoint_config returns ProductionVariants with correct fields."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "primary",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 2,
+                    "InstanceType": "ml.m5.xlarge",
+                }
+            ],
+        )
+        try:
+            desc = sagemaker.describe_endpoint_config(EndpointConfigName=ec_name)
+            assert desc["EndpointConfigName"] == ec_name
+            assert "EndpointConfigArn" in desc
+            pvs = desc["ProductionVariants"]
+            assert len(pvs) == 1
+            pv = pvs[0]
+            assert pv["VariantName"] == "primary"
+            assert pv["ModelName"] == model_name
+            assert pv["InitialInstanceCount"] == 2
+            assert pv["InstanceType"] == "ml.m5.xlarge"
+        finally:
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)

@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -222,6 +223,120 @@ class TestCloudTrailUpdateTrail:
         resp = cloudtrail.get_trail(Name=trail_name)
         assert resp["Trail"]["LogFileValidationEnabled"] is True
         assert resp["Trail"]["IsMultiRegionTrail"] is True
+
+
+class TestCloudTrailDescribeTrailsFiltering:
+    """Tests for DescribeTrails with filtering options."""
+
+    def test_describe_trails_exclude_shadow_trails(self, cloudtrail, trail_with_bucket):
+        """describe_trails with includeShadowTrails=False returns trails."""
+        trail_name, _, _ = trail_with_bucket
+        resp = cloudtrail.describe_trails(includeShadowTrails=False)
+        trail_names = [t["Name"] for t in resp["trailList"]]
+        assert trail_name in trail_names
+
+
+class TestCloudTrailGetTrailByArn:
+    """Tests for GetTrail using ARN."""
+
+    def test_get_trail_by_arn(self, cloudtrail, trail_with_bucket):
+        """get_trail can be called with the trail ARN instead of name."""
+        trail_name, _, trail_arn = trail_with_bucket
+        resp = cloudtrail.get_trail(Name=trail_arn)
+        assert resp["Trail"]["Name"] == trail_name
+        assert resp["Trail"]["TrailARN"] == trail_arn
+
+
+class TestCloudTrailCreateTrailOptions:
+    """Tests for CreateTrail with various options."""
+
+    def test_create_trail_with_s3_prefix(self, cloudtrail, s3):
+        """create_trail with S3KeyPrefix stores the prefix."""
+        bucket = _unique("ct-bucket")
+        trail = _unique("ct-trail")
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = cloudtrail.create_trail(Name=trail, S3BucketName=bucket, S3KeyPrefix="my/prefix")
+            assert resp["Name"] == trail
+            assert resp["S3KeyPrefix"] == "my/prefix"
+
+            # Verify via get_trail
+            get_resp = cloudtrail.get_trail(Name=trail)
+            assert get_resp["Trail"]["S3KeyPrefix"] == "my/prefix"
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_create_trail_with_log_file_validation(self, cloudtrail, s3):
+        """create_trail with EnableLogFileValidation=True returns LogFileValidationEnabled."""
+        bucket = _unique("ct-bucket")
+        trail = _unique("ct-trail")
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = cloudtrail.create_trail(
+                Name=trail, S3BucketName=bucket, EnableLogFileValidation=True
+            )
+            assert resp["LogFileValidationEnabled"] is True
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_create_trail_with_cloudwatch_logs(self, cloudtrail, s3):
+        """create_trail with CloudWatch log group ARN stores it."""
+        bucket = _unique("ct-bucket")
+        trail = _unique("ct-trail")
+        s3.create_bucket(Bucket=bucket)
+        log_group_arn = "arn:aws:logs:us-east-1:123456789012:log-group:ct-test"
+        role_arn = "arn:aws:iam::123456789012:role/ct-role"
+        try:
+            resp = cloudtrail.create_trail(
+                Name=trail,
+                S3BucketName=bucket,
+                CloudWatchLogsLogGroupArn=log_group_arn,
+                CloudWatchLogsRoleArn=role_arn,
+            )
+            assert resp["CloudWatchLogsLogGroupArn"] == log_group_arn
+            assert resp["CloudWatchLogsRoleArn"] == role_arn
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)
+
+
+class TestCloudTrailUpdateTrailBucket:
+    """Tests for UpdateTrail changing the S3 bucket."""
+
+    def test_update_trail_change_bucket(self, cloudtrail, s3, trail_with_bucket):
+        """update_trail can change the S3 bucket."""
+        trail_name, old_bucket, _ = trail_with_bucket
+        new_bucket = _unique("ct-bucket2")
+        s3.create_bucket(Bucket=new_bucket)
+        try:
+            resp = cloudtrail.update_trail(Name=trail_name, S3BucketName=new_bucket)
+            assert resp["S3BucketName"] == new_bucket
+
+            # Verify via get_trail
+            get_resp = cloudtrail.get_trail(Name=trail_name)
+            assert get_resp["Trail"]["S3BucketName"] == new_bucket
+        finally:
+            s3.delete_bucket(Bucket=new_bucket)
+
+    def test_update_trail_add_s3_prefix(self, cloudtrail, trail_with_bucket):
+        """update_trail can add an S3 key prefix."""
+        trail_name, bucket_name, _ = trail_with_bucket
+        resp = cloudtrail.update_trail(
+            Name=trail_name, S3BucketName=bucket_name, S3KeyPrefix="added-prefix"
+        )
+        assert resp["S3KeyPrefix"] == "added-prefix"
+
+
+class TestCloudTrailErrors:
+    """Tests for CloudTrail error handling."""
+
+    def test_get_trail_nonexistent(self, cloudtrail):
+        """get_trail with a nonexistent trail raises TrailNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_trail(Name="nonexistent-trail-12345")
+        assert exc_info.value.response["Error"]["Code"] == "TrailNotFoundException"
 
 
 class TestCloudTrailInsightSelectors:
