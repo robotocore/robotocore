@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import (
     assert_iam_role_exists,
     assert_s3_bucket_exists,
@@ -88,3 +89,14 @@ class TestCicdPipeline:
                 actions.extend(act)
         assert "s3:GetObject" in actions
         assert "s3:PutObject" in actions
+
+    def test_artifact_upload_download(self, stack_outputs, s3_client):
+        """Upload an artifact to S3 and download it back."""
+        bucket_name = stack_outputs["bucket_name"]
+        resp = put_and_get_s3_object(
+            s3_client,
+            bucket_name,
+            "artifacts/build-1.zip",
+            b"fake-zip-content",
+        )
+        assert resp["ContentLength"] == len(b"fake-zip-content")

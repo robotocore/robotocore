@@ -171,6 +171,18 @@ class TestAthenaCapacityReservationOperations:
             "NotFoundException",
         )
 
+    def test_cancel_capacity_reservation_nonexistent(self, athena):
+        """CancelCapacityReservation with nonexistent name raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.cancel_capacity_reservation(Name="does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "InvalidArgumentException"
+
+    def test_delete_capacity_reservation_nonexistent(self, athena):
+        """DeleteCapacityReservation with nonexistent name raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.delete_capacity_reservation(Name="does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "InvalidArgumentException"
+
 
 class TestAthenaPreparedStatementOperations:
     def test_create_prepared_statement(self, athena):
@@ -187,6 +199,21 @@ class TestAthenaPreparedStatementOperations:
         ps = resp["PreparedStatement"]
         assert ps["StatementName"] == name
         assert ps["QueryStatement"] == "SELECT ? FROM my_table"
+
+    def test_delete_prepared_statement_nonexistent(self, athena):
+        """DeletePreparedStatement with nonexistent name raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.delete_prepared_statement(StatementName="nonexistent", WorkGroup="primary")
+        assert exc.value.response["Error"]["Code"] == "InvalidArgumentException"
+
+    def test_batch_get_prepared_statement_empty(self, athena):
+        """BatchGetPreparedStatement with nonexistent names."""
+        resp = athena.batch_get_prepared_statement(
+            PreparedStatementNames=["nonexistent"],
+            WorkGroup="primary",
+        )
+        assert "PreparedStatements" in resp
+        assert "UnprocessedPreparedStatementNames" in resp
 
 
 class TestAthenaQueryLifecycle:

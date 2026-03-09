@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import (
     assert_iam_role_exists,
     assert_s3_bucket_exists,
@@ -40,3 +41,14 @@ class TestCicdPipeline:
         iam = make_client("iam")
         role = assert_iam_role_exists(iam, "cicd-build-role")
         assert role["RoleName"] == "cicd-build-role"
+
+    def test_artifact_upload_download(self):
+        """Upload an artifact to S3 and download it back."""
+        s3 = make_client("s3")
+        resp = put_and_get_s3_object(
+            s3,
+            "cicd-artifact-bucket",
+            "artifacts/build-1.zip",
+            b"fake-zip-content",
+        )
+        assert resp["ContentLength"] == len(b"fake-zip-content")

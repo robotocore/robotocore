@@ -6,6 +6,7 @@ Validates Cognito user pool and client creation via Terraform.
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import create_cognito_user_and_auth
 from tests.iac.helpers.resource_validator import assert_cognito_user_pool_exists
 
 pytestmark = pytest.mark.iac
@@ -51,3 +52,21 @@ class TestAuthStack:
         assert client["ClientId"] == client_id
         assert "ALLOW_USER_PASSWORD_AUTH" in client["ExplicitAuthFlows"]
         assert "ALLOW_REFRESH_TOKEN_AUTH" in client["ExplicitAuthFlows"]
+
+    def test_cognito_auth_flow(self, terraform_dir, tf_runner):
+        """Create a user and authenticate via Cognito."""
+        tf_runner.apply(terraform_dir)
+        outputs = tf_runner.output(terraform_dir)
+        pool_id = outputs["user_pool_id"]["value"]
+        client_id = outputs["client_id"]["value"]
+
+        cognito = make_client("cognito-idp")
+        resp = create_cognito_user_and_auth(
+            cognito,
+            pool_id,
+            client_id,
+            "testuser@example.com",
+            "TestP@ss1234",
+        )
+        assert "AuthenticationResult" in resp
+        assert "AccessToken" in resp["AuthenticationResult"]

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import create_cognito_user_and_auth
 from tests.iac.helpers.resource_validator import assert_cognito_user_pool_exists
 
 pytestmark = pytest.mark.iac
@@ -54,3 +55,17 @@ class TestAuthStack:
         assert client["ClientId"] == client_id
         assert "ALLOW_USER_PASSWORD_AUTH" in client["ExplicitAuthFlows"]
         assert "ALLOW_REFRESH_TOKEN_AUTH" in client["ExplicitAuthFlows"]
+
+    def test_cognito_auth_flow(self, stack_outputs, cognito_client):
+        """Create a user and authenticate via Cognito."""
+        pool_id = stack_outputs["user_pool_id"]
+        client_id = stack_outputs["app_client_id"]
+        resp = create_cognito_user_and_auth(
+            cognito_client,
+            pool_id,
+            client_id,
+            "testuser@example.com",
+            "TestP@ss1234",
+        )
+        assert "AuthenticationResult" in resp
+        assert "AccessToken" in resp["AuthenticationResult"]
