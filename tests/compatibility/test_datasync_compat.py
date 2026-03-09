@@ -491,3 +491,230 @@ class TestDataSyncDescribeLocationVariants:
                 LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
             )
         assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_smb_nonexistent(self, datasync):
+        """DescribeLocationSmb for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_smb(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_task_nonexistent(self, datasync):
+        """DescribeTask for nonexistent task raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_task(
+                TaskArn="arn:aws:datasync:us-east-1:123456789012:task/task-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_task_execution_nonexistent(self, datasync):
+        """DescribeTaskExecution for nonexistent execution raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_task_execution(
+                TaskExecutionArn="arn:aws:datasync:us-east-1:123456789012:task/task-00000000000000000/execution/exec-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_delete_task_nonexistent(self, datasync):
+        """DeleteTask for nonexistent task raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.delete_task(
+                TaskArn="arn:aws:datasync:us-east-1:123456789012:task/task-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_delete_location_nonexistent(self, datasync):
+        """DeleteLocation for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.delete_location(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_cancel_task_execution_nonexistent(self, datasync):
+        """CancelTaskExecution for nonexistent execution raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.cancel_task_execution(
+                TaskExecutionArn="arn:aws:datasync:us-east-1:123456789012:task/task-00000000000000000/execution/exec-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_update_task_nonexistent(self, datasync):
+        """UpdateTask for nonexistent task raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.update_task(
+                TaskArn="arn:aws:datasync:us-east-1:123456789012:task/task-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_start_task_execution_nonexistent(self, datasync):
+        """StartTaskExecution for nonexistent task raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.start_task_execution(
+                TaskArn="arn:aws:datasync:us-east-1:123456789012:task/task-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+
+class TestDataSyncLocationNfsOperations:
+    """Tests for DataSync NFS location operations."""
+
+    def test_create_and_describe_location_nfs(self, datasync):
+        """CreateLocationNfs creates a location, DescribeLocationNfs returns details."""
+        create_resp = datasync.create_location_nfs(
+            Subdirectory="/export",
+            ServerHostname="nfs.example.com",
+            OnPremConfig={
+                "AgentArns": ["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"]
+            },
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_nfs(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "nfs://" in desc["LocationUri"]
+        assert "OnPremConfig" in desc
+
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationEfsOperations:
+    """Tests for DataSync EFS location operations."""
+
+    def test_create_and_describe_location_efs(self, datasync):
+        """CreateLocationEfs creates a location, DescribeLocationEfs returns details."""
+        create_resp = datasync.create_location_efs(
+            Subdirectory="/efs",
+            EfsFilesystemArn="arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-12345678",
+            Ec2Config={
+                "SubnetArn": "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-12345678",
+                "SecurityGroupArns": [
+                    "arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678"
+                ],
+            },
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_efs(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "Ec2Config" in desc
+
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationHdfsOperations:
+    """Tests for DataSync HDFS location operations."""
+
+    def test_create_and_describe_location_hdfs(self, datasync):
+        """CreateLocationHdfs creates a location, DescribeLocationHdfs returns details."""
+        create_resp = datasync.create_location_hdfs(
+            Subdirectory="/hdfs",
+            NameNodes=[{"Hostname": "hdfs.example.com", "Port": 8020}],
+            AuthenticationType="SIMPLE",
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_hdfs(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "hdfs://" in desc["LocationUri"]
+        assert "NameNodes" in desc
+
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationFsxLustreOperations:
+    """Tests for DataSync FSx Lustre location operations."""
+
+    def test_create_and_describe_location_fsx_lustre(self, datasync):
+        """CreateLocationFsxLustre creates a location and returns an ARN."""
+        create_resp = datasync.create_location_fsx_lustre(
+            FsxFilesystemArn="arn:aws:fsx:us-east-1:123456789012:file-system/fs-lustre12345678",
+            SecurityGroupArns=["arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678"],
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_fsx_lustre(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "SecurityGroupArns" in desc
+
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationFsxWindowsOperations:
+    """Tests for DataSync FSx Windows location operations."""
+
+    def test_create_and_describe_location_fsx_windows(self, datasync):
+        """CreateLocationFsxWindows creates a location and returns an ARN."""
+        create_resp = datasync.create_location_fsx_windows(
+            FsxFilesystemArn="arn:aws:fsx:us-east-1:123456789012:file-system/fs-windows12345678",
+            SecurityGroupArns=["arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678"],
+            User="admin",
+            Password="password123",
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_fsx_windows(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "SecurityGroupArns" in desc
+        assert desc["User"] == "admin"
+
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationFsxOntapOperations:
+    """Tests for DataSync FSx ONTAP location operations."""
+
+    def test_create_and_describe_location_fsx_ontap(self, datasync):
+        """CreateLocationFsxOntap creates a location and returns an ARN."""
+        create_resp = datasync.create_location_fsx_ontap(
+            Protocol={"NFS": {"MountOptions": {"Version": "NFS3"}}},
+            SecurityGroupArns=["arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678"],
+            StorageVirtualMachineArn="arn:aws:fsx:us-east-1:123456789012:storage-virtual-machine/svm-12345678",
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_fsx_ontap(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationFsxOpenZfsOperations:
+    """Tests for DataSync FSx OpenZFS location operations."""
+
+    def test_create_and_describe_location_fsx_open_zfs(self, datasync):
+        """CreateLocationFsxOpenZfs creates a location and returns an ARN."""
+        create_resp = datasync.create_location_fsx_open_zfs(
+            FsxFilesystemArn="arn:aws:fsx:us-east-1:123456789012:file-system/fs-openzfs12345678",
+            Protocol={"NFS": {"MountOptions": {"Version": "NFS3"}}},
+            SecurityGroupArns=["arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678"],
+        )
+        arn = create_resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+
+        desc = datasync.describe_location_fsx_open_zfs(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+
+        datasync.delete_location(LocationArn=arn)

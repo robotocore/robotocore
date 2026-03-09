@@ -173,3 +173,39 @@ class TestDataPipelineDefinition:
             assert "pipelineObjects" in resp
         finally:
             datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+
+class TestDataPipelineTaskOperations:
+    """Tests for task runner operations."""
+
+    def test_poll_for_task(self, datapipeline):
+        """PollForTask returns a response with taskObject key."""
+        resp = datapipeline.poll_for_task(
+            workerGroup="test-worker-group",
+        )
+        assert "taskObject" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_report_task_runner_heartbeat(self, datapipeline):
+        """ReportTaskRunnerHeartbeat returns a terminate flag."""
+        resp = datapipeline.report_task_runner_heartbeat(
+            taskrunnerId="test-runner-id",
+        )
+        assert "terminate" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_report_task_progress(self, datapipeline):
+        """ReportTaskProgress returns canceled flag."""
+        resp = datapipeline.report_task_progress(
+            taskId="test-task-id",
+        )
+        assert "canceled" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_set_task_status(self, datapipeline):
+        """SetTaskStatus sets a task's status."""
+        resp = datapipeline.set_task_status(
+            taskId="test-task-id",
+            taskStatus="FINISHED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

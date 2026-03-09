@@ -688,6 +688,37 @@ class TestElastiCacheServerlessCaches:
         assert "ServerlessCaches" in resp
         assert isinstance(resp["ServerlessCaches"], list)
 
+    def test_create_and_delete_serverless_cache(self, elasticache):
+        name = _unique("sc")
+        resp = elasticache.create_serverless_cache(
+            ServerlessCacheName=name,
+            Engine="redis",
+        )
+        sc = resp["ServerlessCache"]
+        assert sc["ServerlessCacheName"] == name
+        assert sc["Engine"] == "redis"
+        assert "Status" in sc
+        assert "ARN" in sc
+        assert "Endpoint" in sc
+
+        del_resp = elasticache.delete_serverless_cache(ServerlessCacheName=name)
+        assert del_resp["ServerlessCache"]["ServerlessCacheName"] == name
+
+    def test_modify_serverless_cache(self, elasticache):
+        name = _unique("sc")
+        elasticache.create_serverless_cache(
+            ServerlessCacheName=name,
+            Engine="redis",
+        )
+        try:
+            resp = elasticache.modify_serverless_cache(
+                ServerlessCacheName=name,
+                Description="updated serverless cache",
+            )
+            assert resp["ServerlessCache"]["ServerlessCacheName"] == name
+        finally:
+            elasticache.delete_serverless_cache(ServerlessCacheName=name)
+
 
 class TestElastiCacheCacheParameterGroupOperations:
     """Tests for cache parameter group CRUD."""
@@ -765,6 +796,24 @@ class TestElastiCacheCacheSecurityGroupOperations:
         assert "CacheSecurityGroups" in resp
         assert isinstance(resp["CacheSecurityGroups"], list)
 
+    def test_revoke_cache_security_group_ingress(self, elasticache):
+        name = _unique("csg")
+        elasticache.create_cache_security_group(
+            CacheSecurityGroupName=name,
+            Description="for revoke test",
+        )
+        try:
+            resp = elasticache.revoke_cache_security_group_ingress(
+                CacheSecurityGroupName=name,
+                EC2SecurityGroupName="default",
+                EC2SecurityGroupOwnerId="123456789012",
+            )
+            group = resp["CacheSecurityGroup"]
+            assert group["CacheSecurityGroupName"] == name
+            assert "EC2SecurityGroups" in group
+        finally:
+            elasticache.delete_cache_security_group(CacheSecurityGroupName=name)
+
 
 class TestElastiCacheGlobalReplicationGroupOperations:
     """Tests for global replication group operations."""
@@ -773,6 +822,67 @@ class TestElastiCacheGlobalReplicationGroupOperations:
         resp = elasticache.describe_global_replication_groups()
         assert "GlobalReplicationGroups" in resp
         assert isinstance(resp["GlobalReplicationGroups"], list)
+
+    def test_create_and_delete_global_replication_group(self, elasticache):
+        rg_id = _unique("rg")
+        elasticache.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="for global rg test",
+        )
+        grg_suffix = _unique("grg")
+        try:
+            resp = elasticache.create_global_replication_group(
+                GlobalReplicationGroupIdSuffix=grg_suffix,
+                PrimaryReplicationGroupId=rg_id,
+            )
+            grg = resp["GlobalReplicationGroup"]
+            assert grg_suffix in grg["GlobalReplicationGroupId"]
+            assert grg["Status"] == "available"
+            assert grg["Engine"] == "redis"
+            assert len(grg["Members"]) >= 1
+            assert grg["Members"][0]["ReplicationGroupId"] == rg_id
+
+            grg_id = grg["GlobalReplicationGroupId"]
+
+            del_resp = elasticache.delete_global_replication_group(
+                GlobalReplicationGroupId=grg_id,
+                RetainPrimaryReplicationGroup=True,
+            )
+            assert del_resp["GlobalReplicationGroup"]["GlobalReplicationGroupId"] == grg_id
+        finally:
+            elasticache.delete_replication_group(ReplicationGroupId=rg_id)
+
+    def test_modify_global_replication_group(self, elasticache):
+        rg_id = _unique("rg")
+        elasticache.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="for global modify",
+        )
+        grg_suffix = _unique("grg")
+        try:
+            resp = elasticache.create_global_replication_group(
+                GlobalReplicationGroupIdSuffix=grg_suffix,
+                PrimaryReplicationGroupId=rg_id,
+            )
+            grg_id = resp["GlobalReplicationGroup"]["GlobalReplicationGroupId"]
+
+            mod_resp = elasticache.modify_global_replication_group(
+                GlobalReplicationGroupId=grg_id,
+                ApplyImmediately=True,
+                GlobalReplicationGroupDescription="updated description",
+            )
+            assert mod_resp["GlobalReplicationGroup"]["GlobalReplicationGroupId"] == grg_id
+            assert (
+                mod_resp["GlobalReplicationGroup"]["GlobalReplicationGroupDescription"]
+                == "updated description"
+            )
+
+            elasticache.delete_global_replication_group(
+                GlobalReplicationGroupId=grg_id,
+                RetainPrimaryReplicationGroup=True,
+            )
+        finally:
+            elasticache.delete_replication_group(ReplicationGroupId=rg_id)
 
 
 class TestElastiCacheModifyOperations:
@@ -895,6 +1005,30 @@ class TestElastiCacheServerlessCacheSnapshots:
         resp = elasticache.describe_serverless_cache_snapshots()
         assert "ServerlessCacheSnapshots" in resp
         assert isinstance(resp["ServerlessCacheSnapshots"], list)
+
+    def test_create_and_delete_serverless_cache_snapshot(self, elasticache):
+        cache_name = _unique("sc")
+        elasticache.create_serverless_cache(
+            ServerlessCacheName=cache_name,
+            Engine="redis",
+        )
+        snap_name = _unique("scs")
+        try:
+            resp = elasticache.create_serverless_cache_snapshot(
+                ServerlessCacheSnapshotName=snap_name,
+                ServerlessCacheName=cache_name,
+            )
+            snap = resp["ServerlessCacheSnapshot"]
+            assert snap["ServerlessCacheSnapshotName"] == snap_name
+            assert "ARN" in snap
+            assert "Status" in snap
+
+            del_resp = elasticache.delete_serverless_cache_snapshot(
+                ServerlessCacheSnapshotName=snap_name,
+            )
+            assert del_resp["ServerlessCacheSnapshot"]["ServerlessCacheSnapshotName"] == snap_name
+        finally:
+            elasticache.delete_serverless_cache(ServerlessCacheName=cache_name)
 
 
 class TestElastiCacheCopySnapshot:

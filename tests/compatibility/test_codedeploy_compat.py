@@ -258,3 +258,313 @@ class TestCodedeployAutoCoverage:
             assert info["applicationName"] == app_name
         finally:
             iam_client.delete_role(RoleName=role_name)
+
+    def test_list_deployment_configs(self, client):
+        """ListDeploymentConfigs returns default configs."""
+        resp = client.list_deployment_configs()
+        assert "deploymentConfigsList" in resp
+        assert len(resp["deploymentConfigsList"]) > 0
+
+    def test_list_on_premises_instances(self, client):
+        """ListOnPremisesInstances returns a response."""
+        resp = client.list_on_premises_instances()
+        assert "instanceNames" in resp
+
+    def test_list_github_account_token_names(self, client):
+        """ListGitHubAccountTokenNames returns a response."""
+        resp = client.list_git_hub_account_token_names()
+        assert "tokenNameList" in resp
+
+    def test_create_and_delete_deployment_config(self, client):
+        """CreateDeploymentConfig + GetDeploymentConfig + DeleteDeploymentConfig."""
+        config_name = _unique("test-config")
+        client.create_deployment_config(
+            deploymentConfigName=config_name,
+            minimumHealthyHosts={"type": "HOST_COUNT", "value": 1},
+        )
+        resp = client.get_deployment_config(deploymentConfigName=config_name)
+        info = resp["deploymentConfigInfo"]
+        assert info["deploymentConfigName"] == config_name
+
+        client.delete_deployment_config(deploymentConfigName=config_name)
+        with pytest.raises(client.exceptions.DeploymentConfigDoesNotExistException):
+            client.get_deployment_config(deploymentConfigName=config_name)
+
+    def test_delete_application(self, client):
+        """DeleteApplication removes the application."""
+        app_name = _unique("test-app")
+        client.create_application(applicationName=app_name, computePlatform="Server")
+        client.delete_application(applicationName=app_name)
+        resp = client.list_applications()
+        assert app_name not in resp["applications"]
+
+    def test_delete_deployment_group(self, client):
+        """DeleteDeploymentGroup removes the group."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            client.delete_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+            )
+            resp = client.list_deployment_groups(applicationName=app_name)
+            assert dg_name not in resp["deploymentGroups"]
+        finally:
+            iam_client.delete_role(RoleName=role_name)
+
+    def test_update_application(self, client):
+        """UpdateApplication renames the application."""
+        old_name = _unique("test-app")
+        new_name = _unique("renamed-app")
+        client.create_application(applicationName=old_name, computePlatform="Server")
+        client.update_application(applicationName=old_name, newApplicationName=new_name)
+        resp = client.list_applications()
+        assert new_name in resp["applications"]
+        assert old_name not in resp["applications"]
+
+    def test_update_deployment_group(self, client):
+        """UpdateDeploymentGroup changes group settings."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            new_dg_name = _unique("renamed-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            client.update_deployment_group(
+                applicationName=app_name,
+                currentDeploymentGroupName=dg_name,
+                newDeploymentGroupName=new_dg_name,
+            )
+            resp = client.list_deployment_groups(applicationName=app_name)
+            assert new_dg_name in resp["deploymentGroups"]
+            assert dg_name not in resp["deploymentGroups"]
+        finally:
+            iam_client.delete_role(RoleName=role_name)
+
+    def test_register_application_revision(self, client):
+        """RegisterApplicationRevision + GetApplicationRevision."""
+        app_name = _unique("test-app")
+        client.create_application(applicationName=app_name, computePlatform="Server")
+        revision = {
+            "revisionType": "GitHub",
+            "gitHubLocation": {
+                "repository": "test/repo",
+                "commitId": "def456",
+            },
+        }
+        client.register_application_revision(
+            applicationName=app_name,
+            revision=revision,
+        )
+        resp = client.get_application_revision(
+            applicationName=app_name,
+            revision=revision,
+        )
+        assert "applicationName" in resp
+        assert resp["applicationName"] == app_name
+
+    def test_list_application_revisions(self, client):
+        """ListApplicationRevisions after registering a revision."""
+        app_name = _unique("test-app")
+        client.create_application(applicationName=app_name, computePlatform="Server")
+        revision = {
+            "revisionType": "GitHub",
+            "gitHubLocation": {
+                "repository": "test/repo",
+                "commitId": "ghi789",
+            },
+        }
+        client.register_application_revision(applicationName=app_name, revision=revision)
+        resp = client.list_application_revisions(applicationName=app_name)
+        assert "revisions" in resp
+
+    def test_batch_get_deployment_groups(self, client):
+        """BatchGetDeploymentGroups returns group details."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            resp = client.batch_get_deployment_groups(
+                applicationName=app_name,
+                deploymentGroupNames=[dg_name],
+            )
+            assert "deploymentGroupsInfo" in resp
+            assert len(resp["deploymentGroupsInfo"]) == 1
+            assert resp["deploymentGroupsInfo"][0]["deploymentGroupName"] == dg_name
+        finally:
+            iam_client.delete_role(RoleName=role_name)
+
+    def test_batch_get_application_revisions(self, client):
+        """BatchGetApplicationRevisions returns revision info."""
+        app_name = _unique("test-app")
+        client.create_application(applicationName=app_name, computePlatform="Server")
+        revision = {
+            "revisionType": "GitHub",
+            "gitHubLocation": {
+                "repository": "test/repo",
+                "commitId": "rev123",
+            },
+        }
+        client.register_application_revision(applicationName=app_name, revision=revision)
+        resp = client.batch_get_application_revisions(
+            applicationName=app_name,
+            revisions=[revision],
+        )
+        assert "applicationName" in resp
+        assert resp["applicationName"] == app_name
+        assert "revisions" in resp
+
+    def test_register_on_premises_instance(self, client):
+        """RegisterOnPremisesInstance + GetOnPremisesInstance."""
+        instance_name = _unique("on-prem")
+        iam_arn = f"arn:aws:iam::123456789012:user/{instance_name}"
+        client.register_on_premises_instance(
+            instanceName=instance_name,
+            iamUserArn=iam_arn,
+        )
+        resp = client.get_on_premises_instance(instanceName=instance_name)
+        info = resp["instanceInfo"]
+        assert info["instanceName"] == instance_name
+
+    def test_deregister_on_premises_instance(self, client):
+        """DeregisterOnPremisesInstance removes the instance."""
+        instance_name = _unique("on-prem")
+        iam_arn = f"arn:aws:iam::123456789012:user/{instance_name}"
+        client.register_on_premises_instance(
+            instanceName=instance_name,
+            iamUserArn=iam_arn,
+        )
+        client.deregister_on_premises_instance(instanceName=instance_name)
+        resp = client.list_on_premises_instances()
+        assert instance_name not in resp["instanceNames"]
+
+    def test_batch_get_on_premises_instances(self, client):
+        """BatchGetOnPremisesInstances returns instance info."""
+        instance_name = _unique("on-prem")
+        iam_arn = f"arn:aws:iam::123456789012:user/{instance_name}"
+        client.register_on_premises_instance(
+            instanceName=instance_name,
+            iamUserArn=iam_arn,
+        )
+        resp = client.batch_get_on_premises_instances(instanceNames=[instance_name])
+        assert "instanceInfos" in resp
+        assert len(resp["instanceInfos"]) == 1
+        assert resp["instanceInfos"][0]["instanceName"] == instance_name
+
+    def test_add_tags_to_on_premises_instances(self, client):
+        """AddTagsToOnPremisesInstances tags an on-prem instance."""
+        instance_name = _unique("on-prem")
+        iam_arn = f"arn:aws:iam::123456789012:user/{instance_name}"
+        client.register_on_premises_instance(
+            instanceName=instance_name,
+            iamUserArn=iam_arn,
+        )
+        client.add_tags_to_on_premises_instances(
+            tags=[{"Key": "env", "Value": "staging"}],
+            instanceNames=[instance_name],
+        )
+        resp = client.get_on_premises_instance(instanceName=instance_name)
+        tags = resp["instanceInfo"].get("tags", [])
+        tag_map = {t["Key"]: t["Value"] for t in tags}
+        assert tag_map.get("env") == "staging"
+
+    def test_remove_tags_from_on_premises_instances(self, client):
+        """RemoveTagsFromOnPremisesInstances removes tags."""
+        instance_name = _unique("on-prem")
+        iam_arn = f"arn:aws:iam::123456789012:user/{instance_name}"
+        client.register_on_premises_instance(
+            instanceName=instance_name,
+            iamUserArn=iam_arn,
+        )
+        client.add_tags_to_on_premises_instances(
+            tags=[{"Key": "env", "Value": "staging"}],
+            instanceNames=[instance_name],
+        )
+        client.remove_tags_from_on_premises_instances(
+            tags=[{"Key": "env", "Value": "staging"}],
+            instanceNames=[instance_name],
+        )
+        resp = client.get_on_premises_instance(instanceName=instance_name)
+        tags = resp["instanceInfo"].get("tags", [])
+        tag_map = {t["Key"]: t["Value"] for t in tags}
+        assert "env" not in tag_map
+
+    def test_stop_deployment(self, client):
+        """StopDeployment stops a running deployment."""
+        iam_client = make_client("iam")
+        role_name = _unique("cd-role")
+        role_resp = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Path="/",
+        )
+        role_arn = role_resp["Role"]["Arn"]
+        try:
+            app_name = _unique("test-app")
+            client.create_application(applicationName=app_name, computePlatform="Server")
+            dg_name = _unique("test-dg")
+            client.create_deployment_group(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                serviceRoleArn=role_arn,
+            )
+            dep_resp = client.create_deployment(
+                applicationName=app_name,
+                deploymentGroupName=dg_name,
+                revision={
+                    "revisionType": "GitHub",
+                    "gitHubLocation": {
+                        "repository": "test/repo",
+                        "commitId": "abc123",
+                    },
+                },
+            )
+            deployment_id = dep_resp["deploymentId"]
+            resp = client.stop_deployment(deploymentId=deployment_id)
+            assert "status" in resp
+        finally:
+            iam_client.delete_role(RoleName=role_name)
+
+    def test_delete_resources_by_external_id(self, client):
+        """DeleteResourcesByExternalId returns a response."""
+        resp = client.delete_resources_by_external_id(externalId="nonexistent-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

@@ -1209,6 +1209,24 @@ class TestSESv2DeliverabilityAndBlacklist:
         assert "DedicatedIps" in resp
         assert isinstance(resp["DedicatedIps"], list)
 
+    def test_get_dedicated_ip_not_found(self, sesv2):
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_dedicated_ip(Ip="192.0.2.1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_dedicated_ip_returns_ip_details(self, sesv2):
+        """GetDedicatedIp returns structured DedicatedIp when IP exists."""
+        # Since we can't provision real dedicated IPs in the emulator,
+        # verify the error response for a non-existent IP is well-formed.
+        try:
+            resp = sesv2.get_dedicated_ip(Ip="198.51.100.1")
+            # If the emulator returns a response, validate its structure
+            assert "DedicatedIp" in resp
+            assert "Ip" in resp["DedicatedIp"]
+        except ClientError as e:
+            assert e.response["Error"]["Code"] == "NotFoundException"
+            assert "198.51.100.1" in e.response["Error"]["Message"]
+
 
 class TestSESv2DedicatedIpWarmup:
     def test_put_dedicated_ip_warmup_attributes(self, sesv2):

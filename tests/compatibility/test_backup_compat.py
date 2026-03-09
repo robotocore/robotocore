@@ -1422,3 +1422,33 @@ class TestBackupErrorPathAdditional:
         )
         assert "RestoreJobs" in resp
         assert isinstance(resp["RestoreJobs"], list)
+
+    def test_start_restore_job(self, backup):
+        """StartRestoreJob creates a restore job and returns a RestoreJobId."""
+        resp = backup.start_restore_job(
+            RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:test-rp",
+            Metadata={"key": "value"},
+            IamRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert "RestoreJobId" in resp
+        assert isinstance(resp["RestoreJobId"], str)
+        assert len(resp["RestoreJobId"]) > 0
+
+    def test_put_restore_validation_result_nonexistent(self, backup):
+        """PutRestoreValidationResult for nonexistent job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.put_restore_validation_result(
+                RestoreJobId="00000000-0000-0000-0000-000000000000",
+                ValidationStatus="SUCCESSFUL",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_recovery_point_lifecycle_nonexistent(self, backup):
+        """UpdateRecoveryPointLifecycle for nonexistent vault raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.update_recovery_point_lifecycle(
+                BackupVaultName="nonexistent-vault-xyz",
+                RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
+                Lifecycle={"DeleteAfterDays": 30},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

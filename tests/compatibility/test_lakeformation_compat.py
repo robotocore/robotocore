@@ -389,6 +389,18 @@ class TestLakeFormationAdditionalOps:
         assert "SecretAccessKey" in resp
         assert "SessionToken" in resp
 
+    def test_get_temporary_glue_partition_credentials(self, client):
+        """GetTemporaryGluePartitionCredentials returns temp credentials."""
+        resp = client.get_temporary_glue_partition_credentials(
+            TableArn="arn:aws:glue:us-east-1:123456789012:table/db/tbl",
+            Partition={"Values": ["2024-01-01"]},
+            SupportedPermissionTypes=["COLUMN_PERMISSION"],
+        )
+        assert "AccessKeyId" in resp
+        assert "SecretAccessKey" in resp
+        assert "SessionToken" in resp
+        assert "Expiration" in resp
+
     def test_list_transactions(self, client):
         """ListTransactions returns a list."""
         resp = client.list_transactions()

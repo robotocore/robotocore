@@ -58,6 +58,24 @@ class TestTextractDocumentTextDetection:
             textract.get_document_text_detection(JobId="00000000-0000-0000-0000-000000000000")
         assert "InvalidJobIdException" in str(exc.value)
 
+    def test_detect_document_text_with_bytes(self, textract):
+        """detect_document_text accepts Document with Bytes input."""
+        resp = textract.detect_document_text(Document={"Bytes": b"%PDF-1.4 fake content"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DocumentMetadata" in resp
+        assert isinstance(resp["Blocks"], list)
+
+    def test_get_document_text_detection_job_status(self, textract):
+        """get_document_text_detection returns SUCCEEDED status for completed job."""
+        start_resp = textract.start_document_text_detection(
+            DocumentLocation={"S3Object": {"Bucket": "test-bucket", "Name": "test.pdf"}}
+        )
+        job_id = start_resp["JobId"]
+
+        resp = textract.get_document_text_detection(JobId=job_id)
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert isinstance(resp["Blocks"], list)
+
 
 class TestTextractDocumentAnalysis:
     """Tests for asynchronous document analysis."""
@@ -109,3 +127,26 @@ class TestTextractDocumentAnalysis:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "JobId" in resp
+
+    def test_start_document_analysis_with_queries(self, textract):
+        """start_document_analysis with QUERIES feature type and config."""
+        resp = textract.start_document_analysis(
+            DocumentLocation={"S3Object": {"Bucket": "test-bucket", "Name": "test.pdf"}},
+            FeatureTypes=["QUERIES"],
+            QueriesConfig={"Queries": [{"Text": "What is the total?"}]},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_get_document_analysis_job_status(self, textract):
+        """get_document_analysis returns SUCCEEDED status for completed job."""
+        start_resp = textract.start_document_analysis(
+            DocumentLocation={"S3Object": {"Bucket": "test-bucket", "Name": "test.pdf"}},
+            FeatureTypes=["TABLES"],
+        )
+        job_id = start_resp["JobId"]
+
+        resp = textract.get_document_analysis(JobId=job_id)
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert isinstance(resp["Blocks"], list)

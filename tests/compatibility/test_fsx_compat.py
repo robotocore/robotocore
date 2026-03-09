@@ -400,3 +400,112 @@ class TestFSxVolumeOps:
             )
         err = exc.value.response["Error"]["Code"]
         assert err in ("ResourceNotFoundException", "BackupNotFound", "BadRequest")
+
+    def test_create_volume_returns_volume(self, fsx):
+        """CreateVolume with ONTAP config returns a Volume."""
+        resp = fsx.create_volume(
+            VolumeType="ONTAP",
+            Name="test-vol",
+            OntapConfiguration={
+                "SizeInMegabytes": 1024,
+                "StorageVirtualMachineId": "svm-0123456789abcdef0",
+                "JunctionPath": "/vol1",
+            },
+        )
+        assert "Volume" in resp
+        assert resp["Volume"]["Name"] == "test-vol"
+
+    def test_delete_volume_nonexistent(self, fsx):
+        """DeleteVolume for nonexistent volume raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.delete_volume(
+                VolumeId="fsvol-0123456789abcdef0",
+                OntapConfiguration={"SkipFinalBackup": True},
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "VolumeNotFound", "BadRequest")
+
+
+class TestFSxDataRepositoryAssociationOps:
+    """Tests for FSx data repository association operations."""
+
+    def test_create_data_repository_association_nonexistent_fs(self, fsx):
+        """CreateDataRepositoryAssociation with nonexistent fs raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.create_data_repository_association(
+                FileSystemId="fs-does-not-exist",
+                FileSystemPath="/data",
+                DataRepositoryPath="s3://my-bucket/prefix",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "FileSystemNotFound", "BadRequest")
+
+    def test_delete_data_repository_association_nonexistent(self, fsx):
+        """DeleteDataRepositoryAssociation with nonexistent ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.delete_data_repository_association(
+                AssociationId="dra-does-not-exist",
+                DeleteDataInFileSystem=False,
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "BadRequest")
+
+    def test_update_data_repository_association_nonexistent(self, fsx):
+        """UpdateDataRepositoryAssociation with nonexistent ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.update_data_repository_association(
+                AssociationId="dra-does-not-exist",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "BadRequest")
+
+
+class TestFSxStorageVirtualMachineOps:
+    """Tests for FSx storage virtual machine operations."""
+
+    def test_create_storage_virtual_machine_nonexistent_fs(self, fsx):
+        """CreateStorageVirtualMachine with nonexistent fs raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.create_storage_virtual_machine(
+                FileSystemId="fs-does-not-exist",
+                Name="test-svm",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "FileSystemNotFound", "BadRequest")
+
+    def test_delete_storage_virtual_machine_nonexistent(self, fsx):
+        """DeleteStorageVirtualMachine with nonexistent ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.delete_storage_virtual_machine(
+                StorageVirtualMachineId="svm-0123456789abcdef0",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in (
+            "ResourceNotFoundException",
+            "StorageVirtualMachineNotFound",
+            "BadRequest",
+        )
+
+
+class TestFSxSnapshotUpdateOps:
+    """Tests for FSx snapshot update operations."""
+
+    def test_update_snapshot_nonexistent(self, fsx):
+        """UpdateSnapshot for nonexistent snapshot raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.update_snapshot(
+                SnapshotId="fsvolsnap-does-not-exist",
+                Name="updated-name",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "SnapshotNotFound", "BadRequest")
+
+    def test_create_snapshot_nonexistent_volume(self, fsx):
+        """CreateSnapshot with nonexistent volume raises error."""
+        with pytest.raises(ClientError) as exc:
+            fsx.create_snapshot(
+                Name="test-snap",
+                VolumeId="fsvol-0123456789abcdef0",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("ResourceNotFoundException", "VolumeNotFound", "BadRequest")

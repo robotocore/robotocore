@@ -35,6 +35,34 @@ class TestDSQLClusterOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestDSQLGetClusterErrors:
+    """Tests for Aurora DSQL get_cluster error handling."""
+
+    def test_get_cluster_not_found(self, dsql):
+        with pytest.raises(dsql.exceptions.ResourceNotFoundException) as exc_info:
+            dsql.get_cluster(identifier="nonexistent-cluster-id-12345")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestDSQLVpcEndpoint:
+    """Tests for Aurora DSQL VPC endpoint operations."""
+
+    def test_get_vpc_endpoint_service_name(self, dsql):
+        create_resp = dsql.create_cluster(deletionProtectionEnabled=False)
+        cluster_id = create_resp["identifier"]
+        try:
+            resp = dsql.get_vpc_endpoint_service_name(identifier=cluster_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "serviceName" in resp
+        finally:
+            dsql.delete_cluster(identifier=cluster_id)
+
+    def test_get_vpc_endpoint_service_name_not_found(self, dsql):
+        with pytest.raises(dsql.exceptions.ResourceNotFoundException) as exc_info:
+            dsql.get_vpc_endpoint_service_name(identifier="nonexistent-cluster-id-12345")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestDSQLTagsForResource:
     """Tests for Aurora DSQL tag operations."""
 
@@ -46,3 +74,10 @@ class TestDSQLTagsForResource:
             assert "tags" in resp
         finally:
             dsql.delete_cluster(identifier=create_resp["identifier"])
+
+    def test_list_tags_for_resource_not_found(self, dsql):
+        with pytest.raises(dsql.exceptions.ResourceNotFoundException) as exc_info:
+            dsql.list_tags_for_resource(
+                resourceArn="arn:aws:dsql:us-east-1:123456789012:cluster/nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"

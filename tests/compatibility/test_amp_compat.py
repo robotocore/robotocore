@@ -4,6 +4,7 @@ import base64
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -122,6 +123,185 @@ class TestAMPOperations:
         amp.delete_workspace(workspaceId=resp1["workspaceId"])
         amp.delete_workspace(workspaceId=resp2["workspaceId"])
 
+    def test_describe_workspace_not_found(self, amp):
+        """DescribeWorkspace with a fake ID returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            amp.describe_workspace(workspaceId="ws-fake-00000000")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_workspace_alias(self, amp):
+        """UpdateWorkspaceAlias changes the alias on an existing workspace."""
+        alias = f"test-ws-upd-{uuid.uuid4().hex[:8]}"
+        resp = amp.create_workspace(alias=alias)
+        ws_id = resp["workspaceId"]
+        try:
+            new_alias = f"test-ws-new-{uuid.uuid4().hex[:8]}"
+            amp.update_workspace_alias(workspaceId=ws_id, alias=new_alias)
+            desc = amp.describe_workspace(workspaceId=ws_id)
+            assert desc["workspace"]["alias"] == new_alias
+        finally:
+            amp.delete_workspace(workspaceId=ws_id)
+
+    def test_list_workspaces_alias_filter(self, amp):
+        """ListWorkspaces with alias filter returns only matching workspaces."""
+        alias = f"test-ws-filt-{uuid.uuid4().hex[:8]}"
+        resp = amp.create_workspace(alias=alias)
+        ws_id = resp["workspaceId"]
+        try:
+            filtered = amp.list_workspaces(alias=alias)
+            assert len(filtered["workspaces"]) >= 1
+            assert all(ws.get("alias") == alias for ws in filtered["workspaces"])
+        finally:
+            amp.delete_workspace(workspaceId=ws_id)
+
+    def test_list_workspaces_max_results(self, amp):
+        """ListWorkspaces with maxResults limits results."""
+        resp = amp.list_workspaces(maxResults=1)
+        assert "workspaces" in resp
+        assert len(resp["workspaces"]) <= 1
+
+    def test_get_default_scraper_configuration(self, amp):
+        """GetDefaultScraperConfiguration returns a configuration blob."""
+        resp = amp.get_default_scraper_configuration()
+        assert "configuration" in resp
+
+    def test_list_scrapers(self, amp):
+        """ListScrapers returns a scrapers list."""
+        resp = amp.list_scrapers()
+        assert "scrapers" in resp
+
+
+class TestAMPScrapers:
+    def test_create_scraper(self, amp, workspace):
+        """CreateScraper returns scraperId, arn, and status."""
+        ws_id, ws_arn = workspace
+        resp = amp.create_scraper(
+            alias="test-scraper",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        assert "scraperId" in resp
+        assert "arn" in resp
+        assert "status" in resp
+        amp.delete_scraper(scraperId=resp["scraperId"])
+
+    def test_describe_scraper(self, amp, workspace):
+        """DescribeScraper returns scraper details after creation."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-desc",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        try:
+            resp = amp.describe_scraper(scraperId=scraper_id)
+            assert "scraper" in resp
+            s = resp["scraper"]
+            assert s["scraperId"] == scraper_id
+            assert "arn" in s
+            assert "status" in s
+            assert s["alias"] == "test-scraper-desc"
+        finally:
+            amp.delete_scraper(scraperId=scraper_id)
+
+    def test_list_scrapers_includes_created(self, amp, workspace):
+        """ListScrapers includes a scraper that was just created."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-list",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        try:
+            resp = amp.list_scrapers()
+            scraper_ids = [s["scraperId"] for s in resp["scrapers"]]
+            assert scraper_id in scraper_ids
+        finally:
+            amp.delete_scraper(scraperId=scraper_id)
+
+    def test_delete_scraper(self, amp, workspace):
+        """DeleteScraper removes the scraper."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-del",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        resp = amp.delete_scraper(scraperId=scraper_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
+    def test_describe_scraper_not_found(self, amp):
+        """DescribeScraper with a fake ID returns 404."""
+        with pytest.raises(ClientError) as exc_info:
+            amp.describe_scraper(scraperId="s-fake-00000000-0000-0000-0000-000000000000")
+        assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+
+
+class TestAMPAlertManagerDefinition:
+    def test_create_alert_manager_definition(self, amp, workspace):
+        """CreateAlertManagerDefinition returns a status."""
+        ws_id, _ = workspace
+        data = base64.b64encode(b"alertmanager_config: test").decode()
+        resp = amp.create_alert_manager_definition(workspaceId=ws_id, data=data)
+        assert "status" in resp
+        assert resp["status"]["statusCode"] in ("CREATING", "ACTIVE")
+
+    def test_describe_alert_manager_definition(self, amp, workspace):
+        """DescribeAlertManagerDefinition returns the definition after creation."""
+        ws_id, _ = workspace
+        data = base64.b64encode(b"alertmanager_config: test").decode()
+        amp.create_alert_manager_definition(workspaceId=ws_id, data=data)
+        resp = amp.describe_alert_manager_definition(workspaceId=ws_id)
+        assert "alertManagerDefinition" in resp
+        amd = resp["alertManagerDefinition"]
+        assert "data" in amd
+        assert "status" in amd
+
+    def test_put_alert_manager_definition(self, amp, workspace):
+        """PutAlertManagerDefinition updates the definition."""
+        ws_id, _ = workspace
+        data = base64.b64encode(b"alertmanager_config: original").decode()
+        amp.create_alert_manager_definition(workspaceId=ws_id, data=data)
+        new_data = base64.b64encode(b"alertmanager_config: updated").decode()
+        resp = amp.put_alert_manager_definition(workspaceId=ws_id, data=new_data)
+        assert "status" in resp
+        assert resp["status"]["statusCode"] in ("UPDATING", "ACTIVE")
+
+    def test_delete_alert_manager_definition(self, amp, workspace):
+        """DeleteAlertManagerDefinition succeeds after creation."""
+        ws_id, _ = workspace
+        data = base64.b64encode(b"alertmanager_config: test").decode()
+        amp.create_alert_manager_definition(workspaceId=ws_id, data=data)
+        resp = amp.delete_alert_manager_definition(workspaceId=ws_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
 
 class TestAMPLoggingConfiguration:
     def test_create_logging_configuration(self, amp, workspace):
@@ -159,6 +339,12 @@ class TestAMPLoggingConfiguration:
         resp = amp.delete_logging_configuration(workspaceId=ws_id)
         # Delete should succeed (2xx response)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
+    def test_describe_logging_configuration_not_found(self, amp):
+        """DescribeLoggingConfiguration with fake workspace returns error."""
+        with pytest.raises(ClientError) as exc_info:
+            amp.describe_logging_configuration(workspaceId="ws-fake-00000000")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestAMPRuleGroupsNamespace:
@@ -218,6 +404,25 @@ class TestAMPRuleGroupsNamespace:
         resp = amp.list_rule_groups_namespaces(workspaceId=ws_id)
         assert "ruleGroupsNamespaces" in resp
 
+    def test_describe_rule_groups_namespace_not_found(self, amp):
+        """DescribeRuleGroupsNamespace with fake workspace returns error."""
+        with pytest.raises(ClientError) as exc_info:
+            amp.describe_rule_groups_namespace(workspaceId="ws-fake-00000000", name="fake")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_rule_groups_namespaces_includes_created(self, amp, workspace):
+        """ListRuleGroupsNamespaces includes a namespace that was just created."""
+        ws_id, _ = workspace
+        name = f"test-rg-lst-{uuid.uuid4().hex[:8]}"
+        data = base64.b64encode(b"groups:\n  - name: test\n    rules: []\n").decode()
+        amp.create_rule_groups_namespace(workspaceId=ws_id, name=name, data=data)
+        try:
+            resp = amp.list_rule_groups_namespaces(workspaceId=ws_id)
+            names = [ns["name"] for ns in resp["ruleGroupsNamespaces"]]
+            assert name in names
+        finally:
+            amp.delete_rule_groups_namespace(workspaceId=ws_id, name=name)
+
 
 class TestAMPTagging:
     def test_tag_resource(self, amp, workspace):
@@ -239,3 +444,22 @@ class TestAMPTagging:
         _, arn = workspace
         resp = amp.list_tags_for_resource(resourceArn=arn)
         assert "tags" in resp
+
+    def test_tag_resource_multiple_tags(self, amp, workspace):
+        """TagResource can add multiple tags at once."""
+        _, arn = workspace
+        tags = {"key1": "val1", "key2": "val2", "key3": "val3"}
+        amp.tag_resource(resourceArn=arn, tags=tags)
+        resp = amp.list_tags_for_resource(resourceArn=arn)
+        for k, v in tags.items():
+            assert resp["tags"].get(k) == v
+
+    def test_untag_resource_multiple_keys(self, amp, workspace):
+        """UntagResource can remove multiple tags at once."""
+        _, arn = workspace
+        amp.tag_resource(resourceArn=arn, tags={"a": "1", "b": "2", "c": "3"})
+        amp.untag_resource(resourceArn=arn, tagKeys=["a", "b"])
+        resp = amp.list_tags_for_resource(resourceArn=arn)
+        assert "a" not in resp.get("tags", {})
+        assert "b" not in resp.get("tags", {})
+        assert resp.get("tags", {}).get("c") == "3"

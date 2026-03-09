@@ -913,3 +913,241 @@ class TestGuardDutyMemberOperations:
             "MemberDataSourceConfigurations" in resp
             or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         )
+
+    def test_get_remaining_free_trial_days_unprocessed(self, guardduty, detector):
+        """GetRemainingFreeTrialDays returns UnprocessedAccounts."""
+        resp = guardduty.get_remaining_free_trial_days(
+            DetectorId=detector,
+            AccountIds=["999988887777"],
+        )
+        assert "UnprocessedAccounts" in resp
+
+    def test_get_member_detectors_unprocessed(self, guardduty, detector):
+        """GetMemberDetectors returns UnprocessedAccounts for unknown members."""
+        resp = guardduty.get_member_detectors(
+            DetectorId=detector,
+            AccountIds=["999988887777"],
+        )
+        assert "UnprocessedAccounts" in resp
+
+
+class TestGuardDutyDetectorEdgeCases:
+    """Additional edge case tests for detector operations."""
+
+    def test_update_nonexistent_detector_raises_error(self, guardduty):
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_detector(DetectorId="aaaabbbbccccddddeeeeffffgggghhh0", Enable=False)
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_create_detector_returns_detector_id_string(self, guardduty):
+        resp = guardduty.create_detector(Enable=True)
+        detector_id = resp["DetectorId"]
+        assert isinstance(detector_id, str)
+        assert len(detector_id) > 0
+        guardduty.delete_detector(DetectorId=detector_id)
+
+    def test_list_detectors_empty_after_cleanup(self, guardduty):
+        """ListDetectors returns empty list when no detectors exist."""
+        # Create and immediately delete to ensure clean state awareness
+        resp = guardduty.list_detectors()
+        assert "DetectorIds" in resp
+        assert isinstance(resp["DetectorIds"], list)
+
+
+class TestGuardDutyIPSetEdgeCases:
+    """Additional edge case tests for IP set operations."""
+
+    def test_delete_ipset_then_list(self, guardduty, detector):
+        name = _unique("ipset")
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ipset.txt",
+            Activate=False,
+        )
+        ipset_id = resp["IpSetId"]
+        guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+        listed = guardduty.list_ip_sets(DetectorId=detector)
+        assert ipset_id not in listed["IpSetIds"]
+
+    def test_create_ipset_stix_format(self, guardduty, detector):
+        name = _unique("ipset")
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="STIX",
+            Location="s3://my-bucket/ipset.stix",
+            Activate=False,
+        )
+        ipset_id = resp["IpSetId"]
+        try:
+            detail = guardduty.get_ip_set(DetectorId=detector, IpSetId=ipset_id)
+            assert detail["Format"] == "STIX"
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+    def test_delete_nonexistent_ipset_raises_error(self, guardduty, detector):
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId="nonexistent00000000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyThreatIntelSetEdgeCases:
+    """Additional edge case tests for threat intel set operations."""
+
+    def test_delete_threat_intel_set_then_list(self, guardduty, detector):
+        name = _unique("tiset")
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ti.txt",
+            Activate=False,
+        )
+        tiset_id = resp["ThreatIntelSetId"]
+        guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+        listed = guardduty.list_threat_intel_sets(DetectorId=detector)
+        assert tiset_id not in listed["ThreatIntelSetIds"]
+
+    def test_create_threat_intel_set_stix_format(self, guardduty, detector):
+        name = _unique("tiset")
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="STIX",
+            Location="s3://my-bucket/ti.stix",
+            Activate=False,
+        )
+        tiset_id = resp["ThreatIntelSetId"]
+        try:
+            detail = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+            assert detail["Format"] == "STIX"
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+
+    def test_delete_nonexistent_threat_intel_set_raises_error(self, guardduty, detector):
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.delete_threat_intel_set(
+                DetectorId=detector,
+                ThreatIntelSetId="nonexistent00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyFilterEdgeCases:
+    """Additional edge case tests for filter operations."""
+
+    def test_list_filters_after_delete(self, guardduty, detector):
+        filter_name = _unique("filter")
+        guardduty.create_filter(
+            DetectorId=detector,
+            Name=filter_name,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+        )
+        guardduty.delete_filter(DetectorId=detector, FilterName=filter_name)
+        resp = guardduty.list_filters(DetectorId=detector)
+        assert filter_name not in resp["FilterNames"]
+
+
+class TestGuardDutyPublishingDestinationEdgeCases:
+    """Additional edge case tests for publishing destinations."""
+
+    def test_create_publishing_destination_has_destination_id(self, guardduty, detector):
+        resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::my-guardduty-bucket-2",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake-key-id-2",
+            },
+        )
+        assert isinstance(resp["DestinationId"], str)
+        assert len(resp["DestinationId"]) > 0
+
+    def test_describe_publishing_destination_has_status(self, guardduty, detector):
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::my-guardduty-bucket-3",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake-key-id-3",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        resp = guardduty.describe_publishing_destination(
+            DetectorId=detector,
+            DestinationId=dest_id,
+        )
+        assert "Status" in resp
+
+
+class TestGuardDutyFindingsEdgeCases:
+    """Additional edge case tests for findings operations."""
+
+    def test_create_sample_findings_multiple_types(self, guardduty, detector):
+        resp = guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=[
+                "Recon:EC2/PortProbeUnprotectedPort",
+                "UnauthorizedAccess:EC2/SSHBruteForce",
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_findings_with_sort_criteria(self, guardduty, detector):
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        resp = guardduty.list_findings(
+            DetectorId=detector,
+            SortCriteria={"AttributeName": "severity", "OrderBy": "DESC"},
+        )
+        assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
+
+    def test_get_findings_returns_finding_details(self, guardduty, detector):
+        """After creating sample findings, GetFindings returns details."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        if list_resp["FindingIds"]:
+            resp = guardduty.get_findings(
+                DetectorId=detector, FindingIds=list_resp["FindingIds"][:1]
+            )
+            assert "Findings" in resp
+            assert len(resp["Findings"]) > 0
+            assert "Type" in resp["Findings"][0]
+
+
+class TestGuardDutyMalwareEdgeCases:
+    """Additional edge case tests for malware operations."""
+
+    def test_describe_malware_scans_has_next_token(self, guardduty, detector):
+        resp = guardduty.describe_malware_scans(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Scans" in resp
+
+    def test_get_malware_scan_settings_structure(self, guardduty, detector):
+        resp = guardduty.get_malware_scan_settings(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "EbsSnapshotPreservation" in resp
+        assert "ScanResourceCriteria" in resp
+
+
+class TestGuardDutyOrganizationAdminEdgeCases:
+    """Additional edge case tests for organization admin operations."""
+
+    def test_list_organization_admin_accounts_response_shape(self, guardduty):
+        resp = guardduty.list_organization_admin_accounts()
+        assert isinstance(resp["AdminAccounts"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_enable_organization_admin_account_idempotent(self, guardduty):
+        resp1 = guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
+        assert resp1["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp2 = guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200

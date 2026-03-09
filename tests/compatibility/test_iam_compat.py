@@ -2875,3 +2875,615 @@ class TestIAMUpdateRoleMaxSession:
             assert get_resp["Role"]["MaxSessionDuration"] == 7200
         finally:
             iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Dedicated tests for operations previously only used as helpers
+# ---------------------------------------------------------------------------
+
+
+class TestIAMAddRoleToInstanceProfile:
+    def test_add_role_to_instance_profile(self, iam):
+        """AddRoleToInstanceProfile adds a role and it appears in the profile."""
+        profile_name = _unique("arip-prof")
+        role_name = _unique("arip-role")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            resp = iam.add_role_to_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            profile = iam.get_instance_profile(InstanceProfileName=profile_name)
+            role_names = [r["RoleName"] for r in profile["InstanceProfile"]["Roles"]]
+            assert role_name in role_names
+        finally:
+            iam.remove_role_from_instance_profile(
+                InstanceProfileName=profile_name, RoleName=role_name
+            )
+            iam.delete_instance_profile(InstanceProfileName=profile_name)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMAttachUserPolicy:
+    def test_attach_user_policy(self, iam):
+        """AttachUserPolicy attaches a managed policy to a user."""
+        user_name = _unique("aup-user")
+        policy_name = _unique("aup-pol")
+        iam.create_user(UserName=user_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.attach_user_policy(UserName=user_name, PolicyArn=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            attached = iam.list_attached_user_policies(UserName=user_name)
+            arns = [p["PolicyArn"] for p in attached["AttachedPolicies"]]
+            assert arn in arns
+        finally:
+            iam.detach_user_policy(UserName=user_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMCreateAccountAlias:
+    def test_create_account_alias(self, iam):
+        """CreateAccountAlias creates an alias visible in ListAccountAliases."""
+        alias = _unique("acct-alias")
+        try:
+            resp = iam.create_account_alias(AccountAlias=alias)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            listed = iam.list_account_aliases()
+            assert alias in listed["AccountAliases"]
+        finally:
+            iam.delete_account_alias(AccountAlias=alias)
+
+
+class TestIAMDeleteAccountAlias:
+    def test_delete_account_alias(self, iam):
+        """DeleteAccountAlias removes the alias."""
+        alias = _unique("del-alias")
+        iam.create_account_alias(AccountAlias=alias)
+        resp = iam.delete_account_alias(AccountAlias=alias)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        listed = iam.list_account_aliases()
+        assert alias not in listed["AccountAliases"]
+
+
+class TestIAMCreateLoginProfile:
+    def test_create_login_profile(self, iam):
+        """CreateLoginProfile creates a password for a user."""
+        user_name = _unique("clp-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.create_login_profile(
+                UserName=user_name, Password="Test@12345678", PasswordResetRequired=False
+            )
+            assert resp["LoginProfile"]["UserName"] == user_name
+            assert "CreateDate" in resp["LoginProfile"]
+        finally:
+            iam.delete_login_profile(UserName=user_name)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMCreateOpenIDConnectProvider:
+    def test_create_open_id_connect_provider(self, iam):
+        """CreateOpenIDConnectProvider creates an OIDC provider."""
+        url = f"https://{_unique('oidc')}.example.com"
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=["a" * 40],
+            ClientIDList=["test-client"],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            assert "arn:aws:iam:" in arn
+            provider = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "test-client" in provider["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+class TestIAMCreateSAMLProvider:
+    def test_create_saml_provider(self, iam):
+        """CreateSAMLProvider creates a SAML provider."""
+        name = _unique("saml-prov")
+        saml_doc = (
+            '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
+            ' entityID="https://test.example.com">'
+            "<IDPSSODescriptor"
+            ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+            "<SingleSignOnService"
+            ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
+            ' Location="https://test.example.com/sso"/>'
+            "</IDPSSODescriptor>"
+            "</EntityDescriptor>"
+        )
+        # Pad to meet 1000 char minimum
+        saml_doc = saml_doc + " " * max(0, 1000 - len(saml_doc))
+        resp = iam.create_saml_provider(SAMLMetadataDocument=saml_doc, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            assert "arn:aws:iam:" in arn
+            provider = iam.get_saml_provider(SAMLProviderArn=arn)
+            assert "SAMLMetadataDocument" in provider
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+class TestIAMCreateServiceLinkedRole:
+    def test_create_service_linked_role(self, iam):
+        """CreateServiceLinkedRole creates a service-linked role."""
+        resp = iam.create_service_linked_role(AWSServiceName="elasticbeanstalk.amazonaws.com")
+        role = resp["Role"]
+        assert "AWSServiceRoleForElasticBeanstalk" in role["RoleName"]
+        assert role["Path"] == "/aws-service-role/elasticbeanstalk.amazonaws.com/"
+        iam.delete_service_linked_role(RoleName=role["RoleName"])
+
+
+class TestIAMCreateVirtualMFADevice:
+    def test_create_virtual_mfa_device(self, iam):
+        """CreateVirtualMFADevice creates a virtual MFA device."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        device = resp["VirtualMFADevice"]
+        serial = device["SerialNumber"]
+        try:
+            assert name in serial
+            assert "Base32StringSeed" in device or "QRCodePNG" in device
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+
+class TestIAMDeleteGroupPolicy:
+    def test_delete_group_policy(self, iam):
+        """DeleteGroupPolicy removes an inline policy from a group."""
+        group_name = _unique("dgp-grp")
+        policy_name = _unique("dgp-pol")
+        iam.create_group(GroupName=group_name)
+        try:
+            iam.put_group_policy(
+                GroupName=group_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            resp = iam.delete_group_policy(GroupName=group_name, PolicyName=policy_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            listed = iam.list_group_policies(GroupName=group_name)
+            assert policy_name not in listed["PolicyNames"]
+        finally:
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMDeleteInstanceProfile:
+    def test_delete_instance_profile(self, iam):
+        """DeleteInstanceProfile removes an instance profile."""
+        profile_name = _unique("dip-prof")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        resp = iam.delete_instance_profile(InstanceProfileName=profile_name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        listed = iam.list_instance_profiles()
+        names = [p["InstanceProfileName"] for p in listed["InstanceProfiles"]]
+        assert profile_name not in names
+
+
+class TestIAMDeleteOpenIDConnectProvider:
+    def test_delete_open_id_connect_provider(self, iam):
+        """DeleteOpenIDConnectProvider removes an OIDC provider."""
+        url = f"https://{_unique('doidc')}.example.com"
+        create_resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["b" * 40])
+        arn = create_resp["OpenIDConnectProviderArn"]
+        resp = iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        listed = iam.list_open_id_connect_providers()
+        arns = [p["Arn"] for p in listed["OpenIDConnectProviderList"]]
+        assert arn not in arns
+
+
+class TestIAMDetachGroupPolicy:
+    def test_detach_group_policy(self, iam):
+        """DetachGroupPolicy detaches a managed policy from a group."""
+        group_name = _unique("dgp2-grp")
+        policy_name = _unique("dgp2-pol")
+        iam.create_group(GroupName=group_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_group_policy(GroupName=group_name, PolicyArn=arn)
+            resp = iam.detach_group_policy(GroupName=group_name, PolicyArn=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            attached = iam.list_attached_group_policies(GroupName=group_name)
+            arns = [p["PolicyArn"] for p in attached["AttachedPolicies"]]
+            assert arn not in arns
+        finally:
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMEnableMFADevice:
+    def test_enable_mfa_device(self, iam):
+        """EnableMFADevice associates a virtual MFA device with a user."""
+        user_name = _unique("emfa-user")
+        mfa_name = _unique("emfa-dev")
+        iam.create_user(UserName=user_name)
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            resp = iam.enable_mfa_device(
+                UserName=user_name,
+                SerialNumber=serial,
+                AuthenticationCode1="123456",
+                AuthenticationCode2="789012",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            devices = iam.list_mfa_devices(UserName=user_name)
+            serials = [d["SerialNumber"] for d in devices["MFADevices"]]
+            assert serial in serials
+        finally:
+            iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMGetAccountPasswordPolicy:
+    def test_get_account_password_policy(self, iam):
+        """GetAccountPasswordPolicy returns the password policy after it's set."""
+        iam.update_account_password_policy(
+            MinimumPasswordLength=12, RequireUppercaseCharacters=True
+        )
+        try:
+            resp = iam.get_account_password_policy()
+            policy = resp["PasswordPolicy"]
+            assert policy["MinimumPasswordLength"] == 12
+            assert policy["RequireUppercaseCharacters"] is True
+        finally:
+            iam.delete_account_password_policy()
+
+
+class TestIAMGetGroupPolicy:
+    def test_get_group_policy(self, iam):
+        """GetGroupPolicy returns the inline policy document for a group."""
+        group_name = _unique("ggp-grp")
+        policy_name = _unique("ggp-pol")
+        iam.create_group(GroupName=group_name)
+        try:
+            iam.put_group_policy(
+                GroupName=group_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            resp = iam.get_group_policy(GroupName=group_name, PolicyName=policy_name)
+            assert resp["GroupName"] == group_name
+            assert resp["PolicyName"] == policy_name
+            assert "PolicyDocument" in resp
+        finally:
+            iam.delete_group_policy(GroupName=group_name, PolicyName=policy_name)
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMGetLoginProfile:
+    def test_get_login_profile(self, iam):
+        """GetLoginProfile returns the login profile for a user."""
+        user_name = _unique("glp-user")
+        iam.create_user(UserName=user_name)
+        iam.create_login_profile(
+            UserName=user_name, Password="Test@12345678", PasswordResetRequired=False
+        )
+        try:
+            resp = iam.get_login_profile(UserName=user_name)
+            assert resp["LoginProfile"]["UserName"] == user_name
+            assert "CreateDate" in resp["LoginProfile"]
+        finally:
+            iam.delete_login_profile(UserName=user_name)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMGetOpenIDConnectProvider:
+    def test_get_open_id_connect_provider(self, iam):
+        """GetOpenIDConnectProvider returns OIDC provider details."""
+        url = f"https://{_unique('goidc')}.example.com"
+        create_resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=["c" * 40],
+            ClientIDList=["client-1", "client-2"],
+        )
+        arn = create_resp["OpenIDConnectProviderArn"]
+        try:
+            resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "c" * 40 in resp["ThumbprintList"]
+            assert len(resp["ClientIDList"]) == 2
+            assert "CreateDate" in resp
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+class TestIAMGetRole:
+    def test_get_role(self, iam):
+        """GetRole returns role details including trust policy."""
+        role_name = _unique("gr-role")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+            Description="test role for get_role",
+        )
+        try:
+            resp = iam.get_role(RoleName=role_name)
+            assert resp["Role"]["RoleName"] == role_name
+            assert resp["Role"]["Description"] == "test role for get_role"
+            assert "AssumeRolePolicyDocument" in resp["Role"]
+            assert "Arn" in resp["Role"]
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMGetSAMLProvider:
+    def test_get_saml_provider(self, iam):
+        """GetSAMLProvider returns SAML provider metadata."""
+        name = _unique("gsaml")
+        saml_doc = (
+            '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
+            ' entityID="https://getsaml.example.com">'
+            "<IDPSSODescriptor"
+            ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+            "<SingleSignOnService"
+            ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
+            ' Location="https://getsaml.example.com/sso"/>'
+            "</IDPSSODescriptor>"
+            "</EntityDescriptor>"
+        )
+        saml_doc = saml_doc + " " * max(0, 1000 - len(saml_doc))
+        resp = iam.create_saml_provider(SAMLMetadataDocument=saml_doc, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            provider = iam.get_saml_provider(SAMLProviderArn=arn)
+            assert "SAMLMetadataDocument" in provider
+            assert "CreateDate" in provider
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+class TestIAMGetServerCertificate:
+    def test_get_server_certificate(self, iam):
+        """GetServerCertificate returns certificate details."""
+        cert_name = _unique("gsc-cert")
+        # Upload a cert first
+        iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            get_resp = iam.get_server_certificate(ServerCertificateName=cert_name)
+            cert = get_resp["ServerCertificate"]
+            assert cert["ServerCertificateMetadata"]["ServerCertificateName"] == cert_name
+            assert "CertificateBody" in cert
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=cert_name)
+
+
+class TestIAMGetServiceLinkedRoleDeletionStatus:
+    def test_get_service_linked_role_deletion_status(self, iam):
+        """GetServiceLinkedRoleDeletionStatus returns status for a deletion task."""
+        role_resp = iam.create_service_linked_role(AWSServiceName="autoscaling.amazonaws.com")
+        role_name = role_resp["Role"]["RoleName"]
+        del_resp = iam.delete_service_linked_role(RoleName=role_name)
+        task_id = del_resp["DeletionTaskId"]
+        status_resp = iam.get_service_linked_role_deletion_status(DeletionTaskId=task_id)
+        assert status_resp["Status"] in ("SUCCEEDED", "IN_PROGRESS", "NOT_STARTED", "FAILED")
+
+
+class TestIAMGetUserPolicy:
+    def test_get_user_policy(self, iam):
+        """GetUserPolicy returns the inline policy document for a user."""
+        user_name = _unique("gup-user")
+        policy_name = _unique("gup-pol")
+        iam.create_user(UserName=user_name)
+        try:
+            iam.put_user_policy(
+                UserName=user_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            resp = iam.get_user_policy(UserName=user_name, PolicyName=policy_name)
+            assert resp["UserName"] == user_name
+            assert resp["PolicyName"] == policy_name
+            assert "PolicyDocument" in resp
+        finally:
+            iam.delete_user_policy(UserName=user_name, PolicyName=policy_name)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMListAttachedGroupPolicies:
+    def test_list_attached_group_policies(self, iam):
+        """ListAttachedGroupPolicies returns attached managed policies."""
+        group_name = _unique("lagp-grp")
+        policy_name = _unique("lagp-pol")
+        iam.create_group(GroupName=group_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_group_policy(GroupName=group_name, PolicyArn=arn)
+            resp = iam.list_attached_group_policies(GroupName=group_name)
+            assert "AttachedPolicies" in resp
+            names = [p["PolicyName"] for p in resp["AttachedPolicies"]]
+            assert policy_name in names
+        finally:
+            iam.detach_group_policy(GroupName=group_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMListAttachedUserPolicies:
+    def test_list_attached_user_policies(self, iam):
+        """ListAttachedUserPolicies returns attached managed policies."""
+        user_name = _unique("laup-user")
+        policy_name = _unique("laup-pol")
+        iam.create_user(UserName=user_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_user_policy(UserName=user_name, PolicyArn=arn)
+            resp = iam.list_attached_user_policies(UserName=user_name)
+            assert "AttachedPolicies" in resp
+            names = [p["PolicyName"] for p in resp["AttachedPolicies"]]
+            assert policy_name in names
+        finally:
+            iam.detach_user_policy(UserName=user_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMListGroupPolicies:
+    def test_list_group_policies(self, iam):
+        """ListGroupPolicies returns inline policy names for a group."""
+        group_name = _unique("lgp-grp")
+        policy_name = _unique("lgp-pol")
+        iam.create_group(GroupName=group_name)
+        try:
+            iam.put_group_policy(
+                GroupName=group_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            resp = iam.list_group_policies(GroupName=group_name)
+            assert "PolicyNames" in resp
+            assert policy_name in resp["PolicyNames"]
+        finally:
+            iam.delete_group_policy(GroupName=group_name, PolicyName=policy_name)
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMListServerCertificates:
+    def test_list_server_certificates(self, iam):
+        """ListServerCertificates returns uploaded certificates."""
+        cert_name = _unique("lsc-cert")
+        iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            resp = iam.list_server_certificates()
+            assert "ServerCertificateMetadataList" in resp
+            names = [c["ServerCertificateName"] for c in resp["ServerCertificateMetadataList"]]
+            assert cert_name in names
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=cert_name)
+
+
+class TestIAMPutGroupPolicy:
+    def test_put_group_policy(self, iam):
+        """PutGroupPolicy creates an inline policy on a group."""
+        group_name = _unique("pgp-grp")
+        policy_name = _unique("pgp-pol")
+        iam.create_group(GroupName=group_name)
+        try:
+            resp = iam.put_group_policy(
+                GroupName=group_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            listed = iam.list_group_policies(GroupName=group_name)
+            assert policy_name in listed["PolicyNames"]
+        finally:
+            iam.delete_group_policy(GroupName=group_name, PolicyName=policy_name)
+            iam.delete_group(GroupName=group_name)
+
+
+class TestIAMPutRolePermissionsBoundary:
+    def test_put_role_permissions_boundary(self, iam):
+        """PutRolePermissionsBoundary sets a permissions boundary on a role."""
+        role_name = _unique("prpb-role")
+        policy_name = _unique("prpb-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.put_role_permissions_boundary(RoleName=role_name, PermissionsBoundary=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            role = iam.get_role(RoleName=role_name)
+            assert role["Role"]["PermissionsBoundary"]["PermissionsBoundaryArn"] == arn
+        finally:
+            iam.delete_role_permissions_boundary(RoleName=role_name)
+            iam.delete_role(RoleName=role_name)
+            iam.delete_policy(PolicyArn=arn)
+
+
+class TestIAMPutRolePolicy:
+    def test_put_role_policy(self, iam):
+        """PutRolePolicy creates an inline policy on a role."""
+        role_name = _unique("prp-role")
+        policy_name = _unique("prp-pol")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        try:
+            resp = iam.put_role_policy(
+                RoleName=role_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            listed = iam.list_role_policies(RoleName=role_name)
+            assert policy_name in listed["PolicyNames"]
+        finally:
+            iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+            iam.delete_role(RoleName=role_name)
+
+
+class TestIAMPutUserPermissionsBoundary:
+    def test_put_user_permissions_boundary(self, iam):
+        """PutUserPermissionsBoundary sets a permissions boundary on a user."""
+        user_name = _unique("pupb-user")
+        policy_name = _unique("pupb-pol")
+        iam.create_user(UserName=user_name)
+        pol = iam.create_policy(PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC)
+        arn = pol["Policy"]["Arn"]
+        try:
+            resp = iam.put_user_permissions_boundary(UserName=user_name, PermissionsBoundary=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            user = iam.get_user(UserName=user_name)
+            assert user["User"]["PermissionsBoundary"]["PermissionsBoundaryArn"] == arn
+        finally:
+            iam.delete_user_permissions_boundary(UserName=user_name)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMPutUserPolicy:
+    def test_put_user_policy(self, iam):
+        """PutUserPolicy creates an inline policy on a user."""
+        user_name = _unique("pup-user")
+        policy_name = _unique("pup-pol")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.put_user_policy(
+                UserName=user_name, PolicyName=policy_name, PolicyDocument=SIMPLE_POLICY_DOC
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            listed = iam.list_user_policies(UserName=user_name)
+            assert policy_name in listed["PolicyNames"]
+        finally:
+            iam.delete_user_policy(UserName=user_name, PolicyName=policy_name)
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMUpdateAccountPasswordPolicy:
+    def test_update_account_password_policy(self, iam):
+        """UpdateAccountPasswordPolicy updates the account password policy."""
+        try:
+            resp = iam.update_account_password_policy(
+                MinimumPasswordLength=14,
+                RequireSymbols=True,
+                RequireNumbers=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            policy = iam.get_account_password_policy()
+            assert policy["PasswordPolicy"]["MinimumPasswordLength"] == 14
+            assert policy["PasswordPolicy"]["RequireSymbols"] is True
+        finally:
+            iam.delete_account_password_policy()
+
+
+class TestIAMUploadServerCertificate:
+    def test_upload_server_certificate(self, iam):
+        """UploadServerCertificate uploads a certificate."""
+        cert_name = _unique("usc-cert")
+        resp = iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            meta = resp["ServerCertificateMetadata"]
+            assert meta["ServerCertificateName"] == cert_name
+            assert "Arn" in meta
+            assert "ServerCertificateId" in meta
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=cert_name)

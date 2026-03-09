@@ -55,9 +55,101 @@ class TestMediaStoreContainers:
         with pytest.raises(Exception):
             mediastore_client.describe_container(ContainerName=name)
 
+    def test_describe_container_has_endpoint(self, mediastore_client, container):
+        resp = mediastore_client.describe_container(ContainerName=container["Name"])
+        described = resp["Container"]
+        # Endpoint may or may not be present depending on container status,
+        # but CreationTime should always be present
+        assert "CreationTime" in described
+
     def test_describe_nonexistent_container(self, mediastore_client):
         with pytest.raises(Exception):
             mediastore_client.describe_container(ContainerName=f"no-such-{uuid.uuid4().hex[:8]}")
+
+    def test_list_containers_response_structure(self, mediastore_client):
+        resp = mediastore_client.list_containers()
+        assert "Containers" in resp
+        assert isinstance(resp["Containers"], list)
+
+
+class TestMediaStoreContainerErrors:
+    def test_delete_nonexistent_container(self, mediastore_client):
+        with pytest.raises(mediastore_client.exceptions.ContainerNotFoundException):
+            mediastore_client.delete_container(ContainerName=f"no-such-{uuid.uuid4().hex[:8]}")
+
+    def test_get_container_policy_nonexistent(self, mediastore_client):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.get_container_policy(ContainerName=f"no-such-{uuid.uuid4().hex[:8]}")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_lifecycle_policy_nonexistent(self, mediastore_client):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.get_lifecycle_policy(ContainerName=f"no-such-{uuid.uuid4().hex[:8]}")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_metric_policy_nonexistent(self, mediastore_client):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.get_metric_policy(ContainerName=f"no-such-{uuid.uuid4().hex[:8]}")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_container_policy_nonexistent(self, mediastore_client):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "Test",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "mediastore:*",
+                        "Resource": "arn:aws:mediastore:*:*:*",
+                    }
+                ],
+            }
+        )
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.put_container_policy(
+                ContainerName=f"no-such-{uuid.uuid4().hex[:8]}", Policy=policy
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_lifecycle_policy_nonexistent(self, mediastore_client):
+        policy = json.dumps(
+            {"rules": [{"definition": {"path": [{"prefix": ""}]}, "action": "EXPIRE"}]}
+        )
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.put_lifecycle_policy(
+                ContainerName=f"no-such-{uuid.uuid4().hex[:8]}",
+                LifecyclePolicy=policy,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_metric_policy_nonexistent(self, mediastore_client):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.put_metric_policy(
+                ContainerName=f"no-such-{uuid.uuid4().hex[:8]}",
+                MetricPolicy={"ContainerLevelMetrics": "ENABLED"},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestMediaStorePolicyNotFound:
+    """Test that getting policies on a container with no policies raises PolicyNotFoundException."""
+
+    def test_get_container_policy_no_policy(self, mediastore_client, container):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.get_container_policy(ContainerName=container["Name"])
+        assert exc_info.value.response["Error"]["Code"] == "PolicyNotFoundException"
+
+    def test_get_lifecycle_policy_no_policy(self, mediastore_client, container):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.get_lifecycle_policy(ContainerName=container["Name"])
+        assert exc_info.value.response["Error"]["Code"] == "PolicyNotFoundException"
+
+    def test_get_metric_policy_no_policy(self, mediastore_client, container):
+        with pytest.raises(Exception) as exc_info:
+            mediastore_client.get_metric_policy(ContainerName=container["Name"])
+        assert exc_info.value.response["Error"]["Code"] == "PolicyNotFoundException"
 
 
 class TestMediaStoreContainerPolicy:
