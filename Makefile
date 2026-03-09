@@ -2,7 +2,8 @@
         docker-build docker-run docker-compare parity-report gap-analysis clean \
         start stop status smoke help test-quality validate-tests lint-project \
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
-        test-iac-pulumi test-iac-serverless test-iac-sam release
+        test-iac-pulumi test-iac-serverless test-iac-sam release \
+        coverage pre-commit-install pre-commit
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
@@ -14,6 +15,9 @@ test: unit-test ## Run unit tests (default)
 
 unit-test: ## Run unit tests in parallel (no server needed)
 	uv run pytest tests/unit/ -n$(N) -q --tb=short
+
+coverage: ## Run unit tests with coverage report
+	uv run pytest tests/unit/ -n$(N) -q --tb=short --cov=src/robotocore --cov-report=term-missing --cov-report=html:htmlcov
 
 compat-test: ## Run compatibility tests (auto-starts/stops server)
 	$(DEV) test-compat
@@ -82,6 +86,12 @@ validate-tests: ## Runtime check: verify tests actually contact server (requires
 
 lint-project: ## Structural lint: registry sync, test quality, protocol drift (no server needed)
 	uv run python scripts/lint_project.py --fail
+
+pre-commit-install: ## Install pre-commit hooks into local git repo
+	uv run pre-commit install
+
+pre-commit: ## Run pre-commit checks on all files
+	uv run pre-commit run --all-files
 
 ## ── Gap analysis ─────────────────────────────────────────────────────────────
 
