@@ -1806,3 +1806,151 @@ class TestMediaLiveUpdateTemplateGroups:
             assert upd["Description"] == "Updated description"
         finally:
             medialive.delete_event_bridge_rule_template_group(Identifier=grp_id)
+
+
+class TestMediaLiveChannelPlacementGroups:
+    """Tests for channel placement group operations."""
+
+    def test_list_channel_placement_groups(self, medialive):
+        try:
+            resp = medialive.list_channel_placement_groups(ClusterId=_uid("cluster"))
+            assert "ChannelPlacementGroups" in resp
+        except ClientError as e:
+            assert e.response["Error"]["Code"] == "NotFoundException"
+
+    def test_describe_channel_placement_group_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_channel_placement_group(
+                ClusterId=_uid("cluster"),
+                ChannelPlacementGroupId=_uid("cpg"),
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_channel_placement_group_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.delete_channel_placement_group(
+                ClusterId=_uid("cluster"),
+                ChannelPlacementGroupId=_uid("cpg"),
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_create_channel_placement_group_no_cluster(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.create_channel_placement_group(
+                ClusterId=_uid("cluster"),
+                Name=_uid("cpg"),
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_channel_placement_group_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.update_channel_placement_group(
+                ClusterId=_uid("cluster"),
+                ChannelPlacementGroupId=_uid("cpg"),
+                Name=_uid("cpg-upd"),
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveSdiSources:
+    """Tests for SDI source operations."""
+
+    def test_list_sdi_sources(self, medialive):
+        resp = medialive.list_sdi_sources()
+        assert "SdiSources" in resp
+        assert isinstance(resp["SdiSources"], list)
+
+    def test_describe_sdi_source_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_sdi_source(SdiSourceId=_uid("sdi"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_sdi_source_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.delete_sdi_source(SdiSourceId=_uid("sdi"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_create_sdi_source(self, medialive):
+        resp = medialive.create_sdi_source(
+            Name=_uid("sdi"),
+            Type="SINGLE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_sdi_source_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.update_sdi_source(SdiSourceId=_uid("sdi"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveNodeAndClusterOps:
+    """Tests for node registration, cluster alerts, and node state."""
+
+    def test_create_node_registration_script(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.create_node_registration_script(
+                ClusterId=_uid("cluster"),
+                Id=_uid("node"),
+                Name=_uid("node"),
+                Role="BACKUP",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_list_cluster_alerts(self, medialive):
+        try:
+            resp = medialive.list_cluster_alerts(ClusterId=_uid("cluster"))
+            assert "Alerts" in resp
+        except ClientError as e:
+            assert e.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_node_state_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.update_node_state(
+                ClusterId=_uid("cluster"),
+                NodeId=_uid("node"),
+                State="ACTIVE",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveInputDeviceOps:
+    """Tests for input device operations."""
+
+    def test_describe_input_device_thumbnail_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_input_device_thumbnail(
+                InputDeviceId=_uid("device"),
+                Accept="image/jpeg",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_reboot_input_device_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.reboot_input_device(InputDeviceId=_uid("device"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_start_input_device_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.start_input_device(InputDeviceId=_uid("device"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_start_input_device_maintenance_window_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.start_input_device_maintenance_window(
+                InputDeviceId=_uid("device"),
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_stop_input_device_not_found(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.stop_input_device(InputDeviceId=_uid("device"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveMultiplexAlerts:
+    """Tests for multiplex alert operations."""
+
+    def test_list_multiplex_alerts(self, medialive):
+        with pytest.raises(ClientError) as exc:
+            medialive.list_multiplex_alerts(MultiplexId=_uid("mpx"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
