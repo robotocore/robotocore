@@ -1121,3 +1121,37 @@ class TestCognitoAuthFlows:
             Password="NewTest@12345678",
         )
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGetUserPoolMfaConfig:
+    def test_get_user_pool_mfa_config_round_trip(self):
+        client = make_client("cognito-idp")
+        suffix = uuid.uuid4().hex[:8]
+        pool_name = f"mfa-pool-{suffix}"
+
+        pool_resp = client.create_user_pool(PoolName=pool_name)
+        pool_id = pool_resp["UserPool"]["Id"]
+
+        client.set_user_pool_mfa_config(
+            UserPoolId=pool_id,
+            MfaConfiguration="ON",
+            SoftwareTokenMfaConfiguration={"Enabled": True},
+        )
+
+        get_resp = client.get_user_pool_mfa_config(UserPoolId=pool_id)
+        assert get_resp["MfaConfiguration"] == "ON"
+        assert get_resp["SoftwareTokenMfaConfiguration"]["Enabled"] is True
+
+        client.delete_user_pool(UserPoolId=pool_id)
+
+    def test_get_mfa_config_default_off(self):
+        """New user pools have MFA OFF by default."""
+        client = make_client("cognito-idp")
+        suffix = uuid.uuid4().hex[:8]
+        pool_resp = client.create_user_pool(PoolName=f"mfa-off-{suffix}")
+        pool_id = pool_resp["UserPool"]["Id"]
+
+        get_resp = client.get_user_pool_mfa_config(UserPoolId=pool_id)
+        assert get_resp["MfaConfiguration"] == "OFF"
+
+        client.delete_user_pool(UserPoolId=pool_id)
