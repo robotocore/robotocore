@@ -1661,3 +1661,33 @@ class TestLogsDeliveryOperations:
                 client.get_delivery(id=delivery_id)
         finally:
             client.delete_log_group(logGroupName=group_name)
+
+
+class TestLogsAccountPolicies:
+    """Tests for DescribeAccountPolicies."""
+
+    def test_describe_account_policies_data_protection(self):
+        """DescribeAccountPolicies with DATA_PROTECTION_POLICY returns empty list."""
+        client = make_client("logs")
+        resp = client.describe_account_policies(policyType="DATA_PROTECTION_POLICY")
+        assert "accountPolicies" in resp
+        assert isinstance(resp["accountPolicies"], list)
+
+    def test_describe_account_policies_subscription_filter(self):
+        """DescribeAccountPolicies with SUBSCRIPTION_FILTER_POLICY returns empty list."""
+        client = make_client("logs")
+        resp = client.describe_account_policies(policyType="SUBSCRIPTION_FILTER_POLICY")
+        assert "accountPolicies" in resp
+        assert isinstance(resp["accountPolicies"], list)
+
+
+class TestLogsAnomalyDetector:
+    """Tests for GetLogAnomalyDetector."""
+
+    def test_get_log_anomaly_detector_nonexistent(self):
+        """GetLogAnomalyDetector with fake ARN raises ResourceNotFoundException."""
+        client = make_client("logs")
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_log_anomaly_detector(
+                anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:fake-id"
+            )

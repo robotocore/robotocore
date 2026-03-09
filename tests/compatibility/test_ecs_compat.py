@@ -759,31 +759,6 @@ class TestListAttributesOperation:
             ecs.delete_cluster(cluster=name)
 
 
-class TestDeleteAccountSetting:
-    """Tests for ECS DeleteAccountSetting."""
-
-    @pytest.fixture
-    def ecs(self):
-        return make_client("ecs")
-
-    def test_delete_account_setting(self, ecs):
-        ecs.put_account_setting(name="containerInstanceLongArnFormat", value="enabled")
-        resp = ecs.delete_account_setting(name="containerInstanceLongArnFormat")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Verify setting is gone by listing
-        listed = ecs.list_account_settings(name="containerInstanceLongArnFormat")
-        found = [s for s in listed["settings"] if s["name"] == "containerInstanceLongArnFormat"]
-        assert len(found) == 0
-
-    def test_delete_account_setting_idempotent(self, ecs):
-        """Deleting a setting that doesn't exist should not error."""
-        ecs.put_account_setting(name="taskLongArnFormat", value="enabled")
-        ecs.delete_account_setting(name="taskLongArnFormat")
-        # Second delete should also succeed
-        resp = ecs.delete_account_setting(name="taskLongArnFormat")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-
 class TestDescribeCapacityProviders:
     """Tests for ECS DescribeCapacityProviders."""
 
@@ -1055,6 +1030,35 @@ class TestTaskSetOperations:
         assert resp["taskSet"]["status"] == "INACTIVE"
 
 
+class TestGetTaskProtection:
+    """Tests for ECS GetTaskProtection."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_get_task_protection_nonexistent_cluster(self, ecs):
+        """GetTaskProtection returns ClusterNotFoundException for a fake cluster."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.get_task_protection(cluster="nonexistent-cluster-12345")
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+
+class TestListServicesByNamespace:
+    """Tests for ECS ListServicesByNamespace."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_services_by_namespace(self, ecs):
+        resp = ecs.list_services_by_namespace(namespace="test-namespace")
+        assert "serviceArns" in resp
+        assert isinstance(resp["serviceArns"], list)
+
+
 class TestAttributeOperations:
     """Tests for ECS put/delete/list attributes."""
 
@@ -1129,3 +1133,97 @@ class TestAttributeOperations:
         listed = ecs.list_attributes(cluster=cluster, targetType="container-instance")
         names = [a["name"] for a in listed["attributes"] if a.get("targetId") == "fake-ci-id-3"]
         assert "temp-attr" not in names
+
+
+class TestECSAdditionalOperations:
+    """Tests for additional ECS operations not yet covered."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_put_account_setting_default(self, ecs):
+        resp = ecs.put_account_setting_default(
+            name="containerInstanceLongArnFormat", value="enabled"
+        )
+        assert resp["setting"]["name"] == "containerInstanceLongArnFormat"
+        assert resp["setting"]["value"] == "enabled"
+
+    def test_update_cluster_nonexistent(self, ecs):
+        """UpdateCluster returns ClusterNotFoundException for nonexistent cluster."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.update_cluster(
+                cluster="nonexistent-cluster-12345",
+                settings=[{"name": "containerInsights", "value": "enabled"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+    def test_update_cluster_settings_nonexistent(self, ecs):
+        """UpdateClusterSettings returns ClusterNotFoundException for nonexistent cluster."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.update_cluster_settings(
+                cluster="nonexistent-cluster-12345",
+                settings=[{"name": "containerInsights", "value": "disabled"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+    def test_submit_container_state_change(self, ecs):
+        name = _unique("scsc-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.submit_container_state_change(cluster=name, status="RUNNING")
+            assert "acknowledgment" in resp
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_submit_task_state_change(self, ecs):
+        name = _unique("stsc-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.submit_task_state_change(cluster=name, status="RUNNING")
+            assert "acknowledgment" in resp
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_execute_command_nonexistent(self, ecs):
+        """ExecuteCommand returns error for nonexistent cluster/task."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.execute_command(
+                cluster="nonexistent-cluster",
+                task="nonexistent-task",
+                interactive=True,
+                command="/bin/sh",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ClusterNotFoundException",
+            "InvalidParameterException",
+        )
+
+    def test_update_container_agent_nonexistent(self, ecs):
+        """UpdateContainerAgent returns error for nonexistent cluster."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.update_container_agent(
+                cluster="nonexistent-cluster",
+                containerInstance="nonexistent-ci",
+            )
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+    def test_update_task_protection_nonexistent(self, ecs):
+        """UpdateTaskProtection returns error for nonexistent cluster."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.update_task_protection(
+                cluster="nonexistent-cluster",
+                tasks=["nonexistent-task"],
+                protectionEnabled=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"

@@ -871,3 +871,126 @@ class TestEKSFargateProfileAdvanced:
                 clusterName="nonexistent-cluster",
             )
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestEKSAddonOperations:
+    """Tests for EKS addon operations."""
+
+    def test_describe_addon_versions(self, eks):
+        """DescribeAddonVersions returns addon info without requiring a cluster."""
+        resp = eks.describe_addon_versions()
+        assert "addons" in resp
+        assert isinstance(resp["addons"], list)
+
+    def test_describe_addon_versions_with_kubernetes_version(self, eks):
+        """DescribeAddonVersions can filter by Kubernetes version."""
+        resp = eks.describe_addon_versions(kubernetesVersion="1.29")
+        assert "addons" in resp
+        assert isinstance(resp["addons"], list)
+
+    def test_describe_addon_nonexistent_cluster(self, eks):
+        """DescribeAddon on nonexistent cluster raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.describe_addon(clusterName="nonexistent-cluster", addonName="vpc-cni")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_addons_on_cluster(self, eks):
+        """ListAddons on a real cluster returns empty list."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.list_addons(clusterName=cluster_name)
+            assert "addons" in resp
+            assert isinstance(resp["addons"], list)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_addons_nonexistent_cluster(self, eks):
+        """ListAddons on nonexistent cluster raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.list_addons(clusterName="nonexistent-cluster")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestEKSPodIdentityOperations:
+    """Tests for EKS Pod Identity association operations."""
+
+    def test_list_pod_identity_associations_on_cluster(self, eks):
+        """ListPodIdentityAssociations on a real cluster returns empty list."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.list_pod_identity_associations(clusterName=cluster_name)
+            assert "associations" in resp
+            assert isinstance(resp["associations"], list)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_pod_identity_associations_nonexistent_cluster(self, eks):
+        """ListPodIdentityAssociations on nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.list_pod_identity_associations(clusterName="nonexistent-cluster")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_pod_identity_association_nonexistent(self, eks):
+        """DescribePodIdentityAssociation with fake ID raises error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.describe_pod_identity_association(
+                    clusterName=cluster_name,
+                    associationId="nonexistent-id",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSAccessEntryOperations:
+    """Tests for EKS access entry operations."""
+
+    def test_list_access_entries_on_cluster(self, eks):
+        """ListAccessEntries on a real cluster returns a list."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.list_access_entries(clusterName=cluster_name)
+            assert "accessEntries" in resp
+            assert isinstance(resp["accessEntries"], list)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_access_entries_nonexistent_cluster(self, eks):
+        """ListAccessEntries on nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.list_access_entries(clusterName="nonexistent-cluster")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"

@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -339,6 +340,56 @@ class TestNeptuneDBClusterOperations:
             assert any(r["RoleArn"] == "arn:aws:iam::123456789012:role/neptune-role" for r in roles)
         finally:
             neptune.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+
+
+class TestNeptuneDBClusterModify:
+    """Tests for ModifyDBCluster."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, neptune, subnet_ids):
+        self.neptune = neptune
+        self.sg_name = _unique("mod-sg")
+        self.cluster_id = _unique("mod-cl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=self.sg_name,
+            DBSubnetGroupDescription="modify tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=self.sg_name,
+        )
+        yield
+        neptune.delete_db_cluster(DBClusterIdentifier=self.cluster_id, SkipFinalSnapshot=True)
+        neptune.delete_db_subnet_group(DBSubnetGroupName=self.sg_name)
+
+    def test_modify_db_cluster_maintenance_window(self, neptune):
+        resp = neptune.modify_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            PreferredMaintenanceWindow="mon:03:00-mon:04:00",
+            ApplyImmediately=True,
+        )
+        assert resp["DBCluster"]["DBClusterIdentifier"] == self.cluster_id
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_modify_db_cluster_backup_retention(self, neptune):
+        resp = neptune.modify_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            BackupRetentionPeriod=7,
+            ApplyImmediately=True,
+        )
+        assert resp["DBCluster"]["DBClusterIdentifier"] == self.cluster_id
+
+    def test_modify_nonexistent_db_cluster(self, neptune):
+        with pytest.raises(ClientError) as exc_info:
+            neptune.modify_db_cluster(
+                DBClusterIdentifier="nonexistent-cluster",
+                PreferredMaintenanceWindow="mon:03:00-mon:04:00",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"] or "DBCluster" in str(
+            exc_info.value
+        )
 
 
 class TestNeptuneDBInstanceOperations:
