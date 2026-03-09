@@ -18,6 +18,26 @@ from robotocore.services.s3.notifications import (
     set_notification_config,
 )
 
+# ---------------------------------------------------------------------------
+# Monkey-patch Moto's FakeBucket.get_permission to handle policy as str or bytes.
+# Moto assumes self.policy is always bytes, but put_bucket_policy passes self.body
+# which is a str. This causes "'str' object has no attribute 'decode'" on PutObject
+# when a bucket policy is set.
+# ---------------------------------------------------------------------------
+try:
+    from moto.s3.models import FakeBucket
+
+    _orig_get_permission = FakeBucket.get_permission
+
+    def _patched_get_permission(self, action, resource):  # type: ignore[no-untyped-def]
+        if self.policy is not None and isinstance(self.policy, str):
+            self.policy = self.policy.encode()
+        return _orig_get_permission(self, action, resource)
+
+    FakeBucket.get_permission = _patched_get_permission  # type: ignore[assignment]
+except Exception:
+    pass
+
 # Patterns to detect bucket and key from S3 paths
 # Path style: /<bucket>/<key>
 _PATH_RE = re.compile(r"^/([^/]+)(?:/(.+))?$")
@@ -614,15 +634,17 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
             if method == "PUT" and key:
                 content_length = 0
                 for h, v in response.raw_headers:
-                    if h.lower() == b"content-length":
+                    hname = h.decode() if isinstance(h, bytes) else h
+                    if hname.lower() == "content-length":
                         try:
                             content_length = int(v)
                         except (ValueError, TypeError):
                             pass
                 etag = ""
                 for h, v in response.raw_headers:
-                    if h.lower() == b"etag":
-                        etag = v.decode().strip('"')
+                    hname = h.decode() if isinstance(h, bytes) else h
+                    if hname.lower() == "etag":
+                        etag = (v.decode() if isinstance(v, bytes) else v).strip('"')
 
                 # Detect multipart complete (POST with uploadId)
                 if "uploadId" in query:

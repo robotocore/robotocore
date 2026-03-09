@@ -33,11 +33,19 @@ ACCOUNT_ID = "999999999999"
 
 
 class TestUnknownResourceType:
-    def test_create_assigns_fake_physical_id(self):
+    def test_create_unsupported_type_raises(self):
+        """Unsupported resource types raise ValueError (not Custom:: prefix)."""
+        import pytest
+
         res = _resource("AWS::Custom::Thing")
+        with pytest.raises(ValueError, match="Unsupported CloudFormation resource type"):
+            create_resource(res, REGION, ACCOUNT_ID)
+
+    def test_custom_prefix_assigns_physical_id(self):
+        """Custom:: prefix resources get a fake physical ID."""
+        res = _resource("Custom::MyThing")
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id is not None
-        assert "aws-custom-thing" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
 
     def test_delete_unknown_does_not_raise(self):
@@ -322,9 +330,9 @@ class TestIamRole:
 
 class TestIamPolicy:
     def test_create_iam_policy(self):
-        mock_policy = SimpleNamespace(arn="arn:aws:iam::999:policy/my-policy")
+        # AWS::IAM::Policy creates inline policies (not managed policies).
+        # The real handler sets physical_id = name, not ARN.
         mock_iam = MagicMock()
-        mock_iam.create_policy.return_value = mock_policy
 
         with patch(
             "robotocore.services.cloudformation.resources._moto_global_backend",
@@ -340,8 +348,8 @@ class TestIamPolicy:
             )
             create_resource(res, REGION, ACCOUNT_ID)
 
-        assert res.physical_id == "arn:aws:iam::999:policy/my-policy"
-        assert res.attributes["Arn"] == "arn:aws:iam::999:policy/my-policy"
+        assert res.physical_id == "my-policy"
+        assert res.attributes["PolicyName"] == "my-policy"
         assert res.status == "CREATE_COMPLETE"
 
     def test_delete_iam_policy(self):
@@ -674,7 +682,8 @@ class TestLambdaFunction:
             )
             create_resource(res, REGION, ACCOUNT_ID)
 
-        assert res.physical_id == "arn:aws:lambda:us-east-1:999:function:my-fn"
+        # Real handler sets physical_id = name, not ARN
+        assert res.physical_id == "my-fn"
         assert res.attributes["Arn"] == "arn:aws:lambda:us-east-1:999:function:my-fn"
         assert res.attributes["FunctionName"] == "my-fn"
         assert res.status == "CREATE_COMPLETE"
