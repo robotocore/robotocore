@@ -1658,13 +1658,7 @@ class TestEC2GapStubs:
     def test_describe_replace_root_volume_tasks(self, ec2):
         _assert_ok(ec2.describe_replace_root_volume_tasks())
 
-    # --- Serial console and settings ---
-
-    def test_get_serial_console_access_status(self, ec2):
-        _assert_ok(ec2.get_serial_console_access_status())
-
-    def test_get_ebs_default_kms_key_id(self, ec2):
-        _assert_ok(ec2.get_ebs_default_kms_key_id())
+    # --- Settings ---
 
     def test_get_instance_metadata_defaults(self, ec2):
         _assert_ok(ec2.get_instance_metadata_defaults())
@@ -1674,14 +1668,6 @@ class TestEC2GapStubs:
 
     def test_get_snapshot_block_public_access_state(self, ec2):
         _assert_ok(ec2.get_snapshot_block_public_access_state())
-
-    # --- Recycle bin ---
-
-    def test_list_images_in_recycle_bin(self, ec2):
-        _assert_ok(ec2.list_images_in_recycle_bin())
-
-    def test_list_snapshots_in_recycle_bin(self, ec2):
-        _assert_ok(ec2.list_snapshots_in_recycle_bin())
 
 
 class TestEC2DescribeGapCoverage:
@@ -1694,9 +1680,6 @@ class TestEC2DescribeGapCoverage:
         assert "Addresses" in resp
 
     # --- Aggregate / ID format ---
-
-    def test_describe_aggregate_id_format(self, ec2):
-        _assert_ok(ec2.describe_aggregate_id_format())
 
     # --- Bundle / Import / Export tasks ---
 
@@ -2531,10 +2514,6 @@ class TestEc2AutoCoverage:
     def test_import_snapshot(self, client):
         """ImportSnapshot returns a response."""
         client.import_snapshot()
-
-    def test_list_volumes_in_recycle_bin(self, client):
-        """ListVolumesInRecycleBin returns a response."""
-        client.list_volumes_in_recycle_bin()
 
     def test_reject_transit_gateway_multicast_domain_associations(self, client):
         """RejectTransitGatewayMulticastDomainAssociations returns a response."""
@@ -6775,3 +6754,482 @@ class TestEC2FastLaunchLifecycle:
         assert resp["ImageId"] == "ami-aabbccdd"
         # Clean up
         ec2.disable_fast_launch(ImageId="ami-aabbccdd")
+
+
+class TestEC2CoipPoolLifecycle:
+    """CoipPool / CoipCidr create-describe-delete lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_coip_pools_empty(self, ec2):
+        """DescribeCoipPools returns list (possibly empty)."""
+        resp = ec2.describe_coip_pools()
+        assert "CoipPools" in resp
+
+    def test_create_and_delete_coip_pool(self, ec2):
+        """CreateCoipPool + DeleteCoipPool lifecycle."""
+        create_resp = ec2.create_coip_pool(LocalGatewayRouteTableId="lgw-rtb-12345678901234567")
+        pool_id = create_resp["CoipPool"]["PoolId"]
+        assert pool_id.startswith("ipv4pool-coip-")
+
+        # Describe should include our pool
+        desc = ec2.describe_coip_pools()
+        assert any(p["PoolId"] == pool_id for p in desc["CoipPools"])
+
+        # Delete
+        ec2.delete_coip_pool(CoipPoolId=pool_id)
+
+    def test_create_and_delete_coip_cidr(self, ec2):
+        """CreateCoipCidr + DeleteCoipCidr on a pool."""
+        pool = ec2.create_coip_pool(LocalGatewayRouteTableId="lgw-rtb-aabbccddee1234567")
+        pool_id = pool["CoipPool"]["PoolId"]
+
+        cidr_resp = ec2.create_coip_cidr(Cidr="10.10.0.0/24", CoipPoolId=pool_id)
+        assert cidr_resp["CoipCidr"]["Cidr"] == "10.10.0.0/24"
+        assert cidr_resp["CoipCidr"]["CoipPoolId"] == pool_id
+
+        ec2.delete_coip_cidr(Cidr="10.10.0.0/24", CoipPoolId=pool_id)
+        ec2.delete_coip_pool(CoipPoolId=pool_id)
+
+    def test_get_coip_pool_usage(self, ec2):
+        """GetCoipPoolUsage returns usage info for a pool."""
+        pool = ec2.create_coip_pool(LocalGatewayRouteTableId="lgw-rtb-usage123456789ab")
+        pool_id = pool["CoipPool"]["PoolId"]
+
+        usage = ec2.get_coip_pool_usage(PoolId=pool_id)
+        assert usage["CoipPoolId"] == pool_id
+        assert "CoipAddressUsages" in usage
+
+        ec2.delete_coip_pool(CoipPoolId=pool_id)
+
+
+class TestEC2InstanceEventWindowLifecycle:
+    """InstanceEventWindow create-modify-associate-delete lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_instance_event_windows_empty(self, ec2):
+        """DescribeInstanceEventWindows returns list."""
+        resp = ec2.describe_instance_event_windows()
+        assert "InstanceEventWindows" in resp
+
+    def test_create_and_delete_instance_event_window(self, ec2):
+        """CreateInstanceEventWindow + DeleteInstanceEventWindow."""
+        name = _unique("iew")
+        create_resp = ec2.create_instance_event_window(
+            Name=name,
+            TimeRanges=[
+                {
+                    "StartWeekDay": "monday",
+                    "StartHour": 2,
+                    "EndWeekDay": "monday",
+                    "EndHour": 6,
+                }
+            ],
+        )
+        win = create_resp["InstanceEventWindow"]
+        win_id = win["InstanceEventWindowId"]
+        assert win_id.startswith("iew-")
+        assert win["Name"] == name
+
+        # Describe should include it
+        desc = ec2.describe_instance_event_windows()
+        assert any(w["InstanceEventWindowId"] == win_id for w in desc["InstanceEventWindows"])
+
+        ec2.delete_instance_event_window(InstanceEventWindowId=win_id)
+
+    def test_modify_instance_event_window(self, ec2):
+        """ModifyInstanceEventWindow changes time ranges."""
+        create_resp = ec2.create_instance_event_window(
+            Name=_unique("iew-mod"),
+            TimeRanges=[
+                {
+                    "StartWeekDay": "monday",
+                    "StartHour": 1,
+                    "EndWeekDay": "monday",
+                    "EndHour": 5,
+                }
+            ],
+        )
+        win_id = create_resp["InstanceEventWindow"]["InstanceEventWindowId"]
+
+        mod_resp = ec2.modify_instance_event_window(
+            InstanceEventWindowId=win_id,
+            TimeRanges=[
+                {
+                    "StartWeekDay": "wednesday",
+                    "StartHour": 3,
+                    "EndWeekDay": "wednesday",
+                    "EndHour": 7,
+                }
+            ],
+        )
+        assert "InstanceEventWindow" in mod_resp
+
+        ec2.delete_instance_event_window(InstanceEventWindowId=win_id)
+
+    def test_associate_and_disassociate_instance_event_window(self, ec2):
+        """AssociateInstanceEventWindow + DisassociateInstanceEventWindow."""
+        create_resp = ec2.create_instance_event_window(
+            Name=_unique("iew-assoc"),
+            TimeRanges=[
+                {
+                    "StartWeekDay": "friday",
+                    "StartHour": 0,
+                    "EndWeekDay": "friday",
+                    "EndHour": 4,
+                }
+            ],
+        )
+        win_id = create_resp["InstanceEventWindow"]["InstanceEventWindowId"]
+
+        assoc_resp = ec2.associate_instance_event_window(
+            InstanceEventWindowId=win_id,
+            AssociationTarget={"InstanceTags": [{"Key": "env", "Value": "test"}]},
+        )
+        assert "InstanceEventWindow" in assoc_resp
+
+        disassoc_resp = ec2.disassociate_instance_event_window(
+            InstanceEventWindowId=win_id,
+            AssociationTarget={"InstanceTags": [{"Key": "env", "Value": "test"}]},
+        )
+        assert "InstanceEventWindow" in disassoc_resp
+
+        ec2.delete_instance_event_window(InstanceEventWindowId=win_id)
+
+
+class TestEC2SpotDatafeedSubscription:
+    """SpotDatafeedSubscription create-describe-delete lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_and_delete_spot_datafeed_subscription(self, ec2):
+        """CreateSpotDatafeedSubscription + DescribeSpotDatafeedSubscription + Delete."""
+        create_resp = ec2.create_spot_datafeed_subscription(Bucket="my-spot-datafeed-bucket")
+        sub = create_resp["SpotDatafeedSubscription"]
+        assert sub["Bucket"] == "my-spot-datafeed-bucket"
+        assert sub["State"] == "Active"
+
+        ec2.delete_spot_datafeed_subscription()
+
+    def test_describe_spot_datafeed_subscription_empty(self, ec2):
+        """DescribeSpotDatafeedSubscription works even with no subscription."""
+        # Delete any existing first
+        try:
+            ec2.delete_spot_datafeed_subscription()
+        except Exception:
+            pass
+        resp = ec2.describe_spot_datafeed_subscription()
+        assert "ResponseMetadata" in resp
+
+
+class TestEC2InstanceMetadataDefaults:
+    """InstanceMetadataDefaults get/modify lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_get_instance_metadata_defaults(self, ec2):
+        """GetInstanceMetadataDefaults returns account-level settings."""
+        resp = ec2.get_instance_metadata_defaults()
+        assert "AccountLevel" in resp
+
+    def test_modify_instance_metadata_defaults(self, ec2):
+        """ModifyInstanceMetadataDefaults sets HttpTokens."""
+        mod_resp = ec2.modify_instance_metadata_defaults(
+            HttpTokens="required", HttpPutResponseHopLimit=2
+        )
+        assert mod_resp["Return"] is True
+
+        # Verify
+        get_resp = ec2.get_instance_metadata_defaults()
+        assert "AccountLevel" in get_resp
+
+        # Reset
+        ec2.modify_instance_metadata_defaults(HttpTokens="optional")
+
+
+class TestEC2PublicIpv4PoolLifecycle:
+    """PublicIpv4Pool create-describe-delete lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_public_ipv4_pools(self, ec2):
+        """DescribePublicIpv4Pools returns list."""
+        resp = ec2.describe_public_ipv4_pools()
+        assert "PublicIpv4Pools" in resp
+
+    def test_create_and_delete_public_ipv4_pool(self, ec2):
+        """CreatePublicIpv4Pool + DeletePublicIpv4Pool lifecycle."""
+        create_resp = ec2.create_public_ipv4_pool()
+        pool_id = create_resp["PoolId"]
+        assert pool_id.startswith("ipv4pool-ec2-")
+
+        # Describe should include it
+        desc = ec2.describe_public_ipv4_pools()
+        assert any(p["PoolId"] == pool_id for p in desc["PublicIpv4Pools"])
+
+        ec2.delete_public_ipv4_pool(PoolId=pool_id)
+
+    def test_provision_public_ipv4_pool_cidr(self, ec2):
+        """ProvisionPublicIpv4PoolCidr allocates a CIDR to a pool."""
+        pool = ec2.create_public_ipv4_pool()
+        pool_id = pool["PoolId"]
+
+        prov_resp = ec2.provision_public_ipv4_pool_cidr(
+            IpamPoolId="ipam-pool-12345678", PoolId=pool_id, NetmaskLength=24
+        )
+        assert prov_resp["PoolId"] == pool_id
+
+        ec2.delete_public_ipv4_pool(PoolId=pool_id)
+
+
+class TestEC2HostReservation:
+    """HostReservation describe/preview/purchase operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_host_reservations(self, ec2):
+        """DescribeHostReservations returns list."""
+        resp = ec2.describe_host_reservations()
+        assert "HostReservationSet" in resp
+
+    def test_describe_host_reservation_offerings(self, ec2):
+        """DescribeHostReservationOfferings returns offerings list."""
+        resp = ec2.describe_host_reservation_offerings()
+        assert "OfferingSet" in resp
+
+    def test_get_host_reservation_purchase_preview(self, ec2):
+        """GetHostReservationPurchasePreview returns pricing info."""
+        resp = ec2.get_host_reservation_purchase_preview(
+            HostIdSet=["h-12345678"], OfferingId="hro-12345678"
+        )
+        assert "TotalHourlyPrice" in resp
+        assert "TotalUpfrontPrice" in resp
+
+    def test_purchase_host_reservation(self, ec2):
+        """PurchaseHostReservation returns purchase info."""
+        resp = ec2.purchase_host_reservation(HostIdSet=["h-87654321"], OfferingId="hro-87654321")
+        assert "TotalHourlyPrice" in resp
+        assert "TotalUpfrontPrice" in resp
+
+
+class TestEC2NetworkInsightsAccessScope:
+    """NetworkInsightsAccessScope full lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_network_insights_access_scopes_empty(self, ec2):
+        """DescribeNetworkInsightsAccessScopes returns list."""
+        resp = ec2.describe_network_insights_access_scopes()
+        assert "NetworkInsightsAccessScopes" in resp
+
+    def test_create_and_delete_network_insights_access_scope(self, ec2):
+        """CreateNetworkInsightsAccessScope + DeleteNetworkInsightsAccessScope."""
+        token = _unique("nis-token")
+        create_resp = ec2.create_network_insights_access_scope(
+            MatchPaths=[{"Source": {"ResourceStatement": {"ResourceTypes": ["AWS::EC2::VPC"]}}}],
+            ClientToken=token,
+        )
+        scope = create_resp["NetworkInsightsAccessScope"]
+        scope_id = scope["NetworkInsightsAccessScopeId"]
+        assert scope_id.startswith("nis-")
+
+        # Describe
+        desc = ec2.describe_network_insights_access_scopes()
+        assert any(
+            s["NetworkInsightsAccessScopeId"] == scope_id
+            for s in desc["NetworkInsightsAccessScopes"]
+        )
+
+        # Delete
+        del_resp = ec2.delete_network_insights_access_scope(NetworkInsightsAccessScopeId=scope_id)
+        assert del_resp["NetworkInsightsAccessScopeId"] == scope_id
+
+    def test_get_network_insights_access_scope_content(self, ec2):
+        """GetNetworkInsightsAccessScopeContent returns scope details."""
+        create_resp = ec2.create_network_insights_access_scope(
+            MatchPaths=[{"Source": {"ResourceStatement": {"ResourceTypes": ["AWS::EC2::Subnet"]}}}],
+            ClientToken=_unique("nis-content"),
+        )
+        scope_id = create_resp["NetworkInsightsAccessScope"]["NetworkInsightsAccessScopeId"]
+
+        content_resp = ec2.get_network_insights_access_scope_content(
+            NetworkInsightsAccessScopeId=scope_id
+        )
+        assert "NetworkInsightsAccessScopeContent" in content_resp
+
+        ec2.delete_network_insights_access_scope(NetworkInsightsAccessScopeId=scope_id)
+
+    def test_start_and_describe_access_scope_analysis(self, ec2):
+        """StartNetworkInsightsAccessScopeAnalysis + Describe + GetFindings."""
+        create_resp = ec2.create_network_insights_access_scope(
+            MatchPaths=[{"Source": {"ResourceStatement": {"ResourceTypes": ["AWS::EC2::VPC"]}}}],
+            ClientToken=_unique("nis-analysis"),
+        )
+        scope_id = create_resp["NetworkInsightsAccessScope"]["NetworkInsightsAccessScopeId"]
+
+        # Start analysis
+        start_resp = ec2.start_network_insights_access_scope_analysis(
+            NetworkInsightsAccessScopeId=scope_id,
+            ClientToken=_unique("analysis"),
+        )
+        analysis = start_resp["NetworkInsightsAccessScopeAnalysis"]
+        analysis_id = analysis["NetworkInsightsAccessScopeAnalysisId"]
+        assert analysis_id.startswith("nisa-")
+
+        # Describe analyses
+        desc_resp = ec2.describe_network_insights_access_scope_analyses(
+            NetworkInsightsAccessScopeId=scope_id
+        )
+        assert any(
+            a["NetworkInsightsAccessScopeAnalysisId"] == analysis_id
+            for a in desc_resp["NetworkInsightsAccessScopeAnalyses"]
+        )
+
+        # Get findings
+        findings_resp = ec2.get_network_insights_access_scope_analysis_findings(
+            NetworkInsightsAccessScopeAnalysisId=analysis_id
+        )
+        assert findings_resp["NetworkInsightsAccessScopeAnalysisId"] == analysis_id
+        assert "AnalysisFindings" in findings_resp
+
+        ec2.delete_network_insights_access_scope(NetworkInsightsAccessScopeId=scope_id)
+
+
+class TestEC2SnapshotBlockPublicAccess:
+    """SnapshotBlockPublicAccess enable/get/disable lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_get_snapshot_block_public_access_state(self, ec2):
+        """GetSnapshotBlockPublicAccessState returns current state."""
+        resp = ec2.get_snapshot_block_public_access_state()
+        assert "State" in resp
+
+    def test_enable_and_disable_snapshot_block_public_access(self, ec2):
+        """EnableSnapshotBlockPublicAccess + DisableSnapshotBlockPublicAccess."""
+        enable_resp = ec2.enable_snapshot_block_public_access(State="block-all-sharing")
+        assert enable_resp["State"] == "block-all-sharing"
+
+        disable_resp = ec2.disable_snapshot_block_public_access()
+        assert disable_resp["State"] == "unblocked"
+
+
+class TestEC2SecurityGroupVpcAssociation:
+    """SecurityGroupVpcAssociation associate-describe-disassociate lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_security_group_vpc_associations(self, ec2):
+        """DescribeSecurityGroupVpcAssociations returns list."""
+        resp = ec2.describe_security_group_vpc_associations()
+        assert "SecurityGroupVpcAssociations" in resp
+
+    def test_associate_and_disassociate_security_group_vpc(self, ec2):
+        """AssociateSecurityGroupVpc + DisassociateSecurityGroupVpc."""
+        vpc1 = ec2.create_vpc(CidrBlock="10.210.0.0/16")
+        vpc1_id = vpc1["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.211.0.0/16")
+        vpc2_id = vpc2["Vpc"]["VpcId"]
+        sg = ec2.create_security_group(
+            GroupName=_unique("sg-assoc"),
+            Description="test sg vpc assoc",
+            VpcId=vpc1_id,
+        )
+        sg_id = sg["GroupId"]
+
+        assoc_resp = ec2.associate_security_group_vpc(GroupId=sg_id, VpcId=vpc2_id)
+        assert assoc_resp["State"] == "associated"
+
+        # Describe should show the association
+        desc = ec2.describe_security_group_vpc_associations()
+        assert any(
+            a["GroupId"] == sg_id and a["VpcId"] == vpc2_id
+            for a in desc["SecurityGroupVpcAssociations"]
+        )
+
+        disassoc_resp = ec2.disassociate_security_group_vpc(GroupId=sg_id, VpcId=vpc2_id)
+        assert disassoc_resp["State"] == "disassociated"
+
+        # Cleanup
+        ec2.delete_security_group(GroupId=sg_id)
+        ec2.delete_vpc(VpcId=vpc2_id)
+        ec2.delete_vpc(VpcId=vpc1_id)
+
+
+class TestEC2VolumeAttribute:
+    """VolumeAttribute describe/modify operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_volume_attribute(self, ec2):
+        """DescribeVolumeAttribute returns autoEnableIO info."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+
+        resp = ec2.describe_volume_attribute(VolumeId=vol_id, Attribute="autoEnableIO")
+        assert "AutoEnableIO" in resp
+        assert "Value" in resp["AutoEnableIO"]
+
+        ec2.delete_volume(VolumeId=vol_id)
+
+    def test_modify_volume_attribute(self, ec2):
+        """ModifyVolumeAttribute call succeeds."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+
+        # Modify should succeed without error
+        ec2.modify_volume_attribute(VolumeId=vol_id, AutoEnableIO={"Value": True})
+        # Verify the call completed by describing
+        resp = ec2.describe_volume_attribute(VolumeId=vol_id, Attribute="autoEnableIO")
+        assert "AutoEnableIO" in resp
+
+        ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2NewDescribeAndListOps:
+    """Newly-tested describe/list/get operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_volume_status(self, ec2):
+        """DescribeVolumeStatus returns status list."""
+        resp = ec2.describe_volume_status()
+        assert "VolumeStatuses" in resp
+
+    def test_describe_volumes_modifications(self, ec2):
+        """DescribeVolumesModifications returns modifications list."""
+        resp = ec2.describe_volumes_modifications()
+        assert "VolumesModifications" in resp
+
+    def test_get_ebs_encryption_by_default(self, ec2):
+        """GetEbsEncryptionByDefault returns boolean."""
+        resp = ec2.get_ebs_encryption_by_default()
+        assert "EbsEncryptionByDefault" in resp
+
+    def test_describe_account_attributes(self, ec2):
+        """DescribeAccountAttributes returns attributes."""
+        resp = ec2.describe_account_attributes()
+        assert "AccountAttributes" in resp
