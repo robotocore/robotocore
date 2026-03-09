@@ -5488,3 +5488,204 @@ class TestEC2VpcAttributeExtended:
             assert isinstance(resp["EnableNetworkAddressUsageMetrics"]["Value"], bool)
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ModifyImageAttribute:
+    """Tests for ModifyImageAttribute and DescribeImageAttribute."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def owned_ami(self, ec2):
+        """Register a custom AMI we own so we can modify its attributes."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        snap = ec2.create_snapshot(VolumeId=vol_id, Description="for-ami-attr-test")
+        snap_id = snap["SnapshotId"]
+        ami = ec2.register_image(
+            Name=_unique("ami-attr"),
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[{"DeviceName": "/dev/sda1", "Ebs": {"SnapshotId": snap_id}}],
+        )
+        ami_id = ami["ImageId"]
+        yield ami_id
+        ec2.deregister_image(ImageId=ami_id)
+        ec2.delete_snapshot(SnapshotId=snap_id)
+        ec2.delete_volume(VolumeId=vol_id)
+
+    def test_modify_image_attribute_add_launch_permission(self, ec2, owned_ami):
+        """ModifyImageAttribute adds launch permission, DescribeImageAttribute verifies."""
+        ec2.modify_image_attribute(
+            ImageId=owned_ami,
+            LaunchPermission={"Add": [{"UserId": "111122223333"}]},
+        )
+        resp = ec2.describe_image_attribute(ImageId=owned_ami, Attribute="launchPermission")
+        user_ids = [p["UserId"] for p in resp["LaunchPermissions"]]
+        assert "111122223333" in user_ids
+
+    def test_modify_image_attribute_remove_launch_permission(self, ec2, owned_ami):
+        """ModifyImageAttribute removes launch permission."""
+        ec2.modify_image_attribute(
+            ImageId=owned_ami,
+            LaunchPermission={"Add": [{"UserId": "222233334444"}]},
+        )
+        ec2.modify_image_attribute(
+            ImageId=owned_ami,
+            LaunchPermission={"Remove": [{"UserId": "222233334444"}]},
+        )
+        resp = ec2.describe_image_attribute(ImageId=owned_ami, Attribute="launchPermission")
+        user_ids = [p.get("UserId") for p in resp.get("LaunchPermissions", [])]
+        assert "222233334444" not in user_ids
+
+
+class TestEC2ModifySnapshotAttribute:
+    """Tests for ModifySnapshotAttribute and DescribeSnapshotAttribute."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def snapshot(self, ec2):
+        """Create a volume and snapshot for testing."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        snap = ec2.create_snapshot(VolumeId=vol_id, Description="snap-attr-test")
+        snap_id = snap["SnapshotId"]
+        yield snap_id
+        ec2.delete_snapshot(SnapshotId=snap_id)
+        ec2.delete_volume(VolumeId=vol_id)
+
+    def test_modify_snapshot_attribute_add_permission(self, ec2, snapshot):
+        """ModifySnapshotAttribute adds createVolumePermission."""
+        ec2.modify_snapshot_attribute(
+            SnapshotId=snapshot,
+            Attribute="createVolumePermission",
+            OperationType="add",
+            UserIds=["111122223333"],
+        )
+        resp = ec2.describe_snapshot_attribute(
+            SnapshotId=snapshot, Attribute="createVolumePermission"
+        )
+        user_ids = [p["UserId"] for p in resp["CreateVolumePermissions"]]
+        assert "111122223333" in user_ids
+
+    def test_modify_snapshot_attribute_remove_permission(self, ec2, snapshot):
+        """ModifySnapshotAttribute removes createVolumePermission."""
+        ec2.modify_snapshot_attribute(
+            SnapshotId=snapshot,
+            Attribute="createVolumePermission",
+            OperationType="add",
+            UserIds=["333344445555"],
+        )
+        ec2.modify_snapshot_attribute(
+            SnapshotId=snapshot,
+            Attribute="createVolumePermission",
+            OperationType="remove",
+            UserIds=["333344445555"],
+        )
+        resp = ec2.describe_snapshot_attribute(
+            SnapshotId=snapshot, Attribute="createVolumePermission"
+        )
+        user_ids = [p.get("UserId") for p in resp.get("CreateVolumePermissions", [])]
+        assert "333344445555" not in user_ids
+
+    def test_modify_snapshot_attribute_multiple_users(self, ec2, snapshot):
+        """ModifySnapshotAttribute with multiple user IDs."""
+        ec2.modify_snapshot_attribute(
+            SnapshotId=snapshot,
+            Attribute="createVolumePermission",
+            OperationType="add",
+            UserIds=["111111111111", "222222222222"],
+        )
+        resp = ec2.describe_snapshot_attribute(
+            SnapshotId=snapshot, Attribute="createVolumePermission"
+        )
+        user_ids = [p["UserId"] for p in resp["CreateVolumePermissions"]]
+        assert "111111111111" in user_ids
+        assert "222222222222" in user_ids
+
+
+class TestEC2ModifySubnetAttribute:
+    """Tests for ModifySubnetAttribute."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def vpc_and_subnet(self, ec2):
+        """Create a VPC and subnet for attribute modification tests."""
+        vpc = ec2.create_vpc(CidrBlock="10.60.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.60.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        yield vpc_id, subnet_id
+        ec2.delete_subnet(SubnetId=subnet_id)
+        ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_modify_subnet_attribute_map_public_ip(self, ec2, vpc_and_subnet):
+        """ModifySubnetAttribute sets MapPublicIpOnLaunch."""
+        _, subnet_id = vpc_and_subnet
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": True})
+        desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc["Subnets"][0]["MapPublicIpOnLaunch"] is True
+
+    def test_modify_subnet_attribute_map_public_ip_disable(self, ec2, vpc_and_subnet):
+        """ModifySubnetAttribute can disable MapPublicIpOnLaunch."""
+        _, subnet_id = vpc_and_subnet
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": True})
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": False})
+        desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc["Subnets"][0]["MapPublicIpOnLaunch"] is False
+
+
+class TestEC2ModifyVpcPeeringConnectionOptions:
+    """Tests for ModifyVpcPeeringConnectionOptions."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def peering(self, ec2):
+        """Create two VPCs and a peering connection."""
+        vpc1 = ec2.create_vpc(CidrBlock="10.61.0.0/16")
+        vpc2 = ec2.create_vpc(CidrBlock="10.62.0.0/16")
+        vpc1_id = vpc1["Vpc"]["VpcId"]
+        vpc2_id = vpc2["Vpc"]["VpcId"]
+        peer = ec2.create_vpc_peering_connection(VpcId=vpc1_id, PeerVpcId=vpc2_id)
+        pcx_id = peer["VpcPeeringConnection"]["VpcPeeringConnectionId"]
+        ec2.accept_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+        yield pcx_id, vpc1_id, vpc2_id
+        ec2.delete_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+        ec2.delete_vpc(VpcId=vpc1_id)
+        ec2.delete_vpc(VpcId=vpc2_id)
+
+    def test_modify_vpc_peering_connection_options_dns(self, ec2, peering):
+        """ModifyVpcPeeringConnectionOptions sets DNS resolution."""
+        pcx_id, _, _ = peering
+        resp = ec2.modify_vpc_peering_connection_options(
+            VpcPeeringConnectionId=pcx_id,
+            RequesterPeeringConnectionOptions={"AllowDnsResolutionFromRemoteVpc": True},
+        )
+        assert "RequesterPeeringConnectionOptions" in resp
+        assert resp["RequesterPeeringConnectionOptions"]["AllowDnsResolutionFromRemoteVpc"] is True
+
+
+class TestEC2CreateDefaultVpc:
+    """Tests for CreateDefaultVpc."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_default_vpc_already_exists(self, ec2):
+        """CreateDefaultVpc raises error when default VPC exists."""
+        import botocore.exceptions
+
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.create_default_vpc()
+        assert "DefaultVpcAlreadyExists" in str(exc_info.value)
