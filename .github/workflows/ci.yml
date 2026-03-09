@@ -460,7 +460,7 @@ jobs:
       - cross-service-tests
       - iac-tests
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: test-results-*
           merge-multiple: true
