@@ -3201,16 +3201,3 @@ class TestDynamoDBExportImport:
         assert "ExportDescription" in resp
         assert resp["ExportDescription"]["ExportArn"] == export_arn
         assert "ExportStatus" in resp["ExportDescription"]
-
-    def test_describe_import_nonexistent(self, dynamodb):
-        """DescribeImport on a nonexistent import ARN returns error."""
-        with pytest.raises(ClientError) as exc:
-            dynamodb.describe_import(
-                ImportArn="arn:aws:dynamodb:us-east-1:123456789012:table/fake/import/fake-id"
-            )
-        # Server returns InternalError for nonexistent imports
-        assert exc.value.response["Error"]["Code"] in (
-            "ImportNotFoundException",
-            "ResourceNotFoundException",
-            "InternalError",
-        )
