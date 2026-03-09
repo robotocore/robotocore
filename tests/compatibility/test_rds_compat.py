@@ -2054,3 +2054,141 @@ class TestRDSTagsCRUD:
                 client.delete_option_group(OptionGroupName=name)
             except ClientError:
                 pass
+
+
+class TestRDSAdditionalDescribeOperations:
+    """Tests for additional describe/list operations that are working but untested."""
+
+    def test_describe_db_shard_groups(self, rds):
+        resp = rds.describe_db_shard_groups()
+        assert "DBShardGroups" in resp
+        assert isinstance(resp["DBShardGroups"], list)
+
+    def test_describe_db_instance_automated_backups(self, rds):
+        resp = rds.describe_db_instance_automated_backups()
+        assert "DBInstanceAutomatedBackups" in resp
+        assert isinstance(resp["DBInstanceAutomatedBackups"], list)
+
+    def test_describe_orderable_db_instance_options(self, rds):
+        resp = rds.describe_orderable_db_instance_options(Engine="mysql")
+        assert "OrderableDBInstanceOptions" in resp
+        assert isinstance(resp["OrderableDBInstanceOptions"], list)
+
+    def test_describe_db_proxies_empty(self, rds):
+        resp = rds.describe_db_proxies()
+        assert "DBProxies" in resp
+        assert isinstance(resp["DBProxies"], list)
+
+    def test_describe_export_tasks_empty(self, rds):
+        resp = rds.describe_export_tasks()
+        assert "ExportTasks" in resp
+        assert isinstance(resp["ExportTasks"], list)
+
+    def test_describe_blue_green_deployments_empty(self, rds):
+        resp = rds.describe_blue_green_deployments()
+        assert "BlueGreenDeployments" in resp
+        assert isinstance(resp["BlueGreenDeployments"], list)
+
+
+class TestRDSErrorPathOperations:
+    """Tests for operations that return errors for nonexistent resources."""
+
+    def test_failover_nonexistent_db_cluster(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.failover_db_cluster(DBClusterIdentifier="nonexistent-cluster")
+        assert exc.value.response["Error"]["Code"] == "DBClusterNotFoundFault"
+
+    def test_promote_read_replica_db_cluster_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.promote_read_replica_db_cluster(DBClusterIdentifier="nonexistent-cluster")
+        assert exc.value.response["Error"]["Code"] == "DBClusterNotFoundFault"
+
+    def test_delete_db_proxy_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.delete_db_proxy(DBProxyName="nonexistent-proxy")
+        assert exc.value.response["Error"]["Code"] == "DBProxyNotFoundFault"
+
+    def test_describe_db_proxy_target_groups_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.describe_db_proxy_target_groups(DBProxyName="nonexistent-proxy")
+        assert exc.value.response["Error"]["Code"] == "DBProxyNotFoundFault"
+
+    def test_describe_db_proxy_targets_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.describe_db_proxy_targets(DBProxyName="nonexistent-proxy")
+        assert exc.value.response["Error"]["Code"] == "DBProxyNotFoundFault"
+
+    def test_modify_db_subnet_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.modify_db_subnet_group(
+                DBSubnetGroupName="nonexistent-sg",
+                SubnetIds=["subnet-12345678"],
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "DBSubnetGroupNotFoundFault",
+            "InvalidSubnetID.NotFound",
+        )
+
+    def test_delete_db_subnet_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.delete_db_subnet_group(DBSubnetGroupName="nonexistent-sg")
+        assert exc.value.response["Error"]["Code"] == "DBSubnetGroupNotFoundFault"
+
+    def test_delete_global_cluster_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.delete_global_cluster(GlobalClusterIdentifier="nonexistent-gc")
+        assert exc.value.response["Error"]["Code"] == "GlobalClusterNotFoundFault"
+
+    def test_modify_option_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.modify_option_group(OptionGroupName="nonexistent-og")
+        assert exc.value.response["Error"]["Code"] == "OptionGroupNotFoundFault"
+
+    def test_delete_option_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.delete_option_group(OptionGroupName="nonexistent-og")
+        assert exc.value.response["Error"]["Code"] == "OptionGroupNotFoundFault"
+
+    def test_cancel_export_task_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.cancel_export_task(ExportTaskIdentifier="nonexistent-task")
+        assert exc.value.response["Error"]["Code"] == "ExportTaskNotFound"
+
+    def test_switchover_blue_green_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.switchover_blue_green_deployment(BlueGreenDeploymentIdentifier="nonexistent-bgd")
+        assert exc.value.response["Error"]["Code"] == "BlueGreenDeploymentNotFoundFault"
+
+    def test_copy_db_cluster_parameter_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.copy_db_cluster_parameter_group(
+                SourceDBClusterParameterGroupIdentifier="nonexistent-pg",
+                TargetDBClusterParameterGroupIdentifier=_unique("target-pg"),
+                TargetDBClusterParameterGroupDescription="copy test",
+            )
+        assert exc.value.response["Error"]["Code"] == "DBParameterGroupNotFound"
+
+    def test_copy_db_parameter_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.copy_db_parameter_group(
+                SourceDBParameterGroupIdentifier="nonexistent-pg",
+                TargetDBParameterGroupIdentifier=_unique("target-pg"),
+                TargetDBParameterGroupDescription="copy test",
+            )
+        assert exc.value.response["Error"]["Code"] == "DBParameterGroupNotFound"
+
+    def test_copy_db_snapshot_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.copy_db_snapshot(
+                SourceDBSnapshotIdentifier="nonexistent-snap",
+                TargetDBSnapshotIdentifier=_unique("target-snap"),
+            )
+        assert exc.value.response["Error"]["Code"] == "DBSnapshotNotFound"
+
+    def test_copy_db_cluster_snapshot_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.copy_db_cluster_snapshot(
+                SourceDBClusterSnapshotIdentifier="nonexistent-snap",
+                TargetDBClusterSnapshotIdentifier=_unique("target-snap"),
+            )
+        assert exc.value.response["Error"]["Code"] == "DBClusterSnapshotNotFoundFault"

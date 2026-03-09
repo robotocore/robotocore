@@ -638,3 +638,158 @@ class TestRekognitionFaceLiveness:
         with pytest.raises(ClientError) as exc_info:
             rekognition.get_face_liveness_session_results(SessionId=fake_id)
         assert "SessionNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionCollectionBehavior:
+    """Deeper behavioral tests for collection operations."""
+
+    def test_describe_collection_face_count_after_index(self, rekognition):
+        """DescribeCollection FaceCount increments after indexing faces."""
+        col_id = _unique("cnt")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+            desc = rekognition.describe_collection(CollectionId=col_id)
+            assert desc["FaceCount"] >= 1
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_describe_collection_face_count_after_delete(self, rekognition):
+        """DescribeCollection FaceCount decrements after deleting faces."""
+        col_id = _unique("cntdel")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            idx = rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+            face_id = idx["FaceRecords"][0]["Face"]["FaceId"]
+            rekognition.delete_faces(CollectionId=col_id, FaceIds=[face_id])
+            desc = rekognition.describe_collection(CollectionId=col_id)
+            assert desc["FaceCount"] == 0
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_list_faces_after_multiple_indexes(self, rekognition):
+        """ListFaces returns multiple faces after indexing multiple images."""
+        col_id = _unique("multi")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            rekognition.index_faces(
+                CollectionId=col_id,
+                Image={"Bytes": _TINY_JPEG},
+                ExternalImageId="face-001",
+            )
+            rekognition.index_faces(
+                CollectionId=col_id,
+                Image={"Bytes": _TINY_JPEG},
+                ExternalImageId="face-002",
+            )
+            resp = rekognition.list_faces(CollectionId=col_id)
+            assert len(resp["Faces"]) >= 2
+            ext_ids = [f.get("ExternalImageId") for f in resp["Faces"]]
+            assert "face-001" in ext_ids
+            assert "face-002" in ext_ids
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_detect_labels_response_structure(self, rekognition):
+        """DetectLabels response has proper Label structure."""
+        resp = rekognition.detect_labels(Image={"Bytes": _TINY_JPEG})
+        assert "Labels" in resp
+        assert "LabelModelVersion" in resp
+
+    def test_detect_faces_response_structure(self, rekognition):
+        """DetectFaces with ALL attributes returns detailed face info."""
+        resp = rekognition.detect_faces(Image={"Bytes": _TINY_JPEG}, Attributes=["ALL"])
+        assert "FaceDetails" in resp
+        assert len(resp["FaceDetails"]) > 0
+        face = resp["FaceDetails"][0]
+        assert "BoundingBox" in face
+        assert "Confidence" in face
+
+    def test_compare_faces_similarity_threshold(self, rekognition):
+        """CompareFaces with explicit SimilarityThreshold returns expected fields."""
+        resp = rekognition.compare_faces(
+            SourceImage={"Bytes": _TINY_JPEG},
+            TargetImage={"Bytes": _TINY_JPEG},
+            SimilarityThreshold=50.0,
+        )
+        assert "SourceImageFace" in resp
+        assert "FaceMatches" in resp
+        assert "UnmatchedFaces" in resp
+
+    def test_create_collection_returns_face_model_version(self, rekognition):
+        """CreateCollection returns a FaceModelVersion string."""
+        col_id = _unique("ver")
+        resp = rekognition.create_collection(CollectionId=col_id)
+        assert isinstance(resp["FaceModelVersion"], str)
+        assert len(resp["FaceModelVersion"]) > 0
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_detect_moderation_labels_response_version(self, rekognition):
+        """DetectModerationLabels returns ModerationModelVersion."""
+        resp = rekognition.detect_moderation_labels(Image={"Bytes": _TINY_JPEG})
+        assert isinstance(resp["ModerationModelVersion"], str)
+        assert len(resp["ModerationModelVersion"]) > 0
+
+    def test_recognize_celebrities_response_structure(self, rekognition):
+        """RecognizeCelebrities returns OrientationCorrection field."""
+        resp = rekognition.recognize_celebrities(Image={"Bytes": _TINY_JPEG})
+        assert "CelebrityFaces" in resp
+        assert "UnrecognizedFaces" in resp
+
+    def test_detect_text_response_model_version(self, rekognition):
+        """DetectText returns TextModelVersion field."""
+        resp = rekognition.detect_text(Image={"Bytes": _TINY_JPEG})
+        assert "TextDetections" in resp
+        assert "TextModelVersion" in resp
+
+    def test_project_lifecycle(self, rekognition):
+        """Full project lifecycle: create, describe, delete."""
+        name = _unique("lifecycle")
+        create_resp = rekognition.create_project(ProjectName=name)
+        project_arn = create_resp["ProjectArn"]
+        # Verify project appears in describe
+        desc = rekognition.describe_projects()
+        found = [p for p in desc["ProjectDescriptions"] if p["ProjectArn"] == project_arn]
+        assert len(found) == 1
+        assert found[0]["Status"] in ("CREATED", "CREATING")
+        # Delete
+        del_resp = rekognition.delete_project(ProjectArn=project_arn)
+        assert del_resp["Status"] == "DELETING"
+
+    def test_stream_processor_lifecycle(self, rekognition):
+        """Full stream processor lifecycle: create, describe, list, delete."""
+        name = _unique("sp-lc")
+        col_id = _unique("col-lc")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            create_resp = rekognition.create_stream_processor(
+                Name=name,
+                Input={
+                    "KinesisVideoStream": {"Arn": "arn:aws:kinesisvideo:us-east-1:123:stream/s/0"}
+                },
+                Output={"KinesisDataStream": {"Arn": "arn:aws:kinesis:us-east-1:123:stream/out"}},
+                RoleArn="arn:aws:iam::123456789012:role/test",
+                Settings={"FaceSearch": {"CollectionId": col_id, "FaceMatchThreshold": 80.0}},
+            )
+            sp_arn = create_resp["StreamProcessorArn"]
+            # Describe
+            desc = rekognition.describe_stream_processor(Name=name)
+            assert desc["StreamProcessorArn"] == sp_arn
+            assert "RoleArn" in desc
+            # List
+            listed = rekognition.list_stream_processors()
+            sp_names = [sp["Name"] for sp in listed["StreamProcessors"]]
+            assert name in sp_names
+            # Delete
+            rekognition.delete_stream_processor(Name=name)
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_face_liveness_session_lifecycle(self, rekognition):
+        """Full face liveness session lifecycle: create, get results."""
+        create_resp = rekognition.create_face_liveness_session()
+        session_id = create_resp["SessionId"]
+        assert len(session_id) >= 36  # UUID format
+        resp = rekognition.get_face_liveness_session_results(SessionId=session_id)
+        assert resp["SessionId"] == session_id
+        assert "Status" in resp

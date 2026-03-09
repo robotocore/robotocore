@@ -1227,3 +1227,198 @@ class TestBackupCopyJobOperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             client.delete_backup_vault(BackupVaultName=vault_name)
+
+
+class TestBackupLegalHoldOperations:
+    """Tests for legal hold CRUD operations."""
+
+    def test_create_and_list_legal_holds(self, backup):
+        title = _unique("hold")
+        resp = backup.create_legal_hold(
+            Title=title,
+            Description="test legal hold",
+        )
+        assert "LegalHoldId" in resp
+        assert resp["Title"] == title
+        assert resp["Status"] in ("CREATING", "ACTIVE")
+        hold_id = resp["LegalHoldId"]
+
+        listed = backup.list_legal_holds()
+        assert "LegalHolds" in listed
+        hold_ids = [h["LegalHoldId"] for h in listed["LegalHolds"]]
+        assert hold_id in hold_ids
+
+        # Cancel the hold
+        cancel_resp = backup.cancel_legal_hold(LegalHoldId=hold_id, CancelDescription="done")
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 201)
+
+    def test_list_legal_holds_empty(self, backup):
+        resp = backup.list_legal_holds()
+        assert "LegalHolds" in resp
+        assert isinstance(resp["LegalHolds"], list)
+
+
+class TestBackupRestoreTestingPlanOperations:
+    """Tests for restore testing plan operations."""
+
+    def test_create_and_get_restore_testing_plan(self, backup):
+        name = _unique("rtp")
+        resp = backup.create_restore_testing_plan(
+            RestoreTestingPlan={
+                "RestoreTestingPlanName": name,
+                "ScheduleExpression": "cron(0 12 * * ? *)",
+                "RecoveryPointSelection": {
+                    "Algorithm": "LATEST_WITHIN_WINDOW",
+                    "RecoveryPointTypes": ["CONTINUOUS"],
+                    "IncludeVaults": ["*"],
+                    "SelectionWindowDays": 7,
+                },
+                "StartWindowHours": 1,
+            },
+        )
+        assert "RestoreTestingPlanName" in resp
+        assert resp["RestoreTestingPlanName"] == name
+
+        get_resp = backup.get_restore_testing_plan(RestoreTestingPlanName=name)
+        plan = get_resp["RestoreTestingPlan"]
+        assert plan["RestoreTestingPlanName"] == name
+        assert "RestoreTestingPlanArn" in plan
+
+        backup.delete_restore_testing_plan(RestoreTestingPlanName=name)
+
+    def test_list_restore_testing_plans(self, backup):
+        name = _unique("rtp")
+        backup.create_restore_testing_plan(
+            RestoreTestingPlan={
+                "RestoreTestingPlanName": name,
+                "ScheduleExpression": "cron(0 12 * * ? *)",
+                "RecoveryPointSelection": {
+                    "Algorithm": "LATEST_WITHIN_WINDOW",
+                    "RecoveryPointTypes": ["CONTINUOUS"],
+                    "IncludeVaults": ["*"],
+                    "SelectionWindowDays": 7,
+                },
+                "StartWindowHours": 1,
+            },
+        )
+        try:
+            resp = backup.list_restore_testing_plans()
+            assert "RestoreTestingPlans" in resp
+            plan_names = [p["RestoreTestingPlanName"] for p in resp["RestoreTestingPlans"]]
+            assert name in plan_names
+        finally:
+            backup.delete_restore_testing_plan(RestoreTestingPlanName=name)
+
+    def test_delete_restore_testing_plan(self, backup):
+        name = _unique("rtp")
+        backup.create_restore_testing_plan(
+            RestoreTestingPlan={
+                "RestoreTestingPlanName": name,
+                "ScheduleExpression": "cron(0 12 * * ? *)",
+                "RecoveryPointSelection": {
+                    "Algorithm": "LATEST_WITHIN_WINDOW",
+                    "RecoveryPointTypes": ["CONTINUOUS"],
+                    "IncludeVaults": ["*"],
+                    "SelectionWindowDays": 7,
+                },
+                "StartWindowHours": 1,
+            },
+        )
+        resp = backup.delete_restore_testing_plan(RestoreTestingPlanName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestBackupAdditionalListOperations:
+    """Tests for additional list operations."""
+
+    def test_list_restore_jobs(self, backup):
+        resp = backup.list_restore_jobs()
+        assert "RestoreJobs" in resp
+        assert isinstance(resp["RestoreJobs"], list)
+
+    def test_list_copy_jobs(self, backup):
+        resp = backup.list_copy_jobs()
+        assert "CopyJobs" in resp
+        assert isinstance(resp["CopyJobs"], list)
+
+    def test_list_legal_holds_response_key(self, backup):
+        resp = backup.list_legal_holds()
+        assert "LegalHolds" in resp
+        assert isinstance(resp["LegalHolds"], list)
+
+    def test_get_backup_plan_from_template(self, backup):
+        # List templates first to find a valid ID
+        templates = backup.list_backup_plan_templates()
+        assert "BackupPlanTemplatesList" in templates
+        if templates["BackupPlanTemplatesList"]:
+            template_id = templates["BackupPlanTemplatesList"][0]["BackupPlanTemplateId"]
+            resp = backup.get_backup_plan_from_template(
+                BackupPlanTemplateId=template_id,
+            )
+            assert "BackupPlanDocument" in resp
+            assert "BackupPlanName" in resp["BackupPlanDocument"]
+
+
+class TestBackupErrorPathAdditional:
+    """Additional error path tests for backup operations."""
+
+    def test_describe_restore_job_nonexistent(self, backup):
+        with pytest.raises(ClientError) as exc:
+            backup.describe_restore_job(RestoreJobId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_copy_job_nonexistent(self, backup):
+        with pytest.raises(ClientError) as exc:
+            backup.describe_copy_job(CopyJobId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_recovery_point_nonexistent(self, backup):
+        vault_name = _make_vault(backup)
+        try:
+            with pytest.raises(ClientError) as exc:
+                backup.delete_recovery_point(
+                    BackupVaultName=vault_name,
+                    RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_get_recovery_point_restore_metadata_nonexistent(self, backup):
+        vault_name = _make_vault(backup)
+        try:
+            with pytest.raises(ClientError) as exc:
+                backup.get_recovery_point_restore_metadata(
+                    BackupVaultName=vault_name,
+                    RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_describe_recovery_point_nonexistent_vault(self, backup):
+        with pytest.raises(ClientError) as exc:
+            backup.describe_recovery_point(
+                BackupVaultName="nonexistent-vault",
+                RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_restore_job_metadata_nonexistent(self, backup):
+        with pytest.raises(ClientError) as exc:
+            backup.get_restore_job_metadata(RestoreJobId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_recovery_points_by_resource_nonexistent(self, backup):
+        resp = backup.list_recovery_points_by_resource(
+            ResourceArn="arn:aws:dynamodb:us-east-1:123456789012:table/nonexistent-table"
+        )
+        assert "RecoveryPoints" in resp
+        assert isinstance(resp["RecoveryPoints"], list)
+
+    def test_list_restore_jobs_by_protected_resource(self, backup):
+        resp = backup.list_restore_jobs_by_protected_resource(
+            ResourceArn="arn:aws:dynamodb:us-east-1:123456789012:table/nonexistent-table"
+        )
+        assert "RestoreJobs" in resp
+        assert isinstance(resp["RestoreJobs"], list)

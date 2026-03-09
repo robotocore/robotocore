@@ -1658,3 +1658,410 @@ class TestIoTDescribeAndListOperations:
 
 class TestIoTMitigationActions:
     """Tests for IoT mitigation action operations."""
+
+    def test_create_mitigation_action(self, iot):
+        name = _unique("mitact")
+        resp = iot.create_mitigation_action(
+            actionName=name,
+            roleArn="arn:aws:iam::123456789012:role/mitigate",
+            actionParams={
+                "addThingsToThingGroupParams": {
+                    "thingGroupNames": ["test-group"],
+                }
+            },
+        )
+        assert "actionArn" in resp
+        assert "actionId" in resp
+        iot.delete_mitigation_action(actionName=name)
+
+    def test_describe_mitigation_action(self, iot):
+        name = _unique("mitact")
+        iot.create_mitigation_action(
+            actionName=name,
+            roleArn="arn:aws:iam::123456789012:role/mitigate",
+            actionParams={
+                "addThingsToThingGroupParams": {
+                    "thingGroupNames": ["test-group"],
+                }
+            },
+        )
+        resp = iot.describe_mitigation_action(actionName=name)
+        assert resp["actionName"] == name
+        assert "actionArn" in resp
+        iot.delete_mitigation_action(actionName=name)
+
+    def test_list_mitigation_actions(self, iot):
+        resp = iot.list_mitigation_actions()
+        assert "actionIdentifiers" in resp
+
+    def test_delete_mitigation_action(self, iot):
+        name = _unique("mitact")
+        iot.create_mitigation_action(
+            actionName=name,
+            roleArn="arn:aws:iam::123456789012:role/mitigate",
+            actionParams={
+                "addThingsToThingGroupParams": {
+                    "thingGroupNames": ["test-group"],
+                }
+            },
+        )
+        iot.delete_mitigation_action(actionName=name)
+        # Verify deletion
+        resp = iot.list_mitigation_actions()
+        names = [a["actionName"] for a in resp["actionIdentifiers"]]
+        assert name not in names
+
+
+class TestIoTScheduledAuditOperations:
+    """Tests for IoT scheduled audit operations."""
+
+    def test_create_scheduled_audit(self, iot):
+        name = _unique("schedaudit")
+        resp = iot.create_scheduled_audit(
+            frequency="DAILY",
+            targetCheckNames=["CA_CERTIFICATE_EXPIRING_CHECK"],
+            scheduledAuditName=name,
+        )
+        assert "scheduledAuditArn" in resp
+        iot.delete_scheduled_audit(scheduledAuditName=name)
+
+    def test_describe_scheduled_audit(self, iot):
+        name = _unique("schedaudit")
+        iot.create_scheduled_audit(
+            frequency="DAILY",
+            targetCheckNames=["CA_CERTIFICATE_EXPIRING_CHECK"],
+            scheduledAuditName=name,
+        )
+        resp = iot.describe_scheduled_audit(scheduledAuditName=name)
+        assert resp["scheduledAuditName"] == name
+        assert resp["frequency"] == "DAILY"
+        iot.delete_scheduled_audit(scheduledAuditName=name)
+
+    def test_list_scheduled_audits(self, iot):
+        resp = iot.list_scheduled_audits()
+        assert "scheduledAudits" in resp
+
+    def test_delete_scheduled_audit(self, iot):
+        name = _unique("schedaudit")
+        iot.create_scheduled_audit(
+            frequency="DAILY",
+            targetCheckNames=["CA_CERTIFICATE_EXPIRING_CHECK"],
+            scheduledAuditName=name,
+        )
+        iot.delete_scheduled_audit(scheduledAuditName=name)
+        resp = iot.list_scheduled_audits()
+        names = [a["scheduledAuditName"] for a in resp["scheduledAudits"]]
+        assert name not in names
+
+
+class TestIoTSecurityProfileAdvanced:
+    """Tests for IoT security profile attach/detach operations."""
+
+    def test_attach_security_profile(self, iot):
+        name = _unique("secprof")
+        iot.create_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="test attach",
+        )
+        resp = iot.attach_security_profile(
+            securityProfileName=name,
+            securityProfileTargetArn="arn:aws:iot:us-east-1:123456789012:all/things",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        iot.detach_security_profile(
+            securityProfileName=name,
+            securityProfileTargetArn="arn:aws:iot:us-east-1:123456789012:all/things",
+        )
+        iot.delete_security_profile(securityProfileName=name)
+
+    def test_detach_security_profile(self, iot):
+        name = _unique("secprof")
+        iot.create_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="test detach",
+        )
+        iot.attach_security_profile(
+            securityProfileName=name,
+            securityProfileTargetArn="arn:aws:iot:us-east-1:123456789012:all/things",
+        )
+        resp = iot.detach_security_profile(
+            securityProfileName=name,
+            securityProfileTargetArn="arn:aws:iot:us-east-1:123456789012:all/things",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        iot.delete_security_profile(securityProfileName=name)
+
+    def test_update_security_profile(self, iot):
+        name = _unique("secprof")
+        iot.create_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="original",
+        )
+        resp = iot.update_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="updated",
+        )
+        assert resp["securityProfileName"] == name
+        assert resp["securityProfileDescription"] == "updated"
+        iot.delete_security_profile(securityProfileName=name)
+
+    def test_create_security_profile(self, iot):
+        name = _unique("secprof")
+        resp = iot.create_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="test create",
+        )
+        assert "securityProfileName" in resp
+        assert "securityProfileArn" in resp
+        iot.delete_security_profile(securityProfileName=name)
+
+    def test_delete_security_profile(self, iot):
+        name = _unique("secprof")
+        iot.create_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="test delete",
+        )
+        iot.delete_security_profile(securityProfileName=name)
+        # Verify it was deleted - list should not contain it
+        resp = iot.list_security_profiles()
+        names = [p["name"] for p in resp["securityProfileIdentifiers"]]
+        assert name not in names
+
+
+class TestIoTCustomMetricCrud:
+    """Tests for IoT custom metric CRUD operations."""
+
+    def test_create_custom_metric(self, iot):
+        name = _unique("metric")
+        resp = iot.create_custom_metric(
+            metricName=name,
+            metricType="number",
+            clientRequestToken=uuid.uuid4().hex,
+        )
+        assert "metricName" in resp
+        assert "metricArn" in resp
+        iot.delete_custom_metric(metricName=name)
+
+    def test_update_custom_metric(self, iot):
+        name = _unique("metric")
+        iot.create_custom_metric(
+            metricName=name,
+            metricType="number",
+            clientRequestToken=uuid.uuid4().hex,
+        )
+        resp = iot.update_custom_metric(
+            metricName=name,
+            displayName="Updated Metric",
+        )
+        assert resp["metricName"] == name
+        assert resp["displayName"] == "Updated Metric"
+        iot.delete_custom_metric(metricName=name)
+
+    def test_delete_custom_metric(self, iot):
+        name = _unique("metric")
+        iot.create_custom_metric(
+            metricName=name,
+            metricType="number",
+            clientRequestToken=uuid.uuid4().hex,
+        )
+        iot.delete_custom_metric(metricName=name)
+        resp = iot.list_custom_metrics()
+        assert name not in resp["metricNames"]
+
+
+class TestIoTAuthorizerCrud:
+    """Tests for IoT authorizer CRUD operations."""
+
+    def test_create_authorizer(self, iot):
+        name = _unique("auth")
+        resp = iot.create_authorizer(
+            authorizerName=name,
+            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:auth",
+        )
+        assert "authorizerName" in resp
+        assert "authorizerArn" in resp
+        iot.delete_authorizer(authorizerName=name)
+
+    def test_update_authorizer(self, iot):
+        name = _unique("auth")
+        iot.create_authorizer(
+            authorizerName=name,
+            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:auth",
+        )
+        resp = iot.update_authorizer(
+            authorizerName=name,
+            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:auth2",
+        )
+        assert resp["authorizerName"] == name
+        iot.delete_authorizer(authorizerName=name)
+
+    def test_delete_authorizer(self, iot):
+        name = _unique("auth")
+        iot.create_authorizer(
+            authorizerName=name,
+            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:auth",
+        )
+        iot.delete_authorizer(authorizerName=name)
+        resp = iot.list_authorizers()
+        names = [a["authorizerName"] for a in resp["authorizers"]]
+        assert name not in names
+
+
+class TestIoTAuditOperations:
+    """Tests for IoT audit-related list/describe operations."""
+
+    def test_describe_account_audit_configuration(self, iot):
+        resp = iot.describe_account_audit_configuration()
+        assert "auditCheckConfigurations" in resp
+
+    def test_update_account_audit_configuration(self, iot):
+        resp = iot.update_account_audit_configuration(
+            auditCheckConfigurations={"CA_CERTIFICATE_EXPIRING_CHECK": {"enabled": True}}
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_audit_findings(self, iot):
+        resp = iot.list_audit_findings()
+        assert "findings" in resp
+
+    def test_list_audit_tasks(self, iot):
+        resp = iot.list_audit_tasks(
+            startTime=datetime.datetime(2020, 1, 1),
+            endTime=datetime.datetime(2030, 1, 1),
+        )
+        assert "tasks" in resp
+
+    def test_list_audit_suppressions(self, iot):
+        resp = iot.list_audit_suppressions()
+        assert "suppressions" in resp
+
+    def test_list_active_violations(self, iot):
+        resp = iot.list_active_violations()
+        assert "activeViolations" in resp
+
+
+class TestIoTProvisioningTemplateAdvanced:
+    """Tests for provisioning template version operations."""
+
+    def test_create_provisioning_template_version(self, iot):
+        name = _unique("prov")
+        iot.create_provisioning_template(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{}}',
+            provisioningRoleArn="arn:aws:iam::123456789012:role/prov",
+        )
+        resp = iot.create_provisioning_template_version(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{"thing":{}}}',
+        )
+        assert "templateName" in resp
+        assert "versionId" in resp
+        iot.delete_provisioning_template(templateName=name)
+
+    def test_describe_provisioning_template_version(self, iot):
+        name = _unique("prov")
+        iot.create_provisioning_template(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{}}',
+            provisioningRoleArn="arn:aws:iam::123456789012:role/prov",
+        )
+        ver = iot.create_provisioning_template_version(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{"thing":{}}}',
+        )
+        resp = iot.describe_provisioning_template_version(
+            templateName=name,
+            versionId=ver["versionId"],
+        )
+        assert "versionId" in resp
+        assert "templateBody" in resp
+        iot.delete_provisioning_template(templateName=name)
+
+    def test_list_provisioning_template_versions(self, iot):
+        name = _unique("prov")
+        iot.create_provisioning_template(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{}}',
+            provisioningRoleArn="arn:aws:iam::123456789012:role/prov",
+        )
+        resp = iot.list_provisioning_template_versions(templateName=name)
+        assert "versions" in resp
+        assert len(resp["versions"]) >= 1
+        iot.delete_provisioning_template(templateName=name)
+
+    def test_update_provisioning_template(self, iot):
+        name = _unique("prov")
+        iot.create_provisioning_template(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{}}',
+            provisioningRoleArn="arn:aws:iam::123456789012:role/prov",
+        )
+        resp = iot.update_provisioning_template(
+            templateName=name,
+            description="updated description",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        iot.delete_provisioning_template(templateName=name)
+
+    def test_delete_provisioning_template(self, iot):
+        name = _unique("prov")
+        iot.create_provisioning_template(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{}}',
+            provisioningRoleArn="arn:aws:iam::123456789012:role/prov",
+        )
+        iot.delete_provisioning_template(templateName=name)
+        resp = iot.list_provisioning_templates()
+        names = [t["templateName"] for t in resp["templates"]]
+        assert name not in names
+
+
+class TestIoTMiscListOperations:
+    """Tests for miscellaneous list operations."""
+
+    def test_list_streams(self, iot):
+        resp = iot.list_streams()
+        assert "streams" in resp
+
+    def test_list_ota_updates(self, iot):
+        resp = iot.list_ota_updates()
+        assert "otaUpdates" in resp
+
+    def test_list_ca_certificates(self, iot):
+        resp = iot.list_ca_certificates()
+        assert "certificates" in resp
+
+    def test_list_managed_job_templates(self, iot):
+        resp = iot.list_managed_job_templates()
+        assert "managedJobTemplates" in resp
+
+    def test_list_things_in_thing_group(self, iot):
+        group_name = _unique("grp")
+        iot.create_thing_group(thingGroupName=group_name)
+        resp = iot.list_things_in_thing_group(thingGroupName=group_name)
+        assert "things" in resp
+        iot.delete_thing_group(thingGroupName=group_name)
+
+    def test_get_v2_logging_options(self, iot):
+        resp = iot.get_v2_logging_options()
+        # Response may have defaultLogLevel or not, but the call should succeed
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_deprecate_thing_type(self, iot):
+        name = _unique("ttype")
+        iot.create_thing_type(thingTypeName=name)
+        resp = iot.deprecate_thing_type(thingTypeName=name, undoDeprecate=False)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Cleanup - need to wait or force delete
+        iot.deprecate_thing_type(thingTypeName=name, undoDeprecate=True)
+
+    def test_delete_thing_type(self, iot):
+        name = _unique("ttype")
+        iot.create_thing_type(thingTypeName=name)
+        iot.deprecate_thing_type(thingTypeName=name, undoDeprecate=False)
+        # Note: AWS requires 5 min wait before delete; moto may allow immediate
+        try:
+            iot.delete_thing_type(thingTypeName=name)
+        except ClientError:
+            # Expected if immediate delete not allowed
+            iot.deprecate_thing_type(thingTypeName=name, undoDeprecate=True)

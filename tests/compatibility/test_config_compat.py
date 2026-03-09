@@ -1164,3 +1164,163 @@ class TestStoredQueryCRUD:
         resp = client.list_stored_queries()
         query_names = [q["QueryName"] for q in resp["StoredQueryMetadata"]]
         assert name not in query_names
+
+
+class TestConfigAggregationOperations:
+    """Tests for aggregation-related operations."""
+
+    def test_delete_aggregation_authorization(self, config):
+        """DeleteAggregationAuthorization removes the authorization."""
+        config.put_aggregation_authorization(
+            AuthorizedAccountId="123456789012",
+            AuthorizedAwsRegion="us-east-1",
+        )
+        config.delete_aggregation_authorization(
+            AuthorizedAccountId="123456789012",
+            AuthorizedAwsRegion="us-east-1",
+        )
+        resp = config.describe_aggregation_authorizations()
+        accts = [a["AuthorizedAccountId"] for a in resp.get("AggregationAuthorizations", [])]
+        assert "123456789012" not in accts or len(resp.get("AggregationAuthorizations", [])) == 0
+
+    def test_delete_configuration_aggregator(self, config):
+        """DeleteConfigurationAggregator removes the aggregator."""
+        import uuid
+
+        name = f"agg-{uuid.uuid4().hex[:8]}"
+        config.put_configuration_aggregator(
+            ConfigurationAggregatorName=name,
+            AccountAggregationSources=[
+                {
+                    "AccountIds": ["123456789012"],
+                    "AllAwsRegions": True,
+                }
+            ],
+        )
+        config.delete_configuration_aggregator(ConfigurationAggregatorName=name)
+        resp = config.describe_configuration_aggregators()
+        names = [a["ConfigurationAggregatorName"] for a in resp["ConfigurationAggregators"]]
+        assert name not in names
+
+    def test_describe_configuration_recorders_all(self, config):
+        """DescribeConfigurationRecorders returns all recorders."""
+        resp = config.describe_configuration_recorders()
+        assert "ConfigurationRecorders" in resp
+        assert isinstance(resp["ConfigurationRecorders"], list)
+
+    def test_describe_delivery_channels_all(self, config):
+        """DescribeDeliveryChannels returns all channels."""
+        resp = config.describe_delivery_channels()
+        assert "DeliveryChannels" in resp
+        assert isinstance(resp["DeliveryChannels"], list)
+
+    def test_list_tags_for_resource(self, config):
+        """ListTagsForResource returns Tags list for a config rule."""
+        import uuid
+
+        rule_name = f"tag-rule-{uuid.uuid4().hex[:8]}"
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": rule_name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            },
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        try:
+            # Get the rule ARN
+            rules = config.describe_config_rules(ConfigRuleNames=[rule_name])
+            arn = rules["ConfigRules"][0]["ConfigRuleArn"]
+            resp = config.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
+        finally:
+            config.delete_config_rule(ConfigRuleName=rule_name)
+
+    def test_get_compliance_details_by_resource(self, config):
+        """GetComplianceDetailsByResource returns EvaluationResults."""
+        resp = config.get_compliance_details_by_resource(
+            ResourceType="AWS::S3::Bucket",
+            ResourceId="nonexistent-bucket",
+        )
+        assert "EvaluationResults" in resp
+        assert isinstance(resp["EvaluationResults"], list)
+
+    def test_batch_get_resource_config(self, config):
+        """BatchGetResourceConfig returns results."""
+        resp = config.batch_get_resource_config(
+            resourceKeys=[
+                {
+                    "resourceType": "AWS::S3::Bucket",
+                    "resourceId": "nonexistent",
+                }
+            ]
+        )
+        assert "baseConfigurationItems" in resp
+        assert "unprocessedResourceKeys" in resp
+
+    def test_describe_conformance_pack_status_all(self, config):
+        """DescribeConformancePackStatus returns list."""
+        resp = config.describe_conformance_pack_status()
+        assert "ConformancePackStatusDetails" in resp
+        assert isinstance(resp["ConformancePackStatusDetails"], list)
+
+    def test_get_resource_config_history_not_discovered(self, config):
+        """GetResourceConfigHistory for unknown resource raises error."""
+        with pytest.raises(ClientError) as exc:
+            config.get_resource_config_history(
+                resourceType="AWS::S3::Bucket",
+                resourceId="nonexistent-bucket-123",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotDiscoveredException"
+
+    def test_list_resource_evaluations_empty(self, config):
+        """ListResourceEvaluations returns ResourceEvaluations."""
+        resp = config.list_resource_evaluations()
+        assert "ResourceEvaluations" in resp
+        assert isinstance(resp["ResourceEvaluations"], list)
+
+    def test_put_resource_config_and_delete(self, config):
+        """PutResourceConfig creates a resource, DeleteResourceConfig removes it."""
+        import uuid
+
+        rid = f"res-{uuid.uuid4().hex[:8]}"
+        config.put_resource_config(
+            ResourceType="AWS::S3::Bucket",
+            SchemaVersionId="1",
+            ResourceId=rid,
+            Configuration='{"bucketName":"test"}',
+        )
+        # Verify it's discoverable
+        resp = config.list_discovered_resources(resourceType="AWS::S3::Bucket")
+        assert "resourceIdentifiers" in resp
+
+        config.delete_resource_config(
+            ResourceType="AWS::S3::Bucket",
+            ResourceId=rid,
+        )
+
+    def test_select_resource_config(self, config):
+        """SelectResourceConfig with query returns results."""
+        resp = config.select_resource_config(
+            Expression="SELECT resourceId WHERE resourceType = 'AWS::S3::Bucket'"
+        )
+        assert "Results" in resp
+
+    def test_put_retention_configuration(self, config):
+        """PutRetentionConfiguration creates a configuration."""
+
+        resp = config.put_retention_configuration(RetentionPeriodInDays=365)
+        assert "RetentionConfiguration" in resp
+        assert resp["RetentionConfiguration"]["RetentionPeriodInDays"] == 365
+        # Clean up
+        name = resp["RetentionConfiguration"]["Name"]
+        config.delete_retention_configuration(RetentionConfigurationName=name)
+
+    def test_describe_retention_configurations_all(self, config):
+        """DescribeRetentionConfigurations returns list."""
+        resp = config.describe_retention_configurations()
+        assert "RetentionConfigurations" in resp
+        assert isinstance(resp["RetentionConfigurations"], list)

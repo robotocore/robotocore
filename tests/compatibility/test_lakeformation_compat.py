@@ -394,3 +394,192 @@ class TestLakeFormationAdditionalOps:
         resp = client.list_transactions()
         assert "Transactions" in resp
         assert isinstance(resp["Transactions"], list)
+
+
+class TestLakeFormationTransactions:
+    """Tests for transaction operations: Start, Describe, Commit, Cancel."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_start_transaction(self, client):
+        """StartTransaction returns a TransactionId."""
+        resp = client.start_transaction(TransactionType="READ_AND_WRITE")
+        assert "TransactionId" in resp
+        assert isinstance(resp["TransactionId"], str)
+        assert len(resp["TransactionId"]) > 0
+        # Cancel it to clean up
+        try:
+            client.cancel_transaction(TransactionId=resp["TransactionId"])
+        except Exception:
+            pass
+
+    def test_start_transaction_read_only(self, client):
+        """StartTransaction with READ_ONLY type returns a TransactionId."""
+        resp = client.start_transaction(TransactionType="READ_ONLY")
+        assert "TransactionId" in resp
+        assert len(resp["TransactionId"]) > 0
+        try:
+            client.cancel_transaction(TransactionId=resp["TransactionId"])
+        except Exception:
+            pass
+
+    def test_start_and_describe_transaction(self, client):
+        """DescribeTransaction returns details for a started transaction."""
+        start_resp = client.start_transaction(TransactionType="READ_AND_WRITE")
+        txn_id = start_resp["TransactionId"]
+        try:
+            desc = client.describe_transaction(TransactionId=txn_id)
+            assert "TransactionDescription" in desc
+            txn_desc = desc["TransactionDescription"]
+            assert txn_desc["TransactionId"] == txn_id
+            assert "TransactionStatus" in txn_desc
+        finally:
+            try:
+                client.cancel_transaction(TransactionId=txn_id)
+            except Exception:
+                pass
+
+    def test_commit_transaction(self, client):
+        """CommitTransaction commits a started transaction."""
+        start_resp = client.start_transaction(TransactionType="READ_AND_WRITE")
+        txn_id = start_resp["TransactionId"]
+        resp = client.commit_transaction(TransactionId=txn_id)
+        assert "TransactionStatus" in resp
+
+    def test_cancel_transaction(self, client):
+        """CancelTransaction cancels a started transaction."""
+        start_resp = client.start_transaction(TransactionType="READ_AND_WRITE")
+        txn_id = start_resp["TransactionId"]
+        resp = client.cancel_transaction(TransactionId=txn_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_transaction_appears_in_list(self, client):
+        """ListTransactions includes a freshly started transaction."""
+        start_resp = client.start_transaction(TransactionType="READ_AND_WRITE")
+        txn_id = start_resp["TransactionId"]
+        try:
+            list_resp = client.list_transactions()
+            txn_ids = [t["TransactionId"] for t in list_resp["Transactions"]]
+            assert txn_id in txn_ids
+        finally:
+            try:
+                client.cancel_transaction(TransactionId=txn_id)
+            except Exception:
+                pass
+
+
+class TestLakeFormationDataCellsFilter:
+    """Tests for CreateDataCellsFilter and related operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_create_data_cells_filter(self, client):
+        """CreateDataCellsFilter creates a filter."""
+        suffix = uuid.uuid4().hex[:8]
+        resp = client.create_data_cells_filter(
+            TableData={
+                "TableCatalogId": "123456789012",
+                "DatabaseName": f"db-{suffix}",
+                "TableName": f"tbl-{suffix}",
+                "Name": f"filter-{suffix}",
+                "ColumnNames": ["col1", "col2"],
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_data_cells_filter_appears_in_list(self, client):
+        """ListDataCellsFilter includes the created filter."""
+        suffix = uuid.uuid4().hex[:8]
+        filter_name = f"filter-{suffix}"
+        client.create_data_cells_filter(
+            TableData={
+                "TableCatalogId": "123456789012",
+                "DatabaseName": f"db-{suffix}",
+                "TableName": f"tbl-{suffix}",
+                "Name": filter_name,
+                "ColumnNames": ["col1"],
+            }
+        )
+        resp = client.list_data_cells_filter()
+        names = [f["Name"] for f in resp.get("DataCellsFilters", [])]
+        assert filter_name in names
+
+    def test_create_and_get_data_cells_filter(self, client):
+        """GetDataCellsFilter returns details of a created filter."""
+        suffix = uuid.uuid4().hex[:8]
+        db_name = f"db-{suffix}"
+        tbl_name = f"tbl-{suffix}"
+        filter_name = f"filter-{suffix}"
+        client.create_data_cells_filter(
+            TableData={
+                "TableCatalogId": "123456789012",
+                "DatabaseName": db_name,
+                "TableName": tbl_name,
+                "Name": filter_name,
+                "ColumnNames": ["col1", "col2"],
+            }
+        )
+        resp = client.get_data_cells_filter(
+            TableCatalogId="123456789012",
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            Name=filter_name,
+        )
+        assert "DataCellsFilter" in resp
+        assert resp["DataCellsFilter"]["Name"] == filter_name
+
+
+class TestLakeFormationDeregisterDescribeResource:
+    """Tests for DeregisterResource and DescribeResource operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_deregister_resource(self, client):
+        """DeregisterResource removes a registered resource."""
+        suffix = uuid.uuid4().hex[:8]
+        resource_arn = f"arn:aws:s3:::dereg-bucket-{suffix}"
+        client.register_resource(ResourceArn=resource_arn)
+        resp = client.deregister_resource(ResourceArn=resource_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone from list
+        list_resp = client.list_resources()
+        arns = [r["ResourceArn"] for r in list_resp["ResourceInfoList"]]
+        assert resource_arn not in arns
+
+    def test_describe_resource(self, client):
+        """DescribeResource returns info for a registered resource."""
+        suffix = uuid.uuid4().hex[:8]
+        resource_arn = f"arn:aws:s3:::desc-bucket-{suffix}"
+        client.register_resource(ResourceArn=resource_arn)
+        try:
+            resp = client.describe_resource(ResourceArn=resource_arn)
+            assert "ResourceInfo" in resp
+            assert resp["ResourceInfo"]["ResourceArn"] == resource_arn
+        finally:
+            try:
+                client.deregister_resource(ResourceArn=resource_arn)
+            except Exception:
+                pass
+
+    def test_describe_resource_has_role_arn(self, client):
+        """DescribeResource includes RoleArn field."""
+        suffix = uuid.uuid4().hex[:8]
+        resource_arn = f"arn:aws:s3:::role-bucket-{suffix}"
+        client.register_resource(ResourceArn=resource_arn)
+        try:
+            resp = client.describe_resource(ResourceArn=resource_arn)
+            # The response should have ResourceInfo with resource details
+            assert "ResourceInfo" in resp
+            info = resp["ResourceInfo"]
+            assert "ResourceArn" in info
+        finally:
+            try:
+                client.deregister_resource(ResourceArn=resource_arn)
+            except Exception:
+                pass

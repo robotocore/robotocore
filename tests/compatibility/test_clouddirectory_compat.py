@@ -571,3 +571,272 @@ class TestCloudDirectoryObjectQueries:
             AttributeNames=["attr1"],
         )
         assert "Attributes" in resp
+
+
+class TestCloudDirectoryFacetOperations:
+    """Tests for Facet CRUD operations."""
+
+    def test_create_and_get_facet(self, clouddirectory_client, schema):
+        """CreateFacet + GetFacet round-trip."""
+        facet_name = f"Facet{uuid.uuid4().hex[:8]}"
+        clouddirectory_client.create_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+            ObjectType="NODE",
+        )
+        resp = clouddirectory_client.get_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        assert "Facet" in resp
+        assert resp["Facet"]["Name"] == facet_name
+
+    def test_delete_facet(self, clouddirectory_client, schema):
+        """DeleteFacet removes a facet."""
+        facet_name = f"Facet{uuid.uuid4().hex[:8]}"
+        clouddirectory_client.create_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+            ObjectType="NODE",
+        )
+        clouddirectory_client.delete_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        resp = clouddirectory_client.list_facet_names(SchemaArn=schema["SchemaArn"])
+        assert facet_name not in resp["FacetNames"]
+
+    def test_update_facet(self, clouddirectory_client, schema):
+        """UpdateFacet modifies a facet."""
+        facet_name = f"Facet{uuid.uuid4().hex[:8]}"
+        clouddirectory_client.create_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+            ObjectType="NODE",
+            Attributes=[
+                {
+                    "Name": "attr1",
+                    "AttributeDefinition": {
+                        "Type": "STRING",
+                    },
+                    "RequiredBehavior": "NOT_REQUIRED",
+                },
+            ],
+        )
+        resp = clouddirectory_client.update_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_facet_attributes(self, clouddirectory_client, schema):
+        """ListFacetAttributes returns attributes for a facet."""
+        facet_name = f"Facet{uuid.uuid4().hex[:8]}"
+        clouddirectory_client.create_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+            ObjectType="NODE",
+            Attributes=[
+                {
+                    "Name": "myattr",
+                    "AttributeDefinition": {"Type": "STRING"},
+                    "RequiredBehavior": "NOT_REQUIRED",
+                },
+            ],
+        )
+        resp = clouddirectory_client.list_facet_attributes(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
+        attr_names = [a["Name"] for a in resp["Attributes"]]
+        assert "myattr" in attr_names
+
+
+class TestCloudDirectoryDirectoryEnableDisable:
+    """Tests for EnableDirectory/DisableDirectory."""
+
+    def test_disable_and_enable_directory(self, clouddirectory_client, published_schema):
+        """DisableDirectory + EnableDirectory toggle directory state."""
+        name = f"test-dir-{uuid.uuid4().hex[:8]}"
+        create_resp = clouddirectory_client.create_directory(
+            Name=name,
+            SchemaArn=published_schema["PublishedSchemaArn"],
+        )
+        dir_arn = create_resp["DirectoryArn"]
+        try:
+            # Disable
+            dis_resp = clouddirectory_client.disable_directory(DirectoryArn=dir_arn)
+            assert dis_resp["DirectoryArn"] == dir_arn
+
+            # Enable
+            en_resp = clouddirectory_client.enable_directory(DirectoryArn=dir_arn)
+            assert en_resp["DirectoryArn"] == dir_arn
+        finally:
+            try:
+                clouddirectory_client.disable_directory(DirectoryArn=dir_arn)
+            except Exception:
+                pass
+            try:
+                clouddirectory_client.delete_directory(DirectoryArn=dir_arn)
+            except Exception:
+                pass
+
+
+class TestCloudDirectoryObjectCrud:
+    """Tests for object CRUD operations."""
+
+    def test_create_object(self, clouddirectory_client, directory):
+        """CreateObject creates an object in a directory with empty facets."""
+        resp = clouddirectory_client.create_object(
+            DirectoryArn=directory["DirectoryArn"],
+            SchemaFacets=[],
+        )
+        assert "ObjectIdentifier" in resp
+
+    def test_lookup_policy(self, clouddirectory_client, directory):
+        """LookupPolicy returns PolicyToPathList for root."""
+        resp = clouddirectory_client.lookup_policy(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+        )
+        assert "PolicyToPathList" in resp
+        assert isinstance(resp["PolicyToPathList"], list)
+
+
+class TestCloudDirectorySchemaJson:
+    """Tests for PutSchemaFromJson and UpdateSchema."""
+
+    def test_put_schema_from_json(self, clouddirectory_client, schema):
+        """PutSchemaFromJson sets schema from a JSON document."""
+        json_doc = '{"facets":{},"typedLinkFacets":{}}'
+        resp = clouddirectory_client.put_schema_from_json(
+            SchemaArn=schema["SchemaArn"],
+            Document=json_doc,
+        )
+        assert "Arn" in resp
+
+    def test_update_schema(self, clouddirectory_client, schema):
+        """UpdateSchema changes the schema name."""
+        new_name = f"updated-{uuid.uuid4().hex[:8]}"
+        resp = clouddirectory_client.update_schema(
+            SchemaArn=schema["SchemaArn"],
+            Name=new_name,
+        )
+        assert "SchemaArn" in resp
+
+    def test_get_applied_schema_version_not_found(self, clouddirectory_client):
+        """GetAppliedSchemaVersion for nonexistent raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        fake_arn = "arn:aws:clouddirectory:us-east-1:123456789012:schema/published/fake/1"
+        with pytest.raises(ClientError) as exc:
+            clouddirectory_client.get_applied_schema_version(SchemaArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudDirectoryTypedLinkFacetOps:
+    """Tests for TypedLinkFacet operations."""
+
+    def test_create_and_get_typed_link_facet(self, clouddirectory_client, schema):
+        """CreateTypedLinkFacet + GetTypedLinkFacetInformation round-trip."""
+        facet_name = f"TLFacet{uuid.uuid4().hex[:6]}"
+        clouddirectory_client.create_typed_link_facet(
+            SchemaArn=schema["SchemaArn"],
+            Facet={
+                "Name": facet_name,
+                "Attributes": [
+                    {
+                        "Name": "linkattr",
+                        "Type": "STRING",
+                        "RequiredBehavior": "REQUIRED_ALWAYS",
+                    },
+                ],
+                "IdentityAttributeOrder": ["linkattr"],
+            },
+        )
+        resp = clouddirectory_client.get_typed_link_facet_information(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        assert "IdentityAttributeOrder" in resp
+        assert "linkattr" in resp["IdentityAttributeOrder"]
+
+    def test_delete_typed_link_facet(self, clouddirectory_client, schema):
+        """DeleteTypedLinkFacet removes a typed link facet."""
+        facet_name = f"TLFacet{uuid.uuid4().hex[:6]}"
+        clouddirectory_client.create_typed_link_facet(
+            SchemaArn=schema["SchemaArn"],
+            Facet={
+                "Name": facet_name,
+                "Attributes": [
+                    {
+                        "Name": "linkattr",
+                        "Type": "STRING",
+                        "RequiredBehavior": "REQUIRED_ALWAYS",
+                    },
+                ],
+                "IdentityAttributeOrder": ["linkattr"],
+            },
+        )
+        clouddirectory_client.delete_typed_link_facet(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        resp = clouddirectory_client.list_typed_link_facet_names(
+            SchemaArn=schema["SchemaArn"],
+        )
+        assert facet_name not in resp["FacetNames"]
+
+    def test_list_typed_link_facet_attributes(self, clouddirectory_client, schema):
+        """ListTypedLinkFacetAttributes returns attributes."""
+        facet_name = f"TLFacet{uuid.uuid4().hex[:6]}"
+        clouddirectory_client.create_typed_link_facet(
+            SchemaArn=schema["SchemaArn"],
+            Facet={
+                "Name": facet_name,
+                "Attributes": [
+                    {
+                        "Name": "mylink",
+                        "Type": "STRING",
+                        "RequiredBehavior": "REQUIRED_ALWAYS",
+                    },
+                ],
+                "IdentityAttributeOrder": ["mylink"],
+            },
+        )
+        resp = clouddirectory_client.list_typed_link_facet_attributes(
+            SchemaArn=schema["SchemaArn"],
+            Name=facet_name,
+        )
+        assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
+
+
+class TestCloudDirectoryBatchOps:
+    """Tests for BatchRead and BatchWrite operations."""
+
+    def test_batch_read(self, clouddirectory_client, directory):
+        """BatchRead with ListObjectChildren returns Responses."""
+        resp = clouddirectory_client.batch_read(
+            DirectoryArn=directory["DirectoryArn"],
+            Operations=[
+                {
+                    "ListObjectChildren": {
+                        "ObjectReference": {"Selector": "/"},
+                    },
+                },
+            ],
+        )
+        assert "Responses" in resp
+        assert len(resp["Responses"]) == 1
+
+    def test_batch_write(self, clouddirectory_client, directory):
+        """BatchWrite with empty operations returns Responses."""
+        resp = clouddirectory_client.batch_write(
+            DirectoryArn=directory["DirectoryArn"],
+            Operations=[],
+        )
+        assert "Responses" in resp
+        assert isinstance(resp["Responses"], list)

@@ -349,6 +349,234 @@ class TestMediaConnectVpcInterfaces:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestMediaConnectBridges:
+    """Tests for MediaConnect Bridge CRUD operations."""
+
+    @pytest.fixture
+    def bridge(self, mediaconnect):
+        name = _unique("bridge")
+        resp = mediaconnect.create_bridge(
+            Name=name,
+            PlacementArn="arn:aws:mediaconnect:us-east-1:123456789012:bridge:test",
+            Sources=[
+                {
+                    "NetworkSource": {
+                        "Name": "src1",
+                        "Protocol": "zixi-push",
+                        "MulticastIp": "239.0.0.1",
+                        "Port": 5000,
+                        "NetworkName": "net1",
+                    }
+                }
+            ],
+        )
+        bridge = resp["Bridge"]
+        yield bridge
+        try:
+            mediaconnect.delete_bridge(BridgeArn=bridge["BridgeArn"])
+        except Exception:
+            pass
+
+    def test_create_bridge(self, mediaconnect):
+        """CreateBridge creates a bridge and returns its details."""
+        name = _unique("bridge")
+        resp = mediaconnect.create_bridge(
+            Name=name,
+            PlacementArn="arn:aws:mediaconnect:us-east-1:123456789012:bridge:test",
+            Sources=[
+                {
+                    "NetworkSource": {
+                        "Name": "src1",
+                        "Protocol": "zixi-push",
+                        "MulticastIp": "239.0.0.1",
+                        "Port": 5000,
+                        "NetworkName": "net1",
+                    }
+                }
+            ],
+        )
+        bridge = resp["Bridge"]
+        assert bridge["Name"] == name
+        assert "BridgeArn" in bridge
+        assert bridge["BridgeState"] == "ACTIVE"
+        assert len(bridge["Sources"]) == 1
+        mediaconnect.delete_bridge(BridgeArn=bridge["BridgeArn"])
+
+    def test_describe_bridge(self, mediaconnect, bridge):
+        """DescribeBridge returns the bridge details."""
+        resp = mediaconnect.describe_bridge(BridgeArn=bridge["BridgeArn"])
+        assert resp["Bridge"]["Name"] == bridge["Name"]
+        assert resp["Bridge"]["BridgeArn"] == bridge["BridgeArn"]
+        assert resp["Bridge"]["BridgeState"] == "ACTIVE"
+
+    def test_delete_bridge(self, mediaconnect):
+        """DeleteBridge removes the bridge."""
+        name = _unique("bridge")
+        resp = mediaconnect.create_bridge(
+            Name=name,
+            PlacementArn="arn:aws:mediaconnect:us-east-1:123456789012:bridge:test",
+            Sources=[
+                {
+                    "NetworkSource": {
+                        "Name": "src1",
+                        "Protocol": "zixi-push",
+                        "MulticastIp": "239.0.0.1",
+                        "Port": 5000,
+                        "NetworkName": "net1",
+                    }
+                }
+            ],
+        )
+        bridge_arn = resp["Bridge"]["BridgeArn"]
+        mediaconnect.delete_bridge(BridgeArn=bridge_arn)
+        bridges = mediaconnect.list_bridges()["Bridges"]
+        arns = [b["BridgeArn"] for b in bridges]
+        assert bridge_arn not in arns
+
+    def test_bridge_appears_in_list(self, mediaconnect, bridge):
+        """Created bridge appears in ListBridges."""
+        bridges = mediaconnect.list_bridges()["Bridges"]
+        arns = [b["BridgeArn"] for b in bridges]
+        assert bridge["BridgeArn"] in arns
+
+    def test_add_bridge_outputs(self, mediaconnect, bridge):
+        """AddBridgeOutputs adds outputs to an existing bridge."""
+        resp = mediaconnect.add_bridge_outputs(
+            BridgeArn=bridge["BridgeArn"],
+            Outputs=[
+                {
+                    "NetworkOutput": {
+                        "IpAddress": "10.0.0.1",
+                        "Name": "out1",
+                        "NetworkName": "net1",
+                        "Port": 6000,
+                        "Protocol": "zixi-push",
+                        "Ttl": 64,
+                    }
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Outputs" in resp
+
+    def test_add_bridge_sources(self, mediaconnect, bridge):
+        """AddBridgeSources adds sources to an existing bridge."""
+        resp = mediaconnect.add_bridge_sources(
+            BridgeArn=bridge["BridgeArn"],
+            Sources=[
+                {
+                    "NetworkSource": {
+                        "Name": "src2",
+                        "Protocol": "zixi-push",
+                        "MulticastIp": "239.0.0.2",
+                        "Port": 5001,
+                        "NetworkName": "net1",
+                    }
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Sources" in resp
+
+    def test_update_bridge(self, mediaconnect, bridge):
+        """UpdateBridge modifies bridge properties."""
+        resp = mediaconnect.update_bridge(BridgeArn=bridge["BridgeArn"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Bridge" in resp
+        assert resp["Bridge"]["BridgeArn"] == bridge["BridgeArn"]
+
+
+class TestMediaConnectGateways:
+    """Tests for MediaConnect Gateway CRUD operations."""
+
+    @pytest.fixture
+    def gateway(self, mediaconnect):
+        name = _unique("gw")
+        resp = mediaconnect.create_gateway(
+            Name=name,
+            EgressCidrBlocks=["10.0.0.0/16"],
+            Networks=[{"Name": "net1", "CidrBlock": "10.0.0.0/24"}],
+        )
+        gw = resp["Gateway"]
+        yield gw
+        try:
+            mediaconnect.delete_gateway(GatewayArn=gw["GatewayArn"])
+        except Exception:
+            pass
+
+    def test_create_gateway(self, mediaconnect):
+        """CreateGateway creates a gateway and returns its details."""
+        name = _unique("gw")
+        resp = mediaconnect.create_gateway(
+            Name=name,
+            EgressCidrBlocks=["10.0.0.0/16"],
+            Networks=[{"Name": "net1", "CidrBlock": "10.0.0.0/24"}],
+        )
+        gw = resp["Gateway"]
+        assert gw["Name"] == name
+        assert "GatewayArn" in gw
+        assert gw["GatewayState"] == "ACTIVE"
+        assert gw["EgressCidrBlocks"] == ["10.0.0.0/16"]
+        assert len(gw["Networks"]) == 1
+        mediaconnect.delete_gateway(GatewayArn=gw["GatewayArn"])
+
+    def test_describe_gateway(self, mediaconnect, gateway):
+        """DescribeGateway returns the gateway details."""
+        resp = mediaconnect.describe_gateway(GatewayArn=gateway["GatewayArn"])
+        assert resp["Gateway"]["Name"] == gateway["Name"]
+        assert resp["Gateway"]["GatewayArn"] == gateway["GatewayArn"]
+        assert resp["Gateway"]["GatewayState"] == "ACTIVE"
+
+    def test_delete_gateway(self, mediaconnect):
+        """DeleteGateway removes the gateway."""
+        name = _unique("gw")
+        resp = mediaconnect.create_gateway(
+            Name=name,
+            EgressCidrBlocks=["10.0.0.0/16"],
+            Networks=[{"Name": "net1", "CidrBlock": "10.0.0.0/24"}],
+        )
+        gw_arn = resp["Gateway"]["GatewayArn"]
+        mediaconnect.delete_gateway(GatewayArn=gw_arn)
+        gws = mediaconnect.list_gateways()["Gateways"]
+        arns = [g["GatewayArn"] for g in gws]
+        assert gw_arn not in arns
+
+    def test_gateway_appears_in_list(self, mediaconnect, gateway):
+        """Created gateway appears in ListGateways."""
+        gws = mediaconnect.list_gateways()["Gateways"]
+        arns = [g["GatewayArn"] for g in gws]
+        assert gateway["GatewayArn"] in arns
+
+
+class TestMediaConnectUpdateFlow:
+    """Tests for UpdateFlow operation."""
+
+    @pytest.fixture
+    def flow(self, mediaconnect):
+        name = _unique("flow")
+        resp = mediaconnect.create_flow(
+            Name=name,
+            Source={
+                "Name": "source-1",
+                "Protocol": "zixi-push",
+                "WhitelistCidr": "0.0.0.0/0",
+            },
+        )
+        flow_arn = resp["Flow"]["FlowArn"]
+        yield {"name": name, "arn": flow_arn}
+        try:
+            mediaconnect.delete_flow(FlowArn=flow_arn)
+        except Exception:
+            pass
+
+    def test_update_flow(self, mediaconnect, flow):
+        """UpdateFlow modifies flow properties."""
+        resp = mediaconnect.update_flow(FlowArn=flow["arn"])
+        assert "Flow" in resp
+        assert resp["Flow"]["FlowArn"] == flow["arn"]
+        assert resp["Flow"]["Status"] == "UPDATING"
+
+
 class TestMediaConnectListOperations:
     """Tests for various List operations."""
 

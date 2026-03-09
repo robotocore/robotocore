@@ -687,3 +687,241 @@ class TestElastiCacheServerlessCaches:
         resp = elasticache.describe_serverless_caches()
         assert "ServerlessCaches" in resp
         assert isinstance(resp["ServerlessCaches"], list)
+
+
+class TestElastiCacheCacheParameterGroupOperations:
+    """Tests for cache parameter group CRUD."""
+
+    def test_create_and_delete_cache_parameter_group(self, elasticache):
+        name = _unique("cpg")
+        resp = elasticache.create_cache_parameter_group(
+            CacheParameterGroupName=name,
+            CacheParameterGroupFamily="redis7",
+            Description="test param group",
+        )
+        group = resp["CacheParameterGroup"]
+        assert group["CacheParameterGroupName"] == name
+        assert group["CacheParameterGroupFamily"] == "redis7"
+        assert group["Description"] == "test param group"
+
+        elasticache.delete_cache_parameter_group(CacheParameterGroupName=name)
+
+    def test_modify_cache_parameter_group(self, elasticache):
+        name = _unique("cpg")
+        elasticache.create_cache_parameter_group(
+            CacheParameterGroupName=name,
+            CacheParameterGroupFamily="redis7",
+            Description="for modify test",
+        )
+        try:
+            resp = elasticache.modify_cache_parameter_group(
+                CacheParameterGroupName=name,
+                ParameterNameValues=[
+                    {"ParameterName": "activedefrag", "ParameterValue": "yes"},
+                ],
+            )
+            assert resp["CacheParameterGroupName"] == name
+        finally:
+            elasticache.delete_cache_parameter_group(CacheParameterGroupName=name)
+
+    def test_reset_cache_parameter_group(self, elasticache):
+        name = _unique("cpg")
+        elasticache.create_cache_parameter_group(
+            CacheParameterGroupName=name,
+            CacheParameterGroupFamily="redis7",
+            Description="for reset test",
+        )
+        try:
+            resp = elasticache.reset_cache_parameter_group(
+                CacheParameterGroupName=name,
+                ResetAllParameters=True,
+            )
+            assert resp["CacheParameterGroupName"] == name
+        finally:
+            elasticache.delete_cache_parameter_group(CacheParameterGroupName=name)
+
+
+class TestElastiCacheCacheSecurityGroupOperations:
+    """Tests for cache security group operations."""
+
+    def test_create_and_describe_cache_security_group(self, elasticache):
+        name = _unique("csg")
+        resp = elasticache.create_cache_security_group(
+            CacheSecurityGroupName=name,
+            Description="test security group",
+        )
+        group = resp["CacheSecurityGroup"]
+        assert group["CacheSecurityGroupName"] == name
+        assert group["Description"] == "test security group"
+
+        desc = elasticache.describe_cache_security_groups(CacheSecurityGroupName=name)
+        assert len(desc["CacheSecurityGroups"]) == 1
+        assert desc["CacheSecurityGroups"][0]["CacheSecurityGroupName"] == name
+
+        elasticache.delete_cache_security_group(CacheSecurityGroupName=name)
+
+    def test_describe_cache_security_groups_all(self, elasticache):
+        resp = elasticache.describe_cache_security_groups()
+        assert "CacheSecurityGroups" in resp
+        assert isinstance(resp["CacheSecurityGroups"], list)
+
+
+class TestElastiCacheGlobalReplicationGroupOperations:
+    """Tests for global replication group operations."""
+
+    def test_describe_global_replication_groups(self, elasticache):
+        resp = elasticache.describe_global_replication_groups()
+        assert "GlobalReplicationGroups" in resp
+        assert isinstance(resp["GlobalReplicationGroups"], list)
+
+
+class TestElastiCacheModifyOperations:
+    """Tests for modify operations on existing resources."""
+
+    def test_modify_cache_cluster(self, elasticache):
+        cc_id = _unique("cc")
+        elasticache.create_cache_cluster(
+            CacheClusterId=cc_id,
+            NumCacheNodes=1,
+            CacheNodeType="cache.t2.micro",
+            Engine="redis",
+        )
+        try:
+            resp = elasticache.modify_cache_cluster(
+                CacheClusterId=cc_id,
+                SnapshotRetentionLimit=5,
+            )
+            assert resp["CacheCluster"]["CacheClusterId"] == cc_id
+        finally:
+            elasticache.delete_cache_cluster(CacheClusterId=cc_id)
+
+    def test_modify_cache_subnet_group(self, elasticache):
+        name = _unique("sg")
+        elasticache.create_cache_subnet_group(
+            CacheSubnetGroupName=name,
+            CacheSubnetGroupDescription="for modify",
+            SubnetIds=["subnet-12345678"],
+        )
+        resp = elasticache.modify_cache_subnet_group(
+            CacheSubnetGroupName=name,
+            CacheSubnetGroupDescription="updated description",
+        )
+        group = resp["CacheSubnetGroup"]
+        assert group["CacheSubnetGroupName"] == name
+        assert group["CacheSubnetGroupDescription"] == "updated description"
+
+    def test_modify_replication_group(self, elasticache):
+        rg_id = _unique("rg")
+        elasticache.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="for modify",
+        )
+        try:
+            resp = elasticache.modify_replication_group(
+                ReplicationGroupId=rg_id,
+                ReplicationGroupDescription="updated desc",
+            )
+            assert resp["ReplicationGroup"]["ReplicationGroupId"] == rg_id
+        finally:
+            elasticache.delete_replication_group(ReplicationGroupId=rg_id)
+
+    def test_modify_user(self, elasticache):
+        user_id = _unique("user")
+        elasticache.create_user(
+            UserId=user_id,
+            UserName="moduser",
+            Engine="redis",
+            AccessString="on ~* +@all",
+            NoPasswordRequired=True,
+        )
+        try:
+            resp = elasticache.modify_user(
+                UserId=user_id,
+                AccessString="on ~* +@read",
+            )
+            assert resp["UserId"] == user_id
+        finally:
+            elasticache.delete_user(UserId=user_id)
+
+
+class TestElastiCacheUserGroupCRUD:
+    """Tests for user group create/delete operations."""
+
+    def test_create_and_delete_user_group(self, elasticache):
+        ug_id = _unique("ug")
+        resp = elasticache.create_user_group(
+            UserGroupId=ug_id,
+            Engine="redis",
+            UserIds=["default"],
+        )
+        assert resp["UserGroupId"] == ug_id
+        assert resp["Engine"] == "redis"
+        assert "ARN" in resp
+        assert "Status" in resp
+
+        del_resp = elasticache.delete_user_group(UserGroupId=ug_id)
+        assert del_resp["UserGroupId"] == ug_id
+
+    def test_modify_user_group(self, elasticache):
+        ug_id = _unique("ug")
+        user_id = _unique("user")
+        elasticache.create_user(
+            UserId=user_id,
+            UserName="uguser",
+            Engine="redis",
+            AccessString="on ~* +@all",
+            NoPasswordRequired=True,
+        )
+        elasticache.create_user_group(
+            UserGroupId=ug_id,
+            Engine="redis",
+            UserIds=["default"],
+        )
+        try:
+            resp = elasticache.modify_user_group(
+                UserGroupId=ug_id,
+                UserIdsToAdd=[user_id],
+            )
+            assert resp["UserGroupId"] == ug_id
+        finally:
+            elasticache.delete_user_group(UserGroupId=ug_id)
+            elasticache.delete_user(UserId=user_id)
+
+
+class TestElastiCacheServerlessCacheSnapshots:
+    """Tests for serverless cache snapshot operations."""
+
+    def test_describe_serverless_cache_snapshots(self, elasticache):
+        resp = elasticache.describe_serverless_cache_snapshots()
+        assert "ServerlessCacheSnapshots" in resp
+        assert isinstance(resp["ServerlessCacheSnapshots"], list)
+
+
+class TestElastiCacheCopySnapshot:
+    """Tests for copy snapshot operation."""
+
+    def test_copy_snapshot(self, elasticache):
+        rg_id = _unique("rg")
+        elasticache.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="for copy snap",
+        )
+        snap_name = _unique("snap")
+        target_name = _unique("snap-copy")
+        elasticache.create_snapshot(
+            SnapshotName=snap_name,
+            ReplicationGroupId=rg_id,
+        )
+        try:
+            resp = elasticache.copy_snapshot(
+                SourceSnapshotName=snap_name,
+                TargetSnapshotName=target_name,
+            )
+            assert resp["Snapshot"]["SnapshotName"] == target_name
+        finally:
+            try:
+                elasticache.delete_snapshot(SnapshotName=target_name)
+            except ClientError:
+                pass
+            elasticache.delete_snapshot(SnapshotName=snap_name)
+            elasticache.delete_replication_group(ReplicationGroupId=rg_id)

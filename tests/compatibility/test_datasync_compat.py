@@ -271,6 +271,136 @@ class TestDataSyncLocationSmbOperations:
         datasync.delete_location(LocationArn=arn)
 
 
+class TestDataSyncAgentOperations:
+    """Tests for DataSync Agent operations."""
+
+    def test_create_agent(self, datasync):
+        """CreateAgent creates an agent and returns an ARN."""
+        resp = datasync.create_agent(
+            ActivationKey="AAAAA-BBBBB-CCCCC-DDDDD-EEEEE",
+            AgentName=_unique("test-agent"),
+        )
+        assert "AgentArn" in resp
+        assert resp["AgentArn"].startswith("arn:aws:datasync:")
+        assert ":agent/agent-" in resp["AgentArn"]
+
+    def test_create_agent_appears_in_list(self, datasync):
+        """ListAgents includes a freshly created agent."""
+        resp = datasync.create_agent(
+            ActivationKey="AAAAA-BBBBB-CCCCC-DDDDD-FFFFF",
+            AgentName=_unique("list-agent"),
+        )
+        agent_arn = resp["AgentArn"]
+        list_resp = datasync.list_agents()
+        assert "Agents" in list_resp
+        arns = [a["AgentArn"] for a in list_resp["Agents"]]
+        assert agent_arn in arns
+
+    def test_list_agents(self, datasync):
+        """ListAgents returns a list."""
+        resp = datasync.list_agents()
+        assert "Agents" in resp
+        assert isinstance(resp["Agents"], list)
+
+    def test_create_agent_and_describe(self, datasync):
+        """DescribeAgent returns details for a created agent."""
+        name = _unique("desc-agent")
+        create_resp = datasync.create_agent(
+            ActivationKey="AAAAA-BBBBB-CCCCC-DDDDD-GGGGG",
+            AgentName=name,
+        )
+        agent_arn = create_resp["AgentArn"]
+        desc = datasync.describe_agent(AgentArn=agent_arn)
+        assert desc["AgentArn"] == agent_arn
+        assert desc["Name"] == name
+        assert "Status" in desc
+
+
+class TestDataSyncLocationAzureBlobOperations:
+    """Tests for DataSync Azure Blob location operations."""
+
+    def test_create_location_azure_blob(self, datasync):
+        """CreateLocationAzureBlob creates a location and returns an ARN."""
+        resp = datasync.create_location_azure_blob(
+            ContainerUrl="https://myaccount.blob.core.windows.net/mycontainer",
+            AuthenticationType="SAS",
+            SasConfiguration={
+                "Token": "sv=2021-06-08&ss=b&srt=co&sp=rlx&se=2025-01-01T00:00:00Z&sig=fake",
+            },
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_create_and_describe_location_azure_blob(self, datasync):
+        """DescribeLocationAzureBlob returns details for a created location."""
+        resp = datasync.create_location_azure_blob(
+            ContainerUrl="https://descaccount.blob.core.windows.net/desccontainer",
+            AuthenticationType="SAS",
+            SasConfiguration={
+                "Token": "sv=2021-06-08&ss=b&srt=co&sp=rlx&se=2025-01-01T00:00:00Z&sig=fake2",
+            },
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = resp["LocationArn"]
+        desc = datasync.describe_location_azure_blob(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "AuthenticationType" in desc
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncLocationObjectStorageOperations:
+    """Tests for DataSync Object Storage location operations."""
+
+    def test_create_location_object_storage(self, datasync):
+        """CreateLocationObjectStorage creates a location and returns an ARN."""
+        resp = datasync.create_location_object_storage(
+            ServerHostname="s3.example.com",
+            BucketName=_unique("objstorage"),
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = resp["LocationArn"]
+        assert arn.startswith("arn:aws:datasync:")
+        assert ":location/loc-" in arn
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_create_and_describe_location_object_storage(self, datasync):
+        """DescribeLocationObjectStorage returns details for a created location."""
+        bucket_name = _unique("objstorage-desc")
+        resp = datasync.create_location_object_storage(
+            ServerHostname="s3.example.com",
+            BucketName=bucket_name,
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = resp["LocationArn"]
+        desc = datasync.describe_location_object_storage(LocationArn=arn)
+        assert desc["LocationArn"] == arn
+        assert "LocationUri" in desc
+        assert "AgentArns" in desc
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+    def test_create_location_object_storage_appears_in_list(self, datasync):
+        """ListLocations includes a created Object Storage location."""
+        resp = datasync.create_location_object_storage(
+            ServerHostname="s3.example.com",
+            BucketName=_unique("objstorage-list"),
+            AgentArns=["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"],
+        )
+        arn = resp["LocationArn"]
+        list_resp = datasync.list_locations()
+        arns = [loc["LocationArn"] for loc in list_resp["Locations"]]
+        assert arn in arns
+        # Clean up
+        datasync.delete_location(LocationArn=arn)
+
+
 class TestDataSyncDescribeLocationVariants:
     """Tests for describe operations on various location types with fake ARNs."""
 

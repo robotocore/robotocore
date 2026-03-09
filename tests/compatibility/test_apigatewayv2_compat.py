@@ -949,3 +949,309 @@ class TestRoutingRuleOperations:
         """ListRoutingRules with fake domain raises NotFoundException."""
         with pytest.raises(Exception):
             apigwv2.list_routing_rules(DomainName="fake.example.com")
+
+
+class TestStageAdvanced:
+    """Tests for update_stage and delete_access_log_settings."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("stg-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_update_stage(self, apigwv2, api):
+        apigwv2.create_stage(ApiId=api, StageName="dev")
+        resp = apigwv2.update_stage(
+            ApiId=api,
+            StageName="dev",
+            Description="updated dev stage",
+        )
+        assert resp["StageName"] == "dev"
+        assert resp["Description"] == "updated dev stage"
+
+
+class TestAuthorizerAdvanced:
+    """Tests for update_authorizer."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("auth-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_update_authorizer(self, apigwv2, api):
+        auth = apigwv2.create_authorizer(
+            ApiId=api,
+            AuthorizerType="REQUEST",
+            IdentitySource=["$request.header.Authorization"],
+            Name=_unique("auth"),
+            AuthorizerUri="arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:auth/invocations",
+        )
+        resp = apigwv2.update_authorizer(
+            ApiId=api,
+            AuthorizerId=auth["AuthorizerId"],
+            Name=_unique("auth-upd"),
+        )
+        assert "AuthorizerId" in resp
+        assert resp["AuthorizerId"] == auth["AuthorizerId"]
+
+
+class TestModelAdvanced:
+    """Tests for create_model, update_model."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("mdl-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_create_model(self, apigwv2, api):
+        resp = apigwv2.create_model(
+            ApiId=api,
+            ContentType="application/json",
+            Name=_unique("model"),
+            Schema='{"type":"object"}',
+        )
+        assert "ModelId" in resp
+        assert resp["ContentType"] == "application/json"
+
+    def test_update_model(self, apigwv2, api):
+        model = apigwv2.create_model(
+            ApiId=api,
+            ContentType="application/json",
+            Name=_unique("model"),
+            Schema='{"type":"object"}',
+        )
+        resp = apigwv2.update_model(
+            ApiId=api,
+            ModelId=model["ModelId"],
+            Schema='{"type":"object","properties":{"id":{"type":"string"}}}',
+        )
+        assert resp["ModelId"] == model["ModelId"]
+
+
+class TestDomainNameOperations:
+    """Tests for domain name CRUD."""
+
+    def test_create_domain_name(self, apigwv2):
+        domain = f"{uuid.uuid4().hex[:8]}.example.com"
+        resp = apigwv2.create_domain_name(DomainName=domain)
+        assert resp["DomainName"] == domain
+        apigwv2.delete_domain_name(DomainName=domain)
+
+    def test_update_domain_name(self, apigwv2):
+        domain = f"{uuid.uuid4().hex[:8]}.example.com"
+        apigwv2.create_domain_name(DomainName=domain)
+        resp = apigwv2.update_domain_name(DomainName=domain)
+        assert resp["DomainName"] == domain
+        apigwv2.delete_domain_name(DomainName=domain)
+
+    def test_delete_domain_name(self, apigwv2):
+        domain = f"{uuid.uuid4().hex[:8]}.example.com"
+        apigwv2.create_domain_name(DomainName=domain)
+        apigwv2.delete_domain_name(DomainName=domain)
+        resp = apigwv2.get_domain_names()
+        names = [d["DomainName"] for d in resp["Items"]]
+        assert domain not in names
+
+
+class TestApiMappingOperations:
+    """Tests for API mapping CRUD."""
+
+    @pytest.fixture
+    def api_and_domain(self, apigwv2):
+        api = apigwv2.create_api(Name=_unique("map-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        apigwv2.create_stage(ApiId=api_id, StageName="dev")
+        domain = f"{uuid.uuid4().hex[:8]}.example.com"
+        apigwv2.create_domain_name(DomainName=domain)
+        yield api_id, domain
+        apigwv2.delete_domain_name(DomainName=domain)
+        apigwv2.delete_api(ApiId=api_id)
+
+    def test_create_api_mapping(self, apigwv2, api_and_domain):
+        api_id, domain = api_and_domain
+        resp = apigwv2.create_api_mapping(
+            ApiId=api_id,
+            DomainName=domain,
+            Stage="dev",
+        )
+        assert "ApiMappingId" in resp
+        assert resp["ApiId"] == api_id
+
+    def test_delete_api_mapping(self, apigwv2, api_and_domain):
+        api_id, domain = api_and_domain
+        mapping = apigwv2.create_api_mapping(
+            ApiId=api_id,
+            DomainName=domain,
+            Stage="dev",
+        )
+        apigwv2.delete_api_mapping(
+            ApiMappingId=mapping["ApiMappingId"],
+            DomainName=domain,
+        )
+        resp = apigwv2.get_api_mappings(DomainName=domain)
+        mapping_ids = [m["ApiMappingId"] for m in resp["Items"]]
+        assert mapping["ApiMappingId"] not in mapping_ids
+
+    def test_get_api_mappings(self, apigwv2, api_and_domain):
+        api_id, domain = api_and_domain
+        apigwv2.create_api_mapping(
+            ApiId=api_id,
+            DomainName=domain,
+            Stage="dev",
+        )
+        resp = apigwv2.get_api_mappings(DomainName=domain)
+        assert "Items" in resp
+        assert len(resp["Items"]) >= 1
+
+
+class TestVpcLinkAdvanced:
+    """Tests for create_vpc_link."""
+
+    def test_create_vpc_link(self, apigwv2):
+        name = _unique("vpc-link")
+        resp = apigwv2.create_vpc_link(
+            Name=name,
+            SubnetIds=["subnet-12345678"],
+        )
+        assert "VpcLinkId" in resp
+        assert resp["Name"] == name
+        apigwv2.delete_vpc_link(VpcLinkId=resp["VpcLinkId"])
+
+
+class TestWebSocketApi:
+    """Tests for WebSocket protocol APIs."""
+
+    def test_create_websocket_api(self, apigwv2):
+        name = _unique("ws-api")
+        resp = apigwv2.create_api(
+            Name=name,
+            ProtocolType="WEBSOCKET",
+            RouteSelectionExpression="$request.body.action",
+        )
+        assert resp["ProtocolType"] == "WEBSOCKET"
+        assert "ApiId" in resp
+        apigwv2.delete_api(ApiId=resp["ApiId"])
+
+    def test_websocket_api_routes(self, apigwv2):
+        api = apigwv2.create_api(
+            Name=_unique("ws-api"),
+            ProtocolType="WEBSOCKET",
+            RouteSelectionExpression="$request.body.action",
+        )
+        api_id = api["ApiId"]
+        try:
+            route = apigwv2.create_route(ApiId=api_id, RouteKey="$connect")
+            assert route["RouteKey"] == "$connect"
+            assert "RouteId" in route
+        finally:
+            apigwv2.delete_api(ApiId=api_id)
+
+    def test_websocket_disconnect_route(self, apigwv2):
+        api = apigwv2.create_api(
+            Name=_unique("ws-api"),
+            ProtocolType="WEBSOCKET",
+            RouteSelectionExpression="$request.body.action",
+        )
+        api_id = api["ApiId"]
+        try:
+            route = apigwv2.create_route(ApiId=api_id, RouteKey="$disconnect")
+            assert route["RouteKey"] == "$disconnect"
+        finally:
+            apigwv2.delete_api(ApiId=api_id)
+
+
+class TestStageWithVariables:
+    """Tests for stages with stage variables."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("var-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_create_stage_with_variables(self, apigwv2, api):
+        resp = apigwv2.create_stage(
+            ApiId=api,
+            StageName="dev",
+            StageVariables={"key1": "value1", "key2": "value2"},
+        )
+        assert resp["StageName"] == "dev"
+        assert resp["StageVariables"]["key1"] == "value1"
+
+    def test_update_stage_variables(self, apigwv2, api):
+        apigwv2.create_stage(
+            ApiId=api,
+            StageName="staging",
+            StageVariables={"env": "staging"},
+        )
+        resp = apigwv2.update_stage(
+            ApiId=api,
+            StageName="staging",
+            StageVariables={"env": "production"},
+        )
+        assert resp["StageVariables"]["env"] == "production"
+
+
+class TestIntegrationResponseAdvanced:
+    """Additional integration response tests."""
+
+    @pytest.fixture
+    def api_with_integration(self, apigwv2):
+        api = apigwv2.create_api(Name=_unique("ir-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        integration = apigwv2.create_integration(
+            ApiId=api_id,
+            IntegrationType="HTTP_PROXY",
+            IntegrationMethod="GET",
+            IntegrationUri="https://example.com",
+            PayloadFormatVersion="1.0",
+        )
+        yield api_id, integration["IntegrationId"]
+        apigwv2.delete_api(ApiId=api_id)
+
+    def test_create_and_update_integration_response(self, apigwv2, api_with_integration):
+        api_id, int_id = api_with_integration
+        ir = apigwv2.create_integration_response(
+            ApiId=api_id,
+            IntegrationId=int_id,
+            IntegrationResponseKey="/200/",
+        )
+        assert "IntegrationResponseId" in ir
+
+        resp = apigwv2.update_integration_response(
+            ApiId=api_id,
+            IntegrationId=int_id,
+            IntegrationResponseId=ir["IntegrationResponseId"],
+            IntegrationResponseKey="/201/",
+        )
+        assert resp["IntegrationResponseKey"] == "/201/"
+
+
+class TestRouteResponseAdvanced:
+    """Additional route response tests."""
+
+    @pytest.fixture
+    def api_with_route(self, apigwv2):
+        api = apigwv2.create_api(Name=_unique("rr-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        route = apigwv2.create_route(ApiId=api_id, RouteKey="GET /rr")
+        yield api_id, route["RouteId"]
+        apigwv2.delete_api(ApiId=api_id)
+
+    def test_create_and_get_route_response(self, apigwv2, api_with_route):
+        api_id, route_id = api_with_route
+        rr = apigwv2.create_route_response(
+            ApiId=api_id,
+            RouteId=route_id,
+            RouteResponseKey="$default",
+        )
+        assert "RouteResponseId" in rr
+        resp = apigwv2.get_route_response(
+            ApiId=api_id,
+            RouteId=route_id,
+            RouteResponseId=rr["RouteResponseId"],
+        )
+        assert resp["RouteResponseKey"] == "$default"

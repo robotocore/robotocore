@@ -2683,3 +2683,211 @@ class TestGlueGetStatement:
         with pytest.raises(ClientError) as exc:
             glue.get_statement(SessionId="fake-session", Id=0)
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueDeleteColumnStatistics:
+    """Tests for DeleteColumnStatistics operations."""
+
+    def test_delete_column_statistics_for_table_not_found(self, glue):
+        """DeleteColumnStatisticsForTable on nonexistent db raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.delete_column_statistics_for_table(
+                DatabaseName="fake-db",
+                TableName="fake-table",
+                ColumnName="fake-col",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_delete_column_statistics_for_partition_not_found(self, glue):
+        """DeleteColumnStatisticsForPartition on nonexistent db raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.delete_column_statistics_for_partition(
+                DatabaseName="fake-db",
+                TableName="fake-table",
+                PartitionValues=["val"],
+                ColumnName="fake-col",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueCustomEntityTypeOperations:
+    """Tests for CustomEntityType CRUD operations."""
+
+    def test_create_and_get_custom_entity_type(self, glue):
+        """CreateCustomEntityType + GetCustomEntityType round-trip."""
+        name = _unique("cet")
+        glue.create_custom_entity_type(
+            Name=name,
+            RegexString="\\d{3}-\\d{2}-\\d{4}",
+        )
+        resp = glue.get_custom_entity_type(Name=name)
+        assert resp["Name"] == name
+        assert "RegexString" in resp
+        glue.delete_custom_entity_type(Name=name)
+
+    def test_list_custom_entity_types(self, glue):
+        """ListCustomEntityTypes returns a list."""
+        resp = glue.list_custom_entity_types()
+        assert "CustomEntityTypes" in resp
+        assert isinstance(resp["CustomEntityTypes"], list)
+
+    def test_delete_custom_entity_type(self, glue):
+        """DeleteCustomEntityType removes the entity type."""
+        name = _unique("cet")
+        glue.create_custom_entity_type(
+            Name=name,
+            RegexString="test.*pattern",
+        )
+        glue.delete_custom_entity_type(Name=name)
+        with pytest.raises(ClientError) as exc:
+            glue.get_custom_entity_type(Name=name)
+        assert "Error" in exc.value.response
+
+
+class TestGlueListOperationsExtended:
+    """Tests for additional List operations."""
+
+    def test_list_dev_endpoints(self, glue):
+        """ListDevEndpoints returns DevEndpointNames."""
+        resp = glue.list_dev_endpoints()
+        assert "DevEndpointNames" in resp
+        assert isinstance(resp["DevEndpointNames"], list)
+
+    def test_list_schemas(self, glue):
+        """ListSchemas returns Schemas list."""
+        reg_name = _unique("reg")
+        glue.create_registry(RegistryName=reg_name)
+        try:
+            resp = glue.list_schemas(
+                RegistryId={"RegistryName": reg_name},
+            )
+            assert "Schemas" in resp
+            assert isinstance(resp["Schemas"], list)
+        finally:
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_list_schema_versions(self, glue):
+        """ListSchemaVersions returns Schemas list."""
+        reg_name = _unique("reg")
+        schema_name = _unique("sch")
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            resp = glue.list_schema_versions(
+                SchemaId={
+                    "RegistryName": reg_name,
+                    "SchemaName": schema_name,
+                },
+            )
+            assert "Schemas" in resp
+            assert isinstance(resp["Schemas"], list)
+        finally:
+            glue.delete_schema(
+                SchemaId={
+                    "RegistryName": reg_name,
+                    "SchemaName": schema_name,
+                },
+            )
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_list_statements_nonexistent_session(self, glue):
+        """ListStatements for nonexistent session raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.list_statements(SessionId="fake-session")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_column_statistics_task_runs(self, glue):
+        """ListColumnStatisticsTaskRuns returns ColumnStatisticsTaskRunIds."""
+        resp = glue.list_column_statistics_task_runs()
+        assert "ColumnStatisticsTaskRunIds" in resp
+        assert isinstance(resp["ColumnStatisticsTaskRunIds"], list)
+
+    def test_list_ml_transforms(self, glue):
+        """ListMLTransforms returns TransformIds."""
+        resp = glue.list_ml_transforms()
+        assert "TransformIds" in resp
+        assert isinstance(resp["TransformIds"], list)
+
+    def test_list_data_quality_results(self, glue):
+        """ListDataQualityResults returns Results list."""
+        resp = glue.list_data_quality_results()
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_list_data_quality_rule_recommendation_runs(self, glue):
+        """ListDataQualityRuleRecommendationRuns returns Runs list."""
+        resp = glue.list_data_quality_rule_recommendation_runs()
+        assert "Runs" in resp
+        assert isinstance(resp["Runs"], list)
+
+    def test_list_data_quality_ruleset_evaluation_runs(self, glue):
+        """ListDataQualityRulesetEvaluationRuns returns Runs list."""
+        resp = glue.list_data_quality_ruleset_evaluation_runs()
+        assert "Runs" in resp
+        assert isinstance(resp["Runs"], list)
+
+
+class TestGlueSearchTables:
+    """Tests for SearchTables operation."""
+
+    def test_search_tables(self, glue):
+        """SearchTables returns TableList."""
+        resp = glue.search_tables()
+        assert "TableList" in resp
+        assert isinstance(resp["TableList"], list)
+
+    def test_search_tables_with_filter(self, glue):
+        """SearchTables with a filter returns TableList."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            resp = glue.search_tables(
+                Filters=[
+                    {"Key": "DatabaseName", "Value": db_name, "Comparator": "EQUALS"},
+                ],
+            )
+            assert "TableList" in resp
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueWorkflowStopAndUpdate:
+    """Tests for StopWorkflowRun and workflow update operations."""
+
+    def test_stop_workflow_run_nonexistent(self, glue):
+        """StopWorkflowRun for nonexistent workflow raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.stop_workflow_run(Name="fake-workflow", RunId="fake-run")
+        assert "Error" in exc.value.response
+
+    def test_get_data_quality_model_not_found(self, glue):
+        """GetDataQualityModel for nonexistent returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_model(
+                StatisticId="fake-stat",
+                ProfileId="fake-profile",
+            )
+        assert "Error" in exc.value.response

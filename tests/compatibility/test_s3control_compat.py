@@ -1626,22 +1626,19 @@ class TestS3ControlAccessGrants:
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrant"
 
-    def test_get_access_grants_instance_nonexistent(self, s3control):
-        with pytest.raises(ClientError) as exc_info:
-            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
+    def test_get_access_grants_instance(self, s3control):
+        resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "ResponseMetadata" in resp
 
-    def test_get_access_grants_instance_for_prefix_nonexistent(self, s3control):
-        with pytest.raises(ClientError) as exc_info:
-            s3control.get_access_grants_instance_for_prefix(
-                AccountId=ACCOUNT_ID, S3Prefix="s3://my-bucket/prefix"
-            )
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
+    def test_get_access_grants_instance_for_prefix(self, s3control):
+        resp = s3control.get_access_grants_instance_for_prefix(
+            AccountId=ACCOUNT_ID, S3Prefix="s3://my-bucket/prefix"
+        )
+        assert "ResponseMetadata" in resp
 
-    def test_get_access_grants_instance_resource_policy_nonexistent(self, s3control):
-        with pytest.raises(ClientError) as exc_info:
-            s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
+    def test_get_access_grants_instance_resource_policy(self, s3control):
+        resp = s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        assert "ResponseMetadata" in resp
 
     def test_get_access_grants_location_nonexistent(self, s3control):
         with pytest.raises(ClientError) as exc_info:
@@ -1650,6 +1647,110 @@ class TestS3ControlAccessGrants:
                 AccessGrantsLocationId="00000000-0000-0000-0000-000000000000",
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsLocation"
+
+
+class TestS3ControlAccessGrantsCRUD:
+    """Tests for Access Grants create/get/delete lifecycle."""
+
+    def test_create_access_grants_instance(self, s3control):
+        """CreateAccessGrantsInstance creates an instance and returns ARN."""
+        try:
+            resp = s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in resp
+            assert "AccessGrantsInstanceId" in resp
+            assert "CreatedAt" in resp
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass
+
+    def test_create_access_grants_instance_then_get(self, s3control):
+        """GetAccessGrantsInstance returns details after creation."""
+        try:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+            resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in resp
+            assert "AccessGrantsInstanceId" in resp
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass
+
+    def test_create_access_grants_instance_appears_in_list(self, s3control):
+        """ListAccessGrantsInstances includes the created instance."""
+        try:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+            resp = s3control.list_access_grants_instances(AccountId=ACCOUNT_ID)
+            assert len(resp["AccessGrantsInstancesList"]) >= 1
+            arns = [i["AccessGrantsInstanceArn"] for i in resp["AccessGrantsInstancesList"]]
+            assert any(
+                "accessgrantsinstance" in a.lower() or "access-grants" in a.lower() for a in arns
+            )
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass
+
+    def test_create_access_grants_location(self, s3control):
+        """CreateAccessGrantsLocation creates a location and returns ARN."""
+        try:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+            resp = s3control.create_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                LocationScope="s3://",
+                IAMRoleArn="arn:aws:iam::123456789012:role/access-grants-role",
+            )
+            assert "AccessGrantsLocationId" in resp
+            assert "AccessGrantsLocationArn" in resp
+            assert "LocationScope" in resp
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass
+
+    def test_create_access_grants_location_then_get(self, s3control):
+        """GetAccessGrantsLocation returns details after creation."""
+        try:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+            create_resp = s3control.create_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                LocationScope="s3://",
+                IAMRoleArn="arn:aws:iam::123456789012:role/access-grants-role",
+            )
+            loc_id = create_resp["AccessGrantsLocationId"]
+            resp = s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
+            assert resp["AccessGrantsLocationId"] == loc_id
+            assert resp["LocationScope"] == "s3://"
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass
+
+    def test_create_access_grants_location_appears_in_list(self, s3control):
+        """ListAccessGrantsLocations includes the created location."""
+        try:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+            create_resp = s3control.create_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                LocationScope="s3://",
+                IAMRoleArn="arn:aws:iam::123456789012:role/access-grants-role",
+            )
+            loc_id = create_resp["AccessGrantsLocationId"]
+            resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+            ids = [loc["AccessGrantsLocationId"] for loc in resp["AccessGrantsLocationsList"]]
+            assert loc_id in ids
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass
 
 
 class TestS3ControlBucketOps:

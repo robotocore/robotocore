@@ -262,6 +262,91 @@ class TestOpensearchserverlessAutoCoverage:
             except ClientError:
                 pass
 
+    def test_create_vpc_endpoint(self, client):
+        """CreateVpcEndpoint creates a VPC endpoint and returns its details."""
+        suffix = _uid()
+        resp = client.create_vpc_endpoint(
+            name=f"test-vpce-{suffix}",
+            vpcId=f"vpc-{suffix}",
+            subnetIds=[f"subnet-{suffix}"],
+        )
+        detail = resp["createVpcEndpointDetail"]
+        assert "id" in detail
+        assert detail["name"] == f"test-vpce-{suffix}"
+        assert detail["status"] in ("ACTIVE", "CREATING")
+
+    def test_create_network_security_policy(self, client):
+        """CreateSecurityPolicy with type=network creates a network policy."""
+        suffix = _uid()
+        pol_name = f"net-cnsp-{suffix}"
+        policy = json.dumps(
+            [
+                {
+                    "Rules": [
+                        {
+                            "ResourceType": "collection",
+                            "Resource": [f"collection/test-cnsp-{suffix}"],
+                        }
+                    ],
+                    "AllowFromPublic": True,
+                }
+            ]
+        )
+        try:
+            resp = client.create_security_policy(name=pol_name, type="network", policy=policy)
+            detail = resp["securityPolicyDetail"]
+            assert detail["name"] == pol_name
+            assert detail["type"] == "network"
+            assert "policyVersion" in detail
+            assert "createdDate" in detail
+        finally:
+            try:
+                client.delete_security_policy(name=pol_name, type="network")
+            except ClientError:
+                pass
+
+    def test_list_security_policies_network(self, client):
+        """ListSecurityPolicies with type=network returns policy summaries."""
+        resp = client.list_security_policies(type="network")
+        assert "securityPolicySummaries" in resp
+        assert isinstance(resp["securityPolicySummaries"], list)
+
+    def test_create_collection_timeseries_type(self, client):
+        """CreateCollection with type=TIMESERIES creates a timeseries collection."""
+        suffix = _uid()
+        coll_name = f"test-ts-{suffix}"
+        pol_name = f"enc-ts-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/{coll_name}"],
+                    }
+                ],
+                "AWSOwnedKey": True,
+            }
+        )
+        client.create_security_policy(name=pol_name, type="encryption", policy=policy)
+        try:
+            resp = client.create_collection(name=coll_name, type="TIMESERIES")
+            detail = resp["createCollectionDetail"]
+            assert detail["name"] == coll_name
+            assert detail["type"] == "TIMESERIES"
+            assert "id" in detail
+            client.delete_collection(id=detail["id"])
+        finally:
+            try:
+                client.delete_security_policy(name=pol_name, type="encryption")
+            except ClientError:
+                pass
+
+    def test_batch_get_collection_empty(self, client):
+        """BatchGetCollection with no args returns empty details."""
+        resp = client.batch_get_collection()
+        assert "collectionDetails" in resp
+        assert isinstance(resp["collectionDetails"], list)
+
     def test_list_tags_for_resource(self, client):
         """ListTagsForResource returns tags for a collection."""
         suffix = _uid()

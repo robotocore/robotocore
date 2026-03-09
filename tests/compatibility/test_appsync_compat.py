@@ -1,5 +1,6 @@
 """AppSync GraphQL API compatibility tests."""
 
+import base64
 import uuid
 
 import pytest
@@ -219,7 +220,6 @@ class TestAppSyncExtended:
 
     def test_start_schema_creation(self, appsync, api):
         schema = b"type Query { hello: String }"
-        import base64
 
         resp = appsync.start_schema_creation(
             apiId=api,
@@ -332,7 +332,6 @@ class TestResolversAndTypes:
 
     @pytest.fixture
     def api_with_schema(self, client):
-        import base64
 
         created = client.create_graphql_api(
             name=_unique("resolver-api"), authenticationType="API_KEY"
@@ -564,7 +563,6 @@ class TestIntrospectionSchema:
 
     @pytest.fixture
     def api_with_schema(self, client):
-        import base64
 
         created = client.create_graphql_api(name=_unique("intro-api"), authenticationType="API_KEY")
         api_id = created["graphqlApi"]["apiId"]
@@ -579,6 +577,212 @@ class TestIntrospectionSchema:
         # The schema body is a StreamingBody
         body = resp["schema"].read()
         assert len(body) > 0
+
+
+class TestAppsyncTypeOperations:
+    """Tests for Type CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_schema(self, client):
+
+        created = client.create_graphql_api(name=_unique("type-api"), authenticationType="API_KEY")
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_create_type(self, client, api_with_schema):
+        """CreateType adds a new type to the API."""
+        resp = client.create_type(
+            apiId=api_with_schema,
+            definition="type Mutation { addItem(name: String): String }",
+            format="SDL",
+        )
+        assert "type" in resp
+        assert resp["type"]["name"] == "Mutation"
+
+    def test_create_and_get_type(self, client, api_with_schema):
+        """GetType retrieves a type that was explicitly created."""
+        client.create_type(
+            apiId=api_with_schema,
+            definition="type Item { id: ID name: String }",
+            format="SDL",
+        )
+        resp = client.get_type(
+            apiId=api_with_schema,
+            typeName="Item",
+            format="SDL",
+        )
+        assert "type" in resp
+        assert resp["type"]["name"] == "Item"
+
+    def test_create_type_and_list(self, client, api_with_schema):
+        """CreateType adds a type that appears in ListTypes."""
+        client.create_type(
+            apiId=api_with_schema,
+            definition="type Subscription { onEvent: String }",
+            format="SDL",
+        )
+        resp = client.list_types(apiId=api_with_schema, format="SDL")
+        names = [t["name"] for t in resp["types"]]
+        assert "Subscription" in names
+
+
+class TestAppsyncDeleteResolver:
+    """Tests for DeleteResolver operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_schema(self, client):
+
+        created = client.create_graphql_api(
+            name=_unique("delres-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        client.create_data_source(apiId=api_id, name="noneds", type="NONE")
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_delete_resolver(self, client, api_with_schema):
+        """DeleteResolver removes a resolver."""
+        client.create_resolver(
+            apiId=api_with_schema,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds",
+        )
+        client.delete_resolver(
+            apiId=api_with_schema,
+            typeName="Query",
+            fieldName="hello",
+        )
+        # Verify it's gone
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_resolver(apiId=api_with_schema, typeName="Query", fieldName="hello")
+
+
+class TestAppsyncEventApiExtended:
+    """Extended tests for Event API (CreateApi/UpdateApi)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    def test_create_api_returns_fields(self, client):
+        """CreateApi returns api with expected fields."""
+        auth_mode = {"authType": "API_KEY"}
+        resp = client.create_api(
+            name=_unique("evt-fields"),
+            eventConfig={
+                "authProviders": [auth_mode],
+                "connectionAuthModes": [auth_mode],
+                "defaultPublishAuthModes": [auth_mode],
+                "defaultSubscribeAuthModes": [auth_mode],
+            },
+        )
+        api = resp["api"]
+        assert "apiId" in api
+        assert "name" in api
+        assert "apiArn" in api
+        client.delete_api(apiId=api["apiId"])
+
+    def test_update_api(self, client):
+        """UpdateApi changes the API name."""
+        auth_mode = {"authType": "API_KEY"}
+        resp = client.create_api(
+            name=_unique("evt-upd"),
+            eventConfig={
+                "authProviders": [auth_mode],
+                "connectionAuthModes": [auth_mode],
+                "defaultPublishAuthModes": [auth_mode],
+                "defaultSubscribeAuthModes": [auth_mode],
+            },
+        )
+        api_id = resp["api"]["apiId"]
+        try:
+            new_name = _unique("evt-updated")
+            upd_resp = client.update_api(
+                apiId=api_id,
+                name=new_name,
+                eventConfig={
+                    "authProviders": [auth_mode],
+                    "connectionAuthModes": [auth_mode],
+                    "defaultPublishAuthModes": [auth_mode],
+                    "defaultSubscribeAuthModes": [auth_mode],
+                },
+            )
+            assert upd_resp["api"]["name"] == new_name
+        finally:
+            client.delete_api(apiId=api_id)
+
+    def test_list_apis_includes_created(self, client):
+        """ListApis includes a newly created Event API."""
+        auth_mode = {"authType": "API_KEY"}
+        resp = client.create_api(
+            name=_unique("evt-list"),
+            eventConfig={
+                "authProviders": [auth_mode],
+                "connectionAuthModes": [auth_mode],
+                "defaultPublishAuthModes": [auth_mode],
+                "defaultSubscribeAuthModes": [auth_mode],
+            },
+        )
+        api_id = resp["api"]["apiId"]
+        try:
+            list_resp = client.list_apis()
+            ids = [a["apiId"] for a in list_resp["apis"]]
+            assert api_id in ids
+        finally:
+            client.delete_api(apiId=api_id)
+
+
+class TestAppsyncResolverUpdate:
+    """Tests for resolver update operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_resolver(self, client):
+
+        created = client.create_graphql_api(
+            name=_unique("updres-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        client.create_data_source(apiId=api_id, name="noneds", type="NONE")
+        client.create_resolver(
+            apiId=api_id,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds",
+        )
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_get_resolver_after_create(self, client, api_with_resolver):
+        """GetResolver returns resolver details."""
+        resp = client.get_resolver(apiId=api_with_resolver, typeName="Query", fieldName="hello")
+        assert resp["resolver"]["fieldName"] == "hello"
+        assert resp["resolver"]["dataSourceName"] == "noneds"
+
+    def test_list_resolvers_count(self, client, api_with_resolver):
+        """ListResolvers shows exact count of resolvers."""
+        resp = client.list_resolvers(apiId=api_with_resolver, typeName="Query")
+        assert len(resp["resolvers"]) == 1
+        assert resp["resolvers"][0]["fieldName"] == "hello"
 
 
 class TestAppsyncAutoCoverage:
