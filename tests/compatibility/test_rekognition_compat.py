@@ -16,6 +16,27 @@ def _unique(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+_TINY_JPEG = (
+    b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    b"\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t"
+    b"\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a"
+    b"\x1f\x1e\x1d\x1a\x1c\x1c $.' \",#\x1c\x1c(7),01444\x1f'9=82<.342"
+    b"\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00"
+    b"\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00"
+    b"\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b"
+    b"\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04"
+    b"\x04\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa"
+    b'\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82\t\n'
+    b"\x16\x17\x18\x19\x1a%&'()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz"
+    b"\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99"
+    b"\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7"
+    b"\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5"
+    b"\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1"
+    b"\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa"
+    b"\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd2\x8a(\x03\xff\xd9"
+)
+
+
 class TestRekognitionCollectionOperations:
     """Tests for collection CRUD operations."""
 
@@ -26,7 +47,6 @@ class TestRekognitionCollectionOperations:
         assert "CollectionArn" in resp
         assert col_id in resp["CollectionArn"]
         assert resp["FaceModelVersion"] == "6.0"
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
     def test_describe_collection(self, rekognition):
@@ -38,7 +58,6 @@ class TestRekognitionCollectionOperations:
         assert col_id in resp["CollectionARN"]
         assert resp["FaceModelVersion"] == "6.0"
         assert "CreationTimestamp" in resp
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
     def test_list_collections_contains_created(self, rekognition):
@@ -46,7 +65,6 @@ class TestRekognitionCollectionOperations:
         rekognition.create_collection(CollectionId=col_id)
         resp = rekognition.list_collections()
         assert col_id in resp["CollectionIds"]
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
     def test_delete_collection(self, rekognition):
@@ -54,7 +72,6 @@ class TestRekognitionCollectionOperations:
         rekognition.create_collection(CollectionId=col_id)
         resp = rekognition.delete_collection(CollectionId=col_id)
         assert resp["StatusCode"] == 200
-        # Verify it's gone
         listed = rekognition.list_collections()
         assert col_id not in listed["CollectionIds"]
 
@@ -80,7 +97,6 @@ class TestRekognitionCollectionOperations:
         with pytest.raises(ClientError) as exc_info:
             rekognition.create_collection(CollectionId=col_id)
         assert "ResourceAlreadyExistsException" in str(exc_info.value)
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
 
@@ -88,7 +104,6 @@ class TestRekognitionListOperations:
     """Tests for listing collections."""
 
     def test_list_collections_empty(self, rekognition):
-        """List collections returns an empty list when none exist (modulo other tests)."""
         resp = rekognition.list_collections()
         assert "CollectionIds" in resp
         assert isinstance(resp["CollectionIds"], list)
@@ -100,7 +115,6 @@ class TestRekognitionListOperations:
         resp = rekognition.list_collections()
         for cid in ids:
             assert cid in resp["CollectionIds"]
-        # cleanup
         for cid in ids:
             rekognition.delete_collection(CollectionId=cid)
 
@@ -120,14 +134,12 @@ class TestRekognitionTags:
         resp = rekognition.list_tags_for_resource(ResourceArn=arn)
         assert resp["Tags"]["env"] == "test"
         assert resp["Tags"]["team"] == "backend"
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
     def test_list_tags_for_resource_empty(self, rekognition):
         col_id, arn = self._create_and_get_arn(rekognition)
         resp = rekognition.list_tags_for_resource(ResourceArn=arn)
         assert resp["Tags"] == {}
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
     def test_untag_resource(self, rekognition):
@@ -136,7 +148,6 @@ class TestRekognitionTags:
         rekognition.untag_resource(ResourceArn=arn, TagKeys=["a", "c"])
         resp = rekognition.list_tags_for_resource(ResourceArn=arn)
         assert resp["Tags"] == {"b": "2"}
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
 
     def test_tag_resource_overwrites(self, rekognition):
@@ -145,8 +156,169 @@ class TestRekognitionTags:
         rekognition.tag_resource(ResourceArn=arn, Tags={"key": "new"})
         resp = rekognition.list_tags_for_resource(ResourceArn=arn)
         assert resp["Tags"]["key"] == "new"
-        # cleanup
         rekognition.delete_collection(CollectionId=col_id)
+
+
+class TestRekognitionFaceOperations:
+    """Tests for face indexing, listing, searching, and deletion."""
+
+    def test_index_faces(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        resp = rekognition.index_faces(
+            CollectionId=col_id,
+            Image={"Bytes": _TINY_JPEG},
+        )
+        assert "FaceRecords" in resp
+        assert len(resp["FaceRecords"]) > 0
+        assert "Face" in resp["FaceRecords"][0]
+        assert "FaceId" in resp["FaceRecords"][0]["Face"]
+        assert resp["FaceModelVersion"] == "6.0"
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_index_faces_with_external_image_id(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        resp = rekognition.index_faces(
+            CollectionId=col_id,
+            Image={"Bytes": _TINY_JPEG},
+            ExternalImageId="my-face-001",
+        )
+        assert resp["FaceRecords"][0]["Face"]["ExternalImageId"] == "my-face-001"
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_list_faces(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+        resp = rekognition.list_faces(CollectionId=col_id)
+        assert "Faces" in resp
+        assert len(resp["Faces"]) == 1
+        assert "FaceId" in resp["Faces"][0]
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_list_faces_empty_collection(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        resp = rekognition.list_faces(CollectionId=col_id)
+        assert resp["Faces"] == []
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_search_faces(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        idx = rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+        face_id = idx["FaceRecords"][0]["Face"]["FaceId"]
+        resp = rekognition.search_faces(CollectionId=col_id, FaceId=face_id)
+        assert "SearchedFaceId" in resp
+        assert resp["SearchedFaceId"] == face_id
+        assert "FaceMatches" in resp
+        assert isinstance(resp["FaceMatches"], list)
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_search_faces_by_image(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+        resp = rekognition.search_faces_by_image(
+            CollectionId=col_id,
+            Image={"Bytes": _TINY_JPEG},
+        )
+        assert "FaceMatches" in resp
+        assert isinstance(resp["FaceMatches"], list)
+        assert "SearchedFaceBoundingBox" in resp
+        assert "SearchedFaceConfidence" in resp
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_delete_faces(self, rekognition):
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        idx = rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+        face_id = idx["FaceRecords"][0]["Face"]["FaceId"]
+        resp = rekognition.delete_faces(CollectionId=col_id, FaceIds=[face_id])
+        assert "DeletedFaces" in resp
+        assert face_id in resp["DeletedFaces"]
+        # Verify face is gone
+        faces = rekognition.list_faces(CollectionId=col_id)
+        assert len(faces["Faces"]) == 0
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_index_faces_nonexistent_collection(self, rekognition):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.index_faces(
+                CollectionId=_unique("nope"),
+                Image={"Bytes": _TINY_JPEG},
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionImageAnalysis:
+    """Tests for image analysis operations."""
+
+    def test_compare_faces(self, rekognition):
+        resp = rekognition.compare_faces(
+            SourceImage={"Bytes": _TINY_JPEG},
+            TargetImage={"Bytes": _TINY_JPEG},
+        )
+        assert "FaceMatches" in resp
+        assert isinstance(resp["FaceMatches"], list)
+        assert "UnmatchedFaces" in resp
+
+    def test_detect_labels(self, rekognition):
+        resp = rekognition.detect_labels(Image={"Bytes": _TINY_JPEG})
+        assert "Labels" in resp
+        assert isinstance(resp["Labels"], list)
+
+    def test_detect_text(self, rekognition):
+        resp = rekognition.detect_text(Image={"Bytes": _TINY_JPEG})
+        assert "TextDetections" in resp
+        assert isinstance(resp["TextDetections"], list)
+
+    def test_detect_custom_labels(self, rekognition):
+        resp = rekognition.detect_custom_labels(
+            ProjectVersionArn=(
+                "arn:aws:rekognition:us-east-1:123456789012:project/test/version/1/1234567890"
+            ),
+            Image={"Bytes": _TINY_JPEG},
+        )
+        assert "CustomLabels" in resp
+        assert isinstance(resp["CustomLabels"], list)
+
+    def test_detect_faces(self, rekognition):
+        resp = rekognition.detect_faces(Image={"Bytes": _TINY_JPEG})
+        assert "FaceDetails" in resp
+        assert isinstance(resp["FaceDetails"], list)
+        assert len(resp["FaceDetails"]) > 0
+        face = resp["FaceDetails"][0]
+        assert "BoundingBox" in face
+        assert "Confidence" in face
+
+    def test_detect_moderation_labels(self, rekognition):
+        resp = rekognition.detect_moderation_labels(Image={"Bytes": _TINY_JPEG})
+        assert "ModerationLabels" in resp
+        assert isinstance(resp["ModerationLabels"], list)
+        assert "ModerationModelVersion" in resp
+
+    def test_detect_protective_equipment(self, rekognition):
+        resp = rekognition.detect_protective_equipment(Image={"Bytes": _TINY_JPEG})
+        assert "Persons" in resp
+        assert isinstance(resp["Persons"], list)
+        assert "ProtectiveEquipmentModelVersion" in resp
+
+    def test_recognize_celebrities(self, rekognition):
+        resp = rekognition.recognize_celebrities(Image={"Bytes": _TINY_JPEG})
+        assert "CelebrityFaces" in resp
+        assert isinstance(resp["CelebrityFaces"], list)
+        assert "UnrecognizedFaces" in resp
+        assert isinstance(resp["UnrecognizedFaces"], list)
+
+    def test_get_celebrity_info(self, rekognition):
+        resp = rekognition.get_celebrity_info(Id="abc123")
+        assert "Name" in resp
+        assert "Urls" in resp
+        assert isinstance(resp["Urls"], list)
 
 
 class TestRekognitionFaceSearchOperations:
@@ -191,13 +363,11 @@ class TestRekognitionTextDetection:
     """Tests for StartTextDetection and GetTextDetection video analysis."""
 
     def test_get_text_detection_with_fake_job_id(self, rekognition):
-        """GetTextDetection with a fake job ID returns a response."""
         resp = rekognition.get_text_detection(JobId="fake-text-detection-job-id")
         assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
         assert "TextDetections" in resp
 
     def test_start_text_detection(self, rekognition):
-        """StartTextDetection returns a JobId."""
         resp = rekognition.start_text_detection(
             Video={"S3Object": {"Bucket": "test-bucket", "Name": "test-video.mp4"}}
         )
@@ -205,7 +375,6 @@ class TestRekognitionTextDetection:
         assert len(resp["JobId"]) > 0
 
     def test_start_and_get_text_detection(self, rekognition):
-        """StartTextDetection followed by GetTextDetection returns job results."""
         start = rekognition.start_text_detection(
             Video={"S3Object": {"Bucket": "test-bucket", "Name": "vid.mp4"}}
         )
@@ -215,58 +384,257 @@ class TestRekognitionTextDetection:
         assert "TextDetections" in get_resp
 
 
-class TestRekognitionImageAnalysis:
-    """Tests for image analysis operations: CompareFaces, DetectLabels, DetectText."""
+class TestRekognitionVideoFaceDetection:
+    """Tests for StartFaceDetection and GetFaceDetection."""
 
-    _TINY_JPEG = (
-        b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
-        b"\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t"
-        b"\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a"
-        b"\x1f\x1e\x1d\x1a\x1c\x1c $.' \",#\x1c\x1c(7),01444\x1f'9=82<.342"
-        b"\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00"
-        b"\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00"
-        b"\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b"
-        b"\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04"
-        b"\x04\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa"
-        b'\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82\t\n'
-        b"\x16\x17\x18\x19\x1a%&'()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz"
-        b"\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99"
-        b"\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7"
-        b"\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5"
-        b"\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1"
-        b"\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa"
-        b"\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd2\x8a(\x03\xff\xd9"
-    )
-
-    def test_compare_faces(self, rekognition):
-        """CompareFaces returns FaceMatches and UnmatchedFaces."""
-        resp = rekognition.compare_faces(
-            SourceImage={"Bytes": self._TINY_JPEG},
-            TargetImage={"Bytes": self._TINY_JPEG},
+    def test_start_face_detection(self, rekognition):
+        resp = rekognition.start_face_detection(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
         )
-        assert "FaceMatches" in resp
-        assert isinstance(resp["FaceMatches"], list)
-        assert "UnmatchedFaces" in resp
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
 
-    def test_detect_labels(self, rekognition):
-        """DetectLabels returns a list of labels."""
-        resp = rekognition.detect_labels(Image={"Bytes": self._TINY_JPEG})
+    def test_start_and_get_face_detection(self, rekognition):
+        start = rekognition.start_face_detection(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        resp = rekognition.get_face_detection(JobId=start["JobId"])
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert "VideoMetadata" in resp
+        assert "Faces" in resp
+        assert isinstance(resp["Faces"], list)
+
+
+class TestRekognitionVideoLabelDetection:
+    """Tests for StartLabelDetection and GetLabelDetection."""
+
+    def test_start_label_detection(self, rekognition):
+        resp = rekognition.start_label_detection(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_start_and_get_label_detection(self, rekognition):
+        start = rekognition.start_label_detection(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        resp = rekognition.get_label_detection(JobId=start["JobId"])
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert "VideoMetadata" in resp
         assert "Labels" in resp
         assert isinstance(resp["Labels"], list)
 
-    def test_detect_text(self, rekognition):
-        """DetectText returns text detections."""
-        resp = rekognition.detect_text(Image={"Bytes": self._TINY_JPEG})
-        assert "TextDetections" in resp
-        assert isinstance(resp["TextDetections"], list)
 
-    def test_detect_custom_labels(self, rekognition):
-        """DetectCustomLabels returns custom labels list."""
-        resp = rekognition.detect_custom_labels(
-            ProjectVersionArn=(
-                "arn:aws:rekognition:us-east-1:123456789012:project/test/version/1/1234567890"
-            ),
-            Image={"Bytes": self._TINY_JPEG},
+class TestRekognitionVideoCelebrityRecognition:
+    """Tests for StartCelebrityRecognition and GetCelebrityRecognition."""
+
+    def test_start_celebrity_recognition(self, rekognition):
+        resp = rekognition.start_celebrity_recognition(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
         )
-        assert "CustomLabels" in resp
-        assert isinstance(resp["CustomLabels"], list)
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_start_and_get_celebrity_recognition(self, rekognition):
+        start = rekognition.start_celebrity_recognition(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        resp = rekognition.get_celebrity_recognition(JobId=start["JobId"])
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert "VideoMetadata" in resp
+        assert "Celebrities" in resp
+        assert isinstance(resp["Celebrities"], list)
+
+
+class TestRekognitionVideoContentModeration:
+    """Tests for StartContentModeration and GetContentModeration."""
+
+    def test_start_content_moderation(self, rekognition):
+        resp = rekognition.start_content_moderation(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_start_and_get_content_moderation(self, rekognition):
+        start = rekognition.start_content_moderation(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        resp = rekognition.get_content_moderation(JobId=start["JobId"])
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert "VideoMetadata" in resp
+        assert "ModerationLabels" in resp
+        assert isinstance(resp["ModerationLabels"], list)
+
+
+class TestRekognitionVideoPersonTracking:
+    """Tests for StartPersonTracking and GetPersonTracking."""
+
+    def test_start_person_tracking(self, rekognition):
+        resp = rekognition.start_person_tracking(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_start_and_get_person_tracking(self, rekognition):
+        start = rekognition.start_person_tracking(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}}
+        )
+        resp = rekognition.get_person_tracking(JobId=start["JobId"])
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert "VideoMetadata" in resp
+        assert "Persons" in resp
+        assert isinstance(resp["Persons"], list)
+
+
+class TestRekognitionVideoSegmentDetection:
+    """Tests for StartSegmentDetection and GetSegmentDetection."""
+
+    def test_start_segment_detection(self, rekognition):
+        resp = rekognition.start_segment_detection(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}},
+            SegmentTypes=["TECHNICAL_CUE", "SHOT"],
+        )
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_start_and_get_segment_detection(self, rekognition):
+        start = rekognition.start_segment_detection(
+            Video={"S3Object": {"Bucket": "test-bucket", "Name": "video.mp4"}},
+            SegmentTypes=["TECHNICAL_CUE"],
+        )
+        resp = rekognition.get_segment_detection(JobId=start["JobId"])
+        assert resp["JobStatus"] == "SUCCEEDED"
+        assert "VideoMetadata" in resp
+        assert "Segments" in resp
+        assert "SelectedSegmentTypes" in resp
+
+
+class TestRekognitionProjects:
+    """Tests for project CRUD operations."""
+
+    def test_create_project(self, rekognition):
+        name = _unique("proj")
+        resp = rekognition.create_project(ProjectName=name)
+        assert "ProjectArn" in resp
+        assert name in resp["ProjectArn"]
+        # cleanup
+        rekognition.delete_project(ProjectArn=resp["ProjectArn"])
+
+    def test_describe_projects(self, rekognition):
+        name = _unique("proj")
+        create_resp = rekognition.create_project(ProjectName=name)
+        resp = rekognition.describe_projects()
+        assert "ProjectDescriptions" in resp
+        assert isinstance(resp["ProjectDescriptions"], list)
+        arns = [p["ProjectArn"] for p in resp["ProjectDescriptions"]]
+        assert create_resp["ProjectArn"] in arns
+        rekognition.delete_project(ProjectArn=create_resp["ProjectArn"])
+
+    def test_delete_project(self, rekognition):
+        name = _unique("proj")
+        create_resp = rekognition.create_project(ProjectName=name)
+        resp = rekognition.delete_project(ProjectArn=create_resp["ProjectArn"])
+        assert resp["Status"] == "DELETING"
+
+    def test_delete_nonexistent_project(self, rekognition):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.delete_project(
+                ProjectArn="arn:aws:rekognition:us-east-1:123456789012:project/nope/9999"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_describe_projects_empty(self, rekognition):
+        resp = rekognition.describe_projects()
+        assert "ProjectDescriptions" in resp
+        assert isinstance(resp["ProjectDescriptions"], list)
+
+
+class TestRekognitionStreamProcessors:
+    """Tests for stream processor CRUD operations."""
+
+    def _create_sp(self, rekognition):
+        name = _unique("sp")
+        col_id = _unique("col")
+        rekognition.create_collection(CollectionId=col_id)
+        resp = rekognition.create_stream_processor(
+            Name=name,
+            Input={"KinesisVideoStream": {"Arn": "arn:aws:kinesisvideo:us-east-1:123:stream/s/0"}},
+            Output={"KinesisDataStream": {"Arn": "arn:aws:kinesis:us-east-1:123:stream/out"}},
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            Settings={"FaceSearch": {"CollectionId": col_id, "FaceMatchThreshold": 80.0}},
+        )
+        return name, col_id, resp["StreamProcessorArn"]
+
+    def test_create_stream_processor(self, rekognition):
+        name, col_id, arn = self._create_sp(rekognition)
+        assert "streamprocessor" in arn
+        assert name in arn
+        rekognition.delete_stream_processor(Name=name)
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_describe_stream_processor(self, rekognition):
+        name, col_id, arn = self._create_sp(rekognition)
+        resp = rekognition.describe_stream_processor(Name=name)
+        assert resp["Name"] == name
+        assert resp["StreamProcessorArn"] == arn
+        assert resp["Status"] == "STOPPED"
+        rekognition.delete_stream_processor(Name=name)
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_list_stream_processors(self, rekognition):
+        name, col_id, _ = self._create_sp(rekognition)
+        resp = rekognition.list_stream_processors()
+        assert "StreamProcessors" in resp
+        names = [sp["Name"] for sp in resp["StreamProcessors"]]
+        assert name in names
+        rekognition.delete_stream_processor(Name=name)
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_delete_stream_processor(self, rekognition):
+        name, col_id, _ = self._create_sp(rekognition)
+        rekognition.delete_stream_processor(Name=name)
+        # Verify deleted
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.describe_stream_processor(Name=name)
+        assert "ResourceNotFoundException" in str(exc_info.value)
+        rekognition.delete_collection(CollectionId=col_id)
+
+    def test_delete_nonexistent_stream_processor(self, rekognition):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.delete_stream_processor(Name=_unique("nope"))
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionFaceLiveness:
+    """Tests for face liveness session operations."""
+
+    def test_create_face_liveness_session(self, rekognition):
+        resp = rekognition.create_face_liveness_session()
+        assert "SessionId" in resp
+        assert len(resp["SessionId"]) > 0
+
+    def test_get_face_liveness_session_results(self, rekognition):
+        create_resp = rekognition.create_face_liveness_session()
+        session_id = create_resp["SessionId"]
+        resp = rekognition.get_face_liveness_session_results(SessionId=session_id)
+        assert resp["SessionId"] == session_id
+        assert resp["Status"] in ("CREATED", "SUCCEEDED")
+        assert "Confidence" in resp
+
+    def test_get_face_liveness_nonexistent_session(self, rekognition):
+        from botocore.exceptions import ClientError
+
+        # SessionId must be >= 36 chars (UUID format) to pass client-side validation
+        fake_id = str(uuid.uuid4())
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.get_face_liveness_session_results(SessionId=fake_id)
+        assert "SessionNotFoundException" in str(exc_info.value)
