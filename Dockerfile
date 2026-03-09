@@ -1,5 +1,5 @@
 # ---- Builder stage: install deps + project, then discard git/uv/build artifacts ----
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
@@ -36,7 +36,7 @@ RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
     /app/.venv/lib/python3.12/site-packages/setuptools*.dist-info
 
 # ---- Runtime stage: slim image with just python + venv ----
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
