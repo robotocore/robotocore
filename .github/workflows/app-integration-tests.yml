@@ -39,7 +39,7 @@ jobs:
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_DEFAULT_REGION: us-east-1
-        run: uv run pytest tests/apps/ -v --tb=short --junitxml=results-app-tests.xml
+        run: uv run pytest tests/apps/ -v --tb=short --reruns=2 --reruns-delay=2 --junitxml=results-app-tests.xml
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

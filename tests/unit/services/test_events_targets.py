@@ -36,7 +36,8 @@ def _clear_log():
 class TestInvokeLambdaTarget:
     """Test EventBridge -> Lambda target invocation via invoke_lambda_async."""
 
-    def test_invokes_python_lambda_with_event_payload(self):
+    @patch("moto.backends.get_backend", side_effect=KeyError("lambda"))
+    def test_invokes_python_lambda_with_event_payload(self, _mock_backend):
         """EventBridge should dispatch to invoke_lambda_async with the event as payload."""
         event = {
             "version": "0",
@@ -60,7 +61,8 @@ class TestInvokeLambdaTarget:
             assert invoked_event["source"] == "test.source"
             assert invoked_event["detail"]["message"] == "hello"
 
-    def test_parses_json_string_payload(self):
+    @patch("moto.backends.get_backend", side_effect=KeyError("lambda"))
+    def test_parses_json_string_payload(self, _mock_backend):
         """Should parse JSON string payload before dispatching."""
         arn = "arn:aws:lambda:us-east-1:123456789012:function:test-fn"
         payload = json.dumps({"test": True, "source": "eb"})
@@ -72,7 +74,8 @@ class TestInvokeLambdaTarget:
             assert invoked_event["test"] is True
             assert invoked_event["source"] == "eb"
 
-    def test_passes_callback_for_invocation_log(self):
+    @patch("moto.backends.get_backend", side_effect=KeyError("lambda"))
+    def test_passes_callback_for_invocation_log(self, _mock_backend):
         """Should pass a callback that logs to the invocation log."""
         arn = "arn:aws:lambda:us-east-1:123456789012:function:my-func"
 
@@ -91,8 +94,9 @@ class TestInvokeLambdaTarget:
             assert log[0]["target_type"] == "lambda"
             assert log[0]["target_arn"] == arn
 
-    def test_handles_missing_function_gracefully(self):
-        """Should not raise when Lambda function doesn't exist — error handled by invoke module."""
+    @patch("moto.backends.get_backend", side_effect=KeyError("lambda"))
+    def test_handles_missing_function_gracefully(self, _mock_backend):
+        """Should not raise when backend is unavailable — error handled by invoke module."""
         arn = "arn:aws:lambda:us-east-1:123456789012:function:nonexistent"
 
         with patch("robotocore.services.lambda_.invoke.invoke_lambda_async") as mock_invoke:

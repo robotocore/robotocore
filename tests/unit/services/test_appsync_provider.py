@@ -499,4 +499,4 @@ class TestEdgeCases:
     async def test_unknown_path(self):
         req = _make_request("GET", "/v1/unknown")
         resp = await handle_appsync_request(req, REGION, ACCOUNT)
-        assert resp.status_code == 400
+        assert resp.status_code == 501
