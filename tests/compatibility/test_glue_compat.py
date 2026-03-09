@@ -2257,3 +2257,237 @@ class TestGlueDatabaseWithCatalogId:
             assert resp["Database"]["Name"] == db_name
         finally:
             glue.delete_database(Name=db_name)
+
+
+class TestGlueListOperations:
+    """Tests for Glue list operations that require no setup."""
+
+    def test_list_blueprints(self, glue):
+        resp = glue.list_blueprints()
+        assert "Blueprints" in resp
+
+    def test_get_classifiers(self, glue):
+        resp = glue.get_classifiers()
+        assert "Classifiers" in resp
+
+    def test_list_data_quality_rulesets(self, glue):
+        resp = glue.list_data_quality_rulesets()
+        assert "Rulesets" in resp
+
+    def test_get_ml_transforms(self, glue):
+        resp = glue.get_ml_transforms()
+        assert "Transforms" in resp
+
+    def test_list_usage_profiles(self, glue):
+        resp = glue.list_usage_profiles()
+        assert "Profiles" in resp
+
+
+class TestGlueClassifierOperations:
+    """Tests for Glue classifier operations."""
+
+    def test_create_and_get_classifier(self, glue):
+        name = _unique("clf")
+        glue.create_classifier(
+            GrokClassifier={
+                "Classification": "test",
+                "Name": name,
+                "GrokPattern": "%{COMBINEDAPACHELOG}",
+            }
+        )
+        resp = glue.get_classifier(Name=name)
+        assert resp["Classifier"]["GrokClassifier"]["Name"] == name
+        assert resp["Classifier"]["GrokClassifier"]["Classification"] == "test"
+        glue.delete_classifier(Name=name)
+
+    def test_get_classifiers_includes_created(self, glue):
+        name = _unique("clf")
+        glue.create_classifier(
+            GrokClassifier={
+                "Classification": "test",
+                "Name": name,
+                "GrokPattern": "%{COMBINEDAPACHELOG}",
+            }
+        )
+        resp = glue.get_classifiers()
+        names = [c["GrokClassifier"]["Name"] for c in resp["Classifiers"] if "GrokClassifier" in c]
+        assert name in names
+        glue.delete_classifier(Name=name)
+
+
+class TestGlueCatalogOperations:
+    """Tests for Glue catalog operations."""
+
+    def test_get_catalog_not_found(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.get_catalog(CatalogId="999999999999")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueBlueprintOperations:
+    """Tests for Glue blueprint operations."""
+
+    def test_create_and_get_blueprint(self, glue):
+        name = _unique("bp")
+        glue.create_blueprint(
+            Name=name,
+            BlueprintLocation="s3://test-bucket/blueprint.py",
+        )
+        resp = glue.get_blueprint(Name=name)
+        assert resp["Blueprint"]["Name"] == name
+        glue.delete_blueprint(Name=name)
+
+    def test_list_blueprints_includes_created(self, glue):
+        name = _unique("bp")
+        glue.create_blueprint(
+            Name=name,
+            BlueprintLocation="s3://test-bucket/blueprint.py",
+        )
+        resp = glue.list_blueprints()
+        assert name in resp["Blueprints"]
+        glue.delete_blueprint(Name=name)
+
+
+class TestGlueDataQualityRulesetOperations:
+    """Tests for Glue data quality ruleset operations."""
+
+    def test_create_and_get_data_quality_ruleset(self, glue):
+        name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        resp = glue.get_data_quality_ruleset(Name=name)
+        assert resp["Name"] == name
+        assert "Ruleset" in resp
+        glue.delete_data_quality_ruleset(Name=name)
+
+    def test_list_data_quality_rulesets_includes_created(self, glue):
+        name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        resp = glue.list_data_quality_rulesets()
+        names = [r["Name"] for r in resp["Rulesets"]]
+        assert name in names
+        glue.delete_data_quality_ruleset(Name=name)
+
+
+class TestGlueMLTransformOperations:
+    """Tests for Glue ML transform operations."""
+
+    def test_create_and_get_ml_transform(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        resp = glue.create_ml_transform(
+            Name=_unique("mlt"),
+            InputRecordTables=[
+                {
+                    "DatabaseName": db_name,
+                    "TableName": tbl_name,
+                }
+            ],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {
+                    "PrimaryKeyColumnName": "col1",
+                },
+            },
+            Role="arn:aws:iam::123456789012:role/GlueRole",
+        )
+        transform_id = resp["TransformId"]
+        assert transform_id
+
+        get_resp = glue.get_ml_transform(TransformId=transform_id)
+        assert get_resp["TransformId"] == transform_id
+        assert get_resp["Name"]
+
+        glue.delete_ml_transform(TransformId=transform_id)
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        glue.delete_database(Name=db_name)
+
+    def test_get_ml_transforms_includes_created(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        resp = glue.create_ml_transform(
+            Name=_unique("mlt"),
+            InputRecordTables=[
+                {
+                    "DatabaseName": db_name,
+                    "TableName": tbl_name,
+                }
+            ],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {
+                    "PrimaryKeyColumnName": "col1",
+                },
+            },
+            Role="arn:aws:iam::123456789012:role/GlueRole",
+        )
+        transform_id = resp["TransformId"]
+
+        list_resp = glue.get_ml_transforms()
+        ids = [t["TransformId"] for t in list_resp["Transforms"]]
+        assert transform_id in ids
+
+        glue.delete_ml_transform(TransformId=transform_id)
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        glue.delete_database(Name=db_name)
+
+
+class TestGlueUsageProfileOperations:
+    """Tests for Glue usage profile operations."""
+
+    def test_create_and_get_usage_profile(self, glue):
+        name = _unique("up")
+        glue.create_usage_profile(Name=name, Configuration={})
+        resp = glue.get_usage_profile(Name=name)
+        assert resp["Name"] == name
+        glue.delete_usage_profile(Name=name)
+
+    def test_list_usage_profiles_includes_created(self, glue):
+        name = _unique("up")
+        glue.create_usage_profile(Name=name, Configuration={})
+        resp = glue.list_usage_profiles()
+        names = [p["Name"] for p in resp["Profiles"]]
+        assert name in names
+        glue.delete_usage_profile(Name=name)
+
+    def test_get_usage_profile_not_found(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.get_usage_profile(Name="nonexistent-profile")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
