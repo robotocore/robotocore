@@ -31,6 +31,8 @@ class AppSyncStore:
         self.resolvers: dict[str, dict[str, dict]] = {}  # api_id -> "type.field" -> resolver
         self.data_sources: dict[str, dict[str, dict]] = {}  # api_id -> name -> ds
         self.types: dict[str, dict[str, dict]] = {}  # api_id -> name -> type
+        self.functions: dict[str, dict[str, dict]] = {}  # api_id -> func_id -> function
+        self.domain_names: dict[str, dict] = {}  # domain_name -> domain config
         self.event_apis: dict[str, dict] = {}  # api_id -> event api
         self.channel_namespaces: dict[str, dict[str, dict]] = {}  # api_id -> name -> ns
         self.lock = threading.RLock()
@@ -79,6 +81,10 @@ _API_CACHE = re.compile(r"^/v1/apis/([^/]+)/ApiCaches/?$")
 _API_CACHE_UPDATE = re.compile(r"^/v1/apis/([^/]+)/ApiCaches/update/?$")
 _FLUSH_CACHE = re.compile(r"^/v1/apis/([^/]+)/FlushCache/?$")
 _INTROSPECTION_SCHEMA = re.compile(r"^/v1/apis/([^/]+)/schema/?$")
+_FUNCTIONS_LIST = re.compile(r"^/v1/apis/([^/]+)/functions/?$")
+_FUNCTION_ITEM = re.compile(r"^/v1/apis/([^/]+)/functions/([^/]+)/?$")
+_DOMAIN_NAMES_LIST = re.compile(r"^/v1/domainnames/?$")
+_DOMAIN_NAME_ITEM = re.compile(r"^/v1/domainnames/([^/]+)/?$")
 
 # v2 Event API paths
 _V2_APIS_LIST = re.compile(r"^/v2/apis/?$")
@@ -154,6 +160,12 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
             api_id, type_name, field_name = m.group(1), m.group(2), m.group(3)
             if method == "GET":
                 return _json_response(_get_resolver(store, api_id, type_name, field_name))
+            elif method == "POST":
+                return _json_response(
+                    _update_resolver(
+                        store, api_id, type_name, field_name, params, region, account_id
+                    )
+                )
             elif method == "DELETE":
                 return _json_response(_delete_resolver(store, api_id, type_name, field_name))
 
@@ -196,6 +208,12 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
             api_id, type_name = m.group(1), m.group(2)
             if method == "GET":
                 return _json_response(_get_type(store, api_id, type_name))
+            elif method == "POST":
+                return _json_response(
+                    _update_type(store, api_id, type_name, params, region, account_id)
+                )
+            elif method == "DELETE":
+                return _json_response(_delete_type(store, api_id, type_name))
 
         m = _TYPES_LIST.match(path)
         if m:
@@ -204,6 +222,42 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
                 return _json_response(_create_type(store, api_id, params, region, account_id))
             elif method == "GET":
                 return _json_response(_list_types(store, api_id))
+
+        # Functions
+        m = _FUNCTION_ITEM.match(path)
+        if m:
+            api_id, func_id = m.group(1), m.group(2)
+            if method == "GET":
+                return _json_response(_get_function(store, api_id, func_id))
+            elif method == "POST":
+                return _json_response(
+                    _update_function(store, api_id, func_id, params, region, account_id)
+                )
+            elif method == "DELETE":
+                return _json_response(_delete_function(store, api_id, func_id))
+
+        m = _FUNCTIONS_LIST.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "POST":
+                return _json_response(_create_function(store, api_id, params, region, account_id))
+            elif method == "GET":
+                return _json_response(_list_functions(store, api_id))
+
+        # Domain Names
+        m = _DOMAIN_NAME_ITEM.match(path)
+        if m:
+            domain_name = m.group(1)
+            if method == "GET":
+                return _json_response(_get_domain_name(store, domain_name))
+            elif method == "DELETE":
+                return _json_response(_delete_domain_name(store, domain_name))
+
+        if _DOMAIN_NAMES_LIST.match(path):
+            if method == "POST":
+                return _json_response(_create_domain_name(store, params, region, account_id))
+            elif method == "GET":
+                return _json_response(_list_domain_names(store))
 
         # Tags
         m = _TAGS.match(path)
@@ -340,6 +394,7 @@ def _create_graphql_api(store: AppSyncStore, params: dict, region: str, account_
         store.resolvers[api_id] = {}
         store.data_sources[api_id] = {}
         store.types[api_id] = {}
+        store.functions[api_id] = {}
 
     return {"graphqlApi": api}
 
@@ -678,6 +733,192 @@ def _list_types(store: AppSyncStore, api_id: str) -> dict:
     with store.lock:
         types = list(store.types.get(api_id, {}).values())
     return {"types": types}
+
+
+def _update_type(
+    store: AppSyncStore, api_id: str, type_name: str, params: dict, region: str, account_id: str
+) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        t = store.types.get(api_id, {}).get(type_name)
+        if not t:
+            raise AppSyncError("NotFoundException", f"Type {type_name} not found.", 404)
+        if "definition" in params:
+            t["definition"] = params["definition"]
+        if "format" in params:
+            t["format"] = params["format"]
+    return {"type": t}
+
+
+def _delete_type(store: AppSyncStore, api_id: str, type_name: str) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        types = store.types.get(api_id, {})
+        if type_name not in types:
+            raise AppSyncError("NotFoundException", f"Type {type_name} not found.", 404)
+        del types[type_name]
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Functions
+# ---------------------------------------------------------------------------
+
+
+def _create_function(
+    store: AppSyncStore, api_id: str, params: dict, region: str, account_id: str
+) -> dict:
+    _require_api(store, api_id)
+    name = params.get("name", "")
+    if not name:
+        raise AppSyncError("BadRequestException", "name is required.")
+
+    func_id = _new_id()[:26]
+    func = {
+        "functionId": func_id,
+        "name": name,
+        "dataSourceName": params.get("dataSourceName", ""),
+        "functionArn": (f"arn:aws:appsync:{region}:{account_id}:apis/{api_id}/functions/{func_id}"),
+        "requestMappingTemplate": params.get("requestMappingTemplate", ""),
+        "responseMappingTemplate": params.get("responseMappingTemplate", ""),
+        "functionVersion": params.get("functionVersion", "2018-05-29"),
+        "description": params.get("description", ""),
+        "maxBatchSize": params.get("maxBatchSize", 0),
+        "code": params.get("code", ""),
+        "runtime": params.get("runtime"),
+    }
+
+    with store.lock:
+        store.functions.setdefault(api_id, {})[func_id] = func
+    return {"functionConfiguration": func}
+
+
+def _get_function(store: AppSyncStore, api_id: str, func_id: str) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        func = store.functions.get(api_id, {}).get(func_id)
+    if not func:
+        raise AppSyncError("NotFoundException", f"Function {func_id} not found.", 404)
+    return {"functionConfiguration": func}
+
+
+def _list_functions(store: AppSyncStore, api_id: str) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        functions = list(store.functions.get(api_id, {}).values())
+    return {"functions": functions}
+
+
+def _update_function(
+    store: AppSyncStore, api_id: str, func_id: str, params: dict, region: str, account_id: str
+) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        func = store.functions.get(api_id, {}).get(func_id)
+        if not func:
+            raise AppSyncError("NotFoundException", f"Function {func_id} not found.", 404)
+        for key in (
+            "name",
+            "dataSourceName",
+            "requestMappingTemplate",
+            "responseMappingTemplate",
+            "functionVersion",
+            "description",
+            "maxBatchSize",
+            "code",
+            "runtime",
+        ):
+            if key in params:
+                func[key] = params[key]
+    return {"functionConfiguration": func}
+
+
+def _delete_function(store: AppSyncStore, api_id: str, func_id: str) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        functions = store.functions.get(api_id, {})
+        if func_id not in functions:
+            raise AppSyncError("NotFoundException", f"Function {func_id} not found.", 404)
+        del functions[func_id]
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Domain Names
+# ---------------------------------------------------------------------------
+
+
+def _create_domain_name(store: AppSyncStore, params: dict, region: str, account_id: str) -> dict:
+    domain_name = params.get("domainName", "")
+    if not domain_name:
+        raise AppSyncError("BadRequestException", "domainName is required.")
+    certificate_arn = params.get("certificateArn", "")
+
+    domain = {
+        "domainName": domain_name,
+        "certificateArn": certificate_arn,
+        "description": params.get("description", ""),
+        "appsyncDomainName": f"{_new_id()[:8]}.cloudfront.net",
+        "hostedZoneId": "Z2FDTNDATAQYW2",
+    }
+
+    with store.lock:
+        if domain_name in store.domain_names:
+            raise AppSyncError("BadRequestException", f"Domain name {domain_name} already exists.")
+        store.domain_names[domain_name] = domain
+    return {"domainNameConfig": domain}
+
+
+def _get_domain_name(store: AppSyncStore, domain_name: str) -> dict:
+    with store.lock:
+        domain = store.domain_names.get(domain_name)
+    if not domain:
+        raise AppSyncError("NotFoundException", f"Domain name {domain_name} not found.", 404)
+    return {"domainNameConfig": domain}
+
+
+def _list_domain_names(store: AppSyncStore) -> dict:
+    with store.lock:
+        domains = list(store.domain_names.values())
+    return {"domainNameConfigs": domains}
+
+
+def _delete_domain_name(store: AppSyncStore, domain_name: str) -> dict:
+    with store.lock:
+        if domain_name not in store.domain_names:
+            raise AppSyncError("NotFoundException", f"Domain name {domain_name} not found.", 404)
+        del store.domain_names[domain_name]
+    return {}
+
+
+def _update_resolver(
+    store: AppSyncStore,
+    api_id: str,
+    type_name: str,
+    field_name: str,
+    params: dict,
+    region: str,
+    account_id: str,
+) -> dict:
+    _require_api(store, api_id)
+    key = f"{type_name}.{field_name}"
+    with store.lock:
+        resolver = store.resolvers.get(api_id, {}).get(key)
+        if not resolver:
+            raise AppSyncError(
+                "NotFoundException",
+                f"Resolver {type_name}.{field_name} not found.",
+                404,
+            )
+        for k in (
+            "dataSourceName",
+            "requestMappingTemplate",
+            "responseMappingTemplate",
+            "kind",
+        ):
+            if k in params:
+                resolver[k] = params[k]
+    return {"resolver": resolver}
 
 
 # ---------------------------------------------------------------------------

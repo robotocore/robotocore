@@ -2192,3 +2192,66 @@ class TestIoTWorkingButUntestedOps:
                 indexName="AWS_Things",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIoTDimensionCrud:
+    """Tests for Dimension update and delete operations."""
+
+    def test_update_dimension(self, iot):
+        """UpdateDimension changes stringValues."""
+        name = _unique("dim")
+        iot.create_dimension(
+            name=name,
+            type="TOPIC_FILTER",
+            stringValues=["topic/original/*"],
+            clientRequestToken="tok1",
+        )
+        try:
+            resp = iot.update_dimension(name=name, stringValues=["topic/updated/*"])
+            assert resp["name"] == name
+            assert "topic/updated/*" in resp["stringValues"]
+        finally:
+            iot.delete_dimension(name=name)
+
+    def test_update_dimension_reflected_in_describe(self, iot):
+        """DescribeDimension reflects UpdateDimension changes."""
+        name = _unique("dim")
+        iot.create_dimension(
+            name=name,
+            type="TOPIC_FILTER",
+            stringValues=["topic/a/*"],
+            clientRequestToken="tok2",
+        )
+        try:
+            iot.update_dimension(name=name, stringValues=["topic/b/*"])
+            resp = iot.describe_dimension(name=name)
+            assert "topic/b/*" in resp["stringValues"]
+        finally:
+            iot.delete_dimension(name=name)
+
+    def test_delete_dimension(self, iot):
+        """DeleteDimension removes the dimension."""
+        name = _unique("dim")
+        iot.create_dimension(
+            name=name,
+            type="TOPIC_FILTER",
+            stringValues=["topic/del/*"],
+            clientRequestToken="tok3",
+        )
+        iot.delete_dimension(name=name)
+        with pytest.raises(ClientError) as exc:
+            iot.describe_dimension(name=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_dimension_removes_from_list(self, iot):
+        """DeleteDimension removes the dimension from ListDimensions."""
+        name = _unique("dim")
+        iot.create_dimension(
+            name=name,
+            type="TOPIC_FILTER",
+            stringValues=["topic/listdel/*"],
+            clientRequestToken="tok4",
+        )
+        iot.delete_dimension(name=name)
+        resp = iot.list_dimensions()
+        assert name not in resp.get("dimensionNames", [])

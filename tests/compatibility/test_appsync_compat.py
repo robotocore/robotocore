@@ -785,6 +785,295 @@ class TestAppsyncResolverUpdate:
         assert resp["resolvers"][0]["fieldName"] == "hello"
 
 
+class TestAppsyncUpdateType:
+    """Tests for UpdateType operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_type(self, client):
+        created = client.create_graphql_api(
+            name=_unique("updtype-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        client.create_type(
+            apiId=api_id,
+            definition="type Item { id: ID name: String }",
+            format="SDL",
+        )
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_update_type_definition(self, client, api_with_type):
+        """UpdateType changes the type definition."""
+        resp = client.update_type(
+            apiId=api_with_type,
+            typeName="Item",
+            format="SDL",
+            definition="type Item { id: ID name: String age: Int }",
+        )
+        assert resp["type"]["name"] == "Item"
+        assert "age" in resp["type"]["definition"]
+
+    def test_update_type_get_reflects_change(self, client, api_with_type):
+        """GetType after UpdateType returns updated definition."""
+        client.update_type(
+            apiId=api_with_type,
+            typeName="Item",
+            format="SDL",
+            definition="type Item { id: ID title: String }",
+        )
+        resp = client.get_type(apiId=api_with_type, typeName="Item", format="SDL")
+        assert "title" in resp["type"]["definition"]
+
+
+class TestAppsyncDeleteType:
+    """Tests for DeleteType operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_schema(self, client):
+        created = client.create_graphql_api(
+            name=_unique("deltype-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_delete_type(self, client, api_with_schema):
+        """DeleteType removes a type."""
+        client.create_type(
+            apiId=api_with_schema,
+            definition="type Ephemeral { x: Int }",
+            format="SDL",
+        )
+        client.delete_type(apiId=api_with_schema, typeName="Ephemeral")
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_type(apiId=api_with_schema, typeName="Ephemeral", format="SDL")
+
+    def test_delete_type_removes_from_list(self, client, api_with_schema):
+        """DeleteType removes the type from ListTypes."""
+        client.create_type(
+            apiId=api_with_schema,
+            definition="type ToDelete { y: String }",
+            format="SDL",
+        )
+        client.delete_type(apiId=api_with_schema, typeName="ToDelete")
+        resp = client.list_types(apiId=api_with_schema, format="SDL")
+        names = [t["name"] for t in resp["types"]]
+        assert "ToDelete" not in names
+
+
+class TestAppsyncUpdateResolver:
+    """Tests for UpdateResolver operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_resolver(self, client):
+        created = client.create_graphql_api(
+            name=_unique("updres2-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        client.create_data_source(apiId=api_id, name="noneds", type="NONE")
+        client.create_data_source(apiId=api_id, name="noneds2", type="NONE")
+        client.create_resolver(
+            apiId=api_id,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds",
+        )
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_update_resolver_data_source(self, client, api_with_resolver):
+        """UpdateResolver changes the data source."""
+        resp = client.update_resolver(
+            apiId=api_with_resolver,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds2",
+        )
+        assert resp["resolver"]["fieldName"] == "hello"
+        assert resp["resolver"]["dataSourceName"] == "noneds2"
+
+    def test_update_resolver_reflected_in_get(self, client, api_with_resolver):
+        """GetResolver returns updated values after UpdateResolver."""
+        client.update_resolver(
+            apiId=api_with_resolver,
+            typeName="Query",
+            fieldName="hello",
+            dataSourceName="noneds2",
+        )
+        resp = client.get_resolver(apiId=api_with_resolver, typeName="Query", fieldName="hello")
+        assert resp["resolver"]["dataSourceName"] == "noneds2"
+
+
+class TestAppsyncFunctionCrud:
+    """Tests for Function CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api(self, client):
+        created = client.create_graphql_api(name=_unique("func-api"), authenticationType="API_KEY")
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        client.create_data_source(apiId=api_id, name="noneds", type="NONE")
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_create_function(self, client, api):
+        """CreateFunction returns the function configuration."""
+        resp = client.create_function(
+            apiId=api,
+            name="myFunc",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        assert resp["functionConfiguration"]["name"] == "myFunc"
+        assert "functionId" in resp["functionConfiguration"]
+
+    def test_get_function(self, client, api):
+        """GetFunction retrieves a created function."""
+        created = client.create_function(
+            apiId=api,
+            name="getFunc",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        func_id = created["functionConfiguration"]["functionId"]
+        resp = client.get_function(apiId=api, functionId=func_id)
+        assert resp["functionConfiguration"]["name"] == "getFunc"
+        assert resp["functionConfiguration"]["functionId"] == func_id
+
+    def test_update_function(self, client, api):
+        """UpdateFunction modifies function name."""
+        created = client.create_function(
+            apiId=api,
+            name="origFunc",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        func_id = created["functionConfiguration"]["functionId"]
+        resp = client.update_function(
+            apiId=api,
+            functionId=func_id,
+            name="renamedFunc",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        assert resp["functionConfiguration"]["name"] == "renamedFunc"
+
+    def test_list_functions(self, client, api):
+        """ListFunctions returns created functions."""
+        client.create_function(
+            apiId=api,
+            name="listFunc1",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        client.create_function(
+            apiId=api,
+            name="listFunc2",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        resp = client.list_functions(apiId=api)
+        names = [f["name"] for f in resp["functions"]]
+        assert "listFunc1" in names
+        assert "listFunc2" in names
+
+    def test_delete_function(self, client, api):
+        """DeleteFunction removes the function."""
+        created = client.create_function(
+            apiId=api,
+            name="delFunc",
+            dataSourceName="noneds",
+            functionVersion="2018-05-29",
+        )
+        func_id = created["functionConfiguration"]["functionId"]
+        client.delete_function(apiId=api, functionId=func_id)
+        resp = client.list_functions(apiId=api)
+        ids = [f["functionId"] for f in resp["functions"]]
+        assert func_id not in ids
+
+
+class TestAppsyncDomainNameCrud:
+    """Tests for DomainName CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    def test_create_domain_name(self, client):
+        """CreateDomainName returns domain name config."""
+        domain = _unique("dom") + ".example.com"
+        resp = client.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+        )
+        try:
+            assert resp["domainNameConfig"]["domainName"] == domain
+            assert "appsyncDomainName" in resp["domainNameConfig"]
+        finally:
+            client.delete_domain_name(domainName=domain)
+
+    def test_get_domain_name(self, client):
+        """GetDomainName retrieves a created domain."""
+        domain = _unique("dom") + ".example.com"
+        client.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+        )
+        try:
+            resp = client.get_domain_name(domainName=domain)
+            assert resp["domainNameConfig"]["domainName"] == domain
+        finally:
+            client.delete_domain_name(domainName=domain)
+
+    def test_list_domain_names(self, client):
+        """ListDomainNames includes created domains."""
+        domain = _unique("dom") + ".example.com"
+        client.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+        )
+        try:
+            resp = client.list_domain_names()
+            names = [d["domainName"] for d in resp["domainNameConfigs"]]
+            assert domain in names
+        finally:
+            client.delete_domain_name(domainName=domain)
+
+    def test_delete_domain_name(self, client):
+        """DeleteDomainName removes the domain."""
+        domain = _unique("dom") + ".example.com"
+        client.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+        )
+        client.delete_domain_name(domainName=domain)
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_domain_name(domainName=domain)
+
+
 class TestAppsyncAutoCoverage:
     """Auto-generated coverage tests for appsync."""
 
