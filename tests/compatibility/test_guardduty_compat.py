@@ -485,6 +485,44 @@ class TestGuardDutyTagOperations:
         assert tags_resp["Tags"]["team"] == "security"
         assert tags_resp["Tags"]["env"] == "test"
 
+    def test_untag_resource(self, guardduty, detector):
+        """UntagResource removes specified tags from a detector."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"k1": "v1", "k2": "v2", "k3": "v3"})
+        resp = guardduty.untag_resource(ResourceArn=arn, TagKeys=["k1", "k3"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert "k1" not in tags_resp["Tags"]
+        assert tags_resp["Tags"]["k2"] == "v2"
+        assert "k3" not in tags_resp["Tags"]
+
+    def test_create_detector_with_tags_and_verify(self, guardduty):
+        """Create a detector with tags and verify via get_detector."""
+        resp = guardduty.create_detector(Enable=True, Tags={"env": "staging", "team": "infra"})
+        detector_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=detector_id)
+            assert detail["Tags"]["env"] == "staging"
+            assert detail["Tags"]["team"] == "infra"
+        finally:
+            guardduty.delete_detector(DetectorId=detector_id)
+
+    def test_tag_resource_overwrites_existing(self, guardduty, detector):
+        """TagResource overwrites existing tag values."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"env": "dev"})
+        guardduty.tag_resource(ResourceArn=arn, Tags={"env": "prod"})
+        tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert tags_resp["Tags"]["env"] == "prod"
+
+    def test_tag_and_untag_all(self, guardduty, detector):
+        """Tag then untag all tags leaves empty tags map."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"a": "1", "b": "2"})
+        guardduty.untag_resource(ResourceArn=arn, TagKeys=["a", "b"])
+        tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert tags_resp["Tags"] == {}
+
 
 class TestGuardDutyUpdateOperations:
     """Tests for update operations on IP sets and threat intel sets."""

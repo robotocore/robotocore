@@ -1806,3 +1806,252 @@ class TestRedshiftNewCoverage:
         resp = redshift.describe_hsm_configurations()
         assert "HsmConfigurations" in resp
         assert isinstance(resp["HsmConfigurations"], list)
+
+
+class TestRedshiftGetReservedNodeExchangeOfferings:
+    """Tests for GetReservedNodeExchangeOfferings."""
+
+    def test_get_reserved_node_exchange_offerings(self, redshift):
+        """GetReservedNodeExchangeOfferings with fake node ID returns empty list."""
+        resp = redshift.get_reserved_node_exchange_offerings(ReservedNodeId="fake-node-id-12345")
+        assert "ReservedNodeOfferings" in resp
+        assert isinstance(resp["ReservedNodeOfferings"], list)
+
+
+class TestRedshiftScheduledActions:
+    """Tests for ScheduledAction CRUD operations."""
+
+    def test_create_scheduled_action(self, redshift):
+        """CreateScheduledAction returns the action details."""
+        name = f"sa-{_uid()}"
+        try:
+            resp = redshift.create_scheduled_action(
+                ScheduledActionName=name,
+                TargetAction={
+                    "ResizeCluster": {
+                        "ClusterIdentifier": "fake-cluster",
+                        "NumberOfNodes": 2,
+                    }
+                },
+                Schedule="rate(1 hour)",
+                IamRole="arn:aws:iam::123456789012:role/redshift-role",
+            )
+            assert resp["ScheduledActionName"] == name
+            assert resp["Schedule"] == "rate(1 hour)"
+            assert "State" in resp
+        finally:
+            redshift.delete_scheduled_action(ScheduledActionName=name)
+
+    def test_describe_scheduled_actions_contains_created(self, redshift):
+        """DescribeScheduledActions includes a freshly created action."""
+        name = f"sa-{_uid()}"
+        try:
+            redshift.create_scheduled_action(
+                ScheduledActionName=name,
+                TargetAction={
+                    "ResizeCluster": {
+                        "ClusterIdentifier": "fake-cluster",
+                        "NumberOfNodes": 2,
+                    }
+                },
+                Schedule="rate(1 hour)",
+                IamRole="arn:aws:iam::123456789012:role/redshift-role",
+            )
+            resp = redshift.describe_scheduled_actions()
+            names = [a["ScheduledActionName"] for a in resp["ScheduledActions"]]
+            assert name in names
+        finally:
+            redshift.delete_scheduled_action(ScheduledActionName=name)
+
+    def test_modify_scheduled_action(self, redshift):
+        """ModifyScheduledAction updates the schedule."""
+        name = f"sa-{_uid()}"
+        try:
+            redshift.create_scheduled_action(
+                ScheduledActionName=name,
+                TargetAction={
+                    "ResizeCluster": {
+                        "ClusterIdentifier": "fake-cluster",
+                        "NumberOfNodes": 2,
+                    }
+                },
+                Schedule="rate(1 hour)",
+                IamRole="arn:aws:iam::123456789012:role/redshift-role",
+            )
+            resp = redshift.modify_scheduled_action(
+                ScheduledActionName=name,
+                Schedule="rate(2 hours)",
+            )
+            assert resp["ScheduledActionName"] == name
+            assert resp["Schedule"] == "rate(2 hours)"
+        finally:
+            redshift.delete_scheduled_action(ScheduledActionName=name)
+
+    def test_delete_scheduled_action(self, redshift):
+        """DeleteScheduledAction removes the action from describe."""
+        name = f"sa-{_uid()}"
+        redshift.create_scheduled_action(
+            ScheduledActionName=name,
+            TargetAction={
+                "ResizeCluster": {
+                    "ClusterIdentifier": "fake-cluster",
+                    "NumberOfNodes": 2,
+                }
+            },
+            Schedule="rate(1 hour)",
+            IamRole="arn:aws:iam::123456789012:role/redshift-role",
+        )
+        redshift.delete_scheduled_action(ScheduledActionName=name)
+        resp = redshift.describe_scheduled_actions()
+        names = [a["ScheduledActionName"] for a in resp["ScheduledActions"]]
+        assert name not in names
+
+    def test_describe_scheduled_actions_by_name(self, redshift):
+        """DescribeScheduledActions filtered by name returns the specific action."""
+        name = f"sa-{_uid()}"
+        try:
+            redshift.create_scheduled_action(
+                ScheduledActionName=name,
+                TargetAction={
+                    "ResizeCluster": {
+                        "ClusterIdentifier": "fake-cluster",
+                        "NumberOfNodes": 2,
+                    }
+                },
+                Schedule="rate(1 hour)",
+                IamRole="arn:aws:iam::123456789012:role/redshift-role",
+            )
+            resp = redshift.describe_scheduled_actions(ScheduledActionName=name)
+            assert len(resp["ScheduledActions"]) == 1
+            assert resp["ScheduledActions"][0]["ScheduledActionName"] == name
+        finally:
+            redshift.delete_scheduled_action(ScheduledActionName=name)
+
+    def test_create_scheduled_action_with_description(self, redshift):
+        """CreateScheduledAction with description stores it."""
+        name = f"sa-{_uid()}"
+        try:
+            resp = redshift.create_scheduled_action(
+                ScheduledActionName=name,
+                TargetAction={
+                    "ResizeCluster": {
+                        "ClusterIdentifier": "fake-cluster",
+                        "NumberOfNodes": 2,
+                    }
+                },
+                Schedule="rate(1 hour)",
+                IamRole="arn:aws:iam::123456789012:role/redshift-role",
+                ScheduledActionDescription="My scheduled resize",
+            )
+            assert resp["ScheduledActionDescription"] == "My scheduled resize"
+        finally:
+            redshift.delete_scheduled_action(ScheduledActionName=name)
+
+
+class TestRedshiftUsageLimits:
+    """Tests for UsageLimit CRUD operations."""
+
+    @pytest.fixture
+    def cluster(self, redshift):
+        """Create a cluster for usage limit tests."""
+        cid = f"ul-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        yield cid
+        redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_usage_limit(self, redshift, cluster):
+        """CreateUsageLimit returns usage limit details."""
+        resp = redshift.create_usage_limit(
+            ClusterIdentifier=cluster,
+            FeatureType="spectrum",
+            LimitType="data-scanned",
+            Amount=100,
+        )
+        assert resp["ClusterIdentifier"] == cluster
+        assert resp["FeatureType"] == "spectrum"
+        assert resp["LimitType"] == "data-scanned"
+        assert resp["Amount"] == 100
+        assert "UsageLimitId" in resp
+        # cleanup
+        redshift.delete_usage_limit(UsageLimitId=resp["UsageLimitId"])
+
+    def test_describe_usage_limits_for_cluster(self, redshift, cluster):
+        """DescribeUsageLimits filtered by cluster returns the limit."""
+        resp = redshift.create_usage_limit(
+            ClusterIdentifier=cluster,
+            FeatureType="spectrum",
+            LimitType="data-scanned",
+            Amount=50,
+        )
+        ul_id = resp["UsageLimitId"]
+        try:
+            desc = redshift.describe_usage_limits(ClusterIdentifier=cluster)
+            ids = [u["UsageLimitId"] for u in desc["UsageLimits"]]
+            assert ul_id in ids
+        finally:
+            redshift.delete_usage_limit(UsageLimitId=ul_id)
+
+    def test_modify_usage_limit(self, redshift, cluster):
+        """ModifyUsageLimit updates the amount."""
+        resp = redshift.create_usage_limit(
+            ClusterIdentifier=cluster,
+            FeatureType="spectrum",
+            LimitType="data-scanned",
+            Amount=100,
+        )
+        ul_id = resp["UsageLimitId"]
+        try:
+            mod = redshift.modify_usage_limit(UsageLimitId=ul_id, Amount=200)
+            assert mod["UsageLimitId"] == ul_id
+            assert mod["Amount"] == 200
+        finally:
+            redshift.delete_usage_limit(UsageLimitId=ul_id)
+
+    def test_modify_usage_limit_breach_action(self, redshift, cluster):
+        """ModifyUsageLimit can change the breach action."""
+        resp = redshift.create_usage_limit(
+            ClusterIdentifier=cluster,
+            FeatureType="spectrum",
+            LimitType="data-scanned",
+            Amount=100,
+        )
+        ul_id = resp["UsageLimitId"]
+        try:
+            mod = redshift.modify_usage_limit(UsageLimitId=ul_id, BreachAction="disable")
+            assert mod["BreachAction"] == "disable"
+        finally:
+            redshift.delete_usage_limit(UsageLimitId=ul_id)
+
+    def test_delete_usage_limit(self, redshift, cluster):
+        """DeleteUsageLimit removes the limit from describe."""
+        resp = redshift.create_usage_limit(
+            ClusterIdentifier=cluster,
+            FeatureType="spectrum",
+            LimitType="data-scanned",
+            Amount=100,
+        )
+        ul_id = resp["UsageLimitId"]
+        redshift.delete_usage_limit(UsageLimitId=ul_id)
+        desc = redshift.describe_usage_limits(ClusterIdentifier=cluster)
+        ids = [u["UsageLimitId"] for u in desc["UsageLimits"]]
+        assert ul_id not in ids
+
+    def test_create_usage_limit_concurrency_scaling(self, redshift, cluster):
+        """CreateUsageLimit for concurrency-scaling feature."""
+        resp = redshift.create_usage_limit(
+            ClusterIdentifier=cluster,
+            FeatureType="concurrency-scaling",
+            LimitType="time",
+            Amount=60,
+        )
+        assert resp["FeatureType"] == "concurrency-scaling"
+        assert resp["LimitType"] == "time"
+        assert resp["Amount"] == 60
+        redshift.delete_usage_limit(UsageLimitId=resp["UsageLimitId"])

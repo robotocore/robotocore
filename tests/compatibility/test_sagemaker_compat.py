@@ -2208,3 +2208,173 @@ class TestSageMakerEndpointConfigDetails:
         finally:
             sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
             sagemaker.delete_model(ModelName=model_name)
+
+
+class TestSageMakerTagsOnPipeline:
+    """Tags CRUD on Pipeline resources."""
+
+    def _create_pipeline(self, sagemaker, name):
+        return sagemaker.create_pipeline(
+            PipelineName=name,
+            PipelineDefinition='{"Version":"2020-12-01","Steps":[]}',
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+
+    def test_add_and_list_tags_on_pipeline(self, sagemaker):
+        """add_tags and list_tags work on pipeline ARNs."""
+        name = _uid("pipe")
+        resp = self._create_pipeline(sagemaker, name)
+        arn = resp["PipelineArn"]
+        try:
+            sagemaker.add_tags(
+                ResourceArn=arn,
+                Tags=[
+                    {"Key": "env", "Value": "dev"},
+                    {"Key": "team", "Value": "ml"},
+                ],
+            )
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["env"] == "dev"
+            assert tags["team"] == "ml"
+        finally:
+            sagemaker.delete_pipeline(PipelineName=name)
+
+    def test_delete_tags_on_pipeline(self, sagemaker):
+        """delete_tags removes tags from a pipeline."""
+        name = _uid("pipe")
+        resp = self._create_pipeline(sagemaker, name)
+        arn = resp["PipelineArn"]
+        try:
+            sagemaker.add_tags(
+                ResourceArn=arn,
+                Tags=[
+                    {"Key": "env", "Value": "dev"},
+                    {"Key": "team", "Value": "ml"},
+                ],
+            )
+            sagemaker.delete_tags(ResourceArn=arn, TagKeys=["env"])
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "env" not in keys
+            assert "team" in keys
+        finally:
+            sagemaker.delete_pipeline(PipelineName=name)
+
+    def test_create_pipeline_with_inline_tags(self, sagemaker):
+        """create_pipeline with Tags attaches tags at creation time."""
+        name = _uid("pipe")
+        resp = sagemaker.create_pipeline(
+            PipelineName=name,
+            PipelineDefinition='{"Version":"2020-12-01","Steps":[]}',
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            Tags=[{"Key": "created-by", "Value": "test"}],
+        )
+        arn = resp["PipelineArn"]
+        try:
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["created-by"] == "test"
+        finally:
+            sagemaker.delete_pipeline(PipelineName=name)
+
+
+class TestSageMakerTagsOnTrainingJob:
+    """Tags CRUD on TrainingJob resources."""
+
+    def _create_training_job(self, sagemaker, name):
+        return sagemaker.create_training_job(
+            TrainingJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            AlgorithmSpecification={
+                "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest",
+                "TrainingInputMode": "File",
+            },
+            OutputDataConfig={"S3OutputPath": "s3://my-bucket/output"},
+            ResourceConfig={
+                "InstanceType": "ml.m4.xlarge",
+                "InstanceCount": 1,
+                "VolumeSizeInGB": 10,
+            },
+            StoppingCondition={"MaxRuntimeInSeconds": 3600},
+        )
+
+    def test_add_and_list_tags_on_training_job(self, sagemaker):
+        """add_tags and list_tags work on training job ARNs."""
+        name = _uid("tj")
+        resp = self._create_training_job(sagemaker, name)
+        arn = resp["TrainingJobArn"]
+        sagemaker.add_tags(
+            ResourceArn=arn,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "ml"},
+            ],
+        )
+        tags_resp = sagemaker.list_tags(ResourceArn=arn)
+        tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "ml"
+
+    def test_delete_tags_on_training_job(self, sagemaker):
+        """delete_tags removes tags from a training job."""
+        name = _uid("tj")
+        resp = self._create_training_job(sagemaker, name)
+        arn = resp["TrainingJobArn"]
+        sagemaker.add_tags(
+            ResourceArn=arn,
+            Tags=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "ml"},
+            ],
+        )
+        sagemaker.delete_tags(ResourceArn=arn, TagKeys=["env"])
+        tags_resp = sagemaker.list_tags(ResourceArn=arn)
+        keys = [t["Key"] for t in tags_resp["Tags"]]
+        assert "env" not in keys
+        assert "team" in keys
+
+
+class TestSageMakerTagsOnModelPackageGroup:
+    """Tags on ModelPackageGroup resources."""
+
+    def test_add_and_list_tags_on_model_package_group(self, sagemaker):
+        """add_tags and list_tags work on model package group ARNs."""
+        name = _uid("mpg")
+        resp = sagemaker.create_model_package_group(
+            ModelPackageGroupName=name,
+            ModelPackageGroupDescription="test group",
+        )
+        arn = resp["ModelPackageGroupArn"]
+        sagemaker.add_tags(
+            ResourceArn=arn,
+            Tags=[
+                {"Key": "env", "Value": "staging"},
+                {"Key": "owner", "Value": "data-team"},
+            ],
+        )
+        tags_resp = sagemaker.list_tags(ResourceArn=arn)
+        tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+        assert tags["env"] == "staging"
+        assert tags["owner"] == "data-team"
+
+    def test_delete_tags_on_model_package_group(self, sagemaker):
+        """delete_tags removes tags from a model package group."""
+        name = _uid("mpg")
+        resp = sagemaker.create_model_package_group(
+            ModelPackageGroupName=name,
+            ModelPackageGroupDescription="test group",
+        )
+        arn = resp["ModelPackageGroupArn"]
+        sagemaker.add_tags(
+            ResourceArn=arn,
+            Tags=[
+                {"Key": "env", "Value": "staging"},
+                {"Key": "owner", "Value": "data-team"},
+            ],
+        )
+        sagemaker.delete_tags(ResourceArn=arn, TagKeys=["env"])
+        tags_resp = sagemaker.list_tags(ResourceArn=arn)
+        keys = [t["Key"] for t in tags_resp["Tags"]]
+        assert "env" not in keys
+        assert "owner" in keys

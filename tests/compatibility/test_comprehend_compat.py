@@ -277,3 +277,135 @@ class TestComprehendAutoCoverage:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(resp["Entities"], list)
+
+    def test_stop_training_document_classifier_nonexistent(self, client):
+        """StopTrainingDocumentClassifier with nonexistent ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/nonexistent-cls"
+        with pytest.raises(ClientError) as exc:
+            client.stop_training_document_classifier(DocumentClassifierArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestComprehendEndpointTagging:
+    """Test tag operations on Comprehend endpoints."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("comprehend")
+
+    @pytest.fixture
+    def endpoint_arn(self, client):
+        """Create an endpoint for tagging tests, clean up after."""
+        name = f"test-ep-{_uid()}"
+        model_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+        resp = client.create_endpoint(
+            EndpointName=name,
+            ModelArn=model_arn,
+            DesiredInferenceUnits=1,
+        )
+        arn = resp["EndpointArn"]
+        yield arn
+        try:
+            client.delete_endpoint(EndpointArn=arn)
+        except ClientError:
+            pass
+
+    def test_tag_and_list_tags(self, client, endpoint_arn):
+        """TagResource adds tags visible via ListTagsForResource."""
+        client.tag_resource(
+            ResourceArn=endpoint_arn,
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "ml"}],
+        )
+        resp = client.list_tags_for_resource(ResourceArn=endpoint_arn)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "ml"
+
+    def test_untag_resource(self, client, endpoint_arn):
+        """UntagResource removes specified tag keys."""
+        client.tag_resource(
+            ResourceArn=endpoint_arn,
+            Tags=[{"Key": "a", "Value": "1"}, {"Key": "b", "Value": "2"}],
+        )
+        client.untag_resource(ResourceArn=endpoint_arn, TagKeys=["a"])
+        resp = client.list_tags_for_resource(ResourceArn=endpoint_arn)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert "a" not in tags
+        assert tags["b"] == "2"
+
+    def test_tag_overwrite(self, client, endpoint_arn):
+        """TagResource overwrites existing tag values."""
+        client.tag_resource(
+            ResourceArn=endpoint_arn,
+            Tags=[{"Key": "env", "Value": "dev"}],
+        )
+        client.tag_resource(
+            ResourceArn=endpoint_arn,
+            Tags=[{"Key": "env", "Value": "prod"}],
+        )
+        resp = client.list_tags_for_resource(ResourceArn=endpoint_arn)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "prod"
+
+
+class TestComprehendAdditionalOperations:
+    """Additional Comprehend operation coverage."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("comprehend")
+
+    def test_stop_training_entity_recognizer_nonexistent(self, client):
+        """StopTrainingEntityRecognizer with nonexistent ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:entity-recognizer/nonexistent-rec"
+        with pytest.raises(ClientError) as exc:
+            client.stop_training_entity_recognizer(EntityRecognizerArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_endpoints_finds_created(self, client):
+        """ListEndpoints returns an endpoint that was just created."""
+        name = f"test-list-{_uid()}"
+        model_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+        resp = client.create_endpoint(
+            EndpointName=name,
+            ModelArn=model_arn,
+            DesiredInferenceUnits=1,
+        )
+        ep_arn = resp["EndpointArn"]
+        try:
+            listed = client.list_endpoints()
+            arns = [e["EndpointArn"] for e in listed["EndpointPropertiesList"]]
+            assert ep_arn in arns
+        finally:
+            client.delete_endpoint(EndpointArn=ep_arn)
+
+    def test_endpoint_lifecycle_create_describe_update_delete(self, client):
+        """Full endpoint CRUD lifecycle."""
+        name = f"test-crud-{_uid()}"
+        model_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/test-cls"
+
+        # Create
+        create_resp = client.create_endpoint(
+            EndpointName=name,
+            ModelArn=model_arn,
+            DesiredInferenceUnits=1,
+        )
+        ep_arn = create_resp["EndpointArn"]
+        assert ep_arn
+
+        try:
+            # Describe
+            desc = client.describe_endpoint(EndpointArn=ep_arn)
+            assert desc["EndpointProperties"]["Status"] == "IN_SERVICE"
+
+            # Update
+            upd = client.update_endpoint(EndpointArn=ep_arn, DesiredInferenceUnits=2)
+            assert upd["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            # Delete
+            client.delete_endpoint(EndpointArn=ep_arn)
+
+        # Verify deleted
+        with pytest.raises(ClientError) as exc:
+            client.describe_endpoint(EndpointArn=ep_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
