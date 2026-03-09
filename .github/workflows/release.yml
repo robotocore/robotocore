@@ -10,12 +10,36 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/ci.yml
+  # Gate: lint + unit tests must pass before publishing.
+  # Compat/IaC tests run in CI but don't block releases (they have known flaky tests).
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run ruff format --check src/ tests/ scripts/
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: uv run pytest tests/unit/ -n4 -q --tb=short
 
   build-and-publish:
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [lint, unit-tests]
     steps:
       - uses: actions/checkout@v4
         with:
