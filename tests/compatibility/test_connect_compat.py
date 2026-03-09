@@ -755,3 +755,285 @@ class TestConnectCreateDescribeOps:
         assert "Attributes" in resp
         assert resp["Attributes"]["greeting"] == "hello"
         assert resp["Attributes"]["language"] == "en"
+
+
+class TestConnectListOperations:
+    """Tests for Connect list operations that require InstanceId."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_list_approved_origins(self, connect, instance_id):
+        resp = connect.list_approved_origins(InstanceId=instance_id)
+        assert "Origins" in resp
+        assert isinstance(resp["Origins"], list)
+
+    def test_list_bots(self, connect, instance_id):
+        resp = connect.list_bots(InstanceId=instance_id, LexVersion="V2")
+        assert "LexBots" in resp
+        assert isinstance(resp["LexBots"], list)
+
+    def test_list_contact_flow_modules(self, connect, instance_id):
+        resp = connect.list_contact_flow_modules(InstanceId=instance_id)
+        assert "ContactFlowModulesSummaryList" in resp
+        assert isinstance(resp["ContactFlowModulesSummaryList"], list)
+
+    def test_list_contact_flows(self, connect, instance_id):
+        resp = connect.list_contact_flows(InstanceId=instance_id)
+        assert "ContactFlowSummaryList" in resp
+        assert isinstance(resp["ContactFlowSummaryList"], list)
+
+    def test_list_contact_flow_versions(self, connect, instance_id):
+        # Create a contact flow first to list versions for
+        create_resp = connect.create_contact_flow(
+            InstanceId=instance_id,
+            Name="FlowForVersions",
+            Type="CONTACT_FLOW",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        flow_id = create_resp["ContactFlowId"]
+        resp = connect.list_contact_flow_versions(
+            InstanceId=instance_id,
+            ContactFlowId=flow_id,
+        )
+        assert "ContactFlowVersionSummaryList" in resp
+        assert isinstance(resp["ContactFlowVersionSummaryList"], list)
+
+    def test_list_default_vocabularies(self, connect, instance_id):
+        resp = connect.list_default_vocabularies(InstanceId=instance_id)
+        assert "DefaultVocabularyList" in resp
+        assert isinstance(resp["DefaultVocabularyList"], list)
+
+    def test_list_evaluation_form_versions(self, connect, instance_id):
+        create_resp = connect.create_evaluation_form(
+            InstanceId=instance_id,
+            Title="FormForVersions",
+            Items=[
+                {
+                    "Section": {
+                        "Title": "Section1",
+                        "RefId": "s1",
+                        "Items": [],
+                    }
+                }
+            ],
+        )
+        form_id = create_resp["EvaluationFormId"]
+        resp = connect.list_evaluation_form_versions(
+            InstanceId=instance_id,
+            EvaluationFormId=form_id,
+        )
+        assert "EvaluationFormVersionSummaryList" in resp
+        assert isinstance(resp["EvaluationFormVersionSummaryList"], list)
+
+    def test_list_flow_associations(self, connect, instance_id):
+        resp = connect.list_flow_associations(InstanceId=instance_id)
+        assert "FlowAssociationSummaryList" in resp
+        assert isinstance(resp["FlowAssociationSummaryList"], list)
+
+    def test_list_hours_of_operations(self, connect, instance_id):
+        resp = connect.list_hours_of_operations(InstanceId=instance_id)
+        assert "HoursOfOperationSummaryList" in resp
+        assert isinstance(resp["HoursOfOperationSummaryList"], list)
+
+    def test_list_hours_of_operation_overrides(self, connect, instance_id):
+        # Need an hours of operation to list overrides for
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="OverrideTestHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = hoo_resp["HoursOfOperationId"]
+        resp = connect.list_hours_of_operation_overrides(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+        )
+        assert "HoursOfOperationOverrideList" in resp
+        assert isinstance(resp["HoursOfOperationOverrideList"], list)
+
+    def test_list_instance_attributes(self, connect, instance_id):
+        resp = connect.list_instance_attributes(InstanceId=instance_id)
+        assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
+
+    def test_list_instance_storage_configs(self, connect, instance_id):
+        resp = connect.list_instance_storage_configs(
+            InstanceId=instance_id,
+            ResourceType="CHAT_TRANSCRIPTS",
+        )
+        assert "StorageConfigs" in resp
+        assert isinstance(resp["StorageConfigs"], list)
+
+    def test_list_integration_associations(self, connect, instance_id):
+        resp = connect.list_integration_associations(InstanceId=instance_id)
+        assert "IntegrationAssociationSummaryList" in resp
+        assert isinstance(resp["IntegrationAssociationSummaryList"], list)
+
+    def test_list_lambda_functions(self, connect, instance_id):
+        resp = connect.list_lambda_functions(InstanceId=instance_id)
+        assert "LambdaFunctions" in resp
+        assert isinstance(resp["LambdaFunctions"], list)
+
+    def test_list_phone_numbers(self, connect, instance_id):
+        resp = connect.list_phone_numbers(InstanceId=instance_id)
+        assert "PhoneNumberSummaryList" in resp
+        assert isinstance(resp["PhoneNumberSummaryList"], list)
+
+    def test_list_prompts(self, connect, instance_id):
+        resp = connect.list_prompts(InstanceId=instance_id)
+        assert "PromptSummaryList" in resp
+        assert isinstance(resp["PromptSummaryList"], list)
+
+    def test_list_queue_quick_connects(self, connect, instance_id):
+        # Create a queue first
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="QQCHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = hoo_resp["HoursOfOperationId"]
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QQCQueue",
+            HoursOfOperationId=hoo_id,
+        )
+        queue_id = queue_resp["QueueId"]
+        resp = connect.list_queue_quick_connects(
+            InstanceId=instance_id,
+            QueueId=queue_id,
+        )
+        assert "QuickConnectSummaryList" in resp
+        assert isinstance(resp["QuickConnectSummaryList"], list)
+
+    def test_list_queues(self, connect, instance_id):
+        resp = connect.list_queues(InstanceId=instance_id)
+        assert "QueueSummaryList" in resp
+        assert isinstance(resp["QueueSummaryList"], list)
+
+    def test_list_routing_profile_queues(self, connect, instance_id):
+        create_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPQProfile",
+            Description="For listing queues",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[
+                {"Channel": "VOICE", "Concurrency": 1},
+            ],
+        )
+        rp_id = create_resp["RoutingProfileId"]
+        resp = connect.list_routing_profile_queues(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_id,
+        )
+        assert "RoutingProfileQueueConfigSummaryList" in resp
+        assert isinstance(resp["RoutingProfileQueueConfigSummaryList"], list)
+
+    def test_list_routing_profiles(self, connect, instance_id):
+        resp = connect.list_routing_profiles(InstanceId=instance_id)
+        assert "RoutingProfileSummaryList" in resp
+        assert isinstance(resp["RoutingProfileSummaryList"], list)
+
+    def test_list_rules(self, connect, instance_id):
+        resp = connect.list_rules(
+            InstanceId=instance_id,
+            EventSourceName="OnPostCallAnalysisAvailable",
+        )
+        assert "RuleSummaryList" in resp
+        assert isinstance(resp["RuleSummaryList"], list)
+
+    def test_list_security_keys(self, connect, instance_id):
+        resp = connect.list_security_keys(InstanceId=instance_id)
+        assert "SecurityKeys" in resp
+        assert isinstance(resp["SecurityKeys"], list)
+
+    def test_list_security_profile_applications(self, connect, instance_id):
+        create_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName="SPAProfile",
+        )
+        sp_id = create_resp["SecurityProfileId"]
+        resp = connect.list_security_profile_applications(
+            InstanceId=instance_id,
+            SecurityProfileId=sp_id,
+        )
+        assert "Applications" in resp
+        assert isinstance(resp["Applications"], list)
+
+    def test_list_security_profile_permissions(self, connect, instance_id):
+        create_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName="SPPProfile",
+        )
+        sp_id = create_resp["SecurityProfileId"]
+        resp = connect.list_security_profile_permissions(
+            InstanceId=instance_id,
+            SecurityProfileId=sp_id,
+        )
+        assert "Permissions" in resp
+        assert isinstance(resp["Permissions"], list)
+
+    def test_list_security_profiles(self, connect, instance_id):
+        resp = connect.list_security_profiles(InstanceId=instance_id)
+        assert "SecurityProfileSummaryList" in resp
+        assert isinstance(resp["SecurityProfileSummaryList"], list)
+
+    def test_list_task_templates(self, connect, instance_id):
+        resp = connect.list_task_templates(InstanceId=instance_id)
+        assert "TaskTemplates" in resp
+        assert isinstance(resp["TaskTemplates"], list)
+
+    def test_list_user_hierarchy_groups(self, connect, instance_id):
+        resp = connect.list_user_hierarchy_groups(InstanceId=instance_id)
+        assert "UserHierarchyGroupSummaryList" in resp
+        assert isinstance(resp["UserHierarchyGroupSummaryList"], list)
+
+    def test_list_users(self, connect, instance_id):
+        resp = connect.list_users(InstanceId=instance_id)
+        assert "UserSummaryList" in resp
+        assert isinstance(resp["UserSummaryList"], list)
+
+    def test_list_views(self, connect, instance_id):
+        resp = connect.list_views(InstanceId=instance_id)
+        assert "ViewsSummaryList" in resp
+        assert isinstance(resp["ViewsSummaryList"], list)
+
+    def test_list_contact_evaluations(self, connect, instance_id):
+        resp = connect.list_contact_evaluations(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+        )
+        assert "EvaluationSummaryList" in resp
+        assert isinstance(resp["EvaluationSummaryList"], list)
+
+    def test_list_contact_references(self, connect, instance_id):
+        resp = connect.list_contact_references(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            ReferenceTypes=["URL"],
+        )
+        assert "ReferenceSummaryList" in resp
+        assert isinstance(resp["ReferenceSummaryList"], list)
+
+    def test_list_use_cases(self, connect, instance_id):
+        resp = connect.list_use_cases(
+            InstanceId=instance_id,
+            IntegrationAssociationId="fake-integration-id",
+        )
+        assert "UseCaseSummaryList" in resp
+        assert isinstance(resp["UseCaseSummaryList"], list)
