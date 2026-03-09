@@ -383,3 +383,261 @@ class TestOpensearchserverlessAutoCoverage:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
                 pass
+
+
+class TestOpenSearchServerlessAccessPolicies:
+    """Tests for access policy operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_create_access_policy(self, client):
+        """CreateAccessPolicy creates a data access policy."""
+        suffix = _uid()
+        name = f"ap-{suffix}"
+        policy = json.dumps(
+            [
+                {
+                    "Rules": [
+                        {
+                            "ResourceType": "collection",
+                            "Resource": [f"collection/test-{suffix}"],
+                            "Permission": ["aoss:CreateCollectionItems"],
+                        }
+                    ],
+                    "Principal": ["arn:aws:iam::123456789012:root"],
+                }
+            ]
+        )
+        try:
+            resp = client.create_access_policy(name=name, type="data", policy=policy)
+            detail = resp["accessPolicyDetail"]
+            assert detail["name"] == name
+            assert detail["type"] == "data"
+            assert "policyVersion" in detail
+        finally:
+            try:
+                client.delete_access_policy(name=name, type="data")
+            except ClientError:
+                pass
+
+    def test_get_access_policy(self, client):
+        """GetAccessPolicy retrieves a policy by name and type."""
+        suffix = _uid()
+        name = f"ap-get-{suffix}"
+        policy = json.dumps(
+            [
+                {
+                    "Rules": [
+                        {
+                            "ResourceType": "collection",
+                            "Resource": [f"collection/test-{suffix}"],
+                            "Permission": ["aoss:*"],
+                        }
+                    ],
+                    "Principal": ["arn:aws:iam::123456789012:root"],
+                }
+            ]
+        )
+        client.create_access_policy(name=name, type="data", policy=policy)
+        try:
+            resp = client.get_access_policy(name=name, type="data")
+            detail = resp["accessPolicyDetail"]
+            assert detail["name"] == name
+            assert "policy" in detail
+        finally:
+            client.delete_access_policy(name=name, type="data")
+
+    def test_list_access_policies(self, client):
+        """ListAccessPolicies returns summaries for data type."""
+        resp = client.list_access_policies(type="data")
+        assert "accessPolicySummaries" in resp
+        assert isinstance(resp["accessPolicySummaries"], list)
+
+    def test_delete_access_policy_nonexistent(self, client):
+        """DeleteAccessPolicy for nonexistent policy raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_access_policy(name="nonexistent", type="data")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_access_policy_nonexistent(self, client):
+        """GetAccessPolicy for nonexistent policy raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_access_policy(name="nonexistent", type="data")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestOpenSearchServerlessLifecyclePolicies:
+    """Tests for lifecycle policy operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_create_lifecycle_policy(self, client):
+        """CreateLifecyclePolicy creates a retention policy."""
+        suffix = _uid()
+        name = f"lp-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/test-{suffix}"],
+                        "MinIndexRetention": "15d",
+                    }
+                ]
+            }
+        )
+        try:
+            resp = client.create_lifecycle_policy(name=name, type="retention", policy=policy)
+            detail = resp["lifecyclePolicyDetail"]
+            assert detail["name"] == name
+            assert detail["type"] == "retention"
+        finally:
+            try:
+                client.delete_lifecycle_policy(name=name, type="retention")
+            except ClientError:
+                pass
+
+    def test_list_lifecycle_policies(self, client):
+        """ListLifecyclePolicies returns summaries."""
+        resp = client.list_lifecycle_policies(type="retention")
+        assert "lifecyclePolicySummaries" in resp
+        assert isinstance(resp["lifecyclePolicySummaries"], list)
+
+    def test_delete_lifecycle_policy_nonexistent(self, client):
+        """DeleteLifecyclePolicy for nonexistent policy raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_lifecycle_policy(name="nonexistent", type="retention")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestOpenSearchServerlessSecurityConfigs:
+    """Tests for security config operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_create_security_config(self, client):
+        """CreateSecurityConfig creates a SAML config."""
+        suffix = _uid()
+        name = f"sc-{suffix}"
+        resp = client.create_security_config(
+            name=name,
+            type="saml",
+            samlOptions={"metadata": "<xml>saml</xml>"},
+            description="test config",
+        )
+        detail = resp["securityConfigDetail"]
+        assert "id" in detail
+        assert detail["type"] == "saml"
+        client.delete_security_config(id=detail["id"])
+
+    def test_get_security_config_nonexistent(self, client):
+        """GetSecurityConfig for nonexistent ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_security_config(id="nonexistent-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_security_configs(self, client):
+        """ListSecurityConfigs returns summaries."""
+        resp = client.list_security_configs(type="saml")
+        assert "securityConfigSummaries" in resp
+        assert isinstance(resp["securityConfigSummaries"], list)
+
+    def test_delete_security_config_nonexistent(self, client):
+        """DeleteSecurityConfig for nonexistent ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_security_config(id="nonexistent-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestOpenSearchServerlessVpcEndpoints:
+    """Tests for VPC endpoint operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_list_vpc_endpoints(self, client):
+        """ListVpcEndpoints returns endpoint summaries."""
+        resp = client.list_vpc_endpoints()
+        assert "vpcEndpointSummaries" in resp
+        assert isinstance(resp["vpcEndpointSummaries"], list)
+
+    def test_delete_vpc_endpoint_nonexistent(self, client):
+        """DeleteVpcEndpoint for nonexistent ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_vpc_endpoint(id="vpce-nonexistent12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestOpenSearchServerlessAccountSettings:
+    """Tests for account settings and policies stats."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_get_account_settings(self, client):
+        """GetAccountSettings returns capacity limits."""
+        resp = client.get_account_settings()
+        assert "accountSettingsDetail" in resp
+
+    def test_get_policies_stats(self, client):
+        """GetPoliciesStats returns policy counts."""
+        resp = client.get_policies_stats()
+        assert "TotalPolicyCount" in resp
+
+    def test_delete_security_policy(self, client):
+        """DeleteSecurityPolicy removes an encryption policy."""
+        suffix = _uid()
+        pol_name = f"enc-del-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/test-del-{suffix}"],
+                    }
+                ],
+                "AWSOwnedKey": True,
+            }
+        )
+        client.create_security_policy(name=pol_name, type="encryption", policy=policy)
+        resp = client.delete_security_policy(name=pol_name, type="encryption")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_collection(self, client):
+        """UpdateCollection modifies a collection's description."""
+        suffix = _uid()
+        coll_name = f"test-upd-{suffix}"
+        pol_name = f"enc-upd-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/{coll_name}"],
+                    }
+                ],
+                "AWSOwnedKey": True,
+            }
+        )
+        client.create_security_policy(name=pol_name, type="encryption", policy=policy)
+        try:
+            resp = client.create_collection(name=coll_name, type="SEARCH")
+            coll_id = resp["createCollectionDetail"]["id"]
+            try:
+                upd = client.update_collection(id=coll_id, description="updated desc")
+                assert "updateCollectionDetail" in upd
+            finally:
+                client.delete_collection(id=coll_id)
+        finally:
+            try:
+                client.delete_security_policy(name=pol_name, type="encryption")
+            except ClientError:
+                pass
