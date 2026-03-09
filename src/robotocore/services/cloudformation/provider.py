@@ -1,5 +1,6 @@
 """Native CloudFormation provider."""
 
+import copy
 import threading
 import time
 import uuid
@@ -90,6 +91,114 @@ def _validate_parameters(template: dict, cfn_params: dict) -> None:
             )
 
 
+def _expand_sam_transform(template: dict) -> dict:
+    """Expand AWS::Serverless resources into standard CloudFormation resources."""
+    transform = template.get("Transform")
+    if transform != "AWS::Serverless-2016-10-31":
+        if not (isinstance(transform, list) and "AWS::Serverless-2016-10-31" in transform):
+            return template
+
+    template = copy.deepcopy(template)
+    resources = template.get("Resources", {})
+    new_resources: dict[str, dict] = {}
+
+    for logical_id, res_def in list(resources.items()):
+        if res_def.get("Type") != "AWS::Serverless::Function":
+            continue
+
+        props = res_def.get("Properties", {})
+
+        role_ref: dict | str = props.get("Role", "")
+        role_id = f"{logical_id}Role"
+        if not role_ref:
+            new_resources[role_id] = {
+                "Type": "AWS::IAM::Role",
+                "Properties": {
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    },
+                    "ManagedPolicyArns": [
+                        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                    ],
+                },
+            }
+            role_ref = {"Fn::GetAtt": [role_id, "Arn"]}
+
+        code: dict = {}
+        if "InlineCode" in props:
+            code = {"ZipFile": props["InlineCode"]}
+        elif "CodeUri" in props:
+            code_uri = props["CodeUri"]
+            if isinstance(code_uri, str):
+                code = {"S3Bucket": "sam-artifacts", "S3Key": code_uri}
+            elif isinstance(code_uri, dict):
+                code = {
+                    "S3Bucket": code_uri.get("Bucket", "sam-artifacts"),
+                    "S3Key": code_uri.get("Key", code_uri.get("Uri", "")),
+                }
+                if "Version" in code_uri:
+                    code["S3ObjectVersion"] = code_uri["Version"]
+
+        lambda_props: dict = {
+            "Runtime": props.get("Runtime", "python3.12"),
+            "Handler": props.get("Handler", "index.handler"),
+            "Code": code,
+            "Role": role_ref,
+        }
+        opt_keys = ("FunctionName", "Timeout", "MemorySize", "Environment", "Layers", "Description")
+        for opt_key in opt_keys:
+            if opt_key in props:
+                lambda_props[opt_key] = props[opt_key]
+
+        depends: list[str] = []
+        if role_id in new_resources:
+            depends.append(role_id)
+
+        resources[logical_id] = {
+            "Type": "AWS::Lambda::Function",
+            "Properties": lambda_props,
+        }
+        if depends:
+            resources[logical_id]["DependsOn"] = depends
+
+        for event_name, event_def in props.get("Events", {}).items():
+            event_type = event_def.get("Type", "")
+            event_props = event_def.get("Properties", {})
+
+            if event_type == "SQS":
+                esm_id = f"{logical_id}{event_name}ESM"
+                new_resources[esm_id] = {
+                    "Type": "AWS::Lambda::EventSourceMapping",
+                    "Properties": {
+                        "FunctionName": {"Ref": logical_id},
+                        "EventSourceArn": event_props.get("Queue"),
+                        "BatchSize": event_props.get("BatchSize", 10),
+                    },
+                    "DependsOn": [logical_id],
+                }
+            elif event_type == "Api":
+                api_id = f"{logical_id}Api"
+                if api_id not in new_resources:
+                    new_resources[api_id] = {
+                        "Type": "AWS::ApiGateway::RestApi",
+                        "Properties": {
+                            "Name": {"Fn::Sub": "${AWS::StackName}-api"},
+                        },
+                    }
+
+    resources.update(new_resources)
+    template["Resources"] = resources
+    template.pop("Transform", None)
+    return template
+
+
 def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StackName", "")
     template_body = params.get("TemplateBody", "")
@@ -126,8 +235,9 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         )
         i += 1
 
-    # Parse template to get description
+    # Parse template to get description, expanding SAM transforms first
     template = parse_template(template_body)
+    template = _expand_sam_transform(template)
     description = template.get("Description", "")
 
     # Validate parameters against AllowedValues
