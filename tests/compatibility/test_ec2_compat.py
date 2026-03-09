@@ -7368,3 +7368,557 @@ class TestEC2RejectVpcEndpointConnections:
                 ec2.delete_subnet(SubnetId=subnet_id)
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2InstanceComputeOps:
+    """Tests for instance compute operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def instance_id(self, ec2):
+        resp = ec2.run_instances(
+            ImageId="ami-12c6146b", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        yield inst_id
+        ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instance_attribute_source_dest_check(self, ec2, instance_id):
+        """DescribeInstanceAttribute for sourceDestCheck."""
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="sourceDestCheck")
+        assert resp["InstanceId"] == instance_id
+        assert "SourceDestCheck" in resp
+
+    def test_modify_instance_attribute_source_dest_check(self, ec2, instance_id):
+        """ModifyInstanceAttribute to toggle sourceDestCheck."""
+        ec2.modify_instance_attribute(InstanceId=instance_id, SourceDestCheck={"Value": False})
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="sourceDestCheck")
+        assert resp["SourceDestCheck"]["Value"] is False
+
+    def test_modify_instance_attribute_instance_type(self, ec2, instance_id):
+        """ModifyInstanceAttribute to change instance type (requires stopped)."""
+        ec2.stop_instances(InstanceIds=[instance_id])
+        waiter = ec2.get_waiter("instance_stopped")
+        waiter.wait(InstanceIds=[instance_id], WaiterConfig={"Delay": 1, "MaxAttempts": 30})
+        ec2.modify_instance_attribute(InstanceId=instance_id, InstanceType={"Value": "t2.small"})
+        resp = ec2.describe_instance_attribute(InstanceId=instance_id, Attribute="instanceType")
+        assert resp["InstanceType"]["Value"] == "t2.small"
+
+    def test_run_instances_with_tags(self, ec2):
+        """RunInstances with TagSpecifications."""
+        tag_name = _unique("tagged-inst")
+        resp = ec2.run_instances(
+            ImageId="ami-12c6146b",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+            TagSpecifications=[
+                {
+                    "ResourceType": "instance",
+                    "Tags": [{"Key": "Name", "Value": tag_name}],
+                }
+            ],
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            tags = resp["Instances"][0].get("Tags", [])
+            tag_values = {t["Key"]: t["Value"] for t in tags}
+            assert tag_values.get("Name") == tag_name
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_run_instances_with_security_group(self, ec2):
+        """RunInstances with a SecurityGroup."""
+        vpc = ec2.create_vpc(CidrBlock="10.200.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sg = ec2.create_security_group(GroupName=_unique("sg"), Description="test sg", VpcId=vpc_id)
+        sg_id = sg["GroupId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.200.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        try:
+            resp = ec2.run_instances(
+                ImageId="ami-12c6146b",
+                InstanceType="t2.micro",
+                MinCount=1,
+                MaxCount=1,
+                SecurityGroupIds=[sg_id],
+                SubnetId=subnet_id,
+            )
+            inst_id = resp["Instances"][0]["InstanceId"]
+            try:
+                sgs = resp["Instances"][0]["SecurityGroups"]
+                sg_ids = [s["GroupId"] for s in sgs]
+                assert sg_id in sg_ids
+            finally:
+                ec2.terminate_instances(InstanceIds=[inst_id])
+        finally:
+            ec2.delete_subnet(SubnetId=subnet_id)
+            ec2.delete_security_group(GroupId=sg_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_run_instances_with_user_data(self, ec2):
+        """RunInstances with UserData."""
+        import base64
+
+        user_data = "#!/bin/bash\necho hello"
+        resp = ec2.run_instances(
+            ImageId="ami-12c6146b",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+            UserData=user_data,
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            attr = ec2.describe_instance_attribute(InstanceId=inst_id, Attribute="userData")
+            decoded = base64.b64decode(attr["UserData"]["Value"]).decode()
+            assert "hello" in decoded
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_run_instances_multiple(self, ec2):
+        """RunInstances with MinCount=2, MaxCount=2 creates two instances."""
+        resp = ec2.run_instances(
+            ImageId="ami-12c6146b", InstanceType="t2.micro", MinCount=2, MaxCount=2
+        )
+        inst_ids = [i["InstanceId"] for i in resp["Instances"]]
+        try:
+            assert len(inst_ids) == 2
+            desc = ec2.describe_instances(InstanceIds=inst_ids)
+            found = []
+            for r in desc["Reservations"]:
+                for i in r["Instances"]:
+                    found.append(i["InstanceId"])
+            assert set(inst_ids) == set(found)
+        finally:
+            ec2.terminate_instances(InstanceIds=inst_ids)
+
+    def test_run_instances_with_placement(self, ec2):
+        """RunInstances with Placement AZ."""
+        resp = ec2.run_instances(
+            ImageId="ami-12c6146b",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+            Placement={"AvailabilityZone": "us-east-1a"},
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            assert resp["Instances"][0]["Placement"]["AvailabilityZone"] == "us-east-1a"
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instances_with_max_results(self, ec2):
+        """DescribeInstances with MaxResults returns paginated results."""
+        resp = ec2.describe_instances(MaxResults=5)
+        assert "Reservations" in resp
+        assert "NextToken" in resp or len(resp["Reservations"]) <= 5
+
+
+class TestEC2VolumeComputeOps:
+    """Tests for volume operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_volume_from_snapshot(self, ec2):
+        """CreateVolume from a snapshot."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                new_vol = ec2.create_volume(AvailabilityZone="us-east-1a", SnapshotId=snap_id)
+                new_vol_id = new_vol["VolumeId"]
+                try:
+                    assert new_vol["SnapshotId"] == snap_id
+                    described = ec2.describe_volumes(VolumeIds=[new_vol_id])
+                    assert described["Volumes"][0]["SnapshotId"] == snap_id
+                finally:
+                    ec2.delete_volume(VolumeId=new_vol_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_volume_io2(self, ec2):
+        """CreateVolume with io2 type."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=10, VolumeType="io2", Iops=100)
+        vol_id = vol["VolumeId"]
+        try:
+            assert vol["VolumeType"] == "io2"
+            assert vol["Iops"] == 100
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_volume_st1(self, ec2):
+        """CreateVolume with st1 type."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=500, VolumeType="st1")
+        vol_id = vol["VolumeId"]
+        try:
+            assert vol["VolumeType"] == "st1"
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_volume_sc1(self, ec2):
+        """CreateVolume with sc1 type."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=500, VolumeType="sc1")
+        vol_id = vol["VolumeId"]
+        try:
+            assert vol["VolumeType"] == "sc1"
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_modify_volume_size_and_type(self, ec2):
+        """ModifyVolume changes size and type."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1, VolumeType="gp2")
+        vol_id = vol["VolumeId"]
+        try:
+            mod = ec2.modify_volume(VolumeId=vol_id, Size=5, VolumeType="gp3")
+            assert mod["VolumeModification"]["TargetSize"] == 5
+            assert mod["VolumeModification"]["TargetVolumeType"] == "gp3"
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_describe_volumes_with_multiple_filters(self, ec2):
+        """DescribeVolumes with multiple filters."""
+        vol = ec2.create_volume(
+            AvailabilityZone="us-east-1a",
+            Size=1,
+            TagSpecifications=[
+                {
+                    "ResourceType": "volume",
+                    "Tags": [{"Key": "TestFilter", "Value": _unique("vol")}],
+                }
+            ],
+        )
+        vol_id = vol["VolumeId"]
+        try:
+            resp = ec2.describe_volumes(
+                Filters=[
+                    {"Name": "volume-id", "Values": [vol_id]},
+                    {"Name": "status", "Values": ["available", "in-use"]},
+                ]
+            )
+            assert len(resp["Volumes"]) >= 1
+            assert resp["Volumes"][0]["VolumeId"] == vol_id
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2SnapshotComputeOps:
+    """Tests for snapshot operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_snapshot_with_tags(self, ec2):
+        """CreateSnapshot with TagSpecifications."""
+        tag_val = _unique("snap-tag")
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(
+                VolumeId=vol_id,
+                Description="tagged snapshot",
+                TagSpecifications=[
+                    {
+                        "ResourceType": "snapshot",
+                        "Tags": [{"Key": "Name", "Value": tag_val}],
+                    }
+                ],
+            )
+            snap_id = snap["SnapshotId"]
+            try:
+                tags = {t["Key"]: t["Value"] for t in snap.get("Tags", [])}
+                assert tags.get("Name") == tag_val
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_describe_snapshots_with_filter(self, ec2):
+        """DescribeSnapshots with filter by volume-id."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                resp = ec2.describe_snapshots(Filters=[{"Name": "volume-id", "Values": [vol_id]}])
+                snap_ids = [s["SnapshotId"] for s in resp["Snapshots"]]
+                assert snap_id in snap_ids
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_describe_snapshots_restorable_by(self, ec2):
+        """DescribeSnapshots with RestorableByUserIds."""
+        resp = ec2.describe_snapshots(RestorableByUserIds=["self"])
+        assert "Snapshots" in resp
+
+    def test_copy_snapshot_with_description(self, ec2):
+        """CopySnapshot with Description parameter."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                copy = ec2.copy_snapshot(
+                    SourceSnapshotId=snap_id,
+                    SourceRegion="us-east-1",
+                    Description="copy with desc",
+                )
+                copy_id = copy["SnapshotId"]
+                try:
+                    described = ec2.describe_snapshots(SnapshotIds=[copy_id])
+                    assert described["Snapshots"][0]["Description"] == "copy with desc"
+                finally:
+                    ec2.delete_snapshot(SnapshotId=copy_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2AMIComputeOps:
+    """Tests for AMI operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_images_by_name_filter(self, ec2):
+        """DescribeImages filtered by name."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                ami_name = _unique("test-ami-filter")
+                img = ec2.register_image(
+                    Name=ami_name,
+                    RootDeviceName="/dev/sda1",
+                    BlockDeviceMappings=[
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"SnapshotId": snap_id},
+                        }
+                    ],
+                )
+                ami_id = img["ImageId"]
+                try:
+                    resp = ec2.describe_images(Filters=[{"Name": "name", "Values": [ami_name]}])
+                    found = [i["ImageId"] for i in resp["Images"]]
+                    assert ami_id in found
+                finally:
+                    ec2.deregister_image(ImageId=ami_id)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_image_with_no_reboot(self, ec2):
+        """CreateImage with NoReboot=True."""
+        resp = ec2.run_instances(
+            ImageId="ami-12c6146b", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            img_resp = ec2.create_image(
+                InstanceId=inst_id, Name=_unique("noreboot-ami"), NoReboot=True
+            )
+            ami_id = img_resp["ImageId"]
+            try:
+                described = ec2.describe_images(ImageIds=[ami_id])
+                assert described["Images"][0]["ImageId"] == ami_id
+            finally:
+                ec2.deregister_image(ImageId=ami_id)
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+
+class TestEC2KeyPairComputeOps:
+    """Tests for key pair operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_key_pair_rsa(self, ec2):
+        """CreateKeyPair with RSA type explicitly."""
+        name = _unique("rsa-kp")
+        resp = ec2.create_key_pair(KeyName=name, KeyType="rsa")
+        try:
+            assert resp["KeyName"] == name
+            assert "KeyMaterial" in resp
+        finally:
+            ec2.delete_key_pair(KeyName=name)
+
+    def test_describe_key_pairs_by_filter(self, ec2):
+        """DescribeKeyPairs with key-name filter."""
+        name = _unique("filter-kp")
+        ec2.create_key_pair(KeyName=name)
+        try:
+            resp = ec2.describe_key_pairs(Filters=[{"Name": "key-name", "Values": [name]}])
+            names = [kp["KeyName"] for kp in resp["KeyPairs"]]
+            assert name in names
+        finally:
+            ec2.delete_key_pair(KeyName=name)
+
+
+class TestEC2LaunchTemplateComputeOps:
+    """Tests for launch template operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_launch_templates_by_filter(self, ec2):
+        """DescribeLaunchTemplates with filter."""
+        name = _unique("lt-filter")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            resp = ec2.describe_launch_templates(
+                Filters=[{"Name": "launch-template-name", "Values": [name]}]
+            )
+            found = [t["LaunchTemplateId"] for t in resp["LaunchTemplates"]]
+            assert lt_id in found
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+    def test_create_launch_template_with_tags(self, ec2):
+        """CreateLaunchTemplate with TagSpecifications."""
+        name = _unique("lt-tags")
+        tag_val = _unique("val")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+            TagSpecifications=[
+                {
+                    "ResourceType": "launch-template",
+                    "Tags": [{"Key": "TestKey", "Value": tag_val}],
+                }
+            ],
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            tags = lt["LaunchTemplate"].get("Tags", [])
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map.get("TestKey") == tag_val
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+    def test_describe_launch_template_versions_specific(self, ec2):
+        """DescribeLaunchTemplateVersions for a specific version."""
+        name = _unique("lt-ver")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=name,
+            LaunchTemplateData={"InstanceType": "t2.micro"},
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            ec2.create_launch_template_version(
+                LaunchTemplateId=lt_id,
+                LaunchTemplateData={"InstanceType": "t2.small"},
+            )
+            resp = ec2.describe_launch_template_versions(LaunchTemplateId=lt_id, Versions=["2"])
+            assert len(resp["LaunchTemplateVersions"]) == 1
+            assert resp["LaunchTemplateVersions"][0]["VersionNumber"] == 2
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+
+class TestEC2PlacementGroupComputeOps:
+    """Tests for placement group operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_placement_groups_by_id(self, ec2):
+        """DescribePlacementGroups by GroupIds."""
+        name = _unique("pg-byid")
+        ec2.create_placement_group(GroupName=name, Strategy="cluster")
+        try:
+            described = ec2.describe_placement_groups(GroupNames=[name])
+            pg_id = described["PlacementGroups"][0]["GroupId"]
+            by_id = ec2.describe_placement_groups(GroupIds=[pg_id])
+            assert by_id["PlacementGroups"][0]["GroupName"] == name
+        finally:
+            ec2.delete_placement_group(GroupName=name)
+
+
+class TestEC2SpotComputeOps:
+    """Tests for spot-related operations not yet covered."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_spot_price_history_by_az(self, ec2):
+        """DescribeSpotPriceHistory filtered by AZ."""
+        resp = ec2.describe_spot_price_history(
+            AvailabilityZone="us-east-1a",
+            InstanceTypes=["t2.micro"],
+            MaxResults=5,
+        )
+        assert "SpotPriceHistory" in resp
+
+    def test_describe_spot_price_history_by_product(self, ec2):
+        """DescribeSpotPriceHistory filtered by ProductDescription."""
+        resp = ec2.describe_spot_price_history(
+            ProductDescriptions=["Linux/UNIX"],
+            MaxResults=5,
+        )
+        assert "SpotPriceHistory" in resp
+
+    def test_request_spot_instances_with_launch_spec(self, ec2):
+        """RequestSpotInstances with full LaunchSpecification."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.05",
+            InstanceCount=1,
+            LaunchSpecification={
+                "ImageId": "ami-12c6146b",
+                "InstanceType": "t2.micro",
+            },
+        )
+        sir_ids = [r["SpotInstanceRequestId"] for r in resp["SpotInstanceRequests"]]
+        try:
+            assert len(sir_ids) == 1
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=sir_ids)
+            assert described["SpotInstanceRequests"][0]["SpotPrice"] == "0.050000"
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=sir_ids)
+
+    def test_describe_spot_instance_requests_with_filter(self, ec2):
+        """DescribeSpotInstanceRequests with filter."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.05",
+            InstanceCount=1,
+            LaunchSpecification={
+                "ImageId": "ami-12c6146b",
+                "InstanceType": "t2.micro",
+            },
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            filtered = ec2.describe_spot_instance_requests(
+                Filters=[{"Name": "spot-instance-request-id", "Values": [sir_id]}]
+            )
+            assert len(filtered["SpotInstanceRequests"]) >= 1
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
