@@ -376,3 +376,189 @@ class TestDsDeleteTrust:
         with pytest.raises(ClientError) as exc_info:
             ds.delete_trust(TrustId="t-0000000000")
         assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsAlias:
+    """Test CreateAlias operations."""
+
+    def test_create_alias(self, ds, directory):
+        """CreateAlias sets an alias on a directory and it appears in describe."""
+        alias_name = f"alias{uuid.uuid4().hex[:8]}"
+        resp = ds.create_alias(DirectoryId=directory, Alias=alias_name)
+        assert resp["DirectoryId"] == directory
+        assert resp["Alias"] == alias_name
+
+        # Verify alias appears in describe
+        desc = ds.describe_directories(DirectoryIds=[directory])
+        d = desc["DirectoryDescriptions"][0]
+        assert d["Alias"] == alias_name
+        assert d["AccessUrl"] == f"{alias_name}.awsapps.com"
+
+    def test_create_alias_nonexistent_directory(self, ds):
+        """CreateAlias on a nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.create_alias(DirectoryId="d-0000000000", Alias="bogusalias")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsTrustLifecycle:
+    """Test trust create, describe, and delete lifecycle."""
+
+    def test_create_and_describe_trust(self, ds, directory):
+        """CreateTrust creates a trust and DescribeTrusts returns its details."""
+        resp = ds.create_trust(
+            DirectoryId=directory,
+            RemoteDomainName="remote.example.com",
+            TrustPassword="TrustP@ss1!",
+            TrustDirection="One-Way: Outgoing",
+        )
+        trust_id = resp["TrustId"]
+        assert trust_id.startswith("t-")
+
+        try:
+            # Describe with directory filter
+            trusts = ds.describe_trusts(DirectoryId=directory)
+            assert len(trusts["Trusts"]) >= 1
+            trust = next(t for t in trusts["Trusts"] if t["TrustId"] == trust_id)
+            assert trust["DirectoryId"] == directory
+            assert trust["RemoteDomainName"] == "remote.example.com"
+            assert trust["TrustDirection"] == "One-Way: Outgoing"
+            assert trust["TrustState"] == "Creating"
+        finally:
+            ds.delete_trust(TrustId=trust_id)
+
+    def test_describe_trusts_by_trust_id(self, ds, directory):
+        """DescribeTrusts can filter by specific TrustIds."""
+        resp = ds.create_trust(
+            DirectoryId=directory,
+            RemoteDomainName="byid.example.com",
+            TrustPassword="TrustP@ss2!",
+            TrustDirection="Two-Way",
+        )
+        trust_id = resp["TrustId"]
+
+        try:
+            trusts = ds.describe_trusts(DirectoryId=directory, TrustIds=[trust_id])
+            assert len(trusts["Trusts"]) == 1
+            assert trusts["Trusts"][0]["TrustId"] == trust_id
+            assert trusts["Trusts"][0]["TrustDirection"] == "Two-Way"
+        finally:
+            ds.delete_trust(TrustId=trust_id)
+
+    def test_delete_trust(self, ds, directory):
+        """DeleteTrust removes the trust so it no longer appears in DescribeTrusts."""
+        resp = ds.create_trust(
+            DirectoryId=directory,
+            RemoteDomainName="deltrust.example.com",
+            TrustPassword="TrustP@ss3!",
+            TrustDirection="One-Way: Outgoing",
+        )
+        trust_id = resp["TrustId"]
+
+        del_resp = ds.delete_trust(TrustId=trust_id)
+        assert del_resp["TrustId"] == trust_id
+
+        # Trust should be gone or in Deleted state
+        trusts = ds.describe_trusts(DirectoryId=directory)
+        active = [
+            t
+            for t in trusts["Trusts"]
+            if t["TrustId"] == trust_id and t.get("TrustState") not in ("Deleted", "Deleting")
+        ]
+        assert len(active) == 0
+
+    def test_create_trust_nonexistent_directory(self, ds):
+        """CreateTrust on a nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.create_trust(
+                DirectoryId="d-0000000000",
+                RemoteDomainName="x.example.com",
+                TrustPassword="TrustP@ss!",
+                TrustDirection="One-Way: Outgoing",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsLogSubscriptionLifecycle:
+    """Test log subscription create, list, and delete lifecycle."""
+
+    def test_create_and_list_log_subscription(self, ds, directory):
+        """CreateLogSubscription creates a subscription visible via ListLogSubscriptions."""
+        ds.create_log_subscription(
+            DirectoryId=directory,
+            LogGroupName="/aws/ds/test-log-group",
+        )
+
+        try:
+            resp = ds.list_log_subscriptions(DirectoryId=directory)
+            assert len(resp["LogSubscriptions"]) == 1
+            sub = resp["LogSubscriptions"][0]
+            assert sub["DirectoryId"] == directory
+            assert sub["LogGroupName"] == "/aws/ds/test-log-group"
+        finally:
+            ds.delete_log_subscription(DirectoryId=directory)
+
+    def test_delete_log_subscription(self, ds, directory):
+        """DeleteLogSubscription removes the subscription."""
+        ds.create_log_subscription(
+            DirectoryId=directory,
+            LogGroupName="/aws/ds/del-log-group",
+        )
+
+        del_resp = ds.delete_log_subscription(DirectoryId=directory)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Should be gone
+        resp = ds.list_log_subscriptions(DirectoryId=directory)
+        assert len(resp["LogSubscriptions"]) == 0
+
+    def test_create_duplicate_log_subscription_raises(self, ds, directory):
+        """Creating a second log subscription raises EntityAlreadyExistsException."""
+        ds.create_log_subscription(
+            DirectoryId=directory,
+            LogGroupName="/aws/ds/dup-group",
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ds.create_log_subscription(
+                    DirectoryId=directory,
+                    LogGroupName="/aws/ds/dup-group-2",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "EntityAlreadyExistsException"
+        finally:
+            ds.delete_log_subscription(DirectoryId=directory)
+
+    def test_create_log_subscription_nonexistent_directory(self, ds):
+        """CreateLogSubscription on nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.create_log_subscription(
+                DirectoryId="d-0000000000",
+                LogGroupName="/aws/ds/bogus",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsSsoWithAlias:
+    """Test EnableSso after creating an alias."""
+
+    def test_enable_sso_with_alias(self, ds, directory):
+        """EnableSso succeeds after an alias is set on the directory."""
+        alias_name = f"ssoalias{uuid.uuid4().hex[:8]}"
+        ds.create_alias(DirectoryId=directory, Alias=alias_name)
+
+        resp = ds.enable_sso(DirectoryId=directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDsGetDirectoryLimitsDetail:
+    """Test GetDirectoryLimits returns detailed limit fields."""
+
+    def test_get_directory_limits_fields(self, ds):
+        """GetDirectoryLimits response contains expected limit fields."""
+        resp = ds.get_directory_limits()
+        limits = resp["DirectoryLimits"]
+        # Should have cloud-only and connected directory limits
+        assert "CloudOnlyDirectoriesLimit" in limits
+        assert "CloudOnlyDirectoriesCurrentCount" in limits
+        assert "ConnectedDirectoriesLimit" in limits
+        assert "ConnectedDirectoriesCurrentCount" in limits
