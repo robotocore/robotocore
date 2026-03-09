@@ -1139,3 +1139,330 @@ class TestEKSPodIdentityCRUD:
             assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
         finally:
             eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSAdditionalOperations:
+    """Tests for EKS operations not covered by other test classes."""
+
+    def test_describe_addon_configuration(self, eks):
+        """DescribeAddonConfiguration returns configuration schema."""
+        resp = eks.describe_addon_configuration(
+            addonName="vpc-cni",
+            addonVersion="v1.12.0-eksbuild.1",
+        )
+        assert "addonName" in resp
+        assert resp["addonName"] == "vpc-cni"
+
+    def test_describe_cluster_versions(self, eks):
+        """DescribeClusterVersions returns version list."""
+        resp = eks.describe_cluster_versions()
+        assert "clusterVersions" in resp
+        assert isinstance(resp["clusterVersions"], list)
+
+    def test_list_access_policies(self, eks):
+        """ListAccessPolicies returns policy list."""
+        resp = eks.list_access_policies()
+        assert "accessPolicies" in resp
+        assert isinstance(resp["accessPolicies"], list)
+
+    def test_list_insights_on_cluster(self, eks):
+        """ListInsights returns insights for a cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.list_insights(clusterName=cluster_name)
+            assert "insights" in resp
+            assert isinstance(resp["insights"], list)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_identity_provider_configs(self, eks):
+        """ListIdentityProviderConfigs returns config list for a cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.list_identity_provider_configs(clusterName=cluster_name)
+            assert "identityProviderConfigs" in resp
+            assert isinstance(resp["identityProviderConfigs"], list)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_capabilities_empty(self, eks):
+        """ListCapabilities returns capability list."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.list_capabilities(clusterName=cluster_name)
+            assert "capabilities" in resp
+            assert isinstance(resp["capabilities"], list)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_list_eks_anywhere_subscriptions(self, eks):
+        """ListEksAnywhereSubscriptions returns subscription list."""
+        resp = eks.list_eks_anywhere_subscriptions()
+        assert "subscriptions" in resp
+        assert isinstance(resp["subscriptions"], list)
+
+    def test_update_cluster_version(self, eks):
+        """UpdateClusterVersion returns an update response."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.update_cluster_version(
+                name=cluster_name,
+                version="1.28",
+            )
+            assert "update" in resp
+            assert "id" in resp["update"]
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_update_addon_on_cluster(self, eks):
+        """UpdateAddon returns update response for existing addon."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.create_addon(
+                clusterName=cluster_name,
+                addonName="vpc-cni",
+            )
+            resp = eks.update_addon(
+                clusterName=cluster_name,
+                addonName="vpc-cni",
+            )
+            assert "update" in resp
+            assert "id" in resp["update"]
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_describe_insight_nonexistent(self, eks):
+        """DescribeInsight with fake ID raises error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.describe_insight(
+                    clusterName=cluster_name,
+                    id="fake-insight-id",
+                )
+            assert exc_info.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "NotFoundException",
+            )
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_deregister_cluster_nonexistent(self, eks):
+        """DeregisterCluster with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.deregister_cluster(name="nonexistent-cluster-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_identity_provider_config_nonexistent(self, eks):
+        """DescribeIdentityProviderConfig with nonexistent config raises error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.describe_identity_provider_config(
+                    clusterName=cluster_name,
+                    identityProviderConfig={
+                        "type": "oidc",
+                        "name": "nonexistent-provider",
+                    },
+                )
+            assert exc_info.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidParameterException",
+            )
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_associate_identity_provider_config(self, eks):
+        """AssociateIdentityProviderConfig associates an OIDC provider."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.associate_identity_provider_config(
+                clusterName=cluster_name,
+                oidc={
+                    "identityProviderConfigName": "my-oidc",
+                    "issuerUrl": "https://example.com",
+                    "clientId": "my-client-id",
+                },
+            )
+            assert "update" in resp
+            assert "id" in resp["update"]
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_disassociate_identity_provider_config(self, eks):
+        """DisassociateIdentityProviderConfig on a cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            eks.associate_identity_provider_config(
+                clusterName=cluster_name,
+                oidc={
+                    "identityProviderConfigName": "my-oidc",
+                    "issuerUrl": "https://example.com",
+                    "clientId": "my-client-id",
+                },
+            )
+            resp = eks.disassociate_identity_provider_config(
+                clusterName=cluster_name,
+                identityProviderConfig={
+                    "type": "oidc",
+                    "name": "my-oidc",
+                },
+            )
+            assert "update" in resp
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_associate_encryption_config(self, eks):
+        """AssociateEncryptionConfig returns update response."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.associate_encryption_config(
+                clusterName=cluster_name,
+                encryptionConfig=[
+                    {
+                        "resources": ["secrets"],
+                        "provider": {"keyArn": "arn:aws:kms:us-east-1:123456789012:key/fake-key"},
+                    }
+                ],
+            )
+            assert "update" in resp
+            assert "id" in resp["update"]
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_create_and_delete_eks_anywhere_subscription(self, eks):
+        """CreateEksAnywhereSubscription and DeleteEksAnywhereSubscription lifecycle."""
+        resp = eks.create_eks_anywhere_subscription(
+            name=_unique("sub"),
+            term={"duration": 1, "unit": "MONTHS"},
+        )
+        sub = resp["subscription"]
+        assert "id" in sub
+        assert sub["status"] in ("CREATING", "ACTIVE")
+        sub_id = sub["id"]
+
+        desc = eks.describe_eks_anywhere_subscription(id=sub_id)
+        assert desc["subscription"]["id"] == sub_id
+
+        del_resp = eks.delete_eks_anywhere_subscription(id=sub_id)
+        assert del_resp["subscription"]["id"] == sub_id
+
+    def test_describe_capability_nonexistent(self, eks):
+        """DescribeCapability with nonexistent name raises error."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                eks.describe_capability(
+                    clusterName=cluster_name,
+                    capabilityName="nonexistent-cap",
+                )
+            assert exc_info.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "NotFoundException",
+            )
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_update_eks_anywhere_subscription(self, eks):
+        """UpdateEksAnywhereSubscription on existing subscription."""
+        resp = eks.create_eks_anywhere_subscription(
+            name=_unique("sub"),
+            term={"duration": 1, "unit": "MONTHS"},
+        )
+        sub_id = resp["subscription"]["id"]
+        try:
+            upd = eks.update_eks_anywhere_subscription(
+                id=sub_id,
+                autoRenew=True,
+            )
+            assert "subscription" in upd
+        finally:
+            eks.delete_eks_anywhere_subscription(id=sub_id)

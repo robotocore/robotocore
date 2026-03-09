@@ -2425,3 +2425,47 @@ class TestRedshiftPartnerOps:
                 Status="Active",
             )
         assert exc.value.response["Error"]["Code"] == "PartnerNotFound"
+
+
+class TestRedshiftEndpointAccessOperations:
+    """Tests for endpoint access operations."""
+
+    def test_create_endpoint_access_cluster_not_found(self, redshift):
+        """CreateEndpointAccess with nonexistent cluster raises ClusterNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.create_endpoint_access(
+                ClusterIdentifier="nonexistent-cluster",
+                EndpointName=f"ep-{_uid()}",
+                SubnetGroupName="default",
+            )
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_delete_endpoint_access_not_found(self, redshift):
+        """DeleteEndpointAccess with nonexistent endpoint raises EndpointNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_endpoint_access(EndpointName=f"ep-{_uid()}")
+        assert "EndpointNotFound" in exc.value.response["Error"]["Code"]
+
+
+class TestRedshiftMiscOperations:
+    """Tests for miscellaneous redshift operations."""
+
+    def test_cancel_resize_cluster_not_found(self, redshift):
+        """CancelResize with nonexistent cluster raises ClusterNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.cancel_resize(ClusterIdentifier="nonexistent")
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_rotate_encryption_key_cluster_not_found(self, redshift):
+        """RotateEncryptionKey with nonexistent cluster raises ClusterNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.rotate_encryption_key(ClusterIdentifier="nonexistent")
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_accept_reserved_node_exchange(self, redshift):
+        """AcceptReservedNodeExchange returns a response."""
+        resp = redshift.accept_reserved_node_exchange(
+            ReservedNodeId="nonexistent-node",
+            TargetReservedNodeOfferingId="nonexistent-offering",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
