@@ -1007,6 +1007,32 @@ class TestSesv2AutoCoverage:
         finally:
             client.delete_custom_verification_email_template(TemplateName=tmpl_name)
 
+    def test_update_custom_verification_email_template(self, client):
+        """UpdateCustomVerificationEmailTemplate changes subject and content."""
+        tmpl_name = _uid("cvupd")
+        client.create_custom_verification_email_template(
+            TemplateName=tmpl_name,
+            FromEmailAddress="update@example.com",
+            TemplateSubject="Original Subject",
+            TemplateContent="<html>Original</html>",
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
+        )
+        try:
+            client.update_custom_verification_email_template(
+                TemplateName=tmpl_name,
+                FromEmailAddress="update@example.com",
+                TemplateSubject="Updated Subject",
+                TemplateContent="<html>Updated</html>",
+                SuccessRedirectionURL="https://example.com/ok2",
+                FailureRedirectionURL="https://example.com/fail2",
+            )
+            resp = client.get_custom_verification_email_template(TemplateName=tmpl_name)
+            assert resp["TemplateSubject"] == "Updated Subject"
+            assert resp["SuccessRedirectionURL"] == "https://example.com/ok2"
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=tmpl_name)
+
     def test_list_email_identities_has_identity_type(self, client):
         """ListEmailIdentities entries have IdentityType and IdentityName."""
         email = f"{_uid('lit')}@example.com"
