@@ -177,3 +177,70 @@ class TestDataSyncTaskOperations:
         finally:
             datasync.delete_location(LocationArn=src)
             datasync.delete_location(LocationArn=dst)
+
+
+class TestDataSyncTaskExecutions:
+    """Tests for task execution operations."""
+
+    def _create_task(self, client):
+        src = client.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{_unique('exec-src')}",
+            S3Config={"BucketAccessRoleArn": ("arn:aws:iam::123456789012:role/datasync-role")},
+        )["LocationArn"]
+        dst = client.create_location_s3(
+            S3BucketArn=f"arn:aws:s3:::{_unique('exec-dst')}",
+            S3Config={"BucketAccessRoleArn": ("arn:aws:iam::123456789012:role/datasync-role")},
+        )["LocationArn"]
+        task_arn = client.create_task(SourceLocationArn=src, DestinationLocationArn=dst)["TaskArn"]
+        return task_arn, src, dst
+
+    def test_start_task_execution(self, datasync):
+        """StartTaskExecution starts an execution for a task."""
+        task_arn, src, dst = self._create_task(datasync)
+        try:
+            resp = datasync.start_task_execution(TaskArn=task_arn)
+            assert "TaskExecutionArn" in resp
+            assert ":task/task-" in resp["TaskExecutionArn"]
+        finally:
+            datasync.delete_task(TaskArn=task_arn)
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
+
+    def test_describe_task_execution(self, datasync):
+        """DescribeTaskExecution returns execution details."""
+        task_arn, src, dst = self._create_task(datasync)
+        try:
+            exec_resp = datasync.start_task_execution(TaskArn=task_arn)
+            exec_arn = exec_resp["TaskExecutionArn"]
+            desc = datasync.describe_task_execution(TaskExecutionArn=exec_arn)
+            assert desc["TaskExecutionArn"] == exec_arn
+            assert "Status" in desc
+        finally:
+            datasync.delete_task(TaskArn=task_arn)
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
+
+    def test_cancel_task_execution(self, datasync):
+        """CancelTaskExecution cancels a running execution."""
+        task_arn, src, dst = self._create_task(datasync)
+        try:
+            exec_resp = datasync.start_task_execution(TaskArn=task_arn)
+            exec_arn = exec_resp["TaskExecutionArn"]
+            cancel_resp = datasync.cancel_task_execution(TaskExecutionArn=exec_arn)
+            assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datasync.delete_task(TaskArn=task_arn)
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
+
+    def test_list_tasks_contains_created(self, datasync):
+        """ListTasks includes a task we just created."""
+        task_arn, src, dst = self._create_task(datasync)
+        try:
+            resp = datasync.list_tasks()
+            arns = [t["TaskArn"] for t in resp["Tasks"]]
+            assert task_arn in arns
+        finally:
+            datasync.delete_task(TaskArn=task_arn)
+            datasync.delete_location(LocationArn=src)
+            datasync.delete_location(LocationArn=dst)
