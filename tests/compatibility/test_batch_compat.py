@@ -809,3 +809,119 @@ class TestBatchTagging:
             assert tags_resp["tags"]["project"] == "robotocore"
         finally:
             batch.delete_compute_environment(computeEnvironment=name)
+
+
+class TestSchedulingPolicies:
+    def test_create_scheduling_policy(self, batch):
+        name = _unique("sp")
+        resp = batch.create_scheduling_policy(
+            name=name,
+            fairsharePolicy={
+                "shareDecaySeconds": 3600,
+                "computeReservation": 1,
+                "shareDistribution": [
+                    {"shareIdentifier": "A", "weightFactor": 1.0},
+                ],
+            },
+        )
+        assert resp["name"] == name
+        assert "arn" in resp
+        assert "scheduling-policy" in resp["arn"]
+        batch.delete_scheduling_policy(arn=resp["arn"])
+
+    def test_describe_scheduling_policies(self, batch):
+        name = _unique("sp-desc")
+        create_resp = batch.create_scheduling_policy(
+            name=name,
+            fairsharePolicy={
+                "shareDecaySeconds": 3600,
+                "computeReservation": 1,
+            },
+        )
+        arn = create_resp["arn"]
+        try:
+            resp = batch.describe_scheduling_policies(arns=[arn])
+            policies = resp["schedulingPolicies"]
+            assert len(policies) == 1
+            assert policies[0]["name"] == name
+            assert policies[0]["arn"] == arn
+            assert "fairsharePolicy" in policies[0]
+        finally:
+            batch.delete_scheduling_policy(arn=arn)
+
+    def test_list_scheduling_policies(self, batch):
+        name = _unique("sp-list")
+        create_resp = batch.create_scheduling_policy(
+            name=name,
+            fairsharePolicy={"shareDecaySeconds": 600},
+        )
+        arn = create_resp["arn"]
+        try:
+            resp = batch.list_scheduling_policies()
+            assert "schedulingPolicies" in resp
+            arns = [p["arn"] for p in resp["schedulingPolicies"]]
+            assert arn in arns
+        finally:
+            batch.delete_scheduling_policy(arn=arn)
+
+    def test_update_scheduling_policy(self, batch):
+        name = _unique("sp-upd")
+        create_resp = batch.create_scheduling_policy(
+            name=name,
+            fairsharePolicy={
+                "shareDecaySeconds": 3600,
+                "computeReservation": 1,
+            },
+        )
+        arn = create_resp["arn"]
+        try:
+            batch.update_scheduling_policy(
+                arn=arn,
+                fairsharePolicy={
+                    "shareDecaySeconds": 7200,
+                    "computeReservation": 2,
+                },
+            )
+            desc = batch.describe_scheduling_policies(arns=[arn])
+            policy = desc["schedulingPolicies"][0]
+            assert policy["fairsharePolicy"]["shareDecaySeconds"] == 7200
+            assert policy["fairsharePolicy"]["computeReservation"] == 2
+        finally:
+            batch.delete_scheduling_policy(arn=arn)
+
+    def test_delete_scheduling_policy(self, batch):
+        name = _unique("sp-del")
+        create_resp = batch.create_scheduling_policy(
+            name=name,
+            fairsharePolicy={"shareDecaySeconds": 600},
+        )
+        arn = create_resp["arn"]
+        resp = batch.delete_scheduling_policy(arn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        desc = batch.describe_scheduling_policies(arns=[arn])
+        assert len(desc["schedulingPolicies"]) == 0
+
+    def test_scheduling_policy_with_share_distribution(self, batch):
+        name = _unique("sp-shares")
+        resp = batch.create_scheduling_policy(
+            name=name,
+            fairsharePolicy={
+                "shareDecaySeconds": 3600,
+                "computeReservation": 0,
+                "shareDistribution": [
+                    {"shareIdentifier": "groupA", "weightFactor": 0.5},
+                    {"shareIdentifier": "groupB", "weightFactor": 1.5},
+                ],
+            },
+        )
+        arn = resp["arn"]
+        try:
+            desc = batch.describe_scheduling_policies(arns=[arn])
+            policy = desc["schedulingPolicies"][0]
+            shares = policy["fairsharePolicy"]["shareDistribution"]
+            identifiers = [s["shareIdentifier"] for s in shares]
+            assert "groupA" in identifiers
+            assert "groupB" in identifiers
+        finally:
+            batch.delete_scheduling_policy(arn=arn)

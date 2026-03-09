@@ -273,6 +273,23 @@ class TestDataBrewRecipeOps:
         resp = databrew_client.delete_recipe_version(Name=name, RecipeVersion="1.0")
         assert resp["Name"] == name
 
+    def test_delete_recipe_latest_working(self, databrew_client):
+        name = f"recipe-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe(
+            Name=name,
+            Steps=[
+                {
+                    "Action": {
+                        "Operation": "UPPER_CASE",
+                        "Parameters": {"sourceColumn": "col1"},
+                    }
+                }
+            ],
+        )
+        resp = databrew_client.delete_recipe_version(Name=name, RecipeVersion="LATEST_WORKING")
+        assert resp["Name"] == name
+        assert resp["RecipeVersion"] == "LATEST_WORKING"
+
 
 class TestDataBrewRuleset:
     def test_describe_ruleset(self, databrew_client, created_ruleset):
