@@ -90,8 +90,33 @@ class CfnStore:
             self.stacks.pop(stack_id, None)
 
 
+def _cfn_tag_constructor(loader, tag, node):
+    """Convert CloudFormation shorthand tags (!Ref, !Sub, etc.) to dicts."""
+    if tag == "!GetAtt":
+        if isinstance(node.value, list):
+            return {f"Fn::{tag[1:]}": node.value}
+        return {f"Fn::{tag[1:]}": node.value.split(".")}
+    if tag == "!Ref":
+        key = "Ref"
+    else:
+        key = f"Fn::{tag[1:]}"
+    if isinstance(node, yaml.SequenceNode):
+        return {key: loader.construct_sequence(node)}
+    if isinstance(node, yaml.MappingNode):
+        return {key: loader.construct_mapping(node)}
+    return {key: node.value}
+
+
+# Register once at import time for the default YAML loader
+yaml.add_multi_constructor("", _cfn_tag_constructor, Loader=yaml.SafeLoader)
+
+
 def parse_template(template_str: str) -> dict:
-    """Parse a CloudFormation template (JSON or YAML)."""
+    """Parse a CloudFormation template (JSON or YAML).
+
+    Supports CloudFormation shorthand tags: !Ref, !Sub, !GetAtt, !Join,
+    !Select, !Split, !Equals, !If, !Not, !And, !Or, !FindInMap, etc.
+    """
     try:
         return json.loads(template_str)
     except (json.JSONDecodeError, ValueError):
