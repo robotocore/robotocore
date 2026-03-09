@@ -1,8 +1,15 @@
 """MemoryDB compatibility tests."""
 
+import uuid
+
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
+
+
+def _uid():
+    return uuid.uuid4().hex[:8]
 
 
 @pytest.fixture
@@ -155,3 +162,124 @@ class TestMemoryDBTags:
             assert "env" not in tag_keys_after
         finally:
             memorydb.delete_cluster(ClusterName=name)
+
+
+class TestMemoryDBACLs:
+    """Tests for MemoryDB ACL operations."""
+
+    def test_describe_acls(self, memorydb):
+        """DescribeACLs returns the default open-access ACL."""
+        resp = memorydb.describe_acls()
+        assert "ACLs" in resp
+        names = [a["Name"] for a in resp["ACLs"]]
+        assert "open-access" in names
+
+    def test_create_and_delete_acl(self, memorydb):
+        """CreateACL creates an ACL, DeleteACL removes it."""
+        name = f"test-acl-{_uid()}"
+        resp = memorydb.create_acl(ACLName=name)
+        assert resp["ACL"]["Name"] == name
+        assert resp["ACL"]["Status"] == "active"
+
+        del_resp = memorydb.delete_acl(ACLName=name)
+        assert del_resp["ACL"]["Name"] == name
+
+    def test_delete_acl_nonexistent(self, memorydb):
+        """DeleteACL for nonexistent ACL raises error."""
+        with pytest.raises(ClientError) as exc:
+            memorydb.delete_acl(ACLName="nonexistent-acl")
+        assert exc.value.response["Error"]["Code"] == "ACLNotFoundFault"
+
+
+class TestMemoryDBUsers:
+    """Tests for MemoryDB User operations."""
+
+    def test_describe_users(self, memorydb):
+        """DescribeUsers returns at least the default user."""
+        resp = memorydb.describe_users()
+        assert "Users" in resp
+        names = [u["Name"] for u in resp["Users"]]
+        assert "default" in names
+
+    def test_create_and_delete_user(self, memorydb):
+        """CreateUser creates a user, DeleteUser removes it."""
+        name = f"test-user-{_uid()}"
+        resp = memorydb.create_user(
+            UserName=name,
+            AccessString="on ~* +@all",
+            AuthenticationMode={"Type": "no-password"},
+        )
+        assert resp["User"]["Name"] == name
+        assert resp["User"]["Status"] == "active"
+
+        del_resp = memorydb.delete_user(UserName=name)
+        assert del_resp["User"]["Name"] == name
+
+    def test_delete_user_nonexistent(self, memorydb):
+        """DeleteUser for nonexistent user raises error."""
+        with pytest.raises(ClientError) as exc:
+            memorydb.delete_user(UserName="nonexistent-user")
+        assert exc.value.response["Error"]["Code"] == "UserNotFoundFault"
+
+
+class TestMemoryDBParameterGroups:
+    """Tests for MemoryDB ParameterGroup operations."""
+
+    def test_describe_parameter_groups(self, memorydb):
+        """DescribeParameterGroups returns at least default group."""
+        resp = memorydb.describe_parameter_groups()
+        assert "ParameterGroups" in resp
+        assert isinstance(resp["ParameterGroups"], list)
+
+    def test_create_and_delete_parameter_group(self, memorydb):
+        """CreateParameterGroup + DeleteParameterGroup roundtrip."""
+        name = f"test-pg-{_uid()}"
+        resp = memorydb.create_parameter_group(
+            ParameterGroupName=name,
+            Family="memorydb_redis7",
+            Description="test parameter group",
+        )
+        assert resp["ParameterGroup"]["Name"] == name
+
+        del_resp = memorydb.delete_parameter_group(ParameterGroupName=name)
+        assert del_resp["ParameterGroup"]["Name"] == name
+
+    def test_delete_parameter_group_nonexistent(self, memorydb):
+        """DeleteParameterGroup for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            memorydb.delete_parameter_group(ParameterGroupName="nonexistent-pg")
+        assert exc.value.response["Error"]["Code"] == "ParameterGroupNotFoundFault"
+
+
+class TestMemoryDBListOperations:
+    """Tests for MemoryDB list/describe operations."""
+
+    def test_describe_service_updates(self, memorydb):
+        """DescribeServiceUpdates returns a list."""
+        resp = memorydb.describe_service_updates()
+        assert "ServiceUpdates" in resp
+        assert isinstance(resp["ServiceUpdates"], list)
+
+    def test_describe_events(self, memorydb):
+        """DescribeEvents returns a list."""
+        resp = memorydb.describe_events()
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_engine_versions(self, memorydb):
+        """DescribeEngineVersions returns version list."""
+        resp = memorydb.describe_engine_versions()
+        assert "EngineVersions" in resp
+        assert isinstance(resp["EngineVersions"], list)
+
+    def test_describe_reserved_nodes(self, memorydb):
+        """DescribeReservedNodes returns a list."""
+        resp = memorydb.describe_reserved_nodes()
+        assert "ReservedNodes" in resp
+        assert isinstance(resp["ReservedNodes"], list)
+
+    def test_describe_reserved_nodes_offerings(self, memorydb):
+        """DescribeReservedNodesOfferings returns a list."""
+        resp = memorydb.describe_reserved_nodes_offerings()
+        assert "ReservedNodesOfferings" in resp
+        assert isinstance(resp["ReservedNodesOfferings"], list)
