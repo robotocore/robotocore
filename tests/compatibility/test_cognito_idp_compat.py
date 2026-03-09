@@ -1545,3 +1545,69 @@ class TestCognitoAuthExtended:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_user_pool_domain(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("upddom-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        domain = f"test-upd-domain-{uuid.uuid4().hex[:8]}"
+        try:
+            cognito.create_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            resp = cognito.update_user_pool_domain(
+                UserPoolId=pool_id,
+                Domain=domain,
+                CustomDomainConfig={
+                    "CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/fake"
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            except Exception:
+                pass
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_respond_to_auth_challenge(self, cognito):
+        """RespondToAuthChallenge with NEW_PASSWORD_REQUIRED challenge."""
+        pool = cognito.create_user_pool(PoolName=_unique("rtac-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_resp = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="rtac-client",
+                ExplicitAuthFlows=[
+                    "ALLOW_USER_PASSWORD_AUTH",
+                    "ALLOW_REFRESH_TOKEN_AUTH",
+                ],
+            )
+            client_id = client_resp["UserPoolClient"]["ClientId"]
+            username = _unique("rtac-user")
+            # Admin-created users get a FORCE_CHANGE_PASSWORD status
+            cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
+            )
+            # This will return a NEW_PASSWORD_REQUIRED challenge
+            auth = cognito.admin_initiate_auth(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+                AuthParameters={"USERNAME": username, "PASSWORD": "TempPass1!"},
+            )
+            if "ChallengeName" in auth and auth["ChallengeName"] == "NEW_PASSWORD_REQUIRED":
+                resp = cognito.respond_to_auth_challenge(
+                    ClientId=client_id,
+                    ChallengeName="NEW_PASSWORD_REQUIRED",
+                    Session=auth["Session"],
+                    ChallengeResponses={
+                        "USERNAME": username,
+                        "NEW_PASSWORD": "NewPermanent1!",
+                    },
+                )
+                assert "AuthenticationResult" in resp
+            else:
+                assert "AuthenticationResult" in auth
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)

@@ -3430,3 +3430,122 @@ class TestSSMParameterStoreEdgeCases:
             assert "LastModifiedDate" in resp["Parameters"][0]
         finally:
             ssm.delete_parameter(Name=name)
+
+
+class TestSSMMaintenanceWindowOpsExtended:
+    """Tests for maintenance window execution and task operations."""
+
+    def test_cancel_maintenance_window_execution_nonexistent(self, ssm):
+        """CancelMaintenanceWindowExecution with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            ssm.cancel_maintenance_window_execution(
+                WindowExecutionId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_describe_maintenance_window_execution_tasks_nonexistent(self, ssm):
+        """DescribeMaintenanceWindowExecutionTasks with fake execution ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_maintenance_window_execution_tasks(
+                WindowExecutionId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_describe_maintenance_window_execution_task_invocations_nonexistent(self, ssm):
+        """DescribeMaintenanceWindowExecutionTaskInvocations with fake task ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_maintenance_window_execution_task_invocations(
+                WindowExecutionId="00000000-0000-0000-0000-000000000000",
+                TaskId="00000000-0000-0000-0000-000000000001",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_get_maintenance_window_execution_nonexistent(self, ssm):
+        """GetMaintenanceWindowExecution with fake execution ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_maintenance_window_execution(
+                WindowExecutionId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_get_maintenance_window_execution_task_nonexistent(self, ssm):
+        """GetMaintenanceWindowExecutionTask with fake IDs."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_maintenance_window_execution_task(
+                WindowExecutionId="00000000-0000-0000-0000-000000000000",
+                TaskId="00000000-0000-0000-0000-000000000001",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_get_maintenance_window_execution_task_invocation_nonexistent(self, ssm):
+        """GetMaintenanceWindowExecutionTaskInvocation with fake IDs."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_maintenance_window_execution_task_invocation(
+                WindowExecutionId="00000000-0000-0000-0000-000000000000",
+                TaskId="00000000-0000-0000-0000-000000000001",
+                InvocationId="00000000-0000-0000-0000-000000000002",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_get_maintenance_window_task_nonexistent(self, ssm):
+        """GetMaintenanceWindowTask with fake window and task IDs."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_maintenance_window_task(
+                WindowId="mw-00000000000000000",
+                WindowTaskId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+
+class TestSSMMiscOpsExtended:
+    """Tests for miscellaneous SSM operations."""
+
+    def test_cancel_command_nonexistent(self, ssm):
+        """CancelCommand with fake command ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            ssm.cancel_command(CommandId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_deregister_managed_instance_nonexistent(self, ssm):
+        """DeregisterManagedInstance with fake instance ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_describe_automation_step_executions_nonexistent(self, ssm):
+        """DescribeAutomationStepExecutions with fake execution ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_automation_step_executions(
+                AutomationExecutionId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_send_automation_signal_nonexistent(self, ssm):
+        """SendAutomationSignal with fake execution ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.send_automation_signal(
+                AutomationExecutionId="00000000-0000-0000-0000-000000000000",
+                SignalType="Approve",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_start_associations_once(self, ssm):
+        """StartAssociationsOnce with fake association IDs."""
+        with pytest.raises(ClientError) as exc:
+            ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_get_deployable_patch_snapshot_for_instance_nonexistent(self, ssm):
+        """GetDeployablePatchSnapshotForInstance with fake instance."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_deployable_patch_snapshot_for_instance(
+                InstanceId="i-00000000000000000",
+                SnapshotId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
+
+    def test_get_execution_preview_nonexistent(self, ssm):
+        """GetExecutionPreview with fake execution preview ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_execution_preview(ExecutionPreviewId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] != "InternalError"
