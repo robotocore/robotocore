@@ -222,3 +222,29 @@ class TestIdentityStoreGroupMembership:
         )
         membership_ids = [m["MembershipId"] for m in response["GroupMemberships"]]
         assert mem["MembershipId"] not in membership_ids
+
+
+class TestIdentityStoreErrors:
+    """Tests for error handling on nonexistent resources."""
+
+    def test_describe_user_nonexistent(self, identitystore):
+        """DescribeUser for nonexistent user raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            identitystore.describe_user(
+                IdentityStoreId=IDENTITY_STORE_ID,
+                UserId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_group_nonexistent(self, identitystore):
+        """DescribeGroup for nonexistent group raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            identitystore.describe_group(
+                IdentityStoreId=IDENTITY_STORE_ID,
+                GroupId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
