@@ -17,6 +17,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - run: uv run ruff check src/ tests/ scripts/
       - run: uv run ruff format --check src/ tests/ scripts/
@@ -30,6 +31,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Check test quality (static analysis)
         run: >
@@ -61,6 +63,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - run: uv run mypy src/robotocore/ --ignore-missing-imports
         continue-on-error: true  # Non-blocking during transition
@@ -77,6 +80,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - run: >
           uv run pytest
@@ -86,6 +90,12 @@ jobs:
           tests/unit/test_handler_chain_unit.py
           tests/unit/test_iam_middleware.py
           -n4 -q --tb=short
+          --junitxml=results-unit-gateway.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-unit-gateway
+          path: results-unit-gateway.xml
 
   unit-services:
     name: "unit: service providers"
@@ -103,8 +113,17 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
-      - run: uv run pytest tests/unit/services/ -n4 -q --tb=short
+      - run: >
+          uv run pytest tests/unit/services/
+          -n4 -q --tb=short
+          --junitxml=results-unit-services.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-unit-services
+          path: results-unit-services.xml
 
   unit-infra:
     name: "unit: infra (chaos, audit, state, extensions, observability)"
@@ -116,24 +135,25 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
-      - run: >
+      - name: Run infra unit tests
+        run: >
           uv run pytest
-          tests/unit/observability/
-          tests/unit/test_fault_rules.py
-          tests/unit/test_chaos_middleware.py
-          tests/unit/test_audit_log.py
-          tests/unit/test_audit_log_unit.py
-          tests/unit/test_extensions.py
-          tests/unit/test_extensions_unit.py
-          tests/unit/test_state_manager.py
-          tests/unit/test_state_persistence.py
-          tests/unit/test_state_snapshots.py
-          tests/unit/test_state_manager_unit.py
-          tests/unit/test_resource_browser.py
-          tests/unit/test_diagnostics.py
-          tests/unit/test_main.py
+          tests/unit/
+          --ignore=tests/unit/gateway/
+          --ignore=tests/unit/protocols/
+          --ignore=tests/unit/providers/
+          --ignore=tests/unit/services/
+          --ignore=tests/unit/test_handler_chain_unit.py
+          --ignore=tests/unit/test_iam_middleware.py
           -n4 -q --tb=short
+          --junitxml=results-unit-infra.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-unit-infra
+          path: results-unit-infra.xml
 
   # ── Integration + compatibility ────────────────────────────────────────────
 
@@ -147,8 +167,17 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
-      - run: uv run pytest tests/integration/ -v --tb=short
+      - run: >
+          uv run pytest tests/integration/
+          -v --tb=short
+          --junitxml=results-integration.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-integration
+          path: results-integration.xml
 
   compatibility-tests:
     runs-on: ubuntu-latest
@@ -160,10 +189,11 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
@@ -175,6 +205,18 @@ jobs:
           uv run pytest tests/compatibility/
           --ignore=tests/compatibility/test_cross_service_compat.py
           -n4 --dist=loadfile -q --tb=short
+          --junitxml=results-compat.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-compat
+          path: results-compat.xml
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-compat
+          path: .robotocore.log
 
   cross-service-tests:
     name: "compat: cross-service integrations"
@@ -187,10 +229,11 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
@@ -201,11 +244,23 @@ jobs:
           ENDPOINT_URL=http://localhost:4566
           uv run pytest tests/compatibility/test_cross_service_compat.py
           -v --tb=short
+          --junitxml=results-cross-service.xml
       - name: Validate test quality
         if: always()
         run: >
           uv run python scripts/validate_test_quality.py
           --file tests/compatibility/test_cross_service_compat.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-cross-service
+          path: results-cross-service.xml
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-cross-service
+          path: .robotocore.log
 
   iac-tests:
     name: "iac: CloudFormation + SAM + Serverless"
@@ -218,10 +273,11 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --all-extras
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
@@ -235,6 +291,18 @@ jobs:
           tests/iac/sam/
           tests/iac/serverless/
           -v --tb=short
+          --junitxml=results-iac.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-iac
+          path: results-iac.xml
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-iac
+          path: .robotocore.log
 
   # ── Security ───────────────────────────────────────────────────────────────
 
@@ -247,6 +315,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Python security scan (bandit)
         run: |
@@ -278,8 +347,10 @@ jobs:
       - name: Smoke test
         run: |
           docker run -d -p 4566:4566 --name robotocore-test robotocore:test
-          sleep 5
-          # Health check
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
           curl -f http://localhost:4566/_robotocore/health
           # Basic S3 operations
           pip install boto3
@@ -342,6 +413,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+          cache: true
       - run: uv sync --extra dev
       - name: Generate parity report
         run: >
