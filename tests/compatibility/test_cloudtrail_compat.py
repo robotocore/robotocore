@@ -1111,3 +1111,37 @@ class TestCloudTrailRegisterOrgDelegatedAdmin:
                 "InsufficientDependencyServiceAccessPermissionException",
                 "AccessDeniedException",
             )
+
+    def test_deregister_organization_delegated_admin(self, cloudtrail):
+        """DeregisterOrganizationDelegatedAdmin with a member account ID."""
+        try:
+            resp = cloudtrail.deregister_organization_delegated_admin(
+                DelegatedAdminAccountId="222233334444"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            # This may fail if Organizations isn't set up, which is expected
+            code = e.response["Error"]["Code"]
+            assert code in (
+                "OrganizationNotInAllFeaturesModeException",
+                "OrganizationsNotInUseException",
+                "AccountNotFoundException",
+                "NotOrganizationMasterAccountException",
+                "InsufficientDependencyServiceAccessPermissionException",
+                "AccessDeniedException",
+                "AccountNotRegisteredException",
+            )
+
+
+class TestCloudTrailRestoreEventDataStore:
+    """Tests for RestoreEventDataStore."""
+
+    def test_restore_event_data_store_nonexistent(self, cloudtrail):
+        """RestoreEventDataStore on nonexistent EDS raises EventDataStoreNotFoundException."""
+        fake_arn = (
+            "arn:aws:cloudtrail:us-east-1:123456789012:"
+            "eventdatastore/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.restore_event_data_store(EventDataStore=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "EventDataStoreNotFoundException"

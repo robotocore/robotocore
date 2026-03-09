@@ -509,3 +509,250 @@ class TestFSxSnapshotUpdateOps:
             )
         err = exc.value.response["Error"]["Code"]
         assert err in ("ResourceNotFoundException", "VolumeNotFound", "BadRequest")
+
+
+class TestFSxOntapLifecycle:
+    """Tests for ONTAP file system + SVM + volume + snapshot full lifecycle."""
+
+    def test_ontap_fs_create_and_describe(self, fsx):
+        """Create an ONTAP file system and verify in describe."""
+        resp = fsx.create_file_system(
+            FileSystemType="ONTAP",
+            StorageCapacity=1024,
+            SubnetIds=["subnet-00000001"],
+            OntapConfiguration={"DeploymentType": "SINGLE_AZ_1", "ThroughputCapacity": 128},
+        )
+        fs = resp["FileSystem"]
+        fs_id = fs["FileSystemId"]
+        try:
+            assert fs["FileSystemType"] == "ONTAP"
+            assert fs["StorageCapacity"] == 1024
+            desc = fsx.describe_file_systems(FileSystemIds=[fs_id])
+            assert len(desc["FileSystems"]) == 1
+            assert desc["FileSystems"][0]["FileSystemType"] == "ONTAP"
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_svm_create_describe_delete(self, fsx):
+        """Create SVM on ONTAP FS, verify in describe, then delete."""
+        fs_resp = fsx.create_file_system(
+            FileSystemType="ONTAP",
+            StorageCapacity=1024,
+            SubnetIds=["subnet-00000001"],
+            OntapConfiguration={"DeploymentType": "SINGLE_AZ_1", "ThroughputCapacity": 128},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            svm_resp = fsx.create_storage_virtual_machine(FileSystemId=fs_id, Name="test-svm")
+            svm = svm_resp["StorageVirtualMachine"]
+            svm_id = svm["StorageVirtualMachineId"]
+            assert svm["Name"] == "test-svm"
+            assert svm["FileSystemId"] == fs_id
+
+            desc = fsx.describe_storage_virtual_machines(StorageVirtualMachineIds=[svm_id])
+            assert len(desc["StorageVirtualMachines"]) == 1
+            assert desc["StorageVirtualMachines"][0]["Name"] == "test-svm"
+
+            fsx.delete_storage_virtual_machine(StorageVirtualMachineId=svm_id)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_volume_create_describe_delete(self, fsx):
+        """Create ONTAP volume, verify in describe, then delete."""
+        fs_resp = fsx.create_file_system(
+            FileSystemType="ONTAP",
+            StorageCapacity=1024,
+            SubnetIds=["subnet-00000001"],
+            OntapConfiguration={"DeploymentType": "SINGLE_AZ_1", "ThroughputCapacity": 128},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            svm_resp = fsx.create_storage_virtual_machine(FileSystemId=fs_id, Name="vol-svm")
+            svm_id = svm_resp["StorageVirtualMachine"]["StorageVirtualMachineId"]
+
+            vol_resp = fsx.create_volume(
+                VolumeType="ONTAP",
+                Name="test-vol",
+                OntapConfiguration={
+                    "SizeInMegabytes": 1024,
+                    "StorageVirtualMachineId": svm_id,
+                    "JunctionPath": "/vol1",
+                },
+            )
+            vol = vol_resp["Volume"]
+            vol_id = vol["VolumeId"]
+            assert vol["Name"] == "test-vol"
+            assert vol["VolumeType"] == "ONTAP"
+
+            desc = fsx.describe_volumes(VolumeIds=[vol_id])
+            assert len(desc["Volumes"]) == 1
+            assert desc["Volumes"][0]["Name"] == "test-vol"
+
+            fsx.delete_volume(VolumeId=vol_id, OntapConfiguration={"SkipFinalBackup": True})
+            fsx.delete_storage_virtual_machine(StorageVirtualMachineId=svm_id)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_snapshot_create_describe_update_delete(self, fsx):
+        """Full snapshot lifecycle: create, describe, update name, delete."""
+        fs_resp = fsx.create_file_system(
+            FileSystemType="ONTAP",
+            StorageCapacity=1024,
+            SubnetIds=["subnet-00000001"],
+            OntapConfiguration={"DeploymentType": "SINGLE_AZ_1", "ThroughputCapacity": 128},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            svm_resp = fsx.create_storage_virtual_machine(FileSystemId=fs_id, Name="snap-svm")
+            svm_id = svm_resp["StorageVirtualMachine"]["StorageVirtualMachineId"]
+
+            vol_resp = fsx.create_volume(
+                VolumeType="ONTAP",
+                Name="snap-vol",
+                OntapConfiguration={
+                    "SizeInMegabytes": 1024,
+                    "StorageVirtualMachineId": svm_id,
+                    "JunctionPath": "/snapvol",
+                },
+            )
+            vol_id = vol_resp["Volume"]["VolumeId"]
+
+            snap_resp = fsx.create_snapshot(Name="my-snap", VolumeId=vol_id)
+            snap = snap_resp["Snapshot"]
+            snap_id = snap["SnapshotId"]
+            assert snap["Name"] == "my-snap"
+            assert snap["VolumeId"] == vol_id
+
+            desc = fsx.describe_snapshots(SnapshotIds=[snap_id])
+            assert len(desc["Snapshots"]) == 1
+            assert desc["Snapshots"][0]["Lifecycle"] == "AVAILABLE"
+
+            upd = fsx.update_snapshot(SnapshotId=snap_id, Name="renamed-snap")
+            assert upd["Snapshot"]["Name"] == "renamed-snap"
+
+            fsx.delete_snapshot(SnapshotId=snap_id)
+            fsx.delete_volume(VolumeId=vol_id, OntapConfiguration={"SkipFinalBackup": True})
+            fsx.delete_storage_virtual_machine(StorageVirtualMachineId=svm_id)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+
+class TestFSxFileSystemFromBackupCRUD:
+    """Tests for creating a file system from an existing backup."""
+
+    def test_create_file_system_from_backup(self, fsx):
+        """Create backup, restore to new FS, verify, then clean up."""
+        fs_resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            backup_resp = fsx.create_backup(FileSystemId=fs_id)
+            backup_id = backup_resp["Backup"]["BackupId"]
+
+            new_fs_resp = fsx.create_file_system_from_backup(
+                BackupId=backup_id, SubnetIds=["subnet-00000001"]
+            )
+            new_fs = new_fs_resp["FileSystem"]
+            new_fs_id = new_fs["FileSystemId"]
+            assert new_fs["FileSystemType"] == "LUSTRE"
+            assert new_fs_id != fs_id
+
+            fsx.delete_file_system(FileSystemId=new_fs_id)
+            fsx.delete_backup(BackupId=backup_id)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+
+class TestFSxDataRepositoryCRUD:
+    """Tests for data repository association full CRUD."""
+
+    def test_data_repository_association_lifecycle(self, fsx):
+        """Create DRA, describe, update, delete."""
+        fs_resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "PERSISTENT_1", "PerUnitStorageThroughput": 50},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            dra_resp = fsx.create_data_repository_association(
+                FileSystemId=fs_id,
+                FileSystemPath="/data",
+                DataRepositoryPath="s3://my-bucket/prefix",
+            )
+            assoc = dra_resp["Association"]
+            assoc_id = assoc["AssociationId"]
+            assert assoc["FileSystemId"] == fs_id
+            assert assoc["FileSystemPath"] == "/data"
+
+            desc = fsx.describe_data_repository_associations(AssociationIds=[assoc_id])
+            assert len(desc["Associations"]) == 1
+            assert desc["Associations"][0]["AssociationId"] == assoc_id
+
+            upd = fsx.update_data_repository_association(AssociationId=assoc_id)
+            assert upd["Association"]["AssociationId"] == assoc_id
+
+            del_resp = fsx.delete_data_repository_association(
+                AssociationId=assoc_id, DeleteDataInFileSystem=False
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+
+class TestFSxBackupDescribeFiltered:
+    """Tests for describing backups with filters."""
+
+    def test_describe_backups_by_id(self, fsx):
+        """DescribeBackups with BackupIds filter returns specific backup."""
+        fs_resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            backup_resp = fsx.create_backup(FileSystemId=fs_id)
+            backup_id = backup_resp["Backup"]["BackupId"]
+
+            desc = fsx.describe_backups(BackupIds=[backup_id])
+            assert len(desc["Backups"]) == 1
+            assert desc["Backups"][0]["BackupId"] == backup_id
+            assert desc["Backups"][0]["Lifecycle"] in ("AVAILABLE", "CREATING")
+
+            fsx.delete_backup(BackupId=backup_id)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+
+class TestFSxDescribeFiltered:
+    """Tests for describe operations with specific ID filters."""
+
+    def test_describe_file_systems_nonexistent_id(self, fsx):
+        """DescribeFileSystems with nonexistent ID returns empty list."""
+        resp = fsx.describe_file_systems(FileSystemIds=["fs-does-not-exist"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["FileSystems"], list)
+
+    def test_describe_volumes_filtered(self, fsx):
+        """DescribeVolumes with VolumeIds filter returns specific volume."""
+        vol_resp = fsx.create_volume(
+            VolumeType="ONTAP",
+            Name="filtered-vol",
+            OntapConfiguration={
+                "SizeInMegabytes": 512,
+                "StorageVirtualMachineId": "svm-0123456789abcdef0",
+                "JunctionPath": "/filt",
+            },
+        )
+        vol_id = vol_resp["Volume"]["VolumeId"]
+        desc = fsx.describe_volumes(VolumeIds=[vol_id])
+        assert len(desc["Volumes"]) == 1
+        assert desc["Volumes"][0]["VolumeId"] == vol_id
+        assert desc["Volumes"][0]["Name"] == "filtered-vol"

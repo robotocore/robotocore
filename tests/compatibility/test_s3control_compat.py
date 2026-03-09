@@ -2602,3 +2602,265 @@ class TestS3ControlMRAPRoutes:
                 AccountId=ACCOUNT_ID, Mrap=f"nonexistent-{_uid()}"
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+
+
+class TestS3ControlJobLifecycle:
+    """Tests for S3 Batch Operations job lifecycle."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def job_with_bucket(self, s3control, s3):
+        """Create a bucket and a batch job, yield (job_id, bucket_name), then clean up."""
+        bucket = f"job-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        resp = s3control.create_job(
+            AccountId=ACCOUNT_ID,
+            Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+            Report={"Enabled": False},
+            ClientRequestToken=str(uuid.uuid4()),
+            Priority=10,
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+            ConfirmationRequired=False,
+            ManifestGenerator={
+                "S3JobManifestGenerator": {
+                    "SourceBucket": f"arn:aws:s3:::{bucket}",
+                    "EnableManifestOutput": False,
+                }
+            },
+        )
+        job_id = resp["JobId"]
+        yield job_id, bucket
+        try:
+            s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+            )
+        except Exception:
+            pass
+        try:
+            s3.delete_bucket(Bucket=bucket)
+        except Exception:
+            pass
+
+    def test_create_job_returns_job_id(self, s3control, s3):
+        """CreateJob returns a valid JobId."""
+        bucket = f"job-cj-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = s3control.create_job(
+                AccountId=ACCOUNT_ID,
+                Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+                Report={"Enabled": False},
+                ClientRequestToken=str(uuid.uuid4()),
+                Priority=5,
+                RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+                ConfirmationRequired=False,
+                ManifestGenerator={
+                    "S3JobManifestGenerator": {
+                        "SourceBucket": f"arn:aws:s3:::{bucket}",
+                        "EnableManifestOutput": False,
+                    }
+                },
+            )
+            assert "JobId" in resp
+            assert len(resp["JobId"]) > 0
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.update_job_status(
+                    AccountId=ACCOUNT_ID,
+                    JobId=resp["JobId"],
+                    RequestedJobStatus="Cancelled",
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_create_job_appears_in_list(self, s3control, job_with_bucket):
+        """Created job should appear in ListJobs."""
+        job_id, _ = job_with_bucket
+        resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
+        job_ids = [j["JobId"] for j in resp["Jobs"]]
+        assert job_id in job_ids
+
+    def test_create_job_describe(self, s3control, job_with_bucket):
+        """Created job should be describable."""
+        job_id, _ = job_with_bucket
+        resp = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+        assert resp["Job"]["JobId"] == job_id
+        assert resp["Job"]["Priority"] == 10
+
+    def test_update_job_priority(self, s3control, job_with_bucket):
+        """UpdateJobPriority changes the job's priority."""
+        job_id, _ = job_with_bucket
+        resp = s3control.update_job_priority(AccountId=ACCOUNT_ID, JobId=job_id, Priority=42)
+        assert resp["JobId"] == job_id
+        assert resp["Priority"] == 42
+
+    def test_update_job_priority_verify_via_describe(self, s3control, job_with_bucket):
+        """Updated priority is reflected in DescribeJob."""
+        job_id, _ = job_with_bucket
+        s3control.update_job_priority(AccountId=ACCOUNT_ID, JobId=job_id, Priority=99)
+        desc = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+        assert desc["Job"]["Priority"] == 99
+
+    def test_update_job_status_cancel(self, s3control, s3):
+        """UpdateJobStatus can cancel a job."""
+        bucket = f"job-cancel-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = s3control.create_job(
+                AccountId=ACCOUNT_ID,
+                Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+                Report={"Enabled": False},
+                ClientRequestToken=str(uuid.uuid4()),
+                Priority=10,
+                RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+                ConfirmationRequired=False,
+                ManifestGenerator={
+                    "S3JobManifestGenerator": {
+                        "SourceBucket": f"arn:aws:s3:::{bucket}",
+                        "EnableManifestOutput": False,
+                    }
+                },
+            )
+            job_id = resp["JobId"]
+            cancel_resp = s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+            )
+            assert cancel_resp["JobId"] == job_id
+            assert cancel_resp["Status"] == "Cancelled"
+        finally:
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_update_job_status_reflected_in_describe(self, s3control, s3):
+        """Cancelled status is reflected in DescribeJob."""
+        bucket = f"job-stat-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            resp = s3control.create_job(
+                AccountId=ACCOUNT_ID,
+                Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+                Report={"Enabled": False},
+                ClientRequestToken=str(uuid.uuid4()),
+                Priority=10,
+                RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+                ConfirmationRequired=False,
+                ManifestGenerator={
+                    "S3JobManifestGenerator": {
+                        "SourceBucket": f"arn:aws:s3:::{bucket}",
+                        "EnableManifestOutput": False,
+                    }
+                },
+            )
+            job_id = resp["JobId"]
+            s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+            )
+            desc = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc["Job"]["Status"] == "Cancelled"
+        finally:
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_update_job_priority_nonexistent(self, s3control):
+        """UpdateJobPriority for nonexistent job raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            s3control.update_job_priority(
+                AccountId=ACCOUNT_ID,
+                JobId="00000000-0000-0000-0000-000000000000",
+                Priority=10,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchJob"
+
+    def test_update_job_status_nonexistent(self, s3control):
+        """UpdateJobStatus for nonexistent job raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            s3control.update_job_status(
+                AccountId=ACCOUNT_ID,
+                JobId="00000000-0000-0000-0000-000000000000",
+                RequestedJobStatus="Cancelled",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchJob"
+
+
+class TestS3ControlDeleteStorageLensTagging:
+    """Tests for DeleteStorageLensConfigurationTagging operation."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    def test_delete_storage_lens_configuration_tagging(self, s3control):
+        """DeleteStorageLensConfigurationTagging removes tags from a config."""
+        config_id = f"lens-dt-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": True,
+                },
+            )
+            s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            # Verify tags exist
+            resp = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert len(resp["Tags"]) >= 1
+
+            # Delete tags
+            del_resp = s3control.delete_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify tags are gone
+            resp2 = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert resp2["Tags"] == []
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_delete_storage_lens_tagging_idempotent(self, s3control):
+        """Deleting tags when none exist succeeds."""
+        config_id = f"lens-dti-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": True,
+                },
+            )
+            # Delete tags when none exist
+            resp = s3control.delete_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass

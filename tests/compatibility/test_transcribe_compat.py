@@ -492,7 +492,8 @@ class TestTranscribeAutoCoverage:
 
     def test_list_medical_scribe_jobs(self, client):
         """ListMedicalScribeJobs returns a response."""
-        client.list_medical_scribe_jobs()
+        resp = client.list_medical_scribe_jobs()
+        assert "MedicalScribeJobSummaries" in resp
 
     def test_list_vocabulary_filters(self, client):
         """ListVocabularyFilters returns a response."""
@@ -680,3 +681,246 @@ class TestTranscribeLanguageModelCRUD:
             "BadRequestException",
             "NotFoundException",
         )
+
+
+class TestTranscribeDeepCoverage:
+    """Deeper CRUD tests that verify cross-operation consistency."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("transcribe")
+
+    def test_start_transcription_job_fields(self, client):
+        """StartTranscriptionJob returns all expected fields."""
+        name = f"deep-job-{_uid()}"
+        resp = client.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            MediaFormat="wav",
+            MediaSampleRateHertz=16000,
+            Media={"MediaFileUri": "s3://my-bucket/deep-audio.wav"},
+            OutputBucketName="my-output-bucket",
+        )
+        try:
+            job = resp["TranscriptionJob"]
+            assert job["TranscriptionJobName"] == name
+            assert job["LanguageCode"] == "en-US"
+            assert job["MediaFormat"] == "wav"
+            assert "CreationTime" in job
+        finally:
+            client.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_get_transcription_job_media_uri(self, client):
+        """GetTranscriptionJob returns the Media URI that was submitted."""
+        name = f"media-uri-{_uid()}"
+        client.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/specific-file.wav"},
+        )
+        try:
+            resp = client.get_transcription_job(TranscriptionJobName=name)
+            job = resp["TranscriptionJob"]
+            assert job["Media"]["MediaFileUri"] == "s3://my-bucket/specific-file.wav"
+        finally:
+            client.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_delete_transcription_job_removes_from_list(self, client):
+        """After deletion, job no longer appears in list."""
+        name = f"del-verify-{_uid()}"
+        client.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        client.delete_transcription_job(TranscriptionJobName=name)
+        resp = client.list_transcription_jobs()
+        names = [j["TranscriptionJobName"] for j in resp["TranscriptionJobSummaries"]]
+        assert name not in names
+
+    def test_medical_transcription_job_full_lifecycle(self, client):
+        """Medical job: create, get fields, list, delete, verify gone."""
+        name = f"med-life-{_uid()}"
+        client.start_medical_transcription_job(
+            MedicalTranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/medical.wav"},
+            OutputBucketName="my-output-bucket",
+            Specialty="PRIMARYCARE",
+            Type="CONVERSATION",
+        )
+        try:
+            # Get and verify fields
+            resp = client.get_medical_transcription_job(MedicalTranscriptionJobName=name)
+            job = resp["MedicalTranscriptionJob"]
+            assert job["MedicalTranscriptionJobName"] == name
+            assert job["Specialty"] == "PRIMARYCARE"
+            assert job["Type"] == "CONVERSATION"
+            assert "CreationTime" in job
+
+            # Verify in list
+            list_resp = client.list_medical_transcription_jobs()
+            job_names = [
+                j["MedicalTranscriptionJobName"]
+                for j in list_resp["MedicalTranscriptionJobSummaries"]
+            ]
+            assert name in job_names
+        finally:
+            client.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+
+    def test_vocabulary_get_has_state(self, client):
+        """GetVocabulary returns VocabularyState."""
+        name = f"state-vocab-{_uid()}"
+        client.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["alpha", "bravo"],
+        )
+        try:
+            get_resp = client.get_vocabulary(VocabularyName=name)
+            assert get_resp["VocabularyName"] == name
+            assert get_resp["VocabularyState"] in ("PENDING", "READY", "FAILED")
+        finally:
+            client.delete_vocabulary(VocabularyName=name)
+
+    def test_vocabulary_delete_removes_from_list(self, client):
+        """Deleted vocabulary no longer appears in list."""
+        name = f"delvocab-{_uid()}"
+        client.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["test"],
+        )
+        client.delete_vocabulary(VocabularyName=name)
+        resp = client.list_vocabularies()
+        names = [v["VocabularyName"] for v in resp.get("Vocabularies", [])]
+        assert name not in names
+
+    def test_medical_vocabulary_get_has_fields(self, client):
+        """GetMedicalVocabulary returns expected fields."""
+        name = f"medvocab-deep-{_uid()}"
+        client.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/med-vocab.txt",
+        )
+        try:
+            get_resp = client.get_medical_vocabulary(VocabularyName=name)
+            assert get_resp["VocabularyName"] == name
+            assert get_resp["LanguageCode"] == "en-US"
+            assert "VocabularyState" in get_resp
+        finally:
+            client.delete_medical_vocabulary(VocabularyName=name)
+
+    def test_medical_vocabulary_delete_removes_from_list(self, client):
+        """Deleted medical vocabulary no longer appears in list."""
+        name = f"medvdel-{_uid()}"
+        client.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        client.delete_medical_vocabulary(VocabularyName=name)
+        resp = client.list_medical_vocabularies()
+        names = [v["VocabularyName"] for v in resp.get("Vocabularies", [])]
+        assert name not in names
+
+    def test_vocabulary_filter_update_and_verify(self, client):
+        """Update vocabulary filter and verify changes via get."""
+        name = f"upd-filter-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["original"],
+        )
+        try:
+            upd = client.update_vocabulary_filter(
+                VocabularyFilterName=name,
+                Words=["updated", "words"],
+            )
+            assert upd["VocabularyFilterName"] == name
+            assert upd["LanguageCode"] == "en-US"
+
+            get_resp = client.get_vocabulary_filter(VocabularyFilterName=name)
+            assert get_resp["VocabularyFilterName"] == name
+        finally:
+            client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    def test_language_model_full_lifecycle(self, client):
+        """Language model: create, describe, list, delete, verify gone."""
+        name = f"lm-life-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        try:
+            desc = client.describe_language_model(ModelName=name)
+            model = desc["LanguageModel"]
+            assert model["ModelName"] == name
+            assert model["LanguageCode"] == "en-US"
+            assert model["BaseModelName"] == "NarrowBand"
+            assert "ModelStatus" in model
+
+            list_resp = client.list_language_models()
+            names = [m["ModelName"] for m in list_resp.get("Models", [])]
+            assert name in names
+        finally:
+            client.delete_language_model(ModelName=name)
+
+        # Verify deletion
+        list_after = client.list_language_models()
+        names_after = [m["ModelName"] for m in list_after.get("Models", [])]
+        assert name not in names_after
+
+    def test_delete_transcription_job_nonexistent(self, client):
+        """DeleteTranscriptionJob for nonexistent job raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_transcription_job(TranscriptionJobName="nonexistent-xyz-job")
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_medical_transcription_job_nonexistent(self, client):
+        """DeleteMedicalTranscriptionJob for nonexistent raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_medical_transcription_job(
+                MedicalTranscriptionJobName="nonexistent-med-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_language_model_nonexistent(self, client):
+        """DeleteLanguageModel for nonexistent raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_language_model(ModelName="nonexistent-model-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "BadRequestException",
+            "NotFoundException",
+        )
+
+    def test_delete_vocabulary_filter_nonexistent(self, client):
+        """DeleteVocabularyFilter for nonexistent raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_vocabulary_filter(VocabularyFilterName="nonexistent-filter-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "BadRequestException",
+            "NotFoundException",
+        )
+
+    def test_delete_medical_vocabulary_nonexistent(self, client):
+        """DeleteMedicalVocabulary for nonexistent raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_medical_vocabulary(VocabularyName="nonexistent-medvocab-xyz")
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"

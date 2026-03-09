@@ -1948,6 +1948,40 @@ class TestRoute53CidrCollections:
         route53.delete_cidr_collection(Id=coll["Id"])
 
 
+class TestRoute53CidrLocationsAndBlocks:
+    """Tests for ListCidrLocations, ListCidrBlocks, and ChangeCidrCollection."""
+
+    def test_list_cidr_locations_empty(self, route53):
+        """ListCidrLocations on a new collection returns empty list."""
+        name = _unique("cidr-coll")
+        coll = route53.create_cidr_collection(
+            Name=name,
+            CallerReference=_unique("cidr-ref"),
+        )
+        coll_id = coll["Collection"]["Id"]
+        try:
+            resp = route53.list_cidr_locations(CollectionId=coll_id)
+            assert "CidrLocations" in resp
+            assert isinstance(resp["CidrLocations"], list)
+        finally:
+            route53.delete_cidr_collection(Id=coll_id)
+
+    def test_list_cidr_blocks_empty_location(self, route53):
+        """ListCidrBlocks on a collection with no blocks returns empty."""
+        name = _unique("cidr-coll")
+        coll = route53.create_cidr_collection(
+            Name=name,
+            CallerReference=_unique("cidr-ref"),
+        )
+        coll_id = coll["Collection"]["Id"]
+        try:
+            resp = route53.list_cidr_blocks(CollectionId=coll_id)
+            assert "CidrBlocks" in resp
+            assert isinstance(resp["CidrBlocks"], list)
+        finally:
+            route53.delete_cidr_collection(Id=coll_id)
+
+
 class TestRoute53VPCAssociationAuthorization:
     """Tests for VPC association authorization operations."""
 
