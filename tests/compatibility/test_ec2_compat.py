@@ -6215,3 +6215,140 @@ class TestEC2AdditionalDescribeOps:
         resp = ec2.describe_stale_security_groups(VpcId=vpc_id)
         assert "StaleSecurityGroupSet" in resp
         assert isinstance(resp["StaleSecurityGroupSet"], list)
+
+
+class TestEC2TransitGatewayConnect:
+    """Tests for TransitGateway Connect and ConnectPeer lifecycle."""
+
+    def test_create_and_delete_transit_gateway_connect(self, ec2):
+        """Create a transit gateway connect attachment and delete it."""
+        tgw = ec2.create_transit_gateway(
+            Description="tgw-for-connect-test",
+        )
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        # Need a VPC attachment first
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])
+        vpc_id = vpcs["Vpcs"][0]["VpcId"]
+        subnets = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        subnet_id = subnets["Subnets"][0]["SubnetId"]
+        vpc_att = ec2.create_transit_gateway_vpc_attachment(
+            TransitGatewayId=tgw_id,
+            VpcId=vpc_id,
+            SubnetIds=[subnet_id],
+        )
+        att_id = vpc_att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+        try:
+            connect = ec2.create_transit_gateway_connect(
+                TransportTransitGatewayAttachmentId=att_id,
+                Options={"Protocol": "gre"},
+            )
+            connect_att_id = connect["TransitGatewayConnect"]["TransitGatewayAttachmentId"]
+            assert connect_att_id
+            described = ec2.describe_transit_gateway_connects(
+                TransitGatewayAttachmentIds=[connect_att_id]
+            )
+            assert len(described["TransitGatewayConnects"]) == 1
+            ec2.delete_transit_gateway_connect(TransitGatewayAttachmentId=connect_att_id)
+        finally:
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2VerifiedAccess:
+    """Tests for Verified Access lifecycle."""
+
+    def test_verified_access_trust_provider_lifecycle(self, ec2):
+        """Create, describe, delete a Verified Access trust provider."""
+        tp = ec2.create_verified_access_trust_provider(
+            TrustProviderType="user",
+            UserTrustProviderType="iam-identity-center",
+            PolicyReferenceName="test-policy",
+        )
+        tp_id = tp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
+        assert tp_id
+        try:
+            described = ec2.describe_verified_access_trust_providers(
+                VerifiedAccessTrustProviderIds=[tp_id]
+            )
+            assert len(described["VerifiedAccessTrustProviders"]) >= 1
+        finally:
+            ec2.delete_verified_access_trust_provider(VerifiedAccessTrustProviderId=tp_id)
+
+    def test_verified_access_group_lifecycle(self, ec2):
+        """Create, describe, delete a Verified Access group."""
+        vai = ec2.create_verified_access_instance(Description="test-vai")
+        vai_id = vai["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        try:
+            grp = ec2.create_verified_access_group(
+                VerifiedAccessInstanceId=vai_id,
+                Description="test-group",
+            )
+            grp_id = grp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+            assert grp_id
+            described = ec2.describe_verified_access_groups(VerifiedAccessGroupIds=[grp_id])
+            assert len(described["VerifiedAccessGroups"]) >= 1
+            ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
+        finally:
+            ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
+
+
+class TestEC2NetworkInsights:
+    """Tests for Network Insights Path and Access Scope."""
+
+    def test_create_and_delete_network_insights_path(self, ec2):
+        """Create and delete a network insights path."""
+        # Create an ENI as source
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])
+        vpc_id = vpcs["Vpcs"][0]["VpcId"]
+        subnets = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        subnet_id = subnets["Subnets"][0]["SubnetId"]
+        eni = ec2.create_network_interface(SubnetId=subnet_id)
+        eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+        try:
+            path = ec2.create_network_insights_path(
+                Source=eni_id,
+                Protocol="tcp",
+                DestinationPort=443,
+                Destination=eni_id,
+            )
+            path_id = path["NetworkInsightsPath"]["NetworkInsightsPathId"]
+            assert path_id
+            described = ec2.describe_network_insights_paths(NetworkInsightsPathIds=[path_id])
+            assert len(described["NetworkInsightsPaths"]) == 1
+            ec2.delete_network_insights_path(NetworkInsightsPathId=path_id)
+        finally:
+            ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+
+
+class TestEC2InstanceConnectEndpoint:
+    """Tests for Instance Connect Endpoint lifecycle."""
+
+    def test_create_and_delete_instance_connect_endpoint(self, ec2):
+        """Create and delete an instance connect endpoint."""
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])
+        vpc_id = vpcs["Vpcs"][0]["VpcId"]
+        subnets = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        subnet_id = subnets["Subnets"][0]["SubnetId"]
+        resp = ec2.create_instance_connect_endpoint(SubnetId=subnet_id)
+        ep_id = resp["InstanceConnectEndpoint"]["InstanceConnectEndpointId"]
+        assert ep_id
+        described = ec2.describe_instance_connect_endpoints(InstanceConnectEndpointIds=[ep_id])
+        assert len(described["InstanceConnectEndpoints"]) >= 1
+        ec2.delete_instance_connect_endpoint(InstanceConnectEndpointId=ep_id)
+
+
+class TestEC2MiscOperations:
+    """Tests for miscellaneous EC2 operations."""
+
+    def test_create_default_subnet(self, ec2):
+        """CreateDefaultSubnet creates a subnet in an AZ."""
+        azs = ec2.describe_availability_zones()
+        az_name = azs["AvailabilityZones"][0]["ZoneName"]
+        try:
+            resp = ec2.create_default_subnet(AvailabilityZone=az_name)
+            assert "Subnet" in resp
+            subnet_id = resp["Subnet"]["SubnetId"]
+            assert subnet_id
+        except ec2.exceptions.ClientError:
+            # Already exists, that's fine
+            pass

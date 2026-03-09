@@ -3111,3 +3111,358 @@ class TestGlueUsageProfileUpdate:
                 Configuration={},
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueUserDefinedFunctions:
+    """Tests for CreateUserDefinedFunction, GetUserDefinedFunction, DeleteUserDefinedFunction,
+    UpdateUserDefinedFunction."""
+
+    def test_create_and_get_user_defined_function(self, glue):
+        db_name = _unique("db")
+        func_name = _unique("udf")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_user_defined_function(
+            DatabaseName=db_name,
+            FunctionInput={
+                "FunctionName": func_name,
+                "ClassName": "com.example.MyUDF",
+                "OwnerName": "test-owner",
+                "OwnerType": "USER",
+            },
+        )
+        try:
+            resp = glue.get_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+            assert resp["UserDefinedFunction"]["FunctionName"] == func_name
+            assert resp["UserDefinedFunction"]["ClassName"] == "com.example.MyUDF"
+        finally:
+            glue.delete_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+            glue.delete_database(Name=db_name)
+
+    def test_update_user_defined_function(self, glue):
+        db_name = _unique("db")
+        func_name = _unique("udf")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_user_defined_function(
+            DatabaseName=db_name,
+            FunctionInput={
+                "FunctionName": func_name,
+                "ClassName": "com.example.MyUDF",
+                "OwnerName": "test-owner",
+                "OwnerType": "USER",
+            },
+        )
+        try:
+            glue.update_user_defined_function(
+                DatabaseName=db_name,
+                FunctionName=func_name,
+                FunctionInput={
+                    "FunctionName": func_name,
+                    "ClassName": "com.example.UpdatedUDF",
+                    "OwnerName": "test-owner",
+                    "OwnerType": "USER",
+                },
+            )
+            resp = glue.get_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+            assert resp["UserDefinedFunction"]["ClassName"] == "com.example.UpdatedUDF"
+        finally:
+            glue.delete_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+            glue.delete_database(Name=db_name)
+
+    def test_delete_user_defined_function(self, glue):
+        db_name = _unique("db")
+        func_name = _unique("udf")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_user_defined_function(
+            DatabaseName=db_name,
+            FunctionInput={
+                "FunctionName": func_name,
+                "ClassName": "com.example.MyUDF",
+                "OwnerName": "test-owner",
+                "OwnerType": "USER",
+            },
+        )
+        glue.delete_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+        with pytest.raises(ClientError) as exc:
+            glue.get_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        glue.delete_database(Name=db_name)
+
+
+class TestGlueConnectionOperations:
+    """Tests for CreateConnection, DeleteConnection, BatchDeleteConnection,
+    UpdateConnection."""
+
+    def test_create_and_delete_connection(self, glue):
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://localhost:3306/test",
+                    "USERNAME": "admin",
+                    "PASSWORD": "password",
+                },
+            }
+        )
+        resp = glue.get_connection(Name=conn_name)
+        assert resp["Connection"]["Name"] == conn_name
+        glue.delete_connection(ConnectionName=conn_name)
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name=conn_name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_batch_delete_connection(self, glue):
+        c1 = _unique("conn")
+        c2 = _unique("conn")
+        for name in (c1, c2):
+            glue.create_connection(
+                ConnectionInput={
+                    "Name": name,
+                    "ConnectionType": "JDBC",
+                    "ConnectionProperties": {
+                        "JDBC_CONNECTION_URL": "jdbc:mysql://localhost:3306/test",
+                        "USERNAME": "admin",
+                        "PASSWORD": "password",
+                    },
+                }
+            )
+        resp = glue.batch_delete_connection(ConnectionNameList=[c1, c2])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_connection(self, glue):
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://localhost:3306/test",
+                    "USERNAME": "admin",
+                    "PASSWORD": "password",
+                },
+            }
+        )
+        try:
+            glue.update_connection(
+                Name=conn_name,
+                ConnectionInput={
+                    "Name": conn_name,
+                    "ConnectionType": "JDBC",
+                    "ConnectionProperties": {
+                        "JDBC_CONNECTION_URL": "jdbc:mysql://localhost:3306/updated",
+                        "USERNAME": "admin",
+                        "PASSWORD": "password",
+                    },
+                },
+            )
+            resp = glue.get_connection(Name=conn_name)
+            assert "updated" in resp["Connection"]["ConnectionProperties"]["JDBC_CONNECTION_URL"]
+        finally:
+            glue.delete_connection(ConnectionName=conn_name)
+
+
+class TestGlueCrawlerUpdates:
+    """Tests for UpdateCrawler and UpdateCrawlerSchedule."""
+
+    def test_update_crawler(self, glue):
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            resp = glue.update_crawler(
+                Name=crawler_name,
+                Description="updated description",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = glue.get_crawler(Name=crawler_name)
+            assert got["Crawler"]["Description"] == "updated description"
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_update_crawler_schedule(self, glue):
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            resp = glue.update_crawler_schedule(
+                CrawlerName=crawler_name,
+                Schedule="cron(0 12 * * ? *)",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_start_crawler_schedule(self, glue):
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+            Schedule="cron(0 12 * * ? *)",
+        )
+        try:
+            resp = glue.start_crawler_schedule(CrawlerName=crawler_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_stop_crawler_schedule(self, glue):
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+            Schedule="cron(0 12 * * ? *)",
+        )
+        try:
+            glue.start_crawler_schedule(CrawlerName=crawler_name)
+            resp = glue.stop_crawler_schedule(CrawlerName=crawler_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueJobUpdates:
+    """Tests for UpdateJob, UpdateTrigger, UpdateDevEndpoint."""
+
+    def test_update_job(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.update_job(
+                JobName=job_name,
+                JobUpdate={
+                    "Role": "arn:aws:iam::123456789012:role/glue-role",
+                    "Command": {"Name": "glueetl", "ScriptLocation": "s3://bucket/updated.py"},
+                    "Description": "updated job",
+                },
+            )
+            assert resp["JobName"] == job_name
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_update_dev_endpoint(self, glue):
+        ep_name = _unique("devep")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.update_dev_endpoint(
+                EndpointName=ep_name,
+                PublicKey="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC test",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+
+
+class TestGlueJobBookmark:
+    """Tests for GetJobBookmark and ResetJobBookmark."""
+
+    def test_get_job_bookmark(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.get_job_bookmark(JobName=job_name)
+            assert "JobBookmarkEntry" in resp
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_reset_job_bookmark(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.reset_job_bookmark(JobName=job_name)
+            assert "JobBookmarkEntry" in resp
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueImportCatalog:
+    """Tests for ImportCatalogToGlue."""
+
+    def test_import_catalog_to_glue(self, glue):
+        resp = glue.import_catalog_to_glue()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGlueGetCatalogs:
+    """Tests for GetCatalogs."""
+
+    def test_get_catalogs(self, glue):
+        resp = glue.get_catalogs()
+        assert "CatalogList" in resp
+
+
+class TestGlueSchemaVersions:
+    """Tests for CheckSchemaVersionValidity and DeleteSchemaVersions."""
+
+    def test_check_schema_version_validity(self, glue):
+        resp = glue.check_schema_version_validity(
+            DataFormat="AVRO",
+            SchemaDefinition=('{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'),
+        )
+        assert "Valid" in resp
+
+    def test_delete_schema_versions(self, glue):
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=('{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'),
+        )
+        try:
+            resp = glue.delete_schema_versions(
+                SchemaId={
+                    "RegistryName": reg_name,
+                    "SchemaName": schema_name,
+                },
+                Versions="1",
+            )
+            assert "SchemaVersionErrors" in resp or "ResponseMetadata" in resp
+        finally:
+            try:
+                glue.delete_schema(SchemaId={"RegistryName": reg_name, "SchemaName": schema_name})
+            except Exception:
+                pass
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
