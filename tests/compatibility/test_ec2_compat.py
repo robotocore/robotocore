@@ -6087,16 +6087,80 @@ class TestEC2IpamCrud:
     def ec2(self):
         return make_client("ec2")
 
-    def test_create_ipam_returns_200(self, ec2):
-        """CreateIpam returns HTTP 200."""
-        resp = ec2.create_ipam()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_create_ipam(self, ec2):
+        """CreateIpam returns an IPAM with expected fields."""
+        resp = ec2.create_ipam(Description="test-ipam")
+        ipam = resp["Ipam"]
+        assert ipam["IpamId"].startswith("ipam-")
+        assert "IpamArn" in ipam
+        assert ipam["Description"] == "test-ipam"
+        assert ipam["State"] == "create-complete"
+        assert ipam["ScopeCount"] == 2
+        assert ipam["PublicDefaultScopeId"].startswith("ipam-scope-")
+        assert ipam["PrivateDefaultScopeId"].startswith("ipam-scope-")
+        ec2.delete_ipam(IpamId=ipam["IpamId"])
 
-    def test_describe_ipams_returns_200(self, ec2):
-        """DescribeIpams returns HTTP 200 after creating one."""
-        ec2.create_ipam()
-        resp = ec2.describe_ipams()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_describe_ipams(self, ec2):
+        """DescribeIpams returns created IPAM."""
+        create_resp = ec2.create_ipam(Description="desc-test")
+        ipam_id = create_resp["Ipam"]["IpamId"]
+        try:
+            resp = ec2.describe_ipams()
+            assert "Ipams" in resp
+            ids = [i["IpamId"] for i in resp["Ipams"]]
+            assert ipam_id in ids
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_describe_ipams_filtered(self, ec2):
+        """DescribeIpams with filter returns only matching IPAM."""
+        create_resp = ec2.create_ipam(Description="filtered")
+        ipam_id = create_resp["Ipam"]["IpamId"]
+        try:
+            resp = ec2.describe_ipams(Filters=[{"Name": "ipam-id", "Values": [ipam_id]}])
+            assert any(i["IpamId"] == ipam_id for i in resp["Ipams"])
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_delete_ipam(self, ec2):
+        """DeleteIpam removes the IPAM."""
+        create_resp = ec2.create_ipam(Description="delete-test")
+        ipam_id = create_resp["Ipam"]["IpamId"]
+        del_resp = ec2.delete_ipam(IpamId=ipam_id)
+        assert "Ipam" in del_resp
+
+    def test_create_ipam_with_tags(self, ec2):
+        """CreateIpam with tags returns tags in response."""
+        resp = ec2.create_ipam(
+            Description="tagged",
+            TagSpecifications=[
+                {
+                    "ResourceType": "ipam",
+                    "Tags": [{"Key": "env", "Value": "test"}],
+                }
+            ],
+        )
+        ipam = resp["Ipam"]
+        assert any(t["Key"] == "env" and t["Value"] == "test" for t in ipam["Tags"])
+        ec2.delete_ipam(IpamId=ipam["IpamId"])
+
+    def test_create_ipam_has_operating_regions(self, ec2):
+        """CreateIpam returns OperatingRegions."""
+        resp = ec2.create_ipam()
+        ipam = resp["Ipam"]
+        assert "OperatingRegions" in ipam
+        assert isinstance(ipam["OperatingRegions"], list)
+        assert len(ipam["OperatingRegions"]) >= 1
+        ec2.delete_ipam(IpamId=ipam["IpamId"])
+
+    def test_ipam_default_scopes(self, ec2):
+        """CreateIpam creates both public and private default scopes."""
+        resp = ec2.create_ipam()
+        ipam = resp["Ipam"]
+        assert ipam["PublicDefaultScopeId"] != ipam["PrivateDefaultScopeId"]
+        assert ipam["PublicDefaultScopeId"].startswith("ipam-scope-")
+        assert ipam["PrivateDefaultScopeId"].startswith("ipam-scope-")
+        ec2.delete_ipam(IpamId=ipam["IpamId"])
 
 
 class TestEC2TrafficMirrorCrud:
@@ -6335,6 +6399,192 @@ class TestEC2InstanceConnectEndpoint:
         described = ec2.describe_instance_connect_endpoints(InstanceConnectEndpointIds=[ep_id])
         assert len(described["InstanceConnectEndpoints"]) >= 1
         ec2.delete_instance_connect_endpoint(InstanceConnectEndpointId=ep_id)
+
+
+class TestEC2IpamPoolCrud:
+    """IPAM Pool create/describe lifecycle tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _create_ipam(self, ec2):
+        resp = ec2.create_ipam(Description="pool-test-ipam")
+        ipam = resp["Ipam"]
+        return ipam["IpamId"], ipam["PrivateDefaultScopeId"]
+
+    def test_create_ipam_pool(self, ec2):
+        """CreateIpamPool returns a pool with expected fields."""
+        ipam_id, scope_id = self._create_ipam(ec2)
+        try:
+            resp = ec2.create_ipam_pool(
+                IpamScopeId=scope_id,
+                AddressFamily="ipv4",
+                Description="test-pool",
+            )
+            pool = resp["IpamPool"]
+            assert pool["IpamPoolId"].startswith("ipam-pool-")
+            assert "IpamPoolArn" in pool
+            assert pool["AddressFamily"] == "ipv4"
+            assert pool["State"] == "create-complete"
+            assert pool["Description"] == "test-pool"
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_describe_ipam_pools(self, ec2):
+        """DescribeIpamPools returns created pool."""
+        ipam_id, scope_id = self._create_ipam(ec2)
+        try:
+            create_resp = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+            pool_id = create_resp["IpamPool"]["IpamPoolId"]
+            resp = ec2.describe_ipam_pools()
+            assert "IpamPools" in resp
+            ids = [p["IpamPoolId"] for p in resp["IpamPools"]]
+            assert pool_id in ids
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_create_ipam_pool_ipv6(self, ec2):
+        """CreateIpamPool with ipv6 address family."""
+        ipam_id, scope_id = self._create_ipam(ec2)
+        try:
+            resp = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv6")
+            pool = resp["IpamPool"]
+            assert pool["AddressFamily"] == "ipv6"
+            assert pool["IpamPoolId"].startswith("ipam-pool-")
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_create_multiple_ipam_pools(self, ec2):
+        """Multiple pools can be created in the same scope."""
+        ipam_id, scope_id = self._create_ipam(ec2)
+        try:
+            p1 = ec2.create_ipam_pool(
+                IpamScopeId=scope_id,
+                AddressFamily="ipv4",
+                Description="pool-1",
+            )
+            p2 = ec2.create_ipam_pool(
+                IpamScopeId=scope_id,
+                AddressFamily="ipv4",
+                Description="pool-2",
+            )
+            assert p1["IpamPool"]["IpamPoolId"] != p2["IpamPool"]["IpamPoolId"]
+            pools = ec2.describe_ipam_pools()
+            pool_ids = [p["IpamPoolId"] for p in pools["IpamPools"]]
+            assert p1["IpamPool"]["IpamPoolId"] in pool_ids
+            assert p2["IpamPool"]["IpamPoolId"] in pool_ids
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2TransitGatewayConnectPeer:
+    """Tests for Transit Gateway Connect Peer lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _create_tgw_connect(self, ec2):
+        """Create a transit gateway with a VPC attachment and connect attachment."""
+        tgw = ec2.create_transit_gateway(Description="peer-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])
+        vpc_id = vpcs["Vpcs"][0]["VpcId"]
+        subnets = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        subnet_id = subnets["Subnets"][0]["SubnetId"]
+        att = ec2.create_transit_gateway_vpc_attachment(
+            TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[subnet_id]
+        )
+        att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+        conn = ec2.create_transit_gateway_connect(
+            TransportTransitGatewayAttachmentId=att_id, Options={"Protocol": "gre"}
+        )
+        conn_id = conn["TransitGatewayConnect"]["TransitGatewayAttachmentId"]
+        return tgw_id, att_id, conn_id
+
+    def _cleanup_tgw(self, ec2, tgw_id, att_id, conn_id):
+        ec2.delete_transit_gateway_connect(TransitGatewayAttachmentId=conn_id)
+        ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_create_transit_gateway_connect_peer(self, ec2):
+        """CreateTransitGatewayConnectPeer returns a peer with expected fields."""
+        tgw_id, att_id, conn_id = self._create_tgw_connect(ec2)
+        try:
+            resp = ec2.create_transit_gateway_connect_peer(
+                TransitGatewayAttachmentId=conn_id,
+                PeerAddress="10.0.0.1",
+                InsideCidrBlocks=["169.254.100.0/29"],
+                TransitGatewayAddress="10.0.0.2",
+            )
+            peer = resp["TransitGatewayConnectPeer"]
+            assert peer["TransitGatewayConnectPeerId"].startswith("tgw-connect-peer-")
+            assert peer["TransitGatewayAttachmentId"] == conn_id
+            assert "ConnectPeerConfiguration" in peer
+            ec2.delete_transit_gateway_connect_peer(
+                TransitGatewayConnectPeerId=peer["TransitGatewayConnectPeerId"]
+            )
+        finally:
+            self._cleanup_tgw(ec2, tgw_id, att_id, conn_id)
+
+    def test_describe_transit_gateway_connect_peers(self, ec2):
+        """DescribeTransitGatewayConnectPeers returns created peer."""
+        tgw_id, att_id, conn_id = self._create_tgw_connect(ec2)
+        try:
+            create_resp = ec2.create_transit_gateway_connect_peer(
+                TransitGatewayAttachmentId=conn_id,
+                PeerAddress="10.0.0.3",
+                InsideCidrBlocks=["169.254.101.0/29"],
+                TransitGatewayAddress="10.0.0.4",
+            )
+            peer_id = create_resp["TransitGatewayConnectPeer"]["TransitGatewayConnectPeerId"]
+            resp = ec2.describe_transit_gateway_connect_peers(
+                TransitGatewayConnectPeerIds=[peer_id]
+            )
+            assert len(resp["TransitGatewayConnectPeers"]) == 1
+            assert resp["TransitGatewayConnectPeers"][0]["TransitGatewayConnectPeerId"] == peer_id
+            ec2.delete_transit_gateway_connect_peer(TransitGatewayConnectPeerId=peer_id)
+        finally:
+            self._cleanup_tgw(ec2, tgw_id, att_id, conn_id)
+
+    def test_delete_transit_gateway_connect_peer(self, ec2):
+        """DeleteTransitGatewayConnectPeer removes the peer."""
+        tgw_id, att_id, conn_id = self._create_tgw_connect(ec2)
+        try:
+            create_resp = ec2.create_transit_gateway_connect_peer(
+                TransitGatewayAttachmentId=conn_id,
+                PeerAddress="10.0.0.5",
+                InsideCidrBlocks=["169.254.102.0/29"],
+                TransitGatewayAddress="10.0.0.6",
+            )
+            peer_id = create_resp["TransitGatewayConnectPeer"]["TransitGatewayConnectPeerId"]
+            del_resp = ec2.delete_transit_gateway_connect_peer(TransitGatewayConnectPeerId=peer_id)
+            assert "TransitGatewayConnectPeer" in del_resp
+        finally:
+            self._cleanup_tgw(ec2, tgw_id, att_id, conn_id)
+
+    def test_connect_peer_config_fields(self, ec2):
+        """Connect peer has proper configuration with peer and transit gateway addresses."""
+        tgw_id, att_id, conn_id = self._create_tgw_connect(ec2)
+        try:
+            resp = ec2.create_transit_gateway_connect_peer(
+                TransitGatewayAttachmentId=conn_id,
+                PeerAddress="10.0.0.7",
+                InsideCidrBlocks=["169.254.103.0/29"],
+                TransitGatewayAddress="10.0.0.8",
+            )
+            peer = resp["TransitGatewayConnectPeer"]
+            config = peer["ConnectPeerConfiguration"]
+            assert config["PeerAddress"] == "10.0.0.7"
+            assert config["TransitGatewayAddress"] == "10.0.0.8"
+            assert "InsideCidrBlocks" in config
+            assert "169.254.103.0/29" in config["InsideCidrBlocks"]
+            ec2.delete_transit_gateway_connect_peer(
+                TransitGatewayConnectPeerId=peer["TransitGatewayConnectPeerId"]
+            )
+        finally:
+            self._cleanup_tgw(ec2, tgw_id, att_id, conn_id)
 
 
 class TestEC2MiscOperations:

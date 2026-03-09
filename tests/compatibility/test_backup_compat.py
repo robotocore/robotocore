@@ -1452,3 +1452,140 @@ class TestBackupErrorPathAdditional:
                 Lifecycle={"DeleteAfterDays": 30},
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupGlobalAndRegionSettings:
+    """Tests for global settings, region settings, and supported resource types."""
+
+    def test_describe_global_settings(self, backup):
+        """DescribeGlobalSettings returns GlobalSettings map."""
+        resp = backup.describe_global_settings()
+        assert "GlobalSettings" in resp
+        assert isinstance(resp["GlobalSettings"], dict)
+        assert "isCrossAccountBackupEnabled" in resp["GlobalSettings"]
+
+    def test_describe_region_settings(self, backup):
+        """DescribeRegionSettings returns ResourceTypeOptInPreference map."""
+        resp = backup.describe_region_settings()
+        assert "ResourceTypeOptInPreference" in resp
+        prefs = resp["ResourceTypeOptInPreference"]
+        assert isinstance(prefs, dict)
+        # At least some common resource types should be present
+        assert "EBS" in prefs
+        assert "S3" in prefs
+
+    def test_get_supported_resource_types(self, backup):
+        """GetSupportedResourceTypes returns a non-empty list of resource types."""
+        resp = backup.get_supported_resource_types()
+        assert "ResourceTypes" in resp
+        types = resp["ResourceTypes"]
+        assert isinstance(types, list)
+        assert len(types) > 0
+        # Common resource types should be present
+        assert "EBS" in types
+        assert "S3" in types
+
+
+class TestBackupProtectedResources:
+    """Tests for protected resource operations."""
+
+    def test_list_protected_resources_empty(self, backup):
+        """ListProtectedResources returns Results list (may be empty)."""
+        resp = backup.list_protected_resources()
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_describe_protected_resource_nonexistent(self, backup):
+        """DescribeProtectedResource for nonexistent ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.describe_protected_resource(
+                ResourceArn="arn:aws:ec2:us-east-1:123456789012:instance/i-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupVaultAccessAndNotifications:
+    """Tests for vault access policy and notification operations."""
+
+    def test_get_backup_vault_access_policy_no_policy(self, backup):
+        """GetBackupVaultAccessPolicy on vault without policy raises ResourceNotFoundException."""
+        vault_name = _unique("vault")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                backup.get_backup_vault_access_policy(BackupVaultName=vault_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_get_backup_vault_access_policy_nonexistent_vault(self, backup):
+        """GetBackupVaultAccessPolicy on nonexistent vault raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.get_backup_vault_access_policy(BackupVaultName="nonexistent-vault-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_backup_vault_notifications_no_notifications(self, backup):
+        """GetBackupVaultNotifications on vault without config raises ResourceNotFoundException."""
+        vault_name = _unique("vault")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                backup.get_backup_vault_notifications(BackupVaultName=vault_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_get_backup_vault_notifications_nonexistent_vault(self, backup):
+        """GetBackupVaultNotifications on nonexistent vault raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.get_backup_vault_notifications(BackupVaultName="nonexistent-vault-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupReportPlanOpsExtended:
+    """Extended tests for report plan operations."""
+
+    def test_list_report_plans_empty(self, backup):
+        """ListReportPlans returns ReportPlans list."""
+        resp = backup.list_report_plans()
+        assert "ReportPlans" in resp
+        assert isinstance(resp["ReportPlans"], list)
+
+    def test_describe_report_plan_nonexistent(self, backup):
+        """DescribeReportPlan for nonexistent plan raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.describe_report_plan(ReportPlanName="nonexistent-report-plan")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupRestoreTestingSelectionOperations:
+    """Tests for restore testing selection operations."""
+
+    def test_get_restore_testing_selection_nonexistent(self, backup):
+        """GetRestoreTestingSelection for nonexistent selection raises error."""
+        vault_name = _unique("vault")
+        plan_name = _unique("rtp")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            backup.create_restore_testing_plan(
+                RestoreTestingPlan={
+                    "RestoreTestingPlanName": plan_name,
+                    "ScheduleExpression": "cron(0 12 * * ? *)",
+                    "RecoveryPointSelection": {
+                        "Algorithm": "LATEST_WITHIN_WINDOW",
+                        "RecoveryPointTypes": ["CONTINUOUS"],
+                        "IncludeVaults": [
+                            f"arn:aws:backup:us-east-1:123456789012:backup-vault:{vault_name}"
+                        ],
+                    },
+                }
+            )
+            with pytest.raises(ClientError) as exc:
+                backup.get_restore_testing_selection(
+                    RestoreTestingPlanName=plan_name,
+                    RestoreTestingSelectionName="nonexistent-selection",
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+            backup.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)

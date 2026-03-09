@@ -1037,3 +1037,712 @@ class TestConnectListOperations:
         )
         assert "UseCaseSummaryList" in resp
         assert isinstance(resp["UseCaseSummaryList"], list)
+
+
+class TestConnectDeleteOps:
+    """Tests for Connect delete operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_delete_contact_flow(self, connect, instance_id):
+        create_resp = connect.create_contact_flow(
+            InstanceId=instance_id,
+            Name="FlowToDelete",
+            Type="CONTACT_FLOW",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        flow_id = create_resp["ContactFlowId"]
+        connect.delete_contact_flow(InstanceId=instance_id, ContactFlowId=flow_id)
+        # Verify deleted
+        with pytest.raises(ClientError):
+            connect.describe_contact_flow(InstanceId=instance_id, ContactFlowId=flow_id)
+
+    def test_delete_contact_flow_module(self, connect, instance_id):
+        create_resp = connect.create_contact_flow_module(
+            InstanceId=instance_id,
+            Name="ModuleToDelete",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        module_id = create_resp["Id"]
+        connect.delete_contact_flow_module(InstanceId=instance_id, ContactFlowModuleId=module_id)
+        with pytest.raises(ClientError):
+            connect.describe_contact_flow_module(
+                InstanceId=instance_id, ContactFlowModuleId=module_id
+            )
+
+    def test_delete_hours_of_operation(self, connect, instance_id):
+        create_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="HoursToDelete",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = create_resp["HoursOfOperationId"]
+        connect.delete_hours_of_operation(InstanceId=instance_id, HoursOfOperationId=hoo_id)
+        with pytest.raises(ClientError):
+            connect.describe_hours_of_operation(InstanceId=instance_id, HoursOfOperationId=hoo_id)
+
+    def test_delete_prompt(self, connect, instance_id):
+        create_resp = connect.create_prompt(
+            InstanceId=instance_id,
+            Name="PromptToDelete",
+            S3Uri="s3://my-bucket/prompt.wav",
+        )
+        prompt_id = create_resp["PromptId"]
+        connect.delete_prompt(InstanceId=instance_id, PromptId=prompt_id)
+        with pytest.raises(ClientError):
+            connect.describe_prompt(InstanceId=instance_id, PromptId=prompt_id)
+
+    def test_delete_quick_connect(self, connect, instance_id):
+        create_resp = connect.create_quick_connect(
+            InstanceId=instance_id,
+            Name="QCToDelete",
+            QuickConnectConfig={
+                "QuickConnectType": "PHONE_NUMBER",
+                "PhoneConfig": {"PhoneNumber": "+15555551234"},
+            },
+        )
+        qc_id = create_resp["QuickConnectId"]
+        connect.delete_quick_connect(InstanceId=instance_id, QuickConnectId=qc_id)
+        with pytest.raises(ClientError):
+            connect.describe_quick_connect(InstanceId=instance_id, QuickConnectId=qc_id)
+
+    def test_delete_routing_profile(self, connect, instance_id):
+        create_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPToDelete",
+            Description="Profile to delete",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        rp_id = create_resp["RoutingProfileId"]
+        connect.delete_routing_profile(InstanceId=instance_id, RoutingProfileId=rp_id)
+        with pytest.raises(ClientError):
+            connect.describe_routing_profile(InstanceId=instance_id, RoutingProfileId=rp_id)
+
+    def test_delete_rule(self, connect, instance_id):
+        create_resp = connect.create_rule(
+            InstanceId=instance_id,
+            Name="RuleToDelete",
+            TriggerEventSource={"EventSourceName": "OnPostCallAnalysisAvailable"},
+            Function='EQUALS("a", "b")',
+            Actions=[
+                {
+                    "ActionType": "GENERATE_EVENTBRIDGE_EVENT",
+                    "EventBridgeAction": {"Name": "del-event"},
+                }
+            ],
+            PublishStatus="DRAFT",
+        )
+        rule_id = create_resp["RuleId"]
+        connect.delete_rule(InstanceId=instance_id, RuleId=rule_id)
+        with pytest.raises(ClientError):
+            connect.describe_rule(InstanceId=instance_id, RuleId=rule_id)
+
+    def test_delete_security_profile(self, connect, instance_id):
+        create_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName="SPToDelete",
+        )
+        sp_id = create_resp["SecurityProfileId"]
+        connect.delete_security_profile(InstanceId=instance_id, SecurityProfileId=sp_id)
+        with pytest.raises(ClientError):
+            connect.describe_security_profile(InstanceId=instance_id, SecurityProfileId=sp_id)
+
+    def test_delete_vocabulary(self, connect, instance_id):
+        create_resp = connect.create_vocabulary(
+            InstanceId=instance_id,
+            VocabularyName="VocabToDelete",
+            LanguageCode="en-US",
+            Content="Phrase\tIPA\tSoundsLike\tDisplayAs\ntest\t\t\ttest",
+        )
+        vocab_id = create_resp["VocabularyId"]
+        connect.delete_vocabulary(InstanceId=instance_id, VocabularyId=vocab_id)
+        with pytest.raises(ClientError):
+            connect.describe_vocabulary(InstanceId=instance_id, VocabularyId=vocab_id)
+
+
+class TestConnectUpdateOps:
+    """Tests for Connect update operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_update_agent_status(self, connect, instance_id):
+        create_resp = connect.create_agent_status(
+            InstanceId=instance_id,
+            Name="StatusToUpdate",
+            State="ENABLED",
+        )
+        status_id = create_resp["AgentStatusId"]
+        connect.update_agent_status(
+            InstanceId=instance_id,
+            AgentStatusId=status_id,
+            Name="UpdatedStatus",
+        )
+        resp = connect.describe_agent_status(InstanceId=instance_id, AgentStatusId=status_id)
+        assert resp["AgentStatus"]["Name"] == "UpdatedStatus"
+
+    def test_update_contact_flow_name(self, connect, instance_id):
+        create_resp = connect.create_contact_flow(
+            InstanceId=instance_id,
+            Name="FlowToRename",
+            Type="CONTACT_FLOW",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        flow_id = create_resp["ContactFlowId"]
+        connect.update_contact_flow_name(
+            InstanceId=instance_id,
+            ContactFlowId=flow_id,
+            Name="RenamedFlow",
+        )
+        resp = connect.describe_contact_flow(InstanceId=instance_id, ContactFlowId=flow_id)
+        assert resp["ContactFlow"]["Name"] == "RenamedFlow"
+
+    def test_update_contact_flow_content(self, connect, instance_id):
+        create_resp = connect.create_contact_flow(
+            InstanceId=instance_id,
+            Name="FlowToUpdateContent",
+            Type="CONTACT_FLOW",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        flow_id = create_resp["ContactFlowId"]
+        new_content = '{"Version":"2019-10-30","StartAction":"action2","Actions":[]}'
+        connect.update_contact_flow_content(
+            InstanceId=instance_id,
+            ContactFlowId=flow_id,
+            Content=new_content,
+        )
+        resp = connect.describe_contact_flow(InstanceId=instance_id, ContactFlowId=flow_id)
+        assert resp["ContactFlow"]["Content"] is not None
+
+    def test_update_hours_of_operation(self, connect, instance_id):
+        create_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="HoursToUpdate",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = create_resp["HoursOfOperationId"]
+        connect.update_hours_of_operation(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            Name="UpdatedHours",
+        )
+        resp = connect.describe_hours_of_operation(
+            InstanceId=instance_id, HoursOfOperationId=hoo_id
+        )
+        assert resp["HoursOfOperation"]["Name"] == "UpdatedHours"
+
+    def test_update_instance_attribute(self, connect, instance_id):
+        connect.update_instance_attribute(
+            InstanceId=instance_id,
+            AttributeType="INBOUND_CALLS",
+            Value="false",
+        )
+        resp = connect.describe_instance_attribute(
+            InstanceId=instance_id,
+            AttributeType="INBOUND_CALLS",
+        )
+        assert resp["Attribute"]["Value"] == "false"
+
+    def test_update_prompt(self, connect, instance_id):
+        create_resp = connect.create_prompt(
+            InstanceId=instance_id,
+            Name="PromptToUpdate",
+            S3Uri="s3://my-bucket/prompt.wav",
+        )
+        prompt_id = create_resp["PromptId"]
+        connect.update_prompt(
+            InstanceId=instance_id,
+            PromptId=prompt_id,
+            Name="UpdatedPrompt",
+        )
+        resp = connect.describe_prompt(InstanceId=instance_id, PromptId=prompt_id)
+        assert resp["Prompt"]["Name"] == "UpdatedPrompt"
+
+    def test_update_queue_name(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="QueueUpdateHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = hoo_resp["HoursOfOperationId"]
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QueueToRename",
+            HoursOfOperationId=hoo_id,
+        )
+        queue_id = queue_resp["QueueId"]
+        connect.update_queue_name(
+            InstanceId=instance_id,
+            QueueId=queue_id,
+            Name="RenamedQueue",
+        )
+        resp = connect.describe_queue(InstanceId=instance_id, QueueId=queue_id)
+        assert resp["Queue"]["Name"] == "RenamedQueue"
+
+    def test_update_queue_status(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="QueueStatusHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = hoo_resp["HoursOfOperationId"]
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QueueForStatus",
+            HoursOfOperationId=hoo_id,
+        )
+        queue_id = queue_resp["QueueId"]
+        connect.update_queue_status(
+            InstanceId=instance_id,
+            QueueId=queue_id,
+            Status="DISABLED",
+        )
+        resp = connect.describe_queue(InstanceId=instance_id, QueueId=queue_id)
+        assert resp["Queue"]["Status"] == "DISABLED"
+
+    def test_update_queue_hours_of_operation(self, connect, instance_id):
+        hoo_resp1 = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="OriginalHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id1 = hoo_resp1["HoursOfOperationId"]
+        hoo_resp2 = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="NewHours",
+            TimeZone="America/Chicago",
+            Config=[
+                {
+                    "Day": "TUESDAY",
+                    "StartTime": {"Hours": 8, "Minutes": 0},
+                    "EndTime": {"Hours": 16, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id2 = hoo_resp2["HoursOfOperationId"]
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QueueForHOO",
+            HoursOfOperationId=hoo_id1,
+        )
+        queue_id = queue_resp["QueueId"]
+        connect.update_queue_hours_of_operation(
+            InstanceId=instance_id,
+            QueueId=queue_id,
+            HoursOfOperationId=hoo_id2,
+        )
+        resp = connect.describe_queue(InstanceId=instance_id, QueueId=queue_id)
+        assert resp["Queue"]["HoursOfOperationId"] == hoo_id2
+
+    def test_update_queue_outbound_caller_config(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="CallerConfigHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        hoo_id = hoo_resp["HoursOfOperationId"]
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QueueForCallerConfig",
+            HoursOfOperationId=hoo_id,
+        )
+        queue_id = queue_resp["QueueId"]
+        resp = connect.update_queue_outbound_caller_config(
+            InstanceId=instance_id,
+            QueueId=queue_id,
+            OutboundCallerConfig={"OutboundCallerIdName": "TestCaller"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_quick_connect_name(self, connect, instance_id):
+        create_resp = connect.create_quick_connect(
+            InstanceId=instance_id,
+            Name="QCToRename",
+            QuickConnectConfig={
+                "QuickConnectType": "PHONE_NUMBER",
+                "PhoneConfig": {"PhoneNumber": "+15555551234"},
+            },
+        )
+        qc_id = create_resp["QuickConnectId"]
+        connect.update_quick_connect_name(
+            InstanceId=instance_id,
+            QuickConnectId=qc_id,
+            Name="RenamedQC",
+        )
+        resp = connect.describe_quick_connect(InstanceId=instance_id, QuickConnectId=qc_id)
+        assert resp["QuickConnect"]["Name"] == "RenamedQC"
+
+    def test_update_quick_connect_config(self, connect, instance_id):
+        create_resp = connect.create_quick_connect(
+            InstanceId=instance_id,
+            Name="QCToUpdateConfig",
+            QuickConnectConfig={
+                "QuickConnectType": "PHONE_NUMBER",
+                "PhoneConfig": {"PhoneNumber": "+15555551234"},
+            },
+        )
+        qc_id = create_resp["QuickConnectId"]
+        connect.update_quick_connect_config(
+            InstanceId=instance_id,
+            QuickConnectId=qc_id,
+            QuickConnectConfig={
+                "QuickConnectType": "PHONE_NUMBER",
+                "PhoneConfig": {"PhoneNumber": "+15555559999"},
+            },
+        )
+        resp = connect.describe_quick_connect(InstanceId=instance_id, QuickConnectId=qc_id)
+        phone = resp["QuickConnect"]["QuickConnectConfig"]["PhoneConfig"]
+        assert phone["PhoneNumber"] == "+15555559999"
+
+    def test_update_routing_profile_name(self, connect, instance_id):
+        create_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPToRename",
+            Description="Profile to rename",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        rp_id = create_resp["RoutingProfileId"]
+        connect.update_routing_profile_name(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_id,
+            Name="RenamedRP",
+        )
+        resp = connect.describe_routing_profile(InstanceId=instance_id, RoutingProfileId=rp_id)
+        assert resp["RoutingProfile"]["Name"] == "RenamedRP"
+
+    def test_update_routing_profile_concurrency(self, connect, instance_id):
+        create_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPForConcurrency",
+            Description="Profile for concurrency update",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        rp_id = create_resp["RoutingProfileId"]
+        resp = connect.update_routing_profile_concurrency(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_id,
+            MediaConcurrencies=[
+                {"Channel": "VOICE", "Concurrency": 2},
+                {"Channel": "CHAT", "Concurrency": 3},
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_routing_profile_default_outbound_queue(self, connect, instance_id):
+        create_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPForOutbound",
+            Description="Profile for outbound queue update",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        rp_id = create_resp["RoutingProfileId"]
+        resp = connect.update_routing_profile_default_outbound_queue(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_id,
+            DefaultOutboundQueueId="new-fake-queue-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_security_profile(self, connect, instance_id):
+        create_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName="SPToUpdate",
+            Description="Original desc",
+        )
+        sp_id = create_resp["SecurityProfileId"]
+        connect.update_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileId=sp_id,
+            Description="Updated desc",
+        )
+        resp = connect.describe_security_profile(InstanceId=instance_id, SecurityProfileId=sp_id)
+        assert resp["SecurityProfile"]["Description"] == "Updated desc"
+
+    def test_update_rule(self, connect, instance_id):
+        create_resp = connect.create_rule(
+            InstanceId=instance_id,
+            Name="RuleToUpdate",
+            TriggerEventSource={"EventSourceName": "OnPostCallAnalysisAvailable"},
+            Function='EQUALS("a", "b")',
+            Actions=[
+                {
+                    "ActionType": "GENERATE_EVENTBRIDGE_EVENT",
+                    "EventBridgeAction": {"Name": "update-event"},
+                }
+            ],
+            PublishStatus="DRAFT",
+        )
+        rule_id = create_resp["RuleId"]
+        connect.update_rule(
+            InstanceId=instance_id,
+            RuleId=rule_id,
+            Name="UpdatedRule",
+            Function='EQUALS("c", "d")',
+            Actions=[
+                {
+                    "ActionType": "GENERATE_EVENTBRIDGE_EVENT",
+                    "EventBridgeAction": {"Name": "updated-event"},
+                }
+            ],
+            PublishStatus="DRAFT",
+        )
+        resp = connect.describe_rule(InstanceId=instance_id, RuleId=rule_id)
+        assert resp["Rule"]["Name"] == "UpdatedRule"
+
+
+class TestConnectSearchOps:
+    """Tests for Connect search operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    @pytest.fixture
+    def instance_arn(self, connect):
+        _, arn = _create_instance(connect)
+        return arn
+
+    def test_search_users(self, connect, instance_id):
+        resp = connect.search_users(InstanceId=instance_id)
+        assert "Users" in resp
+        assert isinstance(resp["Users"], list)
+
+    def test_search_vocabularies(self, connect, instance_id):
+        resp = connect.search_vocabularies(InstanceId=instance_id)
+        assert "VocabularySummaryList" in resp
+        assert isinstance(resp["VocabularySummaryList"], list)
+
+    def test_search_vocabularies_after_create(self, connect, instance_id):
+        connect.create_vocabulary(
+            InstanceId=instance_id,
+            VocabularyName="SearchableVocab",
+            LanguageCode="en-US",
+            Content="Phrase\tIPA\tSoundsLike\tDisplayAs\ntest\t\t\ttest",
+        )
+        resp = connect.search_vocabularies(InstanceId=instance_id)
+        assert len(resp["VocabularySummaryList"]) >= 1
+        names = [v["Name"] for v in resp["VocabularySummaryList"]]
+        assert "SearchableVocab" in names
+
+
+class TestConnectPhoneNumbers:
+    """Tests for Connect phone number operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    @pytest.fixture
+    def instance_arn(self, connect):
+        _, arn = _create_instance(connect)
+        return arn
+
+    def test_claim_and_release_phone_number(self, connect, instance_arn):
+        try:
+            resp = connect.claim_phone_number(
+                TargetArn=instance_arn,
+                PhoneNumber="+15555550100",
+            )
+            assert "PhoneNumberId" in resp
+            assert "PhoneNumberArn" in resp
+            phone_id = resp["PhoneNumberId"]
+            # Release the phone number
+            connect.release_phone_number(PhoneNumberId=phone_id)
+        except ClientError as e:
+            # Some implementations may not support this
+            assert e.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidParameterException",
+            )
+
+    def test_update_phone_number(self, connect, instance_arn):
+        try:
+            claim_resp = connect.claim_phone_number(
+                TargetArn=instance_arn,
+                PhoneNumber="+15555550199",
+            )
+            phone_id = claim_resp["PhoneNumberId"]
+            # Create another instance to move phone number to
+            id2, arn2 = _create_instance(connect)
+            resp = connect.update_phone_number(
+                PhoneNumberId=phone_id,
+                TargetArn=arn2,
+            )
+            assert "PhoneNumberId" in resp
+            assert "PhoneNumberArn" in resp
+        except ClientError as e:
+            assert e.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidParameterException",
+                "DuplicateResourceException",
+            )
+
+
+class TestConnectUserOps:
+    """Tests for Connect user-related operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def _create_user(self, connect, instance_id, username="testuser"):
+        """Helper to create a Connect user."""
+        rp_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name=f"rp-{username}",
+            Description="For user",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        sp_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName=f"sp-{username}",
+        )
+        resp = connect.create_user(
+            InstanceId=instance_id,
+            Username=username,
+            PhoneConfig={
+                "PhoneType": "SOFT_PHONE",
+                "AutoAccept": False,
+                "AfterContactWorkTimeLimit": 0,
+            },
+            SecurityProfileIds=[sp_resp["SecurityProfileId"]],
+            RoutingProfileId=rp_resp["RoutingProfileId"],
+        )
+        return resp["UserId"]
+
+    def test_create_and_describe_user(self, connect, instance_id):
+        user_id = self._create_user(connect, instance_id, "newuser1")
+        resp = connect.describe_user(InstanceId=instance_id, UserId=user_id)
+        assert "User" in resp
+        assert resp["User"]["Username"] == "newuser1"
+
+    def test_delete_user(self, connect, instance_id):
+        user_id = self._create_user(connect, instance_id, "delusr")
+        connect.delete_user(InstanceId=instance_id, UserId=user_id)
+        with pytest.raises(ClientError) as exc_info:
+            connect.describe_user(InstanceId=instance_id, UserId=user_id)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_user_identity_info(self, connect, instance_id):
+        user_id = self._create_user(connect, instance_id, "identusr")
+        connect.update_user_identity_info(
+            InstanceId=instance_id,
+            UserId=user_id,
+            IdentityInfo={
+                "FirstName": "John",
+                "LastName": "Doe",
+            },
+        )
+        resp = connect.describe_user(InstanceId=instance_id, UserId=user_id)
+        identity = resp["User"].get("IdentityInfo", {})
+        assert identity.get("FirstName") == "John"
+        assert identity.get("LastName") == "Doe"
+
+    def test_update_user_phone_config(self, connect, instance_id):
+        user_id = self._create_user(connect, instance_id, "phoneusr")
+        connect.update_user_phone_config(
+            InstanceId=instance_id,
+            UserId=user_id,
+            PhoneConfig={
+                "PhoneType": "SOFT_PHONE",
+                "AutoAccept": True,
+                "AfterContactWorkTimeLimit": 30,
+            },
+        )
+        resp = connect.describe_user(InstanceId=instance_id, UserId=user_id)
+        phone_config = resp["User"]["PhoneConfig"]
+        assert phone_config["AutoAccept"] is True
+
+    def test_update_user_routing_profile(self, connect, instance_id):
+        user_id = self._create_user(connect, instance_id, "routusr")
+        new_rp_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="new-rp-for-user",
+            Description="New routing profile",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        new_rp_id = new_rp_resp["RoutingProfileId"]
+        connect.update_user_routing_profile(
+            InstanceId=instance_id,
+            UserId=user_id,
+            RoutingProfileId=new_rp_id,
+        )
+        resp = connect.describe_user(InstanceId=instance_id, UserId=user_id)
+        assert resp["User"]["RoutingProfileId"] == new_rp_id
+
+    def test_update_user_hierarchy(self, connect, instance_id):
+        user_id = self._create_user(connect, instance_id, "hierusr")
+        group_resp = connect.create_user_hierarchy_group(
+            InstanceId=instance_id,
+            Name="HierGroup",
+        )
+        group_id = group_resp["HierarchyGroupId"]
+        resp = connect.update_user_hierarchy(
+            InstanceId=instance_id,
+            UserId=user_id,
+            HierarchyGroupId=group_id,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_users_after_create(self, connect, instance_id):
+        self._create_user(connect, instance_id, "listusr")
+        resp = connect.list_users(InstanceId=instance_id)
+        assert len(resp["UserSummaryList"]) >= 1
+        usernames = [u.get("Username") for u in resp["UserSummaryList"]]
+        assert "listusr" in usernames

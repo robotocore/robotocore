@@ -800,3 +800,27 @@ class TestAthenaNewOps:
         resp = athena.list_notebook_sessions(NotebookId="fake-notebook-id")
         assert "NotebookSessionsList" in resp
         assert isinstance(resp["NotebookSessionsList"], list)
+
+    def test_list_prepared_statements(self, athena):
+        """ListPreparedStatements returns PreparedStatements list."""
+        resp = athena.list_prepared_statements(WorkGroup="primary")
+        assert "PreparedStatements" in resp
+        assert isinstance(resp["PreparedStatements"], list)
+
+    def test_list_prepared_statements_includes_created(self, athena):
+        """ListPreparedStatements includes a newly created statement."""
+        name = _unique("ps")
+        athena.create_prepared_statement(
+            StatementName=name,
+            WorkGroup="primary",
+            QueryStatement="SELECT ? FROM t",
+        )
+        resp = athena.list_prepared_statements(WorkGroup="primary")
+        names = [ps["StatementName"] for ps in resp["PreparedStatements"]]
+        assert name in names
+
+    def test_list_sessions(self, athena):
+        """ListSessions returns Sessions list."""
+        resp = athena.list_sessions(WorkGroup="primary")
+        assert "Sessions" in resp
+        assert isinstance(resp["Sessions"], list)
