@@ -413,3 +413,108 @@ class TestInspector2BatchGetAccountStatusDetails:
         """ListDelegatedAdminAccounts returns structured response."""
         resp = client.list_delegated_admin_accounts()
         assert isinstance(resp["delegatedAdminAccounts"], list)
+
+
+class TestInspector2ConfigAndPermissions:
+    """Tests for GetConfiguration, ListAccountPermissions, and related ops."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_get_configuration(self, client):
+        """GetConfiguration returns ECR scan configuration."""
+        resp = client.get_configuration()
+        assert "ecrConfiguration" in resp
+
+    def test_list_account_permissions(self, client):
+        """ListAccountPermissions returns permissions list."""
+        resp = client.list_account_permissions()
+        assert "permissions" in resp
+        assert isinstance(resp["permissions"], list)
+
+    def test_batch_get_free_trial_info(self, client):
+        """BatchGetFreeTrialInfo returns account trial info."""
+        resp = client.batch_get_free_trial_info(accountIds=["123456789012"])
+        assert "accounts" in resp
+        assert "failedAccounts" in resp
+        assert isinstance(resp["accounts"], list)
+
+    def test_get_delegated_admin_account(self, client):
+        """GetDelegatedAdminAccount returns response."""
+        resp = client.get_delegated_admin_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_ec2_deep_inspection_configuration(self, client):
+        """GetEc2DeepInspectionConfiguration returns package paths and status."""
+        resp = client.get_ec2_deep_inspection_configuration()
+        assert "packagePaths" in resp
+        assert "status" in resp
+
+    def test_get_encryption_key(self, client):
+        """GetEncryptionKey returns KMS key ID for scan type."""
+        resp = client.get_encryption_key(scanType="NETWORK", resourceType="AWS_EC2_INSTANCE")
+        assert "kmsKeyId" in resp
+
+    def test_get_findings_report_status(self, client):
+        """GetFindingsReportStatus returns report status."""
+        resp = client.get_findings_report_status()
+        assert "status" in resp
+
+    def test_get_sbom_export(self, client):
+        """GetSbomExport returns export status."""
+        resp = client.get_sbom_export(reportId="test-report-id")
+        assert "reportId" in resp
+        assert "status" in resp
+
+    def test_list_usage_totals(self, client):
+        """ListUsageTotals returns usage totals list."""
+        resp = client.list_usage_totals()
+        assert "totals" in resp
+        assert isinstance(resp["totals"], list)
+
+
+class TestInspector2CisAndCoverage:
+    """Tests for CIS scan and coverage operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_list_cis_scan_configurations(self, client):
+        """ListCisScanConfigurations returns scan configurations."""
+        resp = client.list_cis_scan_configurations()
+        assert "scanConfigurations" in resp
+        assert isinstance(resp["scanConfigurations"], list)
+
+    def test_list_cis_scans(self, client):
+        """ListCisScans returns scans list."""
+        resp = client.list_cis_scans()
+        assert "scans" in resp
+        assert isinstance(resp["scans"], list)
+
+    def test_list_code_security_integrations(self, client):
+        """ListCodeSecurityIntegrations returns integrations list."""
+        resp = client.list_code_security_integrations()
+        assert "integrations" in resp
+        assert isinstance(resp["integrations"], list)
+
+    def test_list_coverage(self, client):
+        """ListCoverage returns covered resources."""
+        resp = client.list_coverage()
+        assert "coveredResources" in resp
+        assert isinstance(resp["coveredResources"], list)
+
+    def test_list_coverage_statistics(self, client):
+        """ListCoverageStatistics returns counts and totals."""
+        resp = client.list_coverage_statistics()
+        assert "countsByGroup" in resp
+        assert "totalCounts" in resp
+
+    def test_list_finding_aggregations(self, client):
+        """ListFindingAggregations returns aggregation type and responses."""
+        resp = client.list_finding_aggregations(aggregationType="FINDING_TYPE")
+        assert "aggregationType" in resp
+        assert resp["aggregationType"] == "FINDING_TYPE"
+        assert "responses" in resp
+        assert isinstance(resp["responses"], list)
