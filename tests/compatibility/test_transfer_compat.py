@@ -872,3 +872,363 @@ class TestTransferErrorCases:
                 transfer.delete_user(ServerId=server_id, UserName="nonexistent")
         finally:
             transfer.delete_server(ServerId=server_id)
+
+
+class TestTransferListOperations:
+    """Tests for Transfer list operations that require no resources."""
+
+    def test_list_certificates_empty(self, transfer):
+        """ListCertificates returns Certificates key."""
+        resp = transfer.list_certificates()
+        assert "Certificates" in resp
+        assert isinstance(resp["Certificates"], list)
+
+    def test_list_connectors_empty(self, transfer):
+        """ListConnectors returns Connectors key."""
+        resp = transfer.list_connectors()
+        assert "Connectors" in resp
+        assert isinstance(resp["Connectors"], list)
+
+    def test_list_profiles_empty(self, transfer):
+        """ListProfiles returns Profiles key."""
+        resp = transfer.list_profiles()
+        assert "Profiles" in resp
+        assert isinstance(resp["Profiles"], list)
+
+    def test_list_security_policies(self, transfer):
+        """ListSecurityPolicies returns SecurityPolicyNames."""
+        resp = transfer.list_security_policies()
+        assert "SecurityPolicyNames" in resp
+        assert isinstance(resp["SecurityPolicyNames"], list)
+        assert len(resp["SecurityPolicyNames"]) > 0
+
+    def test_list_web_apps_empty(self, transfer):
+        """ListWebApps returns WebApps key."""
+        resp = transfer.list_web_apps()
+        assert "WebApps" in resp
+        assert isinstance(resp["WebApps"], list)
+
+    def test_list_workflows_empty(self, transfer):
+        """ListWorkflows returns Workflows key."""
+        resp = transfer.list_workflows()
+        assert "Workflows" in resp
+        assert isinstance(resp["Workflows"], list)
+
+
+class TestTransferSecurityPolicy:
+    """Tests for DescribeSecurityPolicy."""
+
+    def test_describe_security_policy(self, transfer):
+        """DescribeSecurityPolicy returns policy details."""
+        resp = transfer.describe_security_policy(
+            SecurityPolicyName="TransferSecurityPolicy-2020-06"
+        )
+        policy = resp["SecurityPolicy"]
+        assert policy["SecurityPolicyName"] == "TransferSecurityPolicy-2020-06"
+        assert "SshCiphers" in policy or "TlsCiphers" in policy
+
+    def test_describe_security_policy_from_list(self, transfer):
+        """DescribeSecurityPolicy works for a policy found via ListSecurityPolicies."""
+        policies = transfer.list_security_policies()
+        name = policies["SecurityPolicyNames"][0]
+        resp = transfer.describe_security_policy(SecurityPolicyName=name)
+        assert resp["SecurityPolicy"]["SecurityPolicyName"] == name
+
+
+class TestTransferProfileOperations:
+    """Tests for Transfer profile CRUD operations."""
+
+    def test_create_and_describe_profile(self, transfer):
+        """CreateProfile returns ProfileId, DescribeProfile returns details."""
+        as2_id = _unique("as2")
+        resp = transfer.create_profile(As2Id=as2_id, ProfileType="LOCAL")
+        profile_id = resp["ProfileId"]
+        assert len(profile_id) > 0
+        try:
+            desc = transfer.describe_profile(ProfileId=profile_id)
+            profile = desc["Profile"]
+            assert profile["ProfileId"] == profile_id
+            assert profile["ProfileType"] == "LOCAL"
+            assert profile["As2Id"] == as2_id
+        finally:
+            transfer.delete_profile(ProfileId=profile_id)
+
+    def test_delete_profile(self, transfer):
+        """DeleteProfile removes the profile."""
+        resp = transfer.create_profile(As2Id=_unique("as2"), ProfileType="LOCAL")
+        profile_id = resp["ProfileId"]
+        transfer.delete_profile(ProfileId=profile_id)
+        with pytest.raises(ClientError):
+            transfer.describe_profile(ProfileId=profile_id)
+
+    def test_list_profiles_contains_created(self, transfer):
+        """ListProfiles includes a newly created profile."""
+        resp = transfer.create_profile(As2Id=_unique("as2"), ProfileType="LOCAL")
+        profile_id = resp["ProfileId"]
+        try:
+            listed = transfer.list_profiles()
+            profile_ids = [p["ProfileId"] for p in listed["Profiles"]]
+            assert profile_id in profile_ids
+        finally:
+            transfer.delete_profile(ProfileId=profile_id)
+
+    def test_create_profile_partner_type(self, transfer):
+        """CreateProfile with PARTNER type works."""
+        resp = transfer.create_profile(As2Id=_unique("partner"), ProfileType="PARTNER")
+        profile_id = resp["ProfileId"]
+        try:
+            desc = transfer.describe_profile(ProfileId=profile_id)
+            assert desc["Profile"]["ProfileType"] == "PARTNER"
+        finally:
+            transfer.delete_profile(ProfileId=profile_id)
+
+    def test_describe_profile_has_arn(self, transfer):
+        """DescribeProfile response includes Arn."""
+        resp = transfer.create_profile(As2Id=_unique("arn"), ProfileType="LOCAL")
+        profile_id = resp["ProfileId"]
+        try:
+            desc = transfer.describe_profile(ProfileId=profile_id)
+            assert "Arn" in desc["Profile"]
+            assert "transfer" in desc["Profile"]["Arn"]
+        finally:
+            transfer.delete_profile(ProfileId=profile_id)
+
+
+class TestTransferWorkflowOperations:
+    """Tests for Transfer workflow CRUD operations."""
+
+    def test_create_and_describe_workflow(self, transfer):
+        """CreateWorkflow returns WorkflowId, DescribeWorkflow returns details."""
+        resp = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "copy-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ]
+        )
+        workflow_id = resp["WorkflowId"]
+        assert len(workflow_id) > 0
+        try:
+            desc = transfer.describe_workflow(WorkflowId=workflow_id)
+            wf = desc["Workflow"]
+            assert wf["WorkflowId"] == workflow_id
+            assert len(wf["Steps"]) == 1
+            assert wf["Steps"][0]["Type"] == "COPY"
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
+
+    def test_delete_workflow(self, transfer):
+        """DeleteWorkflow removes the workflow."""
+        resp = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "del-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ]
+        )
+        workflow_id = resp["WorkflowId"]
+        transfer.delete_workflow(WorkflowId=workflow_id)
+        with pytest.raises(ClientError):
+            transfer.describe_workflow(WorkflowId=workflow_id)
+
+    def test_list_workflows_contains_created(self, transfer):
+        """ListWorkflows includes a newly created workflow."""
+        resp = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "list-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ]
+        )
+        workflow_id = resp["WorkflowId"]
+        try:
+            listed = transfer.list_workflows()
+            workflow_ids = [w["WorkflowId"] for w in listed["Workflows"]]
+            assert workflow_id in workflow_ids
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
+
+    def test_describe_workflow_has_arn(self, transfer):
+        """DescribeWorkflow response includes Arn."""
+        resp = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "arn-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ]
+        )
+        workflow_id = resp["WorkflowId"]
+        try:
+            desc = transfer.describe_workflow(WorkflowId=workflow_id)
+            assert "Arn" in desc["Workflow"]
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
+
+
+class TestTransferCertificateOperations:
+    """Tests for Transfer certificate CRUD operations."""
+
+    DUMMY_CERT = "-----BEGIN CERTIFICATE-----\ntest-cert-body\n-----END CERTIFICATE-----"
+
+    def test_import_and_describe_certificate(self, transfer):
+        """ImportCertificate returns CertificateId, DescribeCertificate returns details."""
+        resp = transfer.import_certificate(
+            Usage="SIGNING",
+            Certificate=self.DUMMY_CERT,
+        )
+        cert_id = resp["CertificateId"]
+        assert len(cert_id) > 0
+        try:
+            desc = transfer.describe_certificate(CertificateId=cert_id)
+            cert = desc["Certificate"]
+            assert cert["CertificateId"] == cert_id
+            assert cert["Usage"] == "SIGNING"
+            assert cert["Certificate"] == self.DUMMY_CERT
+        finally:
+            transfer.delete_certificate(CertificateId=cert_id)
+
+    def test_delete_certificate(self, transfer):
+        """DeleteCertificate removes the certificate."""
+        resp = transfer.import_certificate(
+            Usage="SIGNING",
+            Certificate=self.DUMMY_CERT,
+        )
+        cert_id = resp["CertificateId"]
+        transfer.delete_certificate(CertificateId=cert_id)
+        with pytest.raises(ClientError):
+            transfer.describe_certificate(CertificateId=cert_id)
+
+    def test_list_certificates_contains_imported(self, transfer):
+        """ListCertificates includes an imported certificate."""
+        resp = transfer.import_certificate(
+            Usage="SIGNING",
+            Certificate=self.DUMMY_CERT,
+        )
+        cert_id = resp["CertificateId"]
+        try:
+            listed = transfer.list_certificates()
+            cert_ids = [c["CertificateId"] for c in listed["Certificates"]]
+            assert cert_id in cert_ids
+        finally:
+            transfer.delete_certificate(CertificateId=cert_id)
+
+    def test_import_certificate_encryption_usage(self, transfer):
+        """ImportCertificate with ENCRYPTION usage works."""
+        resp = transfer.import_certificate(
+            Usage="ENCRYPTION",
+            Certificate=self.DUMMY_CERT,
+        )
+        cert_id = resp["CertificateId"]
+        try:
+            desc = transfer.describe_certificate(CertificateId=cert_id)
+            assert desc["Certificate"]["Usage"] == "ENCRYPTION"
+        finally:
+            transfer.delete_certificate(CertificateId=cert_id)
+
+    def test_describe_certificate_has_arn(self, transfer):
+        """DescribeCertificate response includes Arn."""
+        resp = transfer.import_certificate(
+            Usage="SIGNING",
+            Certificate=self.DUMMY_CERT,
+        )
+        cert_id = resp["CertificateId"]
+        try:
+            desc = transfer.describe_certificate(CertificateId=cert_id)
+            assert "Arn" in desc["Certificate"]
+        finally:
+            transfer.delete_certificate(CertificateId=cert_id)
+
+
+class TestTransferTagOperations:
+    """Tests for Transfer tag operations."""
+
+    def test_tag_and_list_tags(self, transfer):
+        """TagResource adds tags visible via ListTagsForResource."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            desc = transfer.describe_server(ServerId=server_id)
+            arn = desc["Server"]["Arn"]
+            transfer.tag_resource(
+                Arn=arn,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            )
+            tags_resp = transfer.list_tags_for_resource(Arn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "platform"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_untag_resource(self, transfer):
+        """UntagResource removes specified tag keys."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            desc = transfer.describe_server(ServerId=server_id)
+            arn = desc["Server"]["Arn"]
+            transfer.tag_resource(
+                Arn=arn,
+                Tags=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "drop", "Value": "yes"},
+                ],
+            )
+            transfer.untag_resource(Arn=arn, TagKeys=["drop"])
+            tags_resp = transfer.list_tags_for_resource(Arn=arn)
+            tag_keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "keep" in tag_keys
+            assert "drop" not in tag_keys
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_tags_empty(self, transfer):
+        """ListTagsForResource on untagged server returns empty list."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            desc = transfer.describe_server(ServerId=server_id)
+            arn = desc["Server"]["Arn"]
+            tags_resp = transfer.list_tags_for_resource(Arn=arn)
+            assert tags_resp["Tags"] == []
+        finally:
+            transfer.delete_server(ServerId=server_id)
