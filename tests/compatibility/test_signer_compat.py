@@ -261,3 +261,67 @@ class TestSignerRevokeOperations:
             effectiveTime="2025-01-01T00:00:00Z",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSignerTagOperations:
+    """Tests for signing profile tag operations."""
+
+    def test_tag_resource(self, signer):
+        """TagResource adds tags to a signing profile."""
+        name = _unique("profile")
+        put_resp = signer.put_signing_profile(profileName=name, platformId="AWSLambda-SHA384-ECDSA")
+        arn = put_resp["arn"]
+        try:
+            resp = signer.tag_resource(resourceArn=arn, tags={"env": "test", "team": "platform"})
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            signer.cancel_signing_profile(profileName=name)
+
+    def test_list_tags_for_resource(self, signer):
+        """ListTagsForResource returns tags set on a signing profile."""
+        name = _unique("profile")
+        put_resp = signer.put_signing_profile(profileName=name, platformId="AWSLambda-SHA384-ECDSA")
+        arn = put_resp["arn"]
+        try:
+            signer.tag_resource(resourceArn=arn, tags={"env": "test", "team": "platform"})
+            resp = signer.list_tags_for_resource(resourceArn=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "tags" in resp
+            assert resp["tags"]["env"] == "test"
+            assert resp["tags"]["team"] == "platform"
+        finally:
+            signer.cancel_signing_profile(profileName=name)
+
+    def test_untag_resource(self, signer):
+        """UntagResource removes specific tags from a signing profile."""
+        name = _unique("profile")
+        put_resp = signer.put_signing_profile(profileName=name, platformId="AWSLambda-SHA384-ECDSA")
+        arn = put_resp["arn"]
+        try:
+            signer.tag_resource(resourceArn=arn, tags={"key1": "val1", "key2": "val2"})
+            resp = signer.untag_resource(resourceArn=arn, tagKeys=["key1"])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify key1 removed, key2 remains
+            tags_resp = signer.list_tags_for_resource(resourceArn=arn)
+            assert "key1" not in tags_resp["tags"]
+            assert tags_resp["tags"]["key2"] == "val2"
+        finally:
+            signer.cancel_signing_profile(profileName=name)
+
+    def test_tag_resource_with_initial_tags(self, signer):
+        """TagResource merges with tags set at profile creation."""
+        name = _unique("profile")
+        put_resp = signer.put_signing_profile(
+            profileName=name,
+            platformId="AWSLambda-SHA384-ECDSA",
+            tags={"initial": "tag"},
+        )
+        arn = put_resp["arn"]
+        try:
+            signer.tag_resource(resourceArn=arn, tags={"added": "later"})
+            resp = signer.list_tags_for_resource(resourceArn=arn)
+            assert resp["tags"]["initial"] == "tag"
+            assert resp["tags"]["added"] == "later"
+        finally:
+            signer.cancel_signing_profile(profileName=name)

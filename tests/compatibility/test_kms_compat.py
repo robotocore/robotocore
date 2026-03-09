@@ -986,3 +986,221 @@ class TestKMSGapStubs:
             assert "CiphertextBlob" in resp
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+
+class TestKMSNewOps:
+    """Tests for newly implemented KMS operations."""
+
+    @pytest.fixture
+    def kms(self):
+        from tests.compatibility.conftest import make_client
+
+        return make_client("kms")
+
+    def test_generate_random_fixed(self, kms):
+        """GenerateRandom returns correct byte length (was crashing, now fixed)."""
+        resp = kms.generate_random(NumberOfBytes=64)
+        assert "Plaintext" in resp
+        assert len(resp["Plaintext"]) == 64
+
+    def test_generate_random_min_max(self, kms):
+        """GenerateRandom works for edge-case sizes."""
+        for size in [1, 256, 1024]:
+            resp = kms.generate_random(NumberOfBytes=size)
+            assert len(resp["Plaintext"]) == size
+
+    def test_generate_data_key_pair_rsa(self, kms):
+        """GenerateDataKeyPair with RSA_2048 returns key pair components."""
+        key = kms.create_key(Description="dkp-rsa-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key_pair(
+                KeyId=key_id,
+                KeyPairSpec="RSA_2048",
+            )
+            assert "PrivateKeyCiphertextBlob" in resp
+            assert "PrivateKeyPlaintext" in resp
+            assert "PublicKey" in resp
+            assert "KeyPairSpec" in resp
+            assert resp["KeyPairSpec"] == "RSA_2048"
+            assert "KeyId" in resp
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_data_key_pair_ecc(self, kms):
+        """GenerateDataKeyPair with ECC_NIST_P256."""
+        key = kms.create_key(Description="dkp-ecc-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key_pair(
+                KeyId=key_id,
+                KeyPairSpec="ECC_NIST_P256",
+            )
+            assert "PrivateKeyCiphertextBlob" in resp
+            assert "PrivateKeyPlaintext" in resp
+            assert "PublicKey" in resp
+            assert resp["KeyPairSpec"] == "ECC_NIST_P256"
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_data_key_pair_without_plaintext_rsa(self, kms):
+        """GenerateDataKeyPairWithoutPlaintext omits private key plaintext."""
+        key = kms.create_key(Description="dkpnp-rsa-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key_pair_without_plaintext(
+                KeyId=key_id,
+                KeyPairSpec="RSA_2048",
+            )
+            assert "PrivateKeyCiphertextBlob" in resp
+            assert "PublicKey" in resp
+            assert resp["KeyPairSpec"] == "RSA_2048"
+            # Should NOT contain PrivateKeyPlaintext
+            assert resp.get("PrivateKeyPlaintext") is None
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_generate_data_key_pair_without_plaintext_ecc(self, kms):
+        """GenerateDataKeyPairWithoutPlaintext with ECC_NIST_P256."""
+        key = kms.create_key(Description="dkpnp-ecc-test")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.generate_data_key_pair_without_plaintext(
+                KeyId=key_id,
+                KeyPairSpec="ECC_NIST_P256",
+            )
+            assert "PrivateKeyCiphertextBlob" in resp
+            assert "PublicKey" in resp
+            assert resp["KeyPairSpec"] == "ECC_NIST_P256"
+            assert resp.get("PrivateKeyPlaintext") is None
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_custom_key_store_lifecycle(self, kms):
+        """CreateCustomKeyStore, DescribeCustomKeyStores, DeleteCustomKeyStore."""
+        cert = (
+            "-----BEGIN CERTIFICATE-----\n"
+            "MIIBxTCCAWugAwIBAgIJAJOa3euMFsRTMA0GCSqGSIb3DQEBCwUA\n"
+            "MCMxITAfBgNVBAMMGHRlc3QtY2VydC5leGFtcGxlLmNvbTAeFw0y\n"
+            "MzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMCMxITAfBgNVBAMM\n"
+            "GHRlc3QtY2VydC5leGFtcGxlLmNvbTBcMA0GCSqGSIb3DQEBAQUA\n"
+            "A0sAMEgCQQC7o96FCEhXvbChIGMB3xPCGnTo0GQWKP8XlprawKK/\n"
+            "BBQqFnJjnJx0aSCQq7W8ByAE9fs+E6M3bMRnyPz1AgMBAAGjUDBO\n"
+            "MB0GA1UdDgQWBBR4W1DKWFynW8rD5aF5MNb9w3VUQTB8BgNVHSME\n"
+            "ADAAgBR4W1DKWFynW8rD5aF5MNb9w3VUQTAMBgNVHRMEBTADAQH/\n"
+            "MA0GCSqGSIb3DQEBCwUAA0EAYiWXhZk9WsP46PqFi+sJlBFVKs7v\n"
+            "EHrJKVHRw/SRZAmLYv3aGMi/0BXk2Q==\n"
+            "-----END CERTIFICATE-----"
+        )
+        resp = kms.create_custom_key_store(
+            CustomKeyStoreName="test-cks",
+            CloudHsmClusterId="cluster-1234567890abc",
+            TrustAnchorCertificate=cert,
+            KeyStorePassword="kmsP@ssw0rd!",
+        )
+        assert "CustomKeyStoreId" in resp
+        store_id = resp["CustomKeyStoreId"]
+
+        try:
+            # Describe
+            desc = kms.describe_custom_key_stores(CustomKeyStoreId=store_id)
+            assert len(desc["CustomKeyStores"]) == 1
+            assert desc["CustomKeyStores"][0]["CustomKeyStoreName"] == "test-cks"
+        finally:
+            # Delete
+            kms.delete_custom_key_store(CustomKeyStoreId=store_id)
+
+        # Verify deleted
+        desc2 = kms.describe_custom_key_stores()
+        store_ids = [s["CustomKeyStoreId"] for s in desc2["CustomKeyStores"]]
+        assert store_id not in store_ids
+
+    def test_get_parameters_for_import(self, kms):
+        """GetParametersForImport returns wrapping key and import token."""
+        key = kms.create_key(Description="import-test", Origin="EXTERNAL")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.get_parameters_for_import(
+                KeyId=key_id,
+                WrappingAlgorithm="RSAES_OAEP_SHA_256",
+                WrappingKeySpec="RSA_2048",
+            )
+            assert "KeyId" in resp
+            assert "ImportToken" in resp
+            assert "PublicKey" in resp
+            assert "ParametersValidTo" in resp
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_import_key_material_and_delete(self, kms):
+        """Full key import flow: create EXTERNAL key, get params, import, delete material."""
+        from cryptography.hazmat.primitives.asymmetric.padding import MGF1, OAEP
+        from cryptography.hazmat.primitives.hashes import SHA256
+        from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+        key = kms.create_key(Description="import-material-test", Origin="EXTERNAL")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            # Get parameters for import
+            params = kms.get_parameters_for_import(
+                KeyId=key_id,
+                WrappingAlgorithm="RSAES_OAEP_SHA_256",
+                WrappingKeySpec="RSA_2048",
+            )
+            import_token = params["ImportToken"]
+            wrapping_key_der = params["PublicKey"]
+
+            # Generate 32-byte key material and wrap it
+            key_material = b"\x01" * 32
+            wrapping_key = load_der_public_key(wrapping_key_der)
+            encrypted_key_material = wrapping_key.encrypt(
+                key_material,
+                OAEP(mgf=MGF1(algorithm=SHA256()), algorithm=SHA256(), label=None),
+            )
+
+            # Import the key material
+            kms.import_key_material(
+                KeyId=key_id,
+                ImportToken=import_token,
+                EncryptedKeyMaterial=encrypted_key_material,
+                ExpirationModel="KEY_MATERIAL_DOES_NOT_EXPIRE",
+            )
+
+            # Verify key is now usable
+            desc = kms.describe_key(KeyId=key_id)
+            assert desc["KeyMetadata"]["KeyState"] in ("Enabled", "PendingImport")
+
+            # Delete imported key material
+            kms.delete_imported_key_material(KeyId=key_id)
+
+            # Key should revert to PendingImport
+            desc2 = kms.describe_key(KeyId=key_id)
+            assert desc2["KeyMetadata"]["KeyState"] == "PendingImport"
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_delete_custom_key_store_nonexistent(self, kms):
+        """DeleteCustomKeyStore with fake ID raises an error."""
+        with pytest.raises(kms.exceptions.ClientError) as exc_info:
+            kms.delete_custom_key_store(CustomKeyStoreId="cks-000000000000fake")
+        err_code = exc_info.value.response["Error"]["Code"]
+        assert err_code in (
+            "CustomKeyStoreNotFoundException",
+            "NotFoundException",
+        )
+
+    def test_get_parameters_for_import_wrong_origin(self, kms):
+        """GetParametersForImport on a non-EXTERNAL key raises error."""
+        key = kms.create_key(Description="non-external")
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            with pytest.raises(kms.exceptions.ClientError) as exc_info:
+                kms.get_parameters_for_import(
+                    KeyId=key_id,
+                    WrappingAlgorithm="RSAES_OAEP_SHA_256",
+                    WrappingKeySpec="RSA_2048",
+                )
+            err_code = exc_info.value.response["Error"]["Code"]
+            assert err_code in ("UnsupportedOperationException", "ValidationException")
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
