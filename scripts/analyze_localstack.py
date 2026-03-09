@@ -340,10 +340,39 @@ def extract_robotocore_operations(filepath: Path) -> list[str]:
 def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]:
     """Compare robotocore implementation against LocalStack Community.
 
-    Uses LocalStack's vendor submodule (community ops) plus hardcoded tier data
-    (_LS_TIER) sourced from the public LocalStack pricing page (March 2026), since
-    Pro/Enterprise source is closed-source and not in the vendor submodule.
+    Uses the parity report's implementation detection (which checks both native
+    providers and Moto backends, validated against botocore) instead of ad-hoc
+    provider scanning. This ensures the numbers match across reports.
     """
+    # Import the parity report's implementation detection
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    src_dir = str(Path(__file__).resolve().parent.parent / "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    from generate_parity_report import build_report
+
+    parity = build_report()
+    parity_services = parity["services"]
+
+    # Build mapping: robotocore dir name / LS vendor name → registry service name
+    # The community dict uses LS vendor dir names (lambda_, resource_groups, etc.)
+    # The _LS_TIER dict uses botocore names (resource-groups, resourcegroupstaggingapi, etc.)
+    # The parity report uses registry names (resource-groups, resourcegroupstaggingapi, etc.)
+    _name_to_registry = {}
+    for reg_name in parity_services:
+        _name_to_registry[reg_name] = reg_name
+        # Also map common variants
+        _name_to_registry[reg_name.replace("-", "_")] = reg_name
+        _name_to_registry[reg_name.replace("-", "")] = reg_name
+
+    # Extra manual mappings for LS vendor dir names that don't match
+    _name_to_registry["lambda_"] = "lambda"
+    _name_to_registry["configservice"] = "config"
+    _name_to_registry["stepfunctions"] = "stepfunctions"
+    _name_to_registry["resource_groups"] = "resource-groups"
+
     robotocore_providers = find_provider_files(ROBOTOCORE_DIR)
     gaps = {}
 
@@ -353,16 +382,34 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
     for service in sorted(all_services):
         community_ops = set(community.get(service, {}).get("operations", []))
 
-        robotocore_ops = set()
-        if service in robotocore_providers:
-            robotocore_ops = set(extract_robotocore_operations(robotocore_providers[service]))
+        # Find the registry name for this service
+        reg_name = _name_to_registry.get(service, service)
+        parity_data = parity_services.get(reg_name)
+
+        if parity_data:
+            # Use the parity report's implementation count (validated against botocore)
+            # Convert parity ops (PascalCase) to snake_case to compare with LS community ops
+            robotocore_ops_pascal = set(parity_data["implemented_ops"])
+            robotocore_ops = set()
+            for op in robotocore_ops_pascal:
+                snake = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", op)
+                snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", snake).lower()
+                robotocore_ops.add(snake)
+            has_provider = True
+        else:
+            robotocore_ops = set()
+            if service in robotocore_providers:
+                robotocore_ops = set(
+                    extract_robotocore_operations(robotocore_providers[service])
+                )
+            has_provider = service in robotocore_providers
 
         missing_ops = community_ops - robotocore_ops
         ls_tier = _LS_TIER.get(service, "unknown")
 
-        if missing_ops or service not in robotocore_providers:
+        if missing_ops or not has_provider:
             gaps[service] = {
-                "has_provider": service in robotocore_providers,
+                "has_provider": has_provider,
                 "community_ops": len(community_ops),
                 "robotocore_ops": len(robotocore_ops),
                 "missing_ops": sorted(missing_ops),

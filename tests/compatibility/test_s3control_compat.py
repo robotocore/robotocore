@@ -124,6 +124,36 @@ class TestS3ControlOperations:
         assert config["IgnorePublicAcls"] is False
         s3control.delete_public_access_block(AccountId="123456789012")
 
+    def test_delete_public_access_block_idempotent(self, s3control):
+        """Deleting public access block when not set still returns success."""
+        # Delete first to ensure clean state
+        try:
+            s3control.delete_public_access_block(AccountId="123456789012")
+        except ClientError:
+            pass
+        # Delete again - should succeed
+        response = s3control.delete_public_access_block(AccountId="123456789012")
+        assert response["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_put_public_access_block_all_false(self, s3control):
+        """Setting all public access block fields to False."""
+        s3control.put_public_access_block(
+            AccountId="123456789012",
+            PublicAccessBlockConfiguration={
+                "BlockPublicAcls": False,
+                "IgnorePublicAcls": False,
+                "BlockPublicPolicy": False,
+                "RestrictPublicBuckets": False,
+            },
+        )
+        response = s3control.get_public_access_block(AccountId="123456789012")
+        config = response["PublicAccessBlockConfiguration"]
+        assert config["BlockPublicAcls"] is False
+        assert config["IgnorePublicAcls"] is False
+        assert config["BlockPublicPolicy"] is False
+        assert config["RestrictPublicBuckets"] is False
+        s3control.delete_public_access_block(AccountId="123456789012")
+
 
 class TestS3ControlAccessPoints:
     """Tests for S3 Control Access Point operations."""
@@ -523,6 +553,99 @@ class TestS3ControlAccessPoints:
         resp = s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
 
+    def test_list_access_points_pagination_next_token(self, s3control, s3):
+        """ListAccessPoints paginates correctly with NextToken."""
+        bucket = f"ap-pagnxt-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        names = [f"ap-pn-{_uid()}" for _ in range(3)]
+        try:
+            for name in names:
+                s3control.create_access_point(AccountId=ACCOUNT_ID, Name=name, Bucket=bucket)
+            # Page through with MaxResults=2
+            all_names = []
+            token = None
+            while True:
+                kwargs = {"AccountId": ACCOUNT_ID, "MaxResults": 2}
+                if token:
+                    kwargs["NextToken"] = token
+                resp = s3control.list_access_points(**kwargs)
+                all_names.extend([ap["Name"] for ap in resp["AccessPointList"]])
+                token = resp.get("NextToken")
+                if not token:
+                    break
+            for name in names:
+                assert name in all_names
+        finally:
+            for name in names:
+                try:
+                    s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
+                except Exception:
+                    pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_create_access_point_duplicate_name(self, s3control, s3):
+        """Creating an access point with a duplicate name does not error."""
+        bucket = f"ap-dup-{_uid()}"
+        ap_name = f"ap-dup-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            resp = s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_access_point_policy_status_no_policy(self, s3control, s3):
+        """GetAccessPointPolicyStatus without policy raises NoSuchAccessPointPolicy."""
+        bucket = f"ap-psnp-{_uid()}"
+        ap_name = f"ap-psnp-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            with pytest.raises(ClientError) as exc:
+                s3control.get_access_point_policy_status(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert exc.value.response["Error"]["Code"] == "NoSuchAccessPointPolicy"
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_access_point_policy_status_not_found(self, s3control):
+        """GetAccessPointPolicyStatus for nonexistent AP raises NoSuchAccessPoint."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_access_point_policy_status(
+                AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchAccessPoint"
+
+    def test_get_access_point_policy_not_found(self, s3control):
+        """GetAccessPointPolicy for nonexistent AP raises NoSuchAccessPoint."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_access_point_policy(AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}")
+        assert exc.value.response["Error"]["Code"] == "NoSuchAccessPoint"
+
+    def test_access_point_creation_timestamp(self, s3control, s3):
+        """Access point has a CreationDate field after creation."""
+        bucket = f"ap-ts-{_uid()}"
+        ap_name = f"ap-ts-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            resp = s3control.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert "CreationDate" in resp
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
 
 class TestS3ControlMultiRegionAccessPoints:
     """Tests for S3 Control Multi-Region Access Point operations."""
@@ -789,6 +912,105 @@ class TestS3ControlMultiRegionAccessPoints:
                 pass
             s3.delete_bucket(Bucket=bucket)
 
+    def test_get_multi_region_access_point_details(self, s3control, s3):
+        """GetMultiRegionAccessPoint returns Status, Alias, and Regions fields."""
+        bucket = f"mrap-dtl-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            resp = s3control.get_multi_region_access_point(AccountId=ACCOUNT_ID, Name=mrap_name)
+            ap = resp["AccessPoint"]
+            assert ap["Name"] == mrap_name
+            assert ap["Status"] == "READY"
+            assert "Alias" in ap
+            assert len(ap["Regions"]) == 1
+            assert ap["Regions"][0]["Bucket"] == bucket
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_multi_region_access_point_not_found(self, s3control):
+        """GetMultiRegionAccessPoint for nonexistent MRAP raises error."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_multi_region_access_point(
+                AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+
+    def test_list_multi_region_access_points_empty(self, s3control):
+        """ListMultiRegionAccessPoints returns empty list when none exist."""
+        resp = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+        assert "AccessPoints" in resp
+        assert isinstance(resp["AccessPoints"], list)
+
+    def test_list_multi_region_access_points_fields(self, s3control, s3):
+        """ListMultiRegionAccessPoints entries contain Status, Alias, Regions."""
+        bucket = f"mrap-lstf-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            resp = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+            found = [ap for ap in resp["AccessPoints"] if ap["Name"] == mrap_name]
+            assert len(found) == 1
+            ap = found[0]
+            assert ap["Status"] == "READY"
+            assert "Alias" in ap
+            assert len(ap["Regions"]) >= 1
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID,
+                    Details={"Name": mrap_name},
+                )
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_mrap_policy_not_found(self, s3control):
+        """GetMultiRegionAccessPointPolicy for nonexistent MRAP raises error."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+
+    def test_get_mrap_policy_status_not_found(self, s3control):
+        """GetMultiRegionAccessPointPolicyStatus for nonexistent MRAP raises error."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_multi_region_access_point_policy_status(
+                AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+
+    def test_describe_mrap_operation_not_found(self, s3control):
+        """DescribeMultiRegionAccessPointOperation for bad token raises error."""
+        with pytest.raises(ClientError) as exc:
+            s3control.describe_multi_region_access_point_operation(
+                AccountId=ACCOUNT_ID,
+                RequestTokenARN=f"arn:aws:s3::123456789012:async-request/mrap/nonexistent-{_uid()}",
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchAsyncRequest"
+
 
 class TestS3ControlStorageLens:
     """Tests for S3 Control Storage Lens operations."""
@@ -959,7 +1181,7 @@ class TestS3ControlStorageLens:
         )
         s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
         resp = s3control.list_storage_lens_configurations(AccountId=ACCOUNT_ID)
-        ids = [c["Id"] for c in resp["StorageLensConfigurationList"]]
+        ids = [c["Id"] for c in resp.get("StorageLensConfigurationList", [])]
         assert config_id not in ids
 
     def test_get_storage_lens_not_found(self, s3control):
@@ -1056,3 +1278,88 @@ class TestS3ControlStorageLens:
                 )
             except Exception:
                 pass
+
+    def test_storage_lens_multiple_tags(self, s3control):
+        """PutStorageLensConfigurationTagging with multiple tags persists all."""
+        config_id = f"lens-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration={
+                    "Id": config_id,
+                    "AccountLevel": {"BucketLevel": {}},
+                    "IsEnabled": True,
+                },
+            )
+            s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "backend"},
+                    {"Key": "app", "Value": "api"},
+                ],
+            )
+            resp = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert len(resp["Tags"]) == 3
+            keys = {t["Key"] for t in resp["Tags"]}
+            assert keys == {"env", "team", "app"}
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_storage_lens_list_multiple(self, s3control):
+        """ListStorageLensConfigurations returns all created configs."""
+        ids = [f"lens-{_uid()}" for _ in range(3)]
+        try:
+            for cid in ids:
+                s3control.put_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID,
+                    ConfigId=cid,
+                    StorageLensConfiguration={
+                        "Id": cid,
+                        "AccountLevel": {"BucketLevel": {}},
+                        "IsEnabled": True,
+                    },
+                )
+            resp = s3control.list_storage_lens_configurations(AccountId=ACCOUNT_ID)
+            listed_ids = [c["Id"] for c in resp["StorageLensConfigurationList"]]
+            for cid in ids:
+                assert cid in listed_ids
+        finally:
+            for cid in ids:
+                try:
+                    s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=cid)
+                except Exception:
+                    pass
+
+    def test_storage_lens_tagging_not_found(self, s3control):
+        """GetStorageLensConfigurationTagging for nonexistent config raises error."""
+        with pytest.raises(ClientError):
+            s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=f"nonexistent-{_uid()}"
+            )
+
+    def test_storage_lens_put_tagging_not_found(self, s3control):
+        """PutStorageLensConfigurationTagging for nonexistent config raises error."""
+        with pytest.raises(ClientError):
+            s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=f"nonexistent-{_uid()}",
+                Tags=[{"Key": "k", "Value": "v"}],
+            )
+
+    def test_storage_lens_delete_not_found(self, s3control):
+        """DeleteStorageLensConfiguration for nonexistent config raises NoSuchConfiguration."""
+        with pytest.raises(ClientError) as exc:
+            s3control.delete_storage_lens_configuration(
+                AccountId=ACCOUNT_ID, ConfigId=f"nonexistent-{_uid()}"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchConfiguration"

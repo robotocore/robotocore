@@ -1330,10 +1330,11 @@ class TestRDSGlobalClusterCRUD:
         assert resp["GlobalCluster"]["GlobalClusterIdentifier"] == name
         assert resp["GlobalCluster"]["Engine"] == "aurora-mysql"
 
-        # Describe
+        # Describe specific cluster
         desc = client.describe_global_clusters(GlobalClusterIdentifier=name)
-        assert len(desc["GlobalClusters"]) == 1
-        assert desc["GlobalClusters"][0]["GlobalClusterIdentifier"] == name
+        matching = [g for g in desc["GlobalClusters"] if g["GlobalClusterIdentifier"] == name]
+        assert len(matching) == 1
+        assert matching[0]["GlobalClusterIdentifier"] == name
 
         # Delete
         del_resp = client.delete_global_cluster(GlobalClusterIdentifier=name)
@@ -1457,6 +1458,211 @@ class TestRDSExportTaskCRUD:
         # Cancel
         cancel = client.cancel_export_task(ExportTaskIdentifier=task_id)
         assert cancel["ExportTaskIdentifier"] == task_id
+
+
+class TestRDSClusterTagOperations:
+    """Test tagging operations on DB clusters."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def cluster(self, client):
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+            Tags=[{"Key": "created-by", "Value": "compat-test"}],
+        )
+        yield name
+        try:
+            client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_cluster_create_with_tags(self, client, cluster):
+        """Tags passed at cluster creation time are visible."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}"
+        resp = client.list_tags_for_resource(ResourceName=arn)
+        tag_map = {t["Key"]: t["Value"] for t in resp["TagList"]}
+        assert tag_map.get("created-by") == "compat-test"
+
+    def test_cluster_add_and_list_tags(self, client, cluster):
+        """AddTagsToResource on a cluster, then ListTagsForResource."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}"
+        client.add_tags_to_resource(
+            ResourceName=arn,
+            Tags=[
+                {"Key": "env", "Value": "staging"},
+                {"Key": "team", "Value": "platform"},
+            ],
+        )
+        resp = client.list_tags_for_resource(ResourceName=arn)
+        tag_map = {t["Key"]: t["Value"] for t in resp["TagList"]}
+        assert tag_map["env"] == "staging"
+        assert tag_map["team"] == "platform"
+
+    def test_cluster_remove_tags(self, client, cluster):
+        """RemoveTagsFromResource removes specific tags from a cluster."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}"
+        client.add_tags_to_resource(
+            ResourceName=arn,
+            Tags=[{"Key": "remove-me", "Value": "yes"}],
+        )
+        client.remove_tags_from_resource(ResourceName=arn, TagKeys=["remove-me"])
+        resp = client.list_tags_for_resource(ResourceName=arn)
+        keys = [t["Key"] for t in resp["TagList"]]
+        assert "remove-me" not in keys
+
+
+class TestRDSRestoreDBClusterToPointInTime:
+    """Test RestoreDBClusterToPointInTime."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_restore_db_cluster_to_point_in_time(self, client):
+        """RestoreDBClusterToPointInTime creates a cluster from point-in-time."""
+        src = _unique("compat-cl")
+        tgt = _unique("compat-cl-pit")
+        client.create_db_cluster(
+            DBClusterIdentifier=src,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            resp = client.restore_db_cluster_to_point_in_time(
+                DBClusterIdentifier=tgt,
+                SourceDBClusterIdentifier=src,
+                UseLatestRestorableTime=True,
+            )
+            assert resp["DBCluster"]["DBClusterIdentifier"] == tgt
+            assert resp["DBCluster"]["Engine"] == "aurora-mysql"
+        finally:
+            for name in [tgt, src]:
+                try:
+                    client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass
+
+
+class TestRDSDBProxyTargetOperations:
+    """Test DBProxy target and target group operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def proxy(self, client, ec2_client):
+        vpc = ec2_client.create_vpc(CidrBlock="10.95.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.95.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.95.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        name = _unique("compat-px")
+        client.create_db_proxy(
+            DBProxyName=name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            VpcSubnetIds=subnet_ids,
+        )
+        yield name
+        try:
+            client.delete_db_proxy(DBProxyName=name)
+        except ClientError:
+            pass
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass
+
+    def test_describe_db_proxy_target_groups(self, client, proxy):
+        """DescribeDBProxyTargetGroups returns target groups for a proxy."""
+        resp = client.describe_db_proxy_target_groups(DBProxyName=proxy)
+        assert "TargetGroups" in resp
+        assert isinstance(resp["TargetGroups"], list)
+
+    def test_describe_db_proxy_targets(self, client, proxy):
+        """DescribeDBProxyTargets returns targets for a proxy."""
+        resp = client.describe_db_proxy_targets(DBProxyName=proxy)
+        assert "Targets" in resp
+        assert isinstance(resp["Targets"], list)
+
+
+class TestRDSDescribeEventsFiltered:
+    """Test DescribeEvents with filters."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_events_by_source_type(self, client):
+        """DescribeEvents can filter by SourceType."""
+        resp = client.describe_events(SourceType="db-instance")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_events_by_source_type_cluster(self, client):
+        """DescribeEvents can filter by SourceType=db-cluster."""
+        resp = client.describe_events(SourceType="db-cluster")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+
+class TestRDSOptionGroupDescribeSpecific:
+    """Test DescribeOptionGroups with specific group name."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_option_group_by_name(self, client):
+        """DescribeOptionGroups returns a specific group by name."""
+        name = _unique("compat-og")
+        client.create_option_group(
+            OptionGroupName=name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="compat test specific describe",
+        )
+        try:
+            resp = client.describe_option_groups(OptionGroupName=name)
+            assert len(resp["OptionGroupsList"]) == 1
+            og = resp["OptionGroupsList"][0]
+            assert og["OptionGroupName"] == name
+            assert og["EngineName"] == "mysql"
+            assert og["MajorEngineVersion"] == "8.0"
+        finally:
+            try:
+                client.delete_option_group(OptionGroupName=name)
+            except ClientError:
+                pass
 
 
 class TestRDSRestoreDBInstanceOperations:

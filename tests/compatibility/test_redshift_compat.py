@@ -865,3 +865,433 @@ class TestRedshiftClusterLifecycle:
             assert any(t["Tag"]["Key"] == "rtype" for t in resp["TaggedResources"])
         finally:
             redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+
+class TestRedshiftExpandedCoverage:
+    """Expanded CRUD tests for Redshift operations."""
+
+    def test_delete_cluster_snapshot(self, redshift):
+        """DeleteClusterSnapshot removes a snapshot."""
+        cid = f"dsnap-{_uid()}"
+        snap = f"dsnap-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+            resp = redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+            assert resp["Snapshot"]["SnapshotIdentifier"] == snap
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_snapshots_by_cluster(self, redshift):
+        """DescribeClusterSnapshots filtered by ClusterIdentifier."""
+        cid = f"sncl-{_uid()}"
+        snap = f"sncl-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+            resp = redshift.describe_cluster_snapshots(ClusterIdentifier=cid)
+            assert len(resp["Snapshots"]) >= 1
+            assert any(s["SnapshotIdentifier"] == snap for s in resp["Snapshots"])
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_snapshots_by_type_manual(self, redshift):
+        """DescribeClusterSnapshots filtered by SnapshotType manual."""
+        resp = redshift.describe_cluster_snapshots(SnapshotType="manual")
+        assert "Snapshots" in resp
+        assert isinstance(resp["Snapshots"], list)
+
+    def test_describe_cluster_snapshot_not_found(self, redshift):
+        """DescribeClusterSnapshots raises error for nonexistent snapshot."""
+        with pytest.raises(ClientError) as exc:
+            redshift.describe_cluster_snapshots(SnapshotIdentifier=f"nonexistent-snap-{_uid()}")
+        assert "ClusterSnapshotNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_delete_cluster_snapshot_not_found(self, redshift):
+        """DeleteClusterSnapshot raises error for nonexistent snapshot."""
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=f"nonexistent-snap-{_uid()}")
+        assert "ClusterSnapshotNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_delete_snapshot_copy_grant(self, redshift):
+        """DeleteSnapshotCopyGrant removes the grant."""
+        name = f"scg-d-{_uid()}"
+        redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name)
+        redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=name)
+        resp = redshift.describe_snapshot_copy_grants()
+        names = [g["SnapshotCopyGrantName"] for g in resp["SnapshotCopyGrants"]]
+        assert name not in names
+
+    def test_delete_snapshot_copy_grant_not_found(self, redshift):
+        """DeleteSnapshotCopyGrant raises error for nonexistent grant."""
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=f"nonexistent-scg-{_uid()}")
+        assert "SnapshotCopyGrantNotFoundFault" in exc.value.response["Error"]["Code"]
+
+    def test_delete_cluster_security_group_not_found(self, redshift):
+        """DeleteClusterSecurityGroup raises error for nonexistent group."""
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_cluster_security_group(
+                ClusterSecurityGroupName=f"nonexistent-csg-{_uid()}"
+            )
+        assert "ClusterSecurityGroupNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_describe_cluster_security_groups_not_found(self, redshift):
+        """DescribeClusterSecurityGroups raises error for nonexistent group."""
+        with pytest.raises(ClientError) as exc:
+            redshift.describe_cluster_security_groups(
+                ClusterSecurityGroupName=f"nonexistent-csg-{_uid()}"
+            )
+        assert "ClusterSecurityGroupNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_enable_logging_s3_and_describe_and_disable(self, redshift):
+        """EnableLogging with S3, DescribeLoggingStatus, DisableLogging cycle."""
+        cid = f"logs3-{_uid()}"
+        bucket = f"rs-log-{_uid()}"
+        s3 = make_client("s3")
+        s3.create_bucket(Bucket=bucket)
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.enable_logging(
+                ClusterIdentifier=cid,
+                BucketName=bucket,
+                S3KeyPrefix="logs/",
+            )
+            assert resp["LoggingEnabled"] is True
+            assert resp["BucketName"] == bucket
+
+            status = redshift.describe_logging_status(ClusterIdentifier=cid)
+            assert status["LoggingEnabled"] is True
+            assert status["BucketName"] == bucket
+
+            dis = redshift.disable_logging(ClusterIdentifier=cid)
+            assert dis["LoggingEnabled"] is False
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_events_with_source_type_parameter_group(self, redshift):
+        """DescribeEvents filtered by SourceType cluster-parameter-group."""
+        resp = redshift.describe_events(SourceType="cluster-parameter-group")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_modify_cluster_resize(self, redshift):
+        """ModifyCluster to resize cluster from single to multi-node."""
+        cid = f"modrs-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_cluster(
+                ClusterIdentifier=cid,
+                NumberOfNodes=2,
+                ClusterType="multi-node",
+                NodeType="dc2.large",
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+            assert resp["Cluster"]["NumberOfNodes"] == 2
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster_password(self, redshift):
+        """ModifyCluster to change master password."""
+        cid = f"modpw-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_cluster(
+                ClusterIdentifier=cid,
+                MasterUserPassword="NewPassword2!",
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_cluster_encrypted(self, redshift):
+        """CreateCluster with Encrypted=True."""
+        cid = f"encr-{_uid()}"
+        try:
+            resp = redshift.create_cluster(
+                ClusterIdentifier=cid,
+                NodeType="dc2.large",
+                MasterUsername="admin",
+                MasterUserPassword="Password1!",
+                NumberOfNodes=1,
+                ClusterType="single-node",
+                Encrypted=True,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+            assert resp["Cluster"]["Encrypted"] is True
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_snapshot_copy_retention_period(self, redshift):
+        """ModifySnapshotCopyRetentionPeriod succeeds after EnableSnapshotCopy."""
+        cid = f"mscr-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.enable_snapshot_copy(
+                ClusterIdentifier=cid,
+                DestinationRegion="us-west-2",
+            )
+            resp = redshift.modify_snapshot_copy_retention_period(
+                ClusterIdentifier=cid, RetentionPeriod=14
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            redshift.disable_snapshot_copy(ClusterIdentifier=cid)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_tags_on_subnet_group(self, redshift):
+        """CreateTags on a ClusterSubnetGroup resource."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.240.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.240.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        name = f"sngtag-{_uid()}"
+        redshift.create_cluster_subnet_group(
+            ClusterSubnetGroupName=name,
+            Description="Tags test",
+            SubnetIds=[subnet_id],
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:subnetgroup:{name}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "env", "Value": "staging"}],
+            )
+            resp = redshift.describe_tags(ResourceName=arn)
+            assert "TaggedResources" in resp
+            tag_map = {t["Tag"]["Key"]: t["Tag"]["Value"] for t in resp["TaggedResources"]}
+            assert tag_map.get("env") == "staging"
+        finally:
+            redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=name)
+
+    def test_delete_tags_from_security_group(self, redshift):
+        """DeleteTags removes tags from a ClusterSecurityGroup."""
+        name = f"sgdt-{_uid()}"
+        redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="Delete tags test",
+        )
+        arn = f"arn:aws:redshift:us-east-1:123456789012:securitygroup:{name}"
+        try:
+            redshift.create_tags(
+                ResourceName=arn,
+                Tags=[{"Key": "alpha", "Value": "1"}, {"Key": "beta", "Value": "2"}],
+            )
+            redshift.delete_tags(ResourceName=arn, TagKeys=["alpha"])
+            resp = redshift.describe_tags(ResourceName=arn)
+            keys = [t["Tag"]["Key"] for t in resp["TaggedResources"]]
+            assert "alpha" not in keys
+            assert "beta" in keys
+        finally:
+            redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+    def test_describe_cluster_snapshots_after_delete(self, redshift):
+        """After deleting a snapshot, it no longer appears in describe."""
+        cid = f"sdel-{_uid()}"
+        snap = f"sdel-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+            with pytest.raises(ClientError) as exc:
+                redshift.describe_cluster_snapshots(SnapshotIdentifier=snap)
+            assert "ClusterSnapshotNotFound" in exc.value.response["Error"]["Code"]
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_snapshot_copy_grant_duplicate_error(self, redshift):
+        """Creating a duplicate SnapshotCopyGrant raises an error."""
+        name = f"scgdup-{_uid()}"
+        redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name)
+            assert "already exists" in str(exc.value).lower() or "SnapshotCopyGrant" in str(
+                exc.value
+            )
+        finally:
+            redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=name)
+
+    def test_describe_cluster_security_groups_all(self, redshift):
+        """DescribeClusterSecurityGroups returns list with at least one group after creation."""
+        name = f"csgall-{_uid()}"
+        redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="List test",
+        )
+        try:
+            resp = redshift.describe_cluster_security_groups()
+            assert "ClusterSecurityGroups" in resp
+            names = [g["ClusterSecurityGroupName"] for g in resp["ClusterSecurityGroups"]]
+            assert name in names
+        finally:
+            redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+    def test_create_cluster_duplicate_error(self, redshift):
+        """Creating a duplicate Cluster raises an error."""
+        cid = f"dupclst-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                redshift.create_cluster(
+                    ClusterIdentifier=cid,
+                    NodeType="dc2.large",
+                    MasterUsername="admin",
+                    MasterUserPassword="Password1!",
+                    NumberOfNodes=1,
+                    ClusterType="single-node",
+                )
+            assert "ClusterAlreadyExists" in exc.value.response["Error"]["Code"]
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_snapshot_schedules_created(self, redshift):
+        """DescribeSnapshotSchedules returns a created schedule."""
+        sid = f"ssched-{_uid()}"
+        redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        resp = redshift.describe_snapshot_schedules(ScheduleIdentifier=sid)
+        assert len(resp["SnapshotSchedules"]) == 1
+        assert resp["SnapshotSchedules"][0]["ScheduleIdentifier"] == sid
+        assert "rate(12 hours)" in resp["SnapshotSchedules"][0]["ScheduleDefinitions"]
+
+    def test_create_snapshot_schedule_with_tags(self, redshift):
+        """CreateSnapshotSchedule with tags."""
+        sid = f"sstag-{_uid()}"
+        resp = redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(24 hours)"],
+            Tags=[{"Key": "team", "Value": "data"}],
+        )
+        assert resp["ScheduleIdentifier"] == sid
+        tags = {t["Key"]: t["Value"] for t in resp.get("Tags", [])}
+        assert tags.get("team") == "data"
+
+    def test_describe_cluster_parameter_group_not_found(self, redshift):
+        """DescribeClusterParameterGroups raises error for nonexistent group."""
+        with pytest.raises(ClientError) as exc:
+            redshift.describe_cluster_parameter_groups(
+                ParameterGroupName=f"nonexistent-pg-{_uid()}"
+            )
+        assert "ClusterParameterGroupNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_describe_cluster_subnet_group_not_found(self, redshift):
+        """DescribeClusterSubnetGroups raises error for nonexistent group."""
+        with pytest.raises(ClientError) as exc:
+            redshift.describe_cluster_subnet_groups(
+                ClusterSubnetGroupName=f"nonexistent-sng-{_uid()}"
+            )
+        assert "ClusterSubnetGroupNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_create_multiple_snapshots_same_cluster(self, redshift):
+        """Multiple snapshots on same cluster, all visible via describe."""
+        cid = f"msn-{_uid()}"
+        snap1 = f"msn1-{_uid()}"
+        snap2 = f"msn2-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap1, ClusterIdentifier=cid)
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap2, ClusterIdentifier=cid)
+            resp = redshift.describe_cluster_snapshots(ClusterIdentifier=cid)
+            snap_ids = [s["SnapshotIdentifier"] for s in resp["Snapshots"]]
+            assert snap1 in snap_ids
+            assert snap2 in snap_ids
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap1)
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap2)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_and_delete_multiple_snapshot_copy_grants(self, redshift):
+        """Create multiple SnapshotCopyGrants and verify all appear in describe."""
+        name1 = f"scgm1-{_uid()}"
+        name2 = f"scgm2-{_uid()}"
+        redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name1)
+        redshift.create_snapshot_copy_grant(SnapshotCopyGrantName=name2)
+        try:
+            resp = redshift.describe_snapshot_copy_grants()
+            names = [g["SnapshotCopyGrantName"] for g in resp["SnapshotCopyGrants"]]
+            assert name1 in names
+            assert name2 in names
+        finally:
+            redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=name1)
+            redshift.delete_snapshot_copy_grant(SnapshotCopyGrantName=name2)
+
+    def test_create_cluster_security_group_with_tags(self, redshift):
+        """CreateClusterSecurityGroup with Tags."""
+        name = f"csgtg-{_uid()}"
+        resp = redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="Tags test",
+            Tags=[{"Key": "dept", "Value": "eng"}],
+        )
+        assert resp["ClusterSecurityGroup"]["ClusterSecurityGroupName"] == name
+        tags = {t["Key"]: t["Value"] for t in resp["ClusterSecurityGroup"].get("Tags", [])}
+        assert tags.get("dept") == "eng"
+        redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)

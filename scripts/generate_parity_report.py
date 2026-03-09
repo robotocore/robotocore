@@ -121,12 +121,15 @@ def get_botocore_operations(service_name: str) -> list[str]:
 
 # --- Native provider operations ---
 
-# Map registry service names to their provider directories
+# Complete map: registry service name → provider directory name.
+# Built from actual directory listing + registry cross-reference.
 _SERVICE_DIR_MAP = {
     "lambda": "lambda_",
     "cognito-idp": "cognito",
-    "resource-groups": None,  # no native provider
-    "resourcegroupstaggingapi": None,
+    "resource-groups": "resource_groups",
+    "resourcegroupstaggingapi": "tagging",
+    "es": "opensearch",  # shared provider with opensearch
+    "sesv2": "ses",  # shared provider with ses
 }
 
 # Some native providers live in a different directory or use non-standard filenames
@@ -308,9 +311,8 @@ def get_native_operations(service_name: str) -> tuple[list[str], bool]:
     return [], delegates_to_moto
 
 
-def get_moto_operations(service_name: str) -> list[str]:
-    """Get operations that Moto implements for a service by checking its responses module."""
-    # Map to Moto's internal service name
+def _find_moto_dir(service_name: str) -> Path | None:
+    """Find the Moto vendor directory for a service."""
     moto_name_map = {
         "lambda": "awslambda",
         "logs": "logs",
@@ -324,65 +326,101 @@ def get_moto_operations(service_name: str) -> list[str]:
         "apigatewayv2": "apigatewayv2",
     }
     moto_name = moto_name_map.get(service_name, service_name)
+    moto_base = PROJECT_ROOT / "vendor" / "moto" / "moto"
 
-    # Try to find dispatch methods in Moto's responses.py
-    vendor_responses = PROJECT_ROOT / "vendor" / "moto" / "moto" / moto_name / "responses.py"
-    if not vendor_responses.exists():
-        # Some services use different directory names
-        for alt in [moto_name.replace("-", ""), moto_name.replace("-", "_")]:
-            alt_path = PROJECT_ROOT / "vendor" / "moto" / "moto" / alt / "responses.py"
-            if alt_path.exists():
-                vendor_responses = alt_path
-                break
+    candidates = [
+        moto_name,
+        moto_name.replace("-", ""),
+        moto_name.replace("-", "_"),
+    ]
+    for candidate in candidates:
+        d = moto_base / candidate
+        if d.is_dir():
+            return d
+    return None
 
-    # Collect all response files to scan
-    response_files = []
-    if vendor_responses.exists():
-        response_files.append(vendor_responses)
-    else:
-        # Check for responses/ directory (e.g., EC2 splits across many files)
-        responses_dir = vendor_responses.parent / "responses"
-        if responses_dir.is_dir():
-            response_files.extend(responses_dir.glob("*.py"))
 
-    if not response_files:
-        # Fallback: scan models.py for public methods on Backend classes
-        moto_dir = PROJECT_ROOT / "vendor" / "moto" / "moto" / moto_name
-        models_path = moto_dir / "models.py"
-        if models_path.exists():
-            response_files.append(models_path)
+def get_moto_operations(service_name: str) -> list[str]:
+    """Get operations that Moto implements for a service.
 
-    if not response_files:
+    Strategy: extract public method names from Moto Backend classes in models.py,
+    convert snake_case to PascalCase, and validate against botocore operation names.
+    This avoids the old approach of parsing responses.py which picked up junk
+    (properties, URL dispatch slugs, class names).
+    """
+    moto_dir = _find_moto_dir(service_name)
+    if not moto_dir:
         return []
 
+    # Get botocore ops for this service to validate against
+    botocore_ops = set(get_botocore_operations(service_name))
+    # Build a snake_case → PascalCase lookup from botocore
+    botocore_snake_to_pascal = {}
+    for op in botocore_ops:
+        # Convert PascalCase to snake_case
+        snake = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", op)
+        snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", snake).lower()
+        botocore_snake_to_pascal[snake] = op
+
+    # Scan models.py for Backend class methods
+    models_path = moto_dir / "models.py"
+    source_files = []
+    if models_path.exists():
+        source_files.append(models_path)
+
     operations = set()
+
+    for src_file in source_files:
+        try:
+            content = src_file.read_text()
+            tree = ast.parse(content)
+        except Exception:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            # Only look at Backend classes
+            if not node.name.endswith("Backend"):
+                continue
+            for item in node.body:
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                name = item.name
+                if name.startswith("_"):
+                    continue
+                # Check if this method name matches a botocore operation (snake_case)
+                if name in botocore_snake_to_pascal:
+                    operations.add(botocore_snake_to_pascal[name])
+
+    # Also scan responses.py, but ONLY keep methods that match botocore ops
+    responses_path = moto_dir / "responses.py"
+    response_files = []
+    if responses_path.exists():
+        response_files.append(responses_path)
+    else:
+        responses_dir = moto_dir / "responses"
+        if responses_dir.is_dir():
+            response_files.extend(responses_dir.glob("*.py"))
 
     for resp_file in response_files:
         try:
             content = resp_file.read_text()
+            tree = ast.parse(content)
         except Exception:
             continue
 
-        try:
-            tree = ast.parse(content)
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef):
-                    for item in node.body:
-                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                            name = item.name
-                            if name.startswith("_") or name in (
-                                "setup_class",
-                                "call_action",
-                                "dispatch",
-                                "tags",
-                            ):
-                                continue
-                            # Convert snake_case to PascalCase for AWS operation name
-                            pascal = "".join(word.capitalize() for word in name.split("_"))
-                            if len(pascal) > 3:
-                                operations.add(pascal)
-        except SyntaxError:
-            pass
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for item in node.body:
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                name = item.name
+                if name.startswith("_"):
+                    continue
+                if name in botocore_snake_to_pascal:
+                    operations.add(botocore_snake_to_pascal[name])
 
     return sorted(operations)
 
@@ -593,10 +631,11 @@ def build_report(filter_service: str | None = None) -> dict:
         # 2. Native provider operations
         native_ops, delegates_to_moto = get_native_operations(svc_name)
 
-        # 3. Moto operations (for moto-backed or moto-delegating services)
-        moto_ops = []
-        if svc_info.status.value in ("moto_backed",) or delegates_to_moto:
-            moto_ops = get_moto_operations(svc_name)
+        # 3. Moto operations — check for ALL services, not just moto_backed.
+        # Native providers with forward_to_moto() delegate unknown ops to Moto,
+        # and even native providers without it may still route through Moto for
+        # operations they don't explicitly handle.
+        moto_ops = get_moto_operations(svc_name)
 
         # Combine implemented operations (native + moto, deduplicated)
         all_implemented = set(native_ops) | set(moto_ops)

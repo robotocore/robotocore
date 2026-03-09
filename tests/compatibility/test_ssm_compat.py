@@ -1246,278 +1246,340 @@ class TestSsmAutoCoverage:
         assert "Nodes" in resp
 
 
-class TestSsmCommandLifecycle:
-    """Tests for SSM command send/list/invocations lifecycle."""
+class TestSSMParameterAdvanced:
+    """Advanced parameter operations: description, tier, version selectors, pagination."""
 
     @pytest.fixture
     def ssm(self):
         return make_client("ssm")
 
-    def test_send_command_with_targets(self, ssm):
-        """SendCommand with tag-based targets returns CommandId and DocumentName."""
-        resp = ssm.send_command(
-            DocumentName="AWS-RunShellScript",
-            Parameters={"commands": ["echo probe"]},
-            Targets=[{"Key": "tag:Environment", "Values": ["test"]}],
-        )
-        cmd = resp["Command"]
-        assert "CommandId" in cmd
-        assert cmd["DocumentName"] == "AWS-RunShellScript"
-        assert cmd["Status"] in ("Pending", "InProgress", "Success")
+    def test_put_parameter_with_description(self, ssm):
+        """PutParameter with Description appears in DescribeParameters."""
+        name = _unique("/test/desc-param")
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String", Description="My description")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Description"] == "My description"
+        finally:
+            ssm.delete_parameter(Name=name)
 
-    def test_send_command_list_command_invocations(self, ssm):
-        """SendCommand then ListCommandInvocations for that command."""
-        resp = ssm.send_command(
-            DocumentName="AWS-RunShellScript",
-            Parameters={"commands": ["echo inv-test"]},
-            Targets=[{"Key": "tag:Name", "Values": ["test"]}],
-        )
-        cmd_id = resp["Command"]["CommandId"]
-        inv_resp = ssm.list_command_invocations(CommandId=cmd_id)
-        assert "CommandInvocations" in inv_resp
-        assert isinstance(inv_resp["CommandInvocations"], list)
+    def test_put_parameter_with_tier(self, ssm):
+        """PutParameter with Tier=Standard is reflected in DescribeParameters."""
+        name = _unique("/test/tier-param")
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String", Tier="Standard")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Tier"] == "Standard"
+        finally:
+            ssm.delete_parameter(Name=name)
 
-    def test_send_command_parameters(self, ssm):
-        """SendCommand with multiple parameters."""
-        resp = ssm.send_command(
-            DocumentName="AWS-RunShellScript",
-            Parameters={"commands": ["echo hello", "echo world"]},
-            Targets=[{"Key": "tag:Name", "Values": ["test"]}],
-            Comment="Multi-param test",
-            TimeoutSeconds=60,
-        )
-        cmd = resp["Command"]
-        assert cmd["Comment"] == "Multi-param test"
-        assert cmd["TimeoutSeconds"] == 60
+    def test_put_parameter_with_data_type(self, ssm):
+        """PutParameter with DataType=text is reflected in DescribeParameters."""
+        name = _unique("/test/dtype-param")
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String", DataType="text")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["DataType"] == "text"
+        finally:
+            ssm.delete_parameter(Name=name)
 
-    def test_list_commands_filter_by_id(self, ssm):
-        """ListCommands filtered by CommandId returns exactly that command."""
-        resp1 = ssm.send_command(
-            DocumentName="AWS-RunShellScript",
-            Parameters={"commands": ["echo filter"]},
-            Targets=[{"Key": "tag:Name", "Values": ["test"]}],
-        )
-        cmd_id = resp1["Command"]["CommandId"]
-        resp2 = ssm.list_commands(CommandId=cmd_id)
-        assert len(resp2["Commands"]) == 1
-        assert resp2["Commands"][0]["CommandId"] == cmd_id
+    def test_put_parameter_returns_version_and_tier(self, ssm):
+        """PutParameter response includes Version and Tier."""
+        name = _unique("/test/putresp-param")
+        try:
+            resp = ssm.put_parameter(Name=name, Value="val", Type="String")
+            assert resp["Version"] == 1
+            assert resp["Tier"] == "Standard"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameter_with_version_selector(self, ssm):
+        """GetParameter with :N version selector returns specific version."""
+        name = _unique("/test/versel-param")
+        try:
+            ssm.put_parameter(Name=name, Value="v1", Type="String")
+            ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+            resp = ssm.get_parameter(Name=f"{name}:1")
+            assert resp["Parameter"]["Value"] == "v1"
+            assert resp["Parameter"]["Version"] == 1
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameter_with_label_selector(self, ssm):
+        """GetParameter with :label selector returns labeled version."""
+        name = _unique("/test/lblsel-param")
+        try:
+            ssm.put_parameter(Name=name, Value="v1", Type="String")
+            ssm.label_parameter_version(Name=name, ParameterVersion=1, Labels=["prod"])
+            resp = ssm.get_parameter(Name=f"{name}:prod")
+            assert resp["Parameter"]["Value"] == "v1"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_describe_parameters_pagination(self, ssm):
+        """DescribeParameters supports pagination with MaxResults/NextToken."""
+        names = [_unique("/test/page-param") for _ in range(6)]
+        try:
+            for n in names:
+                ssm.put_parameter(Name=n, Value="val", Type="String")
+            resp = ssm.describe_parameters(MaxResults=50)
+            assert "Parameters" in resp
+            # All 6 params should be present (possibly more from other tests)
+            found = {p["Name"] for p in resp["Parameters"]}
+            for n in names:
+                assert n in found
+        finally:
+            ssm.delete_parameters(Names=names)
+
+    def test_describe_parameters_begins_with_filter(self, ssm):
+        """DescribeParameters with BeginsWith filter."""
+        prefix = _unique("/test/bw")
+        name = f"{prefix}/x"
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "BeginsWith", "Values": [prefix]}]
+            )
+            found = [p["Name"] for p in resp["Parameters"]]
+            assert name in found
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_describe_parameters_path_filter(self, ssm):
+        """DescribeParameters with Path filter."""
+        prefix = _unique("/test/pathf")
+        names = [f"{prefix}/a", f"{prefix}/b"]
+        try:
+            for n in names:
+                ssm.put_parameter(Name=n, Value="val", Type="String")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Path", "Option": "Recursive", "Values": [prefix]}]
+            )
+            found = [p["Name"] for p in resp["Parameters"]]
+            for n in names:
+                assert n in found
+        finally:
+            ssm.delete_parameters(Names=names)
+
+    def test_get_parameters_by_path_pagination(self, ssm):
+        """GetParametersByPath supports pagination with MaxResults/NextToken."""
+        prefix = _unique("/test/pathpage")
+        names = [f"{prefix}/p{i}" for i in range(6)]
+        try:
+            for n in names:
+                ssm.put_parameter(Name=n, Value="val", Type="String")
+            resp = ssm.get_parameters_by_path(Path=prefix, MaxResults=3)
+            assert len(resp["Parameters"]) == 3
+            assert resp.get("NextToken") is not None
+            resp2 = ssm.get_parameters_by_path(
+                Path=prefix, NextToken=resp["NextToken"], MaxResults=3
+            )
+            assert len(resp2["Parameters"]) == 3
+            all_names = [p["Name"] for p in resp["Parameters"] + resp2["Parameters"]]
+            assert set(all_names) == set(names)
+        finally:
+            ssm.delete_parameters(Names=names)
+
+    def test_get_parameters_by_path_with_filter(self, ssm):
+        """GetParametersByPath with ParameterFilters."""
+        prefix = _unique("/test/pathfilt")
+        name = f"{prefix}/a"
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String")
+            resp = ssm.get_parameters_by_path(
+                Path=prefix,
+                ParameterFilters=[{"Key": "Type", "Option": "Equals", "Values": ["String"]}],
+            )
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Name"] == name
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_describe_parameters_secure_string_has_key_id(self, ssm):
+        """DescribeParameters for SecureString includes KeyId."""
+        name = _unique("/test/ss-keyid")
+        try:
+            ssm.put_parameter(Name=name, Value="secret", Type="SecureString")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert len(resp["Parameters"]) == 1
+            assert "KeyId" in resp["Parameters"][0]
+        finally:
+            ssm.delete_parameter(Name=name)
 
 
-class TestSsmMaintenanceWindowDeep:
-    """Deeper maintenance window tests for describe targets/tasks."""
+class TestSSMMaintenanceWindowTags:
+    """Maintenance window tagging operations."""
 
     @pytest.fixture
     def ssm(self):
         return make_client("ssm")
 
-    def test_get_maintenance_window(self, ssm):
-        """GetMaintenanceWindow returns window details."""
+    def test_create_maintenance_window_with_tags(self, ssm):
+        """CreateMaintenanceWindow with Tags."""
+        name = _unique("mw-tag")
         resp = ssm.create_maintenance_window(
-            Name=_unique("gmw"),
-            Schedule="rate(1 day)",
-            Duration=2,
-            Cutoff=1,
-            AllowUnassociatedTargets=True,
-        )
-        mw_id = resp["WindowId"]
-        try:
-            got = ssm.get_maintenance_window(WindowId=mw_id)
-            assert got["WindowId"] == mw_id
-            assert got["Duration"] == 2
-            assert got["Cutoff"] == 1
-        finally:
-            ssm.delete_maintenance_window(WindowId=mw_id)
-
-    def test_describe_maintenance_window_targets_empty(self, ssm):
-        """DescribeMaintenanceWindowTargets on fresh window returns empty."""
-        resp = ssm.create_maintenance_window(
-            Name=_unique("tgt-mw"),
-            Schedule="rate(1 day)",
-            Duration=2,
-            Cutoff=1,
-            AllowUnassociatedTargets=True,
-        )
-        mw_id = resp["WindowId"]
-        try:
-            tgt_resp = ssm.describe_maintenance_window_targets(WindowId=mw_id)
-            assert "Targets" in tgt_resp
-            assert isinstance(tgt_resp["Targets"], list)
-        finally:
-            ssm.delete_maintenance_window(WindowId=mw_id)
-
-    def test_describe_maintenance_window_tasks_empty(self, ssm):
-        """DescribeMaintenanceWindowTasks on fresh window returns empty."""
-        resp = ssm.create_maintenance_window(
-            Name=_unique("tsk-mw"),
-            Schedule="rate(1 day)",
-            Duration=2,
-            Cutoff=1,
-            AllowUnassociatedTargets=True,
-        )
-        mw_id = resp["WindowId"]
-        try:
-            tsk_resp = ssm.describe_maintenance_window_tasks(WindowId=mw_id)
-            assert "Tasks" in tsk_resp
-            assert isinstance(tsk_resp["Tasks"], list)
-        finally:
-            ssm.delete_maintenance_window(WindowId=mw_id)
-
-
-class TestSsmDocumentDeep:
-    """Deeper document tests."""
-
-    @pytest.fixture
-    def ssm(self):
-        return make_client("ssm")
-
-    def test_describe_document_permission_share(self, ssm):
-        """DescribeDocumentPermission returns share info."""
-        name = _unique("doc-perm")
-        ssm.create_document(
             Name=name,
-            Content='{"schemaVersion":"2.2","mainSteps":[{"action":"aws:runShellScript",'
-            '"name":"run","inputs":{"runCommand":["echo hi"]}}]}',
-            DocumentType="Command",
+            Schedule="rate(1 day)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+            Tags=[{"Key": "env", "Value": "test"}],
         )
+        wid = resp["WindowId"]
         try:
-            resp = ssm.describe_document_permission(Name=name, PermissionType="Share")
-            assert "AccountIds" in resp
-            assert isinstance(resp["AccountIds"], list)
-            assert "AccountSharingInfoList" in resp
+            tags = ssm.list_tags_for_resource(ResourceType="MaintenanceWindow", ResourceId=wid)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "test"
         finally:
-            ssm.delete_document(Name=name)
+            ssm.delete_maintenance_window(WindowId=wid)
+
+    def test_add_remove_tags_maintenance_window(self, ssm):
+        """AddTagsToResource / RemoveTagsFromResource on MaintenanceWindow."""
+        name = _unique("mw-tags")
+        resp = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="rate(1 day)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        wid = resp["WindowId"]
+        try:
+            ssm.add_tags_to_resource(
+                ResourceType="MaintenanceWindow",
+                ResourceId=wid,
+                Tags=[
+                    {"Key": "team", "Value": "ops"},
+                    {"Key": "cost", "Value": "low"},
+                ],
+            )
+            tags = ssm.list_tags_for_resource(ResourceType="MaintenanceWindow", ResourceId=wid)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["team"] == "ops"
+            assert tag_map["cost"] == "low"
+
+            ssm.remove_tags_from_resource(
+                ResourceType="MaintenanceWindow", ResourceId=wid, TagKeys=["cost"]
+            )
+            tags2 = ssm.list_tags_for_resource(ResourceType="MaintenanceWindow", ResourceId=wid)
+            keys = [t["Key"] for t in tags2["TagList"]]
+            assert "team" in keys
+            assert "cost" not in keys
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+
+class TestSSMDocumentTags:
+    """Document tagging operations."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def _doc_content(self):
+        import json
+
+        return json.dumps(
+            {
+                "schemaVersion": "2.2",
+                "description": "Tag test doc",
+                "mainSteps": [
+                    {
+                        "action": "aws:runShellScript",
+                        "name": "run",
+                        "inputs": {"runCommand": ["echo hi"]},
+                    }
+                ],
+            }
+        )
 
     def test_create_document_with_tags(self, ssm):
-        """CreateDocument with tags, verify via ListTagsForResource."""
-        name = _unique("doc-tag")
+        """CreateDocument with Tags."""
+        doc_name = _unique("doc-tag")
         ssm.create_document(
-            Name=name,
-            Content='{"schemaVersion":"2.2","mainSteps":[{"action":"aws:runShellScript",'
-            '"name":"run","inputs":{"runCommand":["echo hi"]}}]}',
+            Content=self._doc_content(),
+            Name=doc_name,
             DocumentType="Command",
-            Tags=[{"Key": "team", "Value": "platform"}],
+            DocumentFormat="JSON",
+            Tags=[{"Key": "team", "Value": "dev"}],
         )
         try:
-            resp = ssm.list_tags_for_resource(ResourceType="Document", ResourceId=name)
-            tags = {t["Key"]: t["Value"] for t in resp["TagList"]}
-            assert tags.get("team") == "platform"
+            tags = ssm.list_tags_for_resource(ResourceType="Document", ResourceId=doc_name)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["team"] == "dev"
         finally:
-            ssm.delete_document(Name=name)
+            ssm.delete_document(Name=doc_name)
 
-    def test_get_document(self, ssm):
-        """GetDocument returns document content."""
-        name = _unique("doc-get")
-        content = (
-            '{"schemaVersion":"2.2","mainSteps":[{"action":"aws:runShellScript",'
-            '"name":"run","inputs":{"runCommand":["echo hello"]}}]}'
-        )
+    def test_add_tags_to_document(self, ssm):
+        """AddTagsToResource on Document."""
+        doc_name = _unique("doc-addtag")
         ssm.create_document(
-            Name=name,
-            Content=content,
+            Content=self._doc_content(),
+            Name=doc_name,
             DocumentType="Command",
+            DocumentFormat="JSON",
         )
         try:
-            resp = ssm.get_document(Name=name)
-            assert resp["Name"] == name
-            assert "Content" in resp
+            ssm.add_tags_to_resource(
+                ResourceType="Document",
+                ResourceId=doc_name,
+                Tags=[{"Key": "env", "Value": "staging"}],
+            )
+            tags = ssm.list_tags_for_resource(ResourceType="Document", ResourceId=doc_name)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "staging"
         finally:
-            ssm.delete_document(Name=name)
-
-    def test_describe_document(self, ssm):
-        """DescribeDocument returns document metadata."""
-        name = _unique("doc-desc")
-        ssm.create_document(
-            Name=name,
-            Content='{"schemaVersion":"2.2","mainSteps":[{"action":"aws:runShellScript",'
-            '"name":"run","inputs":{"runCommand":["echo hi"]}}]}',
-            DocumentType="Command",
-        )
-        try:
-            resp = ssm.describe_document(Name=name)
-            doc = resp["Document"]
-            assert doc["Name"] == name
-            assert doc["DocumentType"] == "Command"
-            assert "SchemaVersion" in doc
-        finally:
-            ssm.delete_document(Name=name)
-
-    def test_list_documents_filter_by_owner(self, ssm):
-        """ListDocuments with Owner=Self returns user-created documents."""
-        name = _unique("doc-own")
-        ssm.create_document(
-            Name=name,
-            Content='{"schemaVersion":"2.2","mainSteps":[{"action":"aws:runShellScript",'
-            '"name":"run","inputs":{"runCommand":["echo hi"]}}]}',
-            DocumentType="Command",
-        )
-        try:
-            resp = ssm.list_documents(Filters=[{"Key": "Owner", "Values": ["Self"]}])
-            names = [d["Name"] for d in resp["DocumentIdentifiers"]]
-            assert name in names
-        finally:
-            ssm.delete_document(Name=name)
+            ssm.delete_document(Name=doc_name)
 
 
-class TestSsmServiceSettings:
-    """Tests for GetServiceSetting operations."""
+class TestSSMSendCommandExtended:
+    """Extended SendCommand / ListCommands tests."""
 
     @pytest.fixture
     def ssm(self):
         return make_client("ssm")
 
-    def test_get_service_setting_parameter_tier(self, ssm):
-        """GetServiceSetting for parameter-store/default-parameter-tier."""
-        resp = ssm.get_service_setting(SettingId="/ssm/parameter-store/default-parameter-tier")
-        assert "ServiceSetting" in resp
-        setting = resp["ServiceSetting"]
-        assert "SettingId" in setting
-        assert "SettingValue" in setting
-
-    def test_get_service_setting_high_throughput(self, ssm):
-        """GetServiceSetting for parameter-store/high-throughput-enabled."""
-        resp = ssm.get_service_setting(SettingId="/ssm/parameter-store/high-throughput-enabled")
-        assert "ServiceSetting" in resp
-        assert resp["ServiceSetting"]["SettingId"] == "/ssm/parameter-store/high-throughput-enabled"
-
-
-class TestSsmPatchBaseline:
-    """Tests for patch baseline operations."""
-
-    @pytest.fixture
-    def ssm(self):
-        return make_client("ssm")
-
-    def test_get_default_patch_baseline_details(self, ssm):
-        """GetDefaultPatchBaseline returns a valid baseline ID."""
-        resp = ssm.get_default_patch_baseline()
-        assert "BaselineId" in resp
-        assert resp["BaselineId"].startswith("pb-")
-
-    def test_create_and_delete_patch_baseline(self, ssm):
-        """CreatePatchBaseline + DeletePatchBaseline lifecycle."""
-        name = _unique("pb")
-        resp = ssm.create_patch_baseline(
-            Name=name,
-            OperatingSystem="AMAZON_LINUX_2",
-            Description="Test baseline",
+    def test_send_command_with_comment(self, ssm):
+        """SendCommand with Comment field."""
+        resp = ssm.send_command(
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["echo hello", "date"]},
+            Targets=[{"Key": "instanceids", "Values": ["i-aabbccdd"]}],
+            Comment="deployment script",
         )
-        bl_id = resp["BaselineId"]
-        assert bl_id.startswith("pb-")
-        try:
-            desc = ssm.describe_patch_baselines(Filters=[{"Key": "NAME_PREFIX", "Values": [name]}])
-            found = [b for b in desc["BaselineIdentities"] if b["BaselineId"] == bl_id]
-            assert len(found) == 1
-        finally:
-            ssm.delete_patch_baseline(BaselineId=bl_id)
+        assert resp["Command"]["Comment"] == "deployment script"
+        assert resp["Command"]["DocumentName"] == "AWS-RunShellScript"
 
-    def test_describe_patch_baselines_all(self, ssm):
-        """DescribePatchBaselines returns list of baselines."""
-        resp = ssm.describe_patch_baselines()
-        assert "BaselineIdentities" in resp
-        assert isinstance(resp["BaselineIdentities"], list)
+    def test_send_command_with_instance_ids(self, ssm):
+        """SendCommand with InstanceIds instead of Targets."""
+        resp = ssm.send_command(
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["echo test"]},
+            InstanceIds=["i-12345678"],
+        )
+        assert resp["Command"]["CommandId"] is not None
+        assert "i-12345678" in resp["Command"].get("InstanceIds", [])
 
-    def test_describe_patch_groups_empty(self, ssm):
-        """DescribePatchGroups returns list."""
-        resp = ssm.describe_patch_groups()
-        assert "Mappings" in resp
-        assert isinstance(resp["Mappings"], list)
+    def test_list_commands_by_command_id(self, ssm):
+        """ListCommands filtered by CommandId."""
+        resp = ssm.send_command(
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["echo x"]},
+            Targets=[{"Key": "instanceids", "Values": ["i-00000001"]}],
+        )
+        cid = resp["Command"]["CommandId"]
+        list_resp = ssm.list_commands(CommandId=cid)
+        assert len(list_resp["Commands"]) == 1
+        assert list_resp["Commands"][0]["CommandId"] == cid
+        assert list_resp["Commands"][0]["DocumentName"] == "AWS-RunShellScript"

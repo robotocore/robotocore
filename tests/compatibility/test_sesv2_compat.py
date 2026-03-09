@@ -586,3 +586,371 @@ class TestSesv2AutoCoverage:
         finally:
             for n in names:
                 client.delete_configuration_set(ConfigurationSetName=n)
+
+    def test_create_configuration_set_with_tags(self, client):
+        """CreateConfigurationSet with tags, verify via GetConfigurationSet."""
+        name = _uid("cstag")
+        client.create_configuration_set(
+            ConfigurationSetName=name,
+            Tags=[{"Key": "env", "Value": "staging"}, {"Key": "team", "Value": "platform"}],
+        )
+        try:
+            resp = client.get_configuration_set(ConfigurationSetName=name)
+            assert resp["ConfigurationSetName"] == name
+            tag_map = {t["Key"]: t["Value"] for t in resp.get("Tags", [])}
+            assert tag_map.get("env") == "staging"
+            assert tag_map.get("team") == "platform"
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_configuration_set_has_options(self, client):
+        """GetConfigurationSet returns SendingOptions and other option keys."""
+        name = _uid("csopt")
+        client.create_configuration_set(ConfigurationSetName=name)
+        try:
+            resp = client.get_configuration_set(ConfigurationSetName=name)
+            assert "SendingOptions" in resp
+            assert "DeliveryOptions" in resp
+            assert "ReputationOptions" in resp
+            assert "TrackingOptions" in resp
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_duplicate_configuration_set_raises(self, client):
+        """Creating duplicate configuration set raises ConfigurationSetAlreadyExistsException."""
+        name = _uid("csdup")
+        client.create_configuration_set(ConfigurationSetName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_configuration_set(ConfigurationSetName=name)
+            assert "AlreadyExists" in exc.value.response["Error"]["Code"]
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_contact_list_with_description_and_topics(self, client):
+        """CreateContactList with description and topics, verify via GetContactList."""
+        cl_name = _uid("cldesc")
+        client.create_contact_list(
+            ContactListName=cl_name,
+            Description="Integration test list",
+            Topics=[
+                {
+                    "TopicName": "news",
+                    "DisplayName": "Newsletter",
+                    "DefaultSubscriptionStatus": "OPT_OUT",
+                }
+            ],
+        )
+        try:
+            resp = client.get_contact_list(ContactListName=cl_name)
+            assert resp["ContactListName"] == cl_name
+            assert resp["Description"] == "Integration test list"
+            assert len(resp["Topics"]) == 1
+            assert resp["Topics"][0]["TopicName"] == "news"
+            assert resp["Topics"][0]["DisplayName"] == "Newsletter"
+            assert resp["Topics"][0]["DefaultSubscriptionStatus"] == "OPT_OUT"
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_delete_nonexistent_contact_list_raises(self, client):
+        """DeleteContactList for nonexistent list raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_contact_list(ContactListName="nonexistent-xyz-dcl")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_contact_not_found(self, client):
+        """GetContact for nonexistent contact raises NotFoundException."""
+        cl_name = _uid("clgcnf")
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.get_contact(ContactListName=cl_name, EmailAddress="no-such@example.com")
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_delete_nonexistent_contact_raises(self, client):
+        """DeleteContact for nonexistent contact raises NotFoundException."""
+        cl_name = _uid("cldcnf")
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.delete_contact(ContactListName=cl_name, EmailAddress="no-such@example.com")
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_create_email_identity_with_tags(self, client):
+        """CreateEmailIdentity with tags, verify via GetEmailIdentity."""
+        domain = f"{_uid('tagid')}.example.com"
+        client.create_email_identity(
+            EmailIdentity=domain,
+            Tags=[{"Key": "project", "Value": "robotocore"}],
+        )
+        try:
+            resp = client.get_email_identity(EmailIdentity=domain)
+            tag_map = {t["Key"]: t["Value"] for t in resp.get("Tags", [])}
+            assert tag_map.get("project") == "robotocore"
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_duplicate_email_template_raises(self, client):
+        """Creating duplicate email template raises AlreadyExistsException."""
+        name = _uid("tmpldup")
+        client.create_email_template(
+            TemplateName=name,
+            TemplateContent={"Subject": "S", "Text": "T", "Html": "<p>H</p>"},
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_email_template(
+                    TemplateName=name,
+                    TemplateContent={"Subject": "S2", "Text": "T2", "Html": "<p>H2</p>"},
+                )
+            assert exc.value.response["Error"]["Code"] == "AlreadyExistsException"
+        finally:
+            client.delete_email_template(TemplateName=name)
+
+    def test_delete_nonexistent_template_succeeds(self, client):
+        """DeleteEmailTemplate for nonexistent template succeeds (idempotent)."""
+        resp = client.delete_email_template(TemplateName="nonexistent-xyz-tmpl-del")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_send_raw_email(self, client):
+        """SendEmail with Raw content returns a MessageId."""
+        email = f"{_uid('raw')}@example.com"
+        client.create_email_identity(EmailIdentity=email)
+        try:
+            raw_msg = (
+                f"From: {email}\r\n"
+                "To: recipient@example.com\r\n"
+                "Subject: Raw test\r\n"
+                "\r\n"
+                "This is a raw email body."
+            )
+            resp = client.send_email(
+                FromEmailAddress=email,
+                Destination={"ToAddresses": ["recipient@example.com"]},
+                Content={"Raw": {"Data": raw_msg.encode("utf-8")}},
+            )
+            assert "MessageId" in resp
+            assert len(resp["MessageId"]) > 0
+        finally:
+            client.delete_email_identity(EmailIdentity=email)
+
+    def test_send_email_with_reply_to(self, client):
+        """SendEmail with ReplyToAddresses returns a MessageId."""
+        email = f"{_uid('rto')}@example.com"
+        client.create_email_identity(EmailIdentity=email)
+        try:
+            resp = client.send_email(
+                FromEmailAddress=email,
+                Destination={"ToAddresses": ["to@example.com"]},
+                ReplyToAddresses=["noreply@example.com"],
+                Content={
+                    "Simple": {
+                        "Subject": {"Data": "Reply-to test"},
+                        "Body": {"Text": {"Data": "body"}},
+                    }
+                },
+            )
+            assert "MessageId" in resp
+            assert len(resp["MessageId"]) > 0
+        finally:
+            client.delete_email_identity(EmailIdentity=email)
+
+    def test_send_email_with_configuration_set(self, client):
+        """SendEmail with ConfigurationSetName succeeds."""
+        email = f"{_uid('csend')}@example.com"
+        cs_name = _uid("cssend")
+        client.create_email_identity(EmailIdentity=email)
+        client.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            resp = client.send_email(
+                FromEmailAddress=email,
+                Destination={"ToAddresses": ["to@example.com"]},
+                Content={
+                    "Simple": {
+                        "Subject": {"Data": "CS send test"},
+                        "Body": {"Text": {"Data": "body"}},
+                    }
+                },
+                ConfigurationSetName=cs_name,
+            )
+            assert "MessageId" in resp
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=cs_name)
+            client.delete_email_identity(EmailIdentity=email)
+
+    def test_dedicated_ip_pool_with_tags(self, client):
+        """CreateDedicatedIpPool with tags, verify via GetDedicatedIpPool."""
+        name = _uid("pooltag")
+        client.create_dedicated_ip_pool(PoolName=name, Tags=[{"Key": "env", "Value": "test"}])
+        try:
+            resp = client.get_dedicated_ip_pool(PoolName=name)
+            assert resp["DedicatedIpPool"]["PoolName"] == name
+        finally:
+            client.delete_dedicated_ip_pool(PoolName=name)
+
+    def test_multiple_contacts_in_list(self, client):
+        """Create multiple contacts in a list and verify via ListContacts."""
+        cl_name = _uid("clmulti")
+        emails = [f"{_uid('mc')}@example.com" for _ in range(3)]
+        client.create_contact_list(ContactListName=cl_name)
+        try:
+            for em in emails:
+                client.create_contact(ContactListName=cl_name, EmailAddress=em)
+            resp = client.list_contacts(ContactListName=cl_name)
+            found = [ct["EmailAddress"] for ct in resp["Contacts"]]
+            for em in emails:
+                assert em in found
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_multiple_email_identities(self, client):
+        """Create multiple email identities and list them all."""
+        emails = [f"{_uid('mid')}@example.com" for _ in range(3)]
+        for em in emails:
+            client.create_email_identity(EmailIdentity=em)
+        try:
+            resp = client.list_email_identities()
+            found = [i["IdentityName"] for i in resp["EmailIdentities"]]
+            for em in emails:
+                assert em in found
+        finally:
+            for em in emails:
+                client.delete_email_identity(EmailIdentity=em)
+
+    def test_multiple_email_templates(self, client):
+        """Create multiple email templates and list them all."""
+        names = [_uid("mtmpl") for _ in range(3)]
+        for nm in names:
+            client.create_email_template(
+                TemplateName=nm,
+                TemplateContent={"Subject": "S", "Text": "T", "Html": "<p>H</p>"},
+            )
+        try:
+            resp = client.list_email_templates()
+            found = [t["TemplateName"] for t in resp["TemplatesMetadata"]]
+            for nm in names:
+                assert nm in found
+        finally:
+            for nm in names:
+                client.delete_email_template(TemplateName=nm)
+
+    def test_update_email_template_text_and_html(self, client):
+        """UpdateEmailTemplate changes both text and HTML content."""
+        name = _uid("utmpl")
+        client.create_email_template(
+            TemplateName=name,
+            TemplateContent={
+                "Subject": "Original",
+                "Text": "Original text",
+                "Html": "<p>Original</p>",
+            },
+        )
+        try:
+            client.update_email_template(
+                TemplateName=name,
+                TemplateContent={
+                    "Subject": "Updated Subject",
+                    "Text": "Updated text",
+                    "Html": "<p>Updated</p>",
+                },
+            )
+            resp = client.get_email_template(TemplateName=name)
+            assert resp["TemplateContent"]["Subject"] == "Updated Subject"
+            assert resp["TemplateContent"]["Text"] == "Updated text"
+            assert resp["TemplateContent"]["Html"] == "<p>Updated</p>"
+        finally:
+            client.delete_email_template(TemplateName=name)
+
+    def test_tag_and_untag_email_identity(self, client):
+        """Tag an identity, verify, untag, verify removal."""
+        domain = f"{_uid('tuid')}.example.com"
+        client.create_email_identity(EmailIdentity=domain)
+        arn = f"arn:aws:ses:us-east-1:123456789012:identity/{domain}"
+        try:
+            client.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "a", "Value": "1"}, {"Key": "b", "Value": "2"}],
+            )
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tag_map["a"] == "1"
+            assert tag_map["b"] == "2"
+            client.untag_resource(ResourceArn=arn, TagKeys=["a"])
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "a" not in tag_keys
+            assert "b" in tag_keys
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_multiple_dedicated_ip_pools(self, client):
+        """Create multiple dedicated IP pools and list them."""
+        names = [_uid("mpol") for _ in range(3)]
+        for nm in names:
+            client.create_dedicated_ip_pool(PoolName=nm)
+        try:
+            resp = client.list_dedicated_ip_pools()
+            for nm in names:
+                assert nm in resp["DedicatedIpPools"]
+        finally:
+            for nm in names:
+                client.delete_dedicated_ip_pool(PoolName=nm)
+
+    def test_delete_dedicated_ip_pool(self, client):
+        """DeleteDedicatedIpPool removes the pool from the list."""
+        name = _uid("dpool")
+        client.create_dedicated_ip_pool(PoolName=name)
+        client.delete_dedicated_ip_pool(PoolName=name)
+        resp = client.list_dedicated_ip_pools()
+        assert name not in resp["DedicatedIpPools"]
+
+    def test_contact_list_multiple_topics(self, client):
+        """ContactList with multiple topics preserves all topics."""
+        cl_name = _uid("clmt")
+        client.create_contact_list(
+            ContactListName=cl_name,
+            Topics=[
+                {
+                    "TopicName": "marketing",
+                    "DisplayName": "Marketing",
+                    "DefaultSubscriptionStatus": "OPT_IN",
+                },
+                {
+                    "TopicName": "transactional",
+                    "DisplayName": "Transactional",
+                    "DefaultSubscriptionStatus": "OPT_OUT",
+                },
+            ],
+        )
+        try:
+            resp = client.get_contact_list(ContactListName=cl_name)
+            topic_names = [t["TopicName"] for t in resp["Topics"]]
+            assert "marketing" in topic_names
+            assert "transactional" in topic_names
+        finally:
+            client.delete_contact_list(ContactListName=cl_name)
+
+    def test_create_email_identity_returns_dkim(self, client):
+        """CreateEmailIdentity for domain returns DkimAttributes."""
+        domain = f"{_uid('dkret')}.example.com"
+        resp = client.create_email_identity(EmailIdentity=domain)
+        try:
+            assert "DkimAttributes" in resp
+        finally:
+            client.delete_email_identity(EmailIdentity=domain)
+
+    def test_list_email_identities_has_identity_type(self, client):
+        """ListEmailIdentities entries have IdentityType and IdentityName."""
+        email = f"{_uid('lit')}@example.com"
+        client.create_email_identity(EmailIdentity=email)
+        try:
+            resp = client.list_email_identities()
+            matching = [i for i in resp["EmailIdentities"] if i["IdentityName"] == email]
+            assert len(matching) == 1
+            assert matching[0]["IdentityType"] == "EMAIL_ADDRESS"
+        finally:
+            client.delete_email_identity(EmailIdentity=email)
