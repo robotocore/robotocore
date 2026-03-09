@@ -746,7 +746,7 @@ wheels = [
 [[package]]
 name = "moto"
 version = "5.1.23.dev0"
-source = { git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes#20f55b015eaab01e519d121fa8ff7137f106f64d" }
+source = { git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes#8bd50be4238ae59a4039183687b79ad0c4f6c66f" }
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },
