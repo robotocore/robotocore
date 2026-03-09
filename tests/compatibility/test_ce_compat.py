@@ -518,3 +518,199 @@ class TestCEListOperations:
             assert "CostCategoryResourceAssociations" in resp
         finally:
             ce.delete_cost_category_definition(CostCategoryArn=arn)
+
+
+class TestCEAnomalyMonitorCRUD:
+    """Tests for anomaly monitor create/update/delete operations."""
+
+    def test_create_anomaly_monitor(self, ce):
+        """CreateAnomalyMonitor returns a MonitorArn."""
+        resp = ce.create_anomaly_monitor(
+            AnomalyMonitor={
+                "MonitorName": _unique("mon"),
+                "MonitorType": "DIMENSIONAL",
+                "MonitorDimension": "SERVICE",
+            }
+        )
+        assert "MonitorArn" in resp
+        assert "arn:aws:ce:" in resp["MonitorArn"]
+        ce.delete_anomaly_monitor(MonitorArn=resp["MonitorArn"])
+
+    def test_create_anomaly_monitor_custom(self, ce):
+        """CreateAnomalyMonitor with CUSTOM type returns MonitorArn."""
+        resp = ce.create_anomaly_monitor(
+            AnomalyMonitor={
+                "MonitorName": _unique("custom-mon"),
+                "MonitorType": "CUSTOM",
+                "MonitorSpecification": {"Dimensions": {"Key": "SERVICE", "Values": ["Amazon S3"]}},
+            }
+        )
+        assert "MonitorArn" in resp
+        ce.delete_anomaly_monitor(MonitorArn=resp["MonitorArn"])
+
+    def test_update_anomaly_monitor(self, ce):
+        """UpdateAnomalyMonitor returns the updated MonitorArn."""
+        create_resp = ce.create_anomaly_monitor(
+            AnomalyMonitor={
+                "MonitorName": _unique("mon"),
+                "MonitorType": "DIMENSIONAL",
+                "MonitorDimension": "SERVICE",
+            }
+        )
+        arn = create_resp["MonitorArn"]
+        try:
+            update_resp = ce.update_anomaly_monitor(MonitorArn=arn, MonitorName="updated-monitor")
+            assert update_resp["MonitorArn"] == arn
+        finally:
+            ce.delete_anomaly_monitor(MonitorArn=arn)
+
+    def test_delete_anomaly_monitor(self, ce):
+        """DeleteAnomalyMonitor returns 200."""
+        create_resp = ce.create_anomaly_monitor(
+            AnomalyMonitor={
+                "MonitorName": _unique("mon"),
+                "MonitorType": "DIMENSIONAL",
+                "MonitorDimension": "SERVICE",
+            }
+        )
+        arn = create_resp["MonitorArn"]
+        del_resp = ce.delete_anomaly_monitor(MonitorArn=arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_then_list_anomaly_monitors(self, ce):
+        """Created monitor appears in GetAnomalyMonitors."""
+        name = _unique("mon")
+        create_resp = ce.create_anomaly_monitor(
+            AnomalyMonitor={
+                "MonitorName": name,
+                "MonitorType": "DIMENSIONAL",
+                "MonitorDimension": "SERVICE",
+            }
+        )
+        arn = create_resp["MonitorArn"]
+        try:
+            list_resp = ce.get_anomaly_monitors()
+            arns = [m["MonitorArn"] for m in list_resp["AnomalyMonitors"]]
+            assert arn in arns
+        finally:
+            ce.delete_anomaly_monitor(MonitorArn=arn)
+
+
+class TestCEAnomalySubscriptionCRUD:
+    """Tests for anomaly subscription create/update/delete operations."""
+
+    def _create_monitor(self, ce):
+        resp = ce.create_anomaly_monitor(
+            AnomalyMonitor={
+                "MonitorName": _unique("mon"),
+                "MonitorType": "DIMENSIONAL",
+                "MonitorDimension": "SERVICE",
+            }
+        )
+        return resp["MonitorArn"]
+
+    def test_create_anomaly_subscription(self, ce):
+        """CreateAnomalySubscription returns a SubscriptionArn."""
+        mon_arn = self._create_monitor(ce)
+        try:
+            resp = ce.create_anomaly_subscription(
+                AnomalySubscription={
+                    "MonitorArnList": [mon_arn],
+                    "Subscribers": [{"Address": "test@example.com", "Type": "EMAIL"}],
+                    "Frequency": "DAILY",
+                    "SubscriptionName": _unique("sub"),
+                }
+            )
+            assert "SubscriptionArn" in resp
+            assert "arn:aws:ce:" in resp["SubscriptionArn"]
+            ce.delete_anomaly_subscription(SubscriptionArn=resp["SubscriptionArn"])
+        finally:
+            ce.delete_anomaly_monitor(MonitorArn=mon_arn)
+
+    def test_update_anomaly_subscription(self, ce):
+        """UpdateAnomalySubscription returns the updated SubscriptionArn."""
+        mon_arn = self._create_monitor(ce)
+        try:
+            sub_resp = ce.create_anomaly_subscription(
+                AnomalySubscription={
+                    "MonitorArnList": [mon_arn],
+                    "Subscribers": [{"Address": "test@example.com", "Type": "EMAIL"}],
+                    "Frequency": "DAILY",
+                    "SubscriptionName": _unique("sub"),
+                }
+            )
+            sub_arn = sub_resp["SubscriptionArn"]
+            try:
+                update_resp = ce.update_anomaly_subscription(
+                    SubscriptionArn=sub_arn, SubscriptionName="updated-sub"
+                )
+                assert update_resp["SubscriptionArn"] == sub_arn
+            finally:
+                ce.delete_anomaly_subscription(SubscriptionArn=sub_arn)
+        finally:
+            ce.delete_anomaly_monitor(MonitorArn=mon_arn)
+
+    def test_delete_anomaly_subscription(self, ce):
+        """DeleteAnomalySubscription returns 200."""
+        mon_arn = self._create_monitor(ce)
+        try:
+            sub_resp = ce.create_anomaly_subscription(
+                AnomalySubscription={
+                    "MonitorArnList": [mon_arn],
+                    "Subscribers": [{"Address": "test@example.com", "Type": "EMAIL"}],
+                    "Frequency": "DAILY",
+                    "SubscriptionName": _unique("sub"),
+                }
+            )
+            del_resp = ce.delete_anomaly_subscription(SubscriptionArn=sub_resp["SubscriptionArn"])
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ce.delete_anomaly_monitor(MonitorArn=mon_arn)
+
+    def test_create_then_list_anomaly_subscriptions(self, ce):
+        """Created subscription appears in GetAnomalySubscriptions."""
+        mon_arn = self._create_monitor(ce)
+        try:
+            sub_resp = ce.create_anomaly_subscription(
+                AnomalySubscription={
+                    "MonitorArnList": [mon_arn],
+                    "Subscribers": [{"Address": "test@example.com", "Type": "EMAIL"}],
+                    "Frequency": "DAILY",
+                    "SubscriptionName": _unique("sub"),
+                }
+            )
+            sub_arn = sub_resp["SubscriptionArn"]
+            try:
+                list_resp = ce.get_anomaly_subscriptions()
+                arns = [s["SubscriptionArn"] for s in list_resp["AnomalySubscriptions"]]
+                assert sub_arn in arns
+            finally:
+                ce.delete_anomaly_subscription(SubscriptionArn=sub_arn)
+        finally:
+            ce.delete_anomaly_monitor(MonitorArn=mon_arn)
+
+
+class TestCEAnomalyFeedback:
+    """Tests for ProvideAnomalyFeedback."""
+
+    def test_provide_anomaly_feedback(self, ce):
+        """ProvideAnomalyFeedback returns AnomalyId."""
+        resp = ce.provide_anomaly_feedback(AnomalyId="fake-anomaly-id", Feedback="YES")
+        assert "AnomalyId" in resp
+        assert resp["AnomalyId"] == "fake-anomaly-id"
+
+    def test_provide_anomaly_feedback_no(self, ce):
+        """ProvideAnomalyFeedback with NO feedback."""
+        resp = ce.provide_anomaly_feedback(AnomalyId="another-anomaly-id", Feedback="NO")
+        assert resp["AnomalyId"] == "another-anomaly-id"
+
+
+class TestCERecommendationGeneration:
+    """Tests for StartSavingsPlansPurchaseRecommendationGeneration."""
+
+    def test_start_savings_plans_purchase_recommendation_generation(self, ce):
+        """StartSavingsPlansPurchaseRecommendationGeneration returns IDs."""
+        resp = ce.start_savings_plans_purchase_recommendation_generation()
+        assert "RecommendationId" in resp
+        assert "GenerationStartedTime" in resp
+        assert "EstimatedCompletionTime" in resp

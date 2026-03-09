@@ -1261,3 +1261,194 @@ class TestServiceCatalogPortfolioShare:
             assert "987654321098" not in access["AccountIds"]
         finally:
             servicecatalog.delete_portfolio(Id=pid)
+
+
+class TestServiceCatalogServiceActions:
+    """Tests for ServiceAction CRUD operations."""
+
+    def _create_service_action(self, servicecatalog):
+        """Create a service action and return its ID from the list."""
+        name = _uid("sa")
+        servicecatalog.create_service_action(
+            Name=name,
+            DefinitionType="SSM_AUTOMATION",
+            Definition={"Name": "AWS-RestartEC2Instance", "Version": "1"},
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        sas = servicecatalog.list_service_actions()["ServiceActionSummaries"]
+        matches = [s["Id"] for s in sas if s["Name"] == name]
+        assert len(matches) == 1
+        return matches[0], name
+
+    def test_delete_service_action(self, servicecatalog):
+        """DeleteServiceAction removes a service action."""
+        sa_id, _ = self._create_service_action(servicecatalog)
+        resp = servicecatalog.delete_service_action(Id=sa_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_service_action_not_found(self, servicecatalog):
+        """DeleteServiceAction with nonexistent ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.delete_service_action(Id="act-nonexistent000")
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+    def test_update_service_action(self, servicecatalog):
+        """UpdateServiceAction returns ServiceActionDetail."""
+        sa_id, _ = self._create_service_action(servicecatalog)
+        try:
+            resp = servicecatalog.update_service_action(
+                Id=sa_id, Name="updated-action", Description="updated desc"
+            )
+            assert "ServiceActionDetail" in resp
+            assert "Definition" in resp["ServiceActionDetail"]
+        finally:
+            servicecatalog.delete_service_action(Id=sa_id)
+
+    def test_disassociate_service_action_from_provisioning_artifact(self, servicecatalog):
+        """DisassociateServiceActionFromProvisioningArtifact returns 200."""
+        resp = servicecatalog.disassociate_service_action_from_provisioning_artifact(
+            ProductId="prod-fake",
+            ProvisioningArtifactId="pa-fake",
+            ServiceActionId="act-fake",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestServiceCatalogBudgetAssociation:
+    """Tests for budget association/disassociation operations."""
+
+    def test_associate_budget_with_resource(self, servicecatalog):
+        """AssociateBudgetWithResource returns 200."""
+        resp = servicecatalog.associate_budget_with_resource(
+            BudgetName="test-budget", ResourceId="fake-resource-id"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_budget_from_resource(self, servicecatalog):
+        """DisassociateBudgetFromResource returns 200."""
+        resp = servicecatalog.disassociate_budget_from_resource(
+            BudgetName="test-budget", ResourceId="fake-resource-id"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestServiceCatalogProvisionedProductPlan:
+    """Tests for provisioned product plan operations."""
+
+    def test_create_provisioned_product_plan(self, servicecatalog):
+        """CreateProvisionedProductPlan returns PlanId."""
+        resp = servicecatalog.create_provisioned_product_plan(
+            PlanName=_uid("plan"),
+            PlanType="CLOUDFORMATION",
+            ProductId="prod-fake",
+            ProvisionedProductName=_uid("pp"),
+            ProvisioningArtifactId="pa-fake",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        assert "PlanId" in resp
+        assert "PlanName" in resp
+        # Cleanup
+        servicecatalog.delete_provisioned_product_plan(PlanId=resp["PlanId"])
+
+    def test_delete_provisioned_product_plan_not_found(self, servicecatalog):
+        """DeleteProvisionedProductPlan with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.delete_provisioned_product_plan(PlanId="plan-nonexistent")
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+    def test_execute_provisioned_product_plan_not_found(self, servicecatalog):
+        """ExecuteProvisionedProductPlan with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.execute_provisioned_product_plan(
+                PlanId="plan-nonexistent",
+                IdempotencyToken=uuid.uuid4().hex,
+            )
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+
+class TestServiceCatalogEngineWorkflowNotifications:
+    """Tests for engine workflow notification operations."""
+
+    def test_notify_provision_product_engine_workflow_result(self, servicecatalog):
+        """NotifyProvisionProductEngineWorkflowResult returns 200."""
+        resp = servicecatalog.notify_provision_product_engine_workflow_result(
+            WorkflowToken="fake-token",
+            RecordId="fake-record",
+            Status="SUCCEEDED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_notify_terminate_provisioned_product_engine_workflow_result(self, servicecatalog):
+        """NotifyTerminateProvisionedProductEngineWorkflowResult returns 200."""
+        resp = servicecatalog.notify_terminate_provisioned_product_engine_workflow_result(
+            WorkflowToken="fake-token",
+            RecordId="fake-record",
+            Status="SUCCEEDED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_notify_update_provisioned_product_engine_workflow_result(self, servicecatalog):
+        """NotifyUpdateProvisionedProductEngineWorkflowResult returns 200."""
+        resp = servicecatalog.notify_update_provisioned_product_engine_workflow_result(
+            WorkflowToken="fake-token",
+            RecordId="fake-record",
+            Status="SUCCEEDED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestServiceCatalogProvisionedProductOps:
+    """Tests for provisioned product operations with error cases."""
+
+    def test_execute_provisioned_product_service_action_not_found(self, servicecatalog):
+        """ExecuteProvisionedProductServiceAction with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.execute_provisioned_product_service_action(
+                ProvisionedProductId="pp-fake",
+                ServiceActionId="act-fake",
+                ExecuteToken=uuid.uuid4().hex,
+            )
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+    def test_update_provisioned_product_not_found(self, servicecatalog):
+        """UpdateProvisionedProduct with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.update_provisioned_product(
+                ProvisionedProductId="pp-fake",
+                UpdateToken=uuid.uuid4().hex,
+            )
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+    def test_terminate_provisioned_product_not_found(self, servicecatalog):
+        """TerminateProvisionedProduct with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.terminate_provisioned_product(
+                ProvisionedProductId="pp-nonexistent",
+                TerminateToken=uuid.uuid4().hex,
+            )
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+    def test_update_provisioned_product_properties_not_found(self, servicecatalog):
+        """UpdateProvisionedProductProperties with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.update_provisioned_product_properties(
+                ProvisionedProductId="pp-fake",
+                ProvisionedProductProperties={"OWNER": "test@test.com"},
+                IdempotencyToken=uuid.uuid4().hex,
+            )
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+    def test_import_as_provisioned_product(self, servicecatalog):
+        """ImportAsProvisionedProduct returns RecordDetail."""
+        resp = servicecatalog.import_as_provisioned_product(
+            ProductId="prod-fake",
+            ProvisioningArtifactId="pa-fake",
+            ProvisionedProductName=_uid("pp-import"),
+            PhysicalId="arn:aws:cloudformation:us-east-1:123456789012:stack/my-stack/guid",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        assert "RecordDetail" in resp
+        rd = resp["RecordDetail"]
+        assert "RecordId" in rd
+        assert rd["RecordType"] == "IMPORT_PROVISIONED_PRODUCT"
+        assert rd["Status"] == "SUCCEEDED"
