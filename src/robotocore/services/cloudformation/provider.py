@@ -74,6 +74,22 @@ async def handle_cloudformation_request(request: Request, region: str, account_i
         return _error("InternalError", str(e), 500)
 
 
+def _validate_parameters(template: dict, cfn_params: dict) -> None:
+    """Validate parameters against AllowedValues from the template."""
+    param_defs = template.get("Parameters", {})
+    for pname, pdef in param_defs.items():
+        allowed = pdef.get("AllowedValues")
+        if not allowed:
+            continue
+        value = cfn_params.get(pname, str(pdef.get("Default", "")))
+        if value and str(value) not in [str(v) for v in allowed]:
+            raise CfnError(
+                "ValidationError",
+                f"Parameter '{pname}' must be one of AllowedValues: "
+                f"{', '.join(str(v) for v in allowed)}. Got: {value}",
+            )
+
+
 def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StackName", "")
     template_body = params.get("TemplateBody", "")
@@ -114,6 +130,9 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
     template = parse_template(template_body)
     description = template.get("Description", "")
 
+    # Validate parameters against AllowedValues
+    _validate_parameters(template, cfn_params)
+
     stack = CfnStack(
         stack_id=stack_id,
         stack_name=name,
@@ -132,9 +151,15 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         stack.status = "CREATE_COMPLETE"
         _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "CREATE_COMPLETE")
     except Exception as e:
-        stack.status = "CREATE_FAILED"
+        # Rollback: delete any resources that were created
+        for logical_id in reversed(list(stack.resources.keys())):
+            try:
+                delete_resource(stack.resources[logical_id], region, account_id)
+            except Exception:
+                pass
+        stack.status = "ROLLBACK_COMPLETE"
         stack.status_reason = str(e)
-        _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "CREATE_FAILED", str(e))
+        _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "ROLLBACK_COMPLETE", str(e))
 
     store.put_stack(stack)
     return {"StackId": stack_id}
@@ -402,6 +427,13 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             }
         )
         i += 1
+
+    # Detect no-changes update
+    if template_body == stack.template_body and not cfn_params and not tags:
+        raise CfnError(
+            "ValidationError",
+            "No updates are to be performed.",
+        )
 
     stack.status = "UPDATE_IN_PROGRESS"
     _add_event(stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_IN_PROGRESS")

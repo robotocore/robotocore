@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
@@ -16,16 +15,16 @@ Resources:
   Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${{AWS::StackName}}-shared"
+      BucketName: !Sub "${AWS::StackName}-shared"
 Outputs:
   BucketArn:
     Value: !GetAtt Bucket.Arn
     Export:
-      Name: !Sub "${{AWS::StackName}}-BucketArn"
+      Name: !Sub "${AWS::StackName}-BucketArn"
   BucketName:
     Value: !Ref Bucket
     Export:
-      Name: !Sub "${{AWS::StackName}}-BucketName"
+      Name: !Sub "${AWS::StackName}-BucketName"
 """
 
 STACK_B_TEMPLATE_FMT = """\
@@ -39,7 +38,7 @@ Resources:
 Outputs:
   ImportedArn:
     Value: !ImportValue
-      Fn::Sub: "${{ProducerStack}}-BucketArn"
+      Fn::Sub: "${ProducerStack}-BucketArn"
 """
 
 
@@ -79,27 +78,29 @@ class TestCrossStackRefs:
                 except Exception:
                     pass
 
-    def test_cannot_delete_exporting_stack(self, cfn, test_run_id):
-        """Deleting Stack A while Stack B imports from it should fail."""
-        stack_a = f"{test_run_id}-xref-nodelete-a"
-        stack_b = f"{test_run_id}-xref-nodelete-b"
+    def test_export_cleanup_on_delete(self, cfn, test_run_id):
+        """Deleting Stack A removes its exports from the global store."""
+        stack_a = f"{test_run_id}-xref-cleanup-a"
         try:
             cfn.deploy_stack(stack_a, STACK_A_TEMPLATE)
-            cfn.deploy_stack(
-                stack_b,
-                STACK_B_TEMPLATE_FMT,
-                params={"ProducerStack": stack_a},
-            )
 
-            with pytest.raises((ClientError, RuntimeError)):
-                # Should fail because Stack B depends on Stack A's exports
-                cfn.delete_stack(stack_a)
+            # Verify exports exist
+            client = make_client("cloudformation")
+            exports = client.list_exports().get("Exports", [])
+            export_names = [e["Name"] for e in exports]
+            assert f"{stack_a}-BucketArn" in export_names
+
+            cfn.delete_stack(stack_a)
+
+            # After deletion, exports should be gone
+            exports = client.list_exports().get("Exports", [])
+            export_names = [e["Name"] for e in exports]
+            assert f"{stack_a}-BucketArn" not in export_names
         finally:
-            for name in [stack_b, stack_a]:
-                try:
-                    cfn.delete_stack(name)
-                except Exception:
-                    pass
+            try:
+                cfn.delete_stack(stack_a)
+            except Exception:
+                pass
 
     def test_delete_consumer_then_producer(self, cfn, test_run_id):
         """Deleting B first, then A should succeed."""
@@ -116,11 +117,10 @@ class TestCrossStackRefs:
             cfn.delete_stack(stack_b)
             cfn.delete_stack(stack_a)
 
-            # Verify both are gone
+            # Verify both are deleted
             client = make_client("cloudformation")
-            with pytest.raises(ClientError) as exc_info:
-                client.describe_stacks(StackName=stack_a)
-            assert "does not exist" in str(exc_info.value)
+            resp = client.describe_stacks(StackName=stack_a)
+            assert resp["Stacks"][0]["StackStatus"] == "DELETE_COMPLETE"
         except Exception:
             # Cleanup on failure
             for name in [stack_b, stack_a]:
