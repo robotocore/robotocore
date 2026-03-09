@@ -108,7 +108,10 @@ async def handle_batch_request(request: Request, region: str, account_id: str) -
             elif method == "GET":
                 return _json_response(_list_tags_for_resource(store, arn))
 
-        return _error("InvalidAction", f"Unknown path: {method} {path}", 400)
+        # Fall through to Moto for ops not handled natively
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "batch")
 
     except BatchError as e:
         return _error(e.code, e.message, e.status)

@@ -353,7 +353,10 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
                     store, api_id, fmt, include_directives == "true"
                 )
 
-        return _error("InvalidAction", f"Unknown path: {method} {path}", 400)
+        # Fall through to Moto for ops not handled natively
+        from robotocore.providers.moto_bridge import forward_to_moto
+
+        return await forward_to_moto(request, "appsync")
 
     except AppSyncError as e:
         return _error(e.code, e.message, e.status)
