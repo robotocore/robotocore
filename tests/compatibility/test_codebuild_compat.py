@@ -1111,3 +1111,74 @@ class TestCodeBuildBatchOperations:
             assert resp["buildBatches"][0]["id"] == bb_id
         finally:
             codebuild.delete_project(name=name)
+
+
+class TestCodeBuildSandboxOperations:
+    """Tests for CodeBuild sandbox operations."""
+
+    def test_list_sandboxes(self, codebuild):
+        """ListSandboxes returns sandbox IDs."""
+        resp = codebuild.list_sandboxes()
+        assert "ids" in resp
+        assert isinstance(resp["ids"], list)
+
+    def test_list_sandboxes_for_project(self, codebuild):
+        """ListSandboxesForProject returns sandbox IDs for a project."""
+        name = _unique("sbx-proj")
+        codebuild.create_project(
+            name=name,
+            source={"type": "S3", "location": "my-bucket/source.zip"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+        )
+        try:
+            resp = codebuild.list_sandboxes_for_project(projectName=name)
+            assert "ids" in resp
+            assert isinstance(resp["ids"], list)
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_list_command_executions_for_sandbox(self, codebuild):
+        """ListCommandExecutionsForSandbox returns command executions."""
+        resp = codebuild.list_command_executions_for_sandbox(sandboxId="nonexistent-sandbox-id")
+        assert "commandExecutions" in resp
+        assert isinstance(resp["commandExecutions"], list)
+
+    def test_batch_get_sandboxes(self, codebuild):
+        """BatchGetSandboxes with nonexistent IDs returns empty sandboxes."""
+        resp = codebuild.batch_get_sandboxes(ids=["nonexistent-sandbox-id"])
+        assert "sandboxes" in resp
+        assert isinstance(resp["sandboxes"], list)
+
+    def test_start_sandbox(self, codebuild):
+        """StartSandbox returns sandbox details."""
+        resp = codebuild.start_sandbox()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "sandbox" in resp
+
+    def test_start_command_execution_nonexistent(self, codebuild):
+        """StartCommandExecution on nonexistent sandbox raises ResourceNotFoundException."""
+        with pytest.raises(Exception) as exc_info:
+            codebuild.start_command_execution(
+                sandboxId="nonexistent-sandbox-id",
+                command="echo hello",
+                type="SHELL",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_start_sandbox_connection_nonexistent(self, codebuild):
+        """StartSandboxConnection on nonexistent sandbox raises ResourceNotFoundException."""
+        with pytest.raises(Exception) as exc_info:
+            codebuild.start_sandbox_connection(sandboxId="nonexistent-sandbox-id")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_stop_sandbox_nonexistent(self, codebuild):
+        """StopSandbox on nonexistent sandbox raises ResourceNotFoundException."""
+        with pytest.raises(Exception) as exc_info:
+            codebuild.stop_sandbox(id="nonexistent-sandbox-id")
+        assert "ResourceNotFoundException" in str(exc_info.value)

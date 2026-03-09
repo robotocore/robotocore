@@ -1065,3 +1065,96 @@ class TestResilienceHubAssessmentAndExport:
         resp = resiliencehub.start_resource_grouping_recommendation_task(appArn=app_arn)
         assert resp["appArn"] == app_arn
         assert "groupingId" in resp
+
+    def test_create_recommendation_template(self, resiliencehub):
+        """CreateRecommendationTemplate creates a template."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resiliencehub.publish_app_version(appArn=app_arn)
+        assessment_resp = resiliencehub.start_app_assessment(
+            appArn=app_arn,
+            appVersion="release",
+            assessmentName=_unique_name("assessment"),
+        )
+        assessment_arn = assessment_resp["assessment"]["assessmentArn"]
+        resp = resiliencehub.create_recommendation_template(
+            assessmentArn=assessment_arn,
+            name=_unique_name("rec-tmpl"),
+        )
+        assert "recommendationTemplate" in resp
+        assert resp["recommendationTemplate"]["assessmentArn"] == assessment_arn
+
+    def test_delete_app_assessment_nonexistent(self, resiliencehub):
+        """DeleteAppAssessment raises ResourceNotFoundException for fake ARN."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:app-assessment/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.delete_app_assessment(assessmentArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_app_input_source_nonexistent(self, resiliencehub):
+        """DeleteAppInputSource raises ResourceNotFoundException for fake app."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:app/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.delete_app_input_source(
+                appArn=fake_arn,
+                sourceArn="arn:aws:cloudformation:us-east-1:123456789012:stack/fake/id",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_recommendation_template_nonexistent(self, resiliencehub):
+        """DeleteRecommendationTemplate raises ResourceNotFoundException for fake ARN."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:recommendation-template/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.delete_recommendation_template(recommendationTemplateArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_resources_to_draft_app_version_nonexistent(self, resiliencehub):
+        """ImportResourcesToDraftAppVersion raises ResourceNotFoundException for fake app."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:app/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.import_resources_to_draft_app_version(
+                appArn=fake_arn,
+                sourceArns=["arn:aws:cloudformation:us-east-1:123456789012:stack/fake/id"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_accept_resource_grouping_recommendations_nonexistent(self, resiliencehub):
+        """AcceptResourceGroupingRecommendations raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:app/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.accept_resource_grouping_recommendations(
+                appArn=fake_arn,
+                entries=[{"groupingRecommendationId": "fake-id"}],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_reject_resource_grouping_recommendations_nonexistent(self, resiliencehub):
+        """RejectResourceGroupingRecommendations raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:app/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.reject_resource_grouping_recommendations(
+                appArn=fake_arn,
+                entries=[{"groupingRecommendationId": "fake-id"}],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_batch_update_recommendation_status_nonexistent(self, resiliencehub):
+        """BatchUpdateRecommendationStatus raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:resiliencehub:us-east-1:123456789012:app/fake-id"
+        with pytest.raises(Exception) as exc_info:
+            resiliencehub.batch_update_recommendation_status(
+                appArn=fake_arn,
+                requestEntries=[
+                    {
+                        "entryId": "entry-1",
+                        "excluded": True,
+                        "excludeReason": "NotRelevant",
+                        "item": {
+                            "resourceId": "fake-resource",
+                            "targetAccountId": "123456789012",
+                            "targetRegion": "us-east-1",
+                        },
+                        "referenceId": "fake-ref",
+                    }
+                ],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
