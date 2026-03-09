@@ -1,0 +1,3 @@
+name: auth-stack
+runtime: python
+description: Cognito User Pool and App Client for authentication

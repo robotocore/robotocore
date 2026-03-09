@@ -1,0 +1,3 @@
+name: monitoring
+runtime: python
+description: CloudWatch alarm, SNS topic, and Log group for monitoring

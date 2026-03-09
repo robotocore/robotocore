@@ -1,0 +1,3 @@
+name: vpc-network
+runtime: python
+description: VPC with 2 subnets and a security group
