@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import send_and_receive_sqs
 
 pytestmark = pytest.mark.iac
 
@@ -92,3 +93,9 @@ class TestEventPipeline:
         assert resp["Name"] == rule_name
         assert resp["State"] == "ENABLED"
         assert "my.app" in resp["EventPattern"]
+
+    def test_sqs_message_roundtrip(self, pipeline_outputs, sqs_client):
+        """Send a message to the SQS queue and receive it back."""
+        queue_url = pipeline_outputs["queue_url"]
+        msg = send_and_receive_sqs(sqs_client, queue_url, '{"test": "message"}')
+        assert msg["Body"] == '{"test": "message"}'

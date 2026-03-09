@@ -6,7 +6,11 @@ import json
 
 import pytest
 
-from tests.iac.conftest import make_client
+from tests.iac.conftest import ACCOUNT_ID, REGION, make_client
+from tests.iac.helpers.functional_validator import (
+    put_and_get_s3_object,
+    subscribe_sns_to_sqs_and_publish,
+)
 
 
 @pytest.fixture(scope="module")
@@ -96,3 +100,31 @@ class TestCicdPipeline:
         topic_arn = cicd_outputs["topic_arn"]["value"]
         resp = sns_client.get_topic_attributes(TopicArn=topic_arn)
         assert resp["Attributes"]["TopicArn"] == topic_arn
+
+    def test_artifact_upload_download(self, cicd_outputs, s3_client):
+        """Upload an artifact to S3 and download it back."""
+        bucket_name = cicd_outputs["bucket_name"]["value"]
+        resp = put_and_get_s3_object(
+            s3_client,
+            bucket_name,
+            "artifacts/build-1.zip",
+            b"fake-zip-content",
+        )
+        assert resp["ContentLength"] == len(b"fake-zip-content")
+
+    def test_build_notification(self, cicd_outputs, sns_client):
+        """Publish a build notification via SNS and receive it on SQS."""
+        topic_arn = cicd_outputs["topic_arn"]["value"]
+        sqs = make_client("sqs")
+        q = sqs.create_queue(QueueName="cicd-test-notify")
+        queue_url = q["QueueUrl"]
+        queue_arn = f"arn:aws:sqs:{REGION}:{ACCOUNT_ID}:cicd-test-notify"
+        msg = subscribe_sns_to_sqs_and_publish(
+            sns_client,
+            sqs,
+            topic_arn,
+            queue_arn,
+            queue_url,
+            "Build passed",
+        )
+        assert msg is not None

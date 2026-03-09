@@ -59,3 +59,27 @@ class TestVpcNetwork:
         ingress_ports = sorted(rule["FromPort"] for rule in ingress if "FromPort" in rule)
         assert 22 in ingress_ports, "SSH port 22 not in ingress rules"
         assert 80 in ingress_ports, "HTTP port 80 not in ingress rules"
+
+    def test_route_table_has_igw_route(self):
+        """Verify a route table has a 0.0.0.0/0 route via an internet gateway."""
+        ec2 = make_client("ec2")
+        vpc_resp = ec2.describe_vpcs(Filters=[{"Name": "cidr", "Values": ["10.0.0.0/16"]}])
+        assert len(vpc_resp["Vpcs"]) >= 1
+        vpc_id = vpc_resp["Vpcs"][0]["VpcId"]
+
+        rts = ec2.describe_route_tables(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        routes = []
+        for rt in rts["RouteTables"]:
+            routes.extend(rt.get("Routes", []))
+        igw_routes = [r for r in routes if r.get("GatewayId", "").startswith("igw-")]
+        assert any(r["DestinationCidrBlock"] == "0.0.0.0/0" for r in igw_routes)
+
+    def test_subnet_associations(self):
+        """Verify subnets are associated with the VPC."""
+        ec2 = make_client("ec2")
+        vpc_resp = ec2.describe_vpcs(Filters=[{"Name": "cidr", "Values": ["10.0.0.0/16"]}])
+        assert len(vpc_resp["Vpcs"]) >= 1
+        vpc_id = vpc_resp["Vpcs"][0]["VpcId"]
+
+        subnets = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        assert len(subnets["Subnets"]) >= 2

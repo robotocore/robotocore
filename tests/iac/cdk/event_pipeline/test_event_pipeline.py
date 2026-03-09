@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import send_and_receive_sqs
 
 pytestmark = pytest.mark.iac
 
@@ -51,3 +52,14 @@ class TestEventPipeline:
         assert any(
             "CdkEventPipelineStack" in name or "rule" in name.lower() for name in rule_names
         ), f"Expected EventBridge rule not found. Rules: {rule_names}"
+
+    def test_sqs_message_roundtrip(self, deployed):
+        """Send a message to the SQS queue and receive it back."""
+        sqs = make_client("sqs")
+        queues = sqs.list_queues()
+        queue_urls = queues.get("QueueUrls", [])
+        matching = [u for u in queue_urls if "CdkEventPipelineStack" in u or "queue" in u.lower()]
+        assert matching, f"No matching SQS queue found. Queues: {queue_urls}"
+        queue_url = matching[0]
+        msg = send_and_receive_sqs(sqs, queue_url, '{"test": "message"}')
+        assert msg["Body"] == '{"test": "message"}'

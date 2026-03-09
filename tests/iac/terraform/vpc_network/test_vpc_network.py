@@ -69,3 +69,19 @@ class TestVpcNetwork:
         for rule in ingress:
             assert rule["IpProtocol"] == "tcp"
             assert any(ip_range["CidrIp"] == "0.0.0.0/0" for ip_range in rule["IpRanges"])
+
+    def test_route_table_has_igw_route(self, vpc_outputs, ec2_client):
+        """Verify a route table has a 0.0.0.0/0 route via an internet gateway."""
+        vpc_id = vpc_outputs["vpc_id"]["value"]
+        rts = ec2_client.describe_route_tables(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        routes = []
+        for rt in rts["RouteTables"]:
+            routes.extend(rt.get("Routes", []))
+        igw_routes = [r for r in routes if r.get("GatewayId", "").startswith("igw-")]
+        assert any(r["DestinationCidrBlock"] == "0.0.0.0/0" for r in igw_routes)
+
+    def test_subnet_associations(self, vpc_outputs, ec2_client):
+        """Verify subnets are associated with the VPC."""
+        vpc_id = vpc_outputs["vpc_id"]["value"]
+        subnets = ec2_client.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        assert len(subnets["Subnets"]) >= 2

@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import (
+    put_and_get_dynamodb_item,
+    send_and_receive_sqs,
+)
 from tests.iac.helpers.resource_validator import (
     assert_dynamodb_table_exists,
     assert_iam_role_exists,
@@ -89,3 +93,22 @@ class TestEventPipeline:
         esm = mappings[0]
         assert "sqs" in esm["EventSourceArn"].lower() or "rc-evpipe-inbox" in esm["EventSourceArn"]
         assert esm["BatchSize"] == 10
+
+    def test_sqs_message_roundtrip(self, deployed):
+        """Send a message to SQS and receive it back."""
+        sqs = make_client("sqs")
+        queue_url = deployed["queue_url"]["value"]
+        msg = send_and_receive_sqs(sqs, queue_url, '{"test": "message"}')
+        assert msg["Body"] == '{"test": "message"}'
+
+    def test_dynamodb_item_roundtrip(self, deployed):
+        """Put an item into DynamoDB and read it back."""
+        ddb = make_client("dynamodb")
+        table_name = deployed["table_name"]["value"]
+        item = put_and_get_dynamodb_item(
+            ddb,
+            table_name,
+            item={"message_id": {"S": "msg-001"}, "body": {"S": "test"}},
+            key={"message_id": {"S": "msg-001"}},
+        )
+        assert item["body"] == {"S": "test"}

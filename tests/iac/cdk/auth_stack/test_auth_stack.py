@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import create_cognito_user_and_auth
 
 pytestmark = pytest.mark.iac
 
@@ -52,3 +53,27 @@ class TestAuthStack:
         clients = clients_resp["UserPoolClients"]
         matching = [c for c in clients if c["ClientName"] == "auth-client"]
         assert len(matching) >= 1, "App client 'auth-client' not found"
+
+    def test_cognito_auth_flow(self):
+        """Create a user and authenticate via Cognito."""
+        cognito = make_client("cognito-idp")
+        resp = cognito.list_user_pools(MaxResults=60)
+        pools = [p for p in resp["UserPools"] if p["Name"] == "auth-userpool"]
+        assert len(pools) >= 1, "User pool 'auth-userpool' not found"
+
+        pool_id = pools[0]["Id"]
+        clients_resp = cognito.list_user_pool_clients(UserPoolId=pool_id, MaxResults=10)
+        clients = clients_resp["UserPoolClients"]
+        matching = [c for c in clients if c["ClientName"] == "auth-client"]
+        assert len(matching) >= 1, "App client 'auth-client' not found"
+        client_id = matching[0]["ClientId"]
+
+        auth_resp = create_cognito_user_and_auth(
+            cognito,
+            pool_id,
+            client_id,
+            "testuser@example.com",
+            "TestP@ss1234",
+        )
+        assert "AuthenticationResult" in auth_resp
+        assert "AccessToken" in auth_resp["AuthenticationResult"]
