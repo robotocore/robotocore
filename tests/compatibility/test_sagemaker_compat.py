@@ -298,6 +298,538 @@ class TestSagemakerAutoCoverage:
         assert "TrialSummaries" in resp
 
 
+class TestSageMakerListOpsNoParams:
+    """List operations that require no parameters and return empty lists."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_list_actions(self, client):
+        resp = client.list_actions()
+        assert isinstance(resp["ActionSummaries"], list)
+
+    def test_list_algorithms(self, client):
+        resp = client.list_algorithms()
+        assert isinstance(resp["AlgorithmSummaryList"], list)
+
+    def test_list_app_image_configs(self, client):
+        resp = client.list_app_image_configs()
+        assert isinstance(resp["AppImageConfigs"], list)
+
+    def test_list_apps(self, client):
+        resp = client.list_apps()
+        assert isinstance(resp["Apps"], list)
+
+    def test_list_artifacts(self, client):
+        resp = client.list_artifacts()
+        assert isinstance(resp["ArtifactSummaries"], list)
+
+    def test_list_associations(self, client):
+        resp = client.list_associations()
+        assert isinstance(resp["AssociationSummaries"], list)
+
+    def test_list_cluster_scheduler_configs(self, client):
+        resp = client.list_cluster_scheduler_configs()
+        assert isinstance(resp["ClusterSchedulerConfigSummaries"], list)
+
+    def test_list_code_repositories(self, client):
+        resp = client.list_code_repositories()
+        assert isinstance(resp["CodeRepositorySummaryList"], list)
+
+    def test_list_compute_quotas(self, client):
+        resp = client.list_compute_quotas()
+        assert isinstance(resp["ComputeQuotaSummaries"], list)
+
+    def test_list_contexts(self, client):
+        resp = client.list_contexts()
+        assert isinstance(resp["ContextSummaries"], list)
+
+    def test_list_device_fleets(self, client):
+        resp = client.list_device_fleets()
+        assert isinstance(resp["DeviceFleetSummaries"], list)
+
+    def test_list_edge_deployment_plans(self, client):
+        resp = client.list_edge_deployment_plans()
+        assert isinstance(resp["EdgeDeploymentPlanSummaries"], list)
+
+    def test_list_edge_packaging_jobs(self, client):
+        resp = client.list_edge_packaging_jobs()
+        assert isinstance(resp["EdgePackagingJobSummaries"], list)
+
+    def test_list_feature_groups(self, client):
+        resp = client.list_feature_groups()
+        assert isinstance(resp["FeatureGroupSummaries"], list)
+
+    def test_list_flow_definitions(self, client):
+        resp = client.list_flow_definitions()
+        assert isinstance(resp["FlowDefinitionSummaries"], list)
+
+    def test_list_hubs(self, client):
+        resp = client.list_hubs()
+        assert isinstance(resp["HubSummaries"], list)
+
+    def test_list_human_task_uis(self, client):
+        resp = client.list_human_task_uis()
+        assert isinstance(resp["HumanTaskUiSummaries"], list)
+
+    def test_list_images(self, client):
+        resp = client.list_images()
+        assert isinstance(resp.get("Images", []), list)
+
+    def test_list_inference_components(self, client):
+        resp = client.list_inference_components()
+        assert isinstance(resp["InferenceComponents"], list)
+
+    def test_list_inference_experiments(self, client):
+        resp = client.list_inference_experiments()
+        assert isinstance(resp["InferenceExperiments"], list)
+
+    def test_list_inference_recommendations_jobs(self, client):
+        resp = client.list_inference_recommendations_jobs()
+        assert isinstance(resp["InferenceRecommendationsJobs"], list)
+
+    def test_list_labeling_jobs(self, client):
+        resp = client.list_labeling_jobs()
+        assert isinstance(resp["LabelingJobSummaryList"], list)
+
+    def test_list_lineage_groups(self, client):
+        resp = client.list_lineage_groups()
+        assert isinstance(resp["LineageGroupSummaries"], list)
+
+    def test_list_mlflow_tracking_servers(self, client):
+        resp = client.list_mlflow_tracking_servers()
+        assert isinstance(resp["TrackingServerSummaries"], list)
+
+    def test_list_model_metadata(self, client):
+        resp = client.list_model_metadata()
+        assert isinstance(resp["ModelMetadataSummaries"], list)
+
+    def test_list_monitoring_schedules(self, client):
+        resp = client.list_monitoring_schedules()
+        assert isinstance(resp["MonitoringScheduleSummaries"], list)
+
+    def test_list_notebook_instance_lifecycle_configs(self, client):
+        resp = client.list_notebook_instance_lifecycle_configs()
+        assert isinstance(resp["NotebookInstanceLifecycleConfigs"], list)
+
+    def test_list_optimization_jobs(self, client):
+        resp = client.list_optimization_jobs()
+        assert isinstance(resp["OptimizationJobSummaries"], list)
+
+    def test_list_projects(self, client):
+        resp = client.list_projects()
+        assert isinstance(resp["ProjectSummaryList"], list)
+
+    def test_list_resource_catalogs(self, client):
+        resp = client.list_resource_catalogs()
+        assert isinstance(resp["ResourceCatalogs"], list)
+
+    def test_list_spaces(self, client):
+        resp = client.list_spaces()
+        assert isinstance(resp["Spaces"], list)
+
+    def test_list_studio_lifecycle_configs(self, client):
+        resp = client.list_studio_lifecycle_configs()
+        assert isinstance(resp["StudioLifecycleConfigs"], list)
+
+    def test_list_subscribed_workteams(self, client):
+        resp = client.list_subscribed_workteams()
+        assert isinstance(resp["SubscribedWorkteams"], list)
+
+    def test_list_training_plans(self, client):
+        resp = client.list_training_plans()
+        assert isinstance(resp["TrainingPlanSummaries"], list)
+
+    def test_list_user_profiles(self, client):
+        resp = client.list_user_profiles()
+        assert isinstance(resp["UserProfiles"], list)
+
+    def test_list_workforces(self, client):
+        resp = client.list_workforces()
+        assert isinstance(resp["Workforces"], list)
+
+    def test_list_workteams(self, client):
+        resp = client.list_workteams()
+        assert isinstance(resp["Workteams"], list)
+
+
+class TestSageMakerListOpsWithParams:
+    """List operations that require parameters."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_list_aliases(self, client):
+        resp = client.list_aliases(ImageName="nonexistent")
+        assert isinstance(resp["SageMakerImageVersionAliases"], list)
+
+    def test_list_candidates_for_auto_ml_job(self, client):
+        resp = client.list_candidates_for_auto_ml_job(AutoMLJobName="nonexistent")
+        assert isinstance(resp["Candidates"], list)
+
+    def test_list_devices(self, client):
+        resp = client.list_devices(DeviceFleetName="nonexistent")
+        assert isinstance(resp["DeviceSummaries"], list)
+
+    def test_list_hub_contents(self, client):
+        resp = client.list_hub_contents(HubName="nonexistent", HubContentType="Model")
+        assert isinstance(resp["HubContentSummaries"], list)
+
+    def test_list_hub_content_versions(self, client):
+        resp = client.list_hub_content_versions(
+            HubName="h", HubContentName="n", HubContentType="Model"
+        )
+        assert isinstance(resp["HubContentSummaries"], list)
+
+    def test_list_image_versions(self, client):
+        resp = client.list_image_versions(ImageName="nonexistent")
+        assert isinstance(resp.get("ImageVersions", []), list)
+
+    def test_list_inference_recommendations_job_steps(self, client):
+        resp = client.list_inference_recommendations_job_steps(JobName="nonexistent")
+        assert isinstance(resp["Steps"], list)
+
+    def test_list_labeling_jobs_for_workteam(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:workteam/default/nonexistent"
+        resp = client.list_labeling_jobs_for_workteam(WorkteamArn=arn)
+        assert isinstance(resp["LabelingJobSummaryList"], list)
+
+    def test_list_model_card_export_jobs(self, client):
+        resp = client.list_model_card_export_jobs(ModelCardName="nonexistent")
+        assert isinstance(resp["ModelCardExportJobSummaries"], list)
+
+    def test_list_monitoring_alerts(self, client):
+        resp = client.list_monitoring_alerts(MonitoringScheduleName="nonexistent")
+        assert isinstance(resp["MonitoringAlertSummaries"], list)
+
+    def test_list_monitoring_alert_history(self, client):
+        resp = client.list_monitoring_alert_history(MonitoringScheduleName="nonexistent")
+        assert isinstance(resp["MonitoringAlertHistory"], list)
+
+    def test_list_monitoring_executions(self, client):
+        resp = client.list_monitoring_executions(MonitoringScheduleName="nonexistent")
+        assert isinstance(resp["MonitoringExecutionSummaries"], list)
+
+    def test_list_pipeline_execution_steps(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:pipeline/nonexistent/execution/abc"
+        resp = client.list_pipeline_execution_steps(PipelineExecutionArn=arn)
+        assert isinstance(resp["PipelineExecutionSteps"], list)
+
+    def test_list_pipeline_versions(self, client):
+        resp = client.list_pipeline_versions(PipelineName="nonexistent")
+        assert isinstance(resp["PipelineVersionSummaries"], list)
+
+    def test_list_stage_devices(self, client):
+        resp = client.list_stage_devices(EdgeDeploymentPlanName="nonexistent", StageName="stage1")
+        assert isinstance(resp["DeviceDeploymentSummaries"], list)
+
+    def test_list_training_jobs_for_hpt_job(self, client):
+        resp = client.list_training_jobs_for_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName="nonexistent"
+        )
+        assert isinstance(resp["TrainingJobSummaries"], list)
+
+
+class TestSageMakerDescribeOpsValidationError:
+    """Describe operations that return ValidationException for nonexistent resources."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_describe_action(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_action(ActionName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_algorithm(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_algorithm(AlgorithmName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_app(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_app(
+                DomainId="nonexistent",
+                UserProfileName="nonexistent",
+                AppType="JupyterServer",
+                AppName="nonexistent",
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_app_image_config(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_app_image_config(AppImageConfigName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_artifact(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:artifact/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            client.describe_artifact(ArtifactArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_code_repository(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_code_repository(CodeRepositoryName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_context(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_context(ContextName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_device_fleet(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_device_fleet(DeviceFleetName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_edge_deployment_plan(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_edge_deployment_plan(EdgeDeploymentPlanName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_flow_definition(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_flow_definition(FlowDefinitionName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_hub(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_hub(HubName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_human_task_ui(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_human_task_ui(HumanTaskUiName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_image(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_image(ImageName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_inference_component(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_inference_component(InferenceComponentName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_inference_experiment(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_inference_experiment(Name="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_labeling_job(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_labeling_job(LabelingJobName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_mlflow_tracking_server(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_mlflow_tracking_server(TrackingServerName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_mlflow_app(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:mlflow-tracking-server/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            client.describe_mlflow_app(Arn=arn)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_monitoring_schedule(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_monitoring_schedule(MonitoringScheduleName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_optimization_job(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_optimization_job(OptimizationJobName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_partner_app(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:partner-app/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            client.describe_partner_app(Arn=arn)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_project(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_project(ProjectName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_space(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_space(DomainId="nonexistent", SpaceName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_studio_lifecycle_config(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_studio_lifecycle_config(StudioLifecycleConfigName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_user_profile(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_user_profile(DomainId="nonexistent", UserProfileName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_workforce(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_workforce(WorkforceName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_workteam(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_workteam(WorkteamName="nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestSageMakerGetOperations:
+    """Get operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_get_sagemaker_servicecatalog_portfolio_status(self, client):
+        resp = client.get_sagemaker_servicecatalog_portfolio_status()
+        assert "Status" in resp
+        assert resp["Status"] in ("Enabled", "Disabled")
+
+    def test_get_device_fleet_report(self, client):
+        resp = client.get_device_fleet_report(DeviceFleetName="nonexistent")
+        assert "DeviceFleetName" in resp
+        assert "DeviceFleetArn" in resp
+
+    def test_get_lineage_group_policy(self, client):
+        resp = client.get_lineage_group_policy(LineageGroupName="nonexistent")
+        assert "LineageGroupArn" in resp
+
+    def test_get_model_package_group_policy(self, client):
+        resp = client.get_model_package_group_policy(ModelPackageGroupName="nonexistent")
+        assert "ResourcePolicy" in resp
+
+    def test_get_scaling_configuration_recommendation(self, client):
+        resp = client.get_scaling_configuration_recommendation(
+            InferenceRecommendationsJobName="nonexistent"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_search_suggestions(self, client):
+        resp = client.get_search_suggestions(Resource="TrainingJob")
+        assert "PropertyNameSuggestions" in resp
+        assert isinstance(resp["PropertyNameSuggestions"], list)
+
+
+class TestSageMakerDescribeOpsReturnData:
+    """Describe operations that return data even for nonexistent resources."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_describe_device(self, client):
+        resp = client.describe_device(DeviceName="nonexistent", DeviceFleetName="nonexistent")
+        assert "DeviceName" in resp
+        assert "DeviceFleetName" in resp
+
+    def test_describe_edge_packaging_job(self, client):
+        resp = client.describe_edge_packaging_job(EdgePackagingJobName="nonexistent")
+        assert "EdgePackagingJobName" in resp
+        assert "EdgePackagingJobStatus" in resp
+
+    def test_describe_inference_recommendations_job(self, client):
+        resp = client.describe_inference_recommendations_job(JobName="nonexistent")
+        assert "JobName" in resp
+        assert "Status" in resp
+
+    def test_describe_lineage_group(self, client):
+        resp = client.describe_lineage_group(LineageGroupName="nonexistent")
+        assert "LineageGroupName" in resp
+        assert "LineageGroupArn" in resp
+
+    def test_describe_subscribed_workteam(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:workteam/default/nonexistent"
+        resp = client.describe_subscribed_workteam(WorkteamArn=arn)
+        assert "SubscribedWorkteam" in resp
+
+    def test_describe_hub_content(self, client):
+        resp = client.describe_hub_content(
+            HubName="nonexistent",
+            HubContentName="nonexistent",
+            HubContentType="Model",
+        )
+        assert "HubContentName" in resp
+        assert "HubContentType" in resp
+
+    def test_describe_image_version(self, client):
+        resp = client.describe_image_version(ImageName="nonexistent")
+        assert "ImageVersionArn" in resp
+        assert "ImageVersionStatus" in resp
+
+    def test_describe_model_card_export_job(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:model-card/x/export-job/y"
+        resp = client.describe_model_card_export_job(ModelCardExportJobArn=arn)
+        assert "ModelCardExportJobArn" in resp
+        assert "Status" in resp
+
+    def test_describe_training_plan(self, client):
+        resp = client.describe_training_plan(TrainingPlanName="nonexistent")
+        assert "TrainingPlanArn" in resp
+        assert "Status" in resp
+
+    def test_describe_cluster_scheduler_config(self, client):
+        resp = client.describe_cluster_scheduler_config(ClusterSchedulerConfigId="nonexistent")
+        assert "ClusterSchedulerConfigId" in resp
+        assert "Status" in resp
+
+    def test_describe_compute_quota(self, client):
+        resp = client.describe_compute_quota(ComputeQuotaId="nonexistent")
+        assert "ComputeQuotaId" in resp
+        assert "Status" in resp
+
+    def test_describe_cluster_event(self, client):
+        resp = client.describe_cluster_event(ClusterName="nonexistent", EventId="nonexistent")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_feature_metadata(self, client):
+        resp = client.describe_feature_metadata(
+            FeatureGroupName="nonexistent", FeatureName="nonexistent"
+        )
+        assert "FeatureGroupName" in resp
+        assert "FeatureName" in resp
+
+    def test_describe_reserved_capacity(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:reserved-capacity/x"
+        resp = client.describe_reserved_capacity(ReservedCapacityArn=arn)
+        assert "ReservedCapacityArn" in resp
+        assert "Status" in resp
+
+
+class TestSageMakerListOpsEmptyResponse:
+    """List operations that return empty responses (no list key)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_list_mlflow_apps(self, client):
+        resp = client.list_mlflow_apps()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_partner_apps(self, client):
+        resp = client.list_partner_apps()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_cluster_events(self, client):
+        resp = client.list_cluster_events(ClusterName="nonexistent")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_ultra_servers_by_reserved_capacity(self, client):
+        arn = "arn:aws:sagemaker:us-east-1:123456789012:reserved-capacity/x"
+        resp = client.list_ultra_servers_by_reserved_capacity(ReservedCapacityArn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestSageMakerDescribeOperations:
     """Tests for Describe operations with fake resource IDs."""
 
