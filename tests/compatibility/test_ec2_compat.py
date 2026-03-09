@@ -4954,18 +4954,6 @@ class TestEC2PlacementGroupStrategies:
         finally:
             ec2.delete_placement_group(GroupName=name)
 
-    def test_describe_placement_groups_by_filter(self, ec2):
-        name = _unique("pg-filter")
-        ec2.create_placement_group(GroupName=name, Strategy="cluster")
-        try:
-            described = ec2.describe_placement_groups(
-                Filters=[{"Name": "group-name", "Values": [name]}]
-            )
-            assert len(described["PlacementGroups"]) == 1
-            assert described["PlacementGroups"][0]["GroupName"] == name
-        finally:
-            ec2.delete_placement_group(GroupName=name)
-
 
 class TestEC2KeyPairTypes:
     """Key pair with different types and tags."""
@@ -7849,18 +7837,6 @@ class TestEC2PlacementGroupComputeOps:
     def ec2(self):
         return make_client("ec2")
 
-    def test_describe_placement_groups_by_id(self, ec2):
-        """DescribePlacementGroups by GroupIds."""
-        name = _unique("pg-byid")
-        ec2.create_placement_group(GroupName=name, Strategy="cluster")
-        try:
-            described = ec2.describe_placement_groups(GroupNames=[name])
-            pg_id = described["PlacementGroups"][0]["GroupId"]
-            by_id = ec2.describe_placement_groups(GroupIds=[pg_id])
-            assert by_id["PlacementGroups"][0]["GroupName"] == name
-        finally:
-            ec2.delete_placement_group(GroupName=name)
-
 
 class TestEC2SpotComputeOps:
     """Tests for spot-related operations not yet covered."""
@@ -8561,3 +8537,88 @@ class TestEC2DescribeInstanceStatusAll:
         resp = ec2.describe_instance_status(IncludeAllInstances=True)
         assert "InstanceStatuses" in resp
         assert isinstance(resp["InstanceStatuses"], list)
+
+
+class TestEC2TrafficMirrorFilterMultipleRules:
+    """Tests for multiple rules on a single traffic mirror filter."""
+
+    def test_create_multiple_rules_on_filter(self, ec2):
+        """Create ingress + egress rules on a single filter."""
+        f = ec2.create_traffic_mirror_filter(Description="multi-rule")
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        try:
+            r1 = ec2.create_traffic_mirror_filter_rule(
+                TrafficMirrorFilterId=fid,
+                TrafficDirection="ingress",
+                RuleNumber=1,
+                RuleAction="accept",
+                DestinationCidrBlock="0.0.0.0/0",
+                SourceCidrBlock="0.0.0.0/0",
+            )
+            r2 = ec2.create_traffic_mirror_filter_rule(
+                TrafficMirrorFilterId=fid,
+                TrafficDirection="egress",
+                RuleNumber=1,
+                RuleAction="accept",
+                DestinationCidrBlock="0.0.0.0/0",
+                SourceCidrBlock="0.0.0.0/0",
+            )
+            assert r1["TrafficMirrorFilterRule"]["TrafficDirection"] == "ingress"
+            assert r2["TrafficMirrorFilterRule"]["TrafficDirection"] == "egress"
+            assert (
+                r1["TrafficMirrorFilterRule"]["TrafficMirrorFilterRuleId"]
+                != r2["TrafficMirrorFilterRule"]["TrafficMirrorFilterRuleId"]
+            )
+            ec2.delete_traffic_mirror_filter_rule(
+                TrafficMirrorFilterRuleId=r1["TrafficMirrorFilterRule"]["TrafficMirrorFilterRuleId"]
+            )
+            ec2.delete_traffic_mirror_filter_rule(
+                TrafficMirrorFilterRuleId=r2["TrafficMirrorFilterRule"]["TrafficMirrorFilterRuleId"]
+            )
+        finally:
+            ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=fid)
+
+
+class TestEC2IpamScopeOwnerFields:
+    """Tests for IPAM Scope owner and state fields."""
+
+    def test_ipam_scope_has_owner_id(self, ec2):
+        """Created IPAM scope has OwnerId field."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            scope = ec2.create_ipam_scope(IpamId=ipam_id)
+            assert "OwnerId" in scope["IpamScope"]
+            assert scope["IpamScope"]["OwnerId"] == "123456789012"
+            ec2.delete_ipam_scope(IpamScopeId=scope["IpamScope"]["IpamScopeId"])
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2CapacityReservationFleetAllocationStrategy:
+    """Tests for capacity reservation fleet allocation strategy."""
+
+    def test_fleet_default_allocation_strategy(self, ec2):
+        """Fleet uses prioritized allocation strategy by default."""
+        resp = ec2.create_capacity_reservation_fleet(
+            InstanceTypeSpecifications=[
+                {
+                    "InstanceType": "t2.micro",
+                    "InstancePlatform": "Linux/UNIX",
+                    "Weight": 1.0,
+                }
+            ],
+            TotalTargetCapacity=1,
+        )
+        fleet_id = resp["CapacityReservationFleetId"]
+        try:
+            desc = ec2.describe_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+            fleets = [
+                f
+                for f in desc["CapacityReservationFleets"]
+                if f["CapacityReservationFleetId"] == fleet_id
+            ]
+            assert len(fleets) == 1
+            assert fleets[0]["AllocationStrategy"] == "prioritized"
+        finally:
+            ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])

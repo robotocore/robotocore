@@ -494,3 +494,103 @@ class TestXRayTimeSeriesServiceStatistics:
         resp = xray.get_time_series_service_statistics(StartTime=now - 3600, EndTime=now)
         assert "TimeSeriesServiceStatistics" in resp
         assert isinstance(resp["TimeSeriesServiceStatistics"], list)
+
+
+class TestXRayIndexingRules:
+    """Tests for GetIndexingRules."""
+
+    def test_get_indexing_rules(self, xray):
+        """GetIndexingRules returns indexing rules list."""
+        resp = xray.get_indexing_rules()
+        assert "IndexingRules" in resp
+        assert isinstance(resp["IndexingRules"], list)
+
+
+class TestXRayTraceRetrieval:
+    """Tests for trace retrieval operations."""
+
+    def test_start_trace_retrieval(self, xray):
+        """StartTraceRetrieval returns a retrieval token."""
+        now = time.time()
+        resp = xray.start_trace_retrieval(
+            TraceIds=["1-12345678-abcdef012345678901234567"],
+            StartTime=now - 3600,
+            EndTime=now,
+        )
+        assert "RetrievalToken" in resp
+        assert isinstance(resp["RetrievalToken"], str)
+        assert len(resp["RetrievalToken"]) > 0
+
+    def test_cancel_trace_retrieval(self, xray):
+        """CancelTraceRetrieval succeeds for a started retrieval."""
+        now = time.time()
+        start_resp = xray.start_trace_retrieval(
+            TraceIds=["1-12345678-abcdef012345678901234567"],
+            StartTime=now - 3600,
+            EndTime=now,
+        )
+        token = start_resp["RetrievalToken"]
+        cancel_resp = xray.cancel_trace_retrieval(RetrievalToken=token)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_retrieved_traces_graph(self, xray):
+        """GetRetrievedTracesGraph returns services and retrieval status."""
+        now = time.time()
+        start_resp = xray.start_trace_retrieval(
+            TraceIds=["1-12345678-abcdef012345678901234567"],
+            StartTime=now - 3600,
+            EndTime=now,
+        )
+        token = start_resp["RetrievalToken"]
+        resp = xray.get_retrieved_traces_graph(RetrievalToken=token)
+        assert "Services" in resp
+        assert "RetrievalStatus" in resp
+        assert isinstance(resp["Services"], list)
+
+    def test_list_retrieved_traces(self, xray):
+        """ListRetrievedTraces returns traces and retrieval status."""
+        now = time.time()
+        start_resp = xray.start_trace_retrieval(
+            TraceIds=["1-12345678-abcdef012345678901234567"],
+            StartTime=now - 3600,
+            EndTime=now,
+        )
+        token = start_resp["RetrievalToken"]
+        resp = xray.list_retrieved_traces(RetrievalToken=token)
+        assert "Traces" in resp
+        assert "RetrievalStatus" in resp
+        assert "TraceFormat" in resp
+        assert isinstance(resp["Traces"], list)
+
+
+class TestXRayInsightOperations:
+    """Tests for insight operations with nonexistent IDs."""
+
+    def test_get_insight_nonexistent(self, xray):
+        """GetInsight with nonexistent InsightId raises InvalidRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            xray.get_insight(InsightId="fake-insight-id-00000000")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_insight_events_nonexistent(self, xray):
+        """GetInsightEvents with nonexistent InsightId raises InvalidRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            xray.get_insight_events(InsightId="fake-insight-id-00000000")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_insight_impact_graph_nonexistent(self, xray):
+        """GetInsightImpactGraph with nonexistent InsightId raises InvalidRequestException."""
+        from botocore.exceptions import ClientError
+
+        now = time.time()
+        with pytest.raises(ClientError) as exc:
+            xray.get_insight_impact_graph(
+                InsightId="fake-insight-id-00000000",
+                StartTime=now - 3600,
+                EndTime=now,
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
