@@ -95,6 +95,7 @@ class KinesisStream:
     encryption_type: str = "NONE"
     key_id: str = ""
     consumers: dict[str, dict] = field(default_factory=dict)
+    shard_level_metrics: list[str] = field(default_factory=list)
 
     def _hash_partition_key(self, partition_key: str) -> int:
         """Hash a partition key to determine shard placement (MD5-based, like AWS)."""

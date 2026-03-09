@@ -664,6 +664,83 @@ def _deregister_stream_consumer(
     raise KinesisError("ResourceNotFoundException", f"Stream not found: {stream_arn}")
 
 
+def _enable_enhanced_monitoring(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("StreamName", "")
+    stream_arn = params.get("StreamARN", "")
+    stream = None
+    if name:
+        stream = store.get_stream(name)
+    elif stream_arn:
+        for s in store.streams.values():
+            if s.arn == stream_arn:
+                stream = s
+                break
+    if not stream:
+        lookup = name or stream_arn
+        raise KinesisError(
+            "ResourceNotFoundException",
+            f"Stream {lookup} under account {account_id} not found.",
+        )
+    shard_level_metrics = params.get("ShardLevelMetrics", [])
+    current = list(stream.shard_level_metrics)
+    if "ALL" in shard_level_metrics:
+        desired = [
+            "IncomingBytes",
+            "IncomingRecords",
+            "OutgoingBytes",
+            "OutgoingRecords",
+            "WriteProvisionedThroughputExceeded",
+            "ReadProvisionedThroughputExceeded",
+            "IteratorAgeMilliseconds",
+            "ALL",
+        ]
+    else:
+        desired = list(set(current + shard_level_metrics))
+    stream.shard_level_metrics = desired
+    return {
+        "StreamName": stream.name,
+        "StreamARN": stream.arn,
+        "CurrentShardLevelMetrics": current,
+        "DesiredShardLevelMetrics": desired,
+    }
+
+
+def _disable_enhanced_monitoring(
+    store: KinesisStore, params: dict, region: str, account_id: str
+) -> dict:
+    name = params.get("StreamName", "")
+    stream_arn = params.get("StreamARN", "")
+    stream = None
+    if name:
+        stream = store.get_stream(name)
+    elif stream_arn:
+        for s in store.streams.values():
+            if s.arn == stream_arn:
+                stream = s
+                break
+    if not stream:
+        lookup = name or stream_arn
+        raise KinesisError(
+            "ResourceNotFoundException",
+            f"Stream {lookup} under account {account_id} not found.",
+        )
+    to_disable = params.get("ShardLevelMetrics", [])
+    current = list(stream.shard_level_metrics)
+    if "ALL" in to_disable:
+        desired: list[str] = []
+    else:
+        desired = [m for m in current if m not in to_disable]
+    stream.shard_level_metrics = desired
+    return {
+        "StreamName": stream.name,
+        "StreamARN": stream.arn,
+        "CurrentShardLevelMetrics": current,
+        "DesiredShardLevelMetrics": desired,
+    }
+
+
 def _split_shard(store: KinesisStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StreamName", "")
     stream = store.get_stream(name)
@@ -815,6 +892,8 @@ _ACTION_MAP: dict[str, Callable] = {
     "DescribeStreamConsumer": _describe_stream_consumer,
     "ListStreamConsumers": _list_stream_consumers,
     "DeregisterStreamConsumer": _deregister_stream_consumer,
+    "EnableEnhancedMonitoring": _enable_enhanced_monitoring,
+    "DisableEnhancedMonitoring": _disable_enhanced_monitoring,
     "SplitShard": _split_shard,
     "MergeShards": _merge_shards,
     "PutResourcePolicy": _put_resource_policy,
