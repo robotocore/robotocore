@@ -1541,6 +1541,40 @@ class TestTransferServerLifecycle:
         finally:
             transfer.delete_server(ServerId=server_id)
 
+    def test_update_server_logging_role(self, transfer):
+        """UpdateServer can change LoggingRole."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        new_role = "arn:aws:iam::123456789012:role/new-logging"
+        try:
+            transfer.update_server(ServerId=server_id, LoggingRole=new_role)
+            desc = transfer.describe_server(ServerId=server_id)
+            assert desc["Server"]["LoggingRole"] == new_role
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_update_server_security_policy(self, transfer):
+        """UpdateServer can change SecurityPolicyName."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.update_server(
+                ServerId=server_id,
+                SecurityPolicyName="TransferSecurityPolicy-2020-06",
+            )
+            desc = transfer.describe_server(ServerId=server_id)
+            assert desc["Server"]["SecurityPolicyName"] == "TransferSecurityPolicy-2020-06"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_describe_security_policy_2018_11(self, transfer):
+        """DescribeSecurityPolicy for the 2018-11 policy."""
+        resp = transfer.describe_security_policy(
+            SecurityPolicyName="TransferSecurityPolicy-2018-11"
+        )
+        policy = resp["SecurityPolicy"]
+        assert policy["SecurityPolicyName"] == "TransferSecurityPolicy-2018-11"
+
     def test_list_users_empty(self, transfer):
         """ListUsers on a new server returns empty list."""
         resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
@@ -1734,3 +1768,22 @@ class TestTransferServerLifecycle:
             assert desc["Workflow"]["OnExceptionSteps"][0]["Type"] == "COPY"
         finally:
             transfer.delete_workflow(WorkflowId=workflow_id)
+
+
+class TestTransferIdentityProvider:
+    """Tests for TestIdentityProvider operation."""
+
+    def test_test_identity_provider(self, transfer):
+        """TestIdentityProvider returns response for SERVICE_MANAGED server."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            result = transfer.test_identity_provider(
+                ServerId=server_id,
+                UserName="testuser",
+                ServerProtocol="SFTP",
+            )
+            assert "StatusCode" in result
+            assert "Url" in result
+        finally:
+            transfer.delete_server(ServerId=server_id)

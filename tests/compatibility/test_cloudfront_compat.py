@@ -843,7 +843,12 @@ class TestCloudFrontPublicKeyErrors:
     def test_get_nonexistent_public_key(self, cf):
         with pytest.raises(cf.exceptions.ClientError) as exc_info:
             cf.get_public_key(Id="PKNONEXISTENT123")
-        assert exc_info.value.response["Error"]["Code"] is not None
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchPublicKey"
+
+    def test_get_nonexistent_public_key_config(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_public_key_config(Id="PKNONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchPublicKey"
 
     def test_delete_nonexistent_public_key_no_error(self, cf):
         # Moto silently accepts delete of nonexistent public keys
@@ -1116,6 +1121,27 @@ class TestCloudFrontMonitoringSubscription:
         with pytest.raises(cf.exceptions.ClientError) as exc_info:
             cf.get_monitoring_subscription(DistributionId="ENONEXISTENT123")
         assert exc_info.value.response["Error"]["Code"] is not None
+
+
+class TestCloudFrontMonitoringSubscriptionRoundtrip:
+    """Test create then get monitoring subscription."""
+
+    def test_get_monitoring_subscription_after_create(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("monsub-get"))
+        dist_id = resp["Distribution"]["Id"]
+
+        cf.create_monitoring_subscription(
+            DistributionId=dist_id,
+            MonitoringSubscription={
+                "RealtimeMetricsSubscriptionConfig": {
+                    "RealtimeMetricsSubscriptionStatus": "Enabled"
+                }
+            },
+        )
+
+        get_resp = cf.get_monitoring_subscription(DistributionId=dist_id)
+        config = get_resp["MonitoringSubscription"]["RealtimeMetricsSubscriptionConfig"]
+        assert config["RealtimeMetricsSubscriptionStatus"] == "Enabled"
 
 
 class TestCloudFrontFieldLevelEncryption:

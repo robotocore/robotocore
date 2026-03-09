@@ -936,6 +936,40 @@ class TestGreengrassOperations:
         finally:
             greengrass.delete_connector_definition(ConnectorDefinitionId=conn_id)
 
+    # --- ConnectorDefinition (standalone CRUD) ---
+
+    def test_delete_connector_definition(self, greengrass):
+        """DeleteConnectorDefinition removes a connector definition."""
+        resp = greengrass.create_connector_definition(
+            Name="test-del-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        conn_id = resp["Id"]
+        greengrass.delete_connector_definition(ConnectorDefinitionId=conn_id)
+        with pytest.raises(ClientError) as exc:
+            greengrass.get_connector_definition(ConnectorDefinitionId=conn_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "IdNotFoundException",
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
+
+    # --- LoggerDefinition (standalone CRUD) ---
+
+    def test_delete_logger_definition(self, greengrass):
+        """DeleteLoggerDefinition removes a logger definition."""
+        resp = greengrass.create_logger_definition(
+            Name="test-del-logger", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        logger_id = resp["Id"]
+        greengrass.delete_logger_definition(LoggerDefinitionId=logger_id)
+        with pytest.raises(ClientError) as exc:
+            greengrass.get_logger_definition(LoggerDefinitionId=logger_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "IdNotFoundException",
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
+
     # --- CoreDefinitionVersion (create) ---
 
     def test_create_core_definition_version(self, greengrass):
