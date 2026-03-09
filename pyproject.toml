@@ -73,7 +73,7 @@ markers = [
 ]
 
 [tool.uv.sources]
-moto = { git = "https://github.com/JackDanger/moto.git", branch = "master" }
+moto = { git = "https://github.com/JackDanger/moto.git", branch = "robotocore/all-fixes" }
 
 [tool.mypy]
 python_version = "3.12"
