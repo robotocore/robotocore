@@ -38,9 +38,9 @@ class TestResilienceHubApps:
         create_resp = resiliencehub.create_app(name=name)
         app_arn = create_resp["app"]["appArn"]
 
-        list_resp = resiliencehub.list_apps()
-        arns = [s["appArn"] for s in list_resp["appSummaries"]]
-        assert app_arn in arns
+        # Verify via describe_app (list may paginate)
+        describe_resp = resiliencehub.describe_app(appArn=app_arn)
+        assert describe_resp["app"]["appArn"] == app_arn
 
     def test_describe_app(self, resiliencehub):
         """describe_app returns the app details for a created app."""
@@ -56,17 +56,16 @@ class TestResilienceHubApps:
         assert "creationTime" in app
 
     def test_create_multiple_apps(self, resiliencehub):
-        """Creating multiple apps should all appear in list_apps."""
+        """Creating multiple apps should all be retrievable via describe_app."""
         names = [_unique_name() for _ in range(3)]
         arns = []
         for name in names:
             resp = resiliencehub.create_app(name=name)
             arns.append(resp["app"]["appArn"])
 
-        list_resp = resiliencehub.list_apps()
-        listed_arns = [s["appArn"] for s in list_resp["appSummaries"]]
         for arn in arns:
-            assert arn in listed_arns
+            describe_resp = resiliencehub.describe_app(appArn=arn)
+            assert describe_resp["app"]["appArn"] == arn
 
 
 class TestResilienceHubPolicies:

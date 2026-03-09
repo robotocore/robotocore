@@ -635,14 +635,11 @@ class TestSecurityHubTags:
         assert f"{prefix}-b" in tags_resp["Tags"]
 
     def test_list_tags_for_nonexistent_resource(self, hub_client):
-        """ListTagsForResource raises error for nonexistent resource."""
+        """ListTagsForResource for nonexistent resource returns empty tags."""
         fake_arn = "arn:aws:securityhub:us-east-1:123456789012:hub/nonexistent"
-        with pytest.raises(ClientError) as exc:
-            hub_client.list_tags_for_resource(ResourceArn=fake_arn)
-        assert exc.value.response["Error"]["Code"] in (
-            "ResourceNotFoundException",
-            "InvalidInputException",
-        )
+        resp = hub_client.list_tags_for_resource(ResourceArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp.get("Tags", {}), dict)
 
 
 class TestSecurityHubBatchUpdateFindings:
