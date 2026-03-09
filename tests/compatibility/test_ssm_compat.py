@@ -2733,3 +2733,136 @@ class TestSSMUpdateAssociationStatus:
                 },
             )
         assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+
+class TestSSMPatchBaselineGet:
+    """Tests for GetPatchBaseline operation."""
+
+    def test_get_patch_baseline(self, ssm):
+        """GetPatchBaseline returns full baseline details."""
+        name = _unique("pb-get")
+        resp = ssm.create_patch_baseline(
+            Name=name,
+            Description="Get test baseline",
+            OperatingSystem="AMAZON_LINUX_2",
+        )
+        baseline_id = resp["BaselineId"]
+        try:
+            get_resp = ssm.get_patch_baseline(BaselineId=baseline_id)
+            assert get_resp["BaselineId"] == baseline_id
+            assert get_resp["Name"] == name
+            assert get_resp["Description"] == "Get test baseline"
+            assert get_resp["OperatingSystem"] == "AMAZON_LINUX_2"
+        finally:
+            ssm.delete_patch_baseline(BaselineId=baseline_id)
+
+
+class TestSSMMaintenanceWindowTargetUpdate:
+    """Tests for UpdateMaintenanceWindowTarget operation."""
+
+    def test_update_maintenance_window_target(self, ssm):
+        """UpdateMaintenanceWindowTarget updates target description."""
+        name = _unique("mw-upd-tgt")
+        mw = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="rate(1 day)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        wid = mw["WindowId"]
+        try:
+            reg = ssm.register_target_with_maintenance_window(
+                WindowId=wid,
+                ResourceType="INSTANCE",
+                Targets=[{"Key": "tag:Env", "Values": ["prod"]}],
+            )
+            target_id = reg["WindowTargetId"]
+            upd = ssm.update_maintenance_window_target(
+                WindowId=wid,
+                WindowTargetId=target_id,
+                Description="Updated description",
+            )
+            assert upd["WindowTargetId"] == target_id
+            assert upd["Description"] == "Updated description"
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+
+class TestSSMMaintenanceWindowTaskUpdate:
+    """Tests for UpdateMaintenanceWindowTask operation."""
+
+    def test_update_maintenance_window_task(self, ssm):
+        """UpdateMaintenanceWindowTask updates task description."""
+        name = _unique("mw-upd-task")
+        mw = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="rate(1 day)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        wid = mw["WindowId"]
+        try:
+            reg_target = ssm.register_target_with_maintenance_window(
+                WindowId=wid,
+                ResourceType="INSTANCE",
+                Targets=[{"Key": "tag:Name", "Values": ["test"]}],
+            )
+            tid = reg_target["WindowTargetId"]
+            reg_task = ssm.register_task_with_maintenance_window(
+                WindowId=wid,
+                Targets=[{"Key": "WindowTargetIds", "Values": [tid]}],
+                TaskArn="AWS-RunShellScript",
+                TaskType="RUN_COMMAND",
+                MaxConcurrency="1",
+                MaxErrors="0",
+            )
+            task_id = reg_task["WindowTaskId"]
+            upd = ssm.update_maintenance_window_task(
+                WindowId=wid,
+                WindowTaskId=task_id,
+                Description="Updated task description",
+            )
+            assert upd["WindowTaskId"] == task_id
+            assert upd["Description"] == "Updated task description"
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+
+class TestSSMStartChangeRequestExecution:
+    """Tests for StartChangeRequestExecution operation."""
+
+    def test_start_change_request_execution(self, ssm):
+        """StartChangeRequestExecution starts a change request automation."""
+        import json
+
+        doc_name = _unique("cre-doc")
+        doc_content = json.dumps(
+            {
+                "schemaVersion": "0.3",
+                "description": "change request test",
+                "mainSteps": [
+                    {
+                        "name": "step1",
+                        "action": "aws:sleep",
+                        "inputs": {"Duration": "PT1S"},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(Content=doc_content, Name=doc_name, DocumentType="Automation")
+        try:
+            resp = ssm.start_change_request_execution(
+                DocumentName=doc_name,
+                Runbooks=[{"DocumentName": doc_name}],
+            )
+            exec_id = resp["AutomationExecutionId"]
+            assert exec_id is not None
+
+            desc = ssm.describe_automation_executions(
+                Filters=[{"Key": "ExecutionId", "Values": [exec_id]}]
+            )
+            assert len(desc["AutomationExecutionMetadataList"]) >= 1
+        finally:
+            ssm.delete_document(Name=doc_name)
