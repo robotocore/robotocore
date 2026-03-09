@@ -405,3 +405,282 @@ class TestBedrockLoggingEdgeCases:
 
         r = bedrock.get_model_invocation_logging_configuration()
         assert r["loggingConfig"] == {}
+
+
+class TestBedrockListOperations:
+    """Tests for various list operations."""
+
+    def test_list_foundation_models(self, bedrock):
+        r = bedrock.list_foundation_models()
+        assert "modelSummaries" in r
+        assert isinstance(r["modelSummaries"], list)
+
+    def test_list_guardrails(self, bedrock):
+        r = bedrock.list_guardrails()
+        assert "guardrails" in r
+        assert isinstance(r["guardrails"], list)
+
+    def test_list_inference_profiles(self, bedrock):
+        r = bedrock.list_inference_profiles()
+        assert "inferenceProfileSummaries" in r
+        assert isinstance(r["inferenceProfileSummaries"], list)
+
+    def test_list_imported_models(self, bedrock):
+        r = bedrock.list_imported_models()
+        assert "modelSummaries" in r
+        assert isinstance(r["modelSummaries"], list)
+
+    def test_list_evaluation_jobs(self, bedrock):
+        r = bedrock.list_evaluation_jobs()
+        assert "jobSummaries" in r
+        assert isinstance(r["jobSummaries"], list)
+
+    def test_list_model_copy_jobs(self, bedrock):
+        r = bedrock.list_model_copy_jobs()
+        assert "modelCopyJobSummaries" in r
+        assert isinstance(r["modelCopyJobSummaries"], list)
+
+    def test_list_model_import_jobs(self, bedrock):
+        r = bedrock.list_model_import_jobs()
+        assert "modelImportJobSummaries" in r
+        assert isinstance(r["modelImportJobSummaries"], list)
+
+    def test_list_model_invocation_jobs(self, bedrock):
+        r = bedrock.list_model_invocation_jobs()
+        assert "invocationJobSummaries" in r
+        assert isinstance(r["invocationJobSummaries"], list)
+
+    def test_list_provisioned_model_throughputs(self, bedrock):
+        r = bedrock.list_provisioned_model_throughputs()
+        assert "provisionedModelSummaries" in r
+        assert isinstance(r["provisionedModelSummaries"], list)
+
+    def test_list_prompt_routers(self, bedrock):
+        r = bedrock.list_prompt_routers()
+        assert "promptRouterSummaries" in r
+        assert isinstance(r["promptRouterSummaries"], list)
+
+    def test_list_marketplace_model_endpoints(self, bedrock):
+        r = bedrock.list_marketplace_model_endpoints()
+        assert "marketplaceModelEndpoints" in r
+        assert isinstance(r["marketplaceModelEndpoints"], list)
+
+
+class TestBedrockGetWithFakeIds:
+    """Tests for Get operations with nonexistent IDs."""
+
+    def test_get_guardrail_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_guardrail(guardrailIdentifier="nonexistent-guardrail-id")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_evaluation_job_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:evaluation-job/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_evaluation_job(jobIdentifier=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_provisioned_model_throughput_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_provisioned_model_throughput(provisionedModelId="nonexistent-pmt-id")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_model_invocation_job_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:model-invocation-job/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_model_invocation_job(jobIdentifier=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_model_copy_job_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:model-copy-job/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_model_copy_job(jobArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_model_import_job_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:model-import-job/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_model_import_job(jobIdentifier=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_imported_model_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_imported_model(modelIdentifier="nonexistent-imported-model")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_inference_profile_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_inference_profile(inferenceProfileIdentifier="nonexistent-profile-id")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_foundation_model(self, bedrock):
+        """GetFoundationModel with a known model ID."""
+        r = bedrock.get_foundation_model(modelIdentifier="anthropic.claude-v2")
+        assert "modelDetails" in r
+        assert r["modelDetails"]["modelId"] == "anthropic.claude-v2"
+
+    def test_get_prompt_router_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:default-prompt-router/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_prompt_router(promptRouterArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_marketplace_model_endpoint_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:marketplace-model-endpoint/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_marketplace_model_endpoint(endpointArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_get_custom_model_deployment_not_found(self, bedrock):
+        fake_id = "nonexistent-deployment-id"
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_custom_model_deployment(customModelDeploymentIdentifier=fake_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+
+class TestBedrockFoundationModels:
+    """Tests for foundation model operations."""
+
+    def test_list_foundation_models_has_model_summaries(self, bedrock):
+        """ListFoundationModels returns model summaries with expected fields."""
+        r = bedrock.list_foundation_models()
+        assert len(r["modelSummaries"]) > 0
+        model = r["modelSummaries"][0]
+        assert "modelId" in model
+        assert "modelName" in model
+
+    def test_get_foundation_model_availability(self, bedrock):
+        """GetFoundationModelAvailability returns agreement availability."""
+        r = bedrock.get_foundation_model_availability(modelId="anthropic.claude-v2")
+        assert "modelId" in r
+        assert "agreementAvailability" in r
+
+    def test_list_foundation_model_agreement_offers(self, bedrock):
+        """ListFoundationModelAgreementOffers returns offers list."""
+        r = bedrock.list_foundation_model_agreement_offers(modelId="anthropic.claude-v2")
+        assert "offers" in r
+        assert isinstance(r["offers"], list)
+
+    def test_get_use_case_for_model_access(self, bedrock):
+        """GetUseCaseForModelAccess returns a response."""
+        r = bedrock.get_use_case_for_model_access()
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockAutomatedReasoningPolicies:
+    """Tests for automated reasoning policy operations."""
+
+    _FAKE_POLICY_ARN = "arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/fake"
+
+    def test_list_automated_reasoning_policies(self, bedrock):
+        r = bedrock.list_automated_reasoning_policies()
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_automated_reasoning_policy_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy(policyArn=self._FAKE_POLICY_ARN)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_automated_reasoning_policy_build_workflow_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy_build_workflow(
+                policyArn=self._FAKE_POLICY_ARN, buildWorkflowId="fake-wf"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_automated_reasoning_policy_annotations_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy_annotations(
+                policyArn=self._FAKE_POLICY_ARN, buildWorkflowId="fake-wf"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_automated_reasoning_policy_result_assets_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy_build_workflow_result_assets(
+                policyArn=self._FAKE_POLICY_ARN,
+                buildWorkflowId="fake-wf",
+                assetType="POLICY",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_automated_reasoning_policy_next_scenario_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy_next_scenario(
+                policyArn=self._FAKE_POLICY_ARN, buildWorkflowId="fake-wf"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_automated_reasoning_policy_test_case_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy_test_case(
+                policyArn=self._FAKE_POLICY_ARN, testCaseId="fake-tc"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_automated_reasoning_policy_test_result_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy_test_result(
+                policyArn=self._FAKE_POLICY_ARN,
+                buildWorkflowId="fake-wf",
+                testCaseId="fake-tc",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_automated_reasoning_policy_build_workflows_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.list_automated_reasoning_policy_build_workflows(policyArn=self._FAKE_POLICY_ARN)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_automated_reasoning_policy_test_cases_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.list_automated_reasoning_policy_test_cases(policyArn=self._FAKE_POLICY_ARN)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_automated_reasoning_policy_test_results_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.list_automated_reasoning_policy_test_results(
+                policyArn=self._FAKE_POLICY_ARN, buildWorkflowId="fake-wf"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockEnforcedGuardrails:
+    """Tests for enforced guardrails configuration."""
+
+    def test_list_enforced_guardrails_configuration(self, bedrock):
+        r = bedrock.list_enforced_guardrails_configuration()
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
