@@ -222,6 +222,16 @@ class TestDMSSubnetGroupOperations:
         assert sg_id not in ids
 
 
+class TestDMSSubnetGroupErrors:
+    def test_delete_nonexistent_subnet_group_raises(self, dms):
+        """DeleteReplicationSubnetGroup raises ResourceNotFoundFault for missing group."""
+        with pytest.raises(ClientError) as exc_info:
+            dms.delete_replication_subnet_group(
+                ReplicationSubnetGroupIdentifier="nonexistent-group"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+
 class TestDMSTags:
     def test_list_tags_for_resource_empty(self, dms):
         """ListTagsForResource returns empty list for new endpoint."""
@@ -241,6 +251,93 @@ class TestDMSTags:
             assert response["TagList"] == []
         finally:
             dms.delete_endpoint(EndpointArn=arn)
+
+    def test_create_endpoint_with_tags(self, dms):
+        """Creating an endpoint with Tags makes them visible via ListTagsForResource."""
+        ep_id = _unique("ep")
+        create_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "data"}],
+        )
+        arn = create_resp["Endpoint"]["EndpointArn"]
+        try:
+            response = dms.list_tags_for_resource(ResourceArn=arn)
+            tag_keys = {t["Key"] for t in response["TagList"]}
+            assert "env" in tag_keys
+            assert "team" in tag_keys
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
+
+    def test_create_replication_instance_with_tags(self, dms):
+        """Creating a replication instance with Tags makes them visible."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+            Tags=[{"Key": "env", "Value": "prod"}],
+        )
+        ri_arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        try:
+            tags_resp = dms.list_tags_for_resource(ResourceArn=ri_arn)
+            tag_keys = {t["Key"] for t in tags_resp["TagList"]}
+            assert "env" in tag_keys
+            tag_vals = {t["Value"] for t in tags_resp["TagList"] if t["Key"] == "env"}
+            assert "prod" in tag_vals
+        finally:
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+    def test_create_replication_task_with_tags(self, dms):
+        """Creating a replication task with Tags makes them visible."""
+        uid = uuid.uuid4().hex[:8]
+        src = dms.create_endpoint(
+            EndpointIdentifier=f"src-{uid}",
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        tgt = dms.create_endpoint(
+            EndpointIdentifier=f"tgt-{uid}",
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=f"ri-{uid}",
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        try:
+            task = dms.create_replication_task(
+                ReplicationTaskIdentifier=f"task-{uid}",
+                SourceEndpointArn=src["Endpoint"]["EndpointArn"],
+                TargetEndpointArn=tgt["Endpoint"]["EndpointArn"],
+                ReplicationInstanceArn=ri["ReplicationInstance"]["ReplicationInstanceArn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+                Tags=[{"Key": "env", "Value": "staging"}],
+            )
+            task_arn = task["ReplicationTask"]["ReplicationTaskArn"]
+            tags_resp = dms.list_tags_for_resource(ResourceArn=task_arn)
+            tag_keys = {t["Key"] for t in tags_resp["TagList"]}
+            assert "env" in tag_keys
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+        finally:
+            dms.delete_endpoint(EndpointArn=src["Endpoint"]["EndpointArn"])
+            dms.delete_endpoint(EndpointArn=tgt["Endpoint"]["EndpointArn"])
+            dms.delete_replication_instance(
+                ReplicationInstanceArn=ri["ReplicationInstance"]["ReplicationInstanceArn"]
+            )
 
 
 class TestDMSReplicationTaskOperations:
@@ -572,6 +669,50 @@ class TestDMSReplicationInstanceAdvanced:
         assert ":rep:" in arn or "replication-instance" in arn.lower() or ri_id in arn
         dms.delete_replication_instance(ReplicationInstanceArn=arn)
 
+    def test_create_replication_instance_with_az(self, dms):
+        """CreateReplicationInstance with AvailabilityZone."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+            AvailabilityZone="us-east-1a",
+        )
+        ri = resp["ReplicationInstance"]
+        assert ri["AvailabilityZone"] == "us-east-1a"
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_create_replication_instance_with_engine_version(self, dms):
+        """CreateReplicationInstance with EngineVersion."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+            EngineVersion="3.4.7",
+        )
+        ri = resp["ReplicationInstance"]
+        assert ri["EngineVersion"] == "3.4.7"
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_create_replication_instance_publicly_accessible(self, dms):
+        """CreateReplicationInstance with PubliclyAccessible=False."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+            PubliclyAccessible=False,
+        )
+        ri = resp["ReplicationInstance"]
+        assert ri["PubliclyAccessible"] is False
+        dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+
+    def test_delete_nonexistent_replication_instance_raises(self, dms):
+        """DeleteReplicationInstance raises ResourceNotFoundFault for missing instance."""
+        with pytest.raises(ClientError) as exc_info:
+            dms.delete_replication_instance(
+                ReplicationInstanceArn="arn:aws:dms:us-east-1:123456789012:rep:nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
 
 class TestDMSEndpointAdvanced:
     """Tests for endpoint operations with filters and details."""
@@ -646,6 +787,94 @@ class TestDMSEndpointAdvanced:
         assert ep["EngineName"] == "s3"
         assert ep["EndpointType"] == "target"
         dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_with_kms_key(self, dms):
+        """Create endpoint with KmsKeyId returns it in response."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+            KmsKeyId="arn:aws:kms:us-east-1:123456789012:key/fake-key-id",
+        )
+        ep = resp["Endpoint"]
+        assert ep["KmsKeyId"] == "arn:aws:kms:us-east-1:123456789012:key/fake-key-id"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_with_ssl_mode(self, dms):
+        """Create endpoint with SslMode returns it in response."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+            SslMode="none",
+        )
+        ep = resp["Endpoint"]
+        assert ep["SslMode"] == "none"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_with_database_name(self, dms):
+        """Create endpoint with DatabaseName returns it in response."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+            DatabaseName="mydb",
+        )
+        ep = resp["Endpoint"]
+        assert ep["DatabaseName"] == "mydb"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_kinesis_engine(self, dms):
+        """Create endpoint with kinesis engine type."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="target",
+            EngineName="kinesis",
+            KinesisSettings={
+                "StreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                "ServiceAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        ep = resp["Endpoint"]
+        assert ep["EngineName"] == "kinesis"
+        assert ep["EndpointType"] == "target"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_describe_endpoints_with_endpoint_id_filter(self, dms):
+        """DescribeEndpoints with endpoint-id filter returns matching endpoint."""
+        ep_id = _unique("ep")
+        create_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        arn = create_resp["Endpoint"]["EndpointArn"]
+        try:
+            resp = dms.describe_endpoints(Filters=[{"Name": "endpoint-id", "Values": [ep_id]}])
+            assert len(resp["Endpoints"]) == 1
+            assert resp["Endpoints"][0]["EndpointIdentifier"] == ep_id
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
 
     def test_describe_replication_subnet_groups_empty(self, dms):
         """DescribeReplicationSubnetGroups returns list (may be empty)."""
