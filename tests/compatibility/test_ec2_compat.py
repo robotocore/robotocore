@@ -5682,6 +5682,29 @@ class TestEC2CreateDefaultVpc:
     def ec2(self):
         return make_client("ec2")
 
+    @pytest.fixture
+    def ec2_fresh_region(self):
+        """Client in a region where we can safely delete/recreate default VPC."""
+        return make_client("ec2", region_name="ap-northeast-3")
+
+    def _cleanup_default_vpc(self, ec2):
+        """Delete the default VPC and all its dependencies."""
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])
+        for vpc in vpcs["Vpcs"]:
+            vpc_id = vpc["VpcId"]
+            subs = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+            for s in subs["Subnets"]:
+                ec2.delete_subnet(SubnetId=s["SubnetId"])
+            igws = ec2.describe_internet_gateways(
+                Filters=[{"Name": "attachment.vpc-id", "Values": [vpc_id]}]
+            )
+            for igw in igws["InternetGateways"]:
+                ec2.detach_internet_gateway(
+                    InternetGatewayId=igw["InternetGatewayId"], VpcId=vpc_id
+                )
+                ec2.delete_internet_gateway(InternetGatewayId=igw["InternetGatewayId"])
+            ec2.delete_vpc(VpcId=vpc_id)
+
     def test_create_default_vpc_already_exists(self, ec2):
         """CreateDefaultVpc raises error when default VPC exists."""
         import botocore.exceptions
@@ -5689,3 +5712,30 @@ class TestEC2CreateDefaultVpc:
         with pytest.raises(botocore.exceptions.ClientError) as exc_info:
             ec2.create_default_vpc()
         assert "DefaultVpcAlreadyExists" in str(exc_info.value)
+
+    def test_create_default_vpc(self, ec2_fresh_region):
+        """CreateDefaultVpc creates a new default VPC when none exists."""
+        ec2 = ec2_fresh_region
+        self._cleanup_default_vpc(ec2)
+
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])
+        assert len(vpcs["Vpcs"]) == 0
+
+        resp = ec2.create_default_vpc()
+        vpc = resp["Vpc"]
+        assert vpc["IsDefault"] is True
+        assert vpc["VpcId"].startswith("vpc-")
+        assert vpc["CidrBlock"] == "172.31.0.0/16"
+        assert vpc["State"] in ("available", "pending")
+
+    def test_create_default_vpc_creates_subnets(self, ec2_fresh_region):
+        """CreateDefaultVpc also creates default subnets in each AZ."""
+        ec2 = ec2_fresh_region
+        self._cleanup_default_vpc(ec2)
+        ec2.create_default_vpc()
+
+        subs = ec2.describe_subnets(Filters=[{"Name": "default-for-az", "Values": ["true"]}])
+        assert len(subs["Subnets"]) >= 1
+        for sub in subs["Subnets"]:
+            assert sub["DefaultForAz"] is True
+            assert sub["MapPublicIpOnLaunch"] is True
