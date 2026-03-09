@@ -460,3 +460,167 @@ class TestComprehendFlywheelAndDatasetOps:
         with pytest.raises(ClientError) as exc:
             client.list_flywheel_iteration_history(FlywheelArn=fake_arn)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestComprehendDetectionOps:
+    """Tests for Comprehend detection operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("comprehend")
+
+    def test_detect_dominant_language(self, client):
+        """DetectDominantLanguage returns language list."""
+        resp = client.detect_dominant_language(Text="Hello, how are you today?")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Languages"], list)
+        for lang in resp["Languages"]:
+            assert "LanguageCode" in lang
+            assert "Score" in lang
+
+    def test_detect_entities(self, client):
+        """DetectEntities returns entity list."""
+        resp = client.detect_entities(
+            Text="John Smith lives in Seattle and works at Amazon",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Entities"], list)
+        for ent in resp["Entities"]:
+            assert "Type" in ent
+            assert "Text" in ent
+            assert "Score" in ent
+
+    def test_detect_syntax(self, client):
+        """DetectSyntax returns syntax tokens."""
+        resp = client.detect_syntax(
+            Text="The quick brown fox jumps over the lazy dog.",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["SyntaxTokens"], list)
+        for token in resp["SyntaxTokens"]:
+            assert "TokenId" in token
+            assert "Text" in token
+            assert "PartOfSpeech" in token
+
+    def test_detect_targeted_sentiment(self, client):
+        """DetectTargetedSentiment returns entities with sentiment."""
+        resp = client.detect_targeted_sentiment(
+            Text="I love the food but hate the service",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Entities"], list)
+
+    def test_contains_pii_entities(self, client):
+        """ContainsPiiEntities returns labels list."""
+        resp = client.contains_pii_entities(
+            Text="My SSN is 123-45-6789",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Labels"], list)
+
+    def test_classify_document(self, client):
+        """ClassifyDocument returns classification results."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier-endpoint/fake"
+        resp = client.classify_document(Text="test text", EndpointArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Classes" in resp or "Labels" in resp
+
+
+class TestComprehendResourcePolicyOps:
+    """Tests for Comprehend resource policy operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("comprehend")
+
+    def test_delete_resource_policy_nonexistent(self, client):
+        """DeleteResourcePolicy with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/no-policy"
+        with pytest.raises(ClientError) as exc:
+            client.delete_resource_policy(ResourceArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_resource_policy(self, client):
+        """PutResourcePolicy accepts a policy and returns a revision ID."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/fake-cls"
+        policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"123456789012"},'
+            '"Action":"comprehend:DescribeDocumentClassifier",'
+            '"Resource":"*"}]}'
+        )
+        resp = client.put_resource_policy(ResourceArn=fake_arn, ResourcePolicy=policy)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PolicyRevisionId" in resp
+
+
+class TestComprehendJobOps:
+    """Tests for Comprehend job start/stop operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("comprehend")
+
+    def test_stop_dominant_language_detection_job(self, client):
+        """StopDominantLanguageDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_dominant_language_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_entities_detection_job(self, client):
+        """StopEntitiesDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_entities_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_events_detection_job(self, client):
+        """StopEventsDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_events_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_key_phrases_detection_job(self, client):
+        """StopKeyPhrasesDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_key_phrases_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_pii_entities_detection_job(self, client):
+        """StopPiiEntitiesDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_pii_entities_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_sentiment_detection_job(self, client):
+        """StopSentimentDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_sentiment_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_targeted_sentiment_detection_job(self, client):
+        """StopTargetedSentimentDetectionJob with fake job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_targeted_sentiment_detection_job(JobId="fake-job-id-00000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_document_classifier_nonexistent(self, client):
+        """DeleteDocumentClassifier with fake ARN returns 200."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:document-classifier/fake-cls"
+        resp = client.delete_document_classifier(DocumentClassifierArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_entity_recognizer_nonexistent(self, client):
+        """DeleteEntityRecognizer with fake ARN returns 200."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:entity-recognizer/fake-rec"
+        resp = client.delete_entity_recognizer(EntityRecognizerArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_flywheel_nonexistent(self, client):
+        """DeleteFlywheel with fake ARN returns 200."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        resp = client.delete_flywheel(FlywheelArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
