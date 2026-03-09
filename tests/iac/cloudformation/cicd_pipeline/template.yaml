@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CI/CD pipeline resources - S3 artifacts bucket, IAM role, SNS topic.
+
+Resources:
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-artifacts"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-artifacts"
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-pipeline-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: "sts:AssumeRole"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-pipeline-role"
+
+  PipelinePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}-pipeline-policy"
+      Roles:
+        - !Ref PipelineRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "s3:GetObject"
+              - "s3:PutObject"
+              - "s3:ListBucket"
+            Resource:
+              - !GetAtt ArtifactsBucket.Arn
+              - !Sub "${ArtifactsBucket.Arn}/*"
+
+  BuildNotificationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-build-notifications"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-build-notifications"
+
+Outputs:
+  ArtifactsBucketName:
+    Value: !Ref ArtifactsBucket
+  PipelineRoleName:
+    Value: !Ref PipelineRole
+  PipelineRoleArn:
+    Value: !GetAtt PipelineRole.Arn
+  BuildNotificationsTopicArn:
+    Value: !Ref BuildNotificationsTopic
