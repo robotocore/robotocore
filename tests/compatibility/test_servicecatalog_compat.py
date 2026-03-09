@@ -89,6 +89,76 @@ class TestServiceCatalogDescribeProduct:
             servicecatalog.describe_product(Id="prod-doesnotexist123")
         assert exc.value.response["Error"]["Code"] in ("ResourceNotFoundException",)
 
+    def test_describe_product_nonexistent_by_name(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_product(Name="nonexistent-product-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_product_by_id(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            desc = servicecatalog.describe_product(Id=prod_id)
+            assert "ProductViewSummary" in desc
+            assert desc["ProductViewSummary"]["Name"] == name
+            assert desc["ProductViewSummary"]["Owner"] == "TestOwner"
+            assert desc["ProductViewSummary"]["ProductId"] == prod_id
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_describe_product_by_name(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            desc = servicecatalog.describe_product(Name=name)
+            assert desc["ProductViewSummary"]["Name"] == name
+            assert desc["ProductViewSummary"]["ProductId"] == prod_id
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_describe_product_has_provisioning_artifacts_key(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            desc = servicecatalog.describe_product(Id=prod_id)
+            assert "ProvisioningArtifacts" in desc
+            assert isinstance(desc["ProvisioningArtifacts"], list)
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
 
 class TestServiceCatalogProductCRUD:
     def test_create_and_delete_product(self, servicecatalog):
@@ -107,6 +177,194 @@ class TestServiceCatalogProductCRUD:
         prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
         assert prod_id is not None
         servicecatalog.delete_product(Id=prod_id)
+
+    def test_create_product_has_product_arn(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            assert "ProductARN" in resp["ProductViewDetail"]
+            assert "product" in resp["ProductViewDetail"]["ProductARN"]
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_create_product_has_status(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            assert "Status" in resp["ProductViewDetail"]
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_create_product_returns_provisioning_artifact_detail(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            assert "ProvisioningArtifactDetail" in resp
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_create_product_returns_tags(self, servicecatalog):
+        name = _uid("product")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            Tags=[{"Key": "env", "Value": "test"}],
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+
+class TestServiceCatalogPortfolioDetails:
+    def test_portfolio_has_created_time(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            assert "CreatedTime" in resp["PortfolioDetail"]
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_portfolio_has_id(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            assert pid is not None
+            assert len(pid) > 0
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_describe_portfolio_has_tags_key(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert "Tags" in desc
+            assert isinstance(desc["Tags"], list)
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_create_portfolio_with_description(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            Description="A test portfolio description",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert desc["PortfolioDetail"]["Description"] == "A test portfolio description"
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_create_portfolio_with_tags(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            Tags=[{"Key": "env", "Value": "test"}],
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert "Tags" in desc
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+
+class TestServiceCatalogPortfolioAccessEmpty:
+    def test_list_portfolio_access_empty(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            access = servicecatalog.list_portfolio_access(PortfolioId=pid)
+            assert "AccountIds" in access
+            assert access["AccountIds"] == []
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_describe_portfolio_shares_empty(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            shares = servicecatalog.describe_portfolio_shares(
+                PortfolioId=pid,
+                Type="ACCOUNT",
+            )
+            assert "PortfolioShareDetails" in shares
+            assert shares["PortfolioShareDetails"] == []
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
 
 
 class TestServiceCatalogPortfolioShare:
@@ -177,5 +435,58 @@ class TestServiceCatalogPortfolioShare:
                 PortfolioId=pid,
                 AccountId="987654321098",
             )
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_portfolio_share_multiple_accounts(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            servicecatalog.create_portfolio_share(
+                PortfolioId=pid,
+                AccountId="987654321098",
+            )
+            servicecatalog.create_portfolio_share(
+                PortfolioId=pid,
+                AccountId="111222333444",
+            )
+            access = servicecatalog.list_portfolio_access(PortfolioId=pid)
+            assert "987654321098" in access["AccountIds"]
+            assert "111222333444" in access["AccountIds"]
+            servicecatalog.delete_portfolio_share(
+                PortfolioId=pid,
+                AccountId="987654321098",
+            )
+            servicecatalog.delete_portfolio_share(
+                PortfolioId=pid,
+                AccountId="111222333444",
+            )
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_delete_share_removes_from_access_list(self, servicecatalog):
+        name = _uid("portfolio")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            servicecatalog.create_portfolio_share(
+                PortfolioId=pid,
+                AccountId="987654321098",
+            )
+            servicecatalog.delete_portfolio_share(
+                PortfolioId=pid,
+                AccountId="987654321098",
+            )
+            access = servicecatalog.list_portfolio_access(PortfolioId=pid)
+            assert "987654321098" not in access["AccountIds"]
         finally:
             servicecatalog.delete_portfolio(Id=pid)
