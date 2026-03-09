@@ -1788,3 +1788,960 @@ class TestConnectAdditionalOps:
         tags_after = connect.list_tags_for_resource(resourceArn=arn)
         assert "env" not in tags_after["tags"]
         assert "team" in tags_after["tags"]
+
+
+class TestConnectDeleteOpsExtended:
+    """Extended tests for Connect delete operations not covered above."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_delete_queue(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="DelQueueHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QueueToDelete",
+            HoursOfOperationId=hoo_resp["HoursOfOperationId"],
+        )
+        queue_id = queue_resp["QueueId"]
+        connect.delete_queue(InstanceId=instance_id, QueueId=queue_id)
+        with pytest.raises(ClientError):
+            connect.describe_queue(InstanceId=instance_id, QueueId=queue_id)
+
+    def test_delete_view(self, connect, instance_id):
+        view_resp = connect.create_view(
+            InstanceId=instance_id,
+            Name="ViewToDelete",
+            Status="SAVED",
+            Content={"Template": "{}"},
+        )
+        view_id = view_resp["View"]["Id"]
+        connect.delete_view(InstanceId=instance_id, ViewId=view_id)
+        with pytest.raises(ClientError):
+            connect.describe_view(InstanceId=instance_id, ViewId=view_id)
+
+    def test_delete_user_hierarchy_group(self, connect, instance_id):
+        group_resp = connect.create_user_hierarchy_group(
+            InstanceId=instance_id,
+            Name="GroupToDelete",
+        )
+        group_id = group_resp["HierarchyGroupId"]
+        connect.delete_user_hierarchy_group(InstanceId=instance_id, HierarchyGroupId=group_id)
+        with pytest.raises(ClientError):
+            connect.describe_user_hierarchy_group(InstanceId=instance_id, HierarchyGroupId=group_id)
+
+    def test_delete_evaluation_form(self, connect, instance_id):
+        create_resp = connect.create_evaluation_form(
+            InstanceId=instance_id,
+            Title="EvalFormToDelete",
+            Items=[
+                {
+                    "Section": {
+                        "Title": "Section1",
+                        "RefId": "s1",
+                        "Items": [],
+                    }
+                }
+            ],
+        )
+        form_id = create_resp["EvaluationFormId"]
+        connect.delete_evaluation_form(
+            InstanceId=instance_id,
+            EvaluationFormId=form_id,
+            EvaluationFormVersion=1,
+        )
+        with pytest.raises(ClientError):
+            connect.describe_evaluation_form(InstanceId=instance_id, EvaluationFormId=form_id)
+
+
+class TestConnectUpdateOpsExtended:
+    """Extended tests for Connect update operations not covered above."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_update_contact_flow_metadata(self, connect, instance_id):
+        create_resp = connect.create_contact_flow(
+            InstanceId=instance_id,
+            Name="FlowForMetadata",
+            Type="CONTACT_FLOW",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        flow_id = create_resp["ContactFlowId"]
+        connect.update_contact_flow_metadata(
+            InstanceId=instance_id,
+            ContactFlowId=flow_id,
+            Description="Updated metadata desc",
+        )
+        resp = connect.describe_contact_flow(InstanceId=instance_id, ContactFlowId=flow_id)
+        assert resp["ContactFlow"]["Description"] == "Updated metadata desc"
+
+    def test_update_contact_flow_module_content(self, connect, instance_id):
+        create_resp = connect.create_contact_flow_module(
+            InstanceId=instance_id,
+            Name="ModuleForContent",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        module_id = create_resp["Id"]
+        new_content = '{"Version":"2019-10-30","StartAction":"action2","Actions":[]}'
+        connect.update_contact_flow_module_content(
+            InstanceId=instance_id,
+            ContactFlowModuleId=module_id,
+            Content=new_content,
+        )
+        resp = connect.describe_contact_flow_module(
+            InstanceId=instance_id, ContactFlowModuleId=module_id
+        )
+        assert resp["ContactFlowModule"]["Content"] is not None
+
+    def test_update_contact_flow_module_metadata(self, connect, instance_id):
+        create_resp = connect.create_contact_flow_module(
+            InstanceId=instance_id,
+            Name="ModuleForMeta",
+            Content='{"Version":"2019-10-30","StartAction":"action1","Actions":[]}',
+        )
+        module_id = create_resp["Id"]
+        connect.update_contact_flow_module_metadata(
+            InstanceId=instance_id,
+            ContactFlowModuleId=module_id,
+            Description="Updated module desc",
+        )
+        resp = connect.describe_contact_flow_module(
+            InstanceId=instance_id, ContactFlowModuleId=module_id
+        )
+        assert resp["ContactFlowModule"]["Description"] == "Updated module desc"
+
+    def test_update_view_content(self, connect, instance_id):
+        create_resp = connect.create_view(
+            InstanceId=instance_id,
+            Name="ViewForContentUpdate",
+            Status="SAVED",
+            Content={"Template": "{}"},
+        )
+        view_id = create_resp["View"]["Id"]
+        connect.update_view_content(
+            InstanceId=instance_id,
+            ViewId=view_id,
+            Status="SAVED",
+            Content={"Template": '{"updated":true}'},
+        )
+        resp = connect.describe_view(InstanceId=instance_id, ViewId=view_id)
+        assert resp["View"]["Content"] is not None
+
+    def test_update_view_metadata(self, connect, instance_id):
+        create_resp = connect.create_view(
+            InstanceId=instance_id,
+            Name="ViewForMetaUpdate",
+            Status="SAVED",
+            Content={"Template": "{}"},
+        )
+        view_id = create_resp["View"]["Id"]
+        connect.update_view_metadata(
+            InstanceId=instance_id,
+            ViewId=view_id,
+            Description="Updated view desc",
+        )
+        resp = connect.describe_view(InstanceId=instance_id, ViewId=view_id)
+        assert resp["View"]["Description"] == "Updated view desc"
+
+    def test_update_queue_max_contacts(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="MaxContactsHours",
+            TimeZone="America/New_York",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="MaxContactsQueue",
+            HoursOfOperationId=hoo_resp["HoursOfOperationId"],
+        )
+        queue_id = queue_resp["QueueId"]
+        resp = connect.update_queue_max_contacts(
+            InstanceId=instance_id,
+            QueueId=queue_id,
+            MaxContacts=10,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_routing_profile_queues(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="RPQUpdHours",
+            TimeZone="UTC",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 23, "Minutes": 59},
+                }
+            ],
+        )
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="RPQUpdQueue",
+            HoursOfOperationId=hoo_resp["HoursOfOperationId"],
+        )
+        rp_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPQUpdProfile",
+            Description="For queue update",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        resp = connect.update_routing_profile_queues(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_resp["RoutingProfileId"],
+            QueueConfigs=[
+                {
+                    "QueueReference": {
+                        "QueueId": queue_resp["QueueId"],
+                        "Channel": "VOICE",
+                    },
+                    "Priority": 1,
+                    "Delay": 0,
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_user_security_profiles(self, connect, instance_id):
+        rp_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="USPUpdRP",
+            Description="For security profile update",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        sp1_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName="USPUpdSP1",
+        )
+        sp2_resp = connect.create_security_profile(
+            InstanceId=instance_id,
+            SecurityProfileName="USPUpdSP2",
+        )
+        user_resp = connect.create_user(
+            InstanceId=instance_id,
+            Username="uspupduser",
+            PhoneConfig={
+                "PhoneType": "SOFT_PHONE",
+                "AutoAccept": False,
+                "AfterContactWorkTimeLimit": 0,
+            },
+            SecurityProfileIds=[sp1_resp["SecurityProfileId"]],
+            RoutingProfileId=rp_resp["RoutingProfileId"],
+        )
+        resp = connect.update_user_security_profiles(
+            InstanceId=instance_id,
+            UserId=user_resp["UserId"],
+            SecurityProfileIds=[sp2_resp["SecurityProfileId"]],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_user_hierarchy_structure(self, connect, instance_id):
+        connect.update_user_hierarchy_structure(
+            InstanceId=instance_id,
+            HierarchyStructure={"LevelOne": {"Name": "Organization"}},
+        )
+        resp = connect.describe_user_hierarchy_structure(InstanceId=instance_id)
+        assert resp["HierarchyStructure"]["LevelOne"]["Name"] == "Organization"
+
+    def test_update_evaluation_form(self, connect, instance_id):
+        create_resp = connect.create_evaluation_form(
+            InstanceId=instance_id,
+            Title="EvalFormToUpdate",
+            Items=[
+                {
+                    "Section": {
+                        "Title": "Section1",
+                        "RefId": "s1",
+                        "Items": [],
+                    }
+                }
+            ],
+        )
+        form_id = create_resp["EvaluationFormId"]
+        resp = connect.update_evaluation_form(
+            InstanceId=instance_id,
+            EvaluationFormId=form_id,
+            EvaluationFormVersion=1,
+            Title="UpdatedEvalForm",
+            Items=[
+                {
+                    "Section": {
+                        "Title": "Section2",
+                        "RefId": "s2",
+                        "Items": [],
+                    }
+                }
+            ],
+        )
+        assert "EvaluationFormId" in resp
+        assert "EvaluationFormVersion" in resp
+
+
+class TestConnectSearchOpsExtended:
+    """Extended tests for Connect search operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_search_queues(self, connect, instance_id):
+        resp = connect.search_queues(InstanceId=instance_id)
+        assert "Queues" in resp
+        assert isinstance(resp["Queues"], list)
+
+    def test_search_routing_profiles(self, connect, instance_id):
+        resp = connect.search_routing_profiles(InstanceId=instance_id)
+        assert "RoutingProfiles" in resp
+        assert isinstance(resp["RoutingProfiles"], list)
+
+    def test_search_security_profiles(self, connect, instance_id):
+        resp = connect.search_security_profiles(InstanceId=instance_id)
+        assert "SecurityProfiles" in resp
+        assert isinstance(resp["SecurityProfiles"], list)
+
+    def test_search_contact_flows(self, connect, instance_id):
+        resp = connect.search_contact_flows(InstanceId=instance_id)
+        assert "ContactFlows" in resp
+        assert isinstance(resp["ContactFlows"], list)
+
+    def test_search_contact_flow_modules(self, connect, instance_id):
+        resp = connect.search_contact_flow_modules(InstanceId=instance_id)
+        assert "ContactFlowModules" in resp
+        assert isinstance(resp["ContactFlowModules"], list)
+
+    def test_search_hours_of_operations(self, connect, instance_id):
+        resp = connect.search_hours_of_operations(InstanceId=instance_id)
+        assert "HoursOfOperations" in resp
+        assert isinstance(resp["HoursOfOperations"], list)
+
+    def test_search_prompts(self, connect, instance_id):
+        resp = connect.search_prompts(InstanceId=instance_id)
+        assert "Prompts" in resp
+        assert isinstance(resp["Prompts"], list)
+
+    def test_search_quick_connects(self, connect, instance_id):
+        resp = connect.search_quick_connects(InstanceId=instance_id)
+        assert "QuickConnects" in resp
+        assert isinstance(resp["QuickConnects"], list)
+
+    def test_search_agent_statuses(self, connect, instance_id):
+        resp = connect.search_agent_statuses(InstanceId=instance_id)
+        assert "AgentStatuses" in resp
+        assert isinstance(resp["AgentStatuses"], list)
+
+    def test_search_predefined_attributes(self, connect, instance_id):
+        resp = connect.search_predefined_attributes(InstanceId=instance_id)
+        assert "PredefinedAttributes" in resp
+        assert isinstance(resp["PredefinedAttributes"], list)
+
+    def test_search_user_hierarchy_groups(self, connect, instance_id):
+        resp = connect.search_user_hierarchy_groups(InstanceId=instance_id)
+        assert "UserHierarchyGroups" in resp
+        assert isinstance(resp["UserHierarchyGroups"], list)
+
+
+class TestConnectAssociationOps:
+    """Tests for Connect associate/disassociate operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_associate_and_disassociate_approved_origin(self, connect, instance_id):
+        connect.associate_approved_origin(InstanceId=instance_id, Origin="https://example.com")
+        resp = connect.list_approved_origins(InstanceId=instance_id)
+        assert "https://example.com" in resp["Origins"]
+
+        connect.disassociate_approved_origin(InstanceId=instance_id, Origin="https://example.com")
+        resp2 = connect.list_approved_origins(InstanceId=instance_id)
+        assert "https://example.com" not in resp2["Origins"]
+
+    def test_associate_and_disassociate_lambda_function(self, connect, instance_id):
+        func_arn = "arn:aws:lambda:us-east-1:123456789012:function:test-func"
+        connect.associate_lambda_function(InstanceId=instance_id, FunctionArn=func_arn)
+        resp = connect.list_lambda_functions(InstanceId=instance_id)
+        assert func_arn in resp["LambdaFunctions"]
+
+        connect.disassociate_lambda_function(InstanceId=instance_id, FunctionArn=func_arn)
+        resp2 = connect.list_lambda_functions(InstanceId=instance_id)
+        assert func_arn not in resp2["LambdaFunctions"]
+
+    def test_associate_and_disassociate_queue_quick_connects(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="QQCAssocHours",
+            TimeZone="UTC",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 23, "Minutes": 59},
+                }
+            ],
+        )
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="QQCAssocQueue",
+            HoursOfOperationId=hoo_resp["HoursOfOperationId"],
+        )
+        qc_resp = connect.create_quick_connect(
+            InstanceId=instance_id,
+            Name="QQCAssocQC",
+            QuickConnectConfig={
+                "QuickConnectType": "PHONE_NUMBER",
+                "PhoneConfig": {"PhoneNumber": "+15555550001"},
+            },
+        )
+        connect.associate_queue_quick_connects(
+            InstanceId=instance_id,
+            QueueId=queue_resp["QueueId"],
+            QuickConnectIds=[qc_resp["QuickConnectId"]],
+        )
+        resp = connect.list_queue_quick_connects(
+            InstanceId=instance_id, QueueId=queue_resp["QueueId"]
+        )
+        assert len(resp["QuickConnectSummaryList"]) >= 1
+
+        resp2 = connect.disassociate_queue_quick_connects(
+            InstanceId=instance_id,
+            QueueId=queue_resp["QueueId"],
+            QuickConnectIds=[qc_resp["QuickConnectId"]],
+        )
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_associate_and_disassociate_routing_profile_queues(self, connect, instance_id):
+        hoo_resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="RPAssocHours",
+            TimeZone="UTC",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 23, "Minutes": 59},
+                }
+            ],
+        )
+        queue_resp = connect.create_queue(
+            InstanceId=instance_id,
+            Name="RPAssocQueue",
+            HoursOfOperationId=hoo_resp["HoursOfOperationId"],
+        )
+        rp_resp = connect.create_routing_profile(
+            InstanceId=instance_id,
+            Name="RPAssocProfile",
+            Description="For association test",
+            DefaultOutboundQueueId="fake-queue-id",
+            MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
+        )
+        connect.associate_routing_profile_queues(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_resp["RoutingProfileId"],
+            QueueConfigs=[
+                {
+                    "QueueReference": {
+                        "QueueId": queue_resp["QueueId"],
+                        "Channel": "VOICE",
+                    },
+                    "Priority": 1,
+                    "Delay": 0,
+                }
+            ],
+        )
+        resp = connect.list_routing_profile_queues(
+            InstanceId=instance_id, RoutingProfileId=rp_resp["RoutingProfileId"]
+        )
+        assert len(resp["RoutingProfileQueueConfigSummaryList"]) >= 1
+
+        resp2 = connect.disassociate_routing_profile_queues(
+            InstanceId=instance_id,
+            RoutingProfileId=rp_resp["RoutingProfileId"],
+            QueueReferences=[{"QueueId": queue_resp["QueueId"], "Channel": "VOICE"}],
+        )
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_associate_and_disassociate_bot(self, connect, instance_id):
+        bot_arn = "arn:aws:lex:us-east-1:123456789012:bot-alias/ABCDE/FGHIJ"
+        connect.associate_bot(
+            InstanceId=instance_id,
+            LexV2Bot={"AliasArn": bot_arn},
+        )
+        resp = connect.list_bots(InstanceId=instance_id, LexVersion="V2")
+        assert "LexBots" in resp
+        assert isinstance(resp["LexBots"], list)
+
+        connect.disassociate_bot(
+            InstanceId=instance_id,
+            LexV2Bot={"AliasArn": bot_arn},
+        )
+        resp2 = connect.list_bots(InstanceId=instance_id, LexVersion="V2")
+        assert isinstance(resp2["LexBots"], list)
+
+    def test_associate_and_disassociate_security_key(self, connect, instance_id):
+        key = (
+            "-----BEGIN PUBLIC KEY-----\n"
+            "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtest\n"
+            "-----END PUBLIC KEY-----"
+        )
+        resp = connect.associate_security_key(InstanceId=instance_id, Key=key)
+        assert "AssociationId" in resp
+        assoc_id = resp["AssociationId"]
+
+        keys_resp = connect.list_security_keys(InstanceId=instance_id)
+        assert len(keys_resp["SecurityKeys"]) >= 1
+
+        connect.disassociate_security_key(InstanceId=instance_id, AssociationId=assoc_id)
+
+    def test_associate_and_disassociate_instance_storage_config(self, connect, instance_id):
+        resp = connect.associate_instance_storage_config(
+            InstanceId=instance_id,
+            ResourceType="CHAT_TRANSCRIPTS",
+            StorageConfig={
+                "StorageType": "S3",
+                "S3Config": {
+                    "BucketName": "test-bucket",
+                    "BucketPrefix": "logs/",
+                },
+            },
+        )
+        assert "AssociationId" in resp
+        assoc_id = resp["AssociationId"]
+
+        connect.disassociate_instance_storage_config(
+            InstanceId=instance_id,
+            AssociationId=assoc_id,
+            ResourceType="CHAT_TRANSCRIPTS",
+        )
+        configs = connect.list_instance_storage_configs(
+            InstanceId=instance_id, ResourceType="CHAT_TRANSCRIPTS"
+        )
+        assert isinstance(configs["StorageConfigs"], list)
+
+
+class TestConnectPredefinedAttributes:
+    """Tests for Connect predefined attribute CRUD operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_predefined_attribute(self, connect, instance_id):
+        connect.create_predefined_attribute(
+            InstanceId=instance_id,
+            Name="Department",
+            Values={"StringList": ["Engineering", "Sales"]},
+        )
+        resp = connect.describe_predefined_attribute(InstanceId=instance_id, Name="Department")
+        assert "PredefinedAttribute" in resp
+        assert resp["PredefinedAttribute"]["Name"] == "Department"
+
+    def test_update_predefined_attribute(self, connect, instance_id):
+        connect.create_predefined_attribute(
+            InstanceId=instance_id,
+            Name="Team",
+            Values={"StringList": ["Alpha", "Beta"]},
+        )
+        connect.update_predefined_attribute(
+            InstanceId=instance_id,
+            Name="Team",
+            Values={"StringList": ["Alpha", "Beta", "Gamma"]},
+        )
+        resp = connect.describe_predefined_attribute(InstanceId=instance_id, Name="Team")
+        assert "PredefinedAttribute" in resp
+
+    def test_delete_predefined_attribute(self, connect, instance_id):
+        connect.create_predefined_attribute(
+            InstanceId=instance_id,
+            Name="Location",
+            Values={"StringList": ["NYC", "SF"]},
+        )
+        connect.delete_predefined_attribute(InstanceId=instance_id, Name="Location")
+        with pytest.raises(ClientError):
+            connect.describe_predefined_attribute(InstanceId=instance_id, Name="Location")
+
+    def test_list_predefined_attributes(self, connect, instance_id):
+        connect.create_predefined_attribute(
+            InstanceId=instance_id,
+            Name="Skill",
+            Values={"StringList": ["Python", "Java"]},
+        )
+        resp = connect.list_predefined_attributes(InstanceId=instance_id)
+        assert "PredefinedAttributeSummaryList" in resp
+        assert len(resp["PredefinedAttributeSummaryList"]) >= 1
+
+
+class TestConnectTaskTemplates:
+    """Tests for Connect task template CRUD operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_task_template(self, connect, instance_id):
+        resp = connect.create_task_template(
+            InstanceId=instance_id,
+            Name="TestTaskTemplate",
+            Fields=[
+                {
+                    "Id": {"Name": "field1"},
+                    "Type": "TEXT",
+                    "SingleSelectOptions": [],
+                    "Description": "A text field",
+                }
+            ],
+        )
+        assert "Id" in resp
+        assert "Arn" in resp
+
+    def test_get_task_template(self, connect, instance_id):
+        create_resp = connect.create_task_template(
+            InstanceId=instance_id,
+            Name="GetTaskTemplate",
+            Fields=[
+                {
+                    "Id": {"Name": "field1"},
+                    "Type": "TEXT",
+                    "SingleSelectOptions": [],
+                    "Description": "A text field",
+                }
+            ],
+        )
+        task_tpl_id = create_resp["Id"]
+        resp = connect.get_task_template(InstanceId=instance_id, TaskTemplateId=task_tpl_id)
+        assert resp["Name"] == "GetTaskTemplate"
+        assert "Id" in resp
+
+    def test_update_task_template(self, connect, instance_id):
+        create_resp = connect.create_task_template(
+            InstanceId=instance_id,
+            Name="UpdateTaskTemplate",
+            Fields=[
+                {
+                    "Id": {"Name": "field1"},
+                    "Type": "TEXT",
+                    "SingleSelectOptions": [],
+                    "Description": "A text field",
+                }
+            ],
+        )
+        task_tpl_id = create_resp["Id"]
+        resp = connect.update_task_template(
+            InstanceId=instance_id,
+            TaskTemplateId=task_tpl_id,
+            Name="UpdatedTaskTemplate",
+            Fields=[
+                {
+                    "Id": {"Name": "field1"},
+                    "Type": "TEXT",
+                    "SingleSelectOptions": [],
+                    "Description": "Updated field",
+                }
+            ],
+        )
+        assert resp["Name"] == "UpdatedTaskTemplate"
+
+    def test_delete_task_template(self, connect, instance_id):
+        create_resp = connect.create_task_template(
+            InstanceId=instance_id,
+            Name="DeleteTaskTemplate",
+            Fields=[
+                {
+                    "Id": {"Name": "field1"},
+                    "Type": "TEXT",
+                    "SingleSelectOptions": [],
+                    "Description": "A text field",
+                }
+            ],
+        )
+        task_tpl_id = create_resp["Id"]
+        connect.delete_task_template(InstanceId=instance_id, TaskTemplateId=task_tpl_id)
+        # After deletion, get_task_template should fail
+        with pytest.raises(ClientError):
+            connect.get_task_template(InstanceId=instance_id, TaskTemplateId=task_tpl_id)
+
+
+class TestConnectEvaluationFormLifecycle:
+    """Tests for evaluation form activate/deactivate lifecycle."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_activate_evaluation_form(self, connect, instance_id):
+        create_resp = connect.create_evaluation_form(
+            InstanceId=instance_id,
+            Title="FormToActivate",
+            Items=[
+                {
+                    "Section": {
+                        "Title": "Section1",
+                        "RefId": "s1",
+                        "Items": [],
+                    }
+                }
+            ],
+        )
+        form_id = create_resp["EvaluationFormId"]
+        resp = connect.activate_evaluation_form(
+            InstanceId=instance_id,
+            EvaluationFormId=form_id,
+            EvaluationFormVersion=1,
+        )
+        assert "EvaluationFormId" in resp
+        assert "EvaluationFormVersion" in resp
+
+    def test_deactivate_evaluation_form(self, connect, instance_id):
+        create_resp = connect.create_evaluation_form(
+            InstanceId=instance_id,
+            Title="FormToDeactivate",
+            Items=[
+                {
+                    "Section": {
+                        "Title": "Section1",
+                        "RefId": "s1",
+                        "Items": [],
+                    }
+                }
+            ],
+        )
+        form_id = create_resp["EvaluationFormId"]
+        # Activate first
+        activate_resp = connect.activate_evaluation_form(
+            InstanceId=instance_id,
+            EvaluationFormId=form_id,
+            EvaluationFormVersion=1,
+        )
+        # Then deactivate
+        resp = connect.deactivate_evaluation_form(
+            InstanceId=instance_id,
+            EvaluationFormId=form_id,
+            EvaluationFormVersion=activate_resp["EvaluationFormVersion"],
+        )
+        assert "EvaluationFormId" in resp
+        assert "EvaluationFormVersion" in resp
+
+
+class TestConnectIntegrationOps:
+    """Tests for Connect integration association operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_integration_association(self, connect, instance_id):
+        resp = connect.create_integration_association(
+            InstanceId=instance_id,
+            IntegrationType="EVENT",
+            IntegrationArn="arn:aws:events:us-east-1:123456789012:event-bus/default",
+        )
+        assert "IntegrationAssociationId" in resp
+        assert "IntegrationAssociationArn" in resp
+
+    def test_create_and_list_integration_associations(self, connect, instance_id):
+        connect.create_integration_association(
+            InstanceId=instance_id,
+            IntegrationType="EVENT",
+            IntegrationArn="arn:aws:events:us-east-1:123456789012:event-bus/default",
+        )
+        resp = connect.list_integration_associations(InstanceId=instance_id)
+        assert len(resp["IntegrationAssociationSummaryList"]) >= 1
+
+    def test_create_and_delete_use_case(self, connect, instance_id):
+        ia_resp = connect.create_integration_association(
+            InstanceId=instance_id,
+            IntegrationType="EVENT",
+            IntegrationArn="arn:aws:events:us-east-1:123456789012:event-bus/default",
+        )
+        ia_id = ia_resp["IntegrationAssociationId"]
+        uc_resp = connect.create_use_case(
+            InstanceId=instance_id,
+            IntegrationAssociationId=ia_id,
+            UseCaseType="RULES_EVALUATION",
+        )
+        assert "UseCaseId" in uc_resp
+        assert "UseCaseArn" in uc_resp
+
+        connect.delete_use_case(
+            InstanceId=instance_id,
+            IntegrationAssociationId=ia_id,
+            UseCaseId=uc_resp["UseCaseId"],
+        )
+        # Verify use case is gone by listing
+        resp = connect.list_use_cases(InstanceId=instance_id, IntegrationAssociationId=ia_id)
+        uc_ids = [uc["UseCaseId"] for uc in resp["UseCaseSummaryList"]]
+        assert uc_resp["UseCaseId"] not in uc_ids
+
+
+class TestConnectHoursOfOperationOverrides:
+    """Tests for hours of operation override CRUD operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    @pytest.fixture
+    def hoo_id(self, connect, instance_id):
+        resp = connect.create_hours_of_operation(
+            InstanceId=instance_id,
+            Name="OverrideBaseHours",
+            TimeZone="UTC",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 9, "Minutes": 0},
+                    "EndTime": {"Hours": 17, "Minutes": 0},
+                }
+            ],
+        )
+        return resp["HoursOfOperationId"]
+
+    def test_create_hours_of_operation_override(self, connect, instance_id, hoo_id):
+        resp = connect.create_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            Name="HolidayOverride",
+            EffectiveFrom="2026-12-25",
+            EffectiveTill="2026-12-26",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 0, "Minutes": 0},
+                }
+            ],
+        )
+        assert "HoursOfOperationOverrideId" in resp
+
+    def test_describe_hours_of_operation_override(self, connect, instance_id, hoo_id):
+        create_resp = connect.create_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            Name="DescOverride",
+            EffectiveFrom="2026-12-25",
+            EffectiveTill="2026-12-26",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 0, "Minutes": 0},
+                }
+            ],
+        )
+        override_id = create_resp["HoursOfOperationOverrideId"]
+        resp = connect.describe_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            HoursOfOperationOverrideId=override_id,
+        )
+        assert "HoursOfOperationOverride" in resp
+        assert resp["HoursOfOperationOverride"]["Name"] == "DescOverride"
+
+    def test_update_hours_of_operation_override(self, connect, instance_id, hoo_id):
+        create_resp = connect.create_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            Name="UpdateOverride",
+            EffectiveFrom="2026-12-25",
+            EffectiveTill="2026-12-26",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 0, "Minutes": 0},
+                }
+            ],
+        )
+        override_id = create_resp["HoursOfOperationOverrideId"]
+        connect.update_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            HoursOfOperationOverrideId=override_id,
+            Name="UpdatedOverride",
+            Config=[
+                {
+                    "Day": "TUESDAY",
+                    "StartTime": {"Hours": 8, "Minutes": 0},
+                    "EndTime": {"Hours": 16, "Minutes": 0},
+                }
+            ],
+        )
+        resp = connect.describe_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            HoursOfOperationOverrideId=override_id,
+        )
+        assert resp["HoursOfOperationOverride"]["Name"] == "UpdatedOverride"
+
+    def test_delete_hours_of_operation_override(self, connect, instance_id, hoo_id):
+        create_resp = connect.create_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            Name="DeleteOverride",
+            EffectiveFrom="2026-12-25",
+            EffectiveTill="2026-12-26",
+            Config=[
+                {
+                    "Day": "MONDAY",
+                    "StartTime": {"Hours": 0, "Minutes": 0},
+                    "EndTime": {"Hours": 0, "Minutes": 0},
+                }
+            ],
+        )
+        override_id = create_resp["HoursOfOperationOverrideId"]
+        connect.delete_hours_of_operation_override(
+            InstanceId=instance_id,
+            HoursOfOperationId=hoo_id,
+            HoursOfOperationOverrideId=override_id,
+        )
+        with pytest.raises(ClientError):
+            connect.describe_hours_of_operation_override(
+                InstanceId=instance_id,
+                HoursOfOperationId=hoo_id,
+                HoursOfOperationOverrideId=override_id,
+            )
+
+
+class TestConnectListOpsExtended:
+    """Extended tests for Connect list operations not covered above."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_list_traffic_distribution_groups(self, connect, instance_id):
+        resp = connect.list_traffic_distribution_groups(InstanceId=instance_id)
+        assert "TrafficDistributionGroupSummaryList" in resp
+        assert isinstance(resp["TrafficDistributionGroupSummaryList"], list)
