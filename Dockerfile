@@ -8,7 +8,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=dev
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0.dev0
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 
 # Install dependencies (layer cache: only re-runs when lockfile changes)
@@ -64,7 +64,7 @@ RUN chown -R robotocore:robotocore /app /tmp/robotocore /etc/robotocore
 
 EXPOSE 4566
 
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=dev
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0.dev0
 ENV ROBOTOCORE_HOST=0.0.0.0
 ENV ROBOTOCORE_PORT=4566
 ENV MOTO_ALLOW_NONEXISTENT_REGION=true
