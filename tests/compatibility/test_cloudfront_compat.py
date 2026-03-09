@@ -1362,6 +1362,18 @@ class TestCloudFrontContinuousDeploymentCRUD:
         get_resp = cf.get_continuous_deployment_policy(Id=cdp_id)
         assert get_resp["ContinuousDeploymentPolicy"]["Id"] == cdp_id
 
+    def test_update_continuous_deployment_policy_nonexistent(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.update_continuous_deployment_policy(
+                ContinuousDeploymentPolicyConfig={
+                    "StagingDistributionDnsNames": {"Quantity": 0},
+                    "Enabled": False,
+                },
+                Id="ECDP-NONEXISTENT",
+                IfMatch="dummy-etag",
+            )
+        assert "NoSuchContinuousDeploymentPolicy" in str(exc_info.value)
+
     def test_delete_continuous_deployment_policy(self, cf):
         cdp_id, etag = self._create_cdp(cf)
 

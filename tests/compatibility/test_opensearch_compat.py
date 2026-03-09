@@ -978,3 +978,101 @@ class TestOpenSearchNewOps:
         assert "VpcEndpoints" in resp
         assert "VpcEndpointErrors" in resp
         assert isinstance(resp["VpcEndpointErrors"], list)
+
+    def test_describe_domain_health_fields(self, opensearch, domain):
+        """DescribeDomainHealth returns detailed health fields."""
+        resp = opensearch.describe_domain_health(DomainName=domain)
+        assert resp["DomainState"] == "Active"
+        assert resp["ClusterHealth"] == "Green"
+        assert resp["AvailabilityZoneCount"] == "1"
+        assert resp["DedicatedMaster"] is False
+
+    def test_describe_domain_nodes_structure(self, opensearch, domain):
+        """DescribeDomainNodes returns node list with expected fields."""
+        resp = opensearch.describe_domain_nodes(DomainName=domain)
+        nodes = resp["DomainNodesStatusList"]
+        assert len(nodes) >= 1
+        node = nodes[0]
+        assert "NodeId" in node
+        assert "NodeType" in node
+        assert "AvailabilityZone" in node
+        assert "InstanceType" in node
+        assert node["NodeStatus"] == "Active"
+
+    def test_describe_instance_type_limits_structure(self, opensearch):
+        """DescribeInstanceTypeLimits returns StorageTypes and InstanceLimits."""
+        resp = opensearch.describe_instance_type_limits(
+            InstanceType="t3.small.search",
+            EngineVersion="OpenSearch_2.5",
+        )
+        data_limits = resp["LimitsByRole"]["data"]
+        assert "StorageTypes" in data_limits
+        assert len(data_limits["StorageTypes"]) > 0
+        assert "InstanceLimits" in data_limits
+        count_limits = data_limits["InstanceLimits"]["InstanceCountLimits"]
+        assert count_limits["MinimumInstanceCount"] >= 1
+        assert count_limits["MaximumInstanceCount"] > 1
+
+    def test_describe_inbound_connections_with_filter(self, opensearch):
+        """DescribeInboundConnections with filter returns empty list."""
+        resp = opensearch.describe_inbound_connections(
+            Filters=[{"Name": "connection-id", "Values": ["fake-id"]}],
+            MaxResults=10,
+        )
+        assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
+        assert len(resp["Connections"]) == 0
+
+    def test_describe_outbound_connections_with_filter(self, opensearch):
+        """DescribeOutboundConnections with filter returns empty list."""
+        resp = opensearch.describe_outbound_connections(
+            Filters=[{"Name": "connection-id", "Values": ["fake-id"]}],
+            MaxResults=10,
+        )
+        assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
+        assert len(resp["Connections"]) == 0
+
+    def test_describe_packages_with_filter(self, opensearch):
+        """DescribePackages with filter returns empty list."""
+        resp = opensearch.describe_packages(
+            Filters=[{"Name": "PackageID", "Value": ["fake-pkg"]}],
+            MaxResults=10,
+        )
+        assert "PackageDetailsList" in resp
+        assert isinstance(resp["PackageDetailsList"], list)
+        assert len(resp["PackageDetailsList"]) == 0
+
+    def test_list_versions_has_both_engine_types(self, opensearch):
+        """ListVersions includes both OpenSearch and Elasticsearch versions."""
+        resp = opensearch.list_versions()
+        versions = resp["Versions"]
+        os_versions = [v for v in versions if v.startswith("OpenSearch_")]
+        es_versions = [v for v in versions if v.startswith("Elasticsearch_")]
+        assert len(os_versions) > 0
+        assert len(es_versions) > 0
+
+    def test_describe_domain_auto_tunes_nonexistent_raises(self, opensearch):
+        """DescribeDomainAutoTunes for nonexistent domain raises error."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain_auto_tunes(DomainName="nonexistent-domain-xyz")
+
+    def test_describe_domain_health_nonexistent_raises(self, opensearch):
+        """DescribeDomainHealth for nonexistent domain raises error."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain_health(DomainName="nonexistent-domain-xyz")
+
+    def test_describe_domain_nodes_nonexistent_raises(self, opensearch):
+        """DescribeDomainNodes for nonexistent domain raises error."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain_nodes(DomainName="nonexistent-domain-xyz")
+
+    def test_describe_domain_change_progress_nonexistent_raises(self, opensearch):
+        """DescribeDomainChangeProgress for nonexistent domain raises error."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain_change_progress(DomainName="nonexistent-domain-xyz")
+
+    def test_describe_dry_run_progress_nonexistent_raises(self, opensearch):
+        """DescribeDryRunProgress for nonexistent domain raises error."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_dry_run_progress(DomainName="nonexistent-domain-xyz")

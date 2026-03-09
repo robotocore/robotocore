@@ -525,10 +525,11 @@ class TestSESExtendedOperations:
 
     def test_set_identity_notification_topic(self, ses):
         ses.verify_email_identity(EmailAddress="notif@example.com")
-        ses.set_identity_notification_topic(
+        resp = ses.set_identity_notification_topic(
             Identity="notif@example.com",
             NotificationType="Bounce",
         )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_identity_notification_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="notif-attrs@example.com")
@@ -537,7 +538,8 @@ class TestSESExtendedOperations:
 
     def test_set_identity_dkim_enabled(self, ses):
         ses.verify_email_identity(EmailAddress="dkim@example.com")
-        ses.set_identity_dkim_enabled(Identity="dkim@example.com", DkimEnabled=True)
+        resp = ses.set_identity_dkim_enabled(Identity="dkim@example.com", DkimEnabled=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_identity_dkim_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="dkim-attrs@example.com")
@@ -546,9 +548,10 @@ class TestSESExtendedOperations:
 
     def test_set_identity_feedback_forwarding_enabled(self, ses):
         ses.verify_email_identity(EmailAddress="feedback@example.com")
-        ses.set_identity_feedback_forwarding_enabled(
+        resp = ses.set_identity_feedback_forwarding_enabled(
             Identity="feedback@example.com", ForwardingEnabled=True
         )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_identity_mail_from_domain_attributes(self, ses):
         ses.verify_email_identity(EmailAddress="mailfrom@example.com")
@@ -742,8 +745,11 @@ class TestSesAutoCoverage:
         return make_client("ses")
 
     def test_update_account_sending_enabled(self, client):
-        """UpdateAccountSendingEnabled returns a response."""
-        client.update_account_sending_enabled()
+        """UpdateAccountSendingEnabled toggles account sending."""
+        resp = client.update_account_sending_enabled(Enabled=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        check = client.get_account_sending_enabled()
+        assert check["Enabled"] is True
 
     def test_send_bulk_templated_email(self, client):
         """SendBulkTemplatedEmail sends to multiple destinations."""

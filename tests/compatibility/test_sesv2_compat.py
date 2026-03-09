@@ -1287,3 +1287,188 @@ class TestSESv2EmailIdentityExtended:
             assert "DkimStatus" in resp or "DkimTokens" in resp
         finally:
             sesv2.delete_email_identity(EmailIdentity=domain)
+
+
+class TestSESv2CustomVerificationEmailTemplateCRUD:
+    def test_delete_custom_verification_email_template(self, sesv2):
+        """Create and delete a custom verification email template."""
+        tmpl_name = _uid("cvt")
+        sesv2.create_custom_verification_email_template(
+            TemplateName=tmpl_name,
+            FromEmailAddress="sender@example.com",
+            TemplateSubject="Verify",
+            TemplateContent="<html>Click here</html>",
+            SuccessRedirectionURL="https://example.com/success",
+            FailureRedirectionURL="https://example.com/failure",
+        )
+        # Verify it exists
+        resp = sesv2.get_custom_verification_email_template(TemplateName=tmpl_name)
+        assert resp["TemplateName"] == tmpl_name
+        # Delete
+        sesv2.delete_custom_verification_email_template(TemplateName=tmpl_name)
+        # Verify gone
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_custom_verification_email_template(TemplateName=tmpl_name)
+        assert "DoesNotExist" in exc.value.response["Error"]["Code"] or (
+            "NotFoundException" in exc.value.response["Error"]["Code"]
+        )
+
+    def test_get_custom_verification_email_template_not_found(self, sesv2):
+        """GetCustomVerificationEmailTemplate for nonexistent template raises error."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_custom_verification_email_template(
+                TemplateName=_uid("nonexist"),
+            )
+        err_code = exc.value.response["Error"]["Code"]
+        assert "DoesNotExist" in err_code or "NotFoundException" in err_code
+
+
+class TestSESv2ErrorCases:
+    def test_get_suppressed_destination_not_found(self, sesv2):
+        """GetSuppressedDestination for nonexistent email raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_suppressed_destination(
+                EmailAddress=f"{_uid('nope')}@example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_email_template_not_found(self, sesv2):
+        """UpdateEmailTemplate for nonexistent template raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.update_email_template(
+                TemplateName=_uid("notempl"),
+                TemplateContent={"Subject": "Hi", "Text": "Body"},
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_list_contacts_not_found(self, sesv2):
+        """ListContacts for nonexistent contact list raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.list_contacts(ContactListName=_uid("nolist"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_configuration_set_event_destination_not_found(self, sesv2):
+        """DeleteConfigurationSetEventDestination for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.delete_configuration_set_event_destination(
+                ConfigurationSetName=_uid("nocs"),
+                EventDestinationName="fake-dest",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_configuration_set_event_destinations_not_found(self, sesv2):
+        """GetConfigurationSetEventDestinations for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_configuration_set_event_destinations(
+                ConfigurationSetName=_uid("nocs"),
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_configuration_set_sending_options_not_found(self, sesv2):
+        """PutConfigurationSetSendingOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_sending_options(
+                ConfigurationSetName=_uid("nocs"),
+                SendingEnabled=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_configuration_set_reputation_options_not_found(self, sesv2):
+        """PutConfigurationSetReputationOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_reputation_options(
+                ConfigurationSetName=_uid("nocs"),
+                ReputationMetricsEnabled=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_configuration_set_vdm_options_not_found(self, sesv2):
+        """PutConfigurationSetVdmOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_vdm_options(
+                ConfigurationSetName=_uid("nocs"),
+                VdmOptions={
+                    "DashboardOptions": {"EngagementMetrics": "ENABLED"},
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_email_identity_configuration_set_attributes_not_found(self, sesv2):
+        """PutEmailIdentityConfigurationSetAttributes for fake identity raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_email_identity_configuration_set_attributes(
+                EmailIdentity=f"{_uid('noid')}@example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_email_identity_dkim_signing_attributes_not_found(self, sesv2):
+        """PutEmailIdentityDkimSigningAttributes for fake identity raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_email_identity_dkim_signing_attributes(
+                EmailIdentity=f"{_uid('noid')}.example.com",
+                SigningAttributesOrigin="AWS_SES",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_email_identity_policy_not_found(self, sesv2):
+        """UpdateEmailIdentityPolicy for fake identity raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.update_email_identity_policy(
+                EmailIdentity=f"{_uid('noid')}@example.com",
+                PolicyName="fake-policy",
+                Policy='{"Version":"2012-10-17","Statement":[]}',
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_configuration_set_event_destination_not_found(self, sesv2):
+        """UpdateConfigurationSetEventDestination for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.update_configuration_set_event_destination(
+                ConfigurationSetName=_uid("nocs"),
+                EventDestinationName="fake-dest",
+                EventDestination={
+                    "Enabled": True,
+                    "MatchingEventTypes": ["SEND"],
+                    "CloudWatchDestination": {
+                        "DimensionConfigurations": [
+                            {
+                                "DimensionName": "dim",
+                                "DimensionValueSource": "MESSAGE_TAG",
+                                "DefaultDimensionValue": "default",
+                            }
+                        ]
+                    },
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_email_identity_policy_not_found(self, sesv2):
+        """DeleteEmailIdentityPolicy for fake identity raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.delete_email_identity_policy(
+                EmailIdentity=f"{_uid('noid')}@example.com",
+                PolicyName="fake-policy",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_email_identity_policies_not_found(self, sesv2):
+        """GetEmailIdentityPolicies for fake identity raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.get_email_identity_policies(
+                EmailIdentity=f"{_uid('noid')}@example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_contact_not_found_in_existing_list(self, sesv2):
+        """GetContact for nonexistent contact in existing list raises NotFoundException."""
+        cl_name = _uid("cl")
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                sesv2.get_contact(
+                    ContactListName=cl_name,
+                    EmailAddress=f"{_uid('nope')}@example.com",
+                )
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)

@@ -1298,3 +1298,50 @@ class TestKinesisStreamManagement:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except Exception:
                 pass
+
+    def test_enable_enhanced_monitoring(self, kinesis, stream):
+        """EnableEnhancedMonitoring adds shard-level metrics."""
+        resp = kinesis.enable_enhanced_monitoring(
+            StreamName=stream,
+            ShardLevelMetrics=["IncomingBytes", "OutgoingBytes"],
+        )
+        assert resp["StreamName"] == stream
+        assert "StreamARN" in resp
+        assert "IncomingBytes" in resp["DesiredShardLevelMetrics"]
+        assert "OutgoingBytes" in resp["DesiredShardLevelMetrics"]
+
+    def test_disable_enhanced_monitoring(self, kinesis, stream):
+        """DisableEnhancedMonitoring removes shard-level metrics."""
+        kinesis.enable_enhanced_monitoring(
+            StreamName=stream,
+            ShardLevelMetrics=["IncomingBytes", "OutgoingBytes"],
+        )
+        resp = kinesis.disable_enhanced_monitoring(
+            StreamName=stream,
+            ShardLevelMetrics=["IncomingBytes"],
+        )
+        assert resp["StreamName"] == stream
+        assert "IncomingBytes" not in resp["DesiredShardLevelMetrics"]
+        assert "OutgoingBytes" in resp["DesiredShardLevelMetrics"]
+
+    def test_enable_enhanced_monitoring_all(self, kinesis, stream):
+        """EnableEnhancedMonitoring with ALL metrics."""
+        resp = kinesis.enable_enhanced_monitoring(
+            StreamName=stream,
+            ShardLevelMetrics=["ALL"],
+        )
+        assert resp["StreamName"] == stream
+        assert "ALL" in resp["DesiredShardLevelMetrics"]
+
+    def test_disable_enhanced_monitoring_all(self, kinesis, stream):
+        """DisableEnhancedMonitoring with ALL clears all metrics."""
+        kinesis.enable_enhanced_monitoring(
+            StreamName=stream,
+            ShardLevelMetrics=["IncomingBytes", "OutgoingBytes"],
+        )
+        resp = kinesis.disable_enhanced_monitoring(
+            StreamName=stream,
+            ShardLevelMetrics=["ALL"],
+        )
+        assert resp["StreamName"] == stream
+        assert resp["DesiredShardLevelMetrics"] == []
