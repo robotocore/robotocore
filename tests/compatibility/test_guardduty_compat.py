@@ -475,3 +475,66 @@ class TestGuardDutyTagOperations:
         arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
         tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
         assert "Tags" in tags_resp
+
+    def test_tag_resource(self, guardduty, detector):
+        """TagResource adds tags to a detector."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        resp = guardduty.tag_resource(ResourceArn=arn, Tags={"team": "security", "env": "test"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert tags_resp["Tags"]["team"] == "security"
+        assert tags_resp["Tags"]["env"] == "test"
+
+
+class TestGuardDutyUpdateOperations:
+    """Tests for update operations on IP sets and threat intel sets."""
+
+    @pytest.fixture
+    def detector_and_ipset(self, guardduty):
+        det = guardduty.create_detector(Enable=True)
+        det_id = det["DetectorId"]
+        ip = guardduty.create_ip_set(
+            DetectorId=det_id,
+            Name="test-ipset",
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=True,
+        )
+        yield det_id, ip["IpSetId"]
+        guardduty.delete_ip_set(DetectorId=det_id, IpSetId=ip["IpSetId"])
+        guardduty.delete_detector(DetectorId=det_id)
+
+    @pytest.fixture
+    def detector_and_tiset(self, guardduty):
+        det = guardduty.create_detector(Enable=True)
+        det_id = det["DetectorId"]
+        ti = guardduty.create_threat_intel_set(
+            DetectorId=det_id,
+            Name="test-ti",
+            Format="TXT",
+            Location="s3://test-bucket/ti.txt",
+            Activate=True,
+        )
+        yield det_id, ti["ThreatIntelSetId"]
+        guardduty.delete_threat_intel_set(
+            DetectorId=det_id, ThreatIntelSetId=ti["ThreatIntelSetId"]
+        )
+        guardduty.delete_detector(DetectorId=det_id)
+
+    def test_update_ip_set(self, guardduty, detector_and_ipset):
+        """UpdateIPSet updates the name of an IP set."""
+        det_id, ip_set_id = detector_and_ipset
+        resp = guardduty.update_ip_set(DetectorId=det_id, IpSetId=ip_set_id, Name="updated-ipset")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        get_resp = guardduty.get_ip_set(DetectorId=det_id, IpSetId=ip_set_id)
+        assert get_resp["Name"] == "updated-ipset"
+
+    def test_update_threat_intel_set(self, guardduty, detector_and_tiset):
+        """UpdateThreatIntelSet updates the name."""
+        det_id, ti_id = detector_and_tiset
+        resp = guardduty.update_threat_intel_set(
+            DetectorId=det_id, ThreatIntelSetId=ti_id, Name="updated-ti"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        get_resp = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
+        assert get_resp["Name"] == "updated-ti"
