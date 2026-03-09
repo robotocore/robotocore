@@ -2185,3 +2185,99 @@ class TestSSMAutomationExecutionDetails:
             assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             ssm.delete_document(Name=doc_name)
+
+
+class TestSSMGetParametersExtended:
+    """Extended tests for GetParameters operation with valid parameters."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    def test_get_parameters_returns_invalid_parameters(self, ssm):
+        """GetParameters returns InvalidParameters for names that don't exist."""
+        name = _unique("/getp/real")
+        ssm.put_parameter(Name=name, Value="ok", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name, "/getp/fake1", "/getp/fake2"])
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Name"] == name
+            assert "/getp/fake1" in resp["InvalidParameters"]
+            assert "/getp/fake2" in resp["InvalidParameters"]
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameters_all_valid(self, ssm):
+        """GetParameters with all valid names returns empty InvalidParameters."""
+        names = [_unique("/getp/v") for _ in range(3)]
+        for n in names:
+            ssm.put_parameter(Name=n, Value="val", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=names)
+            assert len(resp["Parameters"]) == 3
+            assert len(resp["InvalidParameters"]) == 0
+        finally:
+            for n in names:
+                ssm.delete_parameter(Name=n)
+
+    def test_get_parameters_all_invalid(self, ssm):
+        """GetParameters with all invalid names returns empty Parameters."""
+        resp = ssm.get_parameters(Names=["/getp/none1", "/getp/none2"])
+        assert len(resp["Parameters"]) == 0
+        assert "/getp/none1" in resp["InvalidParameters"]
+        assert "/getp/none2" in resp["InvalidParameters"]
+
+    def test_get_parameters_with_decryption(self, ssm):
+        """GetParameters with WithDecryption decrypts SecureString."""
+        name = _unique("/getp/sec")
+        ssm.put_parameter(Name=name, Value="secret-val", Type="SecureString")
+        try:
+            resp = ssm.get_parameters(Names=[name], WithDecryption=True)
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Value"] == "secret-val"
+            assert resp["Parameters"][0]["Type"] == "SecureString"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameters_returns_version(self, ssm):
+        """GetParameters returns Version field for each parameter."""
+        name = _unique("/getp/ver")
+        ssm.put_parameter(Name=name, Value="v1", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name])
+            assert resp["Parameters"][0]["Version"] == 1
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameters_returns_arn(self, ssm):
+        """GetParameters returns ARN field for each parameter."""
+        name = _unique("/getp/arn")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name])
+            param = resp["Parameters"][0]
+            assert "ARN" in param
+            assert name in param["ARN"]
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameters_returns_last_modified_date(self, ssm):
+        """GetParameters returns LastModifiedDate for each parameter."""
+        name = _unique("/getp/lmd")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name])
+            assert "LastModifiedDate" in resp["Parameters"][0]
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_get_parameters_returns_data_type(self, ssm):
+        """GetParameters returns DataType field."""
+        name = _unique("/getp/dt")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name])
+            assert "DataType" in resp["Parameters"][0]
+            assert resp["Parameters"][0]["DataType"] == "text"
+        finally:
+            ssm.delete_parameter(Name=name)
