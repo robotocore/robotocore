@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Monitoring stack with SNS Topic, CloudWatch Alarm, and Log Group
+
+Resources:
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-alarm-topic"
+
+  CpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-cpu-alarm"
+      AlarmDescription: CPU utilization exceeds 80%
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${AWS::StackName}-app-logs"
+      RetentionInDays: 7
+
+Outputs:
+  TopicArn:
+    Description: SNS topic ARN for alarm notifications
+    Value: !Ref AlarmTopic
+
+  AlarmName:
+    Description: CloudWatch alarm name
+    Value: !Ref CpuAlarm
+
+  LogGroupName:
+    Description: CloudWatch log group name
+    Value: !Ref AppLogGroup
