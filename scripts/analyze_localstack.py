@@ -28,115 +28,165 @@ PRO_DIRS = [
 ]
 ROBOTOCORE_DIR = Path("src/robotocore/services")
 
-# LocalStack tier availability — hardcoded from public docs (March 2026).
-# Source: https://www.localstack.cloud/pricing-comparison
-# Tiers: "free" (all plans), "base" (Base+), "ultimate" (Ultimate/Pro only)
+# LocalStack tier availability — from https://www.localstack.cloud/pricing-comparison
+# (March 2026). Tiers: "community" (free), "base" ($30+/mo), "ultimate" ($70+/mo).
 #
-# Keys use robotocore/botocore service identifiers (not LocalStack's internal names).
+# Keys are botocore service names (matching robotocore's registry).  Services that
+# robotocore implements but LocalStack doesn't offer at any tier are "not_offered".
 _LS_TIER: dict[str, str] = {
-    # ── Free (available in all plans) ─────────────────────────────────────────
-    # Note: keys use both botocore names AND robotocore/vendor dir names where they differ
-    "acm": "free",
-    "apigateway": "free",
-    "cloudformation": "free",
-    "cloudwatch": "free",
-    "config": "free",
-    "configservice": "free",  # LocalStack vendor dir name
-    "dynamodb": "free",
-    "dynamodbstreams": "free",
-    "ec2": "free",
-    "events": "free",
-    "firehose": "free",
-    "iam": "free",
-    "kinesis": "free",
-    "kms": "free",
-    "lambda_": "free",  # robotocore dir name (Python reserved keyword; botocore uses "lambda")
-    "logs": "free",
-    "opensearch": "free",
-    "es": "free",
-    "redshift": "free",
-    "resource_groups": "free",  # both vendor dir and robotocore dir name
-    "resourcegroupstaggingapi": "free",
-    "route53": "free",
-    "route53resolver": "free",
-    "s3": "free",
-    "s3control": "free",
-    "scheduler": "free",
-    "secretsmanager": "free",
-    "ses": "free",
-    "sns": "free",
-    "sqs": "free",
-    "ssm": "free",
-    "stepfunctions": "free",
-    "sts": "free",
-    "support": "free",
-    "swf": "free",
-    "transcribe": "free",
-    # ── Base (Base plan and above) ─────────────────────────────────────────────
-    "apigatewaymanagementapi": "base",
-    "apigatewayv2": "base",
-    "appconfig": "base",
-    "applicationautoscaling": "base",
-    "autoscaling": "base",
+    # ── Community (free) ──────────────────────────────────────────────────────
+    "acm": "community",
+    "apigateway": "community",
+    "cloudformation": "community",
+    "cloudwatch": "community",
+    "config": "community",
+    "dynamodb": "community",
+    "dynamodbstreams": "community",
+    "ec2": "community",
+    "es": "community",
+    "events": "community",
+    "firehose": "community",
+    "iam": "community",
+    "kinesis": "community",
+    "kms": "community",
+    "lambda": "community",
+    "logs": "community",
+    "opensearch": "community",
+    "redshift": "community",
+    "resource-groups": "community",
+    "resourcegroupstaggingapi": "community",
+    "route53": "community",
+    "route53resolver": "community",
+    "s3": "community",
+    "s3control": "community",
+    "scheduler": "community",
+    "secretsmanager": "community",
+    "ses": "community",
+    "sns": "community",
+    "sqs": "community",
+    "ssm": "community",
+    "stepfunctions": "community",
+    "sts": "community",
+    "support": "community",
+    "swf": "community",
+    "transcribe": "community",
+    # ── Base ($30+/mo) ────────────────────────────────────────────────────────
+    "athena": "base",
     "codebuild": "base",
     "codecommit": "base",
-    "cloudfront": "base",
-    "cognito": "base",  # robotocore dir name for cognito-idp (User Pools)
-    "cognitoidentity": "base",  # Identity Pools
+    "cognito-idp": "base",
+    "cognitoidentity": "base",
     "ecr": "base",
     "ecs": "base",
     "elasticache": "base",
-    "elb": "base",
-    "elbv2": "base",
-    "iot": "base",
+    "emr": "base",
+    "glue": "base",
     "mq": "base",
     "rds": "base",
     "rdsdata": "base",
-    "sesv2": "base",
-    # ── Ultimate (paid Pro/Enterprise tier only) ───────────────────────────────
+    # ── Ultimate ($70+/mo) ────────────────────────────────────────────────────
+    "account": "ultimate",
     "acmpca": "ultimate",
     "amp": "ultimate",
+    "apigatewaymanagementapi": "ultimate",
+    "apigatewayv2": "ultimate",
+    "appconfig": "ultimate",
+    "applicationautoscaling": "ultimate",
     "appsync": "ultimate",
-    "athena": "ultimate",
+    "autoscaling": "ultimate",
     "backup": "ultimate",
     "batch": "ultimate",
     "bedrock": "ultimate",
     "ce": "ultimate",
+    "cloudfront": "ultimate",
     "cloudtrail": "ultimate",
     "codedeploy": "ultimate",
     "codepipeline": "ultimate",
     "dms": "ultimate",
-    "docdb": "ultimate",
     "efs": "ultimate",
     "eks": "ultimate",
     "elasticbeanstalk": "ultimate",
-    "emr": "ultimate",
+    "elb": "ultimate",
+    "elbv2": "ultimate",
     "emrcontainers": "ultimate",
     "emrserverless": "ultimate",
     "glacier": "ultimate",
-    "glue": "ultimate",
     "identitystore": "ultimate",
+    "iot": "ultimate",
     "kafka": "ultimate",
     "kinesisanalyticsv2": "ultimate",
     "lakeformation": "ultimate",
     "managedblockchain": "ultimate",
     "mediaconvert": "ultimate",
+    "mediastore": "ultimate",
     "memorydb": "ultimate",
-    "neptune": "ultimate",
     "organizations": "ultimate",
     "pinpoint": "ultimate",
     "pipes": "ultimate",
     "ram": "ultimate",
+    "rekognition": "ultimate",
     "sagemaker": "ultimate",
+    "sesv2": "ultimate",
+    "servicediscovery": "ultimate",
     "shield": "ultimate",
     "ssoadmin": "ultimate",
     "textract": "ultimate",
-    "timestreamwrite": "ultimate",
     "timestreamquery": "ultimate",
+    "timestreamwrite": "ultimate",
     "transfer": "ultimate",
-    "verifiedpermissions": "ultimate",
     "wafv2": "ultimate",
     "xray": "ultimate",
+    # ── Not offered by LocalStack at any tier ─────────────────────────────────
+    # (Robotocore implements these via Moto; LocalStack doesn't offer them at all)
+    "appmesh": "not_offered",
+    "bedrockagent": "not_offered",
+    "budgets": "not_offered",
+    "clouddirectory": "not_offered",
+    "cloudhsmv2": "not_offered",
+    "comprehend": "not_offered",
+    "connect": "not_offered",
+    "connectcampaigns": "not_offered",
+    "databrew": "not_offered",
+    "datapipeline": "not_offered",
+    "datasync": "not_offered",
+    "dax": "not_offered",
+    "ds": "not_offered",
+    "dsql": "not_offered",
+    "ec2instanceconnect": "not_offered",
+    "fsx": "not_offered",
+    "greengrass": "not_offered",
+    "guardduty": "not_offered",
+    "inspector2": "not_offered",
+    "iotdata": "not_offered",
+    "ivs": "not_offered",
+    "kinesisvideo": "not_offered",
+    "lexv2models": "not_offered",
+    "macie2": "not_offered",
+    "mediaconnect": "not_offered",
+    "medialive": "not_offered",
+    "mediapackage": "not_offered",
+    "mediapackagev2": "not_offered",
+    "networkfirewall": "not_offered",
+    "networkmanager": "not_offered",
+    "opensearchserverless": "not_offered",
+    "osis": "not_offered",
+    "panorama": "not_offered",
+    "polly": "not_offered",
+    "quicksight": "not_offered",
+    "redshiftdata": "not_offered",
+    "resiliencehub": "not_offered",
+    "route53domains": "not_offered",
+    "s3tables": "not_offered",
+    "s3vectors": "not_offered",
+    "securityhub": "not_offered",
+    "servicecatalog": "not_offered",
+    "servicecatalogappregistry": "not_offered",
+    "signer": "not_offered",
+    "synthetics": "not_offered",
+    "timestreaminfluxdb": "not_offered",
+    "vpclattice": "not_offered",
+    "workspaces": "not_offered",
+    "workspacesweb": "not_offered",
 }
 
 
@@ -367,11 +417,11 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
         _name_to_registry[reg_name.replace("-", "_")] = reg_name
         _name_to_registry[reg_name.replace("-", "")] = reg_name
 
-    # Extra manual mappings for LS vendor dir names that don't match
+    # Extra manual mappings for LS vendor dir names that don't match registry
     _name_to_registry["lambda_"] = "lambda"
     _name_to_registry["configservice"] = "config"
-    _name_to_registry["stepfunctions"] = "stepfunctions"
     _name_to_registry["resource_groups"] = "resource-groups"
+    _name_to_registry["cognito"] = "cognito-idp"
 
     robotocore_providers = find_provider_files(ROBOTOCORE_DIR)
     gaps = {}
@@ -403,7 +453,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
             has_provider = service in robotocore_providers
 
         missing_ops = community_ops - robotocore_ops
-        ls_tier = _LS_TIER.get(service, "unknown")
+        ls_tier = _LS_TIER.get(reg_name, _LS_TIER.get(service, "unknown"))
 
         if missing_ops or not has_provider:
             gaps[service] = {
@@ -422,51 +472,162 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
     return gaps
 
 
-def enterprise_diff(community: dict, enterprise: dict):
-    """Print per-service diff between Community and Enterprise."""
-    print("\nEnterprise vs Community Feature Diff")
-    print("=" * 80)
+def tier_analysis():
+    """Show what robotocore gives away free vs what LocalStack charges for."""
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    src_dir = str(Path(__file__).resolve().parent.parent / "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    from generate_parity_report import build_report
 
-    all_services = sorted(set(community.keys()) | set(enterprise.keys()))
+    parity = build_report()
+    parity_services = parity["services"]
 
-    enterprise_only_services = []
-    enhanced_services = []
+    # Group services by LS tier
+    tiers: dict[str, list[dict]] = {
+        "community": [],
+        "base": [],
+        "ultimate": [],
+        "not_offered": [],
+    }
 
-    for service in all_services:
-        com_ops = set(community.get(service, {}).get("operations", []))
-        ent_ops = set(enterprise.get(service, {}).get("operations", []))
+    for svc_name, svc_data in sorted(parity_services.items()):
+        ls_tier = _LS_TIER.get(svc_name, "unknown")
+        if ls_tier == "unknown":
+            continue  # skip unmapped (shouldn't happen now)
+        impl = svc_data["implemented_count"]
+        total = svc_data["total_aws_ops"]
+        tested = svc_data["tested_count"]
+        status = svc_data["status"]
+        pct = round(impl / total * 100) if total else 0
+        tiers[ls_tier].append(
+            {
+                "name": svc_name,
+                "status": status,
+                "total": total,
+                "impl": impl,
+                "pct": pct,
+                "tested": tested,
+            }
+        )
 
-        if service not in community:
-            enterprise_only_services.append((service, ent_ops))
-        elif ent_ops - com_ops:
-            enhanced_services.append((service, com_ops, ent_ops))
+    w = 90
 
-    if enterprise_only_services:
-        print(f"\n--- Enterprise-Only Services ({len(enterprise_only_services)}) ---")
-        for service, ops in enterprise_only_services:
-            print(f"\n  {service} ({len(ops)} operations):")
-            for op in sorted(ops)[:10]:
-                print(f"    + {op}")
-            if len(ops) > 10:
-                print(f"    ... and {len(ops) - 10} more")
+    print()
+    print("=" * w)
+    print("  ROBOTOCORE vs LOCALSTACK — TIER COMPARISON".center(w))
+    print("=" * w)
+    print()
+    print("  Robotocore is MIT-licensed and free forever.")
+    print("  Every service below works out of the box —")
+    print("  no registration, no API key.")
+    print()
 
-    if enhanced_services:
-        print(f"\n--- Enterprise-Enhanced Services ({len(enhanced_services)}) ---")
-        for service, com_ops, ent_ops in enhanced_services:
-            extra = ent_ops - com_ops
-            print(f"\n  {service}: +{len(extra)} enterprise operations (total: {len(ent_ops)})")
-            for op in sorted(extra)[:10]:
-                print(f"    + {op}")
-            if len(extra) > 10:
-                print(f"    ... and {len(extra) - 10} more")
+    def _tier_header(title: str, svcs: list, impl: int, total: int):
+        print("-" * w)
+        print(f"  {title}")
+        pct = _pct(impl, total)
+        print(f"  {len(svcs)} services, {impl}/{total} ops ({pct})")
+        print("-" * w)
 
-    print(f"\n{'=' * 80}")
-    print(f"Enterprise-only services: {len(enterprise_only_services)}")
-    print(f"Enterprise-enhanced services: {len(enhanced_services)}")
-    total_enterprise_ops = sum(
-        len(ent_ops - com_ops) for _, com_ops, ent_ops in enhanced_services
-    ) + sum(len(ops) for _, ops in enterprise_only_services)
-    print(f"Total enterprise-only operations: {total_enterprise_ops}")
+    # ── Community tier ────────────────────────────────────────────────────
+    comm = tiers["community"]
+    comm_impl = sum(s["impl"] for s in comm)
+    comm_total = sum(s["total"] for s in comm)
+    _tier_header(
+        "COMMUNITY — free in both LocalStack and Robotocore",
+        comm,
+        comm_impl,
+        comm_total,
+    )
+    _print_svc_table(comm)
+
+    # ── Base tier ─────────────────────────────────────────────────────────
+    base = tiers["base"]
+    base_impl = sum(s["impl"] for s in base)
+    base_total = sum(s["total"] for s in base)
+    print()
+    _tier_header(
+        "BASE — LocalStack charges $30+/mo. Robotocore: FREE.",
+        base,
+        base_impl,
+        base_total,
+    )
+    _print_svc_table(base)
+
+    # ── Ultimate tier ─────────────────────────────────────────────────────
+    ult = tiers["ultimate"]
+    ult_impl = sum(s["impl"] for s in ult)
+    ult_total = sum(s["total"] for s in ult)
+    print()
+    _tier_header(
+        "ULTIMATE — LocalStack charges $70+/mo. Robotocore: FREE.",
+        ult,
+        ult_impl,
+        ult_total,
+    )
+    _print_svc_table(ult)
+
+    # ── Not offered ───────────────────────────────────────────────────────
+    extra = tiers["not_offered"]
+    extra_impl = sum(s["impl"] for s in extra)
+    extra_total = sum(s["total"] for s in extra)
+    print()
+    _tier_header(
+        "NOT IN LOCALSTACK — Robotocore-only (via Moto). FREE.",
+        extra,
+        extra_impl,
+        extra_total,
+    )
+    _print_svc_table(extra)
+
+    # ── Summary ───────────────────────────────────────────────────────────
+    total_svcs = len(comm) + len(base) + len(ult) + len(extra)
+    total_impl = comm_impl + base_impl + ult_impl + extra_impl
+    total_ops = comm_total + base_total + ult_total + extra_total
+    paid_svcs = len(base) + len(ult) + len(extra)
+    paid_impl = base_impl + ult_impl + extra_impl
+
+    print()
+    print("=" * w)
+    print("  SUMMARY".center(w))
+    print("=" * w)
+    print(f"  Total services:          {total_svcs}")
+    pct_str = _pct(total_impl, total_ops)
+    print(f"  Total ops implemented:   {total_impl}/{total_ops} ({pct_str})")
+    print()
+    print(f"  Services free in both:   {len(comm)}")
+    print(f"  Paid in LS, free in RC:  {paid_svcs}  ({paid_impl} ops)")
+    print(f"    Base ($30+/mo):        {len(base)} svcs, {base_impl} ops")
+    print(f"    Ultimate ($70+/mo):    {len(ult)} svcs, {ult_impl} ops")
+    print(f"    Not in LS at all:      {len(extra)} svcs, {extra_impl} ops")
+    print()
+    print("  To get what Robotocore gives free, LocalStack")
+    print("  costs $70+/month — and still won't cover the")
+    print(f"  {len(extra)} Robotocore-only services.")
+    print()
+    print("  Source: localstack.cloud/pricing-comparison")
+    print("=" * w)
+
+
+def _pct(n: int, d: int) -> str:
+    return f"{round(n / d * 100)}%" if d else "n/a"
+
+
+def _print_svc_table(services: list[dict]):
+    """Print a compact table of services with implementation status."""
+    hdr = f"  {'Service':<28} {'Type':<12} {'Ops':>5} {'Impl':>5} {'%':>5} {'Tested':>6}"
+    print(hdr)
+    print(f"  {'-' * 28} {'-' * 12} {'-' * 5} {'-' * 5} {'-' * 5} {'-' * 6}")
+    for s in services:
+        status = s["status"].replace("_", " ")
+        pct = f"{s['pct']}%" if s["total"] else "n/a"
+        print(
+            f"  {s['name']:<28} {status:<12}"
+            f" {s['total']:>5} {s['impl']:>5} {pct:>5} {s['tested']:>6}"
+        )
 
 
 def main():
@@ -479,26 +640,22 @@ def main():
         "--cross-service", action="store_true", help="Show cross-service dependency graph"
     )
     parser.add_argument(
-        "--enterprise-diff",
-        action="store_true",
-        help="Diff Enterprise vs Community features",
-    )
-    parser.add_argument(
         "--robotocore-gap",
         action="store_true",
         help="Show what robotocore is missing vs LocalStack",
     )
+    parser.add_argument(
+        "--tier-analysis",
+        action="store_true",
+        help="Show robotocore vs LocalStack tier-by-tier comparison",
+    )
     args = parser.parse_args()
 
-    providers = find_provider_files(VENDOR_DIR)
-
-    if args.enterprise_diff:
-        community = {}
-        for name, path in sorted(providers.items()):
-            community[name] = analyze_service(name, path)
-        enterprise = find_enterprise_features()
-        enterprise_diff(community, enterprise)
+    if args.tier_analysis:
+        tier_analysis()
         return
+
+    providers = find_provider_files(VENDOR_DIR)
 
     if args.robotocore_gap:
         community = {}
@@ -510,41 +667,55 @@ def main():
         if args.output == "json":
             print(json.dumps(gaps, indent=2))
         else:
-            tier_order = {"free": 0, "base": 1, "ultimate": 2, "unknown": 3}
-            tier_label = {"free": "Free", "base": "Base+", "ultimate": "Ultimate", "unknown": "?"}
+            tier_order = {"community": 0, "base": 1, "ultimate": 2, "not_offered": 3, "unknown": 4}
+            tier_heading = {
+                "community": "Community (free)",
+                "base": "Base ($30+/mo)",
+                "ultimate": "Ultimate ($70+/mo)",
+                "not_offered": "Not in LocalStack",
+                "unknown": "Unknown",
+            }
+            tier_short = {
+                "community": "Free",
+                "base": "Base",
+                "ultimate": "Ult.",
+                "not_offered": "N/A",
+                "unknown": "?",
+            }
             sorted_gaps = sorted(
                 gaps.items(), key=lambda kv: (tier_order.get(kv[1]["ls_tier"], 3), kv[0])
             )
             print("\nRobotocore vs LocalStack — Coverage Gaps")
             print("=" * 86)
             print(
-                f"{'Service':<25} {'LS Tier':>9} {'Provider':>8} {'Community':>10} "
-                f"{'Robotocore':>11} {'Coverage':>9}"
+                f"  {'Service':<25} {'LS Tier':>7} {'Prov':>5} {'LS Ops':>7} "
+                f"{'RC Ops':>7} {'Coverage':>9}"
             )
-            print("-" * 86)
+            print("  " + "-" * 84)
             current_tier = None
             for service, gap in sorted_gaps:
                 tier = gap["ls_tier"]
                 if tier != current_tier:
                     current_tier = tier
-                    print(f"  [{tier_label[tier]}]")
-                prov = "YES" if gap["has_provider"] else "NO"
-                comm = str(gap["community_ops"]) if gap["community_ops"] else "—"
-                cov = f"{gap['coverage_pct']}%" if gap["coverage_pct"] is not None else "—"
+                    print(f"\n  [{tier_heading[tier]}]")
+                prov = "yes" if gap["has_provider"] else "NO"
+                comm = str(gap["community_ops"]) if gap["community_ops"] else "-"
+                cov = f"{gap['coverage_pct']}%" if gap["coverage_pct"] is not None else "-"
                 print(
-                    f"{service:<25} {tier_label[tier]:>9} {prov:>8} {comm:>10} "
-                    f"{gap['robotocore_ops']:>11} {cov:>9}"
+                    f"  {service:<25} {tier_short[tier]:>7} {prov:>5} {comm:>7} "
+                    f"{gap['robotocore_ops']:>7} {cov:>9}"
                 )
-            print("-" * 86)
+            print("  " + "-" * 84)
             total_missing = sum(len(g["missing_ops"]) for g in gaps.values())
             tier_counts = {}
             for g in gaps.values():
                 tier_counts[g["ls_tier"]] = tier_counts.get(g["ls_tier"], 0) + 1
             print(f"Total services with gaps: {len(gaps)}")
-            free_n = tier_counts.get("free", 0)
+            comm_n = tier_counts.get("community", 0)
             base_n = tier_counts.get("base", 0)
             ult_n = tier_counts.get("ultimate", 0)
-            print(f"  Free: {free_n}  Base+: {base_n}  Ultimate: {ult_n}")
+            not_n = tier_counts.get("not_offered", 0)
+            print(f"  Community: {comm_n}  Base: {base_n}  Ultimate: {ult_n}  Not in LS: {not_n}")
             print(f"Total missing community operations: {total_missing}")
             print("(Tier data: https://www.localstack.cloud/pricing-comparison, March 2026)")
         return
