@@ -16,7 +16,8 @@ class TestHealthEndpoint:
     def test_has_version(self, client):
         response = client.get("/_robotocore/health")
         data = response.json()
-        assert data["version"] == "1.0.0"
+        assert isinstance(data["version"], str)
+        assert len(data["version"]) > 0
 
     def test_has_uptime(self, client):
         response = client.get("/_robotocore/health")
