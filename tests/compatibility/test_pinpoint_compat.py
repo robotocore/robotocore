@@ -422,3 +422,308 @@ class TestPinpointEventStreamOperations:
             )
         finally:
             pinpoint.delete_app(ApplicationId=app_id)
+
+
+class TestPinpointChannelOperations:
+    """Tests for Get*Channel operations - Moto returns default (disabled) channels."""
+
+    def test_get_adm_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_adm_channel(ApplicationId=app_id)
+        ch = resp["ADMChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "ADM"
+        assert ch["Enabled"] is False
+
+    def test_get_apns_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_apns_channel(ApplicationId=app_id)
+        ch = resp["APNSChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "APNS"
+
+    def test_get_apns_sandbox_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_apns_sandbox_channel(ApplicationId=app_id)
+        ch = resp["APNSSandboxChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "APNS_SANDBOX"
+
+    def test_get_apns_voip_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_apns_voip_channel(ApplicationId=app_id)
+        ch = resp["APNSVoipChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "APNS_VOIP"
+
+    def test_get_apns_voip_sandbox_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_apns_voip_sandbox_channel(ApplicationId=app_id)
+        ch = resp["APNSVoipSandboxChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "APNS_VOIP_SANDBOX"
+
+    def test_get_baidu_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_baidu_channel(ApplicationId=app_id)
+        ch = resp["BaiduChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "BAIDU"
+
+    def test_get_email_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_email_channel(ApplicationId=app_id)
+        ch = resp["EmailChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "EMAIL"
+
+    def test_get_gcm_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_gcm_channel(ApplicationId=app_id)
+        ch = resp["GCMChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "GCM"
+
+    def test_get_sms_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_sms_channel(ApplicationId=app_id)
+        ch = resp["SMSChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "SMS"
+
+    def test_get_voice_channel(self, pinpoint, app_id):
+        resp = pinpoint.get_voice_channel(ApplicationId=app_id)
+        ch = resp["VoiceChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "VOICE"
+
+    def test_get_channels(self, pinpoint, app_id):
+        resp = pinpoint.get_channels(ApplicationId=app_id)
+        assert "ChannelsResponse" in resp
+        channels = resp["ChannelsResponse"]["Channels"]
+        assert isinstance(channels, dict)
+
+
+class TestPinpointTemplateOperations:
+    """Tests for Get*Template operations - return NotFoundException for nonexistent templates."""
+
+    def test_get_email_template_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_email_template(TemplateName="nonexistent-email-tpl")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    def test_get_sms_template_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_sms_template(TemplateName="nonexistent-sms-tpl")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    def test_get_push_template_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_push_template(TemplateName="nonexistent-push-tpl")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    def test_get_voice_template_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_voice_template(TemplateName="nonexistent-voice-tpl")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    def test_get_in_app_template_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_in_app_template(TemplateName="nonexistent-inapp-tpl")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    def test_list_templates(self, pinpoint):
+        resp = pinpoint.list_templates()
+        assert "TemplatesResponse" in resp
+        assert "Item" in resp["TemplatesResponse"]
+
+
+class TestPinpointCampaignOperations:
+    def test_get_campaigns_empty(self, pinpoint, app_id):
+        resp = pinpoint.get_campaigns(ApplicationId=app_id)
+        assert "CampaignsResponse" in resp
+        assert "Item" in resp["CampaignsResponse"]
+
+    def test_get_campaign_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_campaign(ApplicationId=app_id, CampaignId="nonexistent-campaign")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_campaign_activities_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_campaign_activities(
+                ApplicationId=app_id, CampaignId="nonexistent-campaign"
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_campaign_versions_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_campaign_versions(ApplicationId=app_id, CampaignId="nonexistent-campaign")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointSegmentOperations:
+    def test_get_segments(self, pinpoint, app_id):
+        resp = pinpoint.get_segments(ApplicationId=app_id)
+        assert "SegmentsResponse" in resp
+        assert "Item" in resp["SegmentsResponse"]
+
+    def test_get_segment(self, pinpoint, app_id, segment_id):
+        resp = pinpoint.get_segment(ApplicationId=app_id, SegmentId=segment_id)
+        assert resp["SegmentResponse"]["Id"] == segment_id
+        assert "Name" in resp["SegmentResponse"]
+
+    def test_get_segment_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_segment(ApplicationId=app_id, SegmentId="nonexistent-segment")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_segment_versions(self, pinpoint, app_id, segment_id):
+        resp = pinpoint.get_segment_versions(ApplicationId=app_id, SegmentId=segment_id)
+        assert "SegmentsResponse" in resp
+        assert "Item" in resp["SegmentsResponse"]
+        assert len(resp["SegmentsResponse"]["Item"]) >= 1
+
+    def test_get_segment_export_jobs(self, pinpoint, app_id, segment_id):
+        resp = pinpoint.get_segment_export_jobs(ApplicationId=app_id, SegmentId=segment_id)
+        assert "ExportJobsResponse" in resp
+        assert "Item" in resp["ExportJobsResponse"]
+
+    def test_get_segment_import_jobs(self, pinpoint, app_id, segment_id):
+        resp = pinpoint.get_segment_import_jobs(ApplicationId=app_id, SegmentId=segment_id)
+        assert "ImportJobsResponse" in resp
+        assert "Item" in resp["ImportJobsResponse"]
+
+
+class TestPinpointJobOperations:
+    def test_get_export_jobs(self, pinpoint, app_id):
+        resp = pinpoint.get_export_jobs(ApplicationId=app_id)
+        assert "ExportJobsResponse" in resp
+        assert "Item" in resp["ExportJobsResponse"]
+
+    def test_get_import_jobs(self, pinpoint, app_id):
+        resp = pinpoint.get_import_jobs(ApplicationId=app_id)
+        assert "ImportJobsResponse" in resp
+        assert "Item" in resp["ImportJobsResponse"]
+
+    def test_get_export_job_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_export_job(ApplicationId=app_id, JobId="nonexistent-job")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_import_job_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_import_job(ApplicationId=app_id, JobId="nonexistent-job")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointEndpointOperations:
+    def test_get_endpoint_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_endpoint(ApplicationId=app_id, EndpointId="nonexistent-endpoint")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_user_endpoints(self, pinpoint, app_id):
+        resp = pinpoint.get_user_endpoints(ApplicationId=app_id, UserId="nonexistent-user")
+        assert "EndpointsResponse" in resp
+        assert "Item" in resp["EndpointsResponse"]
+
+    def test_get_in_app_messages(self, pinpoint, app_id):
+        resp = pinpoint.get_in_app_messages(ApplicationId=app_id, EndpointId="fake-endpoint")
+        assert "InAppMessagesResponse" in resp
+        assert "InAppMessageCampaigns" in resp["InAppMessagesResponse"]
+
+
+class TestPinpointJourneyOperations:
+    def test_list_journeys(self, pinpoint, app_id):
+        resp = pinpoint.list_journeys(ApplicationId=app_id)
+        assert "JourneysResponse" in resp
+        assert "Item" in resp["JourneysResponse"]
+
+    def test_get_journey_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey(ApplicationId=app_id, JourneyId="nonexistent-journey")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointRecommenderOperations:
+    def test_get_recommender_configurations(self, pinpoint):
+        resp = pinpoint.get_recommender_configurations()
+        assert "ListRecommenderConfigurationsResponse" in resp
+        assert "Item" in resp["ListRecommenderConfigurationsResponse"]
+
+    def test_get_recommender_configuration_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_recommender_configuration(RecommenderId="nonexistent-recommender")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointKpiOperations:
+    def test_get_application_date_range_kpi(self, pinpoint, app_id):
+        resp = pinpoint.get_application_date_range_kpi(
+            ApplicationId=app_id, KpiName="successful-delivery-rate"
+        )
+        kpi = resp["ApplicationDateRangeKpiResponse"]
+        assert kpi["ApplicationId"] == app_id
+        assert kpi["KpiName"] == "successful-delivery-rate"
+        assert "KpiResult" in kpi
+        assert "StartTime" in kpi
+        assert "EndTime" in kpi
+
+    def test_get_campaign_date_range_kpi_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_campaign_date_range_kpi(
+                ApplicationId=app_id,
+                CampaignId="nonexistent-campaign",
+                KpiName="successful-delivery-rate",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_journey_date_range_kpi_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey_date_range_kpi(
+                ApplicationId=app_id,
+                JourneyId="nonexistent-journey",
+                KpiName="successful-delivery-rate",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointJourneyMetricOperations:
+    def test_get_journey_execution_metrics_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey_execution_metrics(
+                ApplicationId=app_id, JourneyId="nonexistent-journey"
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_journey_execution_activity_metrics_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey_execution_activity_metrics(
+                ApplicationId=app_id,
+                JourneyId="nonexistent-journey",
+                JourneyActivityId="nonexistent-activity",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_journey_runs_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey_runs(ApplicationId=app_id, JourneyId="nonexistent-journey")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_journey_run_execution_metrics_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey_run_execution_metrics(
+                ApplicationId=app_id,
+                JourneyId="nonexistent-journey",
+                RunId="nonexistent-run",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_journey_run_execution_activity_metrics_not_found(self, pinpoint, app_id):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_journey_run_execution_activity_metrics(
+                ApplicationId=app_id,
+                JourneyId="nonexistent-journey",
+                RunId="nonexistent-run",
+                JourneyActivityId="nonexistent-activity",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointTemplateVersionOperations:
+    def test_list_template_versions_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.list_template_versions(TemplateName="nonexistent", TemplateType="EMAIL")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
