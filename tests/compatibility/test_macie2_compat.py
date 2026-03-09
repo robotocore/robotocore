@@ -46,7 +46,8 @@ class TestMacie2AutoCoverage:
 
     def test_disable_macie(self, client):
         """DisableMacie returns a response."""
-        client.disable_macie()
+        resp = client.disable_macie()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_organization_admin_accounts(self, client):
         """ListOrganizationAdminAccounts returns a response."""
