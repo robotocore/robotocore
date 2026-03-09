@@ -133,6 +133,76 @@ async def handle_cognito_request(request: Request, region: str, account_id: str)
 
 
 # ---------------------------------------------------------------------------
+# Moto backend sync — keep Moto aware of pools we create/delete natively
+# so that operations we don't handle (e.g. CreateIdentityProvider) work.
+# ---------------------------------------------------------------------------
+
+
+def _sync_pool_to_moto(
+    pool_id: str, pool_name: str, params: dict, region: str, account_id: str
+) -> None:
+    """Create a matching pool in Moto's backend."""
+    try:
+        from moto.backends import get_backend
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        # Use Moto's create_user_pool; it returns a CognitoIdpUserPool.
+        # We override the auto-generated ID with ours so lookups match.
+        moto_pool = backend.create_user_pool(pool_name, params)
+        old_id = moto_pool.id
+        moto_pool.id = pool_id
+        # Remove the auto-generated key and re-key with our ID
+        backend.user_pools.pop(old_id, None)
+        backend.user_pools[pool_id] = moto_pool
+    except Exception:
+        pass  # Best-effort: if Moto isn't available, native-only ops still work
+
+
+def _sync_user_to_moto(
+    pool_id: str, username: str, password: str, region: str, account_id: str
+) -> None:
+    """Create a matching user in Moto's backend."""
+    try:
+        from moto.backends import get_backend
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        backend.admin_create_user(pool_id, username, password, {})
+    except Exception:
+        pass
+
+
+def _sync_client_to_moto(
+    pool_id: str, client_id: str, client_name: str, region: str, account_id: str
+) -> None:
+    """Create a matching client in Moto's backend and override its ID."""
+    try:
+        from moto.backends import get_backend
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        moto_client = backend.create_user_pool_client(pool_id, False, {"ClientName": client_name})
+        old_id = moto_client.id
+        moto_client.id = client_id
+        # Re-key in the pool's clients dict
+        pool = backend.user_pools.get(pool_id)
+        if pool:
+            pool.clients.pop(old_id, None)
+            pool.clients[client_id] = moto_client
+    except Exception:
+        pass
+
+
+def _delete_pool_from_moto(pool_id: str, region: str, account_id: str) -> None:
+    """Remove a pool from Moto's backend."""
+    try:
+        from moto.backends import get_backend
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        backend.user_pools.pop(pool_id, None)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # User Pool CRUD
 # ---------------------------------------------------------------------------
 
@@ -172,6 +242,10 @@ def _create_user_pool(store: CognitoStore, params: dict, region: str, account_id
         store.groups[pool_id] = {}
         store.user_groups[pool_id] = {}
 
+    # Mirror to Moto backend so operations that fall through to Moto
+    # (e.g. CreateIdentityProvider, CreateResourceServer) can find the pool.
+    _sync_pool_to_moto(pool_id, pool_name, params, region, account_id)
+
     return {"UserPool": pool}
 
 
@@ -202,6 +276,7 @@ def _delete_user_pool(store: CognitoStore, params: dict, region: str, account_id
         store.clients.pop(pool_id, None)
         store.groups.pop(pool_id, None)
         store.user_groups.pop(pool_id, None)
+    _delete_pool_from_moto(pool_id, region, account_id)
     return {}
 
 
@@ -254,6 +329,8 @@ def _create_user_pool_client(
 
     with store.lock:
         store.clients[pool_id][client_id] = client
+
+    _sync_client_to_moto(pool_id, client_id, client_name, region, account_id)
 
     return {"UserPoolClient": client}
 
@@ -601,6 +678,8 @@ def _admin_create_user(store: CognitoStore, params: dict, region: str, account_i
 
     with store.lock:
         store.users[pool_id][username] = user
+
+    _sync_user_to_moto(pool_id, username, temp_password, region, account_id)
 
     return {
         "User": {
@@ -1237,6 +1316,140 @@ def _list_tags_for_resource(
     return {"Tags": dict(tags)}
 
 
+# ---------------------------------------------------------------------------
+# Additional admin/auth operations (avoid Moto fallthrough sync issues)
+# ---------------------------------------------------------------------------
+
+
+def _admin_delete_user_attributes(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    attr_names = params.get("UserAttributeNames", [])
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
+        user["Attributes"] = [a for a in user.get("Attributes", []) if a["Name"] not in attr_names]
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _admin_reset_user_password(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
+        user["UserStatus"] = "RESET_REQUIRED"
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _admin_set_user_mfa_preference(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
+        if "SMSMfaSettings" in params:
+            user["SMSMfaSettings"] = params["SMSMfaSettings"]
+        if "SoftwareTokenMfaSettings" in params:
+            user["SoftwareTokenMfaSettings"] = params["SoftwareTokenMfaSettings"]
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _admin_user_global_sign_out(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
+    return {}
+
+
+def _confirm_sign_up(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
+    client_id = params.get("ClientId", "")
+    username = params.get("Username", "")
+
+    pool_id = _find_pool_by_client(store, client_id)
+
+    with store.lock:
+        user = store.users.get(pool_id, {}).get(username)
+        if not user:
+            raise CognitoError("UserNotFoundException", f"User {username} does not exist.", 404)
+        user["UserStatus"] = "CONFIRMED"
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _global_sign_out(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
+    access_token = params.get("AccessToken", "")
+    if not access_token:
+        raise CognitoError("NotAuthorizedException", "Missing access token.")
+    # Validate token belongs to a known user
+    _user_from_token(store, access_token)
+    return {}
+
+
+def _update_user_attributes(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    access_token = params.get("AccessToken", "")
+    user_attributes = params.get("UserAttributes", [])
+    if not access_token:
+        raise CognitoError("NotAuthorizedException", "Missing access token.")
+
+    user, pool_id = _user_from_token(store, access_token)
+    attr_names_to_update = {a["Name"] for a in user_attributes}
+
+    with store.lock:
+        existing = [a for a in user.get("Attributes", []) if a["Name"] not in attr_names_to_update]
+        existing.extend(user_attributes)
+        user["Attributes"] = existing
+        user["LastModifiedDate"] = time.time()
+    return {}
+
+
+def _user_from_token(store: CognitoStore, access_token: str) -> tuple:
+    """Find a user by their access token (JWT). Returns (user_dict, pool_id)."""
+    try:
+        payload_part = access_token.split(".")[1]
+        padding = 4 - len(payload_part) % 4
+        if padding != 4:
+            payload_part += "=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(payload_part))
+    except Exception:
+        raise CognitoError("NotAuthorizedException", "Invalid access token.")
+
+    sub = payload.get("sub", "")
+    with store.lock:
+        for pool_id, users in store.users.items():
+            for _uname, user in users.items():
+                if user["UserSub"] == sub:
+                    return user, pool_id
+    raise CognitoError("NotAuthorizedException", "Invalid access token.")
+
+
 def _pool_id_from_arn(arn: str) -> str:
     """Extract pool_id from an ARN like arn:aws:cognito-idp:REGION:ACCT:userpool/POOL_ID."""
     if "/userpool/" in arn:
@@ -1298,4 +1511,11 @@ _ACTION_MAP: dict[str, Callable] = {
     "TagResource": _tag_resource,
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tags_for_resource,
+    "AdminDeleteUserAttributes": _admin_delete_user_attributes,
+    "AdminResetUserPassword": _admin_reset_user_password,
+    "AdminSetUserMFAPreference": _admin_set_user_mfa_preference,
+    "AdminUserGlobalSignOut": _admin_user_global_sign_out,
+    "ConfirmSignUp": _confirm_sign_up,
+    "GlobalSignOut": _global_sign_out,
+    "UpdateUserAttributes": _update_user_attributes,
 }

@@ -27,7 +27,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: true
+          enable-cache: true
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.x"
@@ -67,7 +67,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: true
+          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -108,7 +108,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: true
+          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -146,7 +146,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: true
+          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -187,7 +187,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: true
+          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -228,7 +228,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          cache: true
+          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
