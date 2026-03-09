@@ -1,0 +1,47 @@
+service: sls-data-lake
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+
+custom:
+  localstack:
+    endpoint: ${env:AWS_ENDPOINT_URL, 'http://localhost:4566'}
+
+resources:
+  Resources:
+    DataBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-${sls:stage}-raw
+
+    IngestionStream:
+      Type: AWS::Kinesis::Stream
+      Properties:
+        Name: ${self:service}-ingestion
+        ShardCount: 1
+
+    CatalogTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-catalog
+        AttributeDefinitions:
+          - AttributeName: dataset_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: dataset_id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+  Outputs:
+    BucketName:
+      Value: !Ref DataBucket
+    StreamName:
+      Value: !Ref IngestionStream
+    TableName:
+      Value: !Ref CatalogTable
+
+plugins:
+  - serverless-localstack
