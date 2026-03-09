@@ -2306,3 +2306,736 @@ class TestRDSDescribeDBClusterEndpoints:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
                 pass
+
+
+class TestRDSDescribeDBEngineVersions:
+    """Tests for DescribeDBEngineVersions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_engine_versions(self, client):
+        """DescribeDBEngineVersions returns engine version list."""
+        resp = client.describe_db_engine_versions()
+        assert "DBEngineVersions" in resp
+        assert isinstance(resp["DBEngineVersions"], list)
+        assert len(resp["DBEngineVersions"]) > 0
+
+    def test_describe_db_engine_versions_by_engine(self, client):
+        """DescribeDBEngineVersions can filter by engine."""
+        resp = client.describe_db_engine_versions(Engine="mysql")
+        assert "DBEngineVersions" in resp
+        for v in resp["DBEngineVersions"]:
+            assert v["Engine"] == "mysql"
+
+    def test_describe_db_engine_versions_fields(self, client):
+        """Each engine version has expected fields."""
+        resp = client.describe_db_engine_versions()
+        version = resp["DBEngineVersions"][0]
+        assert "Engine" in version
+        assert "EngineVersion" in version
+        assert "DBParameterGroupFamily" in version
+
+
+class TestRDSDescribeEventCategories:
+    """Tests for DescribeEventCategories."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_event_categories(self, client):
+        """DescribeEventCategories returns category map."""
+        resp = client.describe_event_categories()
+        assert "EventCategoriesMapList" in resp
+        assert isinstance(resp["EventCategoriesMapList"], list)
+        assert len(resp["EventCategoriesMapList"]) > 0
+
+    def test_describe_event_categories_fields(self, client):
+        """Each event category entry has expected fields."""
+        resp = client.describe_event_categories()
+        entry = resp["EventCategoriesMapList"][0]
+        assert "SourceType" in entry
+        assert "EventCategories" in entry
+        assert isinstance(entry["EventCategories"], list)
+
+
+class TestRDSDescribeEngineDefaultParameters:
+    """Tests for DescribeEngineDefaultParameters."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_engine_default_parameters(self, client):
+        """DescribeEngineDefaultParameters returns defaults for a family."""
+        resp = client.describe_engine_default_parameters(DBParameterGroupFamily="mysql8.0")
+        assert "EngineDefaults" in resp
+        assert "Parameters" in resp["EngineDefaults"]
+        assert isinstance(resp["EngineDefaults"]["Parameters"], list)
+
+
+class TestRDSDescribeEngineDefaultClusterParameters:
+    """Tests for DescribeEngineDefaultClusterParameters."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_engine_default_cluster_parameters(self, client):
+        """DescribeEngineDefaultClusterParameters returns cluster param defaults."""
+        resp = client.describe_engine_default_cluster_parameters(
+            DBParameterGroupFamily="aurora-mysql8.0"
+        )
+        assert "EngineDefaults" in resp
+        assert "Parameters" in resp["EngineDefaults"]
+        assert isinstance(resp["EngineDefaults"]["Parameters"], list)
+
+
+class TestRDSDescribeReservedDBInstances:
+    """Tests for DescribeReservedDBInstances."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_reserved_db_instances(self, client):
+        """DescribeReservedDBInstances returns empty list when none purchased."""
+        resp = client.describe_reserved_db_instances()
+        assert "ReservedDBInstances" in resp
+        assert isinstance(resp["ReservedDBInstances"], list)
+
+
+class TestRDSDescribeReservedDBInstancesOfferings:
+    """Tests for DescribeReservedDBInstancesOfferings."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_reserved_db_instances_offerings(self, client):
+        """DescribeReservedDBInstancesOfferings returns offerings list."""
+        resp = client.describe_reserved_db_instances_offerings()
+        assert "ReservedDBInstancesOfferings" in resp
+        assert isinstance(resp["ReservedDBInstancesOfferings"], list)
+
+
+class TestRDSPurchaseReservedDBInstancesOffering:
+    """Tests for PurchaseReservedDBInstancesOffering."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_purchase_nonexistent_offering(self, client):
+        """PurchaseReservedDBInstancesOffering with bad ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.purchase_reserved_db_instances_offering(
+                ReservedDBInstancesOfferingId="nonexistent-offering"
+            )
+        assert exc.value.response["Error"]["Code"] == "ReservedDBInstancesOfferingNotFound"
+
+
+class TestRDSDescribePendingMaintenanceActions:
+    """Tests for DescribePendingMaintenanceActions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_pending_maintenance_actions(self, client):
+        """DescribePendingMaintenanceActions returns empty list by default."""
+        resp = client.describe_pending_maintenance_actions()
+        assert "PendingMaintenanceActions" in resp
+        assert isinstance(resp["PendingMaintenanceActions"], list)
+
+
+class TestRDSDescribeDBClusterAutomatedBackups:
+    """Tests for DescribeDBClusterAutomatedBackups."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_cluster_automated_backups(self, client):
+        """DescribeDBClusterAutomatedBackups returns empty list by default."""
+        resp = client.describe_db_cluster_automated_backups()
+        assert "DBClusterAutomatedBackups" in resp
+        assert isinstance(resp["DBClusterAutomatedBackups"], list)
+
+
+class TestRDSDescribeDBRecommendations:
+    """Tests for DescribeDBRecommendations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_recommendations(self, client):
+        """DescribeDBRecommendations returns recommendations list."""
+        resp = client.describe_db_recommendations()
+        assert "DBRecommendations" in resp
+        assert isinstance(resp["DBRecommendations"], list)
+
+
+class TestRDSDescribeTenantDatabases:
+    """Tests for DescribeTenantDatabases."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_tenant_databases(self, client):
+        """DescribeTenantDatabases returns empty list by default."""
+        resp = client.describe_tenant_databases()
+        assert "TenantDatabases" in resp
+        assert isinstance(resp["TenantDatabases"], list)
+
+
+class TestRDSDescribeDBSnapshotTenantDatabases:
+    """Tests for DescribeDBSnapshotTenantDatabases."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_snapshot_tenant_databases(self, client):
+        """DescribeDBSnapshotTenantDatabases returns empty list by default."""
+        resp = client.describe_db_snapshot_tenant_databases()
+        assert "DBSnapshotTenantDatabases" in resp
+        assert isinstance(resp["DBSnapshotTenantDatabases"], list)
+
+
+class TestRDSDescribeIntegrations:
+    """Tests for DescribeIntegrations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_integrations(self, client):
+        """DescribeIntegrations returns empty list by default."""
+        resp = client.describe_integrations()
+        assert "Integrations" in resp
+        assert isinstance(resp["Integrations"], list)
+
+
+class TestRDSDescribeDBProxyEndpoints:
+    """Tests for DescribeDBProxyEndpoints."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_proxy_endpoints(self, client):
+        """DescribeDBProxyEndpoints returns empty list by default."""
+        resp = client.describe_db_proxy_endpoints()
+        assert "DBProxyEndpoints" in resp
+        assert isinstance(resp["DBProxyEndpoints"], list)
+
+
+class TestRDSDescribeValidDBInstanceModifications:
+    """Tests for DescribeValidDBInstanceModifications."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_valid_db_instance_modifications(self, client):
+        """DescribeValidDBInstanceModifications returns modification info."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.describe_valid_db_instance_modifications(DBInstanceIdentifier=name)
+            assert "ValidDBInstanceModificationsMessage" in resp
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSCustomDBEngineVersion:
+    """Tests for CustomDBEngineVersion CRUD."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_custom_db_engine_version(self, client):
+        """CreateCustomDBEngineVersion creates a custom engine version."""
+        engine = "custom-oracle-ee"
+        version = f"19.cv_{uuid.uuid4().hex[:6]}"
+        try:
+            resp = client.create_custom_db_engine_version(
+                Engine=engine,
+                EngineVersion=version,
+                DatabaseInstallationFilesS3BucketName="my-bucket",
+            )
+            assert resp["Engine"] == engine
+            assert resp["EngineVersion"] == version
+        finally:
+            try:
+                client.delete_custom_db_engine_version(Engine=engine, EngineVersion=version)
+            except ClientError:
+                pass
+
+    def test_delete_custom_db_engine_version(self, client):
+        """DeleteCustomDBEngineVersion removes a custom engine version."""
+        engine = "custom-oracle-ee"
+        version = f"19.cv_{uuid.uuid4().hex[:6]}"
+        client.create_custom_db_engine_version(
+            Engine=engine,
+            EngineVersion=version,
+            DatabaseInstallationFilesS3BucketName="my-bucket",
+        )
+        resp = client.delete_custom_db_engine_version(Engine=engine, EngineVersion=version)
+        assert resp["Engine"] == engine
+        assert resp["EngineVersion"] == version
+
+    def test_modify_custom_db_engine_version(self, client):
+        """ModifyCustomDBEngineVersion updates a custom engine version."""
+        engine = "custom-oracle-ee"
+        version = f"19.cv_{uuid.uuid4().hex[:6]}"
+        client.create_custom_db_engine_version(
+            Engine=engine,
+            EngineVersion=version,
+            DatabaseInstallationFilesS3BucketName="my-bucket",
+        )
+        try:
+            resp = client.modify_custom_db_engine_version(
+                Engine=engine,
+                EngineVersion=version,
+                Description="updated description",
+            )
+            assert resp["Engine"] == engine
+            assert resp["EngineVersion"] == version
+        finally:
+            try:
+                client.delete_custom_db_engine_version(Engine=engine, EngineVersion=version)
+            except ClientError:
+                pass
+
+
+class TestRDSIntegration:
+    """Tests for Integration CRUD."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_and_describe_integration(self, client):
+        """CreateIntegration creates and DescribeIntegrations lists it."""
+        int_name = _unique("compat-int")
+        try:
+            resp = client.create_integration(
+                IntegrationName=int_name,
+                SourceArn="arn:aws:rds:us-east-1:123456789012:cluster:src-cluster",
+                TargetArn=("arn:aws:redshift-serverless:us-east-1:123456789012:namespace/tgt-ns"),
+            )
+            assert resp["IntegrationName"] == int_name
+            assert "IntegrationArn" in resp
+            integration_arn = resp["IntegrationArn"]
+
+            desc = client.describe_integrations()
+            arns = [i["IntegrationArn"] for i in desc["Integrations"]]
+            assert integration_arn in arns
+        finally:
+            try:
+                client.delete_integration(IntegrationIdentifier=integration_arn)
+            except (ClientError, UnboundLocalError):
+                pass
+
+    def test_delete_integration(self, client):
+        """DeleteIntegration removes an integration."""
+        int_name = _unique("compat-int")
+        resp = client.create_integration(
+            IntegrationName=int_name,
+            SourceArn="arn:aws:rds:us-east-1:123456789012:cluster:src-cluster",
+            TargetArn=("arn:aws:redshift-serverless:us-east-1:123456789012:namespace/tgt-ns"),
+        )
+        integration_arn = resp["IntegrationArn"]
+        del_resp = client.delete_integration(IntegrationIdentifier=integration_arn)
+        assert del_resp["IntegrationArn"] == integration_arn
+
+    def test_delete_nonexistent_integration(self, client):
+        """DeleteIntegration with nonexistent ARN returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_integration(
+                IntegrationIdentifier=("arn:aws:rds:us-east-1:123456789012:integration:nonexistent")
+            )
+        assert exc.value.response["Error"]["Code"] == "IntegrationNotFoundFault"
+
+    def test_modify_nonexistent_integration(self, client):
+        """ModifyIntegration with nonexistent ARN returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_integration(
+                IntegrationIdentifier=("arn:aws:rds:us-east-1:123456789012:integration:nonexistent")
+            )
+        assert exc.value.response["Error"]["Code"] == "IntegrationNotFoundFault"
+
+
+class TestRDSTenantDatabase:
+    """Tests for TenantDatabase CRUD."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def db_instance(self, client):
+        """Create a DB instance for tenant database tests."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_create_tenant_database(self, client, db_instance):
+        """CreateTenantDatabase creates a tenant database on an instance."""
+        resp = client.create_tenant_database(
+            DBInstanceIdentifier=db_instance,
+            TenantDBName="tenant1",
+            MasterUsername="tenantadmin",
+            MasterUserPassword="tenantpass123",
+        )
+        td = resp["TenantDatabase"]
+        assert td["DBInstanceIdentifier"] == db_instance
+        assert td["TenantDBName"] == "tenant1"
+        assert td["MasterUsername"] == "tenantadmin"
+        assert "Status" in td
+
+    def test_describe_tenant_databases_after_create(self, client, db_instance):
+        """DescribeTenantDatabases lists created tenant databases."""
+        client.create_tenant_database(
+            DBInstanceIdentifier=db_instance,
+            TenantDBName="tenant2",
+            MasterUsername="tenantadmin",
+            MasterUserPassword="tenantpass123",
+        )
+        resp = client.describe_tenant_databases()
+        names = [t["TenantDBName"] for t in resp["TenantDatabases"]]
+        assert "tenant2" in names
+
+
+class TestRDSDBClusterEndpoint:
+    """Tests for DBClusterEndpoint CRUD."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def cluster(self, client):
+        """Create a DB cluster for endpoint tests."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_create_db_cluster_endpoint(self, client, cluster):
+        """CreateDBClusterEndpoint creates a custom endpoint."""
+        ep_id = _unique("compat-ep")
+        try:
+            resp = client.create_db_cluster_endpoint(
+                DBClusterIdentifier=cluster,
+                DBClusterEndpointIdentifier=ep_id,
+                EndpointType="READER",
+            )
+            assert resp["DBClusterEndpointIdentifier"] == ep_id
+            assert resp["DBClusterIdentifier"] == cluster
+            assert resp["EndpointType"] == "READER"
+            assert "Endpoint" in resp
+        finally:
+            try:
+                client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
+            except ClientError:
+                pass
+
+    def test_modify_db_cluster_endpoint(self, client, cluster):
+        """ModifyDBClusterEndpoint changes endpoint type."""
+        ep_id = _unique("compat-ep")
+        client.create_db_cluster_endpoint(
+            DBClusterIdentifier=cluster,
+            DBClusterEndpointIdentifier=ep_id,
+            EndpointType="READER",
+        )
+        try:
+            resp = client.modify_db_cluster_endpoint(
+                DBClusterEndpointIdentifier=ep_id,
+                EndpointType="ANY",
+            )
+            assert resp["DBClusterEndpointIdentifier"] == ep_id
+        finally:
+            try:
+                client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
+            except ClientError:
+                pass
+
+    def test_delete_db_cluster_endpoint(self, client, cluster):
+        """DeleteDBClusterEndpoint removes an endpoint."""
+        ep_id = _unique("compat-ep")
+        client.create_db_cluster_endpoint(
+            DBClusterIdentifier=cluster,
+            DBClusterEndpointIdentifier=ep_id,
+            EndpointType="READER",
+        )
+        resp = client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
+        assert resp["DBClusterEndpointIdentifier"] == ep_id
+
+
+class TestRDSActivityStream:
+    """Tests for ActivityStream operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def cluster(self, client):
+        """Create a DB cluster for activity stream tests."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+
+    def test_start_activity_stream(self, client, cluster):
+        """StartActivityStream starts streaming for a cluster."""
+        resp = client.start_activity_stream(
+            ResourceArn=f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}",
+            Mode="async",
+            KmsKeyId="alias/aws/rds",
+        )
+        assert "KmsKeyId" in resp
+        assert "KinesisStreamName" in resp
+        assert "Status" in resp
+
+    def test_stop_activity_stream(self, client, cluster):
+        """StopActivityStream stops streaming for a cluster."""
+        client.start_activity_stream(
+            ResourceArn=f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}",
+            Mode="async",
+            KmsKeyId="alias/aws/rds",
+        )
+        resp = client.stop_activity_stream(
+            ResourceArn=f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}",
+        )
+        assert "KmsKeyId" in resp
+        assert "KinesisStreamName" in resp
+        assert "Status" in resp
+
+    def test_modify_activity_stream(self, client, cluster):
+        """ModifyActivityStream modifies stream settings."""
+        resp = client.modify_activity_stream(
+            ResourceArn=f"arn:aws:rds:us-east-1:123456789012:cluster:{cluster}",
+        )
+        assert "KmsKeyId" in resp
+        assert "KinesisStreamName" in resp
+        assert "Status" in resp
+
+
+class TestRDSEventSubscriptionSourceIds:
+    """Tests for Add/RemoveSourceIdentifierToSubscription."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def subscription(self, client):
+        """Create an event subscription for source ID tests."""
+        name = _unique("compat-sub")
+        client.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:my-topic",
+        )
+        yield name
+        try:
+            client.delete_event_subscription(SubscriptionName=name)
+        except ClientError:
+            pass
+
+    def test_add_source_identifier(self, client, subscription):
+        """AddSourceIdentifierToSubscription adds a source."""
+        resp = client.add_source_identifier_to_subscription(
+            SubscriptionName=subscription,
+            SourceIdentifier="my-db-instance",
+        )
+        assert "EventSubscription" in resp
+        assert "my-db-instance" in resp["EventSubscription"]["SourceIdsList"]
+
+    def test_remove_source_identifier(self, client, subscription):
+        """RemoveSourceIdentifierFromSubscription removes a source."""
+        client.add_source_identifier_to_subscription(
+            SubscriptionName=subscription,
+            SourceIdentifier="my-db-instance",
+        )
+        resp = client.remove_source_identifier_from_subscription(
+            SubscriptionName=subscription,
+            SourceIdentifier="my-db-instance",
+        )
+        assert "EventSubscription" in resp
+        assert "my-db-instance" not in resp["EventSubscription"].get("SourceIdsList", [])
+
+
+class TestRDSDBShardGroupErrors:
+    """Tests for DBShardGroup error handling."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_delete_nonexistent_db_shard_group(self, client):
+        """DeleteDBShardGroup with nonexistent ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_db_shard_group(DBShardGroupIdentifier="nonexistent-shard-group")
+        assert exc.value.response["Error"]["Code"] == "DBShardGroupNotFound"
+
+    def test_reboot_nonexistent_db_shard_group(self, client):
+        """RebootDBShardGroup with nonexistent ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.reboot_db_shard_group(DBShardGroupIdentifier="nonexistent-shard-group")
+        assert exc.value.response["Error"]["Code"] == "DBShardGroupNotFound"
+
+    def test_modify_nonexistent_db_shard_group(self, client):
+        """ModifyDBShardGroup with nonexistent ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_shard_group(DBShardGroupIdentifier="nonexistent-shard-group")
+        assert exc.value.response["Error"]["Code"] == "DBShardGroupNotFound"
+
+
+class TestRDSModifyGlobalCluster:
+    """Tests for ModifyGlobalCluster."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_modify_nonexistent_global_cluster(self, client):
+        """ModifyGlobalCluster with nonexistent ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_global_cluster(GlobalClusterIdentifier="nonexistent-gc")
+        assert exc.value.response["Error"]["Code"] == "GlobalClusterNotFoundFault"
+
+
+class TestRDSSwitchoverGlobalCluster:
+    """Tests for SwitchoverGlobalCluster."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_switchover_nonexistent_global_cluster(self, client):
+        """SwitchoverGlobalCluster with nonexistent ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.switchover_global_cluster(
+                GlobalClusterIdentifier="nonexistent-gc",
+                TargetDbClusterIdentifier=(
+                    "arn:aws:rds:us-east-1:123456789012:cluster:nonexistent"
+                ),
+            )
+        assert exc.value.response["Error"]["Code"] == "GlobalClusterNotFoundFault"
+
+
+class TestRDSDBProxyEndpoint:
+    """Tests for DBProxyEndpoint CRUD."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def proxy_with_subnets(self, client):
+        """Create a DB proxy for endpoint tests."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.97.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.97.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.97.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        proxy_name = _unique("compat-proxy")
+        client.create_db_proxy(
+            DBProxyName=proxy_name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": ("arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret"),
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/my-role",
+            VpcSubnetIds=subnet_ids,
+        )
+        yield proxy_name, subnet_ids
+        try:
+            client.delete_db_proxy(DBProxyName=proxy_name)
+        except ClientError:
+            pass
+
+    def test_create_db_proxy_endpoint(self, client, proxy_with_subnets):
+        """CreateDBProxyEndpoint creates a proxy endpoint."""
+        proxy_name, subnet_ids = proxy_with_subnets
+        ep_name = _unique("compat-pep")
+        try:
+            resp = client.create_db_proxy_endpoint(
+                DBProxyName=proxy_name,
+                DBProxyEndpointName=ep_name,
+                VpcSubnetIds=subnet_ids,
+            )
+            assert "DBProxyEndpoint" in resp
+            assert resp["DBProxyEndpoint"]["DBProxyEndpointName"] == ep_name
+            assert resp["DBProxyEndpoint"]["DBProxyName"] == proxy_name
+        finally:
+            try:
+                client.delete_db_proxy_endpoint(DBProxyEndpointName=ep_name)
+            except ClientError:
+                pass
+
+    def test_delete_db_proxy_endpoint(self, client, proxy_with_subnets):
+        """DeleteDBProxyEndpoint removes a proxy endpoint."""
+        proxy_name, subnet_ids = proxy_with_subnets
+        ep_name = _unique("compat-pep")
+        client.create_db_proxy_endpoint(
+            DBProxyName=proxy_name,
+            DBProxyEndpointName=ep_name,
+            VpcSubnetIds=subnet_ids,
+        )
+        resp = client.delete_db_proxy_endpoint(DBProxyEndpointName=ep_name)
+        assert "DBProxyEndpoint" in resp
+        assert resp["DBProxyEndpoint"]["DBProxyEndpointName"] == ep_name

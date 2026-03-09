@@ -1835,3 +1835,131 @@ class TestAPIGatewayClientCertificates:
         assert "items" in resp
         ids = [c["clientCertificateId"] for c in resp["items"]]
         assert cert_id in ids
+
+
+class TestAPIGatewayUpdateOperations:
+    """Tests for Update* operations that weren't previously covered."""
+
+    @pytest.fixture
+    def api(self, apigw):
+        resp = apigw.create_rest_api(name="update-ops-test", description="Test")
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_update_gateway_response(self, apigw, api):
+        apigw.put_gateway_response(restApiId=api, responseType="DEFAULT_4XX", statusCode="400")
+        resp = apigw.update_gateway_response(
+            restApiId=api,
+            responseType="DEFAULT_4XX",
+            patchOperations=[{"op": "replace", "path": "/statusCode", "value": "401"}],
+        )
+        assert resp["statusCode"] == "401"
+
+    def test_update_client_certificate(self, apigw):
+        cert = apigw.generate_client_certificate(description="original-desc")
+        cert_id = cert["clientCertificateId"]
+        resp = apigw.update_client_certificate(
+            clientCertificateId=cert_id,
+            patchOperations=[{"op": "replace", "path": "/description", "value": "updated-desc"}],
+        )
+        assert resp["description"] == "updated-desc"
+        apigw.delete_client_certificate(clientCertificateId=cert_id)
+
+    def test_update_documentation_version(self, apigw, api):
+        apigw.create_documentation_version(restApiId=api, documentationVersion="v1")
+        resp = apigw.update_documentation_version(
+            restApiId=api,
+            documentationVersion="v1",
+            patchOperations=[{"op": "replace", "path": "/description", "value": "updated"}],
+        )
+        assert resp["description"] == "updated"
+
+    def test_update_method(self, apigw, api):
+        resources = apigw.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        resp = apigw.update_method(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            patchOperations=[{"op": "replace", "path": "/authorizationType", "value": "CUSTOM"}],
+        )
+        assert resp["authorizationType"] == "CUSTOM"
+
+    def test_update_integration(self, apigw, api):
+        resources = apigw.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        resp = apigw.update_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            patchOperations=[
+                {"op": "replace", "path": "/passthroughBehavior", "value": "WHEN_NO_MATCH"}
+            ],
+        )
+        assert resp["type"] == "MOCK"
+
+
+class TestAPIGatewayDeleteDocumentationVersion:
+    """Tests for DeleteDocumentationVersion."""
+
+    def test_delete_documentation_version(self, apigw):
+        api = apigw.create_rest_api(name="docver-del-test", description="test")
+        api_id = api["id"]
+        apigw.create_documentation_version(restApiId=api_id, documentationVersion="v1")
+        resp = apigw.delete_documentation_version(restApiId=api_id, documentationVersion="v1")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+        # Verify it's gone
+        versions = apigw.get_documentation_versions(restApiId=api_id)
+        version_ids = [v["version"] for v in versions.get("items", [])]
+        assert "v1" not in version_ids
+        apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayGetUsage:
+    """Tests for GetUsage."""
+
+    def test_get_usage(self, apigw):
+        plan = apigw.create_usage_plan(name="usage-test-plan", description="test")
+        plan_id = plan["id"]
+        resp = apigw.get_usage(usagePlanId=plan_id, startDate="2026-01-01", endDate="2026-03-09")
+        assert resp["usagePlanId"] == plan_id
+        apigw.delete_usage_plan(usagePlanId=plan_id)
+
+
+class TestAPIGatewayFlushStageAuthorizersCache:
+    """Tests for FlushStageAuthorizersCache."""
+
+    def test_flush_stage_authorizers_cache(self, apigw):
+        api = apigw.create_rest_api(name="flush-auth-test", description="test")
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=api_id)
+        apigw.create_stage(restApiId=api_id, stageName="test", deploymentId=dep["id"])
+        resp = apigw.flush_stage_authorizers_cache(restApiId=api_id, stageName="test")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+        apigw.delete_rest_api(restApiId=api_id)

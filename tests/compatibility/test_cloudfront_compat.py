@@ -1962,3 +1962,207 @@ class TestCloudFrontDeleteOriginAccessControl:
         with pytest.raises(ClientError) as exc:
             cf.get_origin_access_control(Id=oac_id)
         assert "NoSuchOriginAccessControl" in exc.value.response["Error"]["Code"]
+
+
+class TestCloudFrontGetRealtimeLogConfig:
+    """Tests for GetRealtimeLogConfig by name and ARN."""
+
+    def test_get_realtime_log_config_by_name(self, cf):
+        name = _unique("rtlc")
+        resp = cf.create_realtime_log_config(
+            EndPoints=[
+                {
+                    "StreamType": "Kinesis",
+                    "KinesisStreamConfig": {
+                        "RoleARN": "arn:aws:iam::123456789012:role/test",
+                        "StreamARN": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    },
+                }
+            ],
+            Fields=["timestamp", "c-ip"],
+            Name=name,
+            SamplingRate=100,
+        )
+        arn = resp["RealtimeLogConfig"]["ARN"]
+
+        got = cf.get_realtime_log_config(Name=name)
+        assert got["RealtimeLogConfig"]["Name"] == name
+        assert got["RealtimeLogConfig"]["SamplingRate"] == 100
+
+        cf.delete_realtime_log_config(ARN=arn)
+
+    def test_get_realtime_log_config_by_arn(self, cf):
+        name = _unique("rtlc")
+        resp = cf.create_realtime_log_config(
+            EndPoints=[
+                {
+                    "StreamType": "Kinesis",
+                    "KinesisStreamConfig": {
+                        "RoleARN": "arn:aws:iam::123456789012:role/test",
+                        "StreamARN": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    },
+                }
+            ],
+            Fields=["timestamp", "c-ip"],
+            Name=name,
+            SamplingRate=100,
+        )
+        arn = resp["RealtimeLogConfig"]["ARN"]
+
+        got = cf.get_realtime_log_config(ARN=arn)
+        assert got["RealtimeLogConfig"]["ARN"] == arn
+        assert got["RealtimeLogConfig"]["Name"] == name
+
+        cf.delete_realtime_log_config(ARN=arn)
+
+
+class TestCloudFrontListDistributionsBy:
+    """Tests for ListDistributionsBy* operations with empty results."""
+
+    def test_list_distributions_by_cache_policy_id(self, cf):
+        resp = cf.list_distributions_by_cache_policy_id(CachePolicyId="fake-policy-id")
+        assert resp["DistributionIdList"]["Quantity"] == 0
+
+    def test_list_distributions_by_origin_request_policy_id(self, cf):
+        resp = cf.list_distributions_by_origin_request_policy_id(
+            OriginRequestPolicyId="fake-policy-id"
+        )
+        assert resp["DistributionIdList"]["Quantity"] == 0
+
+    def test_list_distributions_by_response_headers_policy_id(self, cf):
+        resp = cf.list_distributions_by_response_headers_policy_id(
+            ResponseHeadersPolicyId="fake-policy-id"
+        )
+        assert resp["DistributionIdList"]["Quantity"] == 0
+
+    def test_list_distributions_by_vpc_origin_id(self, cf):
+        resp = cf.list_distributions_by_vpc_origin_id(VpcOriginId="fake-vpc-id")
+        assert resp["DistributionIdList"]["Quantity"] == 0
+
+    def test_list_distributions_by_anycast_ip_list_id(self, cf):
+        resp = cf.list_distributions_by_anycast_ip_list_id(AnycastIpListId="fake-list-id")
+        assert resp["DistributionList"]["Quantity"] == 0
+
+    def test_list_distributions_by_trust_store(self, cf):
+        resp = cf.list_distributions_by_trust_store(TrustStoreIdentifier="fake-store-id")
+        assert resp["DistributionList"]["Quantity"] == 0
+
+    def test_list_distributions_by_connection_mode(self, cf):
+        resp = cf.list_distributions_by_connection_mode(ConnectionMode="direct")
+        assert resp["DistributionList"]["Quantity"] == 0
+
+    def test_list_distributions_by_connection_function(self, cf):
+        resp = cf.list_distributions_by_connection_function(
+            ConnectionFunctionIdentifier="arn:aws:cloudfront::123456789012:function/fake"
+        )
+        assert resp["DistributionList"]["Quantity"] == 0
+
+
+class TestCloudFrontVpcOriginAndAnycast:
+    """Tests for VpcOrigin and AnycastIpList operations."""
+
+    def test_get_vpc_origin_nonexistent(self, cf):
+        with pytest.raises(ClientError) as exc:
+            cf.get_vpc_origin(Id="nonexistent-vpc-origin-id")
+        assert exc.value.response["Error"]["Code"] == "NoSuchResource"
+
+    def test_get_anycast_ip_list_nonexistent(self, cf):
+        with pytest.raises(ClientError) as exc:
+            cf.get_anycast_ip_list(Id="nonexistent-anycast-id")
+        assert exc.value.response["Error"]["Code"] == "NoSuchResource"
+
+    def test_delete_vpc_origin_nonexistent(self, cf):
+        resp = cf.delete_vpc_origin(Id="nonexistent-vpc-id", IfMatch="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202, 204)
+
+    def test_delete_anycast_ip_list_nonexistent(self, cf):
+        resp = cf.delete_anycast_ip_list(Id="nonexistent-anycast-id", IfMatch="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_trust_store_nonexistent(self, cf):
+        resp = cf.delete_trust_store(Id="nonexistent-trust-store-id", IfMatch="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_resource_policy(self, cf):
+        resp = cf.delete_resource_policy(
+            ResourceArn="arn:aws:cloudfront::123456789012:distribution/FAKEID"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontWebACLAssociation:
+    """Tests for AssociateDistributionWebACL and DisassociateDistributionWebACL."""
+
+    def test_associate_distribution_web_acl(self, cf):
+        dist = cf.create_distribution(DistributionConfig=_dist_config("webacl-test"))
+        dist_id = dist["Distribution"]["Id"]
+        try:
+            resp = cf.associate_distribution_web_acl(
+                Id=dist_id,
+                WebACLArn="arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/id",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            etag = cf.get_distribution(Id=dist_id)["ETag"]
+            cf.delete_distribution(Id=dist_id, IfMatch=etag)
+
+    def test_disassociate_distribution_web_acl(self, cf):
+        dist = cf.create_distribution(DistributionConfig=_dist_config("webacl-disassoc"))
+        dist_id = dist["Distribution"]["Id"]
+        try:
+            resp = cf.disassociate_distribution_web_acl(Id=dist_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            etag = cf.get_distribution(Id=dist_id)["ETag"]
+            cf.delete_distribution(Id=dist_id, IfMatch=etag)
+
+
+class TestCloudFrontDistributionTenantWebACL:
+    """Tests for tenant-level WebACL operations."""
+
+    def test_associate_distribution_tenant_web_acl(self, cf):
+        resp = cf.associate_distribution_tenant_web_acl(
+            Id="fake-tenant-id",
+            WebACLArn="arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_distribution_tenant_web_acl(self, cf):
+        resp = cf.disassociate_distribution_tenant_web_acl(Id="fake-tenant-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontConnectionAndTenantDeletes:
+    """Tests for DeleteConnectionFunction, DeleteConnectionGroup, DeleteDistributionTenant."""
+
+    def test_delete_connection_function(self, cf):
+        resp = cf.delete_connection_function(Id="fake-func-id", IfMatch="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_connection_group(self, cf):
+        resp = cf.delete_connection_group(Id="fake-group-id", IfMatch="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_distribution_tenant(self, cf):
+        resp = cf.delete_distribution_tenant(Id="fake-tenant-id", IfMatch="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontCopyAndStagingConfig:
+    """Tests for CopyDistribution and UpdateDistributionWithStagingConfig."""
+
+    def test_copy_distribution_nonexistent(self, cf):
+        """CopyDistribution with a non-existent ID raises NoSuchDistribution."""
+        with pytest.raises(ClientError) as exc:
+            cf.copy_distribution(PrimaryDistributionId="FAKEID", CallerReference="test-copy")
+        assert exc.value.response["Error"]["Code"] == "NoSuchDistribution"
+
+    def test_update_distribution_with_staging_config(self, cf):
+        dist = cf.create_distribution(DistributionConfig=_dist_config("staging-test"))
+        dist_id = dist["Distribution"]["Id"]
+        try:
+            resp = cf.update_distribution_with_staging_config(Id=dist_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            etag = cf.get_distribution(Id=dist_id)["ETag"]
+            cf.delete_distribution(Id=dist_id, IfMatch=etag)
