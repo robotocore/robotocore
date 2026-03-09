@@ -3083,3 +3083,350 @@ class TestSSMUpdateManagedInstanceRole:
                 "InvalidInstanceId",
                 "InvalidInstanceInformationFilterValue",
             )
+
+
+class TestSSMActivationLifecycle:
+    """Full lifecycle tests for SSM activations."""
+
+    def test_create_describe_delete_activation(self, ssm):
+        """CreateActivation -> DescribeActivations -> DeleteActivation full lifecycle."""
+        resp = ssm.create_activation(
+            IamRole="SSMServiceRole",
+            Description="Lifecycle test activation",
+            DefaultInstanceName="test-instance",
+            RegistrationLimit=5,
+        )
+        act_id = resp["ActivationId"]
+        assert act_id is not None
+        assert "ActivationCode" in resp
+        assert len(resp["ActivationCode"]) > 0
+
+        try:
+            desc = ssm.describe_activations(
+                Filters=[{"FilterKey": "ActivationIds", "FilterValues": [act_id]}]
+            )
+            found = [a for a in desc["ActivationList"] if a["ActivationId"] == act_id]
+            assert len(found) == 1
+            assert found[0]["Description"] == "Lifecycle test activation"
+            assert found[0]["DefaultInstanceName"] == "test-instance"
+            assert found[0]["RegistrationLimit"] == 5
+            assert found[0]["IamRole"] == "SSMServiceRole"
+        finally:
+            ssm.delete_activation(ActivationId=act_id)
+
+        # Verify deleted
+        desc2 = ssm.describe_activations(
+            Filters=[{"FilterKey": "ActivationIds", "FilterValues": [act_id]}]
+        )
+        remaining = [a for a in desc2["ActivationList"] if a["ActivationId"] == act_id]
+        assert len(remaining) == 0
+
+    def test_create_activation_minimal(self, ssm):
+        """CreateActivation with only required params."""
+        resp = ssm.create_activation(IamRole="SSMRole")
+        act_id = resp["ActivationId"]
+        assert act_id is not None
+        try:
+            desc = ssm.describe_activations(
+                Filters=[{"FilterKey": "ActivationIds", "FilterValues": [act_id]}]
+            )
+            found = [a for a in desc["ActivationList"] if a["ActivationId"] == act_id]
+            assert len(found) == 1
+            assert found[0]["IamRole"] == "SSMRole"
+        finally:
+            ssm.delete_activation(ActivationId=act_id)
+
+
+class TestSSMOpsItemLifecycle:
+    """Full CRUD lifecycle tests for OpsItems."""
+
+    def test_create_ops_item_with_all_fields(self, ssm):
+        """CreateOpsItem with priority, severity, category."""
+        resp = ssm.create_ops_item(
+            Title="Full CRUD OpsItem",
+            Description="Testing all fields",
+            Source="compat-test",
+            Priority=3,
+            Severity="2",
+            Category="Security",
+        )
+        oid = resp["OpsItemId"]
+        assert oid.startswith("oi-")
+
+        try:
+            get = ssm.get_ops_item(OpsItemId=oid)
+            item = get["OpsItem"]
+            assert item["Title"] == "Full CRUD OpsItem"
+            assert item["Description"] == "Testing all fields"
+            assert item["Source"] == "compat-test"
+            assert item["Priority"] == 3
+            assert item["Severity"] == "2"
+            assert item["Status"] == "Open"
+        finally:
+            ssm.delete_ops_item(OpsItemId=oid)
+
+    def test_update_ops_item_multiple_fields(self, ssm):
+        """UpdateOpsItem changes status and title."""
+        resp = ssm.create_ops_item(
+            Title="Original Title",
+            Description="Will be updated",
+            Source="test",
+        )
+        oid = resp["OpsItemId"]
+
+        try:
+            ssm.update_ops_item(OpsItemId=oid, Title="Updated Title", Status="InProgress")
+            get = ssm.get_ops_item(OpsItemId=oid)
+            assert get["OpsItem"]["Title"] == "Updated Title"
+            assert get["OpsItem"]["Status"] == "InProgress"
+        finally:
+            ssm.delete_ops_item(OpsItemId=oid)
+
+    def test_describe_ops_items_finds_created(self, ssm):
+        """DescribeOpsItems with filter finds a specific OpsItem."""
+        resp = ssm.create_ops_item(
+            Title="Findable OpsItem",
+            Description="Should be found by describe",
+            Source="describe-test",
+        )
+        oid = resp["OpsItemId"]
+
+        try:
+            desc = ssm.describe_ops_items(
+                OpsItemFilters=[{"Key": "OpsItemId", "Values": [oid], "Operator": "Equal"}]
+            )
+            found = [o for o in desc["OpsItemSummaries"] if o["OpsItemId"] == oid]
+            assert len(found) == 1
+            assert found[0]["Title"] == "Findable OpsItem"
+            assert found[0]["Source"] == "describe-test"
+        finally:
+            ssm.delete_ops_item(OpsItemId=oid)
+
+    def test_describe_ops_items_no_filter(self, ssm):
+        """DescribeOpsItems with no filter returns a list."""
+        resp = ssm.describe_ops_items()
+        assert "OpsItemSummaries" in resp
+        assert isinstance(resp["OpsItemSummaries"], list)
+
+
+class TestSSMOpsMetadataLifecycle:
+    """Full lifecycle tests for OpsMetadata."""
+
+    def test_create_get_update_delete_ops_metadata(self, ssm):
+        """OpsMetadata full CRUD lifecycle."""
+        resource_id = f"arn:aws:ssm:us-east-1:123456789012:opsmetadata/{_unique('meta')}"
+        resp = ssm.create_ops_metadata(
+            ResourceId=resource_id,
+            Metadata={"app": {"Value": "myapp"}, "version": {"Value": "1.0"}},
+        )
+        meta_arn = resp["OpsMetadataArn"]
+        assert meta_arn is not None
+
+        try:
+            # Get and verify initial metadata
+            get = ssm.get_ops_metadata(OpsMetadataArn=meta_arn)
+            assert "app" in get["Metadata"]
+            assert get["Metadata"]["app"]["Value"] == "myapp"
+            assert get["Metadata"]["version"]["Value"] == "1.0"
+
+            # Update: add a new key
+            ssm.update_ops_metadata(
+                OpsMetadataArn=meta_arn,
+                MetadataToUpdate={"env": {"Value": "prod"}},
+            )
+            get2 = ssm.get_ops_metadata(OpsMetadataArn=meta_arn)
+            assert "env" in get2["Metadata"]
+            assert get2["Metadata"]["env"]["Value"] == "prod"
+            # Original keys should still be present
+            assert "app" in get2["Metadata"]
+
+            # List should include it
+            listed = ssm.list_ops_metadata()
+            arns = [m["OpsMetadataArn"] for m in listed["OpsMetadataList"]]
+            assert meta_arn in arns
+        finally:
+            ssm.delete_ops_metadata(OpsMetadataArn=meta_arn)
+
+    def test_ops_metadata_delete_keys(self, ssm):
+        """UpdateOpsMetadata with KeysToDelete removes keys."""
+        resource_id = f"arn:aws:ssm:us-east-1:123456789012:opsmetadata/{_unique('delkey')}"
+        resp = ssm.create_ops_metadata(
+            ResourceId=resource_id,
+            Metadata={"keep": {"Value": "yes"}, "remove": {"Value": "no"}},
+        )
+        meta_arn = resp["OpsMetadataArn"]
+
+        try:
+            ssm.update_ops_metadata(
+                OpsMetadataArn=meta_arn,
+                KeysToDelete=["remove"],
+            )
+            get = ssm.get_ops_metadata(OpsMetadataArn=meta_arn)
+            assert "keep" in get["Metadata"]
+            assert "remove" not in get["Metadata"]
+        finally:
+            ssm.delete_ops_metadata(OpsMetadataArn=meta_arn)
+
+
+class TestSSMPatchBaselineDetails:
+    """Detailed patch baseline operation tests."""
+
+    def test_get_patch_baseline_details(self, ssm):
+        """GetPatchBaseline returns detailed baseline info."""
+        name = _unique("detail-pb")
+        resp = ssm.create_patch_baseline(
+            Name=name,
+            Description="Detailed test baseline",
+            OperatingSystem="AMAZON_LINUX_2",
+        )
+        bid = resp["BaselineId"]
+
+        try:
+            get = ssm.get_patch_baseline(BaselineId=bid)
+            assert get["BaselineId"] == bid
+            assert get["Name"] == name
+            assert get["OperatingSystem"] == "AMAZON_LINUX_2"
+            assert get["Description"] == "Detailed test baseline"
+        finally:
+            ssm.delete_patch_baseline(BaselineId=bid)
+
+    def test_describe_patch_baselines_lists_custom(self, ssm):
+        """DescribePatchBaselines includes custom baselines."""
+        name = _unique("custom-pb")
+        resp = ssm.create_patch_baseline(Name=name, Description="Custom baseline for test")
+        bid = resp["BaselineId"]
+
+        try:
+            desc = ssm.describe_patch_baselines()
+            ids = [b["BaselineId"] for b in desc["BaselineIdentities"]]
+            assert bid in ids
+            # Find our baseline and verify name
+            ours = [b for b in desc["BaselineIdentities"] if b["BaselineId"] == bid]
+            assert len(ours) == 1
+            assert ours[0]["BaselineName"] == name
+            assert ours[0]["BaselineDescription"] == "Custom baseline for test"
+        finally:
+            ssm.delete_patch_baseline(BaselineId=bid)
+
+
+class TestSSMAssociationDetails:
+    """Detailed association lifecycle tests."""
+
+    def test_create_association_with_targets_and_schedule(self, ssm):
+        """CreateAssociation with targets, params, and schedule."""
+        assoc_name = _unique("assoc")
+        resp = ssm.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            Parameters={"commands": ["echo assoc-test"]},
+            AssociationName=assoc_name,
+            ScheduleExpression="rate(1 day)",
+        )
+        desc = resp["AssociationDescription"]
+        aid = desc["AssociationId"]
+        assert aid is not None
+        assert desc["Name"] == "AWS-RunShellScript"
+        assert desc["ScheduleExpression"] == "rate(1 day)"
+
+        try:
+            # Describe returns same info
+            d = ssm.describe_association(AssociationId=aid)
+            assert d["AssociationDescription"]["AssociationId"] == aid
+            assert d["AssociationDescription"]["ScheduleExpression"] == "rate(1 day)"
+
+            # ListAssociations includes it
+            la = ssm.list_associations()
+            found = [a for a in la["Associations"] if a.get("AssociationId") == aid]
+            assert len(found) == 1
+        finally:
+            ssm.delete_association(AssociationId=aid)
+
+    def test_create_and_delete_association_verify_gone(self, ssm):
+        """DeleteAssociation removes the association."""
+        resp = ssm.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+        )
+        aid = resp["AssociationDescription"]["AssociationId"]
+        ssm.delete_association(AssociationId=aid)
+
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_association(AssociationId=aid)
+        assert exc.value.response["Error"]["Code"] in (
+            "AssociationDoesNotExist",
+            "DoesNotExistException",
+        )
+
+
+class TestSSMParameterStoreEdgeCases:
+    """Edge case tests for Parameter Store operations."""
+
+    def test_get_parameter_nonexistent_raises_not_found(self, ssm):
+        """GetParameter for nonexistent param raises ParameterNotFound."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_parameter(Name="/completely/nonexistent/param/xyz")
+        assert exc.value.response["Error"]["Code"] == "ParameterNotFound"
+
+    def test_get_parameters_by_path_with_decryption(self, ssm):
+        """GetParametersByPath with WithDecryption for SecureString."""
+        prefix = _unique("/test/pathdec")
+        name = f"{prefix}/secret"
+        try:
+            ssm.put_parameter(Name=name, Value="hidden-value", Type="SecureString")
+            resp = ssm.get_parameters_by_path(Path=prefix, WithDecryption=True)
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Value"] == "hidden-value"
+            assert resp["Parameters"][0]["Type"] == "SecureString"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_describe_parameters_type_filter(self, ssm):
+        """DescribeParameters with Type filter."""
+        name = _unique("/test/typefilt")
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="SecureString")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert len(resp["Parameters"]) == 1
+            assert resp["Parameters"][0]["Type"] == "SecureString"
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_parameter_history_shows_labels(self, ssm):
+        """GetParameterHistory includes labels on versions."""
+        name = _unique("/test/histlabel")
+        try:
+            ssm.put_parameter(Name=name, Value="v1", Type="String")
+            ssm.put_parameter(Name=name, Value="v2", Type="String", Overwrite=True)
+            ssm.label_parameter_version(Name=name, ParameterVersion=1, Labels=["old"])
+            ssm.label_parameter_version(Name=name, ParameterVersion=2, Labels=["current"])
+
+            resp = ssm.get_parameter_history(Name=name)
+            v1 = [p for p in resp["Parameters"] if p["Version"] == 1][0]
+            v2 = [p for p in resp["Parameters"] if p["Version"] == 2][0]
+            assert "old" in v1.get("Labels", [])
+            assert "current" in v2.get("Labels", [])
+        finally:
+            ssm.delete_parameter(Name=name)
+
+    def test_delete_parameters_mixed_existing_nonexistent(self, ssm):
+        """DeleteParameters with mix of existing and nonexistent returns both lists."""
+        name = _unique("/test/delmix")
+        ssm.put_parameter(Name=name, Value="val", Type="String")
+        resp = ssm.delete_parameters(Names=[name, "/nonexistent/delmix/xyz"])
+        assert name in resp["DeletedParameters"]
+        assert "/nonexistent/delmix/xyz" in resp.get("InvalidParameters", [])
+
+    def test_describe_parameters_returns_last_modified(self, ssm):
+        """DescribeParameters includes LastModifiedDate."""
+        name = _unique("/test/lastmod")
+        try:
+            ssm.put_parameter(Name=name, Value="val", Type="String")
+            resp = ssm.describe_parameters(
+                ParameterFilters=[{"Key": "Name", "Option": "Equals", "Values": [name]}]
+            )
+            assert len(resp["Parameters"]) == 1
+            assert "LastModifiedDate" in resp["Parameters"][0]
+        finally:
+            ssm.delete_parameter(Name=name)

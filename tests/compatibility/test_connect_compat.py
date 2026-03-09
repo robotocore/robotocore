@@ -2745,3 +2745,186 @@ class TestConnectListOpsExtended:
         resp = connect.list_traffic_distribution_groups(InstanceId=instance_id)
         assert "TrafficDistributionGroupSummaryList" in resp
         assert isinstance(resp["TrafficDistributionGroupSummaryList"], list)
+
+
+class TestConnectContactOps:
+    """Tests for Connect contact lifecycle: create, describe, update, stop."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_contact(self, connect, instance_id):
+        resp = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="VOICE",
+            InitiationMethod="INBOUND",
+        )
+        assert "ContactId" in resp
+        assert "ContactArn" in resp
+        assert len(resp["ContactId"]) > 0
+
+    def test_describe_contact(self, connect, instance_id):
+        cr = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="VOICE",
+            InitiationMethod="INBOUND",
+        )
+        contact_id = cr["ContactId"]
+        resp = connect.describe_contact(
+            InstanceId=instance_id,
+            ContactId=contact_id,
+        )
+        assert "Contact" in resp
+        contact = resp["Contact"]
+        assert contact["Id"] == contact_id
+        assert contact["Channel"] == "VOICE"
+        assert contact["InitiationMethod"] == "INBOUND"
+
+    def test_describe_contact_has_timestamps(self, connect, instance_id):
+        cr = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="CHAT",
+            InitiationMethod="INBOUND",
+        )
+        resp = connect.describe_contact(
+            InstanceId=instance_id,
+            ContactId=cr["ContactId"],
+        )
+        contact = resp["Contact"]
+        assert "InitiationTimestamp" in contact
+
+    def test_update_contact(self, connect, instance_id):
+        cr = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="VOICE",
+            InitiationMethod="INBOUND",
+        )
+        contact_id = cr["ContactId"]
+        connect.update_contact(
+            InstanceId=instance_id,
+            ContactId=contact_id,
+            Name="UpdatedContact",
+        )
+        resp = connect.describe_contact(
+            InstanceId=instance_id,
+            ContactId=contact_id,
+        )
+        assert resp["Contact"]["Name"] == "UpdatedContact"
+
+    def test_update_contact_description(self, connect, instance_id):
+        cr = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="VOICE",
+            InitiationMethod="INBOUND",
+        )
+        contact_id = cr["ContactId"]
+        connect.update_contact(
+            InstanceId=instance_id,
+            ContactId=contact_id,
+            Description="A test description",
+        )
+        resp = connect.describe_contact(
+            InstanceId=instance_id,
+            ContactId=contact_id,
+        )
+        assert resp["Contact"]["Description"] == "A test description"
+
+    def test_stop_contact(self, connect, instance_id):
+        cr = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="VOICE",
+            InitiationMethod="INBOUND",
+        )
+        contact_id = cr["ContactId"]
+        resp = connect.stop_contact(
+            ContactId=contact_id,
+            InstanceId=instance_id,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_multiple_contacts(self, connect, instance_id):
+        cr1 = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="VOICE",
+            InitiationMethod="INBOUND",
+        )
+        cr2 = connect.create_contact(
+            InstanceId=instance_id,
+            Channel="CHAT",
+            InitiationMethod="INBOUND",
+        )
+        assert cr1["ContactId"] != cr2["ContactId"]
+
+
+class TestConnectTrafficDistributionGroupCRUD:
+    """Tests for traffic distribution group create/describe/delete."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_traffic_distribution_group(self, connect, instance_id):
+        resp = connect.create_traffic_distribution_group(
+            Name="test-tdg",
+            InstanceId=instance_id,
+        )
+        assert "Id" in resp
+        assert "Arn" in resp
+        assert len(resp["Id"]) > 0
+
+    def test_describe_traffic_distribution_group(self, connect, instance_id):
+        cr = connect.create_traffic_distribution_group(
+            Name="test-tdg-desc",
+            InstanceId=instance_id,
+        )
+        tdg_id = cr["Id"]
+        resp = connect.describe_traffic_distribution_group(
+            TrafficDistributionGroupId=tdg_id,
+        )
+        assert "TrafficDistributionGroup" in resp
+        tdg = resp["TrafficDistributionGroup"]
+        assert tdg["Name"] == "test-tdg-desc"
+
+    def test_delete_traffic_distribution_group(self, connect, instance_id):
+        cr = connect.create_traffic_distribution_group(
+            Name="test-tdg-del",
+            InstanceId=instance_id,
+        )
+        tdg_id = cr["Id"]
+        connect.delete_traffic_distribution_group(
+            TrafficDistributionGroupId=tdg_id,
+        )
+        with pytest.raises(ClientError) as exc_info:
+            connect.describe_traffic_distribution_group(
+                TrafficDistributionGroupId=tdg_id,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectHierarchyGroupName:
+    """Tests for UpdateUserHierarchyGroupName."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_update_user_hierarchy_group_name(self, connect, instance_id):
+        hg = connect.create_user_hierarchy_group(
+            InstanceId=instance_id,
+            Name="OriginalName",
+        )
+        hg_id = hg["HierarchyGroupId"]
+        connect.update_user_hierarchy_group_name(
+            Name="RenamedGroup",
+            HierarchyGroupId=hg_id,
+            InstanceId=instance_id,
+        )
+        resp = connect.describe_user_hierarchy_group(
+            InstanceId=instance_id,
+            HierarchyGroupId=hg_id,
+        )
+        assert resp["HierarchyGroup"]["Name"] == "RenamedGroup"

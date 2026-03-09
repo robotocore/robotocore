@@ -2144,19 +2144,21 @@ class TestEventBridgeRuleOnCustomBus:
 class TestEventBridgeTagsOnEventBus:
     """Tag lifecycle on event buses with more assertions."""
 
-    def test_create_bus_with_tags_then_list(self, events):
-        """Create event bus with tags, then list tags to verify."""
+    def test_tag_bus_then_list(self, events):
+        """Create event bus, tag it, then list tags to verify."""
         suffix = uuid.uuid4().hex[:8]
         bus_name = f"tagged-bus-{suffix}"
         try:
-            resp = events.create_event_bus(
-                Name=bus_name,
+            resp = events.create_event_bus(Name=bus_name)
+            bus_arn = resp["EventBusArn"]
+
+            events.tag_resource(
+                ResourceARN=bus_arn,
                 Tags=[
                     {"Key": "project", "Value": "robotocore"},
                     {"Key": "env", "Value": "test"},
                 ],
             )
-            bus_arn = resp["EventBusArn"]
 
             tags_resp = events.list_tags_for_resource(ResourceARN=bus_arn)
             tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
