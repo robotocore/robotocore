@@ -303,17 +303,22 @@ class EventSourceEngine:
         receipt_handles = []
         for msg, receipt_handle in messages:
             receipt_handles.append((receipt_handle, msg))
+            attrs = {
+                "ApproximateReceiveCount": str(msg.receive_count),
+                "SentTimestamp": str(int(msg.created * 1000)),
+                "ApproximateFirstReceiveTimestamp": str(
+                    int((msg.first_received or time.time()) * 1000)
+                ),
+            }
+            if msg.message_group_id:
+                attrs["MessageGroupId"] = msg.message_group_id
+            if msg.message_deduplication_id:
+                attrs["MessageDeduplicationId"] = msg.message_deduplication_id
             record = {
                 "messageId": msg.message_id,
                 "receiptHandle": receipt_handle,
                 "body": msg.body,
-                "attributes": {
-                    "ApproximateReceiveCount": str(msg.receive_count),
-                    "SentTimestamp": str(int(msg.created * 1000)),
-                    "ApproximateFirstReceiveTimestamp": str(
-                        int((msg.first_received or time.time()) * 1000)
-                    ),
-                },
+                "attributes": attrs,
                 "messageAttributes": _convert_message_attributes(msg.message_attributes),
                 "md5OfBody": msg.md5_of_body,
                 "eventSource": "aws:sqs",

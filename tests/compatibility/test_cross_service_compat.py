@@ -2210,7 +2210,10 @@ class TestESMPartialBatchFailure:
         )
 
         source_name = f"src-partial-{suffix}"
-        sq = sqs.create_queue(QueueName=source_name)
+        sq = sqs.create_queue(
+            QueueName=source_name,
+            Attributes={"VisibilityTimeout": "5"},
+        )
         source_url = sq["QueueUrl"]
         source_arn = sqs.get_queue_attributes(
             QueueUrl=source_url,
@@ -2260,7 +2263,6 @@ class TestESMPartialBatchFailure:
         lam.delete_function(FunctionName=func_name)
         sqs.delete_queue(QueueUrl=source_url)
         sqs.delete_queue(QueueUrl=verify_url)
-        iam.delete_role(RoleName=role_name)
         iam.delete_role(RoleName=role_name)
 
 
@@ -2808,7 +2810,7 @@ class TestEventBridgeArchiveReplay:
             EventSourceArn=bus_arn,
             EventPattern=json.dumps({"source": ["test.replay"]}),
         )
-        assert archive_resp["ArchiveName"] == archive_name
+        assert "ArchiveArn" in archive_resp
 
         # Rule to deliver replayed events to SQS
         events.put_rule(
@@ -2846,9 +2848,10 @@ class TestEventBridgeArchiveReplay:
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end = now
 
+        archive_arn = archive_resp["ArchiveArn"]
         replay_resp = events.start_replay(
             ReplayName=f"replay-{suffix}",
-            EventSourceArn=bus_arn,
+            EventSourceArn=archive_arn,
             Destination={"Arn": bus_arn},
             EventStartTime=start,
             EventEndTime=end,

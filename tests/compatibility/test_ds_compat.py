@@ -1144,6 +1144,48 @@ class TestDsComputerOps:
         assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
 
 
+class TestDsRestoreFromSnapshot:
+    """Tests for RestoreFromSnapshot operation."""
+
+    def test_restore_from_nonexistent_snapshot(self, ds):
+        """RestoreFromSnapshot with fake snapshot ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.restore_from_snapshot(SnapshotId="s-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_restore_from_snapshot(self, ds, directory):
+        """RestoreFromSnapshot with a real snapshot succeeds."""
+        snap = ds.create_snapshot(DirectoryId=directory, Name="restore-test")
+        snap_id = snap["SnapshotId"]
+        try:
+            resp = ds.restore_from_snapshot(SnapshotId=snap_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ds.delete_snapshot(SnapshotId=snap_id)
+
+
+class TestDsCertificateRegisterDeregister:
+    """Tests for RegisterCertificate and DeregisterCertificate operations."""
+
+    def test_register_certificate_nonexistent_dir(self, ds):
+        """RegisterCertificate for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.register_certificate(
+                DirectoryId="d-0000000000",
+                CertificateData="-----BEGIN CERTIFICATE-----\nMIIBx\n-----END CERTIFICATE-----",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_deregister_certificate_nonexistent_dir(self, ds):
+        """DeregisterCertificate for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.deregister_certificate(
+                DirectoryId="d-0000000000",
+                CertificateId="c-0000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
 class TestDsResetPassword:
     """Tests for ResetUserPassword operation."""
 

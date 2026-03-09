@@ -185,3 +185,55 @@ class TestS3VectorsBucketOperations:
         get_resp = client.get_vector_bucket_policy(vectorBucketName=name)
         assert "policy" in get_resp
         client.delete_vector_bucket(vectorBucketName=name)
+
+
+class TestS3VectorsListVectors:
+    """Tests for ListVectors operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("s3vectors")
+
+    @pytest.fixture
+    def vector_bucket_with_index(self, client):
+        bucket_name = "test-listvec-bucket"
+        index_name = "test-listvec-idx"
+        client.create_vector_bucket(vectorBucketName=bucket_name)
+        client.create_index(
+            vectorBucketName=bucket_name,
+            indexName=index_name,
+            dataType="float32",
+            dimension=4,
+            distanceMetric="euclidean",
+        )
+        yield bucket_name, index_name
+        try:
+            client.delete_index(vectorBucketName=bucket_name, indexName=index_name)
+        except Exception:
+            pass
+        try:
+            client.delete_vector_bucket(vectorBucketName=bucket_name)
+        except Exception:
+            pass
+
+    def test_list_vectors_empty(self, client, vector_bucket_with_index):
+        """ListVectors on empty index returns empty list."""
+        bucket, index = vector_bucket_with_index
+        resp = client.list_vectors(vectorBucketName=bucket, indexName=index)
+        assert "vectors" in resp
+        assert isinstance(resp["vectors"], list)
+
+    def test_list_vectors_nonexistent_bucket(self, client):
+        """ListVectors for nonexistent bucket raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.list_vectors(
+                vectorBucketName="no-such-bucket-xyz",
+                indexName="no-such-index",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "NotFoundException",
+            "ValidationException",
+        )

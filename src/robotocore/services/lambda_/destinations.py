@@ -93,25 +93,50 @@ def _build_destination_record(
 
 def _send_to_sqs(queue_arn: str, record: dict, region: str) -> None:
     """Send destination record to SQS queue."""
+    import hashlib
+
+    from robotocore.services.sqs.models import SqsMessage
     from robotocore.services.sqs.provider import _get_store
 
     queue_name = queue_arn.rsplit(":", 1)[-1]
     store = _get_store(region)
     queue = store.get_queue(queue_name)
     if queue:
-        queue.send_message(body=json.dumps(record))
+        body = json.dumps(record)
+        msg = SqsMessage(
+            message_id=str(uuid.uuid4()),
+            body=body,
+            md5_of_body=hashlib.md5(body.encode()).hexdigest(),
+        )
+        queue.put(msg)
     else:
         logger.warning("Destination SQS queue not found: %s", queue_name)
 
 
 def _send_to_sns(topic_arn: str, record: dict, region: str) -> None:
     """Send destination record to SNS topic."""
-    from robotocore.services.sns.provider import get_store
+    from robotocore.services.sns.provider import (
+        _deliver_to_subscriber,
+        _get_store,
+        _new_id,
+    )
 
-    store = get_store(region)
+    store = _get_store(region)
     topic = store.get_topic(topic_arn)
     if topic:
-        topic.publish(message=json.dumps(record), subject="Lambda Invocation Result")
+        message = json.dumps(record)
+        message_id = _new_id()
+        for sub in topic.subscriptions:
+            if sub.confirmed:
+                _deliver_to_subscriber(
+                    sub,
+                    message,
+                    "Lambda Invocation Result",
+                    {},
+                    message_id,
+                    topic_arn,
+                    region,
+                )
     else:
         logger.warning("Destination SNS topic not found: %s", topic_arn)
 
