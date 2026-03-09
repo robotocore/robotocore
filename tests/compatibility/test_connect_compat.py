@@ -150,3 +150,171 @@ class TestConnectInstances:
                 connect.delete_instance(InstanceId=instance_id)
             except Exception:
                 pass
+
+
+class TestConnectListOps:
+    """Tests for Connect list operations that take InstanceId."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_list_agent_statuses(self, connect, instance_id):
+        resp = connect.list_agent_statuses(InstanceId=instance_id)
+        assert "AgentStatusSummaryList" in resp
+        assert isinstance(resp["AgentStatusSummaryList"], list)
+
+    def test_list_approved_origins(self, connect, instance_id):
+        resp = connect.list_approved_origins(InstanceId=instance_id)
+        assert "Origins" in resp
+        assert isinstance(resp["Origins"], list)
+
+    def test_list_bots(self, connect, instance_id):
+        resp = connect.list_bots(InstanceId=instance_id, LexVersion="V2")
+        assert "LexBots" in resp
+        assert isinstance(resp["LexBots"], list)
+
+    def test_list_contact_evaluations(self, connect, instance_id):
+        resp = connect.list_contact_evaluations(InstanceId=instance_id, ContactId="fake-contact-id")
+        assert "EvaluationSummaryList" in resp
+        assert isinstance(resp["EvaluationSummaryList"], list)
+
+    def test_list_contact_flow_modules(self, connect, instance_id):
+        resp = connect.list_contact_flow_modules(InstanceId=instance_id)
+        assert "ContactFlowModulesSummaryList" in resp
+        assert isinstance(resp["ContactFlowModulesSummaryList"], list)
+
+    def test_list_contact_flow_versions(self, connect, instance_id):
+        resp = connect.list_contact_flow_versions(
+            InstanceId=instance_id, ContactFlowId="fake-flow-id"
+        )
+        assert "ContactFlowVersionSummaryList" in resp
+        assert isinstance(resp["ContactFlowVersionSummaryList"], list)
+
+    def test_list_contact_flows(self, connect, instance_id):
+        resp = connect.list_contact_flows(InstanceId=instance_id)
+        assert "ContactFlowSummaryList" in resp
+        assert isinstance(resp["ContactFlowSummaryList"], list)
+
+    def test_list_contact_references(self, connect, instance_id):
+        resp = connect.list_contact_references(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            ReferenceTypes=["URL"],
+        )
+        assert "ReferenceSummaryList" in resp
+        assert isinstance(resp["ReferenceSummaryList"], list)
+
+    def test_list_default_vocabularies(self, connect, instance_id):
+        resp = connect.list_default_vocabularies(InstanceId=instance_id)
+        assert "DefaultVocabularyList" in resp
+        assert isinstance(resp["DefaultVocabularyList"], list)
+
+    def test_list_evaluation_form_versions(self, connect, instance_id):
+        resp = connect.list_evaluation_form_versions(
+            InstanceId=instance_id, EvaluationFormId="fake-form-id"
+        )
+        assert "EvaluationFormVersionSummaryList" in resp
+        assert isinstance(resp["EvaluationFormVersionSummaryList"], list)
+
+    def test_list_evaluation_forms(self, connect, instance_id):
+        resp = connect.list_evaluation_forms(InstanceId=instance_id)
+        assert "EvaluationFormSummaryList" in resp
+        assert isinstance(resp["EvaluationFormSummaryList"], list)
+
+    def test_list_flow_associations(self, connect, instance_id):
+        resp = connect.list_flow_associations(InstanceId=instance_id)
+        assert "FlowAssociationSummaryList" in resp
+        assert isinstance(resp["FlowAssociationSummaryList"], list)
+
+    def test_list_hours_of_operation_overrides(self, connect, instance_id):
+        resp = connect.list_hours_of_operation_overrides(
+            InstanceId=instance_id, HoursOfOperationId="fake-hoo-id"
+        )
+        assert "HoursOfOperationOverrideList" in resp
+
+    def test_list_hours_of_operations(self, connect, instance_id):
+        resp = connect.list_hours_of_operations(InstanceId=instance_id)
+        assert "HoursOfOperationSummaryList" in resp
+        assert isinstance(resp["HoursOfOperationSummaryList"], list)
+
+    def test_list_instance_attributes(self, connect, instance_id):
+        resp = connect.list_instance_attributes(InstanceId=instance_id)
+        assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
+
+    def test_list_instance_storage_configs(self, connect, instance_id):
+        resp = connect.list_instance_storage_configs(
+            InstanceId=instance_id, ResourceType="CHAT_TRANSCRIPTS"
+        )
+        assert "StorageConfigs" in resp
+        assert isinstance(resp["StorageConfigs"], list)
+
+    def test_list_instances(self, connect):
+        resp = connect.list_instances()
+        assert "InstanceSummaryList" in resp
+        assert len(resp["InstanceSummaryList"]) >= 1
+
+    def test_list_lambda_functions(self, connect, instance_id):
+        resp = connect.list_lambda_functions(InstanceId=instance_id)
+        assert "LambdaFunctions" in resp
+        assert isinstance(resp["LambdaFunctions"], list)
+
+    def test_list_phone_numbers(self, connect, instance_id):
+        resp = connect.list_phone_numbers(InstanceId=instance_id)
+        assert "PhoneNumberSummaryList" in resp
+        assert isinstance(resp["PhoneNumberSummaryList"], list)
+
+    def test_list_phone_numbers_v2(self, connect):
+        resp = connect.list_phone_numbers_v2()
+        assert "ListPhoneNumbersSummaryList" in resp
+        assert isinstance(resp["ListPhoneNumbersSummaryList"], list)
+
+    def test_list_prompts(self, connect, instance_id):
+        resp = connect.list_prompts(InstanceId=instance_id)
+        assert "PromptSummaryList" in resp
+        assert isinstance(resp["PromptSummaryList"], list)
+
+    def test_list_queue_quick_connects(self, connect, instance_id):
+        resp = connect.list_queue_quick_connects(InstanceId=instance_id, QueueId="fake-queue-id")
+        assert "QuickConnectSummaryList" in resp
+        assert isinstance(resp["QuickConnectSummaryList"], list)
+
+    def test_list_queues(self, connect, instance_id):
+        resp = connect.list_queues(InstanceId=instance_id)
+        assert "QueueSummaryList" in resp
+        assert isinstance(resp["QueueSummaryList"], list)
+
+    def test_list_quick_connects(self, connect, instance_id):
+        resp = connect.list_quick_connects(InstanceId=instance_id)
+        assert "QuickConnectSummaryList" in resp
+        assert isinstance(resp["QuickConnectSummaryList"], list)
+
+    def test_list_routing_profiles(self, connect, instance_id):
+        resp = connect.list_routing_profiles(InstanceId=instance_id)
+        assert "RoutingProfileSummaryList" in resp
+        assert isinstance(resp["RoutingProfileSummaryList"], list)
+
+    def test_list_security_keys(self, connect, instance_id):
+        resp = connect.list_security_keys(InstanceId=instance_id)
+        assert "SecurityKeys" in resp
+        assert isinstance(resp["SecurityKeys"], list)
+
+    def test_list_security_profile_applications(self, connect, instance_id):
+        resp = connect.list_security_profile_applications(
+            InstanceId=instance_id, SecurityProfileId="fake-sp-id"
+        )
+        assert "Applications" in resp
+        assert isinstance(resp["Applications"], list)
+
+    def test_list_security_profile_permissions(self, connect, instance_id):
+        resp = connect.list_security_profile_permissions(
+            InstanceId=instance_id, SecurityProfileId="fake-sp-id"
+        )
+        assert "Permissions" in resp
+
+    def test_list_security_profiles(self, connect, instance_id):
+        resp = connect.list_security_profiles(InstanceId=instance_id)
+        assert "SecurityProfileSummaryList" in resp
+        assert isinstance(resp["SecurityProfileSummaryList"], list)

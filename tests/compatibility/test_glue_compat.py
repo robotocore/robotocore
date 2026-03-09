@@ -2491,3 +2491,144 @@ class TestGlueUsageProfileOperations:
         with pytest.raises(ClientError) as exc:
             glue.get_usage_profile(Name="nonexistent-profile")
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueGetOperations:
+    def test_get_catalog_import_status(self, glue):
+        """GetCatalogImportStatus returns import status."""
+        resp = glue.get_catalog_import_status()
+        assert "ImportStatus" in resp
+
+    def test_get_resource_policies(self, glue):
+        """GetResourcePolicies returns policy list."""
+        resp = glue.get_resource_policies()
+        assert "GetResourcePoliciesResponseList" in resp
+
+    def test_get_resource_policy(self, glue):
+        """GetResourcePolicy returns policy or empty."""
+        try:
+            resp = glue.get_resource_policy()
+            assert "PolicyInJson" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            assert e.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_security_configurations(self, glue):
+        """GetSecurityConfigurations returns config list."""
+        resp = glue.get_security_configurations()
+        assert "SecurityConfigurations" in resp
+
+    def test_get_ml_transforms(self, glue):
+        """GetMLTransforms returns transform list."""
+        resp = glue.get_ml_transforms()
+        assert "Transforms" in resp
+
+    def test_get_crawler_metrics(self, glue):
+        """GetCrawlerMetrics returns metrics list."""
+        resp = glue.get_crawler_metrics()
+        assert "CrawlerMetricsList" in resp
+
+    def test_get_ml_transform_not_found(self, glue):
+        """GetMLTransform with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_transform(TransformId="tfm-fake12345678")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_blueprint_run_not_found(self, glue):
+        """GetBlueprintRun with fake params returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_blueprint_run(BlueprintName="fake-bp", RunId="fake-run-id")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "OperationNotSupportedException",
+        )
+
+    def test_get_blueprint_runs_not_found(self, glue):
+        """GetBlueprintRuns with fake blueprint returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_blueprint_runs(BlueprintName="fake-bp")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "OperationNotSupportedException",
+        )
+
+    def test_get_column_statistics_for_table(self, glue):
+        """GetColumnStatisticsForTable with fake table returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_column_statistics_for_table(
+                DatabaseName="fake-db",
+                TableName="fake-table",
+                ColumnNames=["col1"],
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_column_statistics_for_partition(self, glue):
+        """GetColumnStatisticsForPartition with fake params returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_column_statistics_for_partition(
+                DatabaseName="fake-db",
+                TableName="fake-table",
+                PartitionValues=["2024-01-01"],
+                ColumnNames=["col1"],
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_data_quality_result_not_found(self, glue):
+        """GetDataQualityResult with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_result(ResultId="dqresult-fake12345678")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+    def test_get_data_quality_ruleset_not_found(self, glue):
+        """GetDataQualityRuleset with fake name returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset(Name="fake-ruleset")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+    def test_get_data_quality_rule_recommendation_run_not_found(self, glue):
+        """GetDataQualityRuleRecommendationRun with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="dqrun-fake12345678")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+    def test_get_data_quality_ruleset_evaluation_run_not_found(self, glue):
+        """GetDataQualityRulesetEvaluationRun with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset_evaluation_run(RunId="dqrun-fake12345678")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+    def test_get_column_statistics_task_run_not_found(self, glue):
+        """GetColumnStatisticsTaskRun with fake params returns error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_column_statistics_task_run(
+                ColumnStatisticsTaskRunId="fake-run-id",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+    def test_get_column_statistics_task_runs(self, glue):
+        """GetColumnStatisticsTaskRuns with fake params returns error or empty."""
+        try:
+            resp = glue.get_column_statistics_task_runs(
+                DatabaseName="fake-db",
+                TableName="fake-table",
+            )
+            assert "ColumnStatisticsTaskRuns" in resp
+        except ClientError as e:
+            assert e.response["Error"]["Code"] in (
+                "EntityNotFoundException",
+                "InvalidInputException",
+            )

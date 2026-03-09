@@ -6158,3 +6158,50 @@ class TestEC2InstanceEventWindowCrud:
         assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         desc_resp = ec2.describe_instance_event_windows()
         assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2AdditionalDescribeOps:
+    """Tests for additional EC2 describe operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_byoip_cidrs(self, ec2):
+        """DescribeByoipCidrs returns a list of BYOIP CIDRs."""
+        resp = ec2.describe_byoip_cidrs(MaxResults=10)
+        assert "ByoipCidrs" in resp
+        assert isinstance(resp["ByoipCidrs"], list)
+
+    def test_describe_client_vpn_authorization_rules(self, ec2):
+        """DescribeClientVpnAuthorizationRules returns a response for fake endpoint."""
+        resp = ec2.describe_client_vpn_authorization_rules(
+            ClientVpnEndpointId="cvpn-endpoint-fake123"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_client_vpn_connections(self, ec2):
+        """DescribeClientVpnConnections returns a response for fake endpoint."""
+        resp = ec2.describe_client_vpn_connections(ClientVpnEndpointId="cvpn-endpoint-fake123")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_client_vpn_routes(self, ec2):
+        """DescribeClientVpnRoutes returns a response for fake endpoint."""
+        resp = ec2.describe_client_vpn_routes(ClientVpnEndpointId="cvpn-endpoint-fake123")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_client_vpn_target_networks(self, ec2):
+        """DescribeClientVpnTargetNetworks returns a response for fake endpoint."""
+        resp = ec2.describe_client_vpn_target_networks(ClientVpnEndpointId="cvpn-endpoint-fake123")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_fleet_history(self, ec2):
+        """DescribeFleetHistory returns history records."""
+        from datetime import datetime
+
+        resp = ec2.describe_fleet_history(
+            FleetId="fleet-fake123",
+            StartTime=datetime(2024, 1, 1),
+        )
+        assert "HistoryRecords" in resp
+        assert isinstance(resp["HistoryRecords"], list)

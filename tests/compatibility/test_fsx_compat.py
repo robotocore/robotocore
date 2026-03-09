@@ -207,3 +207,80 @@ class TestFSxDescribeBackupsFiltered:
             fsx.delete_backup(BackupId=backup_id)
         finally:
             fsx.delete_file_system(FileSystemId=fs_id)
+
+
+class TestFSxDescribeEmpty:
+    """Tests for FSx describe operations that return empty lists."""
+
+    def test_describe_data_repository_associations_empty(self, fsx):
+        """DescribeDataRepositoryAssociations returns empty Associations list."""
+        resp = fsx.describe_data_repository_associations()
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+    def test_describe_data_repository_tasks_empty(self, fsx):
+        """DescribeDataRepositoryTasks returns empty DataRepositoryTasks list."""
+        resp = fsx.describe_data_repository_tasks()
+        assert "DataRepositoryTasks" in resp
+        assert isinstance(resp["DataRepositoryTasks"], list)
+
+    def test_describe_file_caches_empty(self, fsx):
+        """DescribeFileCaches returns empty FileCaches list."""
+        resp = fsx.describe_file_caches()
+        assert "FileCaches" in resp
+        assert isinstance(resp["FileCaches"], list)
+
+    def test_describe_snapshots_empty(self, fsx):
+        """DescribeSnapshots returns empty Snapshots list."""
+        resp = fsx.describe_snapshots()
+        assert "Snapshots" in resp
+        assert isinstance(resp["Snapshots"], list)
+
+    def test_describe_storage_virtual_machines_empty(self, fsx):
+        """DescribeStorageVirtualMachines returns empty list."""
+        resp = fsx.describe_storage_virtual_machines()
+        assert "StorageVirtualMachines" in resp
+        assert isinstance(resp["StorageVirtualMachines"], list)
+
+    def test_describe_volumes_empty(self, fsx):
+        """DescribeVolumes returns empty Volumes list."""
+        resp = fsx.describe_volumes()
+        assert "Volumes" in resp
+        assert isinstance(resp["Volumes"], list)
+
+    def test_describe_shared_vpc_configuration(self, fsx):
+        """DescribeSharedVpcConfiguration returns configuration."""
+        resp = fsx.describe_shared_vpc_configuration()
+        assert "EnableFsxRouteTableUpdatesFromParticipantAccounts" in resp
+
+    def test_describe_s3_access_point_attachments_empty(self, fsx):
+        """DescribeS3AccessPointAttachments returns empty list."""
+        resp = fsx.describe_s3_access_point_attachments()
+        assert "S3AccessPointAttachments" in resp
+        assert isinstance(resp["S3AccessPointAttachments"], list)
+
+
+class TestFSxFileSystemAliases:
+    """Tests for FSx file system alias operations."""
+
+    def test_describe_file_system_aliases_for_fs(self, fsx):
+        """DescribeFileSystemAliases returns Aliases list for a real file system."""
+        resp = fsx.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
+        )
+        fs_id = resp["FileSystem"]["FileSystemId"]
+        try:
+            alias_resp = fsx.describe_file_system_aliases(FileSystemId=fs_id)
+            assert "Aliases" in alias_resp
+            assert isinstance(alias_resp["Aliases"], list)
+        finally:
+            fsx.delete_file_system(FileSystemId=fs_id)
+
+    def test_describe_file_system_aliases_nonexistent(self, fsx):
+        """DescribeFileSystemAliases for nonexistent fs raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            fsx.describe_file_system_aliases(FileSystemId="fs-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

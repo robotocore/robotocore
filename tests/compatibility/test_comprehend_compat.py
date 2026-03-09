@@ -409,3 +409,54 @@ class TestComprehendAdditionalOperations:
         with pytest.raises(ClientError) as exc:
             client.describe_endpoint(EndpointArn=ep_arn)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestComprehendFlywheelAndDatasetOps:
+    """Tests for flywheel and dataset operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("comprehend")
+
+    def test_describe_dataset_nonexistent(self, client):
+        """DescribeDataset with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fw/dataset/ds-fake"
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset(DatasetArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_flywheel_iteration_nonexistent(self, client):
+        """DescribeFlywheelIteration with fake flywheel raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        with pytest.raises(ClientError) as exc:
+            client.describe_flywheel_iteration(
+                FlywheelArn=fake_arn,
+                FlywheelIterationId="iter-fake",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_datasets_nonexistent_flywheel(self, client):
+        """ListDatasets with fake flywheel ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        with pytest.raises(ClientError) as exc:
+            client.list_datasets(FlywheelArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_document_classifier_summaries(self, client):
+        """ListDocumentClassifierSummaries returns a list."""
+        resp = client.list_document_classifier_summaries()
+        assert "DocumentClassifierSummariesList" in resp
+        assert isinstance(resp["DocumentClassifierSummariesList"], list)
+
+    def test_list_entity_recognizer_summaries(self, client):
+        """ListEntityRecognizerSummaries returns a list."""
+        resp = client.list_entity_recognizer_summaries()
+        assert "EntityRecognizerSummariesList" in resp
+        assert isinstance(resp["EntityRecognizerSummariesList"], list)
+
+    def test_list_flywheel_iteration_history_nonexistent(self, client):
+        """ListFlywheelIterationHistory with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:comprehend:us-east-1:123456789012:flywheel/fake-fw"
+        with pytest.raises(ClientError) as exc:
+            client.list_flywheel_iteration_history(FlywheelArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

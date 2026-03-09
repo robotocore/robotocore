@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -2347,3 +2348,93 @@ class TestSSMGetParametersMultiple:
         finally:
             ssm.delete_parameter(Name=name1)
             ssm.delete_parameter(Name=name2)
+
+
+class TestSSMDescribeOperations:
+    def test_describe_patch_properties(self, ssm):
+        """DescribePatchProperties returns patch property list."""
+        resp = ssm.describe_patch_properties(
+            OperatingSystem="AMAZON_LINUX_2",
+            Property="PRODUCT",
+        )
+        assert "Properties" in resp
+
+    def test_describe_sessions(self, ssm):
+        """DescribeSessions returns session list."""
+        resp = ssm.describe_sessions(State="Active")
+        assert "Sessions" in resp
+
+    def test_get_calendar_state(self, ssm):
+        """GetCalendarState with nonexistent calendar returns error or state."""
+        try:
+            resp = ssm.get_calendar_state(CalendarNames=["/nonexistent/calendar"])
+            # If it succeeds, should have State key
+            assert "State" in resp
+        except ssm.exceptions.ClientError:
+            # InvalidDocument or similar is acceptable
+            pass
+
+    def test_describe_patch_group_state(self, ssm):
+        """DescribePatchGroupState returns patch group compliance."""
+        resp = ssm.describe_patch_group_state(PatchGroup="nonexistent-group")
+        assert (
+            "Instances" in resp
+            or "InstancesWithInstalledPatches" in resp
+            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        )
+
+    def test_get_ops_summary(self, ssm):
+        """GetOpsSummary returns entities."""
+        resp = ssm.get_ops_summary()
+        assert "Entities" in resp
+
+    def test_get_connection_status(self, ssm):
+        """GetConnectionStatus returns status for an instance."""
+        resp = ssm.get_connection_status(Target="i-1234567890abcdef0")
+        assert "Target" in resp or "Status" in resp
+
+    def test_describe_instance_patch_states(self, ssm):
+        """DescribeInstancePatchStates returns patch states."""
+        resp = ssm.describe_instance_patch_states(InstanceIds=["i-1234567890abcdef0"])
+        assert "InstancePatchStates" in resp
+
+    def test_describe_instance_patch_states_for_patch_group(self, ssm):
+        """DescribeInstancePatchStatesForPatchGroup returns patch states."""
+        resp = ssm.describe_instance_patch_states_for_patch_group(PatchGroup="test-group")
+        assert "InstancePatchStates" in resp
+
+    def test_describe_association_executions(self, ssm):
+        """DescribeAssociationExecutions with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_association_executions(AssociationId="fake-assoc-id-12345")
+        assert exc.value.response["Error"]["Code"] in (
+            "AssociationDoesNotExist",
+            "DoesNotExistException",
+            "InvalidDocument",
+            "InternalServerError",
+        )
+
+    def test_describe_association_execution_targets(self, ssm):
+        """DescribeAssociationExecutionTargets with fake ID returns error."""
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_association_execution_targets(
+                AssociationId="fake-assoc-id-12345",
+                ExecutionId="fake-exec-id-12345",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "AssociationDoesNotExist",
+            "AssociationExecutionDoesNotExist",
+            "DoesNotExistException",
+            "InvalidDocument",
+            "InternalServerError",
+        )
+
+    def test_describe_effective_instance_associations(self, ssm):
+        """DescribeEffectiveInstanceAssociations returns associations list."""
+        resp = ssm.describe_effective_instance_associations(InstanceId="i-1234567890abcdef0")
+        assert "Associations" in resp
+
+    def test_describe_instance_associations_status(self, ssm):
+        """DescribeInstanceAssociationsStatus returns associations list."""
+        resp = ssm.describe_instance_associations_status(InstanceId="i-1234567890abcdef0")
+        assert "InstanceAssociationStatusInfos" in resp

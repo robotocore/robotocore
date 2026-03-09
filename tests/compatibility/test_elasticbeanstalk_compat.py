@@ -152,3 +152,77 @@ class TestTagsForResource:
         resp = eb.list_tags_for_resource(ResourceArn=env_arn)
         tags = {t["Key"]: t["Value"] for t in resp["ResourceTags"]}
         assert tags["env"] == "test"
+
+
+class TestElasticBeanstalkAdditionalOps:
+    """Tests for additional ElasticBeanstalk operations."""
+
+    def test_describe_account_attributes(self, eb):
+        resp = eb.describe_account_attributes()
+        assert "ResourceQuotas" in resp
+
+    def test_describe_application_versions_empty(self, eb):
+        resp = eb.describe_application_versions()
+        assert "ApplicationVersions" in resp
+        assert isinstance(resp["ApplicationVersions"], list)
+
+    def test_describe_configuration_options(self, eb):
+        resp = eb.describe_configuration_options()
+        assert "Options" in resp
+        assert isinstance(resp["Options"], list)
+
+    def test_describe_configuration_settings(self, eb):
+        app_name = _unique("cfg-app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            resp = eb.describe_configuration_settings(ApplicationName=app_name)
+            assert "ConfigurationSettings" in resp
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+    def test_describe_environment_health(self, eb):
+        resp = eb.describe_environment_health(
+            EnvironmentName="nonexistent-env",
+            AttributeNames=["All"],
+        )
+        assert "HealthStatus" in resp
+
+    def test_describe_environment_managed_action_history(self, eb):
+        resp = eb.describe_environment_managed_action_history()
+        assert "ManagedActionHistoryItems" in resp
+        assert isinstance(resp["ManagedActionHistoryItems"], list)
+
+    def test_describe_environment_managed_actions(self, eb):
+        resp = eb.describe_environment_managed_actions()
+        assert "ManagedActions" in resp
+        assert isinstance(resp["ManagedActions"], list)
+
+    def test_describe_environment_resources(self, eb):
+        resp = eb.describe_environment_resources(EnvironmentName="nonexistent-env")
+        assert "EnvironmentResources" in resp
+
+    def test_describe_events(self, eb):
+        resp = eb.describe_events()
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_instances_health(self, eb):
+        resp = eb.describe_instances_health(EnvironmentName="nonexistent-env")
+        assert "InstanceHealthList" in resp
+        assert isinstance(resp["InstanceHealthList"], list)
+
+    def test_describe_platform_version(self, eb):
+        resp = eb.describe_platform_version(
+            PlatformArn="arn:aws:elasticbeanstalk:us-east-1::platform/test/1.0"
+        )
+        assert "PlatformDescription" in resp
+
+    def test_list_platform_branches(self, eb):
+        resp = eb.list_platform_branches()
+        assert "PlatformBranchSummaryList" in resp
+        assert isinstance(resp["PlatformBranchSummaryList"], list)
+
+    def test_list_platform_versions(self, eb):
+        resp = eb.list_platform_versions()
+        assert "PlatformSummaryList" in resp
+        assert isinstance(resp["PlatformSummaryList"], list)

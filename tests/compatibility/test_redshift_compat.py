@@ -2250,3 +2250,36 @@ class TestRedshiftClusterIamAndEndpoint:
         assert "ClusterIdentifier" in resp
         assert resp["ClusterIdentifier"] == cluster
         assert "Status" in resp
+
+
+class TestRedshiftAdditionalOps:
+    """Tests for additional Redshift operations."""
+
+    def test_describe_node_configuration_options(self, redshift):
+        """DescribeNodeConfigurationOptions returns a list."""
+        resp = redshift.describe_node_configuration_options(ActionType="recommend-node-config")
+        assert "NodeConfigurationOptionList" in resp
+        assert isinstance(resp["NodeConfigurationOptionList"], list)
+
+    def test_describe_partners(self, redshift):
+        """DescribePartners returns partner info list."""
+        resp = redshift.describe_partners(
+            AccountId="123456789012",
+            ClusterIdentifier="nonexistent-cluster",
+        )
+        assert "PartnerIntegrationInfoList" in resp
+        assert isinstance(resp["PartnerIntegrationInfoList"], list)
+
+    def test_describe_resize_cluster_not_found(self, redshift):
+        """DescribeResize with nonexistent cluster raises ClusterNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.describe_resize(ClusterIdentifier="nonexistent-cluster-xyz")
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_get_reserved_node_exchange_configuration_options(self, redshift):
+        """GetReservedNodeExchangeConfigurationOptions returns a list."""
+        resp = redshift.get_reserved_node_exchange_configuration_options(
+            ActionType="restore-cluster"
+        )
+        assert "ReservedNodeConfigurationOptionList" in resp
+        assert isinstance(resp["ReservedNodeConfigurationOptionList"], list)

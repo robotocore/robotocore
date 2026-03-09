@@ -332,3 +332,65 @@ class TestLakeFormationGetResourceLFTags:
         """GetResourceLFTags for the Catalog resource returns a response."""
         resp = client.get_resource_lf_tags(Resource={"Catalog": {}})
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestLakeFormationAdditionalOps:
+    """Tests for additional LakeFormation operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_describe_lake_formation_identity_center_configuration(self, client):
+        """DescribeLakeFormationIdentityCenterConfiguration returns catalog info."""
+        resp = client.describe_lake_formation_identity_center_configuration()
+        assert "CatalogId" in resp
+
+    def test_describe_transaction_not_found(self, client):
+        """DescribeTransaction with fake ID raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.describe_transaction(TransactionId="fake-txn-id-12345")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_data_cells_filter_not_found(self, client):
+        """GetDataCellsFilter with nonexistent filter raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.get_data_cells_filter(
+                TableCatalogId="123456789012",
+                DatabaseName="nonexistent-db",
+                TableName="nonexistent-tbl",
+                Name="nonexistent-filter",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_data_lake_principal(self, client):
+        """GetDataLakePrincipal returns identity info."""
+        resp = client.get_data_lake_principal()
+        assert "Identity" in resp
+
+    def test_get_effective_permissions_for_path(self, client):
+        """GetEffectivePermissionsForPath returns permissions list."""
+        resp = client.get_effective_permissions_for_path(
+            ResourceArn="arn:aws:s3:::test-bucket-perms"
+        )
+        assert "Permissions" in resp
+        assert isinstance(resp["Permissions"], list)
+
+    def test_get_temporary_glue_table_credentials(self, client):
+        """GetTemporaryGlueTableCredentials returns temp credentials."""
+        resp = client.get_temporary_glue_table_credentials(
+            TableArn="arn:aws:glue:us-east-1:123456789012:table/db/tbl"
+        )
+        assert "AccessKeyId" in resp
+        assert "SecretAccessKey" in resp
+        assert "SessionToken" in resp
+
+    def test_list_transactions(self, client):
+        """ListTransactions returns a list."""
+        resp = client.list_transactions()
+        assert "Transactions" in resp
+        assert isinstance(resp["Transactions"], list)

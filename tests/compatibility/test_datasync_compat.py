@@ -269,3 +269,95 @@ class TestDataSyncLocationSmbOperations:
         assert desc["User"] == "admin"
 
         datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncDescribeLocationVariants:
+    """Tests for describe operations on various location types with fake ARNs."""
+
+    def test_describe_agent_nonexistent(self, datasync):
+        """DescribeAgent for nonexistent agent raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_agent(
+                AgentArn="arn:aws:datasync:us-east-1:123456789012:agent/agent-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_azure_blob_nonexistent(self, datasync):
+        """DescribeLocationAzureBlob for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_azure_blob(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_efs_nonexistent(self, datasync):
+        """DescribeLocationEfs for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_efs(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_fsx_lustre_nonexistent(self, datasync):
+        """DescribeLocationFsxLustre for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_fsx_lustre(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_fsx_ontap_nonexistent(self, datasync):
+        """DescribeLocationFsxOntap for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_fsx_ontap(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_fsx_open_zfs_nonexistent(self, datasync):
+        """DescribeLocationFsxOpenZfs for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_fsx_open_zfs(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_fsx_windows_nonexistent(self, datasync):
+        """DescribeLocationFsxWindows for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_fsx_windows(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_hdfs_nonexistent(self, datasync):
+        """DescribeLocationHdfs for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_hdfs(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_nfs_nonexistent(self, datasync):
+        """DescribeLocationNfs for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_nfs(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_object_storage_nonexistent(self, datasync):
+        """DescribeLocationObjectStorage for nonexistent location raises error."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_object_storage(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_describe_location_s3_nonexistent(self, datasync):
+        """DescribeLocationS3 for nonexistent location raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_location_s3(
+                LocationArn="arn:aws:datasync:us-east-1:123456789012:location/loc-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"

@@ -910,3 +910,103 @@ class TestBackupReportPlanOperations:
             "ResourceNotFoundException",
             "NotFoundException",
         )
+
+
+class TestBackupDescribeOperations:
+    """Tests for various describe/get/list operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("backup")
+
+    def test_describe_global_settings(self, client):
+        """DescribeGlobalSettings returns GlobalSettings dict."""
+        resp = client.describe_global_settings()
+        assert "GlobalSettings" in resp
+        assert isinstance(resp["GlobalSettings"], dict)
+
+    def test_describe_region_settings(self, client):
+        """DescribeRegionSettings returns ResourceTypeOptInPreference."""
+        resp = client.describe_region_settings()
+        assert "ResourceTypeOptInPreference" in resp
+        assert isinstance(resp["ResourceTypeOptInPreference"], dict)
+
+    def test_get_supported_resource_types(self, client):
+        """GetSupportedResourceTypes returns ResourceTypes list."""
+        resp = client.get_supported_resource_types()
+        assert "ResourceTypes" in resp
+        assert isinstance(resp["ResourceTypes"], list)
+
+    def test_list_backup_plan_templates(self, client):
+        """ListBackupPlanTemplates returns BackupPlanTemplatesList."""
+        resp = client.list_backup_plan_templates()
+        assert "BackupPlanTemplatesList" in resp
+        assert isinstance(resp["BackupPlanTemplatesList"], list)
+
+    def test_list_copy_jobs_empty(self, client):
+        """ListCopyJobs returns CopyJobs list."""
+        resp = client.list_copy_jobs()
+        assert "CopyJobs" in resp
+        assert isinstance(resp["CopyJobs"], list)
+
+    def test_list_protected_resources_empty(self, client):
+        """ListProtectedResources returns Results list."""
+        resp = client.list_protected_resources()
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_list_restore_testing_plans_empty(self, client):
+        """ListRestoreTestingPlans returns RestoreTestingPlans list."""
+        resp = client.list_restore_testing_plans()
+        assert "RestoreTestingPlans" in resp
+        assert isinstance(resp["RestoreTestingPlans"], list)
+
+    def test_describe_copy_job_nonexistent(self, client):
+        """DescribeCopyJob for nonexistent job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_copy_job(CopyJobId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_protected_resource_nonexistent(self, client):
+        """DescribeProtectedResource for nonexistent resource raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_protected_resource(
+                ResourceArn="arn:aws:dynamodb:us-east-1:123456789012:table/fake"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_recovery_point_nonexistent(self, client):
+        """DescribeRecoveryPoint for nonexistent vault raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_recovery_point(
+                BackupVaultName="fake-vault",
+                RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_backup_vault_access_policy_nonexistent(self, client):
+        """GetBackupVaultAccessPolicy for nonexistent vault raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_backup_vault_access_policy(BackupVaultName="fake-vault")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_backup_vault_notifications_nonexistent(self, client):
+        """GetBackupVaultNotifications for nonexistent vault raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_backup_vault_notifications(BackupVaultName="fake-vault")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_restore_testing_plan_nonexistent(self, client):
+        """GetRestoreTestingPlan for nonexistent plan raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_restore_testing_plan(RestoreTestingPlanName="fake-plan")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_restore_testing_selection_nonexistent(self, client):
+        """GetRestoreTestingSelection for nonexistent plan raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.get_restore_testing_selection(
+                RestoreTestingPlanName="fake-plan",
+                RestoreTestingSelectionName="fake-sel",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

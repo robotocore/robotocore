@@ -749,3 +749,111 @@ class TestDsGetDirectoryLimitsDetail:
         assert "CloudOnlyDirectoriesCurrentCount" in limits
         assert "ConnectedDirectoriesLimit" in limits
         assert "ConnectedDirectoriesCurrentCount" in limits
+
+
+class TestDsDescribeWithDirectory:
+    """Tests for describe operations that require a directory."""
+
+    def test_describe_event_topics_empty(self, ds):
+        """DescribeEventTopics with no filter returns EventTopics list."""
+        resp = ds.describe_event_topics()
+        assert "EventTopics" in resp
+        assert isinstance(resp["EventTopics"], list)
+
+    def test_describe_event_topics_for_directory(self, ds, directory):
+        """DescribeEventTopics filtered by DirectoryId returns list."""
+        resp = ds.describe_event_topics(DirectoryId=directory)
+        assert "EventTopics" in resp
+        assert isinstance(resp["EventTopics"], list)
+
+    def test_describe_snapshots_empty(self, ds):
+        """DescribeSnapshots with no filter returns Snapshots list."""
+        resp = ds.describe_snapshots()
+        assert "Snapshots" in resp
+        assert isinstance(resp["Snapshots"], list)
+
+    def test_describe_snapshots_for_directory(self, ds, directory):
+        """DescribeSnapshots filtered by DirectoryId returns list."""
+        resp = ds.describe_snapshots(DirectoryId=directory)
+        assert "Snapshots" in resp
+        assert isinstance(resp["Snapshots"], list)
+
+    def test_describe_conditional_forwarders_nonexistent(self, ds):
+        """DescribeConditionalForwarders for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_conditional_forwarders(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_conditional_forwarders_for_directory(self, ds, directory):
+        """DescribeConditionalForwarders for a real directory returns list."""
+        resp = ds.describe_conditional_forwarders(DirectoryId=directory)
+        assert "ConditionalForwarders" in resp
+        assert isinstance(resp["ConditionalForwarders"], list)
+
+    def test_describe_domain_controllers_nonexistent(self, ds):
+        """DescribeDomainControllers for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_domain_controllers(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_regions_nonexistent(self, ds):
+        """DescribeRegions for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_regions(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_shared_directories_nonexistent(self, ds):
+        """DescribeSharedDirectories for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_shared_directories(OwnerDirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_shared_directories_for_directory(self, ds, directory):
+        """DescribeSharedDirectories for a real directory returns list."""
+        resp = ds.describe_shared_directories(OwnerDirectoryId=directory)
+        assert "SharedDirectories" in resp
+        assert isinstance(resp["SharedDirectories"], list)
+
+    def test_describe_update_directory_nonexistent(self, ds):
+        """DescribeUpdateDirectory for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_update_directory(DirectoryId="d-0000000000", UpdateType="OS")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_get_snapshot_limits_nonexistent(self, ds):
+        """GetSnapshotLimits for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.get_snapshot_limits(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_get_snapshot_limits_for_directory(self, ds, directory):
+        """GetSnapshotLimits for a real directory returns SnapshotLimits."""
+        resp = ds.get_snapshot_limits(DirectoryId=directory)
+        assert "SnapshotLimits" in resp
+        limits = resp["SnapshotLimits"]
+        assert "ManualSnapshotsLimit" in limits
+        assert "ManualSnapshotsCurrentCount" in limits
+
+    def test_describe_client_authentication_settings_nonexistent(self, ds):
+        """DescribeClientAuthenticationSettings for nonexistent dir raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_client_authentication_settings(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_certificate_nonexistent(self, ds):
+        """DescribeCertificate for nonexistent dir raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_certificate(DirectoryId="d-0000000000", CertificateId="c-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_ad_assessment_nonexistent(self, ds):
+        """DescribeADAssessment for nonexistent assessment raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ad_assessment(AssessmentId="a-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_describe_ca_enrollment_policy_nonexistent(self, ds):
+        """DescribeCAEnrollmentPolicy for nonexistent dir raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ca_enrollment_policy(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
