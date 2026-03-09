@@ -2493,3 +2493,21 @@ class TestQuickSightMiscMutations:
             AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, SelfUpgradeStatus="OPT_IN"
         )
         assert resp["Status"] == 200
+
+
+class TestQuickSightAccountCustomPermissionMutations:
+    """Test account custom permission delete and update operations."""
+
+    def test_delete_account_custom_permission(self, quicksight):
+        resp = quicksight.delete_account_custom_permission(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_update_account_custom_permission(self, quicksight):
+        name = _unique("custperm")
+        resp = quicksight.update_account_custom_permission(
+            AwsAccountId=ACCOUNT_ID,
+            CustomPermissionsName=name,
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp

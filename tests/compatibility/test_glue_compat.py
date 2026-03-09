@@ -4632,3 +4632,95 @@ class TestGlueCreatePartitionIndex:
         finally:
             glue.delete_table(DatabaseName=db_name, Name=tbl_name)
             glue.delete_database(Name=db_name)
+
+
+class TestGlueMLTransforms:
+    """Tests for Glue ML Transform operations."""
+
+    def _create_transform(self, glue, name):
+        resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[
+                {
+                    "DatabaseName": "default",
+                    "TableName": "test_table",
+                }
+            ],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {
+                    "PrimaryKeyColumnName": "id",
+                },
+            },
+            Role="arn:aws:iam::123456789012:role/GlueRole",
+        )
+        return resp["TransformId"]
+
+    def test_create_ml_transform(self, glue):
+        """CreateMLTransform creates a transform and returns an ID."""
+        name = _unique("ml-xform")
+        transform_id = self._create_transform(glue, name)
+        assert transform_id is not None
+        assert len(transform_id) > 0
+        glue.delete_ml_transform(TransformId=transform_id)
+
+    def test_get_ml_transform(self, glue):
+        """GetMLTransform returns details for a specific transform."""
+        name = _unique("ml-xform")
+        transform_id = self._create_transform(glue, name)
+        try:
+            resp = glue.get_ml_transform(TransformId=transform_id)
+            assert resp["TransformId"] == transform_id
+            assert resp["Name"] == name
+        finally:
+            glue.delete_ml_transform(TransformId=transform_id)
+
+    def test_get_ml_transforms(self, glue):
+        """GetMLTransforms returns a list of transforms."""
+        resp = glue.get_ml_transforms()
+        assert "Transforms" in resp
+
+    def test_list_ml_transforms(self, glue):
+        """ListMLTransforms returns a list of transform IDs."""
+        resp = glue.list_ml_transforms()
+        assert "TransformIds" in resp
+
+    def test_update_ml_transform(self, glue):
+        """UpdateMLTransform updates a transform's description."""
+        name = _unique("ml-xform")
+        transform_id = self._create_transform(glue, name)
+        try:
+            resp = glue.update_ml_transform(
+                TransformId=transform_id,
+                Description="updated description",
+            )
+            assert resp["TransformId"] == transform_id
+            detail = glue.get_ml_transform(TransformId=transform_id)
+            assert detail["Description"] == "updated description"
+        finally:
+            glue.delete_ml_transform(TransformId=transform_id)
+
+    def test_delete_ml_transform(self, glue):
+        """DeleteMLTransform removes a transform."""
+        name = _unique("ml-xform")
+        transform_id = self._create_transform(glue, name)
+        resp = glue.delete_ml_transform(TransformId=transform_id)
+        assert resp["TransformId"] == transform_id
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_transform(TransformId=transform_id)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_ml_task_run_not_found(self, glue):
+        """GetMLTaskRun with a fake transform ID raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_task_run(
+                TransformId="tfm-00000000",
+                TaskRunId="tr-00000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_ml_task_runs_not_found(self, glue):
+        """GetMLTaskRuns with a fake transform ID raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_task_runs(TransformId="tfm-00000000")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"

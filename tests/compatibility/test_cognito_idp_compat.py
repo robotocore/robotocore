@@ -1155,3 +1155,393 @@ class TestGetUserPoolMfaConfig:
         assert get_resp["MfaConfiguration"] == "OFF"
 
         client.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoIdentityProviders:
+    """Tests for identity provider CRUD operations."""
+
+    def test_create_identity_provider(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("idp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            resp = cognito.create_identity_provider(
+                UserPoolId=pool_id,
+                ProviderName="TestOIDC",
+                ProviderType="OIDC",
+                ProviderDetails={
+                    "client_id": "test-client-id",
+                    "authorize_scopes": "openid email",
+                    "oidc_issuer": "https://example.com",
+                },
+            )
+            assert resp["IdentityProvider"]["ProviderName"] == "TestOIDC"
+            assert resp["IdentityProvider"]["ProviderType"] == "OIDC"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_describe_identity_provider(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("didp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_identity_provider(
+                UserPoolId=pool_id,
+                ProviderName="DescOIDC",
+                ProviderType="OIDC",
+                ProviderDetails={
+                    "client_id": "test-client",
+                    "authorize_scopes": "openid",
+                    "oidc_issuer": "https://example.com",
+                },
+            )
+            resp = cognito.describe_identity_provider(UserPoolId=pool_id, ProviderName="DescOIDC")
+            assert resp["IdentityProvider"]["ProviderName"] == "DescOIDC"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_list_identity_providers(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("lidp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_identity_provider(
+                UserPoolId=pool_id,
+                ProviderName="ListOIDC",
+                ProviderType="OIDC",
+                ProviderDetails={
+                    "client_id": "test-client",
+                    "authorize_scopes": "openid",
+                    "oidc_issuer": "https://example.com",
+                },
+            )
+            resp = cognito.list_identity_providers(UserPoolId=pool_id, MaxResults=10)
+            names = [p["ProviderName"] for p in resp["Providers"]]
+            assert "ListOIDC" in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_identity_provider(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("uidp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_identity_provider(
+                UserPoolId=pool_id,
+                ProviderName="UpdOIDC",
+                ProviderType="OIDC",
+                ProviderDetails={
+                    "client_id": "old-client",
+                    "authorize_scopes": "openid",
+                    "oidc_issuer": "https://example.com",
+                },
+            )
+            resp = cognito.update_identity_provider(
+                UserPoolId=pool_id,
+                ProviderName="UpdOIDC",
+                ProviderDetails={
+                    "client_id": "new-client",
+                    "authorize_scopes": "openid email",
+                    "oidc_issuer": "https://example.com",
+                },
+            )
+            assert resp["IdentityProvider"]["ProviderDetails"]["client_id"] == "new-client"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_identity_provider(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("delidp-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_identity_provider(
+                UserPoolId=pool_id,
+                ProviderName="DelOIDC",
+                ProviderType="OIDC",
+                ProviderDetails={
+                    "client_id": "test",
+                    "authorize_scopes": "openid",
+                    "oidc_issuer": "https://example.com",
+                },
+            )
+            cognito.delete_identity_provider(UserPoolId=pool_id, ProviderName="DelOIDC")
+            resp = cognito.list_identity_providers(UserPoolId=pool_id, MaxResults=10)
+            names = [p["ProviderName"] for p in resp["Providers"]]
+            assert "DelOIDC" not in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoResourceServers:
+    """Tests for resource server operations."""
+
+    def test_create_resource_server(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("rs-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            resp = cognito.create_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+                Name="Test API",
+                Scopes=[{"ScopeName": "read", "ScopeDescription": "Read access"}],
+            )
+            assert resp["ResourceServer"]["Identifier"] == "https://api.example.com"
+            assert resp["ResourceServer"]["Name"] == "Test API"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_describe_resource_server(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("drs-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api2.example.com",
+                Name="API 2",
+            )
+            resp = cognito.describe_resource_server(
+                UserPoolId=pool_id, Identifier="https://api2.example.com"
+            )
+            assert resp["ResourceServer"]["Name"] == "API 2"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoUserPoolDomains:
+    """Tests for user pool domain operations."""
+
+    def test_create_user_pool_domain(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("dom-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        domain = f"test-domain-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = cognito.create_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            except Exception:
+                pass
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_describe_user_pool_domain_exists(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("ddom-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        domain = f"test-domain-{uuid.uuid4().hex[:8]}"
+        try:
+            cognito.create_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            resp = cognito.describe_user_pool_domain(Domain=domain)
+            assert "DomainDescription" in resp
+            assert resp["DomainDescription"].get("Domain") == domain
+        finally:
+            try:
+                cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            except Exception:
+                pass
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_user_pool_domain(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("deldom-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        domain = f"test-domain-{uuid.uuid4().hex[:8]}"
+        try:
+            cognito.create_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            resp = cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoAdminUserExtended:
+    """Tests for additional admin user operations."""
+
+    def test_admin_delete_user_attributes(self, cognito):
+        pool = cognito.create_user_pool(
+            PoolName=_unique("delattr-pool"),
+            Schema=[{"Name": "email", "AttributeDataType": "String", "Mutable": True}],
+        )["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("delattr-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
+                UserAttributes=[{"Name": "email", "Value": "test@example.com"}],
+            )
+            resp = cognito.admin_delete_user_attributes(
+                UserPoolId=pool_id,
+                Username=username,
+                UserAttributeNames=["email"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_reset_user_password(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("rstpw-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("rstpw-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
+            )
+            resp = cognito.admin_reset_user_password(UserPoolId=pool_id, Username=username)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_set_user_mfa_preference(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("mfapref-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("mfapref-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
+            )
+            resp = cognito.admin_set_user_mfa_preference(
+                UserPoolId=pool_id,
+                Username=username,
+                SoftwareTokenMfaSettings={"Enabled": True, "PreferredMfa": True},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_set_user_password(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("setpw-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("setpw-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
+            )
+            resp = cognito.admin_set_user_password(
+                UserPoolId=pool_id,
+                Username=username,
+                Password="NewPermanent1!",
+                Permanent=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_admin_user_global_sign_out(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("gsignout-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            username = _unique("gsignout-user")
+            cognito.admin_create_user(
+                UserPoolId=pool_id,
+                Username=username,
+                TemporaryPassword="TempPass1!",
+                MessageAction="SUPPRESS",
+            )
+            resp = cognito.admin_user_global_sign_out(UserPoolId=pool_id, Username=username)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoAuthExtended:
+    """Tests for additional auth flow operations."""
+
+    def test_confirm_sign_up(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("csignup-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_resp = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="csignup-client",
+                ExplicitAuthFlows=["ALLOW_USER_PASSWORD_AUTH"],
+            )
+            client_id = client_resp["UserPoolClient"]["ClientId"]
+            username = _unique("csignup-user")
+            cognito.sign_up(
+                ClientId=client_id,
+                Username=username,
+                Password="Test@12345678",
+            )
+            resp = cognito.confirm_sign_up(
+                ClientId=client_id,
+                Username=username,
+                ConfirmationCode="123456",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_global_sign_out(self, cognito):
+        pool = cognito.create_user_pool(PoolName=_unique("gso-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_resp = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="gso-client",
+                ExplicitAuthFlows=[
+                    "ALLOW_USER_PASSWORD_AUTH",
+                    "ALLOW_REFRESH_TOKEN_AUTH",
+                ],
+            )
+            client_id = client_resp["UserPoolClient"]["ClientId"]
+            username = _unique("gso-user")
+            cognito.sign_up(
+                ClientId=client_id,
+                Username=username,
+                Password="Test@12345678",
+            )
+            cognito.admin_confirm_sign_up(UserPoolId=pool_id, Username=username)
+            auth = cognito.initiate_auth(
+                ClientId=client_id,
+                AuthFlow="USER_PASSWORD_AUTH",
+                AuthParameters={"USERNAME": username, "PASSWORD": "Test@12345678"},
+            )
+            access_token = auth["AuthenticationResult"]["AccessToken"]
+            resp = cognito.global_sign_out(AccessToken=access_token)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_user_attributes(self, cognito):
+        pool = cognito.create_user_pool(
+            PoolName=_unique("updattr-pool"),
+            Schema=[{"Name": "email", "AttributeDataType": "String", "Mutable": True}],
+            AutoVerifiedAttributes=["email"],
+        )["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_resp = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="updattr-client",
+                ExplicitAuthFlows=[
+                    "ALLOW_USER_PASSWORD_AUTH",
+                    "ALLOW_REFRESH_TOKEN_AUTH",
+                ],
+            )
+            client_id = client_resp["UserPoolClient"]["ClientId"]
+            username = _unique("updattr-user")
+            cognito.sign_up(
+                ClientId=client_id,
+                Username=username,
+                Password="Test@12345678",
+                UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+            )
+            cognito.admin_confirm_sign_up(UserPoolId=pool_id, Username=username)
+            auth = cognito.initiate_auth(
+                ClientId=client_id,
+                AuthFlow="USER_PASSWORD_AUTH",
+                AuthParameters={"USERNAME": username, "PASSWORD": "Test@12345678"},
+            )
+            access_token = auth["AuthenticationResult"]["AccessToken"]
+            resp = cognito.update_user_attributes(
+                AccessToken=access_token,
+                UserAttributes=[{"Name": "email", "Value": "new@example.com"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
