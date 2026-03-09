@@ -329,3 +329,87 @@ class TestInspector2FilterAdvanced:
         resp = client.list_filters()
         arns = [f["arn"] for f in resp["filters"]]
         assert arn not in arns
+
+
+class TestInspector2FilterDetails:
+    """Tests verifying filter details returned by ListFilters."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_list_filters_returns_filter_details(self, client):
+        """ListFilters returns filter with name and action."""
+        name = _unique("detail-filter")
+        create_resp = client.create_filter(
+            action="SUPPRESS",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        try:
+            resp = client.list_filters()
+            matching = [f for f in resp["filters"] if f["arn"] == arn]
+            assert len(matching) == 1
+            filt = matching[0]
+            assert filt["name"] == name
+            assert filt["action"] == "SUPPRESS"
+        finally:
+            client.delete_filter(arn=arn)
+
+    def test_create_multiple_filters_listed(self, client):
+        """Multiple created filters all appear in ListFilters."""
+        name1 = _unique("multi-f1")
+        name2 = _unique("multi-f2")
+        r1 = client.create_filter(action="NONE", filterCriteria={}, name=name1)
+        r2 = client.create_filter(action="SUPPRESS", filterCriteria={}, name=name2)
+        try:
+            resp = client.list_filters()
+            arns = [f["arn"] for f in resp["filters"]]
+            assert r1["arn"] in arns
+            assert r2["arn"] in arns
+        finally:
+            client.delete_filter(arn=r1["arn"])
+            client.delete_filter(arn=r2["arn"])
+
+
+class TestInspector2BatchGetAccountStatusDetails:
+    """Detailed assertions on BatchGetAccountStatus."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_batch_get_account_status_structure(self, client):
+        """BatchGetAccountStatus returns well-structured account info."""
+        resp = client.batch_get_account_status(accountIds=["123456789012"])
+        assert isinstance(resp["accounts"], list)
+        assert isinstance(resp["failedAccounts"], list)
+        if resp["accounts"]:
+            acct = resp["accounts"][0]
+            assert "accountId" in acct
+            assert "state" in acct
+            assert "resourceState" in acct
+
+    def test_batch_get_account_status_empty_ids(self, client):
+        """BatchGetAccountStatus with empty list returns empty accounts."""
+        resp = client.batch_get_account_status(accountIds=[])
+        assert "accounts" in resp
+        assert "failedAccounts" in resp
+
+    def test_list_findings_empty(self, client):
+        """ListFindings with no findings returns empty list."""
+        resp = client.list_findings()
+        assert isinstance(resp["findings"], list)
+        # Verify no nextToken when results are empty
+        assert resp.get("nextToken") is None or resp.get("nextToken") == ""
+
+    def test_list_members_structure(self, client):
+        """ListMembers returns well-structured response."""
+        resp = client.list_members()
+        assert isinstance(resp["members"], list)
+
+    def test_list_delegated_admin_accounts_structure(self, client):
+        """ListDelegatedAdminAccounts returns structured response."""
+        resp = client.list_delegated_admin_accounts()
+        assert isinstance(resp["delegatedAdminAccounts"], list)

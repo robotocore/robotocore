@@ -2124,3 +2124,64 @@ class TestSSMAssociationExtended:
         finally:
             ssm.delete_association(AssociationId=assoc_id)
             ssm.delete_document(Name=doc_name)
+
+
+class TestSSMAutomationExecutionDetails:
+    """Tests for GetAutomationExecution and StopAutomationExecution."""
+
+    def test_get_automation_execution(self, ssm):
+        """GetAutomationExecution returns execution details."""
+        import json
+
+        doc_name = _unique("auto-get-exec")
+        doc_content = json.dumps(
+            {
+                "schemaVersion": "0.3",
+                "description": "test automation",
+                "mainSteps": [
+                    {
+                        "name": "step1",
+                        "action": "aws:sleep",
+                        "inputs": {"Duration": "PT1S"},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(Content=doc_content, Name=doc_name, DocumentType="Automation")
+        try:
+            start = ssm.start_automation_execution(DocumentName=doc_name)
+            exec_id = start["AutomationExecutionId"]
+            resp = ssm.get_automation_execution(AutomationExecutionId=exec_id)
+            execution = resp["AutomationExecution"]
+            assert execution["AutomationExecutionId"] == exec_id
+            assert execution["DocumentName"] == doc_name
+            assert "AutomationExecutionStatus" in execution
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_stop_automation_execution(self, ssm):
+        """StopAutomationExecution stops a running execution."""
+        import json
+
+        doc_name = _unique("auto-stop-exec")
+        doc_content = json.dumps(
+            {
+                "schemaVersion": "0.3",
+                "description": "test automation",
+                "mainSteps": [
+                    {
+                        "name": "step1",
+                        "action": "aws:sleep",
+                        "inputs": {"Duration": "PT60S"},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(Content=doc_content, Name=doc_name, DocumentType="Automation")
+        try:
+            start = ssm.start_automation_execution(DocumentName=doc_name)
+            exec_id = start["AutomationExecutionId"]
+            stop_resp = ssm.stop_automation_execution(AutomationExecutionId=exec_id)
+            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssm.delete_document(Name=doc_name)

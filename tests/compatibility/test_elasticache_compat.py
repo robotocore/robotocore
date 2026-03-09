@@ -471,3 +471,161 @@ class TestElastiCacheSnapshotOperations:
 
         elasticache.delete_snapshot(SnapshotName=snap_name)
         elasticache.delete_replication_group(ReplicationGroupId=rg_id)
+
+
+class TestElastiCacheTagsOnCacheCluster:
+    """Tags on cache cluster resources."""
+
+    def test_add_and_list_tags_on_cluster(self, elasticache):
+        cc_id = _unique("cc")
+        resp = elasticache.create_cache_cluster(
+            CacheClusterId=cc_id,
+            NumCacheNodes=1,
+            CacheNodeType="cache.t2.micro",
+            Engine="redis",
+        )
+        arn = resp["CacheCluster"]["ARN"]
+        try:
+            elasticache.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[
+                    {"Key": "env", "Value": "staging"},
+                    {"Key": "team", "Value": "infra"},
+                ],
+            )
+            tags_resp = elasticache.list_tags_for_resource(ResourceName=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["TagList"]}
+            assert tag_map["env"] == "staging"
+            assert tag_map["team"] == "infra"
+        finally:
+            elasticache.delete_cache_cluster(CacheClusterId=cc_id)
+
+    def test_remove_tags_from_cluster(self, elasticache):
+        cc_id = _unique("cc")
+        resp = elasticache.create_cache_cluster(
+            CacheClusterId=cc_id,
+            NumCacheNodes=1,
+            CacheNodeType="cache.t2.micro",
+            Engine="redis",
+        )
+        arn = resp["CacheCluster"]["ARN"]
+        try:
+            elasticache.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "remove-me", "Value": "yes"},
+                ],
+            )
+            elasticache.remove_tags_from_resource(
+                ResourceName=arn,
+                TagKeys=["remove-me"],
+            )
+            tags_resp = elasticache.list_tags_for_resource(ResourceName=arn)
+            tag_keys = [t["Key"] for t in tags_resp["TagList"]]
+            assert "env" in tag_keys
+            assert "remove-me" not in tag_keys
+        finally:
+            elasticache.delete_cache_cluster(CacheClusterId=cc_id)
+
+
+class TestElastiCacheTagsOnReplicationGroup:
+    """Tags on replication group resources."""
+
+    def test_add_and_list_tags_on_replication_group(self, elasticache):
+        rg_id = _unique("rg")
+        resp = elasticache.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="tag test",
+        )
+        arn = resp["ReplicationGroup"]["ARN"]
+        try:
+            elasticache.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[{"Key": "env", "Value": "prod"}],
+            )
+            tags_resp = elasticache.list_tags_for_resource(ResourceName=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["TagList"]}
+            assert tag_map["env"] == "prod"
+        finally:
+            elasticache.delete_replication_group(ReplicationGroupId=rg_id)
+
+    def test_remove_tags_from_replication_group(self, elasticache):
+        rg_id = _unique("rg")
+        resp = elasticache.create_replication_group(
+            ReplicationGroupId=rg_id,
+            ReplicationGroupDescription="tag remove test",
+        )
+        arn = resp["ReplicationGroup"]["ARN"]
+        try:
+            elasticache.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "drop", "Value": "yes"},
+                ],
+            )
+            elasticache.remove_tags_from_resource(
+                ResourceName=arn,
+                TagKeys=["drop"],
+            )
+            tags_resp = elasticache.list_tags_for_resource(ResourceName=arn)
+            tag_keys = [t["Key"] for t in tags_resp["TagList"]]
+            assert "keep" in tag_keys
+            assert "drop" not in tag_keys
+        finally:
+            elasticache.delete_replication_group(ReplicationGroupId=rg_id)
+
+
+class TestElastiCacheTagsOnUser:
+    """Tags on user resources."""
+
+    def test_add_and_list_tags_on_user(self, elasticache):
+        user_id = _unique("user")
+        resp = elasticache.create_user(
+            UserId=user_id,
+            UserName="taguser",
+            Engine="redis",
+            AccessString="on ~* +@all",
+            NoPasswordRequired=True,
+        )
+        arn = resp["ARN"]
+        try:
+            elasticache.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[{"Key": "role", "Value": "admin"}],
+            )
+            tags_resp = elasticache.list_tags_for_resource(ResourceName=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["TagList"]}
+            assert tag_map["role"] == "admin"
+        finally:
+            elasticache.delete_user(UserId=user_id)
+
+    def test_remove_tags_from_user(self, elasticache):
+        user_id = _unique("user")
+        resp = elasticache.create_user(
+            UserId=user_id,
+            UserName="taguser2",
+            Engine="redis",
+            AccessString="on ~* +@all",
+            NoPasswordRequired=True,
+        )
+        arn = resp["ARN"]
+        try:
+            elasticache.add_tags_to_resource(
+                ResourceName=arn,
+                Tags=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "drop", "Value": "yes"},
+                ],
+            )
+            elasticache.remove_tags_from_resource(
+                ResourceName=arn,
+                TagKeys=["drop"],
+            )
+            tags_resp = elasticache.list_tags_for_resource(ResourceName=arn)
+            tag_keys = [t["Key"] for t in tags_resp["TagList"]]
+            assert "keep" in tag_keys
+            assert "drop" not in tag_keys
+        finally:
+            elasticache.delete_user(UserId=user_id)

@@ -705,6 +705,38 @@ class TestDsDeleteErrors:
         assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
 
 
+class TestDsTagPagination:
+    """Test tag listing with pagination."""
+
+    def test_list_tags_with_limit(self, ds, directory):
+        """ListTagsForResource with Limit returns paginated results."""
+        ds.add_tags_to_resource(
+            ResourceId=directory,
+            Tags=[{"Key": f"k{i}", "Value": f"v{i}"} for i in range(5)],
+        )
+        resp = ds.list_tags_for_resource(ResourceId=directory, Limit=2)
+        assert len(resp["Tags"]) == 2
+        assert "NextToken" in resp
+
+    def test_list_tags_paginate_all(self, ds, directory):
+        """ListTagsForResource paginates through all tags."""
+        ds.add_tags_to_resource(
+            ResourceId=directory,
+            Tags=[{"Key": f"page{i}", "Value": f"val{i}"} for i in range(5)],
+        )
+        all_tags = []
+        resp = ds.list_tags_for_resource(ResourceId=directory, Limit=2)
+        all_tags.extend(resp["Tags"])
+        while "NextToken" in resp:
+            resp = ds.list_tags_for_resource(
+                ResourceId=directory, Limit=2, NextToken=resp["NextToken"]
+            )
+            all_tags.extend(resp["Tags"])
+        tag_keys = {t["Key"] for t in all_tags}
+        for i in range(5):
+            assert f"page{i}" in tag_keys
+
+
 class TestDsGetDirectoryLimitsDetail:
     """Test GetDirectoryLimits returns detailed limit fields."""
 

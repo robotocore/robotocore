@@ -1,5 +1,7 @@
 """SES compatibility tests."""
 
+import uuid
+
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -1084,3 +1086,84 @@ class TestSesAutoCoverage:
         resp = client.list_receipt_filters()
         filter_names = [f["Name"] for f in resp["Filters"]]
         assert name not in filter_names
+
+
+class TestSESv2AccountAndContacts:
+    """Tests for SESv2 GetAccount and Contact CRUD operations."""
+
+    @pytest.fixture
+    def sesv2(self):
+        return make_client("sesv2")
+
+    def test_get_account(self, sesv2):
+        """GetAccount returns account-level sending info."""
+        resp = sesv2.get_account()
+        assert "SendingEnabled" in resp
+        assert "SendQuota" in resp
+        quota = resp["SendQuota"]
+        assert "Max24HourSend" in quota
+        assert "MaxSendRate" in quota
+        assert "SentLast24Hours" in quota
+
+    def test_get_account_enforcement_status(self, sesv2):
+        """GetAccount includes EnforcementStatus."""
+        resp = sesv2.get_account()
+        assert "EnforcementStatus" in resp
+
+    def test_create_and_get_contact(self, sesv2):
+        """CreateContact / GetContact full lifecycle."""
+        cl_name = f"cl-{uuid.uuid4().hex[:8]}"
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            email = "contact-test@example.com"
+            sesv2.create_contact(ContactListName=cl_name, EmailAddress=email)
+            resp = sesv2.get_contact(ContactListName=cl_name, EmailAddress=email)
+            assert resp["EmailAddress"] == email
+            assert resp["ContactListName"] == cl_name
+            assert "CreatedTimestamp" in resp
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_list_contacts(self, sesv2):
+        """ListContacts returns contacts in a contact list."""
+        cl_name = f"cl-{uuid.uuid4().hex[:8]}"
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            sesv2.create_contact(ContactListName=cl_name, EmailAddress="a@example.com")
+            sesv2.create_contact(ContactListName=cl_name, EmailAddress="b@example.com")
+            resp = sesv2.list_contacts(ContactListName=cl_name)
+            emails = [c["EmailAddress"] for c in resp["Contacts"]]
+            assert "a@example.com" in emails
+            assert "b@example.com" in emails
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_delete_contact(self, sesv2):
+        """DeleteContact removes a contact from the list."""
+        cl_name = f"cl-{uuid.uuid4().hex[:8]}"
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            email = "del-contact@example.com"
+            sesv2.create_contact(ContactListName=cl_name, EmailAddress=email)
+            sesv2.delete_contact(ContactListName=cl_name, EmailAddress=email)
+            resp = sesv2.list_contacts(ContactListName=cl_name)
+            emails = [c["EmailAddress"] for c in resp["Contacts"]]
+            assert email not in emails
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_create_contact_with_unsubscribe(self, sesv2):
+        """CreateContact with UnsubscribeAll flag."""
+        cl_name = f"cl-{uuid.uuid4().hex[:8]}"
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            email = "unsub@example.com"
+            sesv2.create_contact(
+                ContactListName=cl_name,
+                EmailAddress=email,
+                UnsubscribeAll=True,
+            )
+            resp = sesv2.get_contact(ContactListName=cl_name, EmailAddress=email)
+            assert resp["UnsubscribeAll"] is True
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
