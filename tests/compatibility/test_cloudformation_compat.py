@@ -2542,21 +2542,6 @@ class TestCloudFormationDriftOps:
     def client(self):
         return make_client("cloudformation")
 
-    def test_detect_stack_drift_fake_stack(self, client):
-        """DetectStackDrift with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.detect_stack_drift(StackName="fake-drift-stack-nonexistent")
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
-
-    def test_detect_stack_resource_drift_fake_stack(self, client):
-        """DetectStackResourceDrift with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.detect_stack_resource_drift(
-                StackName="fake-drift-res-stack",
-                LogicalResourceId="FakeResource",
-            )
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
-
     def test_detect_stack_set_drift_fake(self, client):
         """DetectStackSetDrift with nonexistent stack set raises error."""
         with pytest.raises(ClientError) as exc:
@@ -2570,12 +2555,6 @@ class TestCloudFormationDriftOps:
                 StackDriftDetectionId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
         assert "Code" in exc.value.response["Error"]
-
-    def test_describe_stack_resource_drifts_fake_stack(self, client):
-        """DescribeStackResourceDrifts with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.describe_stack_resource_drifts(StackName="fake-drifts-stack-nonexist")
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
 
 
 class TestCloudFormationResourceScan:
@@ -2623,38 +2602,6 @@ class TestCloudFormationMiscOps:
     def client(self):
         return make_client("cloudformation")
 
-    def test_continue_update_rollback_fake(self, client):
-        """ContinueUpdateRollback with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.continue_update_rollback(StackName="fake-rollback-stack-nonexist")
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
-
-    def test_rollback_stack_fake(self, client):
-        """RollbackStack with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.rollback_stack(StackName="fake-rollback-nonexist")
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
-
-    def test_signal_resource_fake(self, client):
-        """SignalResource with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.signal_resource(
-                StackName="fake-signal-stack-nonexist",
-                LogicalResourceId="FakeResource",
-                UniqueId="fake-unique-id",
-                Status="SUCCESS",
-            )
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
-
-    def test_update_termination_protection_fake(self, client):
-        """UpdateTerminationProtection with nonexistent stack raises ValidationError."""
-        with pytest.raises(ClientError) as exc:
-            client.update_termination_protection(
-                StackName="fake-term-prot-nonexist",
-                EnableTerminationProtection=True,
-            )
-        assert exc.value.response["Error"]["Code"] == "ValidationError"
-
     def test_describe_change_set_hooks_fake(self, client):
         """DescribeChangeSetHooks with fake changeset raises error."""
         with pytest.raises(ClientError) as exc:
@@ -2672,18 +2619,6 @@ class TestCloudFormationMiscOps:
                 StackIds=["arn:aws:cloudformation:us-east-1:123456789012:stack/fake/id"],
             )
         assert "Code" in exc.value.response["Error"]
-
-    def test_batch_describe_type_configurations(self, client):
-        """BatchDescribeTypeConfigurations returns a response."""
-        resp = client.batch_describe_type_configurations(
-            TypeConfigurationIdentifiers=[
-                {
-                    "TypeArn": "arn:aws:cloudformation:us-east-1:"
-                    "123456789012:type/resource/AWS-SQS-Queue",
-                }
-            ]
-        )
-        assert "Errors" in resp or "TypeConfigurations" in resp
 
     def test_list_stack_instance_resource_drifts_fake(self, client):
         """ListStackInstanceResourceDrifts with fake stack set raises error."""

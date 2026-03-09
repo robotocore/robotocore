@@ -1899,6 +1899,37 @@ class TestRoute53HealthCheckFailureReason:
             route53.delete_health_check(HealthCheckId=hc_id)
 
 
+class TestRoute53QueryLoggingConfigCRUD:
+    """Full CRUD cycle for query logging configs."""
+
+    def test_list_query_logging_configs_with_hosted_zone(self, route53):
+        """ListQueryLoggingConfigs filtered by HostedZoneId returns configs for that zone."""
+        zone = route53.create_hosted_zone(
+            Name="qlc-filter.example.com",
+            CallerReference=_unique("qlc-filter-ref"),
+        )
+        zone_id = zone["HostedZone"]["Id"].split("/")[-1]
+        try:
+            resp = route53.list_query_logging_configs(HostedZoneId=zone_id)
+            assert "QueryLoggingConfigs" in resp
+            assert isinstance(resp["QueryLoggingConfigs"], list)
+        finally:
+            route53.delete_hosted_zone(Id=zone_id)
+
+    def test_get_geo_location_with_continent_code(self, route53):
+        """GetGeoLocation with ContinentCode returns matching continent details."""
+        resp = route53.get_geo_location(ContinentCode="NA")
+        details = resp["GeoLocationDetails"]
+        assert details["ContinentCode"] == "NA"
+
+    def test_get_geo_location_with_subdivision(self, route53):
+        """GetGeoLocation with CountryCode and SubdivisionCode."""
+        resp = route53.get_geo_location(CountryCode="US", SubdivisionCode="CA")
+        details = resp["GeoLocationDetails"]
+        assert details["CountryCode"] == "US"
+        assert details["SubdivisionCode"] == "CA"
+
+
 class TestRoute53CidrCollections:
     """Tests for CIDR collection CRUD operations."""
 

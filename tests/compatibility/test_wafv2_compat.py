@@ -967,3 +967,32 @@ class TestWAFv2AdditionalOperations:
             "WAFNonexistentItemException",
             "WAFInvalidParameterException",
         )
+
+    def test_list_available_managed_rule_groups(self, wafv2):
+        """ListAvailableManagedRuleGroups returns managed rule group summaries."""
+        resp = wafv2.list_available_managed_rule_groups(Scope="REGIONAL")
+        assert "ManagedRuleGroups" in resp
+        assert isinstance(resp["ManagedRuleGroups"], list)
+        # AWS always has at least some managed rule groups
+        assert len(resp["ManagedRuleGroups"]) >= 1
+        # Each entry should have Name and VendorName
+        first = resp["ManagedRuleGroups"][0]
+        assert "Name" in first
+        assert "VendorName" in first
+
+    def test_list_available_managed_rule_group_versions(self, wafv2):
+        """ListAvailableManagedRuleGroupVersions returns versions for a managed rule group."""
+        resp = wafv2.list_available_managed_rule_group_versions(
+            VendorName="AWS",
+            Name="AWSManagedRulesCommonRuleSet",
+            Scope="REGIONAL",
+        )
+        assert "Versions" in resp
+        assert isinstance(resp["Versions"], list)
+        assert "CurrentDefaultVersion" in resp
+
+    def test_check_capacity_empty_rules(self, wafv2):
+        """CheckCapacity with empty rules returns zero capacity."""
+        resp = wafv2.check_capacity(Scope="REGIONAL", Rules=[])
+        assert "Capacity" in resp
+        assert resp["Capacity"] == 0
