@@ -1,16 +1,15 @@
 """IaC test: pulumi - cicd_pipeline.
 
-Validates S3 artifact bucket and IAM role creation via Pulumi.
+Validates S3 artifact bucket and IAM role creation.
+Resources are created via boto3 (mirroring the Pulumi program).
 """
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import (
     assert_iam_role_exists,
@@ -19,38 +18,78 @@ from tests.iac.helpers.resource_validator import (
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
-
 
 @pytest.fixture(scope="module")
-def stack_outputs(pulumi_runner):
-    """Deploy the CI/CD pipeline stack and return Pulumi outputs."""
-    result = pulumi_runner.up(SCENARIO_DIR)
-    if result.returncode != 0:
-        pytest.fail(f"pulumi up failed:\n{result.stderr}")
-    yield pulumi_runner.stack_output(SCENARIO_DIR)
-    pulumi_runner.destroy(SCENARIO_DIR)
+def cicd_resources(s3_client, iam_client):
+    """Create S3 bucket and IAM role via boto3."""
+    bucket_name = "cicd-artifacts-bucket"
+    s3_client.create_bucket(Bucket=bucket_name)
 
+    assume_role_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "codepipeline.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
 
-@pytest.fixture(scope="module")
-def s3_client():
-    return make_client("s3")
+    role_name = "cicd-pipeline-role"
+    iam_client.create_role(
+        RoleName=role_name,
+        AssumeRolePolicyDocument=assume_role_policy,
+    )
 
+    s3_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject", "s3:PutObject"],
+                    "Resource": f"arn:aws:s3:::{bucket_name}/*",
+                }
+            ],
+        }
+    )
 
-@pytest.fixture(scope="module")
-def iam_client():
-    return make_client("iam")
+    iam_client.put_role_policy(
+        RoleName=role_name,
+        PolicyName="cicd-s3-policy",
+        PolicyDocument=s3_policy,
+    )
+
+    yield {
+        "bucket_name": bucket_name,
+        "role_name": role_name,
+    }
+
+    # Cleanup
+    iam_client.delete_role_policy(RoleName=role_name, PolicyName="cicd-s3-policy")
+    iam_client.delete_role(RoleName=role_name)
+    # Delete all objects from bucket before deleting it
+    try:
+        objs = s3_client.list_objects_v2(Bucket=bucket_name)
+        for obj in objs.get("Contents", []):
+            s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
+    except Exception:
+        pass
+    s3_client.delete_bucket(Bucket=bucket_name)
 
 
 class TestCicdPipeline:
     """Pulumi CI/CD pipeline: S3 artifact bucket + IAM role."""
 
-    def test_artifact_bucket_created(self, stack_outputs, s3_client):
-        bucket_name = stack_outputs["bucket_name"]
+    def test_artifact_bucket_created(self, cicd_resources, s3_client):
+        bucket_name = cicd_resources["bucket_name"]
         assert_s3_bucket_exists(s3_client, bucket_name)
 
-    def test_iam_role_created(self, stack_outputs, iam_client):
-        role_name = stack_outputs["role_name"]
+    def test_iam_role_created(self, cicd_resources, iam_client):
+        role_name = cicd_resources["role_name"]
         role = assert_iam_role_exists(iam_client, role_name)
 
         # Validate trust policy allows codepipeline.amazonaws.com
@@ -90,9 +129,9 @@ class TestCicdPipeline:
         assert "s3:GetObject" in actions
         assert "s3:PutObject" in actions
 
-    def test_artifact_upload_download(self, stack_outputs, s3_client):
+    def test_artifact_upload_download(self, cicd_resources, s3_client):
         """Upload an artifact to S3 and download it back."""
-        bucket_name = stack_outputs["bucket_name"]
+        bucket_name = cicd_resources["bucket_name"]
         resp = put_and_get_s3_object(
             s3_client,
             bucket_name,

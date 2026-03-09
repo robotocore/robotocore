@@ -304,6 +304,7 @@ def _deploy_stack(
 ) -> None:
     """Parse template and create all resources in dependency order."""
     template = parse_template(stack.template_body)
+    template = _expand_sam_transform(template)
 
     # Merge template parameter defaults
     for pname, pdef in template.get("Parameters", {}).items():

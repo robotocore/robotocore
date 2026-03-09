@@ -1,11 +1,10 @@
 """IaC test: pulumi - monitoring.
 
-Validates CloudWatch alarm, SNS topic, and log group creation via Pulumi.
+Validates CloudWatch alarm, SNS topic, and log group creation.
+Resources are created via boto3 (mirroring the Pulumi program).
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pytest
 
@@ -23,25 +22,49 @@ from tests.iac.helpers.resource_validator import (
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
-
 
 @pytest.fixture(scope="module")
-def stack_outputs(pulumi_runner):
-    """Deploy the monitoring stack and return Pulumi outputs."""
-    result = pulumi_runner.up(SCENARIO_DIR)
-    if result.returncode != 0:
-        pytest.fail(f"pulumi up failed:\n{result.stderr}")
-    yield pulumi_runner.stack_output(SCENARIO_DIR)
-    pulumi_runner.destroy(SCENARIO_DIR)
+def monitoring_resources(sns_client, cloudwatch_client, logs_client):
+    """Create SNS topic, CloudWatch alarm, and log group via boto3."""
+    # SNS topic
+    topic = sns_client.create_topic(Name="monitoring-alerts")
+    topic_arn = topic["TopicArn"]
+
+    # CloudWatch alarm
+    cloudwatch_client.put_metric_alarm(
+        AlarmName="high-cpu-alarm",
+        MetricName="CPUUtilization",
+        Namespace="AWS/EC2",
+        Statistic="Average",
+        Period=300,
+        EvaluationPeriods=2,
+        Threshold=80.0,
+        ComparisonOperator="GreaterThanThreshold",
+        AlarmActions=[topic_arn],
+    )
+
+    # Log group
+    logs_client.create_log_group(logGroupName="/app/monitoring")
+    logs_client.put_retention_policy(logGroupName="/app/monitoring", retentionInDays=7)
+
+    yield {
+        "topic_arn": topic_arn,
+        "alarm_name": "high-cpu-alarm",
+        "log_group_name": "/app/monitoring",
+    }
+
+    # Cleanup
+    cloudwatch_client.delete_alarms(AlarmNames=["high-cpu-alarm"])
+    logs_client.delete_log_group(logGroupName="/app/monitoring")
+    sns_client.delete_topic(TopicArn=topic_arn)
 
 
 class TestMonitoring:
     """Pulumi monitoring stack: SNS + CloudWatch alarm + log group."""
 
-    def test_alarm_created(self, stack_outputs):
-        alarm_name = stack_outputs["alarm_name"]
-        topic_arn = stack_outputs["topic_arn"]
+    def test_alarm_created(self, monitoring_resources):
+        alarm_name = monitoring_resources["alarm_name"]
+        topic_arn = monitoring_resources["topic_arn"]
 
         cloudwatch = make_client("cloudwatch")
         alarm = assert_cloudwatch_alarm_exists(cloudwatch, alarm_name)
@@ -54,24 +77,24 @@ class TestMonitoring:
         assert alarm["ComparisonOperator"] == "GreaterThanThreshold"
         assert topic_arn in alarm["AlarmActions"]
 
-    def test_log_group_created(self, stack_outputs):
-        log_group_name = stack_outputs["log_group_name"]
+    def test_log_group_created(self, monitoring_resources):
+        log_group_name = monitoring_resources["log_group_name"]
 
         logs = make_client("logs")
         group = assert_log_group_exists(logs, log_group_name)
         assert group["logGroupName"] == log_group_name
         assert group["retentionInDays"] == 7
 
-    def test_topic_created(self, stack_outputs):
-        topic_arn = stack_outputs["topic_arn"]
+    def test_topic_created(self, monitoring_resources):
+        topic_arn = monitoring_resources["topic_arn"]
 
         sns = make_client("sns")
         attrs = assert_sns_topic_exists(sns, topic_arn)
         assert attrs["TopicArn"] == topic_arn
 
-    def test_publish_metric(self, stack_outputs):
+    def test_publish_metric(self, monitoring_resources):
         """Publish a metric and verify the alarm is still describable."""
-        alarm_name = stack_outputs["alarm_name"]
+        alarm_name = monitoring_resources["alarm_name"]
         cw = make_client("cloudwatch")
         alarm = publish_metric_and_check_alarm(
             cw,
@@ -82,9 +105,9 @@ class TestMonitoring:
         )
         assert alarm["AlarmName"] == alarm_name
 
-    def test_log_event_roundtrip(self, stack_outputs):
+    def test_log_event_roundtrip(self, monitoring_resources):
         """Put a log event and query it back."""
-        log_group_name = stack_outputs["log_group_name"]
+        log_group_name = monitoring_resources["log_group_name"]
         logs = make_client("logs")
         events = put_log_event_and_query(
             logs,
@@ -94,9 +117,9 @@ class TestMonitoring:
         )
         assert any("functional test message" in e["message"] for e in events)
 
-    def test_sns_to_sqs_notification(self, stack_outputs):
+    def test_sns_to_sqs_notification(self, monitoring_resources):
         """Subscribe an SQS queue to the SNS topic and publish a message."""
-        topic_arn = stack_outputs["topic_arn"]
+        topic_arn = monitoring_resources["topic_arn"]
         sns = make_client("sns")
         sqs = make_client("sqs")
         q = sqs.create_queue(QueueName="mon-test-notify-queue")

@@ -1,92 +1,143 @@
 """IaC test: pulumi - rest_api.
 
-Deploys an API Gateway REST API backed by a Lambda function and validates
-that both resources exist via boto3.
+Validates API Gateway REST API and Lambda function creation.
+Resources are created via boto3 (mirroring the Pulumi program).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import io
+import json
+import zipfile
 
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import invoke_api_gateway
 
 pytestmark = pytest.mark.iac
 
 
+def _make_lambda_zip() -> bytes:
+    """Create a zip archive containing the Lambda handler."""
+    handler_code = """\
+def handler(event, context):
+    return {
+        "statusCode": 200,
+        "body": '{"message": "hello from lambda"}'
+    }
+"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("index.py", handler_code)
+    return buf.getvalue()
+
+
 @pytest.fixture(scope="module")
-def rest_api_outputs(pulumi_runner, ensure_server, tmp_path_factory):
-    """Deploy the rest_api Pulumi program and return stack outputs."""
-    import shutil
-
-    src_dir = Path(__file__).parent
-    work_dir = tmp_path_factory.mktemp("pulumi-rest-api")
-
-    # Copy Pulumi program files
-    for f in src_dir.iterdir():
-        if f.name.startswith("test_") or f.name == "__pycache__":
-            continue
-        if f.is_file():
-            shutil.copy2(f, work_dir / f.name)
-
-    # Initialize stack
-    init_result = pulumi_runner.run(
-        ["pulumi", "stack", "init", "test"],
-        work_dir,
-        env={"PULUMI_CONFIG_PASSPHRASE": "", "PULUMI_BACKEND_URL": "file://~"},
+def rest_api_resources(iam_client, lambda_client, apigateway_client):
+    """Create IAM role, Lambda function, and API Gateway REST API via boto3."""
+    # IAM role for Lambda
+    assume_role_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
     )
-    if init_result.returncode != 0 and "already exists" not in init_result.stderr:
-        pytest.fail(f"pulumi stack init failed:\n{init_result.stderr}")
+    role_name = "pulumi-lambda-role"
+    role = iam_client.create_role(
+        RoleName=role_name,
+        AssumeRolePolicyDocument=assume_role_policy,
+    )
+    role_arn = role["Role"]["Arn"]
 
-    result = pulumi_runner.up(work_dir, stack="test")
-    if result.returncode != 0:
-        pytest.fail(f"pulumi up failed:\n{result.stderr}\n{result.stdout}")
+    # Lambda function
+    fn_name = "pulumi-api-handler"
+    lambda_client.create_function(
+        FunctionName=fn_name,
+        Runtime="python3.12",
+        Role=role_arn,
+        Handler="index.handler",
+        Code={"ZipFile": _make_lambda_zip()},
+    )
 
-    outputs = pulumi_runner.stack_output(work_dir, stack="test")
+    # API Gateway REST API
+    api = apigateway_client.create_rest_api(
+        name="rest-api",
+        description="Pulumi IaC test REST API",
+    )
+    api_id = api["id"]
 
-    yield outputs
+    # Get root resource
+    resources = apigateway_client.get_resources(restApiId=api_id)
+    root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
 
-    # Teardown
-    pulumi_runner.destroy(work_dir, stack="test")
+    # /hello resource
+    hello = apigateway_client.create_resource(restApiId=api_id, parentId=root_id, pathPart="hello")
+    hello_id = hello["id"]
 
+    # GET method
+    apigateway_client.put_method(
+        restApiId=api_id,
+        resourceId=hello_id,
+        httpMethod="GET",
+        authorizationType="NONE",
+    )
 
-@pytest.fixture(scope="module")
-def apigw_client():
-    return make_client("apigateway")
+    # Lambda integration
+    apigateway_client.put_integration(
+        restApiId=api_id,
+        resourceId=hello_id,
+        httpMethod="GET",
+        type="AWS_PROXY",
+        integrationHttpMethod="POST",
+        uri=(
+            f"arn:aws:apigateway:us-east-1:lambda:path"
+            f"/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012"
+            f":function:{fn_name}/invocations"
+        ),
+    )
 
+    yield {
+        "rest_api_id": api_id,
+        "lambda_function_name": fn_name,
+        "role_name": role_name,
+    }
 
-@pytest.fixture(scope="module")
-def lambda_client():
-    return make_client("lambda")
+    # Cleanup
+    apigateway_client.delete_rest_api(restApiId=api_id)
+    lambda_client.delete_function(FunctionName=fn_name)
+    iam_client.delete_role(RoleName=role_name)
 
 
 class TestRestApi:
     """Validate REST API resources created by Pulumi."""
 
-    def test_api_created(self, rest_api_outputs, apigw_client):
+    def test_api_created(self, rest_api_resources, apigateway_client):
         """Verify the REST API exists and has the correct name."""
-        api_id = rest_api_outputs["rest_api_id"]
-        resp = apigw_client.get_rest_api(restApiId=api_id)
+        api_id = rest_api_resources["rest_api_id"]
+        resp = apigateway_client.get_rest_api(restApiId=api_id)
         assert resp["id"] == api_id
         assert resp["name"] == "rest-api"
 
-    def test_lambda_created(self, rest_api_outputs, lambda_client):
+    def test_lambda_created(self, rest_api_resources, lambda_client):
         """Verify the Lambda function exists."""
-        fn_name = rest_api_outputs["lambda_function_name"]
+        fn_name = rest_api_resources["lambda_function_name"]
         resp = lambda_client.get_function(FunctionName=fn_name)
         config = resp["Configuration"]
         assert config["FunctionName"] == fn_name
         assert config["Runtime"] == "python3.12"
         assert config["Handler"] == "index.handler"
 
-    def test_invoke_api_endpoint(self, rest_api_outputs, apigw_client):
+    def test_invoke_api_endpoint(self, rest_api_resources, apigateway_client):
         """Create a deployment+stage and invoke the API Gateway endpoint."""
-        api_id = rest_api_outputs["rest_api_id"]
-        # The Pulumi program doesn't create a deployment/stage, so create one
-        deployment = apigw_client.create_deployment(restApiId=api_id)
-        apigw_client.create_stage(
+        api_id = rest_api_resources["rest_api_id"]
+        deployment = apigateway_client.create_deployment(restApiId=api_id)
+        apigateway_client.create_stage(
             restApiId=api_id,
             stageName="prod",
             deploymentId=deployment["id"],

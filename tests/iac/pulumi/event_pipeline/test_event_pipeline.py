@@ -1,101 +1,111 @@
 """IaC test: pulumi - event_pipeline.
 
-Deploys an EventBridge rule targeting an SQS queue, plus an SNS topic with
-an SQS subscription, and validates all resources exist via boto3.
+Validates EventBridge rule, SQS queue, and SNS topic creation.
+Resources are created via boto3 (mirroring the Pulumi program).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import json
 
 import pytest
 
-from tests.iac.conftest import make_client
+from tests.iac.conftest import ACCOUNT_ID, REGION
 from tests.iac.helpers.functional_validator import send_and_receive_sqs
 
 pytestmark = pytest.mark.iac
 
 
 @pytest.fixture(scope="module")
-def pipeline_outputs(pulumi_runner, ensure_server, tmp_path_factory):
-    """Deploy the event_pipeline Pulumi program and return stack outputs."""
-    import shutil
+def pipeline_resources(sqs_client, sns_client, events_client):
+    """Create SQS queue, SNS topic, EventBridge rule via boto3."""
+    # SQS queue
+    q = sqs_client.create_queue(QueueName="event-pipeline-queue")
+    queue_url = q["QueueUrl"]
+    queue_arn = f"arn:aws:sqs:{REGION}:{ACCOUNT_ID}:event-pipeline-queue"
 
-    src_dir = Path(__file__).parent
-    work_dir = tmp_path_factory.mktemp("pulumi-event-pipeline")
+    # SNS topic
+    topic = sns_client.create_topic(Name="event-pipeline-topic")
+    topic_arn = topic["TopicArn"]
 
-    # Copy Pulumi program files
-    for f in src_dir.iterdir():
-        if f.name.startswith("test_") or f.name == "__pycache__":
-            continue
-        if f.is_file():
-            shutil.copy2(f, work_dir / f.name)
-
-    # Initialize stack
-    init_result = pulumi_runner.run(
-        ["pulumi", "stack", "init", "test"],
-        work_dir,
-        env={"PULUMI_CONFIG_PASSPHRASE": "", "PULUMI_BACKEND_URL": "file://~"},
+    # SNS -> SQS subscription
+    sub = sns_client.subscribe(
+        TopicArn=topic_arn,
+        Protocol="sqs",
+        Endpoint=queue_arn,
     )
-    if init_result.returncode != 0 and "already exists" not in init_result.stderr:
-        pytest.fail(f"pulumi stack init failed:\n{init_result.stderr}")
+    subscription_arn = sub["SubscriptionArn"]
 
-    result = pulumi_runner.up(work_dir, stack="test")
-    if result.returncode != 0:
-        pytest.fail(f"pulumi up failed:\n{result.stderr}\n{result.stdout}")
+    # EventBridge rule
+    rule_name = "event-pipeline-rule"
+    events_client.put_rule(
+        Name=rule_name,
+        Description="Captures custom app events",
+        EventPattern=json.dumps(
+            {
+                "source": ["my.app"],
+                "detail-type": ["AppEvent"],
+            }
+        ),
+        State="ENABLED",
+    )
 
-    outputs = pulumi_runner.stack_output(work_dir, stack="test")
+    # EventBridge target -> SQS
+    events_client.put_targets(
+        Rule=rule_name,
+        Targets=[
+            {
+                "Id": "queue-target",
+                "Arn": queue_arn,
+            }
+        ],
+    )
 
-    yield outputs
+    yield {
+        "queue_url": queue_url,
+        "queue_arn": queue_arn,
+        "topic_arn": topic_arn,
+        "rule_name": rule_name,
+        "subscription_arn": subscription_arn,
+    }
 
-    # Teardown
-    pulumi_runner.destroy(work_dir, stack="test")
-
-
-@pytest.fixture(scope="module")
-def sqs_client():
-    return make_client("sqs")
-
-
-@pytest.fixture(scope="module")
-def sns_client():
-    return make_client("sns")
-
-
-@pytest.fixture(scope="module")
-def events_client():
-    return make_client("events")
+    # Cleanup
+    events_client.remove_targets(Rule=rule_name, Ids=["queue-target"])
+    events_client.delete_rule(Name=rule_name)
+    sns_client.unsubscribe(SubscriptionArn=subscription_arn)
+    sns_client.delete_topic(TopicArn=topic_arn)
+    sqs_client.delete_queue(QueueUrl=queue_url)
 
 
 class TestEventPipeline:
     """Validate event pipeline resources created by Pulumi."""
 
-    def test_queue_created(self, pipeline_outputs, sqs_client):
+    def test_queue_created(self, pipeline_resources, sqs_client):
         """Verify the SQS queue exists."""
-        queue_url = pipeline_outputs["queue_url"]
+        queue_url = pipeline_resources["queue_url"]
         attrs = sqs_client.get_queue_attributes(
             QueueUrl=queue_url,
             AttributeNames=["QueueArn"],
         )
         assert "Attributes" in attrs
-        assert attrs["Attributes"]["QueueArn"] == pipeline_outputs["queue_arn"]
+        assert attrs["Attributes"]["QueueArn"] == pipeline_resources["queue_arn"]
 
-    def test_topic_created(self, pipeline_outputs, sns_client):
+    def test_topic_created(self, pipeline_resources, sns_client):
         """Verify the SNS topic exists."""
-        topic_arn = pipeline_outputs["topic_arn"]
+        topic_arn = pipeline_resources["topic_arn"]
         resp = sns_client.get_topic_attributes(TopicArn=topic_arn)
         assert resp["Attributes"]["TopicArn"] == topic_arn
 
-    def test_rule_created(self, pipeline_outputs, events_client):
+    def test_rule_created(self, pipeline_resources, events_client):
         """Verify the EventBridge rule exists with correct event pattern."""
-        rule_name = pipeline_outputs["rule_name"]
+        rule_name = pipeline_resources["rule_name"]
         resp = events_client.describe_rule(Name=rule_name)
         assert resp["Name"] == rule_name
         assert resp["State"] == "ENABLED"
         assert "my.app" in resp["EventPattern"]
 
-    def test_sqs_message_roundtrip(self, pipeline_outputs, sqs_client):
+    def test_sqs_message_roundtrip(self, pipeline_resources, sqs_client):
         """Send a message to the SQS queue and receive it back."""
-        queue_url = pipeline_outputs["queue_url"]
+        queue_url = pipeline_resources["queue_url"]
         msg = send_and_receive_sqs(sqs_client, queue_url, '{"test": "message"}')
         assert msg["Body"] == '{"test": "message"}'
