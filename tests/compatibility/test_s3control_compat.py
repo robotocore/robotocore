@@ -2215,3 +2215,390 @@ class TestS3ControlMRAPDeepLifecycle:
                 )
             except Exception:
                 pass
+
+
+class TestS3ControlAccessGrantsResourcePolicy:
+    """Tests for Access Grants Instance Resource Policy operations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture(autouse=True)
+    def _ensure_instance(self, s3control):
+        """Ensure an access grants instance exists for tests."""
+        try:
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        yield
+        # Cleanup: remove resource policy if set
+        try:
+            s3control.delete_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        except Exception:
+            pass
+
+    def test_put_access_grants_instance_resource_policy(self, s3control):
+        """PutAccessGrantsInstanceResourcePolicy sets a policy and returns it."""
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetAccessGrant",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        resp = s3control.put_access_grants_instance_resource_policy(
+            AccountId=ACCOUNT_ID, Policy=policy_doc
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Policy" in resp
+
+    def test_get_access_grants_instance_resource_policy(self, s3control):
+        """GetAccessGrantsInstanceResourcePolicy returns the set policy."""
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetAccessGrant",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        s3control.put_access_grants_instance_resource_policy(
+            AccountId=ACCOUNT_ID, Policy=policy_doc
+        )
+        resp = s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Policy" in resp
+        # Policy should be parseable JSON
+        parsed = json.loads(resp["Policy"])
+        assert parsed["Version"] == "2012-10-17"
+
+    def test_delete_access_grants_instance_resource_policy(self, s3control):
+        """DeleteAccessGrantsInstanceResourcePolicy removes the policy."""
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetAccessGrant",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        s3control.put_access_grants_instance_resource_policy(
+            AccountId=ACCOUNT_ID, Policy=policy_doc
+        )
+        resp = s3control.delete_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3ControlAccessGrantLifecycle:
+    """Tests for CreateAccessGrant, GetAccessGrant, DeleteAccessGrant lifecycle."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture(autouse=True)
+    def _ensure_instance(self, s3control):
+        """Ensure an access grants instance exists."""
+        try:
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+
+    def test_create_access_grant(self, s3control):
+        """CreateAccessGrant returns grant ID, ARN, and permission."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://grant-create-bucket/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/grant-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        try:
+            resp = s3control.create_access_grant(
+                AccountId=ACCOUNT_ID,
+                AccessGrantsLocationId=loc_id,
+                AccessGrantsLocationConfiguration={"S3SubPrefix": "data/"},
+                Grantee={
+                    "GranteeType": "IAM",
+                    "GranteeIdentifier": "arn:aws:iam::123456789012:role/grantee",
+                },
+                Permission="READ",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "AccessGrantId" in resp
+            assert "AccessGrantArn" in resp
+            assert resp["Permission"] == "READ"
+            assert "CreatedAt" in resp
+        finally:
+            try:
+                s3control.delete_access_grant(
+                    AccountId=ACCOUNT_ID, AccessGrantId=resp["AccessGrantId"]
+                )
+            except Exception:
+                pass
+
+    def test_get_access_grant(self, s3control):
+        """GetAccessGrant returns full grant details."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://grant-get-bucket/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/grant-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        grant = s3control.create_access_grant(
+            AccountId=ACCOUNT_ID,
+            AccessGrantsLocationId=loc_id,
+            AccessGrantsLocationConfiguration={"S3SubPrefix": "prefix/"},
+            Grantee={
+                "GranteeType": "IAM",
+                "GranteeIdentifier": "arn:aws:iam::123456789012:role/grantee",
+            },
+            Permission="READWRITE",
+        )
+        grant_id = grant["AccessGrantId"]
+        try:
+            resp = s3control.get_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
+            assert resp["AccessGrantId"] == grant_id
+            assert resp["Permission"] == "READWRITE"
+            assert "AccessGrantArn" in resp
+            assert "Grantee" in resp
+            assert resp["Grantee"]["GranteeType"] == "IAM"
+        finally:
+            try:
+                s3control.delete_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
+            except Exception:
+                pass
+
+    def test_delete_access_grant(self, s3control):
+        """DeleteAccessGrant removes the grant."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://grant-del-bucket/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/grant-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        grant = s3control.create_access_grant(
+            AccountId=ACCOUNT_ID,
+            AccessGrantsLocationId=loc_id,
+            AccessGrantsLocationConfiguration={"S3SubPrefix": "x/"},
+            Grantee={
+                "GranteeType": "IAM",
+                "GranteeIdentifier": "arn:aws:iam::123456789012:role/grantee",
+            },
+            Permission="READ",
+        )
+        grant_id = grant["AccessGrantId"]
+        resp = s3control.delete_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrant"
+
+    def test_list_access_grants_includes_created(self, s3control):
+        """ListAccessGrants includes a newly created grant."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://grant-list-bucket/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/grant-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        grant = s3control.create_access_grant(
+            AccountId=ACCOUNT_ID,
+            AccessGrantsLocationId=loc_id,
+            AccessGrantsLocationConfiguration={"S3SubPrefix": "y/"},
+            Grantee={
+                "GranteeType": "IAM",
+                "GranteeIdentifier": "arn:aws:iam::123456789012:role/grantee",
+            },
+            Permission="READ",
+        )
+        grant_id = grant["AccessGrantId"]
+        try:
+            resp = s3control.list_access_grants(AccountId=ACCOUNT_ID)
+            ids = [g["AccessGrantId"] for g in resp["AccessGrantsList"]]
+            assert grant_id in ids
+        finally:
+            try:
+                s3control.delete_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
+            except Exception:
+                pass
+
+
+class TestS3ControlAccessGrantsLocationLifecycle:
+    """Tests for DeleteAccessGrantsLocation and UpdateAccessGrantsLocation."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture(autouse=True)
+    def _ensure_instance(self, s3control):
+        """Ensure an access grants instance exists."""
+        try:
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+
+    def test_delete_access_grants_location(self, s3control):
+        """DeleteAccessGrantsLocation removes the location."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://del-loc-test/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/del-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        resp = s3control.delete_access_grants_location(
+            AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsLocation"
+
+    def test_delete_access_grants_location_removed_from_list(self, s3control):
+        """Deleted location no longer appears in list."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://del-list-loc/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/del-list-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        s3control.delete_access_grants_location(AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id)
+        resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+        ids = [loc["AccessGrantsLocationId"] for loc in resp["AccessGrantsLocationsList"]]
+        assert loc_id not in ids
+
+    def test_update_access_grants_location(self, s3control):
+        """UpdateAccessGrantsLocation changes the IAM role."""
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://upd-loc-test/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/old-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        try:
+            resp = s3control.update_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                AccessGrantsLocationId=loc_id,
+                IAMRoleArn="arn:aws:iam::123456789012:role/new-role",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["AccessGrantsLocationId"] == loc_id
+            assert "IAMRoleArn" in resp
+            assert "new-role" in resp["IAMRoleArn"]
+        finally:
+            try:
+                s3control.delete_access_grants_location(
+                    AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+                )
+            except Exception:
+                pass
+
+    def test_update_access_grants_location_preserves_scope(self, s3control):
+        """UpdateAccessGrantsLocation preserves the location scope."""
+        scope = "s3://upd-scope-bucket/"
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope=scope,
+            IAMRoleArn="arn:aws:iam::123456789012:role/scope-role",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        try:
+            resp = s3control.update_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                AccessGrantsLocationId=loc_id,
+                IAMRoleArn="arn:aws:iam::123456789012:role/scope-role-v2",
+            )
+            assert resp["LocationScope"] == scope
+        finally:
+            try:
+                s3control.delete_access_grants_location(
+                    AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+                )
+            except Exception:
+                pass
+
+
+class TestS3ControlMRAPRoutes:
+    """Tests for Multi-Region Access Point Routes operations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def mrap_with_bucket(self, s3control, s3):
+        bucket = f"mrap-rt-{_uid()}"
+        mrap_name = f"mrap-rt-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        s3control.create_multi_region_access_point(
+            AccountId=ACCOUNT_ID,
+            Details={"Name": mrap_name, "Regions": [{"Bucket": bucket}]},
+        )
+        yield mrap_name, bucket
+        try:
+            s3control.delete_multi_region_access_point(
+                AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+            )
+        except Exception:
+            pass
+        try:
+            s3.delete_bucket(Bucket=bucket)
+        except Exception:
+            pass
+
+    def test_get_multi_region_access_point_routes(self, s3control, mrap_with_bucket):
+        """GetMultiRegionAccessPointRoutes returns routes for a MRAP."""
+        mrap_name, _ = mrap_with_bucket
+        resp = s3control.get_multi_region_access_point_routes(AccountId=ACCOUNT_ID, Mrap=mrap_name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Routes" in resp
+        assert isinstance(resp["Routes"], list)
+
+    def test_submit_multi_region_access_point_routes(self, s3control, mrap_with_bucket):
+        """SubmitMultiRegionAccessPointRoutes updates route configuration."""
+        mrap_name, bucket = mrap_with_bucket
+        resp = s3control.submit_multi_region_access_point_routes(
+            AccountId=ACCOUNT_ID,
+            Mrap=mrap_name,
+            RouteUpdates=[
+                {
+                    "Bucket": bucket,
+                    "Region": "us-east-1",
+                    "TrafficDialPercentage": 100,
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_mrap_routes_not_found(self, s3control):
+        """GetMultiRegionAccessPointRoutes for nonexistent MRAP raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID, Mrap=f"nonexistent-{_uid()}"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"

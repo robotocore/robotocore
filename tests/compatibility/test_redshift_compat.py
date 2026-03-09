@@ -2525,3 +2525,230 @@ class TestRedshiftSnapshotScheduleLifecycle:
         assert "DbUser" in resp
         assert "DbPassword" in resp
         assert "Expiration" in resp
+
+
+class TestRedshiftNewOps:
+    """Tests for newly-working Redshift operations."""
+
+    def test_modify_cluster_parameter_group(self, redshift):
+        """ModifyClusterParameterGroup updates parameters."""
+        name = f"mpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Modify test",
+        )
+        try:
+            resp = redshift.modify_cluster_parameter_group(
+                ParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "enable_user_activity_logging",
+                        "ParameterValue": "true",
+                        "ApplyType": "dynamic",
+                    }
+                ],
+            )
+            assert resp["ParameterGroupName"] == name
+            assert "ParameterGroupStatus" in resp
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_reset_cluster_parameter_group(self, redshift):
+        """ResetClusterParameterGroup resets parameters to defaults."""
+        name = f"rpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Reset test",
+        )
+        try:
+            resp = redshift.reset_cluster_parameter_group(
+                ParameterGroupName=name,
+                ResetAllParameters=True,
+            )
+            assert resp["ParameterGroupName"] == name
+            assert "ParameterGroupStatus" in resp
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_modify_cluster_snapshot(self, redshift):
+        """ModifyClusterSnapshot updates snapshot retention."""
+        cid = f"modsnap-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        snap = f"snap-{_uid()}"
+        redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+        try:
+            resp = redshift.modify_cluster_snapshot(
+                SnapshotIdentifier=snap,
+                ManualSnapshotRetentionPeriod=30,
+            )
+            assert resp["Snapshot"]["SnapshotIdentifier"] == snap
+        finally:
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster_subnet_group(self, redshift):
+        """ModifyClusterSubnetGroup updates subnet group."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.210.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.210.1.0/24")
+        sub2 = ec2.create_subnet(
+            VpcId=vpc_id,
+            CidrBlock="10.210.2.0/24",
+            AvailabilityZone="us-east-1b",
+        )
+        name = f"modsub-{_uid()}"
+        redshift.create_cluster_subnet_group(
+            ClusterSubnetGroupName=name,
+            Description="Original",
+            SubnetIds=[sub1["Subnet"]["SubnetId"]],
+        )
+        try:
+            resp = redshift.modify_cluster_subnet_group(
+                ClusterSubnetGroupName=name,
+                Description="Modified",
+                SubnetIds=[
+                    sub1["Subnet"]["SubnetId"],
+                    sub2["Subnet"]["SubnetId"],
+                ],
+            )
+            assert resp["ClusterSubnetGroup"]["ClusterSubnetGroupName"] == name
+            assert resp["ClusterSubnetGroup"]["Description"] == "Modified"
+        finally:
+            redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=name)
+
+    def test_reboot_cluster_not_found(self, redshift):
+        """RebootCluster with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            redshift.reboot_cluster(ClusterIdentifier=f"fake-reboot-{_uid()}")
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_authorize_data_share(self, redshift):
+        """AuthorizeDataShare returns a data share with AUTHORIZED status."""
+        arn = f"arn:aws:redshift:us-east-1:123456789012:datashare:fake-{_uid()}"
+        resp = redshift.authorize_data_share(
+            DataShareArn=arn,
+            ConsumerIdentifier="123456789012",
+        )
+        assert resp["DataShareArn"] == arn
+        assert len(resp["DataShareAssociations"]) >= 1
+        assert resp["DataShareAssociations"][0]["Status"] == "AUTHORIZED"
+
+    def test_reject_data_share(self, redshift):
+        """RejectDataShare returns a data share response."""
+        arn = f"arn:aws:redshift:us-east-1:123456789012:datashare:fake-{_uid()}"
+        resp = redshift.reject_data_share(DataShareArn=arn)
+        assert resp["DataShareArn"] == arn
+        assert "AllowPubliclyAccessibleConsumers" in resp
+
+    def test_deauthorize_data_share(self, redshift):
+        """DeauthorizeDataShare returns a data share with DEAUTHORIZED status."""
+        arn = f"arn:aws:redshift:us-east-1:123456789012:datashare:fake-{_uid()}"
+        resp = redshift.deauthorize_data_share(
+            DataShareArn=arn,
+            ConsumerIdentifier="123456789012",
+        )
+        assert resp["DataShareArn"] == arn
+        assert resp["DataShareAssociations"][0]["Status"] == "DEAUTHORIZED"
+
+    def test_associate_data_share_consumer(self, redshift):
+        """AssociateDataShareConsumer returns ACTIVE association."""
+        arn = f"arn:aws:redshift:us-east-1:123456789012:datashare:fake-{_uid()}"
+        consumer = "arn:aws:redshift:us-east-1:123456789012:namespace:fake"
+        resp = redshift.associate_data_share_consumer(
+            DataShareArn=arn,
+            ConsumerArn=consumer,
+        )
+        assert resp["DataShareArn"] == arn
+        assert resp["DataShareAssociations"][0]["Status"] == "ACTIVE"
+
+    def test_disassociate_data_share_consumer(self, redshift):
+        """DisassociateDataShareConsumer returns empty associations."""
+        arn = f"arn:aws:redshift:us-east-1:123456789012:datashare:fake-{_uid()}"
+        consumer = "arn:aws:redshift:us-east-1:123456789012:namespace:fake"
+        resp = redshift.disassociate_data_share_consumer(
+            DataShareArn=arn,
+            ConsumerArn=consumer,
+        )
+        assert resp["DataShareArn"] == arn
+        assert isinstance(resp["DataShareAssociations"], list)
+
+    def test_revoke_cluster_security_group_ingress_not_found(self, redshift):
+        """RevokeClusterSecurityGroupIngress with nonexistent group raises error."""
+        with pytest.raises(ClientError) as exc:
+            redshift.revoke_cluster_security_group_ingress(
+                ClusterSecurityGroupName=f"fake-sg-{_uid()}",
+                CIDRIP="10.0.0.0/24",
+            )
+        assert "Code" in exc.value.response["Error"]
+
+    def test_modify_cluster_snapshot_schedule(self, redshift):
+        """ModifyClusterSnapshotSchedule associates a schedule with a cluster."""
+        cid = f"schedmod-{_uid()}"
+        sid = f"sched-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        try:
+            redshift.modify_cluster_snapshot_schedule(
+                ClusterIdentifier=cid,
+                ScheduleIdentifier=sid,
+            )
+            # Verify the schedule is associated by describing the cluster
+            desc = redshift.describe_clusters(ClusterIdentifier=cid)
+            assert len(desc["Clusters"]) == 1
+        finally:
+            redshift.modify_cluster_snapshot_schedule(
+                ClusterIdentifier=cid,
+                ScheduleIdentifier=sid,
+                DisassociateSchedule=True,
+            )
+            redshift.delete_snapshot_schedule(ScheduleIdentifier=sid)
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_custom_domain_association_not_found(self, redshift):
+        """CreateCustomDomainAssociation with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            redshift.create_custom_domain_association(
+                ClusterIdentifier=f"fake-custom-{_uid()}",
+                CustomDomainName="test.example.com",
+                CustomDomainCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+            )
+        assert "Code" in exc.value.response["Error"]
+
+    def test_delete_custom_domain_association_not_found(self, redshift):
+        """DeleteCustomDomainAssociation with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_custom_domain_association(
+                ClusterIdentifier=f"fake-custom-del-{_uid()}",
+                CustomDomainName="test.example.com",
+            )
+        assert "Code" in exc.value.response["Error"]
+
+    def test_modify_custom_domain_association_not_found(self, redshift):
+        """ModifyCustomDomainAssociation with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            redshift.modify_custom_domain_association(
+                ClusterIdentifier=f"fake-custom-mod-{_uid()}",
+                CustomDomainName="test.example.com",
+                CustomDomainCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+            )
+        assert "Code" in exc.value.response["Error"]

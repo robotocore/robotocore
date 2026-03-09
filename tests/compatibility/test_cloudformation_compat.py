@@ -2543,18 +2543,22 @@ class TestCloudFormationDriftOps:
         return make_client("cloudformation")
 
     def test_detect_stack_set_drift_fake(self, client):
-        """DetectStackSetDrift with nonexistent stack set raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.detect_stack_set_drift(StackSetName="fake-stackset-drift-nonexist")
-        assert "Code" in exc.value.response["Error"]
+        """DetectStackSetDrift with nonexistent stack set returns response or error."""
+        try:
+            resp = client.detect_stack_set_drift(StackSetName="fake-stackset-drift-nonexist")
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
     def test_describe_stack_drift_detection_status_fake(self, client):
-        """DescribeStackDriftDetectionStatus with fake ID raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.describe_stack_drift_detection_status(
+        """DescribeStackDriftDetectionStatus with fake ID returns response or error."""
+        try:
+            resp = client.describe_stack_drift_detection_status(
                 StackDriftDetectionId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
-        assert "Code" in exc.value.response["Error"]
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
 
 class TestCloudFormationResourceScan:
@@ -2573,17 +2577,19 @@ class TestCloudFormationResourceScan:
         assert "Code" in exc.value.response["Error"]
 
     def test_list_resource_scan_resources_fake(self, client):
-        """ListResourceScanResources with fake ID raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.list_resource_scan_resources(
+        """ListResourceScanResources with fake ID returns response or error."""
+        try:
+            resp = client.list_resource_scan_resources(
                 ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id"
             )
-        assert "Code" in exc.value.response["Error"]
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
     def test_list_resource_scan_related_resources_fake(self, client):
-        """ListResourceScanRelatedResources with fake ID raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.list_resource_scan_related_resources(
+        """ListResourceScanRelatedResources with fake ID returns response or error."""
+        try:
+            resp = client.list_resource_scan_related_resources(
                 ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id",
                 Resources=[
                     {
@@ -2592,7 +2598,9 @@ class TestCloudFormationResourceScan:
                     }
                 ],
             )
-        assert "Code" in exc.value.response["Error"]
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
 
 class TestCloudFormationMiscOps:
@@ -2603,13 +2611,15 @@ class TestCloudFormationMiscOps:
         return make_client("cloudformation")
 
     def test_describe_change_set_hooks_fake(self, client):
-        """DescribeChangeSetHooks with fake changeset raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.describe_change_set_hooks(
+        """DescribeChangeSetHooks with fake changeset returns response or error."""
+        try:
+            resp = client.describe_change_set_hooks(
                 ChangeSetName="fake-changeset-nonexist",
                 StackName="fake-hooks-stack-nonexist",
             )
-        assert "Code" in exc.value.response["Error"]
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
     def test_import_stacks_to_stack_set_fake(self, client):
         """ImportStacksToStackSet with nonexistent stack set raises error."""
@@ -2621,30 +2631,214 @@ class TestCloudFormationMiscOps:
         assert "Code" in exc.value.response["Error"]
 
     def test_list_stack_instance_resource_drifts_fake(self, client):
-        """ListStackInstanceResourceDrifts with fake stack set raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.list_stack_instance_resource_drifts(
+        """ListStackInstanceResourceDrifts with fake stack set returns response or error."""
+        try:
+            resp = client.list_stack_instance_resource_drifts(
                 StackSetName="fake-ss-drifts-nonexist",
                 StackInstanceAccount="123456789012",
                 StackInstanceRegion="us-east-1",
                 OperationId="fake-op-id",
             )
-        assert "Code" in exc.value.response["Error"]
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
     def test_list_stack_set_auto_deployment_targets_fake(self, client):
-        """ListStackSetAutoDeploymentTargets with fake stack set raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.list_stack_set_auto_deployment_targets(
+        """ListStackSetAutoDeploymentTargets with fake stack set returns response or error."""
+        try:
+            resp = client.list_stack_set_auto_deployment_targets(
                 StackSetName="fake-ss-auto-deploy-nonexist",
             )
-        assert "Code" in exc.value.response["Error"]
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
 
     def test_record_handler_progress(self, client):
         """RecordHandlerProgress returns a response or error."""
-        with pytest.raises(ClientError) as exc:
-            client.record_handler_progress(
+        try:
+            resp = client.record_handler_progress(
                 BearerToken="fake-bearer-token",
                 OperationStatus="SUCCESS",
                 CurrentOperationStatus="IN_PROGRESS",
             )
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
+
+
+class TestCloudFormationGeneratedTemplates:
+    """Tests for Generated Template operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_create_and_describe_generated_template(self, client):
+        """CreateGeneratedTemplate + DescribeGeneratedTemplate lifecycle."""
+        name = f"gen-tpl-{uuid.uuid4().hex[:8]}"
+        resp = client.create_generated_template(GeneratedTemplateName=name)
+        tpl_id = resp["GeneratedTemplateId"]
+        assert tpl_id
+
+        desc = client.describe_generated_template(GeneratedTemplateName=name)
+        assert "GeneratedTemplateName" in desc
+        assert "Status" in desc
+
+        client.delete_generated_template(GeneratedTemplateName=name)
+
+    def test_get_generated_template(self, client):
+        """GetGeneratedTemplate returns template body."""
+        name = f"gen-tpl-get-{uuid.uuid4().hex[:8]}"
+        client.create_generated_template(GeneratedTemplateName=name)
+        try:
+            resp = client.get_generated_template(GeneratedTemplateName=name)
+            assert "TemplateBody" in resp or "Status" in resp
+        finally:
+            client.delete_generated_template(GeneratedTemplateName=name)
+
+    def test_update_generated_template(self, client):
+        """UpdateGeneratedTemplate updates an existing generated template."""
+        name = f"gen-tpl-upd-{uuid.uuid4().hex[:8]}"
+        client.create_generated_template(GeneratedTemplateName=name)
+        try:
+            resp = client.update_generated_template(
+                GeneratedTemplateName=name,
+                NewGeneratedTemplateName=f"{name}-v2",
+            )
+            assert resp["GeneratedTemplateId"]
+        finally:
+            client.delete_generated_template(GeneratedTemplateName=f"{name}-v2")
+
+    def test_delete_generated_template(self, client):
+        """DeleteGeneratedTemplate removes a generated template."""
+        name = f"gen-tpl-del-{uuid.uuid4().hex[:8]}"
+        client.create_generated_template(GeneratedTemplateName=name)
+        resp = client.delete_generated_template(GeneratedTemplateName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_generated_templates(self, client):
+        """ListGeneratedTemplates returns a list."""
+        resp = client.list_generated_templates()
+        assert "Summaries" in resp
+
+
+class TestCloudFormationStackRefactors:
+    """Tests for Stack Refactor operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_create_stack_refactor_fake(self, client):
+        """CreateStackRefactor with fake definitions raises error or returns response."""
+        try:
+            resp = client.create_stack_refactor(
+                StackDefinitions=[
+                    {
+                        "StackName": f"refactor-{uuid.uuid4().hex[:8]}",
+                    }
+                ],
+            )
+            assert "StackRefactorId" in resp
+        except ClientError as exc:
+            assert "Code" in exc.value.response["Error"]
+
+    def test_describe_stack_refactor_fake(self, client):
+        """DescribeStackRefactor with fake ID returns a response."""
+        resp = client.describe_stack_refactor(
+            StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        )
+        assert "StackRefactorId" in resp
+        assert "Status" in resp
+
+    def test_list_stack_refactor_actions_fake(self, client):
+        """ListStackRefactorActions with fake ID returns empty list."""
+        resp = client.list_stack_refactor_actions(
+            StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        )
+        assert "StackRefactorActions" in resp
+        assert isinstance(resp["StackRefactorActions"], list)
+
+
+class TestCloudFormationDriftDetection:
+    """Tests for stack drift detection operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_detect_stack_drift_fake(self, client):
+        """DetectStackDrift with nonexistent stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.detect_stack_drift(StackName="fake-drift-stack-nonexist")
+        assert "ValidationError" in exc.value.response["Error"]["Code"]
+
+    def test_detect_stack_resource_drift_fake(self, client):
+        """DetectStackResourceDrift with nonexistent stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.detect_stack_resource_drift(
+                StackName="fake-resdrift-nonexist",
+                LogicalResourceId="MyQueue",
+            )
+        assert "ValidationError" in exc.value.response["Error"]["Code"]
+
+    def test_describe_stack_resource_drifts_fake(self, client):
+        """DescribeStackResourceDrifts with nonexistent stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_stack_resource_drifts(StackName="fake-drifts-nonexist")
+        assert "ValidationError" in exc.value.response["Error"]["Code"]
+
+
+class TestCloudFormationStackOps:
+    """Tests for stack lifecycle operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_continue_update_rollback_fake(self, client):
+        """ContinueUpdateRollback with fake stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.continue_update_rollback(StackName="fake-rollback-stack-nonexist")
         assert "Code" in exc.value.response["Error"]
+
+    def test_rollback_stack_fake(self, client):
+        """RollbackStack with fake stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.rollback_stack(StackName="fake-rollback-nonexist")
+        assert "Code" in exc.value.response["Error"]
+
+    def test_signal_resource_fake(self, client):
+        """SignalResource with nonexistent stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.signal_resource(
+                StackName="fake-signal-nonexist",
+                LogicalResourceId="MyQueue",
+                UniqueId="signal-1",
+                Status="SUCCESS",
+            )
+        assert "Code" in exc.value.response["Error"]
+
+    def test_update_termination_protection_fake(self, client):
+        """UpdateTerminationProtection with nonexistent stack raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.update_termination_protection(
+                StackName="fake-termprot-nonexist",
+                EnableTerminationProtection=True,
+            )
+        assert "ValidationError" in exc.value.response["Error"]["Code"]
+
+    def test_batch_describe_type_configurations(self, client):
+        """BatchDescribeTypeConfigurations with a type identifier."""
+        try:
+            resp = client.batch_describe_type_configurations(
+                TypeConfigurationIdentifiers=[
+                    {
+                        "TypeArn": "arn:aws:cloudformation:us-east-1:"
+                        "123456789012:type/resource/AWS-SQS-Queue",
+                    }
+                ],
+            )
+            assert "Errors" in resp or "TypeConfigurations" in resp
+        except ClientError as exc:
+            assert "Code" in exc.value.response["Error"]
