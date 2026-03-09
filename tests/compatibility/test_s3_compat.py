@@ -3,6 +3,7 @@
 import json
 import os
 import time
+import uuid
 from urllib.request import Request as URLRequest
 from urllib.request import urlopen
 
@@ -2675,3 +2676,55 @@ class TestS3NotificationWithTopic:
         assert "TopicConfigurations" in resp
         assert len(resp["TopicConfigurations"]) >= 1
         assert resp["TopicConfigurations"][0]["Events"] == ["s3:ObjectCreated:*"]
+
+
+class TestS3LegacyOps:
+    """Tests for legacy S3 operations (v1 APIs)."""
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def bucket(self, s3):
+        bucket_name = f"legacy-test-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        yield bucket_name
+        try:
+            objects = s3.list_objects_v2(Bucket=bucket_name).get("Contents", [])
+            for obj in objects:
+                s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=bucket_name)
+        except Exception:
+            pass
+
+    def test_list_objects_v1(self, s3, bucket):
+        """ListObjects (v1) returns bucket Name."""
+        resp = s3.list_objects(Bucket=bucket)
+        assert "Name" in resp
+        assert resp["Name"] == bucket
+
+    def test_get_bucket_notification(self, s3, bucket):
+        """GetBucketNotification returns a response."""
+        resp = s3.get_bucket_notification(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_bucket_lifecycle_v1(self, s3, bucket):
+        """PutBucketLifecycle (v1) sets lifecycle rules."""
+        s3.put_bucket_lifecycle(
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "expire-all",
+                        "Prefix": "",
+                        "Status": "Enabled",
+                        "Expiration": {"Days": 30},
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_lifecycle(Bucket=bucket)
+        assert "Rules" in resp
+        assert len(resp["Rules"]) >= 1
+        assert resp["Rules"][0]["ID"] == "expire-all"

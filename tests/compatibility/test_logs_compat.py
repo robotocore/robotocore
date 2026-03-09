@@ -2288,3 +2288,21 @@ class TestLogsScheduledQueryList:
         resp = logs.list_scheduled_queries()
         assert "scheduledQueries" in resp
         assert isinstance(resp["scheduledQueries"], list)
+
+
+class TestLogsAdditionalOps:
+    """Additional CloudWatch Logs operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("logs")
+
+    def test_put_log_group_deletion_protection_nonexistent(self, client):
+        """PutLogGroupDeletionProtection raises ResourceNotFoundException for nonexistent group."""
+        fake_arn = "arn:aws:logs:us-east-1:123456789012:log-group:nonexistent-group-xyz:*"
+        with pytest.raises(ClientError) as exc:
+            client.put_log_group_deletion_protection(
+                logGroupIdentifier=fake_arn,
+                deletionProtectionEnabled=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

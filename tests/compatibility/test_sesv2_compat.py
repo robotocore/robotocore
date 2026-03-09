@@ -2123,3 +2123,25 @@ class TestSESv2ListRecommendations:
         resp = sesv2.list_recommendations()
         assert "Recommendations" in resp
         assert isinstance(resp["Recommendations"], list)
+
+
+class TestSESV2AdditionalOps:
+    """Additional SES V2 operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sesv2")
+
+    def test_render_email_template_nonexistent(self, client):
+        """TestRenderEmailTemplate raises NotFoundException for nonexistent template."""
+        with pytest.raises(ClientError) as exc:
+            client.test_render_email_template(
+                TemplateName="nonexistent-tpl-xyz",
+                TemplateData='{"name":"World"}',
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_domain_deliverability_campaign(self, client):
+        """GetDomainDeliverabilityCampaign returns a response for a fake ID."""
+        resp = client.get_domain_deliverability_campaign(CampaignId="fake-campaign-id-xyz")
+        assert "DomainDeliverabilityCampaign" in resp

@@ -2215,3 +2215,12 @@ class TestCloudFrontCopyAndStagingConfig:
         finally:
             etag = cf.get_distribution(Id=dist_id)["ETag"]
             cf.delete_distribution(Id=dist_id, IfMatch=etag)
+
+
+class TestCloudFrontWebACL:
+    """Tests for CloudFront Web ACL distribution listing."""
+
+    def test_list_distributions_by_web_acl_id(self, cf):
+        """ListDistributionsByWebACLId returns a DistributionList."""
+        resp = cf.list_distributions_by_web_acl_id(WebACLId="fake-acl-id")
+        assert "DistributionList" in resp

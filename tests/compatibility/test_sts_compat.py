@@ -660,3 +660,44 @@ class TestSTSExtended:
             assert "AccessKeyId" in response["Credentials"]
         finally:
             iam.delete_role(RoleName=role_name)
+
+
+class TestSTSAdditionalOps:
+    """Additional STS operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sts")
+
+    def test_assume_role_with_saml_minimal(self, client):
+        """AssumeRoleWithSAML with minimal fake assertion returns credentials."""
+        iam = make_client("iam")
+        role_name = f"saml-add-{uuid.uuid4().hex[:8]}"
+        trust_policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Federated": "*"},
+                        "Action": "sts:AssumeRoleWithSAML",
+                    }
+                ],
+            }
+        )
+        role = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=trust_policy,
+        )
+        role_arn = role["Role"]["Arn"]
+        try:
+            resp = client.assume_role_with_saml(
+                RoleArn=role_arn,
+                PrincipalArn="arn:aws:iam::123456789012:saml-provider/TestProv",
+                SAMLAssertion="PHNhbWw+ZHVtbXk8L3NhbWw+",
+            )
+            assert "Credentials" in resp
+            assert "SecretAccessKey" in resp["Credentials"]
+            assert "SessionToken" in resp["Credentials"]
+        finally:
+            iam.delete_role(RoleName=role_name)

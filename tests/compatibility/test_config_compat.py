@@ -1651,3 +1651,44 @@ class TestConformancePackComplianceOperations:
         with pytest.raises(ClientError) as exc:
             client.get_resource_evaluation_summary(ResourceEvaluationId="fake-eval-id")
         assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
+
+
+class TestConfigAdditionalOps:
+    """Additional Config operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_delete_evaluation_results_nonexistent(self, client):
+        """DeleteEvaluationResults raises for nonexistent config rule."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_evaluation_results(ConfigRuleName="nonexistent-rule-xyz")
+        assert "NoSuchConfigRuleException" in exc.value.response["Error"]["Code"]
+
+    def test_put_external_evaluation(self, client):
+        """PutExternalEvaluation requires a valid config rule."""
+        with pytest.raises(ClientError) as exc:
+            client.put_external_evaluation(
+                ConfigRuleName="nonexistent-rule-xyz",
+                ExternalEvaluation={
+                    "ComplianceResourceType": "AWS::EC2::Instance",
+                    "ComplianceResourceId": "i-12345678",
+                    "ComplianceType": "COMPLIANT",
+                    "OrderingTimestamp": "2026-01-01T00:00:00Z",
+                },
+            )
+        err_code = exc.value.response["Error"]["Code"]
+        assert "NoSuchConfigRuleException" in err_code
+
+    def test_start_resource_evaluation(self, client):
+        """StartResourceEvaluation returns an evaluation ID."""
+        resp = client.start_resource_evaluation(
+            ResourceDetails={
+                "ResourceId": "i-12345678",
+                "ResourceType": "AWS::EC2::Instance",
+                "ResourceConfiguration": '{"instanceType":"t2.micro"}',
+            },
+            EvaluationMode="PROACTIVE",
+        )
+        assert "ResourceEvaluationId" in resp

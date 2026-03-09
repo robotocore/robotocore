@@ -1690,3 +1690,199 @@ class TestGuardDutyStartMalwareScan:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "ScanId" in resp
+
+
+class TestGuardDutyIPSets:
+    """Tests for GuardDuty IP Set operations."""
+
+    def test_create_ip_set(self, guardduty, detector):
+        """CreateIPSet returns an IpSetId."""
+        name = _unique("ipset")
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=False,
+        )
+        assert "IpSetId" in resp
+        ip_set_id = resp["IpSetId"]
+        guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+
+    def test_get_ip_set(self, guardduty, detector):
+        """GetIPSet returns details of a created IP set."""
+        name = _unique("ipset")
+        create_resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=False,
+        )
+        ip_set_id = create_resp["IpSetId"]
+        try:
+            resp = guardduty.get_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+            assert resp["Name"] == name
+            assert resp["Format"] == "TXT"
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+
+    def test_list_ip_sets(self, guardduty, detector):
+        """ListIPSets returns IpSetIds."""
+        resp = guardduty.list_ip_sets(DetectorId=detector)
+        assert "IpSetIds" in resp
+
+    def test_update_ip_set(self, guardduty, detector):
+        """UpdateIPSet can change the name of an IP set."""
+        name = _unique("ipset")
+        create_resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=False,
+        )
+        ip_set_id = create_resp["IpSetId"]
+        try:
+            new_name = _unique("ipset-updated")
+            resp = guardduty.update_ip_set(DetectorId=detector, IpSetId=ip_set_id, Name=new_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            detail = guardduty.get_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+            assert detail["Name"] == new_name
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+
+    def test_delete_ip_set(self, guardduty, detector):
+        """DeleteIPSet removes the IP set."""
+        name = _unique("ipset")
+        create_resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=False,
+        )
+        ip_set_id = create_resp["IpSetId"]
+        resp = guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyThreatIntelSets:
+    """Tests for GuardDuty Threat Intel Set operations."""
+
+    def test_create_threat_intel_set(self, guardduty, detector):
+        """CreateThreatIntelSet returns a ThreatIntelSetId."""
+        name = _unique("threat")
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/threat.txt",
+            Activate=False,
+        )
+        assert "ThreatIntelSetId" in resp
+        guardduty.delete_threat_intel_set(
+            DetectorId=detector, ThreatIntelSetId=resp["ThreatIntelSetId"]
+        )
+
+    def test_get_threat_intel_set(self, guardduty, detector):
+        """GetThreatIntelSet returns details of a created threat intel set."""
+        name = _unique("threat")
+        create_resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/threat.txt",
+            Activate=False,
+        )
+        tid = create_resp["ThreatIntelSetId"]
+        try:
+            resp = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tid)
+            assert resp["Name"] == name
+            assert resp["Format"] == "TXT"
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tid)
+
+    def test_list_threat_intel_sets(self, guardduty, detector):
+        """ListThreatIntelSets returns ThreatIntelSetIds."""
+        resp = guardduty.list_threat_intel_sets(DetectorId=detector)
+        assert "ThreatIntelSetIds" in resp
+
+    def test_update_threat_intel_set(self, guardduty, detector):
+        """UpdateThreatIntelSet can change the name."""
+        name = _unique("threat")
+        create_resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/threat.txt",
+            Activate=False,
+        )
+        tid = create_resp["ThreatIntelSetId"]
+        try:
+            new_name = _unique("threat-updated")
+            resp = guardduty.update_threat_intel_set(
+                DetectorId=detector, ThreatIntelSetId=tid, Name=new_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            detail = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tid)
+            assert detail["Name"] == new_name
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tid)
+
+    def test_delete_threat_intel_set(self, guardduty, detector):
+        """DeleteThreatIntelSet removes the threat intel set."""
+        name = _unique("threat")
+        create_resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://test-bucket/threat.txt",
+            Activate=False,
+        )
+        tid = create_resp["ThreatIntelSetId"]
+        resp = guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tid)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyMalwareProtection:
+    """Tests for GuardDuty Malware Protection Plan operations."""
+
+    def test_create_malware_protection_plan(self, guardduty):
+        """CreateMalwareProtectionPlan returns a MalwareProtectionPlanId."""
+        resp = guardduty.create_malware_protection_plan(
+            Role="arn:aws:iam::123456789012:role/test",
+            ProtectedResource={"S3Bucket": {"BucketName": "test-bucket"}},
+        )
+        assert "MalwareProtectionPlanId" in resp
+        guardduty.delete_malware_protection_plan(
+            MalwareProtectionPlanId=resp["MalwareProtectionPlanId"]
+        )
+
+    def test_list_malware_protection_plans(self, guardduty):
+        """ListMalwareProtectionPlans returns MalwareProtectionPlans."""
+        resp = guardduty.list_malware_protection_plans()
+        assert "MalwareProtectionPlans" in resp
+
+    def test_get_malware_protection_plan(self, guardduty):
+        """GetMalwareProtectionPlan returns details of a created plan."""
+        create_resp = guardduty.create_malware_protection_plan(
+            Role="arn:aws:iam::123456789012:role/test",
+            ProtectedResource={"S3Bucket": {"BucketName": "test-bucket"}},
+        )
+        plan_id = create_resp["MalwareProtectionPlanId"]
+        try:
+            resp = guardduty.get_malware_protection_plan(MalwareProtectionPlanId=plan_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            guardduty.delete_malware_protection_plan(MalwareProtectionPlanId=plan_id)
+
+    def test_delete_malware_protection_plan(self, guardduty):
+        """DeleteMalwareProtectionPlan removes the plan."""
+        create_resp = guardduty.create_malware_protection_plan(
+            Role="arn:aws:iam::123456789012:role/test",
+            ProtectedResource={"S3Bucket": {"BucketName": "test-bucket"}},
+        )
+        plan_id = create_resp["MalwareProtectionPlanId"]
+        resp = guardduty.delete_malware_protection_plan(MalwareProtectionPlanId=plan_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
