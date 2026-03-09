@@ -42,6 +42,12 @@ async def handle_xray_request(request: Request, region: str, account_id: str) ->
         body = await request.body()
         params = json.loads(body) if body else {}
         result = handler(params, region, account_id)
+        if isinstance(result, dict) and result.get("__error__"):
+            error_data = {
+                "__type": result["code"],
+                "Message": result["message"],
+            }
+            return _json_response(error_data, status_code=result.get("status_code", 400))
         return _json_response(result)
 
     return await forward_to_moto(request, "xray")
@@ -225,6 +231,78 @@ def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
     return {"Tags": tags, "NextToken": None}
 
 
+# Resource policies store: policy_name -> policy dict
+_resource_policies: dict[str, dict[str, Any]] = {}
+
+
+def _put_resource_policy(params: dict, region: str, account_id: str) -> dict:
+    policy_name = params.get("PolicyName", "")
+    policy_document = params.get("PolicyDocument", "")
+    revision_id = str(uuid.uuid4())
+
+    policy = {
+        "PolicyName": policy_name,
+        "PolicyDocument": policy_document,
+        "PolicyRevisionId": revision_id,
+        "LastUpdatedTime": 0.0,
+    }
+    _resource_policies[policy_name] = policy
+    return {"ResourcePolicy": policy}
+
+
+def _list_resource_policies(params: dict, region: str, account_id: str) -> dict:
+    policies = list(_resource_policies.values())
+    return {"ResourcePolicies": policies, "NextToken": None}
+
+
+def _delete_resource_policy(params: dict, region: str, account_id: str) -> dict:
+    policy_name = params.get("PolicyName", "")
+    revision_id = params.get("PolicyRevisionId", "")
+
+    if policy_name in _resource_policies:
+        existing = _resource_policies[policy_name]
+        if revision_id and existing["PolicyRevisionId"] != revision_id:
+            return _error_response(
+                "InvalidPolicyRevisionIdException",
+                "The provided policy revision id does not match.",
+                400,
+            )
+        _resource_policies.pop(policy_name)
+    return {}
+
+
+def _get_insight_summaries(params: dict, region: str, account_id: str) -> dict:
+    return {"InsightSummaries": []}
+
+
+def _get_sampling_targets(params: dict, region: str, account_id: str) -> dict:
+    import datetime
+
+    return {
+        "SamplingTargetDocuments": [],
+        "LastRuleModification": datetime.datetime.now(datetime.UTC).isoformat(),
+        "UnprocessedStatistics": [],
+    }
+
+
+def _get_time_series_service_statistics(params: dict, region: str, account_id: str) -> dict:
+    return {"TimeSeriesServiceStatistics": [], "ContainsOldGroupVersions": False}
+
+
+def _get_trace_summaries(params: dict, region: str, account_id: str) -> dict:
+    import datetime
+
+    return {
+        "TraceSummaries": [],
+        "ApproximateTime": datetime.datetime.now(datetime.UTC).timestamp(),
+    }
+
+
+def _error_response(code: str, message: str, status_code: int = 400) -> dict:
+    """Return a dict that handle_xray_request wraps into an error response."""
+    return {"__error__": True, "code": code, "message": message, "status_code": status_code}
+
+
 _PATH_MAP = {
     "/CreateSamplingRule": _create_sampling_rule,
     "/GetSamplingRules": _get_sampling_rules,
@@ -239,4 +317,11 @@ _PATH_MAP = {
     "/TagResource": _tag_resource,
     "/UntagResource": _untag_resource,
     "/ListTagsForResource": _list_tags_for_resource,
+    "/PutResourcePolicy": _put_resource_policy,
+    "/ListResourcePolicies": _list_resource_policies,
+    "/DeleteResourcePolicy": _delete_resource_policy,
+    "/InsightSummaries": _get_insight_summaries,
+    "/SamplingTargets": _get_sampling_targets,
+    "/TimeSeriesServiceStatistics": _get_time_series_service_statistics,
+    "/TraceSummaries": _get_trace_summaries,
 }

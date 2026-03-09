@@ -659,6 +659,11 @@ class AWSRoutingMiddleware:
 
         path = scope.get("path", "")
 
+        # Rewrite /_localstack/* to /_robotocore/* for drop-in compatibility
+        if path.startswith("/_localstack/"):
+            scope = dict(scope, path="/_robotocore/" + path[len("/_localstack/") :])
+            path = scope["path"]
+
         if path.startswith("/_robotocore/"):
             await self.app(scope, receive, send)
             return
