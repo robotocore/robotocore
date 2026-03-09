@@ -12,8 +12,10 @@ ARG SETUPTOOLS_SCM_PRETEND_VERSION=dev
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 
 # Install dependencies (layer cache: only re-runs when lockfile changes)
+# Split into two layers: heavy deps (moto, boto3 — rarely change) then the rest
 COPY pyproject.toml uv.lock* README.md ./
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --no-dev --no-install-project \
+    && uv cache clean
 
 # Copy source and install the project itself
 COPY src/ src/
