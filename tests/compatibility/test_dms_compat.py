@@ -1745,3 +1745,573 @@ class TestDMSReplicationInstanceSubnetGroup:
             dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
         finally:
             dms.delete_replication_subnet_group(ReplicationSubnetGroupIdentifier=sg_id)
+
+
+class TestDMSTagOperations:
+    """Tests for AddTagsToResource and RemoveTagsFromResource."""
+
+    def test_add_tags_to_resource(self, dms):
+        ep_id = _unique("tag-ep")
+        ep = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="pass",
+        )
+        arn = ep["Endpoint"]["EndpointArn"]
+        try:
+            dms.add_tags_to_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "qa"}],
+            )
+            tags = dms.list_tags_for_resource(ResourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "qa"
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
+
+    def test_remove_tags_from_resource(self, dms):
+        ep_id = _unique("untag-ep")
+        ep = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="pass",
+        )
+        arn = ep["Endpoint"]["EndpointArn"]
+        try:
+            dms.add_tags_to_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "remove", "Value": "no"}],
+            )
+            dms.remove_tags_from_resource(ResourceArn=arn, TagKeys=["remove"])
+            tags = dms.list_tags_for_resource(ResourceArn=arn)
+            tag_keys = [t["Key"] for t in tags["TagList"]]
+            assert "keep" in tag_keys
+            assert "remove" not in tag_keys
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
+
+
+class TestDMSModifyEndpointOperations:
+    """Tests for ModifyEndpoint."""
+
+    def test_modify_endpoint(self, dms):
+        ep_id = _unique("mod-ep")
+        ep = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="pass",
+        )
+        arn = ep["Endpoint"]["EndpointArn"]
+        try:
+            resp = dms.modify_endpoint(EndpointArn=arn, ServerName="newhost", Port=3307)
+            modified = resp["Endpoint"]
+            assert modified["ServerName"] == "newhost"
+            assert modified["Port"] == 3307
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
+
+
+class TestDMSCertificateOperations:
+    """Tests for ImportCertificate and DeleteCertificate."""
+
+    def test_import_certificate(self, dms):
+        cert_id = _unique("cert")
+        resp = dms.import_certificate(
+            CertificateIdentifier=cert_id,
+            CertificatePem="-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----",
+        )
+        cert = resp["Certificate"]
+        assert cert["CertificateIdentifier"] == cert_id
+        assert "CertificateArn" in cert
+        dms.delete_certificate(CertificateArn=cert["CertificateArn"])
+
+    def test_delete_certificate(self, dms):
+        cert_id = _unique("del-cert")
+        resp = dms.import_certificate(
+            CertificateIdentifier=cert_id,
+            CertificatePem="-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----",
+        )
+        cert_arn = resp["Certificate"]["CertificateArn"]
+        del_resp = dms.delete_certificate(CertificateArn=cert_arn)
+        assert "Certificate" in del_resp
+
+    def test_import_and_list_certificates(self, dms):
+        cert_id = _unique("list-cert")
+        resp = dms.import_certificate(
+            CertificateIdentifier=cert_id,
+            CertificatePem="-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----",
+        )
+        cert_arn = resp["Certificate"]["CertificateArn"]
+        try:
+            certs = dms.describe_certificates()
+            cert_ids = [c["CertificateIdentifier"] for c in certs["Certificates"]]
+            assert cert_id in cert_ids
+        finally:
+            dms.delete_certificate(CertificateArn=cert_arn)
+
+
+class TestDMSEventSubscriptionOperations:
+    """Tests for EventSubscription create/modify/delete."""
+
+    def test_create_event_subscription(self, dms):
+        sub_name = _unique("sub")
+        resp = dms.create_event_subscription(
+            SubscriptionName=sub_name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test",
+        )
+        assert "EventSubscription" in resp
+        assert resp["EventSubscription"]["CustSubscriptionId"] == sub_name
+        dms.delete_event_subscription(SubscriptionName=sub_name)
+
+    def test_modify_event_subscription(self, dms):
+        sub_name = _unique("mod-sub")
+        dms.create_event_subscription(
+            SubscriptionName=sub_name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test",
+        )
+        try:
+            resp = dms.modify_event_subscription(SubscriptionName=sub_name, Enabled=False)
+            assert "EventSubscription" in resp
+        finally:
+            dms.delete_event_subscription(SubscriptionName=sub_name)
+
+    def test_delete_event_subscription(self, dms):
+        sub_name = _unique("del-sub")
+        dms.create_event_subscription(
+            SubscriptionName=sub_name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test",
+        )
+        resp = dms.delete_event_subscription(SubscriptionName=sub_name)
+        assert "EventSubscription" in resp
+
+    def test_describe_event_subscriptions_includes_created(self, dms):
+        sub_name = _unique("desc-sub")
+        dms.create_event_subscription(
+            SubscriptionName=sub_name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test",
+        )
+        try:
+            resp = dms.describe_event_subscriptions()
+            sub_names = [s["CustSubscriptionId"] for s in resp["EventSubscriptionsList"]]
+            assert sub_name in sub_names
+        finally:
+            dms.delete_event_subscription(SubscriptionName=sub_name)
+
+
+class TestDMSInstanceProfileOperations:
+    """Tests for InstanceProfile create/modify/delete."""
+
+    def test_create_instance_profile(self, dms):
+        ip_name = _unique("ip")
+        resp = dms.create_instance_profile(InstanceProfileName=ip_name)
+        assert "InstanceProfile" in resp
+        assert "InstanceProfileArn" in resp["InstanceProfile"]
+        dms.delete_instance_profile(
+            InstanceProfileIdentifier=resp["InstanceProfile"]["InstanceProfileArn"]
+        )
+
+    def test_modify_instance_profile(self, dms):
+        ip_name = _unique("mod-ip")
+        ip = dms.create_instance_profile(InstanceProfileName=ip_name)
+        ip_arn = ip["InstanceProfile"]["InstanceProfileArn"]
+        try:
+            resp = dms.modify_instance_profile(
+                InstanceProfileIdentifier=ip_arn, Description="updated"
+            )
+            assert "InstanceProfile" in resp
+        finally:
+            dms.delete_instance_profile(InstanceProfileIdentifier=ip_arn)
+
+    def test_delete_instance_profile(self, dms):
+        ip_name = _unique("del-ip")
+        ip = dms.create_instance_profile(InstanceProfileName=ip_name)
+        ip_arn = ip["InstanceProfile"]["InstanceProfileArn"]
+        resp = dms.delete_instance_profile(InstanceProfileIdentifier=ip_arn)
+        assert "InstanceProfile" in resp
+
+    def test_describe_instance_profiles_includes_created(self, dms):
+        ip_name = _unique("list-ip")
+        ip = dms.create_instance_profile(InstanceProfileName=ip_name)
+        ip_arn = ip["InstanceProfile"]["InstanceProfileArn"]
+        try:
+            resp = dms.describe_instance_profiles()
+            arns = [p["InstanceProfileArn"] for p in resp["InstanceProfiles"]]
+            assert ip_arn in arns
+        finally:
+            dms.delete_instance_profile(InstanceProfileIdentifier=ip_arn)
+
+
+class TestDMSDataProviderOperations:
+    """Tests for DataProvider create/modify/delete."""
+
+    def test_create_data_provider(self, dms):
+        dp_name = _unique("dp")
+        resp = dms.create_data_provider(
+            DataProviderName=dp_name,
+            Engine="mysql",
+            Settings={"MySqlSettings": {"ServerName": "localhost", "Port": 3306}},
+        )
+        assert "DataProvider" in resp
+        assert "DataProviderArn" in resp["DataProvider"]
+        dms.delete_data_provider(DataProviderIdentifier=resp["DataProvider"]["DataProviderArn"])
+
+    def test_modify_data_provider(self, dms):
+        dp_name = _unique("mod-dp")
+        dp = dms.create_data_provider(
+            DataProviderName=dp_name,
+            Engine="mysql",
+            Settings={"MySqlSettings": {"ServerName": "localhost", "Port": 3306}},
+        )
+        dp_arn = dp["DataProvider"]["DataProviderArn"]
+        try:
+            resp = dms.modify_data_provider(
+                DataProviderIdentifier=dp_arn,
+                Engine="mysql",
+                Settings={"MySqlSettings": {"ServerName": "newhost", "Port": 3306}},
+            )
+            assert "DataProvider" in resp
+        finally:
+            dms.delete_data_provider(DataProviderIdentifier=dp_arn)
+
+    def test_delete_data_provider(self, dms):
+        dp_name = _unique("del-dp")
+        dp = dms.create_data_provider(
+            DataProviderName=dp_name,
+            Engine="mysql",
+            Settings={"MySqlSettings": {"ServerName": "localhost", "Port": 3306}},
+        )
+        dp_arn = dp["DataProvider"]["DataProviderArn"]
+        resp = dms.delete_data_provider(DataProviderIdentifier=dp_arn)
+        assert "DataProvider" in resp
+
+    def test_describe_data_providers_includes_created(self, dms):
+        dp_name = _unique("list-dp")
+        dp = dms.create_data_provider(
+            DataProviderName=dp_name,
+            Engine="mysql",
+            Settings={"MySqlSettings": {"ServerName": "localhost", "Port": 3306}},
+        )
+        dp_arn = dp["DataProvider"]["DataProviderArn"]
+        try:
+            resp = dms.describe_data_providers()
+            arns = [p["DataProviderArn"] for p in resp["DataProviders"]]
+            assert dp_arn in arns
+        finally:
+            dms.delete_data_provider(DataProviderIdentifier=dp_arn)
+
+
+class TestDMSMigrationProjectOperations:
+    """Tests for MigrationProject create/modify/delete."""
+
+    @pytest.fixture
+    def migration_deps(self, dms):
+        """Create data providers and instance profile for migration project."""
+        dp_src = dms.create_data_provider(
+            DataProviderName=_unique("dp-src"),
+            Engine="mysql",
+            Settings={"MySqlSettings": {"ServerName": "localhost", "Port": 3306}},
+        )
+        dp_src_arn = dp_src["DataProvider"]["DataProviderArn"]
+        dp_tgt = dms.create_data_provider(
+            DataProviderName=_unique("dp-tgt"),
+            Engine="postgres",
+            Settings={"PostgreSqlSettings": {"ServerName": "localhost", "Port": 5432}},
+        )
+        dp_tgt_arn = dp_tgt["DataProvider"]["DataProviderArn"]
+        ip = dms.create_instance_profile(InstanceProfileName=_unique("mp-ip"))
+        ip_arn = ip["InstanceProfile"]["InstanceProfileArn"]
+        yield {
+            "src_arn": dp_src_arn,
+            "tgt_arn": dp_tgt_arn,
+            "ip_arn": ip_arn,
+        }
+        dms.delete_instance_profile(InstanceProfileIdentifier=ip_arn)
+        dms.delete_data_provider(DataProviderIdentifier=dp_src_arn)
+        dms.delete_data_provider(DataProviderIdentifier=dp_tgt_arn)
+
+    def test_create_migration_project(self, dms, migration_deps):
+        mp_name = _unique("mp")
+        resp = dms.create_migration_project(
+            MigrationProjectName=mp_name,
+            SourceDataProviderDescriptors=[{"DataProviderIdentifier": migration_deps["src_arn"]}],
+            TargetDataProviderDescriptors=[{"DataProviderIdentifier": migration_deps["tgt_arn"]}],
+            InstanceProfileIdentifier=migration_deps["ip_arn"],
+        )
+        assert "MigrationProject" in resp
+        mp_arn = resp["MigrationProject"]["MigrationProjectArn"]
+        dms.delete_migration_project(MigrationProjectIdentifier=mp_arn)
+
+    def test_modify_migration_project(self, dms, migration_deps):
+        mp_name = _unique("mod-mp")
+        mp = dms.create_migration_project(
+            MigrationProjectName=mp_name,
+            SourceDataProviderDescriptors=[{"DataProviderIdentifier": migration_deps["src_arn"]}],
+            TargetDataProviderDescriptors=[{"DataProviderIdentifier": migration_deps["tgt_arn"]}],
+            InstanceProfileIdentifier=migration_deps["ip_arn"],
+        )
+        mp_arn = mp["MigrationProject"]["MigrationProjectArn"]
+        try:
+            resp = dms.modify_migration_project(
+                MigrationProjectIdentifier=mp_arn,
+                MigrationProjectName="updated-mp",
+            )
+            assert "MigrationProject" in resp
+        finally:
+            dms.delete_migration_project(MigrationProjectIdentifier=mp_arn)
+
+    def test_delete_migration_project(self, dms, migration_deps):
+        mp = dms.create_migration_project(
+            MigrationProjectName=_unique("del-mp"),
+            SourceDataProviderDescriptors=[{"DataProviderIdentifier": migration_deps["src_arn"]}],
+            TargetDataProviderDescriptors=[{"DataProviderIdentifier": migration_deps["tgt_arn"]}],
+            InstanceProfileIdentifier=migration_deps["ip_arn"],
+        )
+        mp_arn = mp["MigrationProject"]["MigrationProjectArn"]
+        resp = dms.delete_migration_project(MigrationProjectIdentifier=mp_arn)
+        assert "MigrationProject" in resp
+
+
+class TestDMSReplicationConfigOperations:
+    """Tests for ReplicationConfig create/modify/delete."""
+
+    @pytest.fixture
+    def endpoints(self, dms):
+        """Create source and target endpoints."""
+        ep1 = dms.create_endpoint(
+            EndpointIdentifier=_unique("rc-src"),
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="pass",
+        )
+        ep2 = dms.create_endpoint(
+            EndpointIdentifier=_unique("rc-tgt"),
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="pass",
+        )
+        yield {
+            "src_arn": ep1["Endpoint"]["EndpointArn"],
+            "tgt_arn": ep2["Endpoint"]["EndpointArn"],
+        }
+        dms.delete_endpoint(EndpointArn=ep1["Endpoint"]["EndpointArn"])
+        dms.delete_endpoint(EndpointArn=ep2["Endpoint"]["EndpointArn"])
+
+    def _table_mappings(self):
+        import json
+
+        return json.dumps(
+            {
+                "rules": [
+                    {
+                        "rule-type": "selection",
+                        "rule-id": "1",
+                        "rule-name": "1",
+                        "object-locator": {"schema-name": "%", "table-name": "%"},
+                        "rule-action": "include",
+                    }
+                ]
+            }
+        )
+
+    def test_create_replication_config(self, dms, endpoints):
+        rc_id = _unique("rc")
+        resp = dms.create_replication_config(
+            ReplicationConfigIdentifier=rc_id,
+            SourceEndpointArn=endpoints["src_arn"],
+            TargetEndpointArn=endpoints["tgt_arn"],
+            ComputeConfig={"MaxCapacityUnits": 2},
+            ReplicationType="full-load",
+            TableMappings=self._table_mappings(),
+        )
+        assert "ReplicationConfig" in resp
+        rc_arn = resp["ReplicationConfig"]["ReplicationConfigArn"]
+        dms.delete_replication_config(ReplicationConfigArn=rc_arn)
+
+    def test_modify_replication_config(self, dms, endpoints):
+        rc_id = _unique("mod-rc")
+        rc = dms.create_replication_config(
+            ReplicationConfigIdentifier=rc_id,
+            SourceEndpointArn=endpoints["src_arn"],
+            TargetEndpointArn=endpoints["tgt_arn"],
+            ComputeConfig={"MaxCapacityUnits": 2},
+            ReplicationType="full-load",
+            TableMappings=self._table_mappings(),
+        )
+        rc_arn = rc["ReplicationConfig"]["ReplicationConfigArn"]
+        try:
+            resp = dms.modify_replication_config(ReplicationConfigArn=rc_arn, ReplicationType="cdc")
+            assert "ReplicationConfig" in resp
+        finally:
+            dms.delete_replication_config(ReplicationConfigArn=rc_arn)
+
+    def test_delete_replication_config(self, dms, endpoints):
+        rc = dms.create_replication_config(
+            ReplicationConfigIdentifier=_unique("del-rc"),
+            SourceEndpointArn=endpoints["src_arn"],
+            TargetEndpointArn=endpoints["tgt_arn"],
+            ComputeConfig={"MaxCapacityUnits": 2},
+            ReplicationType="full-load",
+            TableMappings=self._table_mappings(),
+        )
+        rc_arn = rc["ReplicationConfig"]["ReplicationConfigArn"]
+        resp = dms.delete_replication_config(ReplicationConfigArn=rc_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDMSModifyReplicationSubnetGroup:
+    """Tests for ModifyReplicationSubnetGroup."""
+
+    def test_modify_replication_subnet_group(self, dms, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.76.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sn1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.76.1.0/24")["Subnet"]["SubnetId"]
+        sn2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.76.2.0/24")["Subnet"]["SubnetId"]
+        sn3 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.76.3.0/24")["Subnet"]["SubnetId"]
+
+        rsg_id = _unique("mod-rsg")
+        dms.create_replication_subnet_group(
+            ReplicationSubnetGroupIdentifier=rsg_id,
+            ReplicationSubnetGroupDescription="original",
+            SubnetIds=[sn1, sn2],
+        )
+        try:
+            resp = dms.modify_replication_subnet_group(
+                ReplicationSubnetGroupIdentifier=rsg_id,
+                ReplicationSubnetGroupDescription="updated",
+                SubnetIds=[sn1, sn2, sn3],
+            )
+            rsg = resp["ReplicationSubnetGroup"]
+            assert rsg["ReplicationSubnetGroupDescription"] == "updated"
+        finally:
+            dms.delete_replication_subnet_group(ReplicationSubnetGroupIdentifier=rsg_id)
+
+
+class TestDMSModifyReplicationInstance:
+    """Tests for ModifyReplicationInstance and RebootReplicationInstance."""
+
+    @pytest.fixture
+    def replication_instance(self, dms, ec2):
+        """Create a replication instance with VPC."""
+        vpc = ec2.create_vpc(CidrBlock="10.75.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sn1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.75.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        sn2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.75.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        rsg_id = _unique("ri-rsg")
+        dms.create_replication_subnet_group(
+            ReplicationSubnetGroupIdentifier=rsg_id,
+            ReplicationSubnetGroupDescription="ri test",
+            SubnetIds=[sn1["Subnet"]["SubnetId"], sn2["Subnet"]["SubnetId"]],
+        )
+        ri_id = _unique("ri")
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t2.micro",
+            ReplicationSubnetGroupIdentifier=rsg_id,
+        )
+        ri_arn = ri["ReplicationInstance"]["ReplicationInstanceArn"]
+        yield {"arn": ri_arn, "rsg_id": rsg_id}
+        dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+        dms.delete_replication_subnet_group(ReplicationSubnetGroupIdentifier=rsg_id)
+
+    def test_modify_replication_instance(self, dms, replication_instance):
+        resp = dms.modify_replication_instance(
+            ReplicationInstanceArn=replication_instance["arn"],
+            ReplicationInstanceClass="dms.t2.small",
+        )
+        assert "ReplicationInstance" in resp
+
+    def test_reboot_replication_instance(self, dms, replication_instance):
+        resp = dms.reboot_replication_instance(ReplicationInstanceArn=replication_instance["arn"])
+        assert "ReplicationInstance" in resp
+
+    def test_modify_replication_task(self, dms, ec2, replication_instance):
+        import json
+
+        ep1 = dms.create_endpoint(
+            EndpointIdentifier=_unique("task-src"),
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="pass",
+        )
+        ep2 = dms.create_endpoint(
+            EndpointIdentifier=_unique("task-tgt"),
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="pass",
+        )
+        mappings = json.dumps(
+            {
+                "rules": [
+                    {
+                        "rule-type": "selection",
+                        "rule-id": "1",
+                        "rule-name": "1",
+                        "object-locator": {"schema-name": "%", "table-name": "%"},
+                        "rule-action": "include",
+                    }
+                ]
+            }
+        )
+        task = dms.create_replication_task(
+            ReplicationTaskIdentifier=_unique("mod-task"),
+            SourceEndpointArn=ep1["Endpoint"]["EndpointArn"],
+            TargetEndpointArn=ep2["Endpoint"]["EndpointArn"],
+            ReplicationInstanceArn=replication_instance["arn"],
+            MigrationType="full-load",
+            TableMappings=mappings,
+        )
+        task_arn = task["ReplicationTask"]["ReplicationTaskArn"]
+        try:
+            new_mappings = json.dumps(
+                {
+                    "rules": [
+                        {
+                            "rule-type": "selection",
+                            "rule-id": "1",
+                            "rule-name": "1",
+                            "object-locator": {
+                                "schema-name": "public",
+                                "table-name": "%",
+                            },
+                            "rule-action": "include",
+                        }
+                    ]
+                }
+            )
+            resp = dms.modify_replication_task(
+                ReplicationTaskArn=task_arn, TableMappings=new_mappings
+            )
+            assert "ReplicationTask" in resp
+        finally:
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+            dms.delete_endpoint(EndpointArn=ep1["Endpoint"]["EndpointArn"])
+            dms.delete_endpoint(EndpointArn=ep2["Endpoint"]["EndpointArn"])

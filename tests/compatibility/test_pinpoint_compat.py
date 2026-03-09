@@ -727,3 +727,666 @@ class TestPinpointTemplateVersionOperations:
         with pytest.raises(ClientError) as exc:
             pinpoint.list_template_versions(TemplateName="nonexistent", TemplateType="EMAIL")
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestPinpointTemplateCRUD:
+    """Tests for Create/Update/Delete template operations."""
+
+    def test_create_email_template(self, pinpoint):
+        name = _unique("email-tpl")
+        resp = pinpoint.create_email_template(
+            TemplateName=name,
+            EmailTemplateRequest={"Subject": "Hello", "TextPart": "Body text"},
+        )
+        assert "CreateTemplateMessageBody" in resp
+        # Verify it exists
+        get_resp = pinpoint.get_email_template(TemplateName=name)
+        assert get_resp["EmailTemplateResponse"]["TemplateName"] == name
+        # Cleanup
+        pinpoint.delete_email_template(TemplateName=name)
+
+    def test_update_email_template(self, pinpoint):
+        name = _unique("email-tpl")
+        pinpoint.create_email_template(TemplateName=name, EmailTemplateRequest={"Subject": "Old"})
+        resp = pinpoint.update_email_template(
+            TemplateName=name, EmailTemplateRequest={"Subject": "New"}
+        )
+        assert "MessageBody" in resp
+        pinpoint.delete_email_template(TemplateName=name)
+
+    def test_delete_email_template(self, pinpoint):
+        name = _unique("email-tpl")
+        pinpoint.create_email_template(TemplateName=name, EmailTemplateRequest={"Subject": "Test"})
+        resp = pinpoint.delete_email_template(TemplateName=name)
+        assert "MessageBody" in resp
+        with pytest.raises(ClientError):
+            pinpoint.get_email_template(TemplateName=name)
+
+    def test_create_sms_template(self, pinpoint):
+        name = _unique("sms-tpl")
+        resp = pinpoint.create_sms_template(
+            TemplateName=name, SMSTemplateRequest={"Body": "Hello {{name}}"}
+        )
+        assert "CreateTemplateMessageBody" in resp
+        get_resp = pinpoint.get_sms_template(TemplateName=name)
+        assert get_resp["SMSTemplateResponse"]["TemplateName"] == name
+        pinpoint.delete_sms_template(TemplateName=name)
+
+    def test_update_sms_template(self, pinpoint):
+        name = _unique("sms-tpl")
+        pinpoint.create_sms_template(TemplateName=name, SMSTemplateRequest={"Body": "Old"})
+        resp = pinpoint.update_sms_template(TemplateName=name, SMSTemplateRequest={"Body": "New"})
+        assert "MessageBody" in resp
+        pinpoint.delete_sms_template(TemplateName=name)
+
+    def test_delete_sms_template(self, pinpoint):
+        name = _unique("sms-tpl")
+        pinpoint.create_sms_template(TemplateName=name, SMSTemplateRequest={"Body": "Test"})
+        resp = pinpoint.delete_sms_template(TemplateName=name)
+        assert "MessageBody" in resp
+
+    def test_create_push_template(self, pinpoint):
+        name = _unique("push-tpl")
+        resp = pinpoint.create_push_template(
+            TemplateName=name, PushNotificationTemplateRequest={"Default": {"Body": "Push!"}}
+        )
+        assert "CreateTemplateMessageBody" in resp
+        get_resp = pinpoint.get_push_template(TemplateName=name)
+        assert get_resp["PushNotificationTemplateResponse"]["TemplateName"] == name
+        pinpoint.delete_push_template(TemplateName=name)
+
+    def test_update_push_template(self, pinpoint):
+        name = _unique("push-tpl")
+        pinpoint.create_push_template(TemplateName=name, PushNotificationTemplateRequest={})
+        resp = pinpoint.update_push_template(
+            TemplateName=name, PushNotificationTemplateRequest={"Default": {"Body": "Updated"}}
+        )
+        assert "MessageBody" in resp
+        pinpoint.delete_push_template(TemplateName=name)
+
+    def test_delete_push_template(self, pinpoint):
+        name = _unique("push-tpl")
+        pinpoint.create_push_template(TemplateName=name, PushNotificationTemplateRequest={})
+        resp = pinpoint.delete_push_template(TemplateName=name)
+        assert "MessageBody" in resp
+
+    def test_create_voice_template(self, pinpoint):
+        name = _unique("voice-tpl")
+        resp = pinpoint.create_voice_template(
+            TemplateName=name, VoiceTemplateRequest={"Body": "Hello voice"}
+        )
+        assert "CreateTemplateMessageBody" in resp
+        get_resp = pinpoint.get_voice_template(TemplateName=name)
+        assert get_resp["VoiceTemplateResponse"]["TemplateName"] == name
+        pinpoint.delete_voice_template(TemplateName=name)
+
+    def test_update_voice_template(self, pinpoint):
+        name = _unique("voice-tpl")
+        pinpoint.create_voice_template(TemplateName=name, VoiceTemplateRequest={"Body": "Old"})
+        resp = pinpoint.update_voice_template(
+            TemplateName=name, VoiceTemplateRequest={"Body": "New"}
+        )
+        assert "MessageBody" in resp
+        pinpoint.delete_voice_template(TemplateName=name)
+
+    def test_delete_voice_template(self, pinpoint):
+        name = _unique("voice-tpl")
+        pinpoint.create_voice_template(TemplateName=name, VoiceTemplateRequest={"Body": "Test"})
+        resp = pinpoint.delete_voice_template(TemplateName=name)
+        assert "MessageBody" in resp
+
+    def test_create_in_app_template(self, pinpoint):
+        name = _unique("inapp-tpl")
+        resp = pinpoint.create_in_app_template(TemplateName=name, InAppTemplateRequest={})
+        assert "TemplateCreateMessageBody" in resp
+        get_resp = pinpoint.get_in_app_template(TemplateName=name)
+        assert get_resp["InAppTemplateResponse"]["TemplateName"] == name
+        pinpoint.delete_in_app_template(TemplateName=name)
+
+    def test_update_in_app_template(self, pinpoint):
+        name = _unique("inapp-tpl")
+        pinpoint.create_in_app_template(TemplateName=name, InAppTemplateRequest={})
+        resp = pinpoint.update_in_app_template(TemplateName=name, InAppTemplateRequest={})
+        assert "MessageBody" in resp
+        pinpoint.delete_in_app_template(TemplateName=name)
+
+    def test_delete_in_app_template(self, pinpoint):
+        name = _unique("inapp-tpl")
+        pinpoint.create_in_app_template(TemplateName=name, InAppTemplateRequest={})
+        resp = pinpoint.delete_in_app_template(TemplateName=name)
+        assert "MessageBody" in resp
+
+    def test_update_template_active_version(self, pinpoint):
+        name = _unique("email-tpl")
+        pinpoint.create_email_template(TemplateName=name, EmailTemplateRequest={"Subject": "v1"})
+        try:
+            resp = pinpoint.update_template_active_version(
+                TemplateName=name,
+                TemplateType="EMAIL",
+                TemplateActiveVersionRequest={"Version": "1"},
+            )
+            assert "MessageBody" in resp
+        finally:
+            pinpoint.delete_email_template(TemplateName=name)
+
+
+class TestPinpointChannelDeleteOperations:
+    """Tests for Delete*Channel operations."""
+
+    def test_delete_email_channel(self, pinpoint, app_id):
+        # Update first to ensure channel exists, then delete
+        pinpoint.update_email_channel(
+            ApplicationId=app_id,
+            EmailChannelRequest={
+                "FromAddress": "test@example.com",
+                "Identity": "arn:aws:ses:us-east-1:123456789012:identity/example.com",
+            },
+        )
+        resp = pinpoint.delete_email_channel(ApplicationId=app_id)
+        assert resp["EmailChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_sms_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_sms_channel(ApplicationId=app_id)
+        assert resp["SMSChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_voice_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_voice_channel(ApplicationId=app_id)
+        assert resp["VoiceChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_adm_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_adm_channel(ApplicationId=app_id)
+        assert resp["ADMChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_apns_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_apns_channel(ApplicationId=app_id)
+        assert resp["APNSChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_apns_sandbox_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_apns_sandbox_channel(ApplicationId=app_id)
+        assert resp["APNSSandboxChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_apns_voip_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_apns_voip_channel(ApplicationId=app_id)
+        assert resp["APNSVoipChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_apns_voip_sandbox_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_apns_voip_sandbox_channel(ApplicationId=app_id)
+        assert resp["APNSVoipSandboxChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_baidu_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_baidu_channel(ApplicationId=app_id)
+        assert resp["BaiduChannelResponse"]["ApplicationId"] == app_id
+
+    def test_delete_gcm_channel(self, pinpoint, app_id):
+        resp = pinpoint.delete_gcm_channel(ApplicationId=app_id)
+        assert resp["GCMChannelResponse"]["ApplicationId"] == app_id
+
+
+class TestPinpointChannelUpdateOperations:
+    """Tests for Update*Channel operations."""
+
+    def test_update_email_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_email_channel(
+            ApplicationId=app_id,
+            EmailChannelRequest={
+                "FromAddress": "test@example.com",
+                "Identity": "arn:aws:ses:us-east-1:123456789012:identity/example.com",
+            },
+        )
+        ch = resp["EmailChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "EMAIL"
+
+    def test_update_sms_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_sms_channel(ApplicationId=app_id, SMSChannelRequest={})
+        ch = resp["SMSChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "SMS"
+
+    def test_update_voice_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_voice_channel(ApplicationId=app_id, VoiceChannelRequest={})
+        ch = resp["VoiceChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+
+    def test_update_adm_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_adm_channel(
+            ApplicationId=app_id,
+            ADMChannelRequest={"ClientId": "test-id", "ClientSecret": "test-secret"},
+        )
+        ch = resp["ADMChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "ADM"
+
+    def test_update_apns_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_apns_channel(ApplicationId=app_id, APNSChannelRequest={})
+        ch = resp["APNSChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+
+    def test_update_apns_sandbox_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_apns_sandbox_channel(
+            ApplicationId=app_id, APNSSandboxChannelRequest={}
+        )
+        ch = resp["APNSSandboxChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+
+    def test_update_apns_voip_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_apns_voip_channel(ApplicationId=app_id, APNSVoipChannelRequest={})
+        ch = resp["APNSVoipChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+
+    def test_update_apns_voip_sandbox_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_apns_voip_sandbox_channel(
+            ApplicationId=app_id, APNSVoipSandboxChannelRequest={}
+        )
+        ch = resp["APNSVoipSandboxChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+
+    def test_update_baidu_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_baidu_channel(
+            ApplicationId=app_id,
+            BaiduChannelRequest={"ApiKey": "test-key", "SecretKey": "test-secret"},
+        )
+        ch = resp["BaiduChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "BAIDU"
+
+    def test_update_gcm_channel(self, pinpoint, app_id):
+        resp = pinpoint.update_gcm_channel(
+            ApplicationId=app_id,
+            GCMChannelRequest={"ApiKey": "test-gcm-key"},
+        )
+        ch = resp["GCMChannelResponse"]
+        assert ch["ApplicationId"] == app_id
+        assert ch["Platform"] == "GCM"
+
+
+class TestPinpointCampaignCRUD:
+    """Tests for Campaign create/update/delete and version operations."""
+
+    @pytest.fixture
+    def campaign_setup(self, pinpoint, app_id, segment_id):
+        """Create a campaign and yield its data."""
+        resp = pinpoint.create_campaign(
+            ApplicationId=app_id,
+            WriteCampaignRequest={
+                "Name": _unique("camp"),
+                "SegmentId": segment_id,
+                "Schedule": {"StartTime": "IMMEDIATE"},
+                "MessageConfiguration": {"DefaultMessage": {"Body": "hello"}},
+            },
+        )
+        campaign_id = resp["CampaignResponse"]["Id"]
+        yield {"campaign_id": campaign_id}
+        try:
+            pinpoint.delete_campaign(ApplicationId=app_id, CampaignId=campaign_id)
+        except Exception:
+            pass
+
+    def test_create_campaign(self, pinpoint, app_id, segment_id):
+        resp = pinpoint.create_campaign(
+            ApplicationId=app_id,
+            WriteCampaignRequest={
+                "Name": _unique("camp"),
+                "SegmentId": segment_id,
+                "Schedule": {"StartTime": "IMMEDIATE"},
+                "MessageConfiguration": {"DefaultMessage": {"Body": "hello"}},
+            },
+        )
+        cr = resp["CampaignResponse"]
+        assert cr["ApplicationId"] == app_id
+        assert "Id" in cr
+        assert cr["SegmentId"] == segment_id
+        pinpoint.delete_campaign(ApplicationId=app_id, CampaignId=cr["Id"])
+
+    def test_update_campaign(self, pinpoint, app_id, segment_id, campaign_setup):
+        resp = pinpoint.update_campaign(
+            ApplicationId=app_id,
+            CampaignId=campaign_setup["campaign_id"],
+            WriteCampaignRequest={
+                "Name": "updated-camp",
+                "SegmentId": segment_id,
+                "Schedule": {"StartTime": "IMMEDIATE"},
+            },
+        )
+        cr = resp["CampaignResponse"]
+        assert cr["Id"] == campaign_setup["campaign_id"]
+        assert cr["Name"] == "updated-camp"
+
+    def test_delete_campaign(self, pinpoint, app_id, segment_id):
+        resp = pinpoint.create_campaign(
+            ApplicationId=app_id,
+            WriteCampaignRequest={
+                "Name": _unique("del-camp"),
+                "SegmentId": segment_id,
+                "Schedule": {"StartTime": "IMMEDIATE"},
+                "MessageConfiguration": {"DefaultMessage": {"Body": "bye"}},
+            },
+        )
+        cid = resp["CampaignResponse"]["Id"]
+        del_resp = pinpoint.delete_campaign(ApplicationId=app_id, CampaignId=cid)
+        assert del_resp["CampaignResponse"]["Id"] == cid
+
+    def test_get_campaign_version(self, pinpoint, app_id, campaign_setup):
+        resp = pinpoint.get_campaign_version(
+            ApplicationId=app_id,
+            CampaignId=campaign_setup["campaign_id"],
+            Version="1",
+        )
+        assert resp["CampaignResponse"]["Id"] == campaign_setup["campaign_id"]
+
+
+class TestPinpointSegmentCRUD:
+    """Tests for segment update/delete and version operations."""
+
+    def test_update_segment(self, pinpoint, app_id):
+        seg = pinpoint.create_segment(
+            ApplicationId=app_id,
+            WriteSegmentRequest={
+                "Name": _unique("seg"),
+                "Dimensions": {
+                    "Demographic": {"AppVersion": {"DimensionType": "INCLUSIVE", "Values": ["1.0"]}}
+                },
+            },
+        )
+        sid = seg["SegmentResponse"]["Id"]
+        resp = pinpoint.update_segment(
+            ApplicationId=app_id,
+            SegmentId=sid,
+            WriteSegmentRequest={
+                "Name": "updated-seg",
+                "Dimensions": {
+                    "Demographic": {"AppVersion": {"DimensionType": "INCLUSIVE", "Values": ["2.0"]}}
+                },
+            },
+        )
+        assert resp["SegmentResponse"]["Id"] == sid
+        assert resp["SegmentResponse"]["Name"] == "updated-seg"
+        pinpoint.delete_segment(ApplicationId=app_id, SegmentId=sid)
+
+    def test_delete_segment(self, pinpoint, app_id):
+        seg = pinpoint.create_segment(
+            ApplicationId=app_id,
+            WriteSegmentRequest={
+                "Name": _unique("del-seg"),
+                "Dimensions": {
+                    "Demographic": {"AppVersion": {"DimensionType": "INCLUSIVE", "Values": ["1.0"]}}
+                },
+            },
+        )
+        sid = seg["SegmentResponse"]["Id"]
+        resp = pinpoint.delete_segment(ApplicationId=app_id, SegmentId=sid)
+        assert resp["SegmentResponse"]["Id"] == sid
+
+    def test_get_segment_version(self, pinpoint, app_id):
+        seg = pinpoint.create_segment(
+            ApplicationId=app_id,
+            WriteSegmentRequest={
+                "Name": _unique("ver-seg"),
+                "Dimensions": {
+                    "Demographic": {"AppVersion": {"DimensionType": "INCLUSIVE", "Values": ["1.0"]}}
+                },
+            },
+        )
+        sid = seg["SegmentResponse"]["Id"]
+        resp = pinpoint.get_segment_version(ApplicationId=app_id, SegmentId=sid, Version="1")
+        assert resp["SegmentResponse"]["Id"] == sid
+        pinpoint.delete_segment(ApplicationId=app_id, SegmentId=sid)
+
+
+class TestPinpointEndpointCRUD:
+    """Tests for endpoint update/delete operations."""
+
+    def test_update_endpoint(self, pinpoint, app_id):
+        resp = pinpoint.update_endpoint(
+            ApplicationId=app_id,
+            EndpointId="test-ep-1",
+            EndpointRequest={"Address": "test@example.com", "ChannelType": "EMAIL"},
+        )
+        assert "MessageBody" in resp
+        # Verify it was created
+        get_resp = pinpoint.get_endpoint(ApplicationId=app_id, EndpointId="test-ep-1")
+        assert get_resp["EndpointResponse"]["Id"] == "test-ep-1"
+        assert get_resp["EndpointResponse"]["Address"] == "test@example.com"
+
+    def test_update_endpoints_batch(self, pinpoint, app_id):
+        resp = pinpoint.update_endpoints_batch(
+            ApplicationId=app_id,
+            EndpointBatchRequest={
+                "Item": [
+                    {"Id": "batch-ep-1", "Address": "a@b.com", "ChannelType": "EMAIL"},
+                    {"Id": "batch-ep-2", "Address": "c@d.com", "ChannelType": "EMAIL"},
+                ]
+            },
+        )
+        assert "MessageBody" in resp
+
+    def test_delete_endpoint(self, pinpoint, app_id):
+        # Create endpoint first
+        pinpoint.update_endpoint(
+            ApplicationId=app_id,
+            EndpointId="del-ep",
+            EndpointRequest={"Address": "del@test.com", "ChannelType": "EMAIL"},
+        )
+        resp = pinpoint.delete_endpoint(ApplicationId=app_id, EndpointId="del-ep")
+        assert resp["EndpointResponse"]["Id"] == "del-ep"
+
+    def test_delete_user_endpoints(self, pinpoint, app_id):
+        # Create endpoint with a user ID
+        pinpoint.update_endpoint(
+            ApplicationId=app_id,
+            EndpointId="user-ep",
+            EndpointRequest={
+                "Address": "user@test.com",
+                "ChannelType": "EMAIL",
+                "User": {"UserId": "test-user-123"},
+            },
+        )
+        resp = pinpoint.delete_user_endpoints(ApplicationId=app_id, UserId="test-user-123")
+        assert "EndpointsResponse" in resp
+
+
+class TestPinpointJourneyCRUD:
+    """Tests for journey create/update/delete operations."""
+
+    def test_create_journey(self, pinpoint, app_id):
+        resp = pinpoint.create_journey(
+            ApplicationId=app_id,
+            WriteJourneyRequest={
+                "Name": _unique("journey"),
+                "StartCondition": {"Description": "start"},
+                "Schedule": {
+                    "StartTime": "2025-01-01T00:00:00Z",
+                    "EndTime": "2025-12-31T23:59:59Z",
+                },
+            },
+        )
+        jr = resp["JourneyResponse"]
+        assert jr["ApplicationId"] == app_id
+        assert "Id" in jr
+        pinpoint.delete_journey(ApplicationId=app_id, JourneyId=jr["Id"])
+
+    def test_update_journey(self, pinpoint, app_id):
+        jr = pinpoint.create_journey(
+            ApplicationId=app_id,
+            WriteJourneyRequest={
+                "Name": _unique("journey"),
+                "StartCondition": {"Description": "start"},
+            },
+        )
+        jid = jr["JourneyResponse"]["Id"]
+        resp = pinpoint.update_journey(
+            ApplicationId=app_id,
+            JourneyId=jid,
+            WriteJourneyRequest={"Name": "updated-journey"},
+        )
+        assert resp["JourneyResponse"]["Name"] == "updated-journey"
+        pinpoint.delete_journey(ApplicationId=app_id, JourneyId=jid)
+
+    def test_update_journey_state(self, pinpoint, app_id):
+        jr = pinpoint.create_journey(
+            ApplicationId=app_id,
+            WriteJourneyRequest={
+                "Name": _unique("journey"),
+                "StartCondition": {"Description": "start"},
+            },
+        )
+        jid = jr["JourneyResponse"]["Id"]
+        resp = pinpoint.update_journey_state(
+            ApplicationId=app_id,
+            JourneyId=jid,
+            JourneyStateRequest={"State": "CANCELLED"},
+        )
+        assert resp["JourneyResponse"]["Id"] == jid
+        pinpoint.delete_journey(ApplicationId=app_id, JourneyId=jid)
+
+    def test_delete_journey(self, pinpoint, app_id):
+        jr = pinpoint.create_journey(
+            ApplicationId=app_id,
+            WriteJourneyRequest={
+                "Name": _unique("del-journey"),
+                "StartCondition": {"Description": "start"},
+            },
+        )
+        jid = jr["JourneyResponse"]["Id"]
+        resp = pinpoint.delete_journey(ApplicationId=app_id, JourneyId=jid)
+        assert resp["JourneyResponse"]["Id"] == jid
+
+
+class TestPinpointRecommenderCRUD:
+    """Tests for recommender create/update/delete operations."""
+
+    def test_create_recommender_configuration(self, pinpoint):
+        resp = pinpoint.create_recommender_configuration(
+            CreateRecommenderConfiguration={
+                "RecommendationProviderUri": (
+                    "arn:aws:personalize:us-east-1:123456789012:campaign/test"
+                ),
+                "RecommendationProviderRoleArn": ("arn:aws:iam::123456789012:role/test"),
+            }
+        )
+        rec = resp["RecommenderConfigurationResponse"]
+        assert "Id" in rec
+        assert "RecommendationProviderUri" in rec
+        pinpoint.delete_recommender_configuration(RecommenderId=rec["Id"])
+
+    def test_update_recommender_configuration(self, pinpoint):
+        resp = pinpoint.create_recommender_configuration(
+            CreateRecommenderConfiguration={
+                "RecommendationProviderUri": (
+                    "arn:aws:personalize:us-east-1:123456789012:campaign/test"
+                ),
+                "RecommendationProviderRoleArn": ("arn:aws:iam::123456789012:role/test"),
+            }
+        )
+        rec_id = resp["RecommenderConfigurationResponse"]["Id"]
+        upd = pinpoint.update_recommender_configuration(
+            RecommenderId=rec_id,
+            UpdateRecommenderConfiguration={
+                "RecommendationProviderUri": (
+                    "arn:aws:personalize:us-east-1:123456789012:campaign/updated"
+                ),
+                "RecommendationProviderRoleArn": ("arn:aws:iam::123456789012:role/test"),
+            },
+        )
+        assert "RecommenderConfigurationResponse" in upd
+        pinpoint.delete_recommender_configuration(RecommenderId=rec_id)
+
+    def test_delete_recommender_configuration(self, pinpoint):
+        resp = pinpoint.create_recommender_configuration(
+            CreateRecommenderConfiguration={
+                "RecommendationProviderUri": (
+                    "arn:aws:personalize:us-east-1:123456789012:campaign/del"
+                ),
+                "RecommendationProviderRoleArn": ("arn:aws:iam::123456789012:role/test"),
+            }
+        )
+        rec_id = resp["RecommenderConfigurationResponse"]["Id"]
+        del_resp = pinpoint.delete_recommender_configuration(RecommenderId=rec_id)
+        assert "RecommenderConfigurationResponse" in del_resp
+
+
+class TestPinpointJobCRUD:
+    """Tests for export/import job creation."""
+
+    def test_create_export_job(self, pinpoint, app_id):
+        resp = pinpoint.create_export_job(
+            ApplicationId=app_id,
+            ExportJobRequest={
+                "RoleArn": "arn:aws:iam::123456789012:role/test",
+                "S3UrlPrefix": "s3://bucket/prefix",
+            },
+        )
+        assert "ExportJobResponse" in resp
+        assert resp["ExportJobResponse"]["ApplicationId"] == app_id
+        assert "Id" in resp["ExportJobResponse"]
+
+    def test_create_import_job(self, pinpoint, app_id):
+        resp = pinpoint.create_import_job(
+            ApplicationId=app_id,
+            ImportJobRequest={
+                "Format": "CSV",
+                "RoleArn": "arn:aws:iam::123456789012:role/test",
+                "S3Url": "s3://bucket/file.csv",
+            },
+        )
+        assert "ImportJobResponse" in resp
+        assert resp["ImportJobResponse"]["ApplicationId"] == app_id
+        assert "Id" in resp["ImportJobResponse"]
+
+
+class TestPinpointMessaging:
+    """Tests for PutEvents, SendMessages, SendUsersMessages, etc."""
+
+    def test_put_events(self, pinpoint, app_id):
+        resp = pinpoint.put_events(
+            ApplicationId=app_id,
+            EventsRequest={
+                "BatchItem": {
+                    "ep1": {
+                        "Endpoint": {},
+                        "Events": {
+                            "evt1": {
+                                "EventType": "test-event",
+                                "Timestamp": "2024-01-01T00:00:00Z",
+                            }
+                        },
+                    }
+                }
+            },
+        )
+        assert "EventsResponse" in resp
+        assert "Results" in resp["EventsResponse"]
+
+    def test_send_messages(self, pinpoint, app_id):
+        resp = pinpoint.send_messages(
+            ApplicationId=app_id,
+            MessageRequest={
+                "MessageConfiguration": {"DefaultMessage": {"Body": "test"}},
+                "Addresses": {"test@example.com": {"ChannelType": "EMAIL"}},
+            },
+        )
+        assert "MessageResponse" in resp
+        assert resp["MessageResponse"]["ApplicationId"] == app_id
+
+    def test_send_users_messages(self, pinpoint, app_id):
+        resp = pinpoint.send_users_messages(
+            ApplicationId=app_id,
+            SendUsersMessageRequest={
+                "MessageConfiguration": {"DefaultMessage": {"Body": "test"}},
+                "Users": {"user1": {}},
+            },
+        )
+        assert "SendUsersMessageResponse" in resp
+        assert resp["SendUsersMessageResponse"]["ApplicationId"] == app_id
+
+    def test_phone_number_validate(self, pinpoint):
+        resp = pinpoint.phone_number_validate(NumberValidateRequest={"PhoneNumber": "+12065551234"})
+        assert "NumberValidateResponse" in resp
+
+    def test_remove_attributes(self, pinpoint, app_id):
+        resp = pinpoint.remove_attributes(
+            ApplicationId=app_id,
+            AttributeType="endpoint-custom-attributes",
+            UpdateAttributesRequest={"Blacklist": ["attr1"]},
+        )
+        assert "AttributesResource" in resp
