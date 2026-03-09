@@ -541,3 +541,365 @@ class TestRoute53ResolverGapStubs:
     def test_list_resolver_configs(self, resolver):
         resp = resolver.list_resolver_configs()
         assert "ResolverConfigs" in resp
+
+
+class TestRoute53ResolverFirewallDomainList:
+    """Tests for firewall domain list CRUD operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_create_firewall_domain_list(self, resolver):
+        uid = _uid()
+        resp = resolver.create_firewall_domain_list(
+            CreatorRequestId=uid,
+            Name=f"fdl-{uid}",
+        )
+        fdl = resp["FirewallDomainList"]
+        assert fdl["Name"] == f"fdl-{uid}"
+        assert "Id" in fdl
+        resolver.delete_firewall_domain_list(FirewallDomainListId=fdl["Id"])
+
+    def test_get_firewall_domain_list(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_domain_list(
+            CreatorRequestId=uid,
+            Name=f"get-fdl-{uid}",
+        )
+        fdl_id = create["FirewallDomainList"]["Id"]
+        try:
+            resp = resolver.get_firewall_domain_list(FirewallDomainListId=fdl_id)
+            assert resp["FirewallDomainList"]["Id"] == fdl_id
+            assert resp["FirewallDomainList"]["Name"] == f"get-fdl-{uid}"
+        finally:
+            resolver.delete_firewall_domain_list(FirewallDomainListId=fdl_id)
+
+    def test_delete_firewall_domain_list(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_domain_list(
+            CreatorRequestId=uid,
+            Name=f"del-fdl-{uid}",
+        )
+        fdl_id = create["FirewallDomainList"]["Id"]
+        resp = resolver.delete_firewall_domain_list(FirewallDomainListId=fdl_id)
+        assert resp["FirewallDomainList"]["Id"] == fdl_id
+
+    def test_update_firewall_domains(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_domain_list(
+            CreatorRequestId=uid,
+            Name=f"upd-fdl-{uid}",
+        )
+        fdl_id = create["FirewallDomainList"]["Id"]
+        try:
+            resp = resolver.update_firewall_domains(
+                FirewallDomainListId=fdl_id,
+                Operation="ADD",
+                Domains=["example.com.", "blocked.org."],
+            )
+            assert resp["Id"] == fdl_id
+            assert resp["Name"] == f"upd-fdl-{uid}"
+        finally:
+            resolver.delete_firewall_domain_list(FirewallDomainListId=fdl_id)
+
+    def test_list_firewall_domains(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_domain_list(
+            CreatorRequestId=uid,
+            Name=f"listdom-fdl-{uid}",
+        )
+        fdl_id = create["FirewallDomainList"]["Id"]
+        try:
+            resolver.update_firewall_domains(
+                FirewallDomainListId=fdl_id,
+                Operation="ADD",
+                Domains=["test1.com.", "test2.com."],
+            )
+            resp = resolver.list_firewall_domains(FirewallDomainListId=fdl_id)
+            assert "Domains" in resp
+            assert len(resp["Domains"]) >= 2
+        finally:
+            resolver.delete_firewall_domain_list(FirewallDomainListId=fdl_id)
+
+
+class TestRoute53ResolverFirewallRuleGroup:
+    """Tests for firewall rule group CRUD operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_create_firewall_rule_group(self, resolver):
+        uid = _uid()
+        resp = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"frg-{uid}",
+        )
+        frg = resp["FirewallRuleGroup"]
+        assert frg["Name"] == f"frg-{uid}"
+        assert "Id" in frg
+        resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg["Id"])
+
+    def test_get_firewall_rule_group(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"get-frg-{uid}",
+        )
+        frg_id = create["FirewallRuleGroup"]["Id"]
+        try:
+            resp = resolver.get_firewall_rule_group(FirewallRuleGroupId=frg_id)
+            assert resp["FirewallRuleGroup"]["Id"] == frg_id
+            assert resp["FirewallRuleGroup"]["Name"] == f"get-frg-{uid}"
+        finally:
+            resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+
+    def test_delete_firewall_rule_group(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"del-frg-{uid}",
+        )
+        frg_id = create["FirewallRuleGroup"]["Id"]
+        resp = resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+        assert resp["FirewallRuleGroup"]["Id"] == frg_id
+
+
+class TestRoute53ResolverFirewallRules:
+    """Tests for firewall rule CRUD operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    @pytest.fixture
+    def firewall_resources(self, resolver):
+        """Create a rule group and domain list for firewall rule tests."""
+        uid = _uid()
+        fdl = resolver.create_firewall_domain_list(
+            CreatorRequestId=f"fdl-{uid}",
+            Name=f"fdl-rules-{uid}",
+        )
+        fdl_id = fdl["FirewallDomainList"]["Id"]
+        frg = resolver.create_firewall_rule_group(
+            CreatorRequestId=f"frg-{uid}",
+            Name=f"frg-rules-{uid}",
+        )
+        frg_id = frg["FirewallRuleGroup"]["Id"]
+        yield {"fdl_id": fdl_id, "frg_id": frg_id}
+        resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+        resolver.delete_firewall_domain_list(FirewallDomainListId=fdl_id)
+
+    def test_create_firewall_rule(self, resolver, firewall_resources):
+        resp = resolver.create_firewall_rule(
+            CreatorRequestId=_uid(),
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+            FirewallDomainListId=firewall_resources["fdl_id"],
+            Priority=100,
+            Action="BLOCK",
+            BlockResponse="NODATA",
+            Name=f"rule-{_uid()}",
+        )
+        rule = resp["FirewallRule"]
+        assert rule["FirewallRuleGroupId"] == firewall_resources["frg_id"]
+        assert rule["Action"] == "BLOCK"
+        assert rule["Priority"] == 100
+
+    def test_list_firewall_rules(self, resolver, firewall_resources):
+        resolver.create_firewall_rule(
+            CreatorRequestId=_uid(),
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+            FirewallDomainListId=firewall_resources["fdl_id"],
+            Priority=100,
+            Action="BLOCK",
+            BlockResponse="NODATA",
+            Name=f"list-rule-{_uid()}",
+        )
+        resp = resolver.list_firewall_rules(
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+        )
+        assert "FirewallRules" in resp
+        assert len(resp["FirewallRules"]) >= 1
+
+    def test_update_firewall_rule(self, resolver, firewall_resources):
+        resolver.create_firewall_rule(
+            CreatorRequestId=_uid(),
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+            FirewallDomainListId=firewall_resources["fdl_id"],
+            Priority=100,
+            Action="BLOCK",
+            BlockResponse="NODATA",
+            Name=f"upd-rule-{_uid()}",
+        )
+        resp = resolver.update_firewall_rule(
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+            FirewallDomainListId=firewall_resources["fdl_id"],
+            Priority=200,
+            Action="ALLOW",
+            Name=f"upd-rule-renamed-{_uid()}",
+        )
+        rule = resp["FirewallRule"]
+        assert rule["Priority"] == 200
+        assert rule["Action"] == "ALLOW"
+
+    def test_delete_firewall_rule(self, resolver, firewall_resources):
+        resolver.create_firewall_rule(
+            CreatorRequestId=_uid(),
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+            FirewallDomainListId=firewall_resources["fdl_id"],
+            Priority=100,
+            Action="BLOCK",
+            BlockResponse="NODATA",
+            Name=f"del-rule-{_uid()}",
+        )
+        resp = resolver.delete_firewall_rule(
+            FirewallRuleGroupId=firewall_resources["frg_id"],
+            FirewallDomainListId=firewall_resources["fdl_id"],
+        )
+        rule = resp["FirewallRule"]
+        assert rule["FirewallRuleGroupId"] == firewall_resources["frg_id"]
+
+
+class TestRoute53ResolverFirewallRuleGroupAssociation:
+    """Tests for firewall rule group association operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_firewall_rule_group(self, resolver, ec2):
+        uid = _uid()
+        frg = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"assoc-frg-{uid}",
+        )
+        frg_id = frg["FirewallRuleGroup"]["Id"]
+        vpc = ec2.create_vpc(CidrBlock="10.100.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = resolver.associate_firewall_rule_group(
+                CreatorRequestId=_uid(),
+                FirewallRuleGroupId=frg_id,
+                VpcId=vpc_id,
+                Priority=101,
+                Name=f"assoc-{uid}",
+            )
+            assoc = resp["FirewallRuleGroupAssociation"]
+            assert assoc["FirewallRuleGroupId"] == frg_id
+            assert assoc["VpcId"] == vpc_id
+            assert "Id" in assoc
+            # Cleanup
+            resolver.disassociate_firewall_rule_group(
+                FirewallRuleGroupAssociationId=assoc["Id"],
+            )
+        finally:
+            resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+
+    def test_get_firewall_rule_group_association(self, resolver, ec2):
+        uid = _uid()
+        frg = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"get-assoc-frg-{uid}",
+        )
+        frg_id = frg["FirewallRuleGroup"]["Id"]
+        vpc = ec2.create_vpc(CidrBlock="10.101.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            assoc_resp = resolver.associate_firewall_rule_group(
+                CreatorRequestId=_uid(),
+                FirewallRuleGroupId=frg_id,
+                VpcId=vpc_id,
+                Priority=102,
+                Name=f"get-assoc-{uid}",
+            )
+            assoc_id = assoc_resp["FirewallRuleGroupAssociation"]["Id"]
+
+            resp = resolver.get_firewall_rule_group_association(
+                FirewallRuleGroupAssociationId=assoc_id,
+            )
+            assert resp["FirewallRuleGroupAssociation"]["Id"] == assoc_id
+            assert resp["FirewallRuleGroupAssociation"]["FirewallRuleGroupId"] == frg_id
+            # Cleanup
+            resolver.disassociate_firewall_rule_group(
+                FirewallRuleGroupAssociationId=assoc_id,
+            )
+        finally:
+            resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+
+    def test_disassociate_firewall_rule_group(self, resolver, ec2):
+        uid = _uid()
+        frg = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"disassoc-frg-{uid}",
+        )
+        frg_id = frg["FirewallRuleGroup"]["Id"]
+        vpc = ec2.create_vpc(CidrBlock="10.102.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            assoc_resp = resolver.associate_firewall_rule_group(
+                CreatorRequestId=_uid(),
+                FirewallRuleGroupId=frg_id,
+                VpcId=vpc_id,
+                Priority=103,
+                Name=f"disassoc-{uid}",
+            )
+            assoc_id = assoc_resp["FirewallRuleGroupAssociation"]["Id"]
+
+            resp = resolver.disassociate_firewall_rule_group(
+                FirewallRuleGroupAssociationId=assoc_id,
+            )
+            assert resp["FirewallRuleGroupAssociation"]["Id"] == assoc_id
+        finally:
+            resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+
+
+class TestRoute53ResolverQueryLogConfigCleanup:
+    """Tests for query log config delete and disassociate operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_delete_resolver_query_log_config(self, resolver):
+        uid = _uid()
+        create = resolver.create_resolver_query_log_config(
+            Name=f"del-qlc-{uid}",
+            DestinationArn=f"arn:aws:s3:::del-bucket-{uid}",
+            CreatorRequestId=uid,
+        )
+        qlc_id = create["ResolverQueryLogConfig"]["Id"]
+        resp = resolver.delete_resolver_query_log_config(
+            ResolverQueryLogConfigId=qlc_id,
+        )
+        assert resp["ResolverQueryLogConfig"]["Id"] == qlc_id
+
+    def test_disassociate_resolver_query_log_config(self, resolver, ec2):
+        uid = _uid()
+        qlc = resolver.create_resolver_query_log_config(
+            Name=f"disassoc-qlc-{uid}",
+            DestinationArn=f"arn:aws:s3:::disassoc-bucket-{uid}",
+            CreatorRequestId=uid,
+        )
+        qlc_id = qlc["ResolverQueryLogConfig"]["Id"]
+        vpc = ec2.create_vpc(CidrBlock="10.103.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        resolver.associate_resolver_query_log_config(
+            ResolverQueryLogConfigId=qlc_id,
+            ResourceId=vpc_id,
+        )
+        resp = resolver.disassociate_resolver_query_log_config(
+            ResolverQueryLogConfigId=qlc_id,
+            ResourceId=vpc_id,
+        )
+        assoc = resp["ResolverQueryLogConfigAssociation"]
+        assert assoc["ResolverQueryLogConfigId"] == qlc_id
+        assert assoc["ResourceId"] == vpc_id
