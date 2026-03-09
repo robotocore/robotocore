@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import assert_s3_bucket_exists
 
 pytestmark = pytest.mark.iac
@@ -65,6 +66,20 @@ class TestStaticWebsite:
         assert public_stmt["Effect"] == "Allow"
         assert public_stmt["Principal"] == "*"
         assert "s3:GetObject" in public_stmt["Action"]
+
+        # Cleanup
+        pulumi_runner.destroy(SCENARIO_DIR)
+
+    def test_s3_object_roundtrip(self, pulumi_runner):
+        """Upload and download an object from the website bucket."""
+        result = pulumi_runner.up(SCENARIO_DIR)
+        assert result.returncode == 0, f"pulumi up failed:\n{result.stderr}"
+
+        outputs = pulumi_runner.stack_output(SCENARIO_DIR)
+        bucket_name = outputs["bucket_name"]
+
+        s3 = make_client("s3")
+        put_and_get_s3_object(s3, bucket_name, "index.html", "<html><body>Hello</body></html>")
 
         # Cleanup
         pulumi_runner.destroy(SCENARIO_DIR)

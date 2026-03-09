@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import invoke_api_gateway
 
 pytestmark = pytest.mark.iac
 
@@ -58,3 +59,13 @@ class TestRestApi:
         stages = apigw_client.get_stages(restApiId=target_api["id"])
         stage_names = [s["stageName"] for s in stages["item"]]
         assert "test" in stage_names, f"Expected 'test' stage, found: {stage_names}"
+
+    def test_invoke_api_endpoint(self, deployed):
+        """Hit the API Gateway endpoint and verify a response."""
+        client = make_client("apigateway")
+        apis = client.get_rest_apis()
+        api = next(
+            a for a in apis["items"] if "CdkRestApiStack" in a["name"] or "api" in a["name"].lower()
+        )
+        resp = invoke_api_gateway(api["id"], "test", "hello")
+        assert resp["status"] == 200

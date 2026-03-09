@@ -5,6 +5,11 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import (
+    put_and_get_dynamodb_item,
+    put_and_get_s3_object,
+    put_and_read_kinesis_record,
+)
 from tests.iac.helpers.resource_validator import (
     assert_dynamodb_table_exists,
     assert_kinesis_stream_exists,
@@ -71,6 +76,60 @@ class TestDataLake:
         assert hash_keys[0]["AttributeName"] == "dataset_id"
         assert len(range_keys) == 1, "Expected exactly one RANGE key"
         assert range_keys[0]["AttributeName"] == "timestamp"
+
+        # Cleanup
+        pulumi_runner.destroy(SCENARIO_DIR)
+
+    def test_s3_data_roundtrip(self, pulumi_runner):
+        """Upload and download data from the landing zone bucket."""
+        result = pulumi_runner.up(SCENARIO_DIR)
+        assert result.returncode == 0, f"pulumi up failed:\n{result.stderr}"
+
+        outputs = pulumi_runner.stack_output(SCENARIO_DIR)
+        bucket = outputs["bucket_name"]
+
+        s3 = make_client("s3")
+        put_and_get_s3_object(s3, bucket, "data/test.csv", "id,name\n1,test")
+
+        # Cleanup
+        pulumi_runner.destroy(SCENARIO_DIR)
+
+    def test_kinesis_data_roundtrip(self, pulumi_runner):
+        """Put and read a record from the Kinesis ingest stream."""
+        result = pulumi_runner.up(SCENARIO_DIR)
+        assert result.returncode == 0, f"pulumi up failed:\n{result.stderr}"
+
+        outputs = pulumi_runner.stack_output(SCENARIO_DIR)
+        stream = outputs["stream_name"]
+
+        kinesis = make_client("kinesis")
+        put_and_read_kinesis_record(kinesis, stream, "test-data", "pk1")
+
+        # Cleanup
+        pulumi_runner.destroy(SCENARIO_DIR)
+
+    def test_dynamodb_data_roundtrip(self, pulumi_runner):
+        """Put and get an item from the DynamoDB catalog table."""
+        result = pulumi_runner.up(SCENARIO_DIR)
+        assert result.returncode == 0, f"pulumi up failed:\n{result.stderr}"
+
+        outputs = pulumi_runner.stack_output(SCENARIO_DIR)
+        table = outputs["table_name"]
+
+        ddb = make_client("dynamodb")
+        put_and_get_dynamodb_item(
+            ddb,
+            table,
+            item={
+                "dataset_id": {"S": "ds-001"},
+                "timestamp": {"S": "2026-01-01T00:00:00Z"},
+                "size": {"N": "1024"},
+            },
+            key={
+                "dataset_id": {"S": "ds-001"},
+                "timestamp": {"S": "2026-01-01T00:00:00Z"},
+            },
+        )
 
         # Cleanup
         pulumi_runner.destroy(SCENARIO_DIR)

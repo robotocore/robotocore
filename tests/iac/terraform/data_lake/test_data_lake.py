@@ -3,6 +3,11 @@
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import (
+    put_and_get_dynamodb_item,
+    put_and_get_s3_object,
+    put_and_read_kinesis_record,
+)
 from tests.iac.helpers.resource_validator import (
     assert_dynamodb_table_exists,
     assert_kinesis_stream_exists,
@@ -78,3 +83,39 @@ class TestDataLake:
         assert_s3_bucket_exists(s3, outputs["bucket_name"]["value"])
         assert_kinesis_stream_exists(kinesis, outputs["stream_name"]["value"])
         assert_dynamodb_table_exists(dynamodb, outputs["table_name"]["value"])
+
+    def test_s3_data_roundtrip(self, terraform_dir, tf_runner):
+        """Upload and download data from the landing zone bucket."""
+        tf_runner.apply(terraform_dir)
+        outputs = tf_runner.output(terraform_dir)
+        bucket = outputs["bucket_name"]["value"]
+        s3 = make_client("s3")
+        put_and_get_s3_object(s3, bucket, "data/test.csv", "id,name\n1,test")
+
+    def test_kinesis_data_roundtrip(self, terraform_dir, tf_runner):
+        """Put and read a record from the Kinesis ingest stream."""
+        tf_runner.apply(terraform_dir)
+        outputs = tf_runner.output(terraform_dir)
+        stream = outputs["stream_name"]["value"]
+        kinesis = make_client("kinesis")
+        put_and_read_kinesis_record(kinesis, stream, "test-data", "pk1")
+
+    def test_dynamodb_data_roundtrip(self, terraform_dir, tf_runner):
+        """Put and get an item from the DynamoDB catalog table."""
+        tf_runner.apply(terraform_dir)
+        outputs = tf_runner.output(terraform_dir)
+        table = outputs["table_name"]["value"]
+        ddb = make_client("dynamodb")
+        put_and_get_dynamodb_item(
+            ddb,
+            table,
+            item={
+                "dataset_id": {"S": "ds-001"},
+                "timestamp": {"S": "2026-01-01T00:00:00Z"},
+                "size": {"N": "1024"},
+            },
+            key={
+                "dataset_id": {"S": "ds-001"},
+                "timestamp": {"S": "2026-01-01T00:00:00Z"},
+            },
+        )
