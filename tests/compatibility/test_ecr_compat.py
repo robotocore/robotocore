@@ -682,6 +682,65 @@ class TestECRBatchScanningConfig:
         assert "scanningConfigurations" in resp
 
 
+class TestECRPullThroughCacheRules:
+    """Tests for ECR pull-through cache rule operations."""
+
+    def test_create_and_describe_pull_through_cache_rule(self, ecr):
+        """CreatePullThroughCacheRule + DescribePullThroughCacheRules roundtrip."""
+        prefix = _unique("ptcr")
+        resp = ecr.create_pull_through_cache_rule(
+            ecrRepositoryPrefix=prefix,
+            upstreamRegistryUrl="public.ecr.aws",
+        )
+        assert "ecrRepositoryPrefix" in resp
+        assert resp["ecrRepositoryPrefix"] == prefix
+        try:
+            desc = ecr.describe_pull_through_cache_rules()
+            assert "pullThroughCacheRules" in desc
+            prefixes = [r["ecrRepositoryPrefix"] for r in desc["pullThroughCacheRules"]]
+            assert prefix in prefixes
+        finally:
+            ecr.delete_pull_through_cache_rule(ecrRepositoryPrefix=prefix)
+
+    def test_delete_pull_through_cache_rule(self, ecr):
+        """DeletePullThroughCacheRule removes the rule."""
+        prefix = _unique("ptcr-del")
+        ecr.create_pull_through_cache_rule(
+            ecrRepositoryPrefix=prefix,
+            upstreamRegistryUrl="public.ecr.aws",
+        )
+        resp = ecr.delete_pull_through_cache_rule(ecrRepositoryPrefix=prefix)
+        assert "ecrRepositoryPrefix" in resp
+        # Verify it's gone
+        desc = ecr.describe_pull_through_cache_rules()
+        prefixes = [r["ecrRepositoryPrefix"] for r in desc["pullThroughCacheRules"]]
+        assert prefix not in prefixes
+
+    def test_describe_pull_through_cache_rules_empty(self, ecr):
+        """DescribePullThroughCacheRules returns empty list when none exist."""
+        resp = ecr.describe_pull_through_cache_rules()
+        assert "pullThroughCacheRules" in resp
+        assert isinstance(resp["pullThroughCacheRules"], list)
+
+
+class TestECRAccountSettings:
+    """Tests for ECR account setting operations."""
+
+    def test_put_and_get_account_setting(self, ecr):
+        """PutAccountSetting + GetAccountSetting roundtrip."""
+        put_resp = ecr.put_account_setting(
+            name="BASIC_SCAN_TYPE_VERSION",
+            value="AWS_NATIVE",
+        )
+        assert "name" in put_resp
+        assert put_resp["name"] == "BASIC_SCAN_TYPE_VERSION"
+        assert put_resp["value"] == "AWS_NATIVE"
+
+        get_resp = ecr.get_account_setting(name="BASIC_SCAN_TYPE_VERSION")
+        assert "name" in get_resp
+        assert get_resp["value"] == "AWS_NATIVE"
+
+
 class TestECRErrorPaths:
     """Tests that verify proper error responses for nonexistent resources."""
 

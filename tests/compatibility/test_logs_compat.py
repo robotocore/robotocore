@@ -2243,3 +2243,48 @@ class TestLogsNewOps:
                 enabled=False,
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_scheduled_query_nonexistent(self, logs):
+        """GetScheduledQuery with nonexistent identifier raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.get_scheduled_query(
+                identifier="arn:aws:logs:us-east-1:123456789012:scheduled-query:nonexistent",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_scheduled_query_nonexistent(self, logs):
+        """DeleteScheduledQuery with nonexistent identifier raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_scheduled_query(
+                identifier="arn:aws:logs:us-east-1:123456789012:scheduled-query:nonexistent",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_anomaly_nonexistent(self, logs):
+        """UpdateAnomaly with nonexistent detector ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.update_anomaly(
+                anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:fake",
+                suppressionType="LIMITED",
+                suppressionPeriod={"value": 1, "suppressionUnit": "HOURS"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_delivery_configuration_nonexistent(self, logs):
+        """UpdateDeliveryConfiguration with nonexistent ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.update_delivery_configuration(
+                id="fake-delivery-id",
+                fieldDelimiter=",",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestLogsScheduledQueryList:
+    """Tests for ScheduledQuery list operation."""
+
+    def test_list_scheduled_queries(self, logs):
+        """ListScheduledQueries returns a response with scheduledQueries key."""
+        resp = logs.list_scheduled_queries()
+        assert "scheduledQueries" in resp
+        assert isinstance(resp["scheduledQueries"], list)

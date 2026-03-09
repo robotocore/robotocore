@@ -1472,3 +1472,212 @@ class TestSESv2ErrorCases:
             assert exc.value.response["Error"]["Code"] == "NotFoundException"
         finally:
             sesv2.delete_contact_list(ContactListName=cl_name)
+
+
+class TestSESv2UpdateOperations:
+    """Tests for UpdateContact, UpdateContactList, and configuration set options."""
+
+    def test_update_contact_unsubscribe_all(self, sesv2):
+        """UpdateContact sets UnsubscribeAll flag."""
+        cl_name = _uid("cl")
+        email = f"{_uid('ct')}@example.com"
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            sesv2.create_contact(ContactListName=cl_name, EmailAddress=email)
+            resp = sesv2.update_contact(
+                ContactListName=cl_name, EmailAddress=email, UnsubscribeAll=True
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_contact(ContactListName=cl_name, EmailAddress=email)
+            assert got["UnsubscribeAll"] is True
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_update_contact_topic_preferences(self, sesv2):
+        """UpdateContact changes topic preferences."""
+        cl_name = _uid("cl")
+        email = f"{_uid('ct')}@example.com"
+        sesv2.create_contact_list(
+            ContactListName=cl_name,
+            Topics=[
+                {
+                    "TopicName": "updates",
+                    "DisplayName": "Updates",
+                    "DefaultSubscriptionStatus": "OPT_IN",
+                }
+            ],
+        )
+        try:
+            sesv2.create_contact(
+                ContactListName=cl_name,
+                EmailAddress=email,
+                TopicPreferences=[{"TopicName": "updates", "SubscriptionStatus": "OPT_IN"}],
+            )
+            sesv2.update_contact(
+                ContactListName=cl_name,
+                EmailAddress=email,
+                TopicPreferences=[{"TopicName": "updates", "SubscriptionStatus": "OPT_OUT"}],
+            )
+            got = sesv2.get_contact(ContactListName=cl_name, EmailAddress=email)
+            prefs = got.get("TopicPreferences", [])
+            matching = [p for p in prefs if p["TopicName"] == "updates"]
+            assert len(matching) == 1
+            assert matching[0]["SubscriptionStatus"] == "OPT_OUT"
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_update_contact_list_description(self, sesv2):
+        """UpdateContactList changes the description."""
+        cl_name = _uid("cl")
+        sesv2.create_contact_list(ContactListName=cl_name, Description="original")
+        try:
+            resp = sesv2.update_contact_list(ContactListName=cl_name, Description="updated")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_contact_list(ContactListName=cl_name)
+            assert got["Description"] == "updated"
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_update_contact_list_topics(self, sesv2):
+        """UpdateContactList changes topics."""
+        cl_name = _uid("cl")
+        sesv2.create_contact_list(
+            ContactListName=cl_name,
+            Topics=[
+                {
+                    "TopicName": "news",
+                    "DisplayName": "Newsletter",
+                    "DefaultSubscriptionStatus": "OPT_IN",
+                }
+            ],
+        )
+        try:
+            sesv2.update_contact_list(
+                ContactListName=cl_name,
+                Topics=[
+                    {
+                        "TopicName": "alerts",
+                        "DisplayName": "Alerts",
+                        "DefaultSubscriptionStatus": "OPT_OUT",
+                    }
+                ],
+            )
+            got = sesv2.get_contact_list(ContactListName=cl_name)
+            topic_names = [t["TopicName"] for t in got["Topics"]]
+            assert "alerts" in topic_names
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+    def test_update_contact_list_not_found(self, sesv2):
+        """UpdateContactList for nonexistent list raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.update_contact_list(ContactListName=_uid("nolist"), Description="fail")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_contact_not_found(self, sesv2):
+        """UpdateContact for nonexistent contact raises NotFoundException."""
+        cl_name = _uid("cl")
+        sesv2.create_contact_list(ContactListName=cl_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                sesv2.update_contact(
+                    ContactListName=cl_name,
+                    EmailAddress=f"{_uid('nope')}@example.com",
+                    UnsubscribeAll=True,
+                )
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            sesv2.delete_contact_list(ContactListName=cl_name)
+
+
+class TestSESv2AccountWarmup:
+    """Tests for PutAccountDedicatedIpWarmupAttributes."""
+
+    def test_put_account_dedicated_ip_warmup_attributes(self, sesv2):
+        """PutAccountDedicatedIpWarmupAttributes enables auto warmup."""
+        resp = sesv2.put_account_dedicated_ip_warmup_attributes(AutoWarmupEnabled=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_account_dedicated_ip_warmup_attributes_disable(self, sesv2):
+        """PutAccountDedicatedIpWarmupAttributes disables auto warmup."""
+        resp = sesv2.put_account_dedicated_ip_warmup_attributes(AutoWarmupEnabled=False)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2DomainDeliverability:
+    """Tests for ListDomainDeliverabilityCampaigns."""
+
+    def test_list_domain_deliverability_campaigns(self, sesv2):
+        """ListDomainDeliverabilityCampaigns returns campaigns list."""
+        import datetime
+
+        resp = sesv2.list_domain_deliverability_campaigns(
+            StartDate=datetime.datetime(2025, 1, 1),
+            EndDate=datetime.datetime(2025, 12, 31),
+            SubscribedDomain="example.com",
+        )
+        assert "DomainDeliverabilityCampaigns" in resp
+        assert isinstance(resp["DomainDeliverabilityCampaigns"], list)
+
+
+class TestSESv2ConfigurationSetOptions:
+    """Tests for PutConfigurationSetDeliveryOptions and TrackingOptions."""
+
+    def test_put_configuration_set_delivery_options(self, sesv2):
+        """PutConfigurationSetDeliveryOptions sets TLS policy."""
+        cs_name = _uid("cs")
+        sesv2.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            resp = sesv2.put_configuration_set_delivery_options(
+                ConfigurationSetName=cs_name, TlsPolicy="REQUIRE"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_configuration_set(ConfigurationSetName=cs_name)
+            assert got["DeliveryOptions"]["TlsPolicy"] == "REQUIRE"
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_put_configuration_set_delivery_options_optional(self, sesv2):
+        """PutConfigurationSetDeliveryOptions with OPTIONAL TLS policy."""
+        cs_name = _uid("cs")
+        sesv2.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            sesv2.put_configuration_set_delivery_options(
+                ConfigurationSetName=cs_name, TlsPolicy="OPTIONAL"
+            )
+            got = sesv2.get_configuration_set(ConfigurationSetName=cs_name)
+            assert got["DeliveryOptions"]["TlsPolicy"] == "OPTIONAL"
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_put_configuration_set_delivery_options_not_found(self, sesv2):
+        """PutConfigurationSetDeliveryOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_delivery_options(
+                ConfigurationSetName=_uid("nocs"), TlsPolicy="REQUIRE"
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_configuration_set_tracking_options(self, sesv2):
+        """PutConfigurationSetTrackingOptions sets custom redirect domain."""
+        cs_name = _uid("cs")
+        sesv2.create_configuration_set(ConfigurationSetName=cs_name)
+        try:
+            resp = sesv2.put_configuration_set_tracking_options(
+                ConfigurationSetName=cs_name,
+                CustomRedirectDomain="track.example.com",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_configuration_set(ConfigurationSetName=cs_name)
+            assert got["TrackingOptions"]["CustomRedirectDomain"] == "track.example.com"
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_put_configuration_set_tracking_options_not_found(self, sesv2):
+        """PutConfigurationSetTrackingOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_tracking_options(
+                ConfigurationSetName=_uid("nocs"),
+                CustomRedirectDomain="track.example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"

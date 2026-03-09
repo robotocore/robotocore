@@ -778,6 +778,189 @@ class TestEMRSecurityConfigurationCRUD:
         )
 
 
+class TestEMRCancelSteps:
+    """Tests for EMR CancelSteps operation."""
+
+    def test_cancel_steps(self, emr, cluster_id):
+        """CancelSteps returns a list of cancel step info."""
+        add_resp = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "cancel-me",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {
+                        "Jar": "command-runner.jar",
+                        "Args": ["echo", "cancel"],
+                    },
+                }
+            ],
+        )
+        step_id = add_resp["StepIds"][0]
+        resp = emr.cancel_steps(ClusterId=cluster_id, StepIds=[step_id])
+        assert "CancelStepsInfoList" in resp
+        assert len(resp["CancelStepsInfoList"]) == 1
+        assert resp["CancelStepsInfoList"][0]["StepId"] == step_id
+
+
+class TestEMRStudioOperations:
+    """Tests for EMR Studio CRUD operations."""
+
+    def test_create_and_describe_studio(self, emr):
+        """CreateStudio + DescribeStudio roundtrip."""
+        name = _unique("studio")
+        resp = emr.create_studio(
+            Name=name,
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        assert "StudioId" in resp
+        studio_id = resp["StudioId"]
+        try:
+            desc = emr.describe_studio(StudioId=studio_id)
+            assert "Studio" in desc
+            assert desc["Studio"]["StudioId"] == studio_id
+            assert desc["Studio"]["Name"] == name
+        finally:
+            emr.delete_studio(StudioId=studio_id)
+
+    def test_list_studios(self, emr):
+        """ListStudios returns a list of studios."""
+        name = _unique("list-studio")
+        resp = emr.create_studio(
+            Name=name,
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        studio_id = resp["StudioId"]
+        try:
+            list_resp = emr.list_studios()
+            assert "Studios" in list_resp
+            studio_ids = [s["StudioId"] for s in list_resp["Studios"]]
+            assert studio_id in studio_ids
+        finally:
+            emr.delete_studio(StudioId=studio_id)
+
+    def test_delete_studio(self, emr):
+        """DeleteStudio removes the studio."""
+        name = _unique("del-studio")
+        resp = emr.create_studio(
+            Name=name,
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        studio_id = resp["StudioId"]
+        del_resp = emr.delete_studio(StudioId=studio_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEMRListSecurityConfigurations:
+    """Tests for EMR ListSecurityConfigurations."""
+
+    def test_list_security_configurations(self, emr):
+        """ListSecurityConfigurations returns a list."""
+        name = _unique("list-sec")
+        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False}})
+        emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        try:
+            resp = emr.list_security_configurations()
+            assert "SecurityConfigurations" in resp
+            names = [sc["Name"] for sc in resp["SecurityConfigurations"]]
+            assert name in names
+        finally:
+            emr.delete_security_configuration(Name=name)
+
+
+class TestEMRManagedScalingPolicy:
+    """Tests for EMR managed scaling policy operations."""
+
+    def test_put_and_get_managed_scaling_policy(self, emr, cluster_id):
+        """PutManagedScalingPolicy + GetManagedScalingPolicy roundtrip."""
+        emr.put_managed_scaling_policy(
+            ClusterId=cluster_id,
+            ManagedScalingPolicy={
+                "ComputeLimits": {
+                    "UnitType": "Instances",
+                    "MinimumCapacityUnits": 1,
+                    "MaximumCapacityUnits": 10,
+                    "MaximumOnDemandCapacityUnits": 10,
+                    "MaximumCoreCapacityUnits": 10,
+                }
+            },
+        )
+        resp = emr.get_managed_scaling_policy(ClusterId=cluster_id)
+        assert "ManagedScalingPolicy" in resp
+        limits = resp["ManagedScalingPolicy"]["ComputeLimits"]
+        assert limits["UnitType"] == "Instances"
+        assert limits["MinimumCapacityUnits"] == 1
+        assert limits["MaximumCapacityUnits"] == 10
+
+    def test_remove_managed_scaling_policy(self, emr, cluster_id):
+        """RemoveManagedScalingPolicy removes the policy."""
+        emr.put_managed_scaling_policy(
+            ClusterId=cluster_id,
+            ManagedScalingPolicy={
+                "ComputeLimits": {
+                    "UnitType": "Instances",
+                    "MinimumCapacityUnits": 1,
+                    "MaximumCapacityUnits": 5,
+                    "MaximumOnDemandCapacityUnits": 5,
+                    "MaximumCoreCapacityUnits": 5,
+                }
+            },
+        )
+        resp = emr.remove_managed_scaling_policy(ClusterId=cluster_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEMRAutoTerminationPolicy:
+    """Tests for EMR auto-termination policy operations."""
+
+    def test_put_and_get_auto_termination_policy(self, emr, cluster_id):
+        """PutAutoTerminationPolicy + GetAutoTerminationPolicy roundtrip."""
+        emr.put_auto_termination_policy(
+            ClusterId=cluster_id,
+            AutoTerminationPolicy={"IdleTimeout": 3600},
+        )
+        resp = emr.get_auto_termination_policy(ClusterId=cluster_id)
+        assert "AutoTerminationPolicy" in resp
+        assert resp["AutoTerminationPolicy"]["IdleTimeout"] == 3600
+
+    def test_remove_auto_termination_policy(self, emr, cluster_id):
+        """RemoveAutoTerminationPolicy removes the policy."""
+        emr.put_auto_termination_policy(
+            ClusterId=cluster_id,
+            AutoTerminationPolicy={"IdleTimeout": 7200},
+        )
+        resp = emr.remove_auto_termination_policy(ClusterId=cluster_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEMRDescribeReleaseLabel:
+    """Tests for EMR DescribeReleaseLabel."""
+
+    def test_describe_release_label(self, emr):
+        """DescribeReleaseLabel returns details for a valid release."""
+        resp = emr.describe_release_label(ReleaseLabel="emr-6.10.0")
+        assert "ReleaseLabel" in resp
+        assert resp["ReleaseLabel"] == "emr-6.10.0"
+
+
 class TestEMRTerminate:
     """Tests for EMR terminate operations."""
 

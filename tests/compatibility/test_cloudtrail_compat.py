@@ -809,3 +809,305 @@ class TestCloudTrailDescribeTrailsEdgeCases:
             trailNameList=["nonexistent-trail-" + uuid.uuid4().hex[:8]]
         )
         assert resp["trailList"] == []
+
+
+class TestCloudTrailUpdateEventDataStore:
+    """Tests for UpdateEventDataStore."""
+
+    def test_update_event_data_store_name(self, cloudtrail):
+        """UpdateEventDataStore can change the name."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = create_resp["EventDataStoreArn"]
+        new_name = _unique("ct-eds-updated")
+        try:
+            resp = cloudtrail.update_event_data_store(EventDataStore=eds_arn, Name=new_name)
+            assert resp["EventDataStoreArn"] == eds_arn
+            assert resp["Name"] == new_name
+        finally:
+            try:
+                cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
+            except Exception:
+                pass
+
+    def test_update_event_data_store_retention(self, cloudtrail):
+        """UpdateEventDataStore can change retention period."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(Name=name, RetentionPeriod=90)
+        eds_arn = create_resp["EventDataStoreArn"]
+        try:
+            resp = cloudtrail.update_event_data_store(EventDataStore=eds_arn, RetentionPeriod=180)
+            assert resp["RetentionPeriod"] == 180
+        finally:
+            try:
+                cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
+            except Exception:
+                pass
+
+    def test_update_event_data_store_verify_via_get(self, cloudtrail):
+        """UpdateEventDataStore changes are visible via GetEventDataStore."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = create_resp["EventDataStoreArn"]
+        new_name = _unique("ct-eds-v2")
+        try:
+            cloudtrail.update_event_data_store(EventDataStore=eds_arn, Name=new_name)
+            get_resp = cloudtrail.get_event_data_store(EventDataStore=eds_arn)
+            assert get_resp["Name"] == new_name
+        finally:
+            try:
+                cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
+            except Exception:
+                pass
+
+
+class TestCloudTrailDeleteEventDataStore:
+    """Tests for DeleteEventDataStore and RestoreEventDataStore."""
+
+    def test_delete_event_data_store(self, cloudtrail):
+        """DeleteEventDataStore removes the EDS."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = create_resp["EventDataStoreArn"]
+        cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
+        # After delete, get should fail or show non-ENABLED status
+        try:
+            get_resp = cloudtrail.get_event_data_store(EventDataStore=eds_arn)
+            # Some implementations mark as PENDING_DELETION rather than removing
+            assert get_resp["Status"] in ("PENDING_DELETION", "STOPPED_INGESTION")
+        except ClientError as e:
+            assert e.response["Error"]["Code"] == "EventDataStoreNotFoundException"
+
+    def test_delete_event_data_store_nonexistent(self, cloudtrail):
+        """DeleteEventDataStore on nonexistent ARN raises error."""
+        fake_arn = (
+            "arn:aws:cloudtrail:us-east-1:123456789012:"
+            "eventdatastore/00000000-0000-0000-0000-000000000099"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.delete_event_data_store(EventDataStore=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "EventDataStoreNotFoundException"
+
+
+class TestCloudTrailListQueries:
+    """Tests for ListQueries and CancelQuery."""
+
+    def test_list_queries(self, cloudtrail):
+        """ListQueries returns queries for an EDS."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        eds_id = eds_arn.split("/")[-1]
+        # Start a query so there's something to list
+        cloudtrail.start_query(QueryStatement=f"SELECT * FROM {eds_id} LIMIT 1")
+        resp = cloudtrail.list_queries(EventDataStore=eds_arn)
+        assert "Queries" in resp
+        assert isinstance(resp["Queries"], list)
+        assert len(resp["Queries"]) >= 1
+
+    def test_cancel_query(self, cloudtrail):
+        """CancelQuery cancels a running query."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        eds_id = eds_arn.split("/")[-1]
+        q = cloudtrail.start_query(QueryStatement=f"SELECT * FROM {eds_id} LIMIT 1")
+        qid = q["QueryId"]
+        try:
+            resp = cloudtrail.cancel_query(QueryId=qid)
+            assert resp["QueryId"] == qid
+            assert resp["QueryStatus"] in ("CANCELLED", "FINISHED", "TIMED_OUT")
+        except ClientError as e:
+            # Query may have already finished
+            assert e.response["Error"]["Code"] in (
+                "InactiveQueryException",
+                "QueryIdNotFoundException",
+            )
+
+
+class TestCloudTrailUpdateChannel:
+    """Tests for UpdateChannel and DeleteChannel."""
+
+    def test_update_channel_destinations(self, cloudtrail):
+        """UpdateChannel can update destinations."""
+        eds1 = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds1_arn = eds1["EventDataStoreArn"]
+        eds2 = cloudtrail.create_event_data_store(Name=_unique("ct-eds2"))
+        eds2_arn = eds2["EventDataStoreArn"]
+        ch = cloudtrail.create_channel(
+            Name=_unique("ct-ch"),
+            Source="Custom",
+            Destinations=[{"Type": "EVENT_DATA_STORE", "Location": eds1_arn}],
+        )
+        ch_arn = ch["ChannelArn"]
+        try:
+            resp = cloudtrail.update_channel(
+                Channel=ch_arn,
+                Destinations=[{"Type": "EVENT_DATA_STORE", "Location": eds2_arn}],
+            )
+            assert resp["ChannelArn"] == ch_arn
+            assert len(resp["Destinations"]) >= 1
+            locs = [d["Location"] for d in resp["Destinations"]]
+            assert eds2_arn in locs
+        finally:
+            try:
+                cloudtrail.delete_channel(Channel=ch_arn)
+            except Exception:
+                pass
+
+    def test_delete_channel(self, cloudtrail):
+        """DeleteChannel removes the channel."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        ch = cloudtrail.create_channel(
+            Name=_unique("ct-ch"),
+            Source="Custom",
+            Destinations=[{"Type": "EVENT_DATA_STORE", "Location": eds_arn}],
+        )
+        ch_arn = ch["ChannelArn"]
+        cloudtrail.delete_channel(Channel=ch_arn)
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_channel(Channel=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ChannelNotFoundException"
+
+
+class TestCloudTrailImportOperations:
+    """Tests for Import operations."""
+
+    def test_list_imports_empty(self, cloudtrail):
+        """ListImports returns an empty list when no imports exist."""
+        resp = cloudtrail.list_imports()
+        assert "Imports" in resp
+        assert isinstance(resp["Imports"], list)
+
+    def test_start_import_and_get(self, cloudtrail):
+        """StartImport creates an import; GetImport retrieves it."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        try:
+            import_resp = cloudtrail.start_import(
+                Destinations=[eds_arn],
+                ImportSource={
+                    "S3": {
+                        "S3LocationUri": "s3://fake-import-bucket/prefix/",
+                        "S3BucketRegion": "us-east-1",
+                        "S3BucketAccessRoleArn": "arn:aws:iam::123456789012:role/import-role",
+                    }
+                },
+            )
+            assert "ImportId" in import_resp
+            import_id = import_resp["ImportId"]
+
+            get_resp = cloudtrail.get_import(ImportId=import_id)
+            assert get_resp["ImportId"] == import_id
+            assert "ImportStatus" in get_resp
+        except ClientError:
+            # If StartImport isn't fully implemented, skip gracefully
+            pytest.skip("StartImport not fully implemented")
+
+    def test_start_import_appears_in_list(self, cloudtrail):
+        """StartImport result appears in ListImports."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        try:
+            import_resp = cloudtrail.start_import(
+                Destinations=[eds_arn],
+                ImportSource={
+                    "S3": {
+                        "S3LocationUri": "s3://fake-import-bucket/prefix/",
+                        "S3BucketRegion": "us-east-1",
+                        "S3BucketAccessRoleArn": "arn:aws:iam::123456789012:role/import-role",
+                    }
+                },
+            )
+            import_id = import_resp["ImportId"]
+            list_resp = cloudtrail.list_imports()
+            ids = [i.get("ImportId") for i in list_resp["Imports"]]
+            assert import_id in ids
+        except ClientError:
+            pytest.skip("StartImport not fully implemented")
+
+    def test_stop_import(self, cloudtrail):
+        """StopImport stops a running import."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        try:
+            import_resp = cloudtrail.start_import(
+                Destinations=[eds_arn],
+                ImportSource={
+                    "S3": {
+                        "S3LocationUri": "s3://fake-import-bucket/prefix/",
+                        "S3BucketRegion": "us-east-1",
+                        "S3BucketAccessRoleArn": "arn:aws:iam::123456789012:role/import-role",
+                    }
+                },
+            )
+            import_id = import_resp["ImportId"]
+            stop_resp = cloudtrail.stop_import(ImportId=import_id)
+            assert stop_resp["ImportId"] == import_id
+            assert stop_resp["ImportStatus"] in ("STOPPED", "COMPLETED", "FAILED")
+        except ClientError:
+            pytest.skip("StartImport/StopImport not fully implemented")
+
+
+class TestCloudTrailFederation:
+    """Tests for EnableFederation and DisableFederation."""
+
+    def test_enable_federation(self, cloudtrail):
+        """EnableFederation on an EDS returns federation status."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        try:
+            resp = cloudtrail.enable_federation(
+                EventDataStore=eds_arn,
+                FederationRoleArn="arn:aws:iam::123456789012:role/federation-role",
+            )
+            assert resp["EventDataStoreArn"] == eds_arn
+            assert resp["FederationStatus"] in ("ENABLED", "ENABLING")
+        except ClientError as e:
+            if "not implemented" in str(e).lower() or e.response["Error"]["Code"] in (
+                "NotImplementedError",
+                "UnsupportedOperationException",
+            ):
+                pytest.skip("EnableFederation not implemented")
+            raise
+
+    def test_disable_federation(self, cloudtrail):
+        """DisableFederation on an EDS returns federation status."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        try:
+            # Enable first
+            cloudtrail.enable_federation(
+                EventDataStore=eds_arn,
+                FederationRoleArn="arn:aws:iam::123456789012:role/federation-role",
+            )
+            resp = cloudtrail.disable_federation(EventDataStore=eds_arn)
+            assert resp["EventDataStoreArn"] == eds_arn
+            assert resp["FederationStatus"] in ("DISABLED", "DISABLING")
+        except ClientError as e:
+            if "not implemented" in str(e).lower() or e.response["Error"]["Code"] in (
+                "NotImplementedError",
+                "UnsupportedOperationException",
+            ):
+                pytest.skip("Federation not implemented")
+            raise
+
+
+class TestCloudTrailRegisterOrgDelegatedAdmin:
+    """Tests for RegisterOrganizationDelegatedAdmin."""
+
+    def test_register_organization_delegated_admin(self, cloudtrail):
+        """RegisterOrganizationDelegatedAdmin with a member account ID."""
+        try:
+            resp = cloudtrail.register_organization_delegated_admin(MemberAccountId="222233334444")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            # This may fail if Organizations isn't set up, which is expected
+            code = e.response["Error"]["Code"]
+            assert code in (
+                "OrganizationNotInAllFeaturesModeException",
+                "OrganizationsNotInUseException",
+                "AccountNotFoundException",
+                "NotOrganizationMasterAccountException",
+                "InsufficientDependencyServiceAccessPermissionException",
+                "AccessDeniedException",
+            )

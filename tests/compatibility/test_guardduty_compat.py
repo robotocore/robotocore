@@ -1151,3 +1151,351 @@ class TestGuardDutyOrganizationAdminEdgeCases:
         assert resp1["ResponseMetadata"]["HTTPStatusCode"] == 200
         resp2 = guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
         assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyPublishingDestinationFullCRUD:
+    """Tests for full publishing destination lifecycle."""
+
+    def test_list_publishing_destinations_empty(self, guardduty, detector):
+        """ListPublishingDestinations returns empty list for fresh detector."""
+        resp = guardduty.list_publishing_destinations(DetectorId=detector)
+        assert "Destinations" in resp
+        assert isinstance(resp["Destinations"], list)
+
+    def test_list_publishing_destinations_after_create(self, guardduty, detector):
+        """ListPublishingDestinations includes created destination."""
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::gd-list-test-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/list-key",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        resp = guardduty.list_publishing_destinations(DetectorId=detector)
+        assert "Destinations" in resp
+        dest_ids = [d["DestinationId"] for d in resp["Destinations"]]
+        assert dest_id in dest_ids
+
+    def test_update_publishing_destination(self, guardduty, detector):
+        """UpdatePublishingDestination updates destination properties."""
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::gd-update-test-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/update-key",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        resp = guardduty.update_publishing_destination(
+            DetectorId=detector,
+            DestinationId=dest_id,
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::gd-updated-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/updated-key",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_publishing_destination(self, guardduty, detector):
+        """DeletePublishingDestination removes a destination."""
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::gd-delete-test-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/delete-key",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        resp = guardduty.delete_publishing_destination(
+            DetectorId=detector,
+            DestinationId=dest_id,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.describe_publishing_destination(
+                DetectorId=detector,
+                DestinationId=dest_id,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_publishing_destination_then_list(self, guardduty, detector):
+        """After deleting, the destination no longer appears in list."""
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::gd-del-list-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/del-list-key",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        guardduty.delete_publishing_destination(DetectorId=detector, DestinationId=dest_id)
+        resp = guardduty.list_publishing_destinations(DetectorId=detector)
+        dest_ids = [d["DestinationId"] for d in resp["Destinations"]]
+        assert dest_id not in dest_ids
+
+    def test_describe_publishing_destination_has_publishing_failure_start_timestamp(
+        self, guardduty, detector
+    ):
+        """DescribePublishingDestination returns expected fields."""
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::gd-describe-fields-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/desc-key",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        resp = guardduty.describe_publishing_destination(DetectorId=detector, DestinationId=dest_id)
+        assert resp["DestinationType"] == "S3"
+        assert "Status" in resp
+        assert "DestinationProperties" in resp
+
+
+class TestGuardDutyMemberCRUDOperations:
+    """Tests for member create/get/list/delete operations."""
+
+    def test_create_members(self, guardduty, detector):
+        """CreateMembers adds member accounts."""
+        resp = guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "222233334444", "Email": "member1@example.com"},
+            ],
+        )
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_list_members_empty(self, guardduty, detector):
+        """ListMembers returns empty list for fresh detector."""
+        resp = guardduty.list_members(DetectorId=detector)
+        assert "Members" in resp
+        assert isinstance(resp["Members"], list)
+
+    def test_create_and_list_members(self, guardduty, detector):
+        """After creating members, ListMembers includes them."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "333344445555", "Email": "member2@example.com"},
+            ],
+        )
+        resp = guardduty.list_members(DetectorId=detector)
+        assert "Members" in resp
+        member_ids = [m["AccountId"] for m in resp["Members"]]
+        assert "333344445555" in member_ids
+
+    def test_get_members(self, guardduty, detector):
+        """GetMembers returns details for specified account IDs."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "444455556666", "Email": "member3@example.com"},
+            ],
+        )
+        resp = guardduty.get_members(
+            DetectorId=detector,
+            AccountIds=["444455556666"],
+        )
+        assert "Members" in resp
+        assert "UnprocessedAccounts" in resp
+
+    def test_get_members_returns_member_details(self, guardduty, detector):
+        """GetMembers returns email and account ID for created members."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "555566667777", "Email": "member4@example.com"},
+            ],
+        )
+        resp = guardduty.get_members(
+            DetectorId=detector,
+            AccountIds=["555566667777"],
+        )
+        if resp["Members"]:
+            member = resp["Members"][0]
+            assert member["AccountId"] == "555566667777"
+            assert "Email" in member
+
+    def test_delete_members(self, guardduty, detector):
+        """DeleteMembers removes member accounts."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "666677778888", "Email": "member5@example.com"},
+            ],
+        )
+        resp = guardduty.delete_members(
+            DetectorId=detector,
+            AccountIds=["666677778888"],
+        )
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_delete_members_then_list(self, guardduty, detector):
+        """After deleting members, they no longer appear in ListMembers."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "777788889999", "Email": "member6@example.com"},
+            ],
+        )
+        guardduty.delete_members(
+            DetectorId=detector,
+            AccountIds=["777788889999"],
+        )
+        resp = guardduty.list_members(DetectorId=detector)
+        member_ids = [m["AccountId"] for m in resp["Members"]]
+        assert "777788889999" not in member_ids
+
+    def test_get_members_nonexistent_returns_unprocessed(self, guardduty, detector):
+        """GetMembers for non-member account returns UnprocessedAccounts."""
+        resp = guardduty.get_members(
+            DetectorId=detector,
+            AccountIds=["000011112222"],
+        )
+        assert "UnprocessedAccounts" in resp
+
+    def test_create_multiple_members(self, guardduty, detector):
+        """CreateMembers can add multiple accounts at once."""
+        resp = guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "111122223333", "Email": "multi1@example.com"},
+                {"AccountId": "222233334444", "Email": "multi2@example.com"},
+            ],
+        )
+        assert "UnprocessedAccounts" in resp
+        listed = guardduty.list_members(DetectorId=detector)
+        member_ids = [m["AccountId"] for m in listed["Members"]]
+        assert "111122223333" in member_ids
+        assert "222233334444" in member_ids
+
+
+class TestGuardDutyMemberMonitoringOperations:
+    """Tests for StartMonitoringMembers and StopMonitoringMembers."""
+
+    def test_start_monitoring_members(self, guardduty, detector):
+        """StartMonitoringMembers returns UnprocessedAccounts."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "888899990000", "Email": "monitor1@example.com"},
+            ],
+        )
+        resp = guardduty.start_monitoring_members(
+            DetectorId=detector,
+            AccountIds=["888899990000"],
+        )
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_stop_monitoring_members(self, guardduty, detector):
+        """StopMonitoringMembers returns UnprocessedAccounts."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "999900001111", "Email": "monitor2@example.com"},
+            ],
+        )
+        resp = guardduty.stop_monitoring_members(
+            DetectorId=detector,
+            AccountIds=["999900001111"],
+        )
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_start_then_stop_monitoring(self, guardduty, detector):
+        """Start then stop monitoring for a member."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[
+                {"AccountId": "111100002222", "Email": "startstop@example.com"},
+            ],
+        )
+        start_resp = guardduty.start_monitoring_members(
+            DetectorId=detector, AccountIds=["111100002222"]
+        )
+        assert start_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        stop_resp = guardduty.stop_monitoring_members(
+            DetectorId=detector, AccountIds=["111100002222"]
+        )
+        assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyDisableOrganizationAdmin:
+    """Tests for DisableOrganizationAdminAccount."""
+
+    def test_disable_organization_admin_account(self, guardduty):
+        """DisableOrganizationAdminAccount returns 200."""
+        # Enable first so there's something to disable
+        guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
+        resp = guardduty.disable_organization_admin_account(AdminAccountId="111122223333")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_enable_then_disable_then_list(self, guardduty):
+        """After enable then disable, the admin account is removed from list."""
+        guardduty.enable_organization_admin_account(AdminAccountId="222233334444")
+        guardduty.disable_organization_admin_account(AdminAccountId="222233334444")
+        resp = guardduty.list_organization_admin_accounts()
+        admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
+        assert "222233334444" not in admin_ids
+
+
+class TestGuardDutyUpdateOrganizationConfiguration:
+    """Tests for UpdateOrganizationConfiguration."""
+
+    def test_update_organization_configuration(self, guardduty, detector):
+        """UpdateOrganizationConfiguration returns 200."""
+        resp = guardduty.update_organization_configuration(
+            DetectorId=detector,
+            AutoEnable=True,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_organization_configuration_auto_enable_false(self, guardduty, detector):
+        """UpdateOrganizationConfiguration with AutoEnable=False."""
+        resp = guardduty.update_organization_configuration(
+            DetectorId=detector,
+            AutoEnable=False,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_then_describe_organization_configuration(self, guardduty, detector):
+        """After update, DescribeOrganizationConfiguration still returns valid shape."""
+        guardduty.update_organization_configuration(
+            DetectorId=detector,
+            AutoEnable=True,
+        )
+        resp = guardduty.describe_organization_configuration(DetectorId=detector)
+        assert "AutoEnable" in resp
+        assert "MemberAccountLimitReached" in resp
+
+
+class TestGuardDutyAcceptAdministratorInvitation:
+    """Tests for AcceptAdministratorInvitation."""
+
+    def test_accept_administrator_invitation(self, guardduty, detector):
+        """AcceptAdministratorInvitation returns 200."""
+        resp = guardduty.accept_administrator_invitation(
+            DetectorId=detector,
+            AdministratorId="111122223333",
+            InvitationId="fake-invitation-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_accept_administrator_invitation_then_get(self, guardduty, detector):
+        """After accepting, GetAdministratorAccount reflects the admin."""
+        guardduty.accept_administrator_invitation(
+            DetectorId=detector,
+            AdministratorId="222233334444",
+            InvitationId="another-invitation-id",
+        )
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

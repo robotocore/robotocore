@@ -1837,3 +1837,122 @@ class TestRoute53HealthCheckTypes:
                 route53.delete_hosted_zone(Id=zone_id)
         finally:
             route53.delete_reusable_delegation_set(Id=ds_id)
+
+
+class TestRoute53Limits:
+    """Tests for GetAccountLimit, GetHostedZoneLimit, GetReusableDelegationSetLimit."""
+
+    def test_get_account_limit_max_hosted_zones(self, route53):
+        """GetAccountLimit returns a limit for MAX_HOSTED_ZONES_BY_OWNER."""
+        resp = route53.get_account_limit(Type="MAX_HOSTED_ZONES_BY_OWNER")
+        assert "Limit" in resp
+        assert "Value" in resp["Limit"]
+        assert int(resp["Limit"]["Value"]) > 0
+
+    def test_get_hosted_zone_limit(self, route53, hosted_zone):
+        """GetHostedZoneLimit returns max rrsets per zone."""
+        resp = route53.get_hosted_zone_limit(
+            Type="MAX_RRSETS_BY_ZONE",
+            HostedZoneId=hosted_zone,
+        )
+        assert "Limit" in resp
+        assert int(resp["Limit"]["Value"]) > 0
+
+    def test_get_reusable_delegation_set_limit(self, route53):
+        """GetReusableDelegationSetLimit returns a limit value."""
+        ds = route53.create_reusable_delegation_set(
+            CallerReference=_unique("ds-limit"),
+        )
+        ds_id = ds["DelegationSet"]["Id"].split("/")[-1]
+        try:
+            resp = route53.get_reusable_delegation_set_limit(
+                Type="MAX_ZONES_BY_REUSABLE_DELEGATION_SET",
+                DelegationSetId=ds_id,
+            )
+            assert "Limit" in resp
+            assert int(resp["Limit"]["Value"]) > 0
+        finally:
+            route53.delete_reusable_delegation_set(Id=ds_id)
+
+
+class TestRoute53HealthCheckFailureReason:
+    """Tests for GetHealthCheckLastFailureReason."""
+
+    def test_get_health_check_last_failure_reason(self, route53):
+        """GetHealthCheckLastFailureReason returns a list of failure reasons."""
+        hc = route53.create_health_check(
+            CallerReference=_unique("hc-fail"),
+            HealthCheckConfig={
+                "Type": "TCP",
+                "IPAddress": "10.0.0.1",
+                "Port": 12345,
+            },
+        )
+        hc_id = hc["HealthCheck"]["Id"]
+        try:
+            resp = route53.get_health_check_last_failure_reason(
+                HealthCheckId=hc_id,
+            )
+            assert "HealthCheckObservations" in resp
+            assert isinstance(resp["HealthCheckObservations"], list)
+        finally:
+            route53.delete_health_check(HealthCheckId=hc_id)
+
+
+class TestRoute53CidrCollections:
+    """Tests for CIDR collection CRUD operations."""
+
+    def test_create_and_delete_cidr_collection(self, route53):
+        """Create a CIDR collection and then delete it."""
+        name = _unique("cidr-coll")
+        resp = route53.create_cidr_collection(
+            Name=name,
+            CallerReference=_unique("cidr-ref"),
+        )
+        assert "Collection" in resp
+        coll = resp["Collection"]
+        assert coll["Name"] == name
+        assert "Id" in coll
+        assert "Arn" in coll
+        route53.delete_cidr_collection(Id=coll["Id"])
+
+
+class TestRoute53VPCAssociationAuthorization:
+    """Tests for VPC association authorization operations."""
+
+    def test_create_list_delete_vpc_association_authorization(self, route53, hosted_zone):
+        """Full lifecycle of VPC association authorization."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.99.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            # Create authorization
+            resp = route53.create_vpc_association_authorization(
+                HostedZoneId=hosted_zone,
+                VPC={"VPCRegion": "us-east-1", "VPCId": vpc_id},
+            )
+            assert "VPC" in resp
+            assert resp["VPC"]["VPCId"] == vpc_id
+
+            # List authorizations
+            listed = route53.list_vpc_association_authorizations(
+                HostedZoneId=hosted_zone,
+            )
+            assert "VPCs" in listed
+            vpc_ids = [v["VPCId"] for v in listed["VPCs"]]
+            assert vpc_id in vpc_ids
+
+            # Delete authorization
+            route53.delete_vpc_association_authorization(
+                HostedZoneId=hosted_zone,
+                VPC={"VPCRegion": "us-east-1", "VPCId": vpc_id},
+            )
+
+            # Verify deleted
+            listed2 = route53.list_vpc_association_authorizations(
+                HostedZoneId=hosted_zone,
+            )
+            vpc_ids2 = [v["VPCId"] for v in listed2["VPCs"]]
+            assert vpc_id not in vpc_ids2
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)

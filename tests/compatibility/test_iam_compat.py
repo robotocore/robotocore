@@ -3487,3 +3487,73 @@ class TestIAMUploadServerCertificate:
             assert "ServerCertificateId" in meta
         finally:
             iam.delete_server_certificate(ServerCertificateName=cert_name)
+
+
+class TestIAMServiceSpecificCredentials:
+    """Tests for ServiceSpecificCredential CRUD operations."""
+
+    def test_create_service_specific_credential(self, iam):
+        """CreateServiceSpecificCredential creates a credential for a service."""
+        user_name = _unique("ssc-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.create_service_specific_credential(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred = resp["ServiceSpecificCredential"]
+            assert cred["UserName"] == user_name
+            assert cred["ServiceName"] == "codecommit.amazonaws.com"
+            assert "ServiceSpecificCredentialId" in cred
+            assert "ServiceUserName" in cred
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMGenerateServiceLastAccessedDetails:
+    """Tests for GenerateServiceLastAccessedDetails and GetServiceLastAccessedDetails."""
+
+    def test_generate_and_get_service_last_accessed(self, iam):
+        """GenerateServiceLastAccessedDetails + GetServiceLastAccessedDetails."""
+        role_name = _unique("sla-role")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+        )
+        try:
+            role = iam.get_role(RoleName=role_name)
+            role_arn = role["Role"]["Arn"]
+
+            gen_resp = iam.generate_service_last_accessed_details(Arn=role_arn)
+            assert "JobId" in gen_resp
+            job_id = gen_resp["JobId"]
+
+            get_resp = iam.get_service_last_accessed_details(JobId=job_id)
+            assert "JobStatus" in get_resp
+            assert get_resp["JobStatus"] in ("IN_PROGRESS", "COMPLETED", "FAILED")
+            assert "ServicesLastAccessed" in get_resp
+        finally:
+            iam.delete_role(RoleName=role_name)
+
+    def test_get_service_last_accessed_details_with_entities(self, iam):
+        """GetServiceLastAccessedDetailsWithEntities returns entity details."""
+        role_name = _unique("slae-role")
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=TRUST_POLICY,
+        )
+        try:
+            role = iam.get_role(RoleName=role_name)
+            role_arn = role["Role"]["Arn"]
+
+            gen_resp = iam.generate_service_last_accessed_details(Arn=role_arn)
+            job_id = gen_resp["JobId"]
+
+            ent_resp = iam.get_service_last_accessed_details_with_entities(
+                JobId=job_id,
+                ServiceNamespace="s3",
+            )
+            assert "JobStatus" in ent_resp
+            assert ent_resp["JobStatus"] in ("IN_PROGRESS", "COMPLETED", "FAILED")
+        finally:
+            iam.delete_role(RoleName=role_name)

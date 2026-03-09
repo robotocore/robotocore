@@ -2192,3 +2192,117 @@ class TestRDSErrorPathOperations:
                 TargetDBClusterSnapshotIdentifier=_unique("target-snap"),
             )
         assert exc.value.response["Error"]["Code"] == "DBClusterSnapshotNotFoundFault"
+
+    def test_copy_option_group_nonexistent(self, rds):
+        with pytest.raises(ClientError) as exc:
+            rds.copy_option_group(
+                SourceOptionGroupIdentifier="nonexistent-og",
+                TargetOptionGroupIdentifier=_unique("target-og"),
+                TargetOptionGroupDescription="copy test",
+            )
+        assert exc.value.response["Error"]["Code"] == "OptionGroupNotFoundFault"
+
+
+class TestRDSDescribeAccountAttributes:
+    """Tests for DescribeAccountAttributes."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_account_attributes(self, client):
+        """DescribeAccountAttributes returns quota information."""
+        resp = client.describe_account_attributes()
+        assert "AccountQuotas" in resp
+        assert isinstance(resp["AccountQuotas"], list)
+        assert len(resp["AccountQuotas"]) > 0
+        # Each quota should have standard fields
+        quota = resp["AccountQuotas"][0]
+        assert "AccountQuotaName" in quota
+        assert "Used" in quota
+        assert "Max" in quota
+
+
+class TestRDSDescribeCertificates:
+    """Tests for DescribeCertificates."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_certificates(self, client):
+        """DescribeCertificates returns certificate information."""
+        resp = client.describe_certificates()
+        assert "Certificates" in resp
+        assert isinstance(resp["Certificates"], list)
+
+
+class TestRDSCopyOptionGroup:
+    """Tests for CopyOptionGroup."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_copy_option_group(self, client):
+        """CopyOptionGroup creates a copy of an existing option group."""
+        src_name = _unique("compat-og-src")
+        tgt_name = _unique("compat-og-tgt")
+        # Create source option group
+        client.create_option_group(
+            OptionGroupName=src_name,
+            EngineName="mysql",
+            MajorEngineVersion="8.0",
+            OptionGroupDescription="source for copy test",
+        )
+        try:
+            resp = client.copy_option_group(
+                SourceOptionGroupIdentifier=src_name,
+                TargetOptionGroupIdentifier=tgt_name,
+                TargetOptionGroupDescription="copied option group",
+            )
+            assert "OptionGroup" in resp
+            assert resp["OptionGroup"]["OptionGroupName"] == tgt_name
+            assert resp["OptionGroup"]["OptionGroupDescription"] == "copied option group"
+        finally:
+            try:
+                client.delete_option_group(OptionGroupName=tgt_name)
+            except ClientError:
+                pass
+            try:
+                client.delete_option_group(OptionGroupName=src_name)
+            except ClientError:
+                pass
+
+
+class TestRDSDescribeDBClusterEndpoints:
+    """Tests for DescribeDBClusterEndpoints."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_cluster_endpoints_empty(self, client):
+        """DescribeDBClusterEndpoints returns empty list when no clusters exist."""
+        resp = client.describe_db_cluster_endpoints()
+        assert "DBClusterEndpoints" in resp
+        assert isinstance(resp["DBClusterEndpoints"], list)
+
+    def test_describe_db_cluster_endpoints_for_cluster(self, client):
+        """DescribeDBClusterEndpoints for a specific cluster returns its endpoints."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.describe_db_cluster_endpoints(DBClusterIdentifier=name)
+            assert "DBClusterEndpoints" in resp
+            assert isinstance(resp["DBClusterEndpoints"], list)
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass

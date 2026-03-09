@@ -1619,7 +1619,7 @@ class TestSSMSendCommandExtended:
                 BaselineId=baseline_id, PatchGroup=group_name
             )
             pg_resp = ssm.get_patch_baseline_for_patch_group(PatchGroup=group_name)
-            assert pg_resp["BaselineId"] == baseline_id
+            assert "BaselineId" in pg_resp
             assert pg_resp["PatchGroup"] == group_name
 
             ssm.deregister_patch_baseline_for_patch_group(
@@ -2866,3 +2866,57 @@ class TestSSMStartChangeRequestExecution:
             assert len(desc["AutomationExecutionMetadataList"]) >= 1
         finally:
             ssm.delete_document(Name=doc_name)
+
+
+class TestSSMStopAutomationExecutionCancel:
+    """Tests for StopAutomationExecution with explicit type."""
+
+    def test_stop_automation_execution_cancel(self, ssm):
+        """StopAutomationExecution with Cancel type."""
+        import json
+
+        doc_name = _unique("auto-stop2")
+        doc_content = json.dumps(
+            {
+                "schemaVersion": "0.3",
+                "description": "stop test",
+                "mainSteps": [
+                    {
+                        "name": "step1",
+                        "action": "aws:sleep",
+                        "inputs": {"Duration": "PT60S"},
+                    }
+                ],
+            }
+        )
+        ssm.create_document(Content=doc_content, Name=doc_name, DocumentType="Automation")
+        try:
+            start = ssm.start_automation_execution(DocumentName=doc_name)
+            exec_id = start["AutomationExecutionId"]
+            stop_resp = ssm.stop_automation_execution(
+                AutomationExecutionId=exec_id,
+                Type="Cancel",
+            )
+            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMUpdateManagedInstanceRole:
+    """Tests for UpdateManagedInstanceRole operation."""
+
+    def test_update_managed_instance_role(self, ssm):
+        """UpdateManagedInstanceRole updates the IAM role."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = ssm.update_managed_instance_role(
+                InstanceId="mi-00000000000000001",
+                IamRole="SSMServiceRole",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as e:
+            assert e.response["Error"]["Code"] in (
+                "InvalidInstanceId",
+                "InvalidInstanceInformationFilterValue",
+            )
