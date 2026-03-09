@@ -747,3 +747,68 @@ class TestEmrAutoCoverage:
         resp = client.describe_job_flows()
         assert "JobFlows" in resp
         assert isinstance(resp["JobFlows"], list)
+
+
+class TestEMRSecurityConfigurationCRUD:
+    """Tests for EMR security configuration CRUD operations."""
+
+    def test_create_and_describe_security_configuration(self, emr):
+        """CreateSecurityConfiguration + DescribeSecurityConfiguration roundtrip."""
+        name = _unique("sec-config")
+        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False}})
+        create_resp = emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        assert create_resp["Name"] == name
+        assert "CreationDateTime" in create_resp
+
+        desc_resp = emr.describe_security_configuration(Name=name)
+        assert desc_resp["Name"] == name
+        assert "SecurityConfiguration" in desc_resp
+
+        emr.delete_security_configuration(Name=name)
+
+    def test_delete_security_configuration(self, emr):
+        """DeleteSecurityConfiguration removes the configuration."""
+        name = _unique("sec-config")
+        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False}})
+        emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        del_resp = emr.delete_security_configuration(Name=name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_security_configuration_nonexistent(self, emr):
+        """DescribeSecurityConfiguration for nonexistent name raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_security_configuration(Name="nonexistent-config")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+
+class TestEMRTerminate:
+    """Tests for EMR terminate operations."""
+
+    def test_terminate_job_flows(self, emr):
+        """TerminateJobFlows terminates a running cluster."""
+        resp = emr.run_job_flow(
+            Name=_unique("terminate-test"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        term_resp = emr.terminate_job_flows(JobFlowIds=[cid])
+        assert term_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify cluster is terminated
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["Status"]["State"] in (
+            "TERMINATING",
+            "TERMINATED",
+            "TERMINATED_WITH_ERRORS",
+        )
