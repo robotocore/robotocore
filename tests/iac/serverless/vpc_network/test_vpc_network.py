@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.stack_deployer import delete_stack, deploy_and_yield, get_stack_outputs
 
 pytestmark = pytest.mark.iac
 
@@ -63,31 +62,12 @@ Outputs:
 """
 
 
-def _get_outputs(stack: dict) -> dict[str, str]:
-    return {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
-
-
 @pytest.fixture(scope="module")
 def deployed_stack(ensure_server, test_run_id):
-    cfn = make_client("cloudformation")
     stack_name = f"{test_run_id}-sls-vpc-network"
-    cfn.create_stack(
-        StackName=stack_name,
-        TemplateBody=TEMPLATE,
-        Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
-    )
-    for _ in range(60):
-        resp = cfn.describe_stacks(StackName=stack_name)
-        status = resp["Stacks"][0]["StackStatus"]
-        if status == "CREATE_COMPLETE":
-            yield resp["Stacks"][0]
-            cfn.delete_stack(StackName=stack_name)
-            return
-        if "FAILED" in status or "ROLLBACK" in status:
-            pytest.skip(f"Stack deploy failed: {status}")
-            return
-        time.sleep(1)
-    pytest.skip("Stack deploy timed out")
+    stack = deploy_and_yield(stack_name, TEMPLATE)
+    yield stack
+    delete_stack(stack_name)
 
 
 class TestVpcNetwork:
@@ -95,14 +75,14 @@ class TestVpcNetwork:
         assert deployed_stack["StackStatus"] == "CREATE_COMPLETE"
 
     def test_vpc_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         ec2 = make_client("ec2")
         vpcs = ec2.describe_vpcs(VpcIds=[outputs["VpcId"]])
         assert len(vpcs["Vpcs"]) == 1
         assert vpcs["Vpcs"][0]["CidrBlock"] == "10.0.0.0/16"
 
     def test_subnets_exist(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         ec2 = make_client("ec2")
         subnets = ec2.describe_subnets(SubnetIds=[outputs["Subnet1Id"], outputs["Subnet2Id"]])
         assert len(subnets["Subnets"]) == 2
@@ -110,7 +90,7 @@ class TestVpcNetwork:
         assert cidrs == ["10.0.1.0/24", "10.0.2.0/24"]
 
     def test_security_group_rules(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         ec2 = make_client("ec2")
         sgs = ec2.describe_security_groups(GroupIds=[outputs["SecurityGroupId"]])
         assert len(sgs["SecurityGroups"]) == 1

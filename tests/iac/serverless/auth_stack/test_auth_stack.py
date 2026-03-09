@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.stack_deployer import delete_stack, deploy_and_yield, get_stack_outputs
 
 pytestmark = pytest.mark.iac
 
@@ -18,7 +17,7 @@ Resources:
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: sls-auth-stack-users
+      UserPoolName: !Sub "${AWS::StackName}-users"
       AutoVerifiedAttributes:
         - email
       Policies:
@@ -31,7 +30,7 @@ Resources:
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: sls-auth-stack-web
+      ClientName: !Sub "${AWS::StackName}-web"
       UserPoolId: !Ref UserPool
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
@@ -43,34 +42,19 @@ Outputs:
     Value: !Ref UserPool
   UserPoolClientId:
     Value: !Ref UserPoolClient
+  UserPoolName:
+    Value: !Sub "${AWS::StackName}-users"
+  ClientName:
+    Value: !Sub "${AWS::StackName}-web"
 """
-
-
-def _get_outputs(stack: dict) -> dict[str, str]:
-    return {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
 
 
 @pytest.fixture(scope="module")
 def deployed_stack(ensure_server, test_run_id):
-    cfn = make_client("cloudformation")
     stack_name = f"{test_run_id}-sls-auth-stack"
-    cfn.create_stack(
-        StackName=stack_name,
-        TemplateBody=TEMPLATE,
-        Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
-    )
-    for _ in range(60):
-        resp = cfn.describe_stacks(StackName=stack_name)
-        status = resp["Stacks"][0]["StackStatus"]
-        if status == "CREATE_COMPLETE":
-            yield resp["Stacks"][0]
-            cfn.delete_stack(StackName=stack_name)
-            return
-        if "FAILED" in status or "ROLLBACK" in status:
-            pytest.skip(f"Stack deploy failed: {status}")
-            return
-        time.sleep(1)
-    pytest.skip("Stack deploy timed out")
+    stack = deploy_and_yield(stack_name, TEMPLATE)
+    yield stack
+    delete_stack(stack_name)
 
 
 class TestAuthStack:
@@ -78,21 +62,21 @@ class TestAuthStack:
         assert deployed_stack["StackStatus"] == "CREATE_COMPLETE"
 
     def test_user_pool_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         cognito = make_client("cognito-idp")
         pool = cognito.describe_user_pool(UserPoolId=outputs["UserPoolId"])
-        assert pool["UserPool"]["Name"] == "sls-auth-stack-users"
+        assert pool["UserPool"]["Name"] == outputs["UserPoolName"]
         policy = pool["UserPool"]["Policies"]["PasswordPolicy"]
         assert policy["MinimumLength"] == 8
 
     def test_user_pool_client_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         cognito = make_client("cognito-idp")
         client = cognito.describe_user_pool_client(
             UserPoolId=outputs["UserPoolId"],
             ClientId=outputs["UserPoolClientId"],
         )
-        assert client["UserPoolClient"]["ClientName"] == "sls-auth-stack-web"
+        assert client["UserPoolClient"]["ClientName"] == outputs["ClientName"]
         auth_flows = client["UserPoolClient"]["ExplicitAuthFlows"]
         assert "ALLOW_USER_PASSWORD_AUTH" in auth_flows
         assert "ALLOW_REFRESH_TOKEN_AUTH" in auth_flows

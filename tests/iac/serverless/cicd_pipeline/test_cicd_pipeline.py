@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.stack_deployer import delete_stack, deploy_and_yield, get_stack_outputs
 
 pytestmark = pytest.mark.iac
 
@@ -18,17 +17,17 @@ Resources:
   ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: sls-cicd-pipeline-artifacts
+      BucketName: !Sub "${AWS::StackName}-artifacts"
 
   NotificationTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: sls-cicd-pipeline-notifications
+      TopicName: !Sub "${AWS::StackName}-notifications"
 
   PipelineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: sls-cicd-pipeline-role
+      RoleName: !Sub "${AWS::StackName}-role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -60,31 +59,12 @@ Outputs:
 """
 
 
-def _get_outputs(stack: dict) -> dict[str, str]:
-    return {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
-
-
 @pytest.fixture(scope="module")
 def deployed_stack(ensure_server, test_run_id):
-    cfn = make_client("cloudformation")
     stack_name = f"{test_run_id}-sls-cicd-pipeline"
-    cfn.create_stack(
-        StackName=stack_name,
-        TemplateBody=TEMPLATE,
-        Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
-    )
-    for _ in range(60):
-        resp = cfn.describe_stacks(StackName=stack_name)
-        status = resp["Stacks"][0]["StackStatus"]
-        if status == "CREATE_COMPLETE":
-            yield resp["Stacks"][0]
-            cfn.delete_stack(StackName=stack_name)
-            return
-        if "FAILED" in status or "ROLLBACK" in status:
-            pytest.skip(f"Stack deploy failed: {status}")
-            return
-        time.sleep(1)
-    pytest.skip("Stack deploy timed out")
+    stack = deploy_and_yield(stack_name, TEMPLATE)
+    yield stack
+    delete_stack(stack_name)
 
 
 class TestCicdPipeline:
@@ -92,19 +72,19 @@ class TestCicdPipeline:
         assert deployed_stack["StackStatus"] == "CREATE_COMPLETE"
 
     def test_artifact_bucket_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         s3 = make_client("s3")
         resp = s3.head_bucket(Bucket=outputs["BucketName"])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_sns_topic_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         sns = make_client("sns")
         attrs = sns.get_topic_attributes(TopicArn=outputs["TopicArn"])
-        assert "sls-cicd-pipeline-notifications" in attrs["Attributes"]["TopicArn"]
+        assert outputs["TopicArn"] == attrs["Attributes"]["TopicArn"]
 
     def test_iam_role_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         iam = make_client("iam")
         role = iam.get_role(RoleName=outputs["RoleName"])
         assert "codepipeline.amazonaws.com" in str(role["Role"]["AssumeRolePolicyDocument"])

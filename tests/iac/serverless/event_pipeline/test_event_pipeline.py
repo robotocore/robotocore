@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.stack_deployer import delete_stack, deploy_and_yield, get_stack_outputs
 
 pytestmark = pytest.mark.iac
 
@@ -18,12 +17,12 @@ Resources:
   EventQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: sls-event-pipeline-events
+      QueueName: !Sub "${AWS::StackName}-events"
 
   EventsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: sls-event-pipeline-events
+      TableName: !Sub "${AWS::StackName}-events"
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -35,7 +34,7 @@ Resources:
   ProcessorRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: sls-event-pipeline-processor-role
+      RoleName: !Sub "${AWS::StackName}-processor-role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -47,7 +46,7 @@ Resources:
   ProcessorFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: sls-event-pipeline-processor
+      FunctionName: !Sub "${AWS::StackName}-processor"
       Runtime: python3.12
       Handler: index.process
       Role: !GetAtt ProcessorRole.Arn
@@ -67,31 +66,12 @@ Outputs:
 """
 
 
-def _get_outputs(stack: dict) -> dict[str, str]:
-    return {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
-
-
 @pytest.fixture(scope="module")
 def deployed_stack(ensure_server, test_run_id):
-    cfn = make_client("cloudformation")
     stack_name = f"{test_run_id}-sls-event-pipeline"
-    cfn.create_stack(
-        StackName=stack_name,
-        TemplateBody=TEMPLATE,
-        Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
-    )
-    for _ in range(60):
-        resp = cfn.describe_stacks(StackName=stack_name)
-        status = resp["Stacks"][0]["StackStatus"]
-        if status == "CREATE_COMPLETE":
-            yield resp["Stacks"][0]
-            cfn.delete_stack(StackName=stack_name)
-            return
-        if "FAILED" in status or "ROLLBACK" in status:
-            pytest.skip(f"Stack deploy failed: {status}")
-            return
-        time.sleep(1)
-    pytest.skip("Stack deploy timed out")
+    stack = deploy_and_yield(stack_name, TEMPLATE)
+    yield stack
+    delete_stack(stack_name)
 
 
 class TestEventPipeline:
@@ -99,20 +79,20 @@ class TestEventPipeline:
         assert deployed_stack["StackStatus"] == "CREATE_COMPLETE"
 
     def test_sqs_queue_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         sqs = make_client("sqs")
         attrs = sqs.get_queue_attributes(QueueUrl=outputs["QueueUrl"], AttributeNames=["QueueArn"])
         assert "QueueArn" in attrs["Attributes"]
 
     def test_dynamodb_table_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         ddb = make_client("dynamodb")
         desc = ddb.describe_table(TableName=outputs["TableName"])
         assert desc["Table"]["TableStatus"] == "ACTIVE"
         assert desc["Table"]["BillingModeSummary"]["BillingMode"] == "PAY_PER_REQUEST"
 
     def test_lambda_function_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         lam = make_client("lambda")
         config = lam.get_function_configuration(FunctionName=outputs["FunctionName"])
         assert config["Runtime"] == "python3.12"
