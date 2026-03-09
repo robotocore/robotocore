@@ -3039,3 +3039,493 @@ class TestRDSDBProxyEndpoint:
         resp = client.delete_db_proxy_endpoint(DBProxyEndpointName=ep_name)
         assert "DBProxyEndpoint" in resp
         assert resp["DBProxyEndpoint"]["DBProxyEndpointName"] == ep_name
+
+
+class TestRDSCRUDBatch2:
+    """Batch 2 CRUD operations for RDS."""
+
+    # -- DB INSTANCES --
+
+    def test_create_and_delete_db_instance(self, rds):
+        """CreateDBInstance then DeleteDBInstance full lifecycle."""
+        name = _unique("crud2-inst")
+        try:
+            resp = rds.create_db_instance(
+                DBInstanceIdentifier=name,
+                DBInstanceClass="db.t3.micro",
+                Engine="mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+            assert "DBInstance" in resp
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == name
+            assert resp["DBInstance"]["Engine"] == "mysql"
+
+            del_resp = rds.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            assert "DBInstance" in del_resp
+            assert del_resp["DBInstance"]["DBInstanceIdentifier"] == name
+        except ClientError:
+            # cleanup if partially created
+            try:
+                rds.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+            raise
+
+    def test_describe_valid_db_instance_modifications(self, rds, db_instance):
+        """DescribeValidDBInstanceModifications returns modification options."""
+        resp = rds.describe_valid_db_instance_modifications(DBInstanceIdentifier=db_instance)
+        assert "ValidDBInstanceModificationsMessage" in resp
+
+    def test_create_db_instance_read_replica(self, rds, db_instance):
+        """CreateDBInstanceReadReplica from a source instance."""
+        replica_name = _unique("crud2-replica")
+        try:
+            resp = rds.create_db_instance_read_replica(
+                DBInstanceIdentifier=replica_name,
+                SourceDBInstanceIdentifier=db_instance,
+            )
+            assert "DBInstance" in resp
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == replica_name
+        finally:
+            try:
+                rds.delete_db_instance(DBInstanceIdentifier=replica_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_restore_db_instance_from_db_snapshot(self, rds, db_instance):
+        """RestoreDBInstanceFromDBSnapshot restores an instance from a snapshot."""
+        snap_name = _unique("crud2-snap")
+        restored_name = _unique("crud2-restored")
+        try:
+            rds.create_db_snapshot(
+                DBSnapshotIdentifier=snap_name,
+                DBInstanceIdentifier=db_instance,
+            )
+            resp = rds.restore_db_instance_from_db_snapshot(
+                DBInstanceIdentifier=restored_name,
+                DBSnapshotIdentifier=snap_name,
+            )
+            assert "DBInstance" in resp
+            assert resp["DBInstance"]["DBInstanceIdentifier"] == restored_name
+        finally:
+            try:
+                rds.delete_db_instance(DBInstanceIdentifier=restored_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+            try:
+                rds.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+            except ClientError:
+                pass
+
+    # -- DB CLUSTERS --
+
+    def test_create_and_delete_db_cluster(self, rds):
+        """CreateDBCluster then DeleteDBCluster full lifecycle."""
+        name = _unique("crud2-cl")
+        try:
+            resp = rds.create_db_cluster(
+                DBClusterIdentifier=name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+            assert "DBCluster" in resp
+            assert resp["DBCluster"]["DBClusterIdentifier"] == name
+            assert resp["DBCluster"]["Engine"] == "aurora-mysql"
+
+            del_resp = rds.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            assert "DBCluster" in del_resp
+            assert del_resp["DBCluster"]["DBClusterIdentifier"] == name
+        except ClientError:
+            try:
+                rds.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+            raise
+
+    def test_describe_db_cluster_endpoints(self, rds):
+        """DescribeDBClusterEndpoints returns endpoints for a cluster."""
+        name = _unique("crud2-clep")
+        try:
+            rds.create_db_cluster(
+                DBClusterIdentifier=name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+            resp = rds.describe_db_cluster_endpoints(DBClusterIdentifier=name)
+            assert "DBClusterEndpoints" in resp
+            assert isinstance(resp["DBClusterEndpoints"], list)
+        finally:
+            try:
+                rds.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_failover_db_cluster_nonexistent(self, rds):
+        """FailoverDBCluster with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            rds.failover_db_cluster(DBClusterIdentifier="nonexistent-cluster-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "DBClusterNotFoundFault"
+
+    def test_restore_db_cluster_from_snapshot(self, rds):
+        """RestoreDBClusterFromSnapshot restores from a cluster snapshot."""
+        cl_name = _unique("crud2-clrs")
+        snap_name = _unique("crud2-clsnap")
+        restored_name = _unique("crud2-clrest")
+        try:
+            rds.create_db_cluster(
+                DBClusterIdentifier=cl_name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+            rds.create_db_cluster_snapshot(
+                DBClusterSnapshotIdentifier=snap_name,
+                DBClusterIdentifier=cl_name,
+            )
+            resp = rds.restore_db_cluster_from_snapshot(
+                DBClusterIdentifier=restored_name,
+                SnapshotIdentifier=snap_name,
+                Engine="aurora-mysql",
+            )
+            assert "DBCluster" in resp
+            assert resp["DBCluster"]["DBClusterIdentifier"] == restored_name
+        finally:
+            for cname in [restored_name, cl_name]:
+                try:
+                    rds.delete_db_cluster(DBClusterIdentifier=cname, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass
+            try:
+                rds.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
+            except ClientError:
+                pass
+
+    # -- PARAMETER GROUPS --
+
+    def test_create_and_delete_db_parameter_group(self, rds):
+        """CreateDBParameterGroup, DescribeDBParameters, DeleteDBParameterGroup."""
+        name = _unique("crud2-pg")
+        try:
+            resp = rds.create_db_parameter_group(
+                DBParameterGroupName=name,
+                DBParameterGroupFamily="mysql8.0",
+                Description="crud2 test parameter group",
+            )
+            assert "DBParameterGroup" in resp
+            assert resp["DBParameterGroup"]["DBParameterGroupName"] == name
+
+            params_resp = rds.describe_db_parameters(DBParameterGroupName=name)
+            assert "Parameters" in params_resp
+
+            rds.delete_db_parameter_group(DBParameterGroupName=name)
+            # Verify it's gone
+            with pytest.raises(ClientError):
+                rds.describe_db_parameters(DBParameterGroupName=name)
+        except Exception:
+            try:
+                rds.delete_db_parameter_group(DBParameterGroupName=name)
+            except ClientError:
+                pass
+            raise
+
+    def test_create_and_delete_db_cluster_parameter_group(self, rds):
+        """CreateDBClusterParameterGroup and DeleteDBClusterParameterGroup."""
+        name = _unique("crud2-cpg")
+        try:
+            resp = rds.create_db_cluster_parameter_group(
+                DBClusterParameterGroupName=name,
+                DBParameterGroupFamily="aurora-mysql8.0",
+                Description="crud2 test cluster parameter group",
+            )
+            assert "DBClusterParameterGroup" in resp
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == name
+
+            rds.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+            with pytest.raises(ClientError):
+                rds.describe_db_cluster_parameter_groups(DBClusterParameterGroupName=name)
+        except Exception:
+            try:
+                rds.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+            except ClientError:
+                pass
+            raise
+
+    def test_copy_db_parameter_group(self, rds):
+        """CopyDBParameterGroup copies a parameter group."""
+        src = _unique("crud2-pgsrc")
+        tgt = _unique("crud2-pgtgt")
+        try:
+            rds.create_db_parameter_group(
+                DBParameterGroupName=src,
+                DBParameterGroupFamily="mysql8.0",
+                Description="source pg",
+            )
+            resp = rds.copy_db_parameter_group(
+                SourceDBParameterGroupIdentifier=src,
+                TargetDBParameterGroupIdentifier=tgt,
+                TargetDBParameterGroupDescription="copied pg",
+            )
+            assert "DBParameterGroup" in resp
+            assert resp["DBParameterGroup"]["DBParameterGroupName"] == tgt
+        finally:
+            for pg in [tgt, src]:
+                try:
+                    rds.delete_db_parameter_group(DBParameterGroupName=pg)
+                except ClientError:
+                    pass
+
+    def test_copy_db_cluster_parameter_group(self, rds):
+        """CopyDBClusterParameterGroup copies a cluster parameter group."""
+        src = _unique("crud2-cpgsrc")
+        tgt = _unique("crud2-cpgtgt")
+        try:
+            rds.create_db_cluster_parameter_group(
+                DBClusterParameterGroupName=src,
+                DBParameterGroupFamily="aurora-mysql8.0",
+                Description="source cpg",
+            )
+            resp = rds.copy_db_cluster_parameter_group(
+                SourceDBClusterParameterGroupIdentifier=src,
+                TargetDBClusterParameterGroupIdentifier=tgt,
+                TargetDBClusterParameterGroupDescription="copied cpg",
+            )
+            assert "DBClusterParameterGroup" in resp
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == tgt
+        finally:
+            for cpg in [tgt, src]:
+                try:
+                    rds.delete_db_cluster_parameter_group(DBClusterParameterGroupName=cpg)
+                except ClientError:
+                    pass
+
+    # -- SUBNET GROUPS --
+
+    def test_create_and_delete_db_subnet_group(self, rds, ec2):
+        """CreateDBSubnetGroup and DeleteDBSubnetGroup lifecycle."""
+        name = _unique("crud2-sg")
+        vpc = ec2.create_vpc(CidrBlock="10.99.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.99.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.99.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        try:
+            resp = rds.create_db_subnet_group(
+                DBSubnetGroupName=name,
+                DBSubnetGroupDescription="crud2 test subnet group",
+                SubnetIds=subnet_ids,
+            )
+            assert "DBSubnetGroup" in resp
+            assert resp["DBSubnetGroup"]["DBSubnetGroupName"] == name
+
+            rds.delete_db_subnet_group(DBSubnetGroupName=name)
+            with pytest.raises(ClientError):
+                rds.describe_db_subnet_groups(DBSubnetGroupName=name)
+        finally:
+            try:
+                rds.delete_db_subnet_group(DBSubnetGroupName=name)
+            except ClientError:
+                pass
+            for sid in subnet_ids:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass
+
+    # -- SECURITY GROUPS --
+
+    def test_create_and_delete_db_security_group(self, rds):
+        """CreateDBSecurityGroup and DeleteDBSecurityGroup lifecycle."""
+        name = _unique("crud2-secg")
+        try:
+            resp = rds.create_db_security_group(
+                DBSecurityGroupName=name,
+                DBSecurityGroupDescription="crud2 test security group",
+            )
+            assert "DBSecurityGroup" in resp
+            assert resp["DBSecurityGroup"]["DBSecurityGroupName"] == name
+
+            rds.delete_db_security_group(DBSecurityGroupName=name)
+            with pytest.raises(ClientError):
+                rds.describe_db_security_groups(DBSecurityGroupName=name)
+        except Exception:
+            try:
+                rds.delete_db_security_group(DBSecurityGroupName=name)
+            except ClientError:
+                pass
+            raise
+
+    # -- SNAPSHOTS --
+
+    def test_create_and_delete_db_snapshot(self, rds, db_instance):
+        """CreateDBSnapshot and DeleteDBSnapshot lifecycle."""
+        snap_name = _unique("crud2-dbsnap")
+        try:
+            resp = rds.create_db_snapshot(
+                DBSnapshotIdentifier=snap_name,
+                DBInstanceIdentifier=db_instance,
+            )
+            assert "DBSnapshot" in resp
+            assert resp["DBSnapshot"]["DBSnapshotIdentifier"] == snap_name
+
+            del_resp = rds.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+            assert "DBSnapshot" in del_resp
+        except Exception:
+            try:
+                rds.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+            except ClientError:
+                pass
+            raise
+
+    def test_create_and_delete_db_cluster_snapshot(self, rds):
+        """CreateDBClusterSnapshot and DeleteDBClusterSnapshot lifecycle."""
+        cl_name = _unique("crud2-clsnp")
+        snap_name = _unique("crud2-clsnap2")
+        try:
+            rds.create_db_cluster(
+                DBClusterIdentifier=cl_name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+            resp = rds.create_db_cluster_snapshot(
+                DBClusterSnapshotIdentifier=snap_name,
+                DBClusterIdentifier=cl_name,
+            )
+            assert "DBClusterSnapshot" in resp
+            assert resp["DBClusterSnapshot"]["DBClusterSnapshotIdentifier"] == snap_name
+
+            del_resp = rds.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
+            assert "DBClusterSnapshot" in del_resp
+        finally:
+            try:
+                rds.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
+            except ClientError:
+                pass
+            try:
+                rds.delete_db_cluster(DBClusterIdentifier=cl_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    # -- PROXY --
+
+    def test_create_and_delete_db_proxy(self, rds, ec2):
+        """CreateDBProxy and DeleteDBProxy lifecycle."""
+        proxy_name = _unique("crud2-prx")
+        vpc = ec2.create_vpc(CidrBlock="10.77.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.77.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.77.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        try:
+            resp = rds.create_db_proxy(
+                DBProxyName=proxy_name,
+                EngineFamily="MYSQL",
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "DISABLED",
+                    }
+                ],
+                RoleArn="arn:aws:iam::123456789012:role/test",
+                VpcSubnetIds=subnet_ids,
+            )
+            assert "DBProxy" in resp
+            assert resp["DBProxy"]["DBProxyName"] == proxy_name
+
+            del_resp = rds.delete_db_proxy(DBProxyName=proxy_name)
+            assert "DBProxy" in del_resp
+            assert del_resp["DBProxy"]["DBProxyName"] == proxy_name
+        finally:
+            try:
+                rds.delete_db_proxy(DBProxyName=proxy_name)
+            except ClientError:
+                pass
+            for sid in subnet_ids:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass
+
+    # -- EVENT SUBSCRIPTION --
+
+    def test_modify_event_subscription(self, rds):
+        """ModifyEventSubscription modifies an existing subscription."""
+        sub_name = _unique("crud2-evsub")
+        try:
+            rds.create_event_subscription(
+                SubscriptionName=sub_name,
+                SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+                Enabled=True,
+            )
+            resp = rds.modify_event_subscription(
+                SubscriptionName=sub_name,
+                Enabled=False,
+            )
+            assert "EventSubscription" in resp
+            assert resp["EventSubscription"]["CustSubscriptionId"] == sub_name
+        finally:
+            try:
+                rds.delete_event_subscription(SubscriptionName=sub_name)
+            except ClientError:
+                pass
+
+    # -- ROLES --
+
+    def test_add_role_to_db_cluster(self, rds):
+        """AddRoleToDBCluster attaches a role to a cluster."""
+        cl_name = _unique("crud2-clrole")
+        role_arn = "arn:aws:iam::123456789012:role/test-role"
+        try:
+            rds.create_db_cluster(
+                DBClusterIdentifier=cl_name,
+                Engine="aurora-mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+            rds.add_role_to_db_cluster(
+                DBClusterIdentifier=cl_name,
+                RoleArn=role_arn,
+            )
+            desc = rds.describe_db_clusters(DBClusterIdentifier=cl_name)
+            roles = desc["DBClusters"][0].get("AssociatedRoles", [])
+            role_arns = [r["RoleArn"] for r in roles]
+            assert role_arn in role_arns
+        finally:
+            try:
+                rds.delete_db_cluster(DBClusterIdentifier=cl_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+    def test_add_role_to_db_instance(self, rds, db_instance):
+        """AddRoleToDBInstance attaches a role to an instance."""
+        role_arn = "arn:aws:iam::123456789012:role/test-inst-role"
+        feature = "s3Import"
+        rds.add_role_to_db_instance(
+            DBInstanceIdentifier=db_instance,
+            RoleArn=role_arn,
+            FeatureName=feature,
+        )
+        desc = rds.describe_db_instances(DBInstanceIdentifier=db_instance)
+        roles = desc["DBInstances"][0].get("AssociatedRoles", [])
+        role_arns = [r["RoleArn"] for r in roles]
+        assert role_arn in role_arns

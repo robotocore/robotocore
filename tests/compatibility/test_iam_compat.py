@@ -3557,3 +3557,291 @@ class TestIAMGenerateServiceLastAccessedDetails:
             assert ent_resp["JobStatus"] in ("IN_PROGRESS", "COMPLETED", "FAILED")
         finally:
             iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# SAML provider tagging
+# ---------------------------------------------------------------------------
+
+
+class TestIAMSAMLProviderTags:
+    def test_tag_saml_provider(self, iam):
+        """TagSAMLProvider adds tags to a SAML provider."""
+        name = _unique("saml-tag")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            iam.tag_saml_provider(
+                SAMLProviderArn=arn,
+                Tags=[{"Key": "env", "Value": "staging"}, {"Key": "team", "Value": "auth"}],
+            )
+            get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
+            tags = {t["Key"]: t["Value"] for t in get_resp.get("Tags", [])}
+            assert tags["env"] == "staging"
+            assert tags["team"] == "auth"
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_untag_saml_provider(self, iam):
+        """UntagSAMLProvider removes tags from a SAML provider."""
+        name = _unique("saml-untag")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            iam.tag_saml_provider(
+                SAMLProviderArn=arn,
+                Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "remove", "Value": "bye"}],
+            )
+            iam.untag_saml_provider(SAMLProviderArn=arn, TagKeys=["remove"])
+            get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
+            keys = [t["Key"] for t in get_resp.get("Tags", [])]
+            assert "keep" in keys
+            assert "remove" not in keys
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Server certificate tagging and update
+# ---------------------------------------------------------------------------
+
+
+class TestIAMServerCertificateTags:
+    def test_tag_server_certificate(self, iam):
+        """TagServerCertificate adds tags to a server certificate."""
+        cert_name = _unique("sctag")
+        iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            iam.tag_server_certificate(
+                ServerCertificateName=cert_name,
+                Tags=[{"Key": "env", "Value": "prod"}, {"Key": "team", "Value": "infra"}],
+            )
+            resp = iam.list_server_certificate_tags(ServerCertificateName=cert_name)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["env"] == "prod"
+            assert tags["team"] == "infra"
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=cert_name)
+
+    def test_untag_server_certificate(self, iam):
+        """UntagServerCertificate removes tags from a server certificate."""
+        cert_name = _unique("scuntag")
+        iam.upload_server_certificate(
+            ServerCertificateName=cert_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            iam.tag_server_certificate(
+                ServerCertificateName=cert_name,
+                Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "drop", "Value": "bye"}],
+            )
+            iam.untag_server_certificate(ServerCertificateName=cert_name, TagKeys=["drop"])
+            resp = iam.list_server_certificate_tags(ServerCertificateName=cert_name)
+            keys = [t["Key"] for t in resp["Tags"]]
+            assert "keep" in keys
+            assert "drop" not in keys
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=cert_name)
+
+    def test_update_server_certificate(self, iam):
+        """UpdateServerCertificate renames a server certificate."""
+        old_name = _unique("scold")
+        new_name = _unique("scnew")
+        iam.upload_server_certificate(
+            ServerCertificateName=old_name,
+            CertificateBody=_CERT_BODY,
+            PrivateKey=_PRIVATE_KEY,
+        )
+        try:
+            resp = iam.update_server_certificate(
+                ServerCertificateName=old_name,
+                NewServerCertificateName=new_name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            listed = iam.list_server_certificates()
+            names = [c["ServerCertificateName"] for c in listed["ServerCertificateMetadataList"]]
+            assert new_name in names
+            assert old_name not in names
+        finally:
+            iam.delete_server_certificate(ServerCertificateName=new_name)
+
+
+# ---------------------------------------------------------------------------
+# OpenIDConnect client ID operations
+# ---------------------------------------------------------------------------
+
+
+class TestIAMOIDCClientID:
+    def test_add_client_id_to_openid_connect_provider(self, iam):
+        """AddClientIDToOpenIDConnectProvider adds a client ID."""
+        url = f"https://{_unique('oidc-cid')}.example.com"
+        resp = iam.create_open_id_connect_provider(
+            Url=url, ThumbprintList=["a" * 40], ClientIDList=["original-client"]
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.add_client_id_to_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn, ClientID="new-client"
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "new-client" in get_resp["ClientIDList"]
+            assert "original-client" in get_resp["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_remove_client_id_from_openid_connect_provider(self, iam):
+        """RemoveClientIDFromOpenIDConnectProvider removes a client ID."""
+        url = f"https://{_unique('oidc-rcid')}.example.com"
+        resp = iam.create_open_id_connect_provider(
+            Url=url, ThumbprintList=["a" * 40], ClientIDList=["keep-client", "remove-client"]
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.remove_client_id_from_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn, ClientID="remove-client"
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "keep-client" in get_resp["ClientIDList"]
+            assert "remove-client" not in get_resp["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Context keys for policy simulation
+# ---------------------------------------------------------------------------
+
+
+class TestIAMContextKeys:
+    def test_get_context_keys_for_custom_policy(self, iam):
+        """GetContextKeysForCustomPolicy returns context keys from a policy."""
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": "s3:GetObject",
+                        "Resource": "*",
+                        "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}},
+                    }
+                ],
+            }
+        )
+        resp = iam.get_context_keys_for_custom_policy(PolicyInputList=[policy_doc])
+        assert "ContextKeyNames" in resp
+        assert isinstance(resp["ContextKeyNames"], list)
+
+    def test_get_context_keys_for_principal_policy(self, iam):
+        """GetContextKeysForPrincipalPolicy returns context keys for a principal."""
+        role_name = _unique("ckpp-role")
+        iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=TRUST_POLICY)
+        pol = iam.create_policy(
+            PolicyName=_unique("ckpp-pol"),
+            PolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "s3:*",
+                            "Resource": "*",
+                            "Condition": {"StringEquals": {"aws:RequestedRegion": "us-west-2"}},
+                        }
+                    ],
+                }
+            ),
+        )
+        arn = pol["Policy"]["Arn"]
+        try:
+            iam.attach_role_policy(RoleName=role_name, PolicyArn=arn)
+            role_arn = iam.get_role(RoleName=role_name)["Role"]["Arn"]
+            resp = iam.get_context_keys_for_principal_policy(PolicySourceArn=role_arn)
+            assert "ContextKeyNames" in resp
+            assert isinstance(resp["ContextKeyNames"], list)
+        finally:
+            iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
+            iam.delete_policy(PolicyArn=arn)
+            iam.delete_role(RoleName=role_name)
+
+
+# ---------------------------------------------------------------------------
+# Instance profile tags (ListInstanceProfileTags)
+# ---------------------------------------------------------------------------
+
+
+class TestIAMListInstanceProfileTags:
+    def test_list_instance_profile_tags(self, iam):
+        """ListInstanceProfileTags returns tags after tagging."""
+        profile_name = _unique("lipt-prof")
+        iam.create_instance_profile(InstanceProfileName=profile_name)
+        try:
+            iam.tag_instance_profile(
+                InstanceProfileName=profile_name,
+                Tags=[{"Key": "env", "Value": "dev"}],
+            )
+            resp = iam.list_instance_profile_tags(InstanceProfileName=profile_name)
+            assert "Tags" in resp
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["env"] == "dev"
+        finally:
+            iam.delete_instance_profile(InstanceProfileName=profile_name)
+
+
+# ---------------------------------------------------------------------------
+# MFA device tagging
+# ---------------------------------------------------------------------------
+
+
+class TestIAMMFADeviceTags:
+    def test_tag_mfa_device(self, iam):
+        """TagMFADevice adds tags to a virtual MFA device."""
+        mfa_name = _unique("mfatag")
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.tag_mfa_device(
+                SerialNumber=serial,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "sec"}],
+            )
+            resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["env"] == "test"
+            assert tags["team"] == "sec"
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_untag_mfa_device(self, iam):
+        """UntagMFADevice removes tags from a virtual MFA device."""
+        mfa_name = _unique("mfauntag")
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.tag_mfa_device(
+                SerialNumber=serial,
+                Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "drop", "Value": "bye"}],
+            )
+            iam.untag_mfa_device(SerialNumber=serial, TagKeys=["drop"])
+            resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            keys = [t["Key"] for t in resp["Tags"]]
+            assert "keep" in keys
+            assert "drop" not in keys
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_list_mfa_device_tags(self, iam):
+        """ListMFADeviceTags returns empty tags list for untagged device."""
+        mfa_name = _unique("mfalisttags")
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)

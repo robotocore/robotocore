@@ -989,3 +989,13 @@ class TestEMRTerminate:
             "TERMINATED",
             "TERMINATED_WITH_ERRORS",
         )
+
+
+class TestEMRAdditionalOps:
+    """Tests for additional EMR operations."""
+
+    def test_list_notebook_executions(self, emr):
+        """ListNotebookExecutions returns NotebookExecutions key."""
+        resp = emr.list_notebook_executions()
+        assert "NotebookExecutions" in resp
+        assert isinstance(resp["NotebookExecutions"], list)

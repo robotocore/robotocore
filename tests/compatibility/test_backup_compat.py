@@ -1589,3 +1589,286 @@ class TestBackupRestoreTestingSelectionOperations:
             backup.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)
         finally:
             backup.delete_backup_vault(BackupVaultName=vault_name)
+
+
+class TestBackupLogicallyAirGappedVault:
+    """Tests for logically air-gapped backup vault."""
+
+    def test_create_logically_air_gapped_vault(self, backup):
+        """CreateLogicallyAirGappedBackupVault returns vault name and ARN."""
+        name = _unique("airgap")
+        resp = backup.create_logically_air_gapped_backup_vault(
+            BackupVaultName=name,
+            MinRetentionDays=7,
+            MaxRetentionDays=365,
+        )
+        assert resp["BackupVaultName"] == name
+        assert "BackupVaultArn" in resp
+        assert "VaultState" in resp
+        backup.delete_backup_vault(BackupVaultName=name)
+
+
+class TestBackupLegalHoldCRUD:
+    """Tests for legal hold CRUD operations."""
+
+    def test_create_legal_hold(self, backup):
+        """CreateLegalHold returns hold ID and ARN."""
+        resp = backup.create_legal_hold(
+            Title="test-hold",
+            Description="test legal hold",
+            RecoveryPointSelection={
+                "ResourceIdentifiers": ["*"],
+                "VaultNames": ["*"],
+            },
+        )
+        assert "LegalHoldId" in resp
+        assert "LegalHoldArn" in resp
+        assert resp["Title"] == "test-hold"
+        backup.cancel_legal_hold(
+            LegalHoldId=resp["LegalHoldId"],
+            CancelDescription="cleanup",
+            RetainRecordInDays=1,
+        )
+
+    def test_cancel_legal_hold(self, backup):
+        """CancelLegalHold cancels an active hold."""
+        resp = backup.create_legal_hold(
+            Title="cancel-test",
+            Description="will cancel",
+            RecoveryPointSelection={
+                "ResourceIdentifiers": ["*"],
+                "VaultNames": ["*"],
+            },
+        )
+        hold_id = resp["LegalHoldId"]
+        cancel_resp = backup.cancel_legal_hold(
+            LegalHoldId=hold_id,
+            CancelDescription="done testing",
+            RetainRecordInDays=1,
+        )
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_legal_holds_includes_created(self, backup):
+        """ListLegalHolds includes a newly created hold."""
+        resp = backup.create_legal_hold(
+            Title="list-test",
+            Description="for listing",
+            RecoveryPointSelection={
+                "ResourceIdentifiers": ["*"],
+                "VaultNames": ["*"],
+            },
+        )
+        hold_id = resp["LegalHoldId"]
+        list_resp = backup.list_legal_holds()
+        assert "LegalHolds" in list_resp
+        hold_ids = [h["LegalHoldId"] for h in list_resp["LegalHolds"]]
+        assert hold_id in hold_ids
+        backup.cancel_legal_hold(
+            LegalHoldId=hold_id,
+            CancelDescription="cleanup",
+            RetainRecordInDays=1,
+        )
+
+
+class TestBackupSummaryOperations:
+    """Tests for job summary list operations."""
+
+    def test_list_backup_job_summaries(self, backup):
+        """ListBackupJobSummaries returns BackupJobSummaries list."""
+        resp = backup.list_backup_job_summaries()
+        assert "BackupJobSummaries" in resp
+        assert isinstance(resp["BackupJobSummaries"], list)
+
+    def test_list_copy_job_summaries(self, backup):
+        """ListCopyJobSummaries returns CopyJobSummaries list."""
+        resp = backup.list_copy_job_summaries()
+        assert "CopyJobSummaries" in resp
+        assert isinstance(resp["CopyJobSummaries"], list)
+
+    def test_list_restore_job_summaries(self, backup):
+        """ListRestoreJobSummaries returns RestoreJobSummaries list."""
+        resp = backup.list_restore_job_summaries()
+        assert "RestoreJobSummaries" in resp
+        assert isinstance(resp["RestoreJobSummaries"], list)
+
+    def test_list_report_jobs(self, backup):
+        """ListReportJobs returns ReportJobs list."""
+        resp = backup.list_report_jobs()
+        assert "ReportJobs" in resp
+        assert isinstance(resp["ReportJobs"], list)
+
+    def test_describe_report_job_nonexistent(self, backup):
+        """DescribeReportJob for nonexistent ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.describe_report_job(ReportJobId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupUpdateOperations:
+    """Tests for update operations on restore testing plans and selections."""
+
+    def _make_restore_testing_plan(self, backup):
+        """Helper to create a vault and restore testing plan."""
+        vault_name = _unique("vault")
+        plan_name = _unique("rtp")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        backup.create_restore_testing_plan(
+            RestoreTestingPlan={
+                "RestoreTestingPlanName": plan_name,
+                "ScheduleExpression": "cron(0 12 * * ? *)",
+                "RecoveryPointSelection": {
+                    "Algorithm": "LATEST_WITHIN_WINDOW",
+                    "RecoveryPointTypes": ["CONTINUOUS"],
+                    "IncludeVaults": [
+                        f"arn:aws:backup:us-east-1:123456789012:backup-vault:{vault_name}"
+                    ],
+                },
+            }
+        )
+        return vault_name, plan_name
+
+    def test_update_restore_testing_plan(self, backup):
+        """UpdateRestoreTestingPlan updates the plan."""
+        vault_name, plan_name = self._make_restore_testing_plan(backup)
+        try:
+            resp = backup.update_restore_testing_plan(
+                RestoreTestingPlan={
+                    "RecoveryPointSelection": {
+                        "Algorithm": "LATEST_WITHIN_WINDOW",
+                        "RecoveryPointTypes": ["CONTINUOUS"],
+                        "IncludeVaults": [
+                            f"arn:aws:backup:us-east-1:123456789012:backup-vault:{vault_name}"
+                        ],
+                    },
+                },
+                RestoreTestingPlanName=plan_name,
+            )
+            assert resp["RestoreTestingPlanName"] == plan_name
+            assert "RestoreTestingPlanArn" in resp
+            assert "UpdateTime" in resp
+        finally:
+            backup.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_update_restore_testing_selection(self, backup):
+        """UpdateRestoreTestingSelection updates the selection."""
+        vault_name, plan_name = self._make_restore_testing_plan(backup)
+        sel_name = _unique("sel")
+        try:
+            backup.create_restore_testing_selection(
+                RestoreTestingPlanName=plan_name,
+                RestoreTestingSelection={
+                    "RestoreTestingSelectionName": sel_name,
+                    "ProtectedResourceType": "DynamoDB",
+                    "IamRoleArn": "arn:aws:iam::123456789012:role/test",
+                },
+            )
+            resp = backup.update_restore_testing_selection(
+                RestoreTestingPlanName=plan_name,
+                RestoreTestingSelectionName=sel_name,
+                RestoreTestingSelection={
+                    "IamRoleArn": "arn:aws:iam::123456789012:role/updated",
+                },
+            )
+            assert resp["RestoreTestingSelectionName"] == sel_name
+            assert "UpdateTime" in resp
+            backup.delete_restore_testing_selection(
+                RestoreTestingPlanName=plan_name,
+                RestoreTestingSelectionName=sel_name,
+            )
+        finally:
+            backup.delete_restore_testing_plan(RestoreTestingPlanName=plan_name)
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_update_report_plan(self, backup):
+        """UpdateReportPlan updates the plan description."""
+        name = _unique("rp")
+        backup.create_report_plan(
+            ReportPlanName=name,
+            ReportDeliveryChannel={"S3BucketName": "my-bucket", "Formats": ["CSV"]},
+            ReportSetting={"ReportTemplate": "RESTORE_JOB_REPORT"},
+        )
+        try:
+            resp = backup.update_report_plan(
+                ReportPlanName=name,
+                ReportPlanDescription="updated description",
+            )
+            assert resp["ReportPlanName"] == name
+            assert "ReportPlanArn" in resp
+        finally:
+            backup.delete_report_plan(ReportPlanName=name)
+
+    def test_list_recovery_points_by_legal_hold(self, backup):
+        """ListRecoveryPointsByLegalHold returns response for active hold."""
+        hold = backup.create_legal_hold(
+            Title="rp-test",
+            Description="for recovery points",
+            RecoveryPointSelection={
+                "ResourceIdentifiers": ["*"],
+                "VaultNames": ["*"],
+            },
+        )
+        hold_id = hold["LegalHoldId"]
+        try:
+            resp = backup.list_recovery_points_by_legal_hold(LegalHoldId=hold_id)
+            assert "RecoveryPoints" in resp
+            assert isinstance(resp["RecoveryPoints"], list)
+        finally:
+            backup.cancel_legal_hold(
+                LegalHoldId=hold_id,
+                CancelDescription="cleanup",
+                RetainRecordInDays=1,
+            )
+
+
+class TestBackupPlanJsonParsing:
+    """Tests for backup plan JSON parsing operations."""
+
+    @pytest.fixture
+    def backup(self):
+        return make_client("backup")
+
+    def test_get_backup_plan_from_json(self, backup):
+        """GetBackupPlanFromJSON parses a JSON string into a plan."""
+        import json
+
+        plan_json = json.dumps(
+            {
+                "BackupPlanName": "json-plan",
+                "Rules": [
+                    {
+                        "RuleName": "daily",
+                        "TargetBackupVaultName": "Default",
+                        "ScheduleExpression": "cron(0 12 * * ? *)",
+                    }
+                ],
+            }
+        )
+        resp = backup.get_backup_plan_from_json(BackupPlanTemplateJson=plan_json)
+        assert "BackupPlan" in resp
+        assert resp["BackupPlan"]["BackupPlanName"] == "json-plan"
+        assert len(resp["BackupPlan"]["Rules"]) == 1
+
+
+class TestBackupErrorPaths:
+    """Tests for error paths on various backup operations."""
+
+    @pytest.fixture
+    def backup(self):
+        return make_client("backup")
+
+    def test_disassociate_recovery_point_nonexistent(self, backup):
+        """DisassociateRecoveryPoint with fake recovery point raises ResourceNotFoundException."""
+        vault_name = _make_vault(backup)
+        try:
+            with pytest.raises(ClientError) as exc:
+                backup.disassociate_recovery_point(
+                    BackupVaultName=vault_name,
+                    RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake",
+                )
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidResourceStateException",
+            )
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
