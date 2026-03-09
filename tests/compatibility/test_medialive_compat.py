@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -443,4 +444,167 @@ class TestMediaLiveChannelCRUD:
             finally:
                 medialive.delete_channel(ChannelId=ch_id)
         finally:
+            medialive.delete_input(InputId=inp_id)
+
+
+class TestMediaLiveOfferingOperations:
+    """Tests for offering and reservation operations."""
+
+    def test_list_offerings(self, medialive):
+        """ListOfferings returns Offerings list."""
+        resp = medialive.list_offerings()
+        assert "Offerings" in resp
+        assert isinstance(resp["Offerings"], list)
+
+    def test_list_reservations(self, medialive):
+        """ListReservations returns Reservations list."""
+        resp = medialive.list_reservations()
+        assert "Reservations" in resp
+        assert isinstance(resp["Reservations"], list)
+
+    def test_describe_offering_not_found(self, medialive):
+        """DescribeOffering for nonexistent ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_offering(OfferingId="nonexistent-offering-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_describe_reservation_not_found(self, medialive):
+        """DescribeReservation for nonexistent ID raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_reservation(ReservationId="nonexistent-reservation-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveScheduleOperations:
+    """Tests for schedule operations."""
+
+    def _make_channel_with_input(self, medialive):
+        """Helper: create input + channel, return (channel_id, input_id)."""
+        inp_resp = medialive.create_input(
+            Name=_uid("inp"),
+            Type="URL_PULL",
+            Sources=[{"Url": "http://example.com/stream"}],
+        )
+        inp_id = inp_resp["Input"]["Id"]
+        ch_resp = medialive.create_channel(
+            Name=_uid("ch"),
+            InputAttachments=[{"InputId": inp_id}],
+            Destinations=[{"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}],
+            EncoderSettings={
+                "AudioDescriptions": [],
+                "OutputGroups": [
+                    {
+                        "OutputGroupSettings": {
+                            "ArchiveGroupSettings": {"Destination": {"DestinationRefId": "dest1"}}
+                        },
+                        "Outputs": [
+                            {
+                                "OutputSettings": {
+                                    "ArchiveOutputSettings": {
+                                        "ContainerSettings": {"M2tsSettings": {}}
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                ],
+                "TimecodeConfig": {"Source": "EMBEDDED"},
+                "VideoDescriptions": [{"Name": "video_1"}],
+            },
+            InputSpecification={
+                "Codec": "AVC",
+                "Resolution": "HD",
+                "MaximumBitrate": "MAX_20_MBPS",
+            },
+            RoleArn="arn:aws:iam::123456789012:role/MediaLiveRole",
+        )
+        return ch_resp["Channel"]["Id"], inp_id
+
+    def test_describe_schedule_not_found(self, medialive):
+        """DescribeSchedule for nonexistent channel raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_schedule(ChannelId="nonexistent-channel-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_describe_schedule_empty(self, medialive):
+        """DescribeSchedule for channel with no schedule returns empty ScheduleActions."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.describe_schedule(ChannelId=ch_id)
+            assert "ScheduleActions" in resp
+            assert isinstance(resp["ScheduleActions"], list)
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)
+
+    def test_list_alerts_empty(self, medialive):
+        """ListAlerts for a channel with no alerts returns empty list."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.list_alerts(ChannelId=ch_id)
+            assert "Alerts" in resp
+            assert isinstance(resp["Alerts"], list)
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
+            medialive.delete_input(InputId=inp_id)
+
+
+class TestMediaLiveThumbnailOperations:
+    """Tests for thumbnail operations."""
+
+    def _make_channel_with_input(self, medialive):
+        """Helper: create input + channel, return (channel_id, input_id)."""
+        inp_resp = medialive.create_input(
+            Name=_uid("inp"),
+            Type="URL_PULL",
+            Sources=[{"Url": "http://example.com/stream"}],
+        )
+        inp_id = inp_resp["Input"]["Id"]
+        ch_resp = medialive.create_channel(
+            Name=_uid("ch"),
+            InputAttachments=[{"InputId": inp_id}],
+            Destinations=[{"Id": "dest1", "Settings": [{"Url": "s3://bucket/output"}]}],
+            EncoderSettings={
+                "AudioDescriptions": [],
+                "OutputGroups": [
+                    {
+                        "OutputGroupSettings": {
+                            "ArchiveGroupSettings": {"Destination": {"DestinationRefId": "dest1"}}
+                        },
+                        "Outputs": [
+                            {
+                                "OutputSettings": {
+                                    "ArchiveOutputSettings": {
+                                        "ContainerSettings": {"M2tsSettings": {}}
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                ],
+                "TimecodeConfig": {"Source": "EMBEDDED"},
+                "VideoDescriptions": [{"Name": "video_1"}],
+            },
+            InputSpecification={
+                "Codec": "AVC",
+                "Resolution": "HD",
+                "MaximumBitrate": "MAX_20_MBPS",
+            },
+            RoleArn="arn:aws:iam::123456789012:role/MediaLiveRole",
+        )
+        return ch_resp["Channel"]["Id"], inp_id
+
+    def test_describe_thumbnails(self, medialive):
+        """DescribeThumbnails returns ThumbnailDetails list."""
+        ch_id, inp_id = self._make_channel_with_input(medialive)
+        try:
+            resp = medialive.describe_thumbnails(
+                ChannelId=ch_id,
+                PipelineId="0",
+                ThumbnailType="CURRENT_ACTIVE",
+            )
+            assert "ThumbnailDetails" in resp
+            assert isinstance(resp["ThumbnailDetails"], list)
+        finally:
+            medialive.delete_channel(ChannelId=ch_id)
             medialive.delete_input(InputId=inp_id)
