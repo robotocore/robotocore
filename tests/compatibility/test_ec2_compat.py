@@ -7233,3 +7233,90 @@ class TestEC2NewDescribeAndListOps:
         """DescribeAccountAttributes returns attributes."""
         resp = ec2.describe_account_attributes()
         assert "AccountAttributes" in resp
+
+
+class TestEC2SubnetCidrBlockAssociation:
+    """Tests for associating/disassociating IPv6 CIDR blocks with subnets."""
+
+    def test_associate_disassociate_subnet_cidr_block(self, ec2):
+        """AssociateSubnetCidrBlock / DisassociateSubnetCidrBlock manage IPv6 CIDRs."""
+        vpc = ec2.create_vpc(
+            CidrBlock="10.93.0.0/16",
+            AmazonProvidedIpv6CidrBlock=True,
+        )
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            # Wait for IPv6 CIDR to be associated
+            desc = ec2.describe_vpcs(VpcIds=[vpc_id])
+            ipv6_assocs = desc["Vpcs"][0].get("Ipv6CidrBlockAssociationSet", [])
+            if not ipv6_assocs:
+                pytest.skip("VPC did not get an IPv6 CIDR block")
+            ipv6_cidr = ipv6_assocs[0]["Ipv6CidrBlock"]
+
+            # Derive a /64 subnet from the VPC's /56
+            subnet_ipv6 = ipv6_cidr.rsplit("/", 1)[0]
+            # Use the first /64 in the block
+            parts = subnet_ipv6.split(":")
+            subnet_cidr = ":".join(parts[:4]) + "::/64"
+
+            sub = ec2.create_subnet(
+                VpcId=vpc_id,
+                CidrBlock="10.93.1.0/24",
+            )
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                assoc = ec2.associate_subnet_cidr_block(
+                    SubnetId=subnet_id, Ipv6CidrBlock=subnet_cidr
+                )
+                assoc_id = assoc["Ipv6CidrBlockAssociation"]["AssociationId"]
+                assert assoc_id.startswith("subnet-cidr-assoc-")
+
+                ec2.disassociate_subnet_cidr_block(AssociationId=assoc_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2RejectVpcEndpointConnections:
+    """Tests for rejecting VPC endpoint connections."""
+
+    def test_reject_vpc_endpoint_connections(self, ec2):
+        """RejectVpcEndpointConnections rejects connections to an endpoint service."""
+        # We need an NLB for an endpoint service. Create a minimal one.
+        from tests.compatibility.conftest import make_client
+
+        elbv2 = make_client("elbv2")
+        vpc = ec2.create_vpc(CidrBlock="10.94.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.94.1.0/24")
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                nlb = elbv2.create_load_balancer(
+                    Name=_unique("nlb"),
+                    Subnets=[subnet_id],
+                    Type="network",
+                    Scheme="internal",
+                )
+                nlb_arn = nlb["LoadBalancers"][0]["LoadBalancerArn"]
+                try:
+                    svc = ec2.create_vpc_endpoint_service_configuration(
+                        NetworkLoadBalancerArns=[nlb_arn],
+                        AcceptanceRequired=True,
+                    )
+                    svc_id = svc["ServiceConfiguration"]["ServiceId"]
+                    try:
+                        # Just verify the API is callable (no pending connections to reject)
+                        resp = ec2.reject_vpc_endpoint_connections(
+                            ServiceId=svc_id, VpcEndpointIds=["vpce-00000000000000000"]
+                        )
+                        assert "Unsuccessful" in resp
+                    finally:
+                        ec2.delete_vpc_endpoint_service_configurations(ServiceIds=[svc_id])
+                finally:
+                    elbv2.delete_load_balancer(LoadBalancerArn=nlb_arn)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
