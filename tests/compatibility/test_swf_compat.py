@@ -588,3 +588,82 @@ class TestSWFWorkflowExecutions:
                 domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
             )
             swf.deprecate_domain(name=domain)
+
+    def test_describe_workflow_execution(self, swf):
+        """DescribeWorkflowExecution returns execution details."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        try:
+            run_resp = swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-desc-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+            )
+            run_id = run_resp["runId"]
+            resp = swf.describe_workflow_execution(
+                domain=domain,
+                execution={"workflowId": f"wf-desc-{uid}", "runId": run_id},
+            )
+            assert "executionInfo" in resp
+            assert resp["executionInfo"]["execution"]["workflowId"] == f"wf-desc-{uid}"
+            assert resp["executionInfo"]["execution"]["runId"] == run_id
+            assert resp["executionInfo"]["executionStatus"] == "OPEN"
+            assert "executionConfiguration" in resp
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-desc-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_count_pending_decision_tasks(self, swf):
+        """CountPendingDecisionTasks returns count for a task list."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        task_list = f"count-dec-{uid}"
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-cntdec-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+                taskList={"name": task_list},
+            )
+            resp = swf.count_pending_decision_tasks(
+                domain=domain,
+                taskList={"name": task_list},
+            )
+            assert "count" in resp
+            assert resp["count"] >= 1
+            assert "truncated" in resp
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-cntdec-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
+
+    def test_count_pending_activity_tasks(self, swf):
+        """CountPendingActivityTasks returns count for a task list."""
+        domain, uid = self._setup_domain_and_workflow(swf)
+        task_list = f"count-act-{uid}"
+        try:
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-cntact-{uid}",
+                workflowType={"name": "exec-wf", "version": "1.0"},
+                taskList={"name": task_list},
+            )
+            resp = swf.count_pending_activity_tasks(
+                domain=domain,
+                taskList={"name": task_list},
+            )
+            assert "count" in resp
+            assert isinstance(resp["count"], int)
+            assert "truncated" in resp
+
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-cntact-{uid}")
+        finally:
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "exec-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)
