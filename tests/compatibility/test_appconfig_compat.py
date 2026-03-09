@@ -978,3 +978,141 @@ class TestAppConfigValidateConfiguration:
                 ApplicationId=app_id, ConfigurationProfileId=prof_id
             )
             appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigGetConfiguration:
+    """Tests for GetConfiguration (deprecated but still working)."""
+
+    def test_get_configuration(self, appconfig):
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        env_resp = appconfig.create_environment(ApplicationId=app_id, Name=_unique("env"))
+        env_id = env_resp["Id"]
+        prof_resp = appconfig.create_configuration_profile(
+            ApplicationId=app_id,
+            Name=_unique("profile"),
+            LocationUri="hosted",
+        )
+        prof_id = prof_resp["Id"]
+        appconfig.create_hosted_configuration_version(
+            ApplicationId=app_id,
+            ConfigurationProfileId=prof_id,
+            Content=b'{"key": "value"}',
+            ContentType="application/json",
+        )
+        try:
+            resp = appconfig.get_configuration(
+                Application=app_id,
+                Environment=env_id,
+                Configuration=prof_id,
+                ClientId="test-client",
+            )
+            content = resp["Content"]
+            if hasattr(content, "read"):
+                content = content.read()
+            assert content == b'{"key": "value"}'
+            assert resp["ContentType"] == "application/json"
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_environment(ApplicationId=app_id, EnvironmentId=env_id)
+            appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigUpdateAccountSettings:
+    """Tests for UpdateAccountSettings."""
+
+    def test_update_account_settings(self, appconfig):
+        resp = appconfig.update_account_settings(DeletionProtection={"Enabled": False})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DeletionProtection" in resp
+
+
+class TestAppConfigStopDeployment:
+    """Tests for StopDeployment."""
+
+    def test_stop_deployment(self, appconfig):
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        env_resp = appconfig.create_environment(ApplicationId=app_id, Name=_unique("env"))
+        env_id = env_resp["Id"]
+        prof_resp = appconfig.create_configuration_profile(
+            ApplicationId=app_id,
+            Name=_unique("profile"),
+            LocationUri="hosted",
+        )
+        prof_id = prof_resp["Id"]
+        appconfig.create_hosted_configuration_version(
+            ApplicationId=app_id,
+            ConfigurationProfileId=prof_id,
+            Content=b'{"key": "value"}',
+            ContentType="application/json",
+        )
+        strategy_resp = appconfig.create_deployment_strategy(
+            Name=_unique("strategy"),
+            DeploymentDurationInMinutes=10,
+            GrowthFactor=25.0,
+            ReplicateTo="NONE",
+        )
+        strategy_id = strategy_resp["Id"]
+        dep_resp = appconfig.start_deployment(
+            ApplicationId=app_id,
+            EnvironmentId=env_id,
+            DeploymentStrategyId=strategy_id,
+            ConfigurationProfileId=prof_id,
+            ConfigurationVersion="1",
+        )
+        dep_num = dep_resp["DeploymentNumber"]
+        try:
+            resp = appconfig.stop_deployment(
+                ApplicationId=app_id,
+                EnvironmentId=env_id,
+                DeploymentNumber=dep_num,
+            )
+            assert resp["ApplicationId"] == app_id
+            assert resp["State"] == "ROLLED_BACK"
+        finally:
+            appconfig.delete_environment(ApplicationId=app_id, EnvironmentId=env_id)
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_deployment_strategy(DeploymentStrategyId=strategy_id)
+            appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigUpdateExtensionAssociation:
+    """Tests for UpdateExtensionAssociation."""
+
+    def test_update_extension_association(self, appconfig):
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        ext_resp = appconfig.create_extension(
+            Name=_unique("ext"),
+            Actions={
+                "PRE_CREATE_HOSTED_CONFIGURATION_VERSION": [
+                    {
+                        "Name": "MyAction",
+                        "Uri": "arn:aws:lambda:us-east-1:123456789012:function:my-func",
+                    }
+                ]
+            },
+            Parameters={"myParam": {"Required": False}},
+        )
+        ext_id = ext_resp["Id"]
+        app_arn = f"arn:aws:appconfig:us-east-1:123456789012:application/{app_id}"
+        assoc_resp = appconfig.create_extension_association(
+            ExtensionIdentifier=ext_id,
+            ResourceIdentifier=app_arn,
+        )
+        assoc_id = assoc_resp["Id"]
+        try:
+            resp = appconfig.update_extension_association(
+                ExtensionAssociationId=assoc_id,
+                Parameters={"myParam": "updatedValue"},
+            )
+            assert resp["Id"] == assoc_id
+        finally:
+            appconfig.delete_extension_association(ExtensionAssociationId=assoc_id)
+            appconfig.delete_extension(ExtensionIdentifier=ext_id)
+            appconfig.delete_application(ApplicationId=app_id)
