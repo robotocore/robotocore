@@ -1207,3 +1207,50 @@ class TestDsResetPassword:
                 NewPassword="N3wP@ssw0rd!",
             )
         assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsAdditionalOps:
+    """Tests for additional DS operations."""
+
+    def test_describe_ldaps_settings_nonexistent(self, ds):
+        """DescribeLDAPSSettings with fake DirectoryId raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ldaps_settings(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "UnsupportedOperationException",
+        )
+
+    def test_create_microsoft_ad_lifecycle(self, ds, ec2):
+        """CreateMicrosoftAD with VPC infrastructure creates and describes successfully."""
+        vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.90.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.90.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.create_microsoft_ad(
+            Name="newmsad.example.com",
+            Password="P@ssw0rd!",
+            VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        dir_id = resp["DirectoryId"]
+        assert dir_id.startswith("d-")
+        try:
+            desc = ds.describe_directories(DirectoryIds=[dir_id])
+            assert len(desc["DirectoryDescriptions"]) == 1
+            assert desc["DirectoryDescriptions"][0]["Type"] == "MicrosoftAD"
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass

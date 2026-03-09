@@ -824,3 +824,130 @@ class TestAthenaNewOps:
         resp = athena.list_sessions(WorkGroup="primary")
         assert "Sessions" in resp
         assert isinstance(resp["Sessions"], list)
+
+
+class TestAthenaUpdateOperations:
+    """Tests for update operations on Athena resources."""
+
+    def test_update_prepared_statement(self, athena):
+        """UpdatePreparedStatement modifies the query statement."""
+        name = _unique("ps")
+        athena.create_prepared_statement(
+            StatementName=name,
+            WorkGroup="primary",
+            QueryStatement="SELECT ?",
+        )
+        try:
+            resp = athena.update_prepared_statement(
+                StatementName=name,
+                WorkGroup="primary",
+                QueryStatement="SELECT ? + 1",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            get_resp = athena.get_prepared_statement(
+                StatementName=name,
+                WorkGroup="primary",
+            )
+            assert get_resp["PreparedStatement"]["QueryStatement"] == "SELECT ? + 1"
+        finally:
+            athena.delete_prepared_statement(StatementName=name, WorkGroup="primary")
+
+    def test_update_work_group_state(self, athena):
+        """UpdateWorkGroup can change state to DISABLED."""
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+        )
+        try:
+            resp = athena.update_work_group(WorkGroup=name, State="DISABLED")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            get_resp = athena.get_work_group(WorkGroup=name)
+            assert get_resp["WorkGroup"]["State"] == "DISABLED"
+        finally:
+            athena.delete_work_group(WorkGroup=name)
+
+    def test_update_work_group_description(self, athena):
+        """UpdateWorkGroup can modify description."""
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Description="original",
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+        )
+        try:
+            athena.update_work_group(WorkGroup=name, Description="updated description")
+            get_resp = athena.get_work_group(WorkGroup=name)
+            assert get_resp["WorkGroup"]["Description"] == "updated description"
+        finally:
+            athena.delete_work_group(WorkGroup=name)
+
+
+class TestAthenaPreparedStatementCRUD:
+    """Full CRUD cycle for prepared statements."""
+
+    def test_delete_prepared_statement_removes_it(self, athena):
+        """DeletePreparedStatement removes statement from list and get."""
+        name = _unique("ps")
+        athena.create_prepared_statement(
+            StatementName=name,
+            WorkGroup="primary",
+            QueryStatement="SELECT ?",
+        )
+        # Verify it exists
+        resp = athena.list_prepared_statements(WorkGroup="primary")
+        names = [ps["StatementName"] for ps in resp["PreparedStatements"]]
+        assert name in names
+
+        # Delete
+        del_resp = athena.delete_prepared_statement(StatementName=name, WorkGroup="primary")
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify gone from list
+        resp2 = athena.list_prepared_statements(WorkGroup="primary")
+        names2 = [ps["StatementName"] for ps in resp2["PreparedStatements"]]
+        assert name not in names2
+
+        # Verify get raises error
+        with pytest.raises(ClientError):
+            athena.get_prepared_statement(StatementName=name, WorkGroup="primary")
+
+
+class TestAthenaNamedQueryWorkGroupFilter:
+    """Test ListNamedQueries with WorkGroup filter."""
+
+    def test_list_named_queries_in_workgroup(self, athena):
+        """ListNamedQueries filtered by WorkGroup returns matching queries."""
+        wg = _unique("wg")
+        athena.create_work_group(
+            Name=wg,
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+        )
+        try:
+            nq_name = _unique("nq")
+            create_resp = athena.create_named_query(
+                Name=nq_name,
+                Database="default",
+                QueryString="SELECT 1",
+                WorkGroup=wg,
+            )
+            query_id = create_resp["NamedQueryId"]
+            resp = athena.list_named_queries(WorkGroup=wg)
+            assert "NamedQueryIds" in resp
+            assert query_id in resp["NamedQueryIds"]
+        finally:
+            athena.delete_work_group(WorkGroup=wg)
+
+    def test_list_named_queries_primary_workgroup(self, athena):
+        """ListNamedQueries with WorkGroup='primary' returns queries."""
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 99",
+            WorkGroup="primary",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.list_named_queries(WorkGroup="primary")
+        assert "NamedQueryIds" in resp
+        assert query_id in resp["NamedQueryIds"]

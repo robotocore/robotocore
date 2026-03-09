@@ -595,3 +595,137 @@ class TestLakeFormationDeregisterDescribeResource:
                 client.deregister_resource(ResourceArn=resource_arn)
             except Exception:
                 pass
+
+
+class TestLakeFormationSearchByLFTags:
+    """Tests for SearchDatabasesByLFTags and SearchTablesByLFTags."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_search_databases_by_lf_tags(self, client):
+        """SearchDatabasesByLFTags returns a response with DatabaseList."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"searchtag-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["val1"])
+        try:
+            resp = client.search_databases_by_lf_tags(
+                Expression=[{"TagKey": tag_key, "TagValues": ["val1"]}],
+            )
+            assert "DatabaseList" in resp
+            assert isinstance(resp["DatabaseList"], list)
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_search_tables_by_lf_tags(self, client):
+        """SearchTablesByLFTags returns a response with TableList."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"searchtag-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["val1"])
+        try:
+            resp = client.search_tables_by_lf_tags(
+                Expression=[{"TagKey": tag_key, "TagValues": ["val1"]}],
+            )
+            assert "TableList" in resp
+            assert isinstance(resp["TableList"], list)
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+
+class TestLakeFormationDataCellsFilterCRUD:
+    """Tests for DeleteDataCellsFilter and UpdateDataCellsFilter."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_delete_data_cells_filter(self, client):
+        """DeleteDataCellsFilter removes a created filter."""
+        suffix = uuid.uuid4().hex[:8]
+        db_name = f"db-del-{suffix}"
+        tbl_name = f"tbl-del-{suffix}"
+        filter_name = f"filter-del-{suffix}"
+        client.create_data_cells_filter(
+            TableData={
+                "TableCatalogId": "123456789012",
+                "DatabaseName": db_name,
+                "TableName": tbl_name,
+                "Name": filter_name,
+                "ColumnNames": ["col1"],
+            }
+        )
+        resp = client.delete_data_cells_filter(
+            TableCatalogId="123456789012",
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            Name=filter_name,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        list_resp = client.list_data_cells_filter()
+        names = [f["Name"] for f in list_resp.get("DataCellsFilters", [])]
+        assert filter_name not in names
+
+    def test_delete_data_cells_filter_nonexistent(self, client):
+        """DeleteDataCellsFilter with nonexistent filter raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.delete_data_cells_filter(
+                TableCatalogId="123456789012",
+                DatabaseName="nonexistent-db",
+                TableName="nonexistent-tbl",
+                Name="nonexistent-filter",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_data_cells_filter(self, client):
+        """UpdateDataCellsFilter modifies an existing filter's columns."""
+        suffix = uuid.uuid4().hex[:8]
+        db_name = f"db-upd-{suffix}"
+        tbl_name = f"tbl-upd-{suffix}"
+        filter_name = f"filter-upd-{suffix}"
+        client.create_data_cells_filter(
+            TableData={
+                "TableCatalogId": "123456789012",
+                "DatabaseName": db_name,
+                "TableName": tbl_name,
+                "Name": filter_name,
+                "ColumnNames": ["col1"],
+            }
+        )
+        resp = client.update_data_cells_filter(
+            TableData={
+                "TableCatalogId": "123456789012",
+                "DatabaseName": db_name,
+                "TableName": tbl_name,
+                "Name": filter_name,
+                "ColumnNames": ["col1", "col2"],
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the update
+        get_resp = client.get_data_cells_filter(
+            TableCatalogId="123456789012",
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            Name=filter_name,
+        )
+        assert set(get_resp["DataCellsFilter"]["ColumnNames"]) == {"col1", "col2"}
+
+    def test_update_data_cells_filter_nonexistent(self, client):
+        """UpdateDataCellsFilter with nonexistent filter raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.update_data_cells_filter(
+                TableData={
+                    "TableCatalogId": "123456789012",
+                    "DatabaseName": "nonexistent-db",
+                    "TableName": "nonexistent-tbl",
+                    "Name": "nonexistent-filter",
+                    "ColumnNames": ["col1"],
+                }
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"

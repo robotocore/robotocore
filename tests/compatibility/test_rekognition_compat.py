@@ -793,3 +793,118 @@ class TestRekognitionCollectionBehavior:
         resp = rekognition.get_face_liveness_session_results(SessionId=session_id)
         assert resp["SessionId"] == session_id
         assert "Status" in resp
+
+
+class TestRekognitionDatasetOps:
+    """Tests for dataset CRUD operations."""
+
+    def test_describe_dataset_nonexistent(self, rekognition):
+        """DescribeDataset with fake DatasetArn raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.describe_dataset(
+                DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_dataset_nonexistent(self, rekognition):
+        """DeleteDataset with fake DatasetArn raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.delete_dataset(
+                DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_list_dataset_entries_nonexistent(self, rekognition):
+        """ListDatasetEntries with fake DatasetArn raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.list_dataset_entries(
+                DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_list_dataset_labels_nonexistent(self, rekognition):
+        """ListDatasetLabels with fake DatasetArn raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.list_dataset_labels(
+                DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionProjectVersionOps:
+    """Tests for project version CRUD operations."""
+
+    def test_describe_project_versions_nonexistent(self, rekognition):
+        """DescribeProjectVersions with fake ProjectArn raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.describe_project_versions(
+                ProjectArn="arn:aws:rekognition:us-east-1:123456789012:project/nonexistent/999"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_project_version_nonexistent(self, rekognition):
+        """DeleteProjectVersion with fake ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.delete_project_version(
+                ProjectVersionArn=(
+                    "arn:aws:rekognition:us-east-1:123456789012:project/x/version/v1/999"
+                )
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_start_project_version_nonexistent(self, rekognition):
+        """StartProjectVersion with fake ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.start_project_version(
+                ProjectVersionArn=(
+                    "arn:aws:rekognition:us-east-1:123456789012:project/x/version/v1/999"
+                ),
+                MinInferenceUnits=1,
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_stop_project_version_nonexistent(self, rekognition):
+        """StopProjectVersion with fake ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.stop_project_version(
+                ProjectVersionArn=(
+                    "arn:aws:rekognition:us-east-1:123456789012:project/x/version/v1/999"
+                )
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionStreamProcessorStartStop:
+    """Tests for stream processor start/stop operations."""
+
+    def test_start_stream_processor_nonexistent(self, rekognition):
+        """StartStreamProcessor with fake name raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.start_stream_processor(Name=_unique("nope"))
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_stop_stream_processor_nonexistent(self, rekognition):
+        """StopStreamProcessor with fake name raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.stop_stream_processor(Name=_unique("nope"))
+        assert "ResourceNotFoundException" in str(exc_info.value)
