@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Event pipeline with SQS, Lambda, and DynamoDB
+
+Resources:
+  EventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-queue"
+      VisibilityTimeout: 60
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-messages"
+      AttributeDefinitions:
+        - AttributeName: message_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: message_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  ProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-processor-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SQSReadPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt EventQueue.Arn
+        - PolicyName: DynamoDBWritePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt MessagesTable.Arn
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-processor"
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt ProcessorRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MessagesTable
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import boto3
+          def handler(event, context):
+              table_name = os.environ["TABLE_NAME"]
+              for record in event.get("Records", []):
+                  body = json.loads(record["body"])
+                  message_id = record["messageId"]
+                  print(f"Processing message {message_id}")
+              return {"statusCode": 200}
+
+  EventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt EventQueue.Arn
+      FunctionName: !Ref ProcessorFunction
+      BatchSize: 10
+      Enabled: true
+
+Outputs:
+  QueueName:
+    Value: !GetAtt EventQueue.QueueName
+  QueueUrl:
+    Value: !Ref EventQueue
+  QueueArn:
+    Value: !GetAtt EventQueue.Arn
+  FunctionName:
+    Value: !Ref ProcessorFunction
+  FunctionArn:
+    Value: !GetAtt ProcessorFunction.Arn
+  TableName:
+    Value: !Ref MessagesTable
+  RoleName:
+    Value: !Ref ProcessorRole
