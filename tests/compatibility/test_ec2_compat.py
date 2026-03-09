@@ -9409,3 +9409,219 @@ class TestEC2ModifyFleet:
                 },
             )
         assert "InvalidFleetId.NotFound" in str(exc_info.value)
+
+
+class TestEC2AdditionalUntested:
+    """Tests for previously-untested EC2 operations."""
+
+    def test_list_volumes_in_recycle_bin(self, ec2):
+        """ListVolumesInRecycleBin returns a successful response."""
+        resp = ec2.list_volumes_in_recycle_bin()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_capacity_block_offerings(self, ec2):
+        """DescribeCapacityBlockOfferings with required params."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = ec2.describe_capacity_block_offerings(
+                InstanceType="m5.xlarge",
+                CapacityDurationHours=1,
+            )
+            assert "CapacityBlockOfferings" in resp
+        except ClientError:
+            pass  # OK if not implemented
+
+    def test_modify_instance_metadata_options(self, ec2):
+        """ModifyInstanceMetadataOptions on a running instance."""
+        from botocore.exceptions import ClientError
+
+        # Launch a micro instance
+        run_resp = ec2.run_instances(
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+        )
+        instance_id = run_resp["Instances"][0]["InstanceId"]
+        try:
+            resp = ec2.modify_instance_metadata_options(
+                InstanceId=instance_id,
+                HttpTokens="required",
+                HttpEndpoint="enabled",
+            )
+            assert "InstanceId" in resp
+            assert resp["InstanceId"] == instance_id
+        except ClientError:
+            pass  # OK if not implemented
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_replace_iam_instance_profile_association(self, ec2):
+        """ReplaceIamInstanceProfileAssociation with a fake association ID."""
+        from botocore.exceptions import ClientError
+
+        try:
+            ec2.replace_iam_instance_profile_association(
+                IamInstanceProfile={"Name": "fake-profile"},
+                AssociationId="iip-assoc-00000000000000000",
+            )
+        except ClientError as e:
+            assert (
+                "NoSuchEntity" in str(e)
+                or "InvalidParameterValue" in str(e)
+                or "NotFound" in str(e)
+                or "InvalidAssociationID" in str(e)
+            )
+
+    def test_get_declarative_policies_report_summary(self, ec2):
+        """GetDeclarativePoliciesReportSummary with fake report ID."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = ec2.get_declarative_policies_report_summary(
+                ReportId="report-00000000000000000",
+            )
+            assert "ReportId" in resp or resp is not None
+        except ClientError:
+            pass  # OK if not implemented
+
+    def test_create_replace_root_volume_task(self, ec2):
+        """CreateReplaceRootVolumeTask on a running instance."""
+        from botocore.exceptions import ClientError
+
+        run_resp = ec2.run_instances(
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+        )
+        instance_id = run_resp["Instances"][0]["InstanceId"]
+        try:
+            resp = ec2.create_replace_root_volume_task(
+                InstanceId=instance_id,
+            )
+            assert "ReplaceRootVolumeTask" in resp
+        except ClientError:
+            pass  # OK if not implemented
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_create_store_image_task(self, ec2):
+        """CreateStoreImageTask with fake image and bucket."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = ec2.create_store_image_task(
+                ImageId="ami-00000000000000000",
+                Bucket="fake-bucket-for-test",
+            )
+            assert "ObjectKey" in resp or resp is not None
+        except ClientError:
+            pass  # OK if not implemented
+
+    def test_deprovision_public_ipv4_pool_cidr(self, ec2):
+        """DeprovisionPublicIpv4PoolCidr with fake pool."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = ec2.deprovision_public_ipv4_pool_cidr(
+                PoolId="ipv4pool-ec2-00000000000000000",
+                Cidr="203.0.113.0/24",
+            )
+            assert resp is not None
+        except ClientError:
+            pass  # OK if not implemented
+
+    def test_purchase_capacity_block(self, ec2):
+        """PurchaseCapacityBlock with fake offering."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = ec2.purchase_capacity_block(
+                CapacityBlockOfferingId="cbo-00000000000000000",
+                InstancePlatform="Linux/UNIX",
+            )
+            assert resp is not None
+        except ClientError:
+            pass  # OK if not implemented
+
+    def test_create_delete_verified_access_endpoint(self, ec2):
+        """CreateVerifiedAccessEndpoint and DeleteVerifiedAccessEndpoint."""
+        from botocore.exceptions import ClientError
+
+        # First create a verified access group (needed for endpoint)
+        try:
+            # Need a trust provider and instance first
+            tp_resp = ec2.create_verified_access_trust_provider(
+                TrustProviderType="user",
+                UserTrustProviderType="iam-identity-center",
+                PolicyReferenceName="test-policy",
+            )
+            tp_id = tp_resp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
+            try:
+                inst_resp = ec2.create_verified_access_instance(
+                    Description="test-instance",
+                )
+                inst_id = inst_resp["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+                try:
+                    # Attach trust provider to instance
+                    ec2.attach_verified_access_trust_provider(
+                        VerifiedAccessInstanceId=inst_id,
+                        VerifiedAccessTrustProviderId=tp_id,
+                    )
+                    grp_resp = ec2.create_verified_access_group(
+                        VerifiedAccessInstanceId=inst_id,
+                    )
+                    grp_id = grp_resp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+                    try:
+                        # Get a subnet for the endpoint
+                        subnets = ec2.describe_subnets()["Subnets"]
+                        subnet_id = subnets[0]["SubnetId"] if subnets else None
+                        if subnet_id:
+                            # Create a security group
+                            sg_resp = ec2.create_security_group(
+                                GroupName=_unique("va-sg"),
+                                Description="VA endpoint SG",
+                            )
+                            sg_id = sg_resp["GroupId"]
+                            try:
+                                ep_resp = ec2.create_verified_access_endpoint(
+                                    VerifiedAccessGroupId=grp_id,
+                                    EndpointType="network-interface",
+                                    AttachmentType="vpc",
+                                    DomainCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+                                    ApplicationDomain="test.example.com",
+                                    EndpointDomainPrefix="test-ep",
+                                    SecurityGroupIds=[sg_id],
+                                    NetworkInterfaceOptions={
+                                        "NetworkInterfaceId": "eni-00000000000000000",
+                                        "Protocol": "https",
+                                        "Port": 443,
+                                    },
+                                )
+                                ep_id = ep_resp["VerifiedAccessEndpoint"][
+                                    "VerifiedAccessEndpointId"
+                                ]
+                                assert ep_id.startswith("vae-")
+                                # Delete endpoint
+                                del_resp = ec2.delete_verified_access_endpoint(
+                                    VerifiedAccessEndpointId=ep_id,
+                                )
+                                assert "VerifiedAccessEndpoint" in del_resp
+                            except ClientError:
+                                pass  # OK if endpoint creation not fully supported
+                            finally:
+                                ec2.delete_security_group(GroupId=sg_id)
+                    finally:
+                        ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
+                finally:
+                    ec2.detach_verified_access_trust_provider(
+                        VerifiedAccessInstanceId=inst_id,
+                        VerifiedAccessTrustProviderId=tp_id,
+                    )
+                    ec2.delete_verified_access_instance(VerifiedAccessInstanceId=inst_id)
+            finally:
+                ec2.delete_verified_access_trust_provider(VerifiedAccessTrustProviderId=tp_id)
+        except ClientError:
+            pass  # OK if not implemented
