@@ -1277,3 +1277,121 @@ class TestStepFunctionsExecutionDetails:
             "StateMachineDoesNotExist" in str(exc.value)
             or "does not exist" in str(exc.value).lower()
         )
+
+
+class TestStepFunctionsVersions:
+    """Tests for state machine version operations."""
+
+    @staticmethod
+    def _simple_definition():
+        return json.dumps({"StartAt": "Pass", "States": {"Pass": {"Type": "Pass", "End": True}}})
+
+    def test_validate_state_machine_definition_ok(self, sfn):
+        """ValidateStateMachineDefinition returns OK for valid ASL JSON."""
+        definition = self._simple_definition()
+        resp = sfn.validate_state_machine_definition(definition=definition)
+        assert resp["result"] == "OK"
+        assert resp["diagnostics"] == []
+
+    def test_validate_state_machine_definition_invalid_json(self, sfn):
+        """ValidateStateMachineDefinition returns FAIL for invalid JSON."""
+        resp = sfn.validate_state_machine_definition(definition="not valid json {{")
+        assert resp["result"] == "FAIL"
+        assert len(resp["diagnostics"]) > 0
+        assert resp["diagnostics"][0]["severity"] == "ERROR"
+
+    def test_publish_state_machine_version(self, sfn):
+        """PublishStateMachineVersion creates a versioned ARN."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"pub-ver-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            resp = sfn.publish_state_machine_version(stateMachineArn=sm_arn)
+            assert "stateMachineVersionArn" in resp
+            assert resp["stateMachineVersionArn"].startswith(sm_arn + ":")
+            assert "creationDate" in resp
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_list_state_machine_versions(self, sfn):
+        """ListStateMachineVersions returns published versions."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"list-ver-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            # Publish two versions
+            v1 = sfn.publish_state_machine_version(stateMachineArn=sm_arn)
+            v2 = sfn.publish_state_machine_version(stateMachineArn=sm_arn)
+
+            resp = sfn.list_state_machine_versions(stateMachineArn=sm_arn)
+            versions = resp["stateMachineVersions"]
+            assert len(versions) >= 2
+            arns = [v["stateMachineVersionArn"] for v in versions]
+            assert v1["stateMachineVersionArn"] in arns
+            assert v2["stateMachineVersionArn"] in arns
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_list_state_machine_versions_empty(self, sfn):
+        """ListStateMachineVersions returns empty list when no versions published."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"list-ver-empty-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            resp = sfn.list_state_machine_versions(stateMachineArn=sm_arn)
+            assert resp["stateMachineVersions"] == []
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_delete_state_machine_version(self, sfn):
+        """DeleteStateMachineVersion removes the version."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"del-ver-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            v1 = sfn.publish_state_machine_version(stateMachineArn=sm_arn)
+            version_arn = v1["stateMachineVersionArn"]
+
+            # Delete the version
+            sfn.delete_state_machine_version(stateMachineVersionArn=version_arn)
+
+            # Verify it's gone
+            resp = sfn.list_state_machine_versions(stateMachineArn=sm_arn)
+            arns = [v["stateMachineVersionArn"] for v in resp["stateMachineVersions"]]
+            assert version_arn not in arns
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_publish_multiple_versions_increments(self, sfn):
+        """Each publish creates a new version with incrementing number."""
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"multi-ver-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name, definition=self._simple_definition(), roleArn=role_arn
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            v1 = sfn.publish_state_machine_version(stateMachineArn=sm_arn)
+            v2 = sfn.publish_state_machine_version(stateMachineArn=sm_arn)
+
+            # Version ARNs should be different
+            assert v1["stateMachineVersionArn"] != v2["stateMachineVersionArn"]
+
+            # Version numbers should increment
+            v1_num = int(v1["stateMachineVersionArn"].rsplit(":", 1)[1])
+            v2_num = int(v2["stateMachineVersionArn"].rsplit(":", 1)[1])
+            assert v2_num > v1_num
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)

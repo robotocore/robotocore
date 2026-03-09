@@ -490,6 +490,54 @@ class TestEFSAccountPreferences:
         assert "ResourceIdPreference" in resp
 
 
+class TestEFSNewOperations:
+    """Tests for newly implemented EFS operations."""
+
+    def test_delete_file_system_policy(self, efs):
+        fs_id = _create_fs(efs)
+        efs.put_file_system_policy(
+            FileSystemId=fs_id,
+            Policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "*"},
+                            "Action": "elasticfilesystem:ClientMount",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+        )
+        efs.delete_file_system_policy(FileSystemId=fs_id)
+        with pytest.raises(ClientError) as exc:
+            efs.describe_file_system_policy(FileSystemId=fs_id)
+        assert exc.value.response["Error"]["Code"] == "PolicyNotFound"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_put_backup_policy(self, efs):
+        fs_id = _create_fs(efs)
+        resp = efs.put_backup_policy(FileSystemId=fs_id, BackupPolicy={"Status": "ENABLED"})
+        assert resp["BackupPolicy"]["Status"] == "ENABLED"
+        desc = efs.describe_backup_policy(FileSystemId=fs_id)
+        assert desc["BackupPolicy"]["Status"] == "ENABLED"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+    def test_put_account_preferences(self, efs):
+        resp = efs.put_account_preferences(ResourceIdType="SHORT_ID")
+        assert "ResourceIdPreference" in resp
+        assert resp["ResourceIdPreference"]["ResourceIdType"] == "SHORT_ID"
+
+    def test_update_file_system(self, efs):
+        fs_id = _create_fs(efs)
+        resp = efs.update_file_system(FileSystemId=fs_id, ThroughputMode="bursting")
+        assert resp["FileSystemId"] == fs_id
+        assert resp["ThroughputMode"] == "bursting"
+        efs.delete_file_system(FileSystemId=fs_id)
+
+
 class TestEFSReplicationConfigurations:
     def test_describe_replication_configurations(self, efs):
         resp = efs.describe_replication_configurations()
