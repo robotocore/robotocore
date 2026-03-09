@@ -603,6 +603,186 @@ class TestBackupSelectionOperations:
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
+    def test_delete_backup_selection_nonexistent(self, backup):
+        """DeleteBackupSelection for nonexistent selection returns 200 (idempotent)."""
+        resp = backup.delete_backup_selection(
+            BackupPlanId="00000000-0000-0000-0000-000000000000",
+            SelectionId="00000000-0000-0000-0000-000000000000",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBackupJobAdvanced:
+    """Additional tests for backup job operations."""
+
+    def test_list_backup_jobs_by_vault_name(self, backup):
+        """ListBackupJobs filtered by vault name returns matching jobs."""
+        vault_name = _make_vault(backup)
+        try:
+            backup.start_backup_job(
+                BackupVaultName=vault_name,
+                ResourceArn="arn:aws:dynamodb:us-east-1:123456789012:table/tbl1",
+                IamRoleArn="arn:aws:iam::123456789012:role/backup-role",
+            )
+            jobs = backup.list_backup_jobs(ByBackupVaultName=vault_name)
+            assert "BackupJobs" in jobs
+            assert len(jobs["BackupJobs"]) >= 1
+            for job in jobs["BackupJobs"]:
+                assert job["BackupVaultName"] == vault_name
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_start_backup_job_with_lifecycle(self, backup):
+        """StartBackupJob with Lifecycle returns BackupJobId."""
+        vault_name = _make_vault(backup)
+        try:
+            resp = backup.start_backup_job(
+                BackupVaultName=vault_name,
+                ResourceArn="arn:aws:dynamodb:us-east-1:123456789012:table/lc-tbl",
+                IamRoleArn="arn:aws:iam::123456789012:role/backup-role",
+                Lifecycle={"DeleteAfterDays": 30},
+            )
+            assert "BackupJobId" in resp
+            assert "RecoveryPointArn" in resp
+            assert "CreationDate" in resp
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_describe_backup_job_has_resource_arn(self, backup):
+        """DescribeBackupJob returns ResourceArn and IamRoleArn."""
+        vault_name = _make_vault(backup)
+        resource_arn = "arn:aws:dynamodb:us-east-1:123456789012:table/desc-tbl"
+        try:
+            start_resp = backup.start_backup_job(
+                BackupVaultName=vault_name,
+                ResourceArn=resource_arn,
+                IamRoleArn="arn:aws:iam::123456789012:role/backup-role",
+            )
+            desc = backup.describe_backup_job(BackupJobId=start_resp["BackupJobId"])
+            assert desc["ResourceArn"] == resource_arn
+            assert "IamRoleArn" in desc
+            assert "CreationDate" in desc
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+
+class TestBackupFrameworkAdvanced:
+    """Additional framework tests."""
+
+    def test_create_framework_with_description(self, backup):
+        """CreateFramework with description and tags."""
+        name = _unique("fw")
+        try:
+            resp = backup.create_framework(
+                FrameworkName=name,
+                FrameworkDescription="A test framework",
+                FrameworkControls=[
+                    {"ControlName": "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK"}
+                ],
+                FrameworkTags={"env": "test"},
+            )
+            assert resp["FrameworkName"] == name
+            assert "FrameworkArn" in resp
+
+            desc = backup.describe_framework(FrameworkName=name)
+            assert desc["FrameworkDescription"] == "A test framework"
+        finally:
+            backup.delete_framework(FrameworkName=name)
+
+    def test_framework_tags_via_create(self, backup):
+        """Tags passed at creation are visible via ListTags."""
+        name = _unique("fw")
+        try:
+            backup.create_framework(
+                FrameworkName=name,
+                FrameworkControls=[
+                    {"ControlName": "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK"}
+                ],
+                FrameworkTags={"project": "robotocore", "tier": "free"},
+            )
+            desc = backup.describe_framework(FrameworkName=name)
+            tags = backup.list_tags(ResourceArn=desc["FrameworkArn"])["Tags"]
+            assert tags["project"] == "robotocore"
+            assert tags["tier"] == "free"
+        finally:
+            backup.delete_framework(FrameworkName=name)
+
+    def test_framework_multiple_controls(self, backup):
+        """CreateFramework with multiple controls."""
+        name = _unique("fw")
+        try:
+            backup.create_framework(
+                FrameworkName=name,
+                FrameworkControls=[
+                    {"ControlName": "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK"},
+                    {"ControlName": "BACKUP_RESOURCES_PROTECTED_BY_BACKUP_PLAN"},
+                ],
+            )
+            desc = backup.describe_framework(FrameworkName=name)
+            assert len(desc["FrameworkControls"]) == 2
+            control_names = {c["ControlName"] for c in desc["FrameworkControls"]}
+            assert "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK" in control_names
+            assert "BACKUP_RESOURCES_PROTECTED_BY_BACKUP_PLAN" in control_names
+        finally:
+            backup.delete_framework(FrameworkName=name)
+
+
+class TestBackupPlanAdvanced:
+    """Additional backup plan tests."""
+
+    def test_create_plan_multiple_rules(self, backup):
+        """BackupPlan with multiple rules."""
+        vault_name = _make_vault(backup)
+        try:
+            resp = backup.create_backup_plan(
+                BackupPlan={
+                    "BackupPlanName": _unique("plan"),
+                    "Rules": [
+                        {
+                            "RuleName": "daily",
+                            "TargetBackupVaultName": vault_name,
+                            "ScheduleExpression": "cron(0 12 * * ? *)",
+                        },
+                        {
+                            "RuleName": "weekly",
+                            "TargetBackupVaultName": vault_name,
+                            "ScheduleExpression": "cron(0 12 ? * SUN *)",
+                        },
+                    ],
+                }
+            )
+            assert "BackupPlanId" in resp
+            backup.delete_backup_plan(BackupPlanId=resp["BackupPlanId"])
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_update_plan_changes_name(self, backup):
+        """UpdateBackupPlan changes the plan name visible in list."""
+        vault_name = _make_vault(backup)
+        try:
+            plan_id, _ = _make_plan(backup, vault_name)
+            new_name = _unique("updated")
+            backup.update_backup_plan(
+                BackupPlanId=plan_id,
+                BackupPlan={
+                    "BackupPlanName": new_name,
+                    "Rules": [
+                        {
+                            "RuleName": "r1",
+                            "TargetBackupVaultName": vault_name,
+                            "ScheduleExpression": "cron(0 6 * * ? *)",
+                        }
+                    ],
+                },
+            )
+            plans = backup.list_backup_plans()
+            found = [p for p in plans["BackupPlansList"] if p["BackupPlanId"] == plan_id]
+            assert len(found) == 1
+            assert found[0]["BackupPlanName"] == new_name
+            backup.delete_backup_plan(BackupPlanId=plan_id)
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
 
 class TestBackupAutoCoverage:
     """Auto-generated coverage tests for backup."""
