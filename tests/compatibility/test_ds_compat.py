@@ -889,3 +889,279 @@ class TestDsSchemaExtensions:
         resp = ds.list_schema_extensions(DirectoryId=directory)
         assert "SchemaExtensionsInfo" in resp
         assert isinstance(resp["SchemaExtensionsInfo"], list)
+
+
+class TestDsSnapshotOps:
+    """Tests for DS snapshot operations."""
+
+    def test_create_and_delete_snapshot(self, ds, directory):
+        """CreateSnapshot creates a snapshot, DeleteSnapshot removes it."""
+        create_resp = ds.create_snapshot(DirectoryId=directory, Name="test-snap")
+        assert "SnapshotId" in create_resp
+        snap_id = create_resp["SnapshotId"]
+
+        del_resp = ds.delete_snapshot(SnapshotId=snap_id)
+        assert "SnapshotId" in del_resp
+        assert del_resp["SnapshotId"] == snap_id
+
+    def test_delete_snapshot_nonexistent(self, ds):
+        """DeleteSnapshot with fake ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.delete_snapshot(SnapshotId="s-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsConditionalForwarderOps:
+    """Tests for DS conditional forwarder operations."""
+
+    def test_create_and_delete_conditional_forwarder(self, ds, directory):
+        """Create and delete a conditional forwarder."""
+        create_resp = ds.create_conditional_forwarder(
+            DirectoryId=directory,
+            RemoteDomainName="remote.example.com",
+            DnsIpAddrs=["10.0.0.1", "10.0.0.2"],
+        )
+        assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        del_resp = ds.delete_conditional_forwarder(
+            DirectoryId=directory,
+            RemoteDomainName="remote.example.com",
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_conditional_forwarder(self, ds, directory):
+        """UpdateConditionalForwarder updates DNS IPs."""
+        ds.create_conditional_forwarder(
+            DirectoryId=directory,
+            RemoteDomainName="upd.example.com",
+            DnsIpAddrs=["10.0.0.1"],
+        )
+        try:
+            upd_resp = ds.update_conditional_forwarder(
+                DirectoryId=directory,
+                RemoteDomainName="upd.example.com",
+                DnsIpAddrs=["10.0.0.3", "10.0.0.4"],
+            )
+            assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ds.delete_conditional_forwarder(
+                DirectoryId=directory,
+                RemoteDomainName="upd.example.com",
+            )
+
+    def test_delete_conditional_forwarder_nonexistent(self, ds, directory):
+        """DeleteConditionalForwarder for unknown domain raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.delete_conditional_forwarder(
+                DirectoryId=directory,
+                RemoteDomainName="nonexistent.example.com",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("EntityDoesNotExistException", "ClientException")
+
+
+class TestDsEventTopicOps:
+    """Tests for DS event topic operations."""
+
+    def test_register_and_deregister_event_topic(self, ds, directory):
+        """RegisterEventTopic and DeregisterEventTopic lifecycle."""
+        reg_resp = ds.register_event_topic(
+            DirectoryId=directory,
+            TopicName="ds-test-topic",
+        )
+        assert reg_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        dereg_resp = ds.deregister_event_topic(
+            DirectoryId=directory,
+            TopicName="ds-test-topic",
+        )
+        assert dereg_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDsCertificateOps:
+    """Tests for DS certificate operations."""
+
+    def test_list_certificates(self, ds, directory):
+        """ListCertificates returns a list for the directory."""
+        resp = ds.list_certificates(DirectoryId=directory)
+        assert "CertificatesInfo" in resp
+        assert isinstance(resp["CertificatesInfo"], list)
+
+    def test_list_certificates_nonexistent(self, ds):
+        """ListCertificates for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.list_certificates(DirectoryId="d-0000000000")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("EntityDoesNotExistException", "DirectoryDoesNotExistException")
+
+
+class TestDsIpRouteOps:
+    """Tests for DS IP route add/remove operations."""
+
+    def test_add_and_remove_ip_routes(self, ds, directory):
+        """AddIpRoutes adds routes, RemoveIpRoutes removes them."""
+        add_resp = ds.add_ip_routes(
+            DirectoryId=directory,
+            IpRoutes=[
+                {"CidrIp": "203.0.113.0/24", "Description": "Test route"},
+            ],
+        )
+        assert add_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        remove_resp = ds.remove_ip_routes(
+            DirectoryId=directory,
+            CidrIps=["203.0.113.0/24"],
+        )
+        assert remove_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_add_ip_routes_nonexistent_dir(self, ds):
+        """AddIpRoutes for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.add_ip_routes(
+                DirectoryId="d-0000000000",
+                IpRoutes=[{"CidrIp": "203.0.113.0/24"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsRadiusOps:
+    """Tests for DS RADIUS operations."""
+
+    def test_disable_radius_nonexistent(self, ds):
+        """DisableRadius for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.disable_radius(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_enable_radius(self, ds, directory):
+        """EnableRadius sets RADIUS settings for the directory."""
+        resp = ds.enable_radius(
+            DirectoryId=directory,
+            RadiusSettings={
+                "RadiusServers": ["10.0.0.100"],
+                "RadiusPort": 1812,
+                "RadiusTimeout": 10,
+                "RadiusRetries": 3,
+                "SharedSecret": "s3cr3tP@ss",
+                "AuthenticationProtocol": "PAP",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_radius(self, ds, directory):
+        """UpdateRadius updates RADIUS settings."""
+        # First enable
+        ds.enable_radius(
+            DirectoryId=directory,
+            RadiusSettings={
+                "RadiusServers": ["10.0.0.100"],
+                "RadiusPort": 1812,
+                "RadiusTimeout": 10,
+                "RadiusRetries": 3,
+                "SharedSecret": "s3cr3tP@ss",
+                "AuthenticationProtocol": "PAP",
+            },
+        )
+        upd_resp = ds.update_radius(
+            DirectoryId=directory,
+            RadiusSettings={
+                "RadiusServers": ["10.0.0.200"],
+                "RadiusPort": 1812,
+                "RadiusTimeout": 15,
+                "RadiusRetries": 5,
+                "SharedSecret": "n3ws3cr3tP@ss",
+                "AuthenticationProtocol": "PAP",
+            },
+        )
+        assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_radius(self, ds, directory):
+        """DisableRadius after EnableRadius succeeds."""
+        ds.enable_radius(
+            DirectoryId=directory,
+            RadiusSettings={
+                "RadiusServers": ["10.0.0.100"],
+                "RadiusPort": 1812,
+                "RadiusTimeout": 10,
+                "RadiusRetries": 3,
+                "SharedSecret": "s3cr3tP@ss",
+                "AuthenticationProtocol": "PAP",
+            },
+        )
+        resp = ds.disable_radius(DirectoryId=directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDsClientAuthOps:
+    """Tests for DS client authentication operations."""
+
+    def test_enable_client_authentication_nonexistent(self, ds):
+        """EnableClientAuthentication for nonexistent dir raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.enable_client_authentication(
+                DirectoryId="d-0000000000",
+                Type="SmartCard",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "DirectoryDoesNotExistException",
+        )
+
+    def test_disable_client_authentication_nonexistent(self, ds):
+        """DisableClientAuthentication for nonexistent dir raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.disable_client_authentication(
+                DirectoryId="d-0000000000",
+                Type="SmartCard",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "DirectoryDoesNotExistException",
+        )
+
+
+class TestDsComputerOps:
+    """Tests for DS computer operations."""
+
+    def test_create_computer(self, ds, directory):
+        """CreateComputer creates a computer account."""
+        resp = ds.create_computer(
+            DirectoryId=directory,
+            ComputerName="TESTPC01",
+            Password="C0mput3rP@ss!",
+        )
+        assert "Computer" in resp
+        assert resp["Computer"]["ComputerName"] == "TESTPC01"
+
+    def test_create_computer_nonexistent_dir(self, ds):
+        """CreateComputer for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.create_computer(
+                DirectoryId="d-0000000000",
+                ComputerName="TESTPC02",
+                Password="C0mput3rP@ss!",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsResetPassword:
+    """Tests for ResetUserPassword operation."""
+
+    def test_reset_user_password(self, ds, directory):
+        """ResetUserPassword for a valid directory returns 200."""
+        resp = ds.reset_user_password(
+            DirectoryId=directory,
+            UserName="Administrator",
+            NewPassword="N3wP@ssw0rd!",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_reset_user_password_nonexistent_dir(self, ds):
+        """ResetUserPassword for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.reset_user_password(
+                DirectoryId="d-0000000000",
+                UserName="Administrator",
+                NewPassword="N3wP@ssw0rd!",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
