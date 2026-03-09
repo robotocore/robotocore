@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
@@ -41,9 +42,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      # For tagged releases: versioned + latest tags
+      # For main pushes: latest only
+      - name: Determine tags
+        id: tags
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "TAGS<<EOF" >> $GITHUB_OUTPUT
+            echo "robotocore/robotocore:${VERSION}" >> $GITHUB_OUTPUT
+            echo "robotocore/robotocore:latest" >> $GITHUB_OUTPUT
+            echo "ghcr.io/${{ github.repository }}:${VERSION}" >> $GITHUB_OUTPUT
+            echo "ghcr.io/${{ github.repository }}:latest" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+          else
+            echo "TAGS<<EOF" >> $GITHUB_OUTPUT
+            echo "robotocore/robotocore:latest" >> $GITHUB_OUTPUT
+            echo "ghcr.io/${{ github.repository }}:latest" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -51,16 +70,13 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            robotocore/robotocore:${{ steps.version.outputs.VERSION }}
-            robotocore/robotocore:latest
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
-            ghcr.io/${{ github.repository }}:latest
+          tags: ${{ steps.tags.outputs.TAGS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # GitHub Release
+      # GitHub Release (only for tagged versions)
       - name: Create GitHub Release
+        if: steps.tags.outputs.is_tag == 'true'
         uses: softprops/action-gh-release@v1
         with:
           generate_release_notes: true
