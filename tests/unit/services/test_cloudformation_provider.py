@@ -745,8 +745,7 @@ class TestUpdateStack:
 
     @patch("robotocore.services.cloudformation.provider._deploy_stack")
     def test_update_stack_records_events(self, mock_deploy):
-        """BUG: _update_stack doesn't record any events.
-        Categorical pattern: every state transition must emit events."""
+        """Every state transition must emit events."""
         store = CfnStore()
         _create_stack(
             store,
@@ -757,9 +756,17 @@ class TestUpdateStack:
         stack = store.get_stack("ev-update")
         events_before = len(stack.events)
 
+        # Use a different template to avoid "No updates are to be performed"
+        updated_template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Description": "Updated",
+                "Resources": {},
+            }
+        )
         _update_stack(
             store,
-            {"StackName": "ev-update", "TemplateBody": _SIMPLE_TEMPLATE},
+            {"StackName": "ev-update", "TemplateBody": updated_template},
             "us-east-1",
             "123",
         )
@@ -792,9 +799,17 @@ class TestUpdateStack:
             "us-east-1",
             "123",
         )
+        # Use a different template to avoid "No updates are to be performed"
+        updated_template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Description": "Updated",
+                "Resources": {},
+            }
+        )
         result = _update_stack(
             store,
-            {"StackName": "upd-id", "TemplateBody": _SIMPLE_TEMPLATE},
+            {"StackName": "upd-id", "TemplateBody": updated_template},
             "us-east-1",
             "123",
         )
