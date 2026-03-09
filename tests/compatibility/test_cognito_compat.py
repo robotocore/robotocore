@@ -919,3 +919,205 @@ class TestCognitoAdditionalOps:
             cognito.get_user(AccessToken="fake-access-token-12345")
         err_str = str(type(exc_info.value).__name__) + str(exc_info.value)
         assert "NotAuthorizedException" in err_str
+
+    def test_untag_resource(self, cognito, pool):
+        cognito.tag_resource(ResourceArn=pool["arn"], Tags={"k1": "v1", "k2": "v2"})
+        cognito.untag_resource(ResourceArn=pool["arn"], TagKeys=["k1"])
+        response = cognito.list_tags_for_resource(ResourceArn=pool["arn"])
+        assert "k1" not in response["Tags"]
+        assert response["Tags"]["k2"] == "v2"
+
+    def test_delete_user_pool_client(self, cognito, pool):
+        client = cognito.create_user_pool_client(UserPoolId=pool["id"], ClientName="to-delete")[
+            "UserPoolClient"
+        ]
+        cognito.delete_user_pool_client(UserPoolId=pool["id"], ClientId=client["ClientId"])
+        clients = cognito.list_user_pool_clients(UserPoolId=pool["id"], MaxResults=60)[
+            "UserPoolClients"
+        ]
+        client_ids = [c["ClientId"] for c in clients]
+        assert client["ClientId"] not in client_ids
+
+
+class TestCognitoAuthFlows:
+    """Tests for authentication flows: SignUp, InitiateAuth, etc."""
+
+    @pytest.fixture
+    def cognito(self):
+        from tests.compatibility.conftest import make_client
+
+        return make_client("cognito-idp")
+
+    @pytest.fixture
+    def auth_pool(self, cognito):
+        """Pool configured for USER_PASSWORD_AUTH with a client."""
+        pool_name = _unique("auth-pool")
+        pool = cognito.create_user_pool(
+            PoolName=pool_name,
+            Policies={
+                "PasswordPolicy": {
+                    "MinimumLength": 8,
+                    "RequireUppercase": True,
+                    "RequireLowercase": True,
+                    "RequireNumbers": True,
+                    "RequireSymbols": True,
+                }
+            },
+            AutoVerifiedAttributes=["email"],
+            Schema=[
+                {"Name": "email", "AttributeDataType": "String", "Mutable": True},
+            ],
+        )["UserPool"]
+        pool_id = pool["Id"]
+        client = cognito.create_user_pool_client(
+            UserPoolId=pool_id,
+            ClientName="auth-client",
+            ExplicitAuthFlows=[
+                "ALLOW_USER_PASSWORD_AUTH",
+                "ALLOW_REFRESH_TOKEN_AUTH",
+                "ALLOW_ADMIN_USER_PASSWORD_AUTH",
+            ],
+        )["UserPoolClient"]
+        yield {
+            "pool_id": pool_id,
+            "client_id": client["ClientId"],
+        }
+        cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_sign_up(self, cognito, auth_pool):
+        username = _unique("signup-user")
+        response = cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password="Test@12345678",
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        assert response["UserConfirmed"] is False
+        assert "UserSub" in response
+
+    def test_admin_confirm_sign_up(self, cognito, auth_pool):
+        username = _unique("confirm-user")
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password="Test@12345678",
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        user = cognito.admin_get_user(UserPoolId=auth_pool["pool_id"], Username=username)
+        assert user["UserStatus"] == "CONFIRMED"
+
+    def test_initiate_auth_user_password(self, cognito, auth_pool):
+        username = _unique("initauth-user")
+        password = "Test@12345678"
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        response = cognito.initiate_auth(
+            ClientId=auth_pool["client_id"],
+            AuthFlow="USER_PASSWORD_AUTH",
+            AuthParameters={"USERNAME": username, "PASSWORD": password},
+        )
+        assert "AuthenticationResult" in response
+        assert "AccessToken" in response["AuthenticationResult"]
+        assert "IdToken" in response["AuthenticationResult"]
+        assert "RefreshToken" in response["AuthenticationResult"]
+
+    def test_admin_initiate_auth(self, cognito, auth_pool):
+        username = _unique("adminauth-user")
+        password = "Test@12345678"
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        response = cognito.admin_initiate_auth(
+            UserPoolId=auth_pool["pool_id"],
+            ClientId=auth_pool["client_id"],
+            AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+            AuthParameters={"USERNAME": username, "PASSWORD": password},
+        )
+        assert "AuthenticationResult" in response
+        assert "AccessToken" in response["AuthenticationResult"]
+
+    def test_get_user_with_access_token(self, cognito, auth_pool):
+        """GetUser with a valid access token from authentication."""
+        username = _unique("getuser-user")
+        password = "Test@12345678"
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        auth = cognito.initiate_auth(
+            ClientId=auth_pool["client_id"],
+            AuthFlow="USER_PASSWORD_AUTH",
+            AuthParameters={"USERNAME": username, "PASSWORD": password},
+        )
+        access_token = auth["AuthenticationResult"]["AccessToken"]
+        response = cognito.get_user(AccessToken=access_token)
+        assert response["Username"] == username
+
+    def test_change_password(self, cognito, auth_pool):
+        username = _unique("chgpw-user")
+        password = "Test@12345678"
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        auth = cognito.initiate_auth(
+            ClientId=auth_pool["client_id"],
+            AuthFlow="USER_PASSWORD_AUTH",
+            AuthParameters={"USERNAME": username, "PASSWORD": password},
+        )
+        access_token = auth["AuthenticationResult"]["AccessToken"]
+        response = cognito.change_password(
+            PreviousPassword=password,
+            ProposedPassword="NewTest@12345678",
+            AccessToken=access_token,
+        )
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_forgot_password(self, cognito, auth_pool):
+        username = _unique("forgot-user")
+        password = "Test@12345678"
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        response = cognito.forgot_password(ClientId=auth_pool["client_id"], Username=username)
+        assert "CodeDeliveryDetails" in response
+
+    def test_confirm_forgot_password(self, cognito, auth_pool):
+        """ConfirmForgotPassword with a confirmation code (Moto accepts any code)."""
+        username = _unique("conforgot-user")
+        password = "Test@12345678"
+        cognito.sign_up(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": f"{username}@example.com"}],
+        )
+        cognito.admin_confirm_sign_up(UserPoolId=auth_pool["pool_id"], Username=username)
+        cognito.forgot_password(ClientId=auth_pool["client_id"], Username=username)
+        response = cognito.confirm_forgot_password(
+            ClientId=auth_pool["client_id"],
+            Username=username,
+            ConfirmationCode="123456",
+            Password="NewTest@12345678",
+        )
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
