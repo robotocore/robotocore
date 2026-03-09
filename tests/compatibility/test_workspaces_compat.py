@@ -260,3 +260,100 @@ class TestWorkSpacesImagePermissions:
             "AccessDeniedException",
             "ValidationException",
         )
+
+
+class TestWorkSpacesFiltering:
+    """Tests for WorkSpaces filtering and query operations."""
+
+    def test_describe_workspaces_by_workspace_ids_nonexistent(self, workspaces):
+        """Filtering by nonexistent WorkspaceIds returns empty list."""
+        result = workspaces.describe_workspaces(WorkspaceIds=["ws-nonexistent123"])
+        assert "Workspaces" in result
+        assert result["Workspaces"] == []
+
+    def test_describe_workspaces_by_bundle_id_nonexistent(self, workspaces):
+        """Filtering by nonexistent BundleId returns empty list."""
+        result = workspaces.describe_workspaces(BundleId="wsb-nonexistent123")
+        assert "Workspaces" in result
+        assert result["Workspaces"] == []
+
+    def test_describe_workspaces_by_directory_and_username_nonexistent(self, workspaces):
+        """Filtering by nonexistent DirectoryId+UserName returns empty list."""
+        result = workspaces.describe_workspaces(DirectoryId="d-nonexistent1234", UserName="nobody")
+        assert "Workspaces" in result
+        assert result["Workspaces"] == []
+
+    def test_describe_workspace_images_by_ids_nonexistent(self, workspaces):
+        """Filtering images by nonexistent ImageIds returns empty list."""
+        result = workspaces.describe_workspace_images(ImageIds=["wsi-nonexistent123"])
+        assert "Images" in result
+        assert result["Images"] == []
+
+    def test_describe_workspaces_by_workspace_id(self, workspaces, workspace):
+        """Filtering by a valid WorkspaceId returns that workspace."""
+        result = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        assert len(result["Workspaces"]) == 1
+        assert result["Workspaces"][0]["WorkspaceId"] == workspace
+
+
+class TestWorkSpacesClientProperties:
+    """Tests for DescribeClientProperties."""
+
+    def test_describe_client_properties_empty(self, workspaces):
+        """DescribeClientProperties with a nonexistent resource returns empty list."""
+        result = workspaces.describe_client_properties(ResourceIds=["d-9267462133"])
+        assert "ClientPropertiesList" in result
+        assert isinstance(result["ClientPropertiesList"], list)
+
+
+class TestWorkSpacesImageOperations:
+    """Tests for WorkSpaces image operations."""
+
+    def test_create_workspace_image_nonexistent_workspace(self, workspaces):
+        """CreateWorkspaceImage with a nonexistent workspace raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.create_workspace_image(
+                Name=_unique("img"),
+                Description="test image",
+                WorkspaceId="ws-nonexistent123",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesTermination:
+    """Tests for workspace termination edge cases."""
+
+    def test_terminate_nonexistent_workspace(self, workspaces):
+        """Terminating a nonexistent workspace returns a FailedRequests entry."""
+        result = workspaces.terminate_workspaces(
+            TerminateWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 1
+        assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
+        assert result["FailedRequests"][0]["ErrorCode"] == "400"
+
+
+class TestWorkSpacesDirectoryValidation:
+    """Tests for directory-related validation."""
+
+    def test_describe_directories_with_invalid_id_format(self, workspaces):
+        """DescribeWorkspaceDirectories with invalid directory ID raises ValidationException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_workspace_directories(DirectoryIds=["d-nonexistent1234"])
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_modify_workspace_creation_properties_invalid_directory(self, workspaces):
+        """ModifyWorkspaceCreationProperties with invalid directory raises ValidationException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_creation_properties(
+                ResourceId="d-0000000000",
+                WorkspaceCreationProperties={"EnableInternetAccess": True},
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
