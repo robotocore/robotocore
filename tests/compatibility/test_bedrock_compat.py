@@ -680,3 +680,12 @@ class TestBedrockEnforcedGuardrails:
     def test_list_enforced_guardrails_configuration(self, bedrock):
         r = bedrock.list_enforced_guardrails_configuration()
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockCustomModelDeployments:
+    """Tests for custom model deployment operations."""
+
+    def test_list_custom_model_deployments(self, bedrock):
+        """ListCustomModelDeployments returns a response."""
+        r = bedrock.list_custom_model_deployments()
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200

@@ -49,9 +49,10 @@ class TestNetworkManagerGlobalNetworks:
         assert tags.get("project") == "robotocore"
 
     def test_describe_global_networks(self, nm, global_network):
-        resp = nm.describe_global_networks()
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.describe_global_networks(GlobalNetworkIds=[gn_id])
         gn_ids = [gn["GlobalNetworkId"] for gn in resp["GlobalNetworks"]]
-        assert global_network["GlobalNetworkId"] in gn_ids
+        assert gn_id in gn_ids
 
     def test_describe_global_networks_by_id(self, nm, global_network):
         gn_id = global_network["GlobalNetworkId"]
@@ -641,3 +642,40 @@ class TestNetworkManagerGetWithFakeIds:
         with pytest.raises(ClientError) as exc:
             nm.get_route_analysis(GlobalNetworkId=gn_id, RouteAnalysisId="ra-fake123")
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestNetworkManagerCoreNetworkPolicyAndRouting:
+    """Tests for GetCoreNetworkPolicy, ListAttachmentRoutingPolicyAssociations,
+    and ListCoreNetworkRoutingInformation."""
+
+    @pytest.fixture
+    def core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        yield cn
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_get_core_network_policy_not_found(self, nm, core_network):
+        """GetCoreNetworkPolicy raises NotFoundException when no policy exists."""
+        cn_id = core_network["CoreNetworkId"]
+        with pytest.raises(ClientError) as exc:
+            nm.get_core_network_policy(CoreNetworkId=cn_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_list_attachment_routing_policy_associations(self, nm, core_network):
+        """ListAttachmentRoutingPolicyAssociations returns associations list."""
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.list_attachment_routing_policy_associations(
+            CoreNetworkId=cn_id, AttachmentId="attachment-fake123"
+        )
+        assert "AttachmentRoutingPolicyAssociations" in resp
+        assert isinstance(resp["AttachmentRoutingPolicyAssociations"], list)
+
+    def test_list_core_network_routing_information(self, nm, core_network):
+        """ListCoreNetworkRoutingInformation returns routing info list."""
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.list_core_network_routing_information(
+            CoreNetworkId=cn_id, SegmentName="seg1", EdgeLocation="us-east-1"
+        )
+        assert "CoreNetworkRoutingInformation" in resp
+        assert isinstance(resp["CoreNetworkRoutingInformation"], list)
