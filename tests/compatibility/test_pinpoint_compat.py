@@ -97,6 +97,96 @@ class TestPinpointAppOperations:
         # cleanup
         pinpoint.delete_app(ApplicationId=app_id)
 
+    def test_create_app_with_tags(self, pinpoint):
+        name = _unique("app")
+        resp = pinpoint.create_app(
+            CreateApplicationRequest={"Name": name, "tags": {"env": "dev", "team": "qa"}}
+        )
+        app_id = resp["ApplicationResponse"]["Id"]
+        arn = resp["ApplicationResponse"]["Arn"]
+        try:
+            # Verify tags were applied via list_tags_for_resource
+            tags = pinpoint.list_tags_for_resource(ResourceArn=arn)["TagsModel"]["tags"]
+            assert tags["env"] == "dev"
+            assert tags["team"] == "qa"
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_delete_app_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.delete_app(ApplicationId="nonexistent-delete-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_application_settings_quiet_time(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.update_application_settings(
+                ApplicationId=app_id,
+                WriteApplicationSettingsRequest={"QuietTime": {"Start": "00:00", "End": "06:00"}},
+            )
+            resp = pinpoint.get_application_settings(ApplicationId=app_id)
+            qt = resp["ApplicationSettingsResource"]["QuietTime"]
+            assert qt["Start"] == "00:00"
+            assert qt["End"] == "06:00"
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_update_application_settings_campaign_hook(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.update_application_settings(
+                ApplicationId=app_id,
+                WriteApplicationSettingsRequest={
+                    "CampaignHook": {
+                        "LambdaFunctionName": "my-hook-function",
+                        "Mode": "DELIVERY",
+                    }
+                },
+            )
+            resp = pinpoint.get_application_settings(ApplicationId=app_id)
+            hook = resp["ApplicationSettingsResource"]["CampaignHook"]
+            assert hook["LambdaFunctionName"] == "my-hook-function"
+            assert hook["Mode"] == "DELIVERY"
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_update_application_settings_full_limits(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.update_application_settings(
+                ApplicationId=app_id,
+                WriteApplicationSettingsRequest={
+                    "Limits": {
+                        "Daily": 50,
+                        "MaximumDuration": 300,
+                        "MessagesPerSecond": 25,
+                        "Total": 500,
+                    }
+                },
+            )
+            resp = pinpoint.get_application_settings(ApplicationId=app_id)
+            limits = resp["ApplicationSettingsResource"]["Limits"]
+            assert limits["Daily"] == 50
+            assert limits["MaximumDuration"] == 300
+            assert limits["MessagesPerSecond"] == 25
+            assert limits["Total"] == 500
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_get_application_settings_not_found(self, pinpoint):
+        with pytest.raises(ClientError) as exc:
+            pinpoint.get_application_settings(ApplicationId="nonexistent-settings-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_apps_returns_list(self, pinpoint):
+        """GetApps always returns an ApplicationsResponse with an Item list."""
+        resp = pinpoint.get_apps()
+        assert "ApplicationsResponse" in resp
+        assert isinstance(resp["ApplicationsResponse"]["Item"], list)
+
 
 class TestPinpointTagOperations:
     def test_tag_resource(self, pinpoint):
@@ -147,6 +237,48 @@ class TestPinpointTagOperations:
         assert "remove" not in tags
         # cleanup
         pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_tags_additive_across_calls(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        arn = created["ApplicationResponse"]["Arn"]
+        try:
+            pinpoint.tag_resource(ResourceArn=arn, TagsModel={"tags": {"a": "1", "b": "2"}})
+            pinpoint.tag_resource(ResourceArn=arn, TagsModel={"tags": {"c": "3"}})
+            tags = pinpoint.list_tags_for_resource(ResourceArn=arn)["TagsModel"]["tags"]
+            assert tags["a"] == "1"
+            assert tags["b"] == "2"
+            assert tags["c"] == "3"
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_untag_multiple_keys(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        arn = created["ApplicationResponse"]["Arn"]
+        try:
+            pinpoint.tag_resource(
+                ResourceArn=arn, TagsModel={"tags": {"a": "1", "b": "2", "c": "3"}}
+            )
+            pinpoint.untag_resource(ResourceArn=arn, TagKeys=["a", "c"])
+            tags = pinpoint.list_tags_for_resource(ResourceArn=arn)["TagsModel"]["tags"]
+            assert "a" not in tags
+            assert tags["b"] == "2"
+            assert "c" not in tags
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_tag_overwrite_value(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        arn = created["ApplicationResponse"]["Arn"]
+        try:
+            pinpoint.tag_resource(ResourceArn=arn, TagsModel={"tags": {"key": "old"}})
+            pinpoint.tag_resource(ResourceArn=arn, TagsModel={"tags": {"key": "new"}})
+            tags = pinpoint.list_tags_for_resource(ResourceArn=arn)["TagsModel"]["tags"]
+            assert tags["key"] == "new"
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
 
 
 class TestPinpointEventStreamOperations:
@@ -201,5 +333,68 @@ class TestPinpointEventStreamOperations:
             resp = pinpoint.delete_event_stream(ApplicationId=app_id)
             es = resp["EventStream"]
             assert es["ApplicationId"] == app_id
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_event_stream_update_overwrites(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/first",
+                    "RoleArn": "arn:aws:iam::123456789012:role/role1",
+                },
+            )
+            pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/second",
+                    "RoleArn": "arn:aws:iam::123456789012:role/role2",
+                },
+            )
+            resp = pinpoint.get_event_stream(ApplicationId=app_id)
+            es = resp["EventStream"]
+            assert (
+                es["DestinationStreamArn"] == "arn:aws:kinesis:us-east-1:123456789012:stream/second"
+            )
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_get_event_stream_after_delete_not_found(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                },
+            )
+            pinpoint.delete_event_stream(ApplicationId=app_id)
+            with pytest.raises(ClientError) as exc:
+                pinpoint.get_event_stream(ApplicationId=app_id)
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            pinpoint.delete_app(ApplicationId=app_id)
+
+    def test_put_event_stream_returns_role_arn(self, pinpoint):
+        created = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+        app_id = created["ApplicationResponse"]["Id"]
+        try:
+            resp = pinpoint.put_event_stream(
+                ApplicationId=app_id,
+                WriteEventStream={
+                    "DestinationStreamArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test",
+                    "RoleArn": "arn:aws:iam::123456789012:role/my-role",
+                },
+            )
+            es = resp["EventStream"]
+            assert es["RoleArn"] == "arn:aws:iam::123456789012:role/my-role"
+            assert es["DestinationStreamArn"] == (
+                "arn:aws:kinesis:us-east-1:123456789012:stream/test"
+            )
         finally:
             pinpoint.delete_app(ApplicationId=app_id)
