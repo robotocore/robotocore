@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import assert_s3_bucket_exists
 
 pytestmark = pytest.mark.iac
@@ -72,5 +73,24 @@ class TestStaticWebsite:
             website_cfg = s3.get_bucket_website(Bucket=bucket_name)
             assert website_cfg["IndexDocument"]["Suffix"] == "index.html"
             assert website_cfg["ErrorDocument"]["Key"] == "error.html"
+        finally:
+            cdk_runner.destroy(SCENARIO_DIR, stack_name="StaticWebsite")
+
+    def test_s3_object_roundtrip(self, cdk_runner, ensure_server):
+        """Upload and download an object from the website bucket."""
+        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="StaticWebsite")
+        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+
+        try:
+            cfn = make_client("cloudformation")
+            resp = cfn.describe_stacks(StackName="StaticWebsite")
+            outputs = {
+                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
+            }
+            bucket_name = outputs.get("BucketName")
+            assert bucket_name, "Stack should have a BucketName output"
+
+            s3 = make_client("s3")
+            put_and_get_s3_object(s3, bucket_name, "index.html", "<html><body>Hello</body></html>")
         finally:
             cdk_runner.destroy(SCENARIO_DIR, stack_name="StaticWebsite")

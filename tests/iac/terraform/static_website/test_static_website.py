@@ -3,6 +3,7 @@
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import assert_s3_bucket_exists
 
 pytestmark = pytest.mark.iac
@@ -61,3 +62,11 @@ class TestStaticWebsite:
         assert public_stmt["Effect"] == "Allow"
         assert public_stmt["Principal"] == "*"
         assert "s3:GetObject" in public_stmt["Action"]
+
+    def test_s3_object_roundtrip(self, terraform_dir, tf_runner):
+        """Upload and download an object from the website bucket."""
+        tf_runner.apply(terraform_dir)
+        outputs = tf_runner.output(terraform_dir)
+        bucket = outputs["bucket_name"]["value"]
+        s3 = make_client("s3")
+        put_and_get_s3_object(s3, bucket, "index.html", "<html><body>Hello</body></html>")

@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import invoke_api_gateway
 
 pytestmark = pytest.mark.iac
 
@@ -79,3 +80,16 @@ class TestRestApi:
         assert config["FunctionName"] == fn_name
         assert config["Runtime"] == "python3.12"
         assert config["Handler"] == "index.handler"
+
+    def test_invoke_api_endpoint(self, rest_api_outputs, apigw_client):
+        """Create a deployment+stage and invoke the API Gateway endpoint."""
+        api_id = rest_api_outputs["rest_api_id"]
+        # The Pulumi program doesn't create a deployment/stage, so create one
+        deployment = apigw_client.create_deployment(restApiId=api_id)
+        apigw_client.create_stage(
+            restApiId=api_id,
+            stageName="prod",
+            deploymentId=deployment["id"],
+        )
+        resp = invoke_api_gateway(api_id, "prod", "hello")
+        assert resp["status"] == 200

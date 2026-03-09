@@ -11,6 +11,11 @@ from pathlib import Path
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import (
+    put_and_get_dynamodb_item,
+    put_and_get_s3_object,
+    put_and_read_kinesis_record,
+)
 from tests.iac.helpers.resource_validator import (
     assert_dynamodb_table_exists,
     assert_kinesis_stream_exists,
@@ -92,5 +97,62 @@ class TestDataLake:
             key_schema = {ks["AttributeName"]: ks["KeyType"] for ks in table["KeySchema"]}
             assert key_schema.get("dataset_id") == "HASH", "Partition key should be 'dataset_id'"
             assert key_schema.get("timestamp") == "RANGE", "Sort key should be 'timestamp'"
+        finally:
+            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
+
+    def test_s3_data_roundtrip(self, cdk_runner, ensure_server):
+        """Upload and download data from the landing zone bucket."""
+        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
+        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+
+        try:
+            outputs = _get_stack_outputs()
+            bucket_name = outputs.get("LandingBucketName")
+            assert bucket_name, "Stack should have a LandingBucketName output"
+
+            s3 = make_client("s3")
+            put_and_get_s3_object(s3, bucket_name, "data/test.csv", "id,name\n1,test")
+        finally:
+            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
+
+    def test_kinesis_data_roundtrip(self, cdk_runner, ensure_server):
+        """Put and read a record from the Kinesis ingest stream."""
+        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
+        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+
+        try:
+            outputs = _get_stack_outputs()
+            stream_name = outputs.get("IngestStreamName")
+            assert stream_name, "Stack should have an IngestStreamName output"
+
+            kinesis = make_client("kinesis")
+            put_and_read_kinesis_record(kinesis, stream_name, "test-data", "pk1")
+        finally:
+            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
+
+    def test_dynamodb_data_roundtrip(self, cdk_runner, ensure_server):
+        """Put and get an item from the DynamoDB catalog table."""
+        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
+        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+
+        try:
+            outputs = _get_stack_outputs()
+            table_name = outputs.get("CatalogTableName")
+            assert table_name, "Stack should have a CatalogTableName output"
+
+            ddb = make_client("dynamodb")
+            put_and_get_dynamodb_item(
+                ddb,
+                table_name,
+                item={
+                    "dataset_id": {"S": "ds-001"},
+                    "timestamp": {"S": "2026-01-01T00:00:00Z"},
+                    "size": {"N": "1024"},
+                },
+                key={
+                    "dataset_id": {"S": "ds-001"},
+                    "timestamp": {"S": "2026-01-01T00:00:00Z"},
+                },
+            )
         finally:
             cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.functional_validator import invoke_api_gateway
 from tests.iac.helpers.resource_validator import (
     assert_api_gateway_exists,
     assert_iam_role_exists,
@@ -75,3 +76,10 @@ class TestRestApi:
         """The invoke_url output is populated and ends with /hello."""
         invoke_url = deployed["invoke_url"]["value"]
         assert invoke_url.endswith("/hello"), f"invoke_url does not end with /hello: {invoke_url}"
+
+    def test_invoke_api_gateway(self, deployed):
+        """Hit the API Gateway endpoint and verify Lambda response."""
+        api_id = deployed["api_id"]["value"]
+        resp = invoke_api_gateway(api_id, "live", "hello")
+        assert resp["status"] == 200
+        assert resp["body"]["message"] == "hello from robotocore"
