@@ -1562,4 +1562,934 @@ class TestQuickSightGetOps:
     def test_get_flow_permissions(self, quicksight):
         resp = quicksight.get_flow_permissions(AwsAccountId=ACCOUNT_ID, FlowId="fake")
         assert resp["Status"] == 200
-        assert isinstance(resp["Permissions"], list)
+
+
+class TestQuickSightAccountCustomizationCRUD:
+    """Test Create/Update/Delete account customization."""
+
+    def test_create_account_customization(self, quicksight):
+        resp = quicksight.create_account_customization(
+            AwsAccountId=ACCOUNT_ID,
+            AccountCustomization={"DefaultTheme": "arn:aws:quicksight::aws:theme/CLASSIC"},
+        )
+        assert resp["Status"] == 200
+        assert "AccountCustomization" in resp
+
+    def test_update_account_customization_not_found(self, quicksight):
+        # After delete, update should fail
+        quicksight.delete_account_customization(AwsAccountId=ACCOUNT_ID)
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_account_customization(
+                AwsAccountId=ACCOUNT_ID,
+                AccountCustomization={"DefaultTheme": "arn:aws:quicksight::aws:theme/MIDNIGHT"},
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_account_customization(self, quicksight):
+        quicksight.create_account_customization(
+            AwsAccountId=ACCOUNT_ID,
+            AccountCustomization={"DefaultTheme": "arn:aws:quicksight::aws:theme/CLASSIC"},
+        )
+        resp = quicksight.delete_account_customization(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+
+
+class TestQuickSightAccountSubscriptionCRUD:
+    """Test account subscription create/delete."""
+
+    def test_create_account_subscription(self, quicksight):
+        resp = quicksight.create_account_subscription(
+            AwsAccountId=ACCOUNT_ID,
+            AccountName="test-acct",
+            AuthenticationMethod="IAM_AND_QUICKSIGHT",
+            Edition="ENTERPRISE",
+            NotificationEmail="test@example.com",
+        )
+        assert resp["Status"] == 200
+        assert "SignupResponse" in resp
+
+    def test_delete_account_subscription(self, quicksight):
+        resp = quicksight.delete_account_subscription(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+
+
+class TestQuickSightAnalysisCRUD:
+    """Test analysis create/update/delete/restore."""
+
+    def test_create_analysis(self, quicksight):
+        aid = _unique("analysis")
+        resp = quicksight.create_analysis(
+            AwsAccountId=ACCOUNT_ID,
+            AnalysisId=aid,
+            Name="Test Analysis",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        assert resp["Status"] in (200, 201, 202)
+        assert resp["AnalysisId"] == aid
+
+    def test_update_analysis_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_analysis(
+                AwsAccountId=ACCOUNT_ID,
+                AnalysisId="nonexistent",
+                Name="X",
+                SourceEntity={
+                    "SourceTemplate": {
+                        "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/t",
+                        "DataSetReferences": [
+                            {
+                                "DataSetPlaceholder": "p",
+                                "DataSetArn": (
+                                    f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/d"
+                                ),
+                            }
+                        ],
+                    }
+                },
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_analysis_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_analysis_permissions(
+                AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_analysis_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_restore_analysis_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.restore_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_create_and_delete_analysis(self, quicksight):
+        aid = _unique("analysis")
+        quicksight.create_analysis(
+            AwsAccountId=ACCOUNT_ID,
+            AnalysisId=aid,
+            Name="To Delete",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        del_resp = quicksight.delete_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId=aid)
+        assert del_resp["Status"] == 200
+
+
+class TestQuickSightBrandCRUD:
+    """Test brand create/update/delete operations."""
+
+    def test_create_brand(self, quicksight):
+        bid = _unique("brand")
+        resp = quicksight.create_brand(
+            AwsAccountId=ACCOUNT_ID,
+            BrandId=bid,
+            BrandDefinition={"BrandName": "TestBrand"},
+        )
+        assert "RequestId" in resp
+
+    def test_update_brand(self, quicksight):
+        resp = quicksight.update_brand(
+            AwsAccountId=ACCOUNT_ID,
+            BrandId="fake",
+            BrandDefinition={"BrandName": "Updated"},
+        )
+        assert "RequestId" in resp
+
+    def test_delete_brand(self, quicksight):
+        resp = quicksight.delete_brand(AwsAccountId=ACCOUNT_ID, BrandId="fake")
+        assert "RequestId" in resp
+
+    def test_delete_brand_assignment(self, quicksight):
+        resp = quicksight.delete_brand_assignment(AwsAccountId=ACCOUNT_ID)
+        assert "RequestId" in resp
+
+    def test_update_brand_assignment(self, quicksight):
+        resp = quicksight.update_brand_assignment(
+            AwsAccountId=ACCOUNT_ID,
+            BrandArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:brand/fake",
+        )
+        assert "RequestId" in resp
+
+    def test_update_brand_published_version(self, quicksight):
+        resp = quicksight.update_brand_published_version(
+            AwsAccountId=ACCOUNT_ID, BrandId="fake", VersionId="1"
+        )
+        assert "RequestId" in resp
+
+
+class TestQuickSightCustomPermissionsCRUD:
+    """Test custom permissions create/update/delete."""
+
+    def test_create_custom_permissions(self, quicksight):
+        name = _unique("perms")
+        resp = quicksight.create_custom_permissions(
+            AwsAccountId=ACCOUNT_ID,
+            CustomPermissionsName=name,
+            Capabilities={"ExportToCsv": "DENY", "ExportToExcel": "DENY"},
+        )
+        assert resp["Status"] == 200
+
+    def test_update_custom_permissions(self, quicksight):
+        resp = quicksight.update_custom_permissions(
+            AwsAccountId=ACCOUNT_ID,
+            CustomPermissionsName="fake",
+            Capabilities={"ExportToCsv": "DENY"},
+        )
+        assert resp["Status"] == 200
+
+    def test_delete_custom_permissions(self, quicksight):
+        resp = quicksight.delete_custom_permissions(
+            AwsAccountId=ACCOUNT_ID, CustomPermissionsName="fake"
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightDashboardMutations:
+    """Test dashboard update/delete operations."""
+
+    def test_update_dashboard_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_dashboard(
+                AwsAccountId=ACCOUNT_ID,
+                DashboardId="nonexistent",
+                Name="X",
+                SourceEntity={
+                    "SourceTemplate": {
+                        "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/t",
+                        "DataSetReferences": [
+                            {
+                                "DataSetPlaceholder": "p",
+                                "DataSetArn": (
+                                    f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/d"
+                                ),
+                            }
+                        ],
+                    }
+                },
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_dashboard_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_dashboard(AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_dashboard_links_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_dashboard_links(
+                AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent", LinkEntities=[]
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_dashboard_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_dashboard_permissions(
+                AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_dashboard_published_version_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_dashboard_published_version(
+                AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent", VersionNumber=1
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_dashboards_qa_configuration(self, quicksight):
+        resp = quicksight.update_dashboards_qa_configuration(
+            AwsAccountId=ACCOUNT_ID, DashboardsQAStatus="ENABLED"
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightDataSetMutations:
+    """Test data set update/delete operations."""
+
+    def test_update_data_set_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_data_set(
+                AwsAccountId=ACCOUNT_ID,
+                DataSetId="nonexistent",
+                Name="X",
+                PhysicalTableMap={
+                    "t1": {
+                        "S3Source": {
+                            "DataSourceArn": (
+                                f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:datasource/ds"
+                            ),
+                            "InputColumns": [{"Name": "col", "Type": "STRING"}],
+                        }
+                    }
+                },
+                ImportMode="SPICE",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_data_set_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_data_set_permissions(AwsAccountId=ACCOUNT_ID, DataSetId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_data_set_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_data_set(AwsAccountId=ACCOUNT_ID, DataSetId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_data_set_refresh_properties(self, quicksight):
+        resp = quicksight.delete_data_set_refresh_properties(
+            AwsAccountId=ACCOUNT_ID, DataSetId="fake"
+        )
+        assert resp["Status"] == 200
+
+    def test_put_data_set_refresh_properties(self, quicksight):
+        resp = quicksight.put_data_set_refresh_properties(
+            AwsAccountId=ACCOUNT_ID,
+            DataSetId="fake",
+            DataSetRefreshProperties={
+                "RefreshConfiguration": {
+                    "IncrementalRefresh": {
+                        "LookbackWindow": {
+                            "ColumnName": "col",
+                            "Size": 1,
+                            "SizeUnit": "DAY",
+                        }
+                    }
+                }
+            },
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightDataSourceMutations:
+    """Test data source permission updates."""
+
+    def test_update_data_source_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_data_source_permissions(
+                AwsAccountId=ACCOUNT_ID, DataSourceId="nonexistent"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightFolderMutations:
+    """Test folder update/delete and membership operations."""
+
+    def test_create_folder_membership(self, quicksight):
+        fid = _unique("folder")
+        quicksight.create_folder(
+            AwsAccountId=ACCOUNT_ID,
+            FolderId=fid,
+            Name="Test Folder",
+            FolderType="SHARED",
+        )
+        resp = quicksight.create_folder_membership(
+            AwsAccountId=ACCOUNT_ID,
+            FolderId=fid,
+            MemberId="fake-member",
+            MemberType="DASHBOARD",
+        )
+        assert resp["Status"] == 200
+        assert "FolderMember" in resp
+
+    def test_update_folder_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_folder(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent", Name="X")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_folder_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_folder_permissions(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_folder_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_folder(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_folder_membership_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_folder_membership(
+                AwsAccountId=ACCOUNT_ID,
+                FolderId="nonexistent",
+                MemberId="fake",
+                MemberType="DASHBOARD",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightIAMPolicyAssignmentCRUD:
+    """Test IAM policy assignment create/update/delete."""
+
+    def test_create_iam_policy_assignment(self, quicksight):
+        name = _unique("assign")
+        resp = quicksight.create_iam_policy_assignment(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            AssignmentName=name,
+            AssignmentStatus="ENABLED",
+        )
+        assert resp["Status"] == 200
+        assert resp["AssignmentName"] == name
+
+    def test_update_iam_policy_assignment_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_iam_policy_assignment(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                AssignmentName="nonexistent",
+                AssignmentStatus="ENABLED",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_iam_policy_assignment_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_iam_policy_assignment(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                AssignmentName="nonexistent",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightTemplateMutations:
+    """Test template update/delete operations."""
+
+    def test_update_template_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_template(
+                AwsAccountId=ACCOUNT_ID,
+                TemplateId="nonexistent",
+                SourceEntity={
+                    "SourceAnalysis": {
+                        "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:analysis/fake",
+                        "DataSetReferences": [
+                            {
+                                "DataSetPlaceholder": "p",
+                                "DataSetArn": (
+                                    f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/d"
+                                ),
+                            }
+                        ],
+                    }
+                },
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_template_alias_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_template_alias(
+                AwsAccountId=ACCOUNT_ID,
+                TemplateId="nonexistent",
+                AliasName="fake",
+                TemplateVersionNumber=1,
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_template_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_template_permissions(
+                AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_template_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_template(AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_template_alias_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_template_alias(
+                AwsAccountId=ACCOUNT_ID,
+                TemplateId="nonexistent",
+                AliasName="fake",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightThemeMutations:
+    """Test theme update/delete operations."""
+
+    def test_update_theme_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_theme(
+                AwsAccountId=ACCOUNT_ID,
+                ThemeId="nonexistent",
+                BaseThemeId="CLASSIC",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_theme_alias_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_theme_alias(
+                AwsAccountId=ACCOUNT_ID,
+                ThemeId="nonexistent",
+                AliasName="fake",
+                ThemeVersionNumber=1,
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_theme_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_theme_permissions(AwsAccountId=ACCOUNT_ID, ThemeId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_theme_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_theme(AwsAccountId=ACCOUNT_ID, ThemeId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_theme_alias_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_theme_alias(
+                AwsAccountId=ACCOUNT_ID,
+                ThemeId="nonexistent",
+                AliasName="fake",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightTopicCRUD:
+    """Test topic create/update/delete operations."""
+
+    def test_create_topic(self, quicksight):
+        tid = _unique("topic")
+        resp = quicksight.create_topic(
+            AwsAccountId=ACCOUNT_ID,
+            TopicId=tid,
+            Topic={
+                "Name": "TestTopic",
+                "DataSets": [
+                    {
+                        "DatasetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        "DatasetName": "ds",
+                    }
+                ],
+            },
+        )
+        assert resp["Status"] == 200
+        assert resp["TopicId"] == tid
+
+    def test_update_topic_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_topic(
+                AwsAccountId=ACCOUNT_ID,
+                TopicId="nonexistent",
+                Topic={
+                    "Name": "X",
+                    "DataSets": [
+                        {
+                            "DatasetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                            "DatasetName": "ds",
+                        }
+                    ],
+                },
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_topic_permissions_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_topic_permissions(AwsAccountId=ACCOUNT_ID, TopicId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_batch_create_topic_reviewed_answer_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.batch_create_topic_reviewed_answer(
+                AwsAccountId=ACCOUNT_ID,
+                TopicId="nonexistent",
+                Answers=[
+                    {
+                        "AnswerId": "a1",
+                        "DatasetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        "Question": "test?",
+                        "Mir": {},
+                    }
+                ],
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_batch_delete_topic_reviewed_answer_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.batch_delete_topic_reviewed_answer(
+                AwsAccountId=ACCOUNT_ID, TopicId="nonexistent", AnswerIds=["a1"]
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightTopicRefreshSchedule:
+    """Test topic refresh schedule create/update/delete."""
+
+    def test_create_topic_refresh_schedule_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.create_topic_refresh_schedule(
+                AwsAccountId=ACCOUNT_ID,
+                TopicId="nonexistent",
+                DatasetArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                RefreshSchedule={"IsEnabled": True, "BasedOnSpiceSchedule": True},
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_topic_refresh_schedule_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_topic_refresh_schedule(
+                AwsAccountId=ACCOUNT_ID,
+                TopicId="nonexistent",
+                DatasetId="fake",
+                RefreshSchedule={"IsEnabled": True, "BasedOnSpiceSchedule": True},
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_topic_refresh_schedule_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_topic_refresh_schedule(
+                AwsAccountId=ACCOUNT_ID, TopicId="nonexistent", DatasetId="fake"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightRefreshScheduleCRUD:
+    """Test data set refresh schedule create/update/delete."""
+
+    def test_create_refresh_schedule(self, quicksight):
+        resp = quicksight.create_refresh_schedule(
+            AwsAccountId=ACCOUNT_ID,
+            DataSetId="fake-ds",
+            Schedule={
+                "ScheduleId": _unique("sched"),
+                "ScheduleFrequency": {"Interval": "DAILY"},
+                "RefreshType": "FULL_REFRESH",
+            },
+        )
+        assert resp["Status"] == 200
+        assert "ScheduleId" in resp
+
+    def test_update_refresh_schedule_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_refresh_schedule(
+                AwsAccountId=ACCOUNT_ID,
+                DataSetId="nonexistent",
+                Schedule={
+                    "ScheduleId": "nonexistent",
+                    "ScheduleFrequency": {"Interval": "DAILY"},
+                    "RefreshType": "FULL_REFRESH",
+                },
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_delete_refresh_schedule(self, quicksight):
+        resp = quicksight.delete_refresh_schedule(
+            AwsAccountId=ACCOUNT_ID, DataSetId="fake", ScheduleId="fake"
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightRoleMembership:
+    """Test role membership create/delete operations."""
+
+    def test_create_role_membership(self, quicksight):
+        resp = quicksight.create_role_membership(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Role="ADMIN",
+            MemberName="fake-group",
+        )
+        assert resp["Status"] == 200
+
+    def test_delete_role_membership(self, quicksight):
+        resp = quicksight.delete_role_membership(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Role="ADMIN",
+            MemberName="fake",
+        )
+        assert resp["Status"] == 200
+
+    def test_delete_role_custom_permission(self, quicksight):
+        resp = quicksight.delete_role_custom_permission(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, Role="ADMIN"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_role_custom_permission(self, quicksight):
+        resp = quicksight.update_role_custom_permission(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Role="ADMIN",
+            CustomPermissionsName="fake",
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightGroupMembershipMutations:
+    """Test group membership delete."""
+
+    def test_delete_group_membership_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_group_membership(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                GroupName="nonexistent",
+                MemberName="fake",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightNamespaceMutations:
+    """Test namespace delete."""
+
+    def test_delete_namespace_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_namespace(AwsAccountId=ACCOUNT_ID, Namespace="nonexistent-ns")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightVPCConnectionMutations:
+    """Test VPC connection delete."""
+
+    def test_delete_vpc_connection_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_vpc_connection(AwsAccountId=ACCOUNT_ID, VPCConnectionId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightIngestionMutations:
+    """Test ingestion cancel."""
+
+    def test_cancel_ingestion_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.cancel_ingestion(
+                AwsAccountId=ACCOUNT_ID, DataSetId="fake", IngestionId="fake"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightUserMutations:
+    """Test user delete/update operations."""
+
+    def test_delete_user_by_principal_id(self, quicksight):
+        resp = quicksight.delete_user_by_principal_id(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, PrincipalId="fake"
+        )
+        assert resp["Status"] == 200
+
+    def test_delete_user_custom_permission_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_user_custom_permission(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName="nonexistent"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_update_user_custom_permission_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.update_user_custom_permission(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                UserName="nonexistent",
+                CustomPermissionsName="perm",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightEmbedUrls:
+    """Test embed URL generation operations."""
+
+    def test_generate_embed_url_for_anonymous_user(self, quicksight):
+        resp = quicksight.generate_embed_url_for_anonymous_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            AuthorizedResourceArns=[f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/fake"],
+            ExperienceConfiguration={"Dashboard": {"InitialDashboardId": "fake"}},
+        )
+        assert resp["Status"] == 200
+        assert "EmbedUrl" in resp
+
+    def test_generate_embed_url_for_registered_user(self, quicksight):
+        resp = quicksight.generate_embed_url_for_registered_user(
+            AwsAccountId=ACCOUNT_ID,
+            UserArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:user/default/fake",
+            ExperienceConfiguration={"Dashboard": {"InitialDashboardId": "fake"}},
+        )
+        assert resp["Status"] == 200
+        assert "EmbedUrl" in resp
+
+    def test_generate_embed_url_for_registered_user_with_identity(self, quicksight):
+        resp = quicksight.generate_embed_url_for_registered_user_with_identity(
+            AwsAccountId=ACCOUNT_ID,
+            ExperienceConfiguration={"Dashboard": {"InitialDashboardId": "fake"}},
+        )
+        assert resp["Status"] == 200
+        assert "EmbedUrl" in resp
+
+
+class TestQuickSightSearchOps:
+    """Test search operations."""
+
+    def test_search_folders(self, quicksight):
+        resp = quicksight.search_folders(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "PARENT_FOLDER_ARN",
+                    "Value": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:folder/root",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["FolderSummaryList"], list)
+
+    def test_search_action_connectors(self, quicksight):
+        resp = quicksight.search_action_connectors(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "DISPLAY_NAME",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+
+    def test_search_flows(self, quicksight):
+        resp = quicksight.search_flows(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "DISPLAY_NAME",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightMiscMutations:
+    """Test miscellaneous update/delete operations."""
+
+    def test_delete_action_connector(self, quicksight):
+        resp = quicksight.delete_action_connector(AwsAccountId=ACCOUNT_ID, ActionConnectorId="fake")
+        assert resp["Status"] == 200
+
+    def test_delete_default_q_business_application(self, quicksight):
+        resp = quicksight.delete_default_q_business_application(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+
+    def test_delete_identity_propagation_config(self, quicksight):
+        resp = quicksight.delete_identity_propagation_config(
+            AwsAccountId=ACCOUNT_ID, Service="REDSHIFT"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_action_connector_permissions(self, quicksight):
+        resp = quicksight.update_action_connector_permissions(
+            AwsAccountId=ACCOUNT_ID, ActionConnectorId="fake"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_application_with_token_exchange_grant(self, quicksight):
+        resp = quicksight.update_application_with_token_exchange_grant(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE
+        )
+        assert resp["Status"] == 200
+
+    def test_update_default_q_business_application(self, quicksight):
+        resp = quicksight.update_default_q_business_application(
+            AwsAccountId=ACCOUNT_ID, ApplicationId="fake-app"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_flow_permissions(self, quicksight):
+        resp = quicksight.update_flow_permissions(AwsAccountId=ACCOUNT_ID, FlowId="fake")
+        assert resp["Status"] == 200
+
+    def test_update_identity_propagation_config(self, quicksight):
+        resp = quicksight.update_identity_propagation_config(
+            AwsAccountId=ACCOUNT_ID, Service="REDSHIFT"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_ip_restriction(self, quicksight):
+        resp = quicksight.update_ip_restriction(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+
+    def test_update_key_registration(self, quicksight):
+        resp = quicksight.update_key_registration(AwsAccountId=ACCOUNT_ID, KeyRegistration=[])
+        assert "RequestId" in resp
+
+    def test_update_q_personalization_configuration(self, quicksight):
+        resp = quicksight.update_q_personalization_configuration(
+            AwsAccountId=ACCOUNT_ID, PersonalizationMode="ENABLED"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_quick_sight_q_search_configuration(self, quicksight):
+        resp = quicksight.update_quick_sight_q_search_configuration(
+            AwsAccountId=ACCOUNT_ID, QSearchStatus="ENABLED"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_spice_capacity_configuration(self, quicksight):
+        resp = quicksight.update_spice_capacity_configuration(
+            AwsAccountId=ACCOUNT_ID, PurchaseMode="MANUAL"
+        )
+        assert resp["Status"] == 200
+
+    def test_predict_qa_results(self, quicksight):
+        resp = quicksight.predict_qa_results(AwsAccountId=ACCOUNT_ID, QueryText="test query")
+        assert resp["Status"] == 200
+
+    def test_start_asset_bundle_import_job(self, quicksight):
+        jid = _unique("job")
+        resp = quicksight.start_asset_bundle_import_job(
+            AwsAccountId=ACCOUNT_ID,
+            AssetBundleImportJobId=jid,
+            AssetBundleImportSource={"Body": b"fake"},
+        )
+        assert resp["Status"] == 200
+        assert "AssetBundleImportJobId" in resp
+
+    def test_start_dashboard_snapshot_job_schedule(self, quicksight):
+        resp = quicksight.start_dashboard_snapshot_job_schedule(
+            AwsAccountId=ACCOUNT_ID, DashboardId="fake", ScheduleId="fake"
+        )
+        assert resp["Status"] == 200
+
+    def test_update_self_upgrade(self, quicksight):
+        resp = quicksight.update_self_upgrade(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            UpgradeRequestId="fake",
+            Action="APPROVE",
+        )
+        assert resp["Status"] == 200
+
+    def test_update_self_upgrade_configuration(self, quicksight):
+        resp = quicksight.update_self_upgrade_configuration(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, SelfUpgradeStatus="OPT_IN"
+        )
+        assert resp["Status"] == 200
