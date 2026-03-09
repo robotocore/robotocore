@@ -12,6 +12,10 @@ on:
       - "tests/iac/**"
       - "src/robotocore/**"
 
+concurrency:
+  group: iac-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
