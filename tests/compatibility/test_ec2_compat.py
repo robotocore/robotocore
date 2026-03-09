@@ -3704,6 +3704,34 @@ class TestEC2TransitGatewayPeeringCRUD:
             ec2.delete_transit_gateway(TransitGatewayId=tgw2_id)
             ec2.delete_transit_gateway(TransitGatewayId=tgw1_id)
 
+    def test_reject_tgw_peering_attachment(self, ec2):
+        """RejectTransitGatewayPeeringAttachment changes state."""
+        tgw1 = ec2.create_transit_gateway()
+        tgw1_id = tgw1["TransitGateway"]["TransitGatewayId"]
+        tgw2 = ec2.create_transit_gateway()
+        tgw2_id = tgw2["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_peering_attachment(
+                TransitGatewayId=tgw1_id,
+                PeerTransitGatewayId=tgw2_id,
+                PeerAccountId="123456789012",
+                PeerRegion="us-east-1",
+            )
+            att_id = att["TransitGatewayPeeringAttachment"]["TransitGatewayAttachmentId"]
+            assert att_id.startswith("tgw-attach-")
+
+            rejected = ec2.reject_transit_gateway_peering_attachment(
+                TransitGatewayAttachmentId=att_id
+            )
+            peer = rejected["TransitGatewayPeeringAttachment"]
+            assert peer["TransitGatewayAttachmentId"] == att_id
+            assert "Status" in peer
+
+            ec2.delete_transit_gateway_peering_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw2_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw1_id)
+
 
 class TestEC2TransitGatewayRoutes:
     """Transit gateway static routes."""
