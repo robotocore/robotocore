@@ -2174,6 +2174,29 @@ class TestCloudFrontConnectionAndTenantDeletes:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
 
 
+class TestCloudFrontMiscOperations:
+    """Tests for GetConnectionFunction, UpdateAnycastIpList, UpdateDomainAssociation."""
+
+    def test_get_connection_function(self, cf):
+        """GetConnectionFunction with a fake ID returns 200."""
+        resp = cf.get_connection_function(Identifier="fake-func-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_anycast_ip_list_nonexistent(self, cf):
+        """UpdateAnycastIpList with a non-existent ID raises NoSuchResource."""
+        with pytest.raises(ClientError) as exc:
+            cf.update_anycast_ip_list(Id="fake-id", IfMatch="*")
+        assert exc.value.response["Error"]["Code"] == "NoSuchResource"
+
+    def test_update_domain_association(self, cf):
+        """UpdateDomainAssociation returns 200."""
+        resp = cf.update_domain_association(
+            Domain="example.com",
+            TargetResource={"DistributionId": "FAKEID"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestCloudFrontCopyAndStagingConfig:
     """Tests for CopyDistribution and UpdateDistributionWithStagingConfig."""
 

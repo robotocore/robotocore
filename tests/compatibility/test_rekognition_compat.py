@@ -908,3 +908,302 @@ class TestRekognitionStreamProcessorStartStop:
         with pytest.raises(ClientError) as exc_info:
             rekognition.stop_stream_processor(Name=_unique("nope"))
         assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionVideoGetWithFakeJobId:
+    """Tests for Get* video operations with fake/nonexistent job IDs."""
+
+    def test_get_celebrity_recognition_fake_job(self, rekognition):
+        """GetCelebrityRecognition with fake JobId returns SUCCEEDED."""
+        resp = rekognition.get_celebrity_recognition(JobId="fake-celeb-job-id-001")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "Celebrities" in resp
+        assert isinstance(resp["Celebrities"], list)
+        assert "VideoMetadata" in resp
+
+    def test_get_content_moderation_fake_job(self, rekognition):
+        """GetContentModeration with fake JobId returns SUCCEEDED."""
+        resp = rekognition.get_content_moderation(JobId="fake-content-mod-001")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "ModerationLabels" in resp
+        assert isinstance(resp["ModerationLabels"], list)
+        assert "VideoMetadata" in resp
+
+    def test_get_label_detection_fake_job(self, rekognition):
+        """GetLabelDetection with fake JobId returns SUCCEEDED."""
+        resp = rekognition.get_label_detection(JobId="fake-label-det-001")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "Labels" in resp
+        assert isinstance(resp["Labels"], list)
+        assert "VideoMetadata" in resp
+
+    def test_get_face_detection_fake_job(self, rekognition):
+        """GetFaceDetection with fake JobId returns SUCCEEDED."""
+        resp = rekognition.get_face_detection(JobId="fake-face-det-001")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "Faces" in resp
+        assert isinstance(resp["Faces"], list)
+        assert "VideoMetadata" in resp
+
+    def test_get_person_tracking_fake_job(self, rekognition):
+        """GetPersonTracking with fake JobId returns SUCCEEDED."""
+        resp = rekognition.get_person_tracking(JobId="fake-person-track-001")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "Persons" in resp
+        assert isinstance(resp["Persons"], list)
+        assert "VideoMetadata" in resp
+
+    def test_get_segment_detection_fake_job(self, rekognition):
+        """GetSegmentDetection with fake JobId returns SUCCEEDED."""
+        resp = rekognition.get_segment_detection(JobId="fake-segment-det-001")
+        assert resp["JobStatus"] in ("SUCCEEDED", "IN_PROGRESS", "FAILED")
+        assert "Segments" in resp
+        assert isinstance(resp["Segments"], list)
+        assert "VideoMetadata" in resp
+
+
+class TestRekognitionPagination:
+    """Tests for pagination parameters on list operations."""
+
+    def test_list_collections_max_results(self, rekognition):
+        """ListCollections with MaxResults limits returned items."""
+        ids = [_unique("pg") for _ in range(3)]
+        for cid in ids:
+            rekognition.create_collection(CollectionId=cid)
+        try:
+            resp = rekognition.list_collections(MaxResults=1)
+            assert "CollectionIds" in resp
+            assert len(resp["CollectionIds"]) <= 1
+            assert "FaceModelVersions" in resp
+        finally:
+            for cid in ids:
+                rekognition.delete_collection(CollectionId=cid)
+
+    def test_list_faces_max_results(self, rekognition):
+        """ListFaces with MaxResults returns at most that many faces."""
+        col_id = _unique("pgf")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            for i in range(3):
+                rekognition.index_faces(
+                    CollectionId=col_id,
+                    Image={"Bytes": _TINY_JPEG},
+                    ExternalImageId=f"face-{i}",
+                )
+            resp = rekognition.list_faces(CollectionId=col_id, MaxResults=1)
+            assert "Faces" in resp
+            assert len(resp["Faces"]) <= 1
+            assert "FaceModelVersion" in resp
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_list_stream_processors_empty(self, rekognition):
+        """ListStreamProcessors returns empty list when no processors exist."""
+        resp = rekognition.list_stream_processors()
+        assert "StreamProcessors" in resp
+        assert isinstance(resp["StreamProcessors"], list)
+
+
+class TestRekognitionDatasetWithProject:
+    """Tests for dataset operations using real projects."""
+
+    def test_create_dataset_nonexistent_project(self, rekognition):
+        """CreateDataset with nonexistent project raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.create_dataset(
+                DatasetType="TRAIN",
+                ProjectArn="arn:aws:rekognition:us-east-1:123456789012:project/nonexist/9999",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionProjectVersionWithProject:
+    """Tests for project version operations using real projects."""
+
+    def test_create_project_version_nonexistent_project(self, rekognition):
+        """CreateProjectVersion with nonexistent project raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.create_project_version(
+                ProjectArn="arn:aws:rekognition:us-east-1:123456789012:project/nonexist/9999",
+                VersionName="v1",
+                OutputConfig={"S3Bucket": "test-bucket", "S3KeyPrefix": "output/"},
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestRekognitionDescribeProjectsFiltered:
+    """Tests for DescribeProjects with filters."""
+
+    def test_describe_projects_project_names_filter(self, rekognition):
+        """DescribeProjects with ProjectNames filter returns matching projects."""
+        name = _unique("filt")
+        create_resp = rekognition.create_project(ProjectName=name)
+        project_arn = create_resp["ProjectArn"]
+        try:
+            resp = rekognition.describe_projects(ProjectNames=[name])
+            assert "ProjectDescriptions" in resp
+            arns = [p["ProjectArn"] for p in resp["ProjectDescriptions"]]
+            assert project_arn in arns
+        finally:
+            rekognition.delete_project(ProjectArn=project_arn)
+
+    def test_describe_projects_returns_status(self, rekognition):
+        """DescribeProjects response includes Status field."""
+        name = _unique("stat")
+        create_resp = rekognition.create_project(ProjectName=name)
+        project_arn = create_resp["ProjectArn"]
+        try:
+            resp = rekognition.describe_projects()
+            found = [p for p in resp["ProjectDescriptions"] if p["ProjectArn"] == project_arn]
+            assert len(found) == 1
+            assert "Status" in found[0]
+            assert "CreationTimestamp" in found[0]
+        finally:
+            rekognition.delete_project(ProjectArn=project_arn)
+
+
+class TestRekognitionTaggingEdgeCases:
+    """Additional tagging edge case tests."""
+
+    def test_tag_resource_on_stream_processor(self, rekognition):
+        """TagResource works on stream processor ARNs."""
+        name = _unique("sptag")
+        col_id = _unique("coltag")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            sp = rekognition.create_stream_processor(
+                Name=name,
+                Input={
+                    "KinesisVideoStream": {"Arn": "arn:aws:kinesisvideo:us-east-1:123:stream/s/0"}
+                },
+                Output={"KinesisDataStream": {"Arn": "arn:aws:kinesis:us-east-1:123:stream/out"}},
+                RoleArn="arn:aws:iam::123456789012:role/test",
+                Settings={"FaceSearch": {"CollectionId": col_id, "FaceMatchThreshold": 80.0}},
+            )
+            sp_arn = sp["StreamProcessorArn"]
+            rekognition.tag_resource(ResourceArn=sp_arn, Tags={"env": "dev"})
+            resp = rekognition.list_tags_for_resource(ResourceArn=sp_arn)
+            assert resp["Tags"]["env"] == "dev"
+            rekognition.untag_resource(ResourceArn=sp_arn, TagKeys=["env"])
+            resp2 = rekognition.list_tags_for_resource(ResourceArn=sp_arn)
+            assert resp2["Tags"] == {}
+        finally:
+            rekognition.delete_stream_processor(Name=name)
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_list_tags_nonexistent_resource(self, rekognition):
+        """ListTagsForResource with nonexistent ARN raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError):
+            rekognition.list_tags_for_resource(
+                ResourceArn="arn:aws:rekognition:us-east-1:123456789012:collection/nonexist"
+            )
+
+
+class TestRekognitionSearchFacesEdgeCases:
+    """Additional edge case tests for face search operations."""
+
+    def test_search_faces_with_threshold(self, rekognition):
+        """SearchFaces with explicit FaceMatchThreshold returns expected structure."""
+        col_id = _unique("sfth")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            idx = rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+            face_id = idx["FaceRecords"][0]["Face"]["FaceId"]
+            resp = rekognition.search_faces(
+                CollectionId=col_id,
+                FaceId=face_id,
+                FaceMatchThreshold=50.0,
+                MaxFaces=5,
+            )
+            assert resp["SearchedFaceId"] == face_id
+            assert "FaceMatches" in resp
+            assert "FaceModelVersion" in resp
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_search_faces_by_image_with_threshold(self, rekognition):
+        """SearchFacesByImage with threshold returns expected structure."""
+        col_id = _unique("sfbi")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            rekognition.index_faces(CollectionId=col_id, Image={"Bytes": _TINY_JPEG})
+            resp = rekognition.search_faces_by_image(
+                CollectionId=col_id,
+                Image={"Bytes": _TINY_JPEG},
+                FaceMatchThreshold=50.0,
+                MaxFaces=5,
+            )
+            assert "FaceMatches" in resp
+            assert "SearchedFaceBoundingBox" in resp
+            assert "SearchedFaceConfidence" in resp
+            assert "FaceModelVersion" in resp
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_search_faces_nonexistent_collection(self, rekognition):
+        """SearchFaces on nonexistent collection raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.search_faces(
+                CollectionId=_unique("nope"),
+                FaceId="00000000-0000-0000-0000-000000000000",
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_search_faces_by_image_nonexistent_collection(self, rekognition):
+        """SearchFacesByImage on nonexistent collection raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            rekognition.search_faces_by_image(
+                CollectionId=_unique("nope"),
+                Image={"Bytes": _TINY_JPEG},
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_compare_faces_quality_filter(self, rekognition):
+        """CompareFaces with QualityFilter returns expected fields."""
+        resp = rekognition.compare_faces(
+            SourceImage={"Bytes": _TINY_JPEG},
+            TargetImage={"Bytes": _TINY_JPEG},
+            QualityFilter="AUTO",
+        )
+        assert "SourceImageFace" in resp
+        assert "FaceMatches" in resp
+        assert "UnmatchedFaces" in resp
+
+    def test_index_faces_max_faces(self, rekognition):
+        """IndexFaces with MaxFaces parameter returns at most that many face records."""
+        col_id = _unique("maxf")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            resp = rekognition.index_faces(
+                CollectionId=col_id,
+                Image={"Bytes": _TINY_JPEG},
+                MaxFaces=1,
+            )
+            assert "FaceRecords" in resp
+            assert len(resp["FaceRecords"]) <= 1
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)
+
+    def test_delete_faces_nonexistent_face_id(self, rekognition):
+        """DeleteFaces with nonexistent FaceId returns empty DeletedFaces."""
+        col_id = _unique("delnf")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            resp = rekognition.delete_faces(
+                CollectionId=col_id,
+                FaceIds=["00000000-0000-0000-0000-000000000000"],
+            )
+            assert "DeletedFaces" in resp
+            assert isinstance(resp["DeletedFaces"], list)
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)

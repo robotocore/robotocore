@@ -3529,3 +3529,90 @@ class TestRDSCRUDBatch2:
         roles = desc["DBInstances"][0].get("AssociatedRoles", [])
         role_arns = [r["RoleArn"] for r in roles]
         assert role_arn in role_arns
+
+
+class TestRDSApplyPendingMaintenanceAction:
+    """Tests for ApplyPendingMaintenanceAction."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_apply_pending_maintenance_action(self, client):
+        """ApplyPendingMaintenanceAction returns a response for a valid resource."""
+        resp = client.apply_pending_maintenance_action(
+            ResourceIdentifier="arn:aws:rds:us-east-1:123456789012:db:nonexistent-db",
+            ApplyAction="system-update",
+            OptInType="immediate",
+        )
+        assert "ResourcePendingMaintenanceActions" in resp
+
+
+class TestRDSDeleteDBInstanceAutomatedBackup:
+    """Tests for DeleteDBInstanceAutomatedBackup."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_delete_automated_backup_returns_response(self, client):
+        """DeleteDBInstanceAutomatedBackup returns a response."""
+        resp = client.delete_db_instance_automated_backup(
+            DBInstanceAutomatedBackupsArn=(
+                "arn:aws:rds:us-east-1:123456789012:auto-backup:ab-nonexistent123"
+            ),
+        )
+        assert "DBInstanceAutomatedBackup" in resp
+
+
+class TestRDSDeleteTenantDatabase:
+    """Tests for DeleteTenantDatabase."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_delete_nonexistent_tenant_database(self, client):
+        """DeleteTenantDatabase with fake ID returns TenantDatabaseNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_tenant_database(
+                DBInstanceIdentifier="nonexistent-db",
+                TenantDBName="nonexistent-tenant",
+            )
+        assert exc.value.response["Error"]["Code"] == "TenantDatabaseNotFound"
+
+
+class TestRDSFailoverGlobalCluster:
+    """Tests for FailoverGlobalCluster."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_failover_nonexistent_global_cluster(self, client):
+        """FailoverGlobalCluster with fake ID returns GlobalClusterNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            client.failover_global_cluster(
+                GlobalClusterIdentifier="nonexistent-global",
+                TargetDbClusterIdentifier=(
+                    "arn:aws:rds:us-east-1:123456789012:cluster:nonexistent"
+                ),
+            )
+        assert exc.value.response["Error"]["Code"] == "GlobalClusterNotFoundFault"
+
+
+class TestRDSModifyTenantDatabase:
+    """Tests for ModifyTenantDatabase."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_modify_nonexistent_tenant_database(self, client):
+        """ModifyTenantDatabase with fake ID returns TenantDatabaseNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_tenant_database(
+                DBInstanceIdentifier="nonexistent-db",
+                TenantDBName="nonexistent-tenant",
+            )
+        assert exc.value.response["Error"]["Code"] == "TenantDatabaseNotFound"

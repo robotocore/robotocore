@@ -1074,6 +1074,48 @@ class TestAppsyncDomainNameCrud:
             client.get_domain_name(domainName=domain)
 
 
+class TestAppsyncDomainNameUpdate:
+    """Tests for UpdateDomainName operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    def test_update_domain_name_not_found(self, client):
+        """UpdateDomainName with a fake domain returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.update_domain_name(
+                domainName="nonexistent.example.com",
+                description="should fail",
+            )
+
+
+class TestAppsyncApiAssociation:
+    """Tests for AssociateApi, GetApiAssociation, DisassociateApi."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    def test_associate_api_not_found(self, client):
+        """AssociateApi with a fake domain returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.associate_api(
+                domainName="nonexistent.example.com",
+                apiId="fake-api-id",
+            )
+
+    def test_get_api_association_not_found(self, client):
+        """GetApiAssociation with a fake domain returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_api_association(domainName="nonexistent.example.com")
+
+    def test_disassociate_api_not_found(self, client):
+        """DisassociateApi with a fake domain returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.disassociate_api(domainName="nonexistent.example.com")
+
+
 class TestAppsyncAutoCoverage:
     """Auto-generated coverage tests for appsync."""
 

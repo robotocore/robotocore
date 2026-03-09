@@ -1694,3 +1694,541 @@ class TestEventBridgeEndpointAndPartnerOps:
         resp = events.list_partner_event_source_accounts(EventSourceName="aws.partner/example/test")
         assert "PartnerEventSourceAccounts" in resp
         assert isinstance(resp["PartnerEventSourceAccounts"], list)
+
+
+class TestEventBridgeReplayLifecycle:
+    """Replay lifecycle: start, describe, list, cancel."""
+
+    def test_start_describe_list_replay(self, events):
+        """StartReplay, DescribeReplay, ListReplays full lifecycle."""
+        from datetime import UTC, datetime, timedelta
+
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"replay-lc-archive-{suffix}"
+        replay_name = f"replay-lc-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(ArchiveName=archive_name, EventSourceArn=bus_arn)
+            now = datetime.now(UTC)
+            archive_arn = f"arn:aws:events:us-east-1:123456789012:archive/{archive_name}"
+            start_resp = events.start_replay(
+                ReplayName=replay_name,
+                EventSourceArn=archive_arn,
+                EventStartTime=now - timedelta(hours=1),
+                EventEndTime=now,
+                Destination={"Arn": bus_arn},
+            )
+            assert "ReplayArn" in start_resp
+            assert start_resp["State"] in ("STARTING", "RUNNING", "COMPLETED")
+
+            desc = events.describe_replay(ReplayName=replay_name)
+            assert desc["ReplayName"] == replay_name
+            assert desc["EventSourceArn"] == archive_arn
+            assert "State" in desc
+
+            replays = events.list_replays()
+            assert "Replays" in replays
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+    def test_cancel_replay_completed_raises_error(self, events):
+        """CancelReplay on a COMPLETED replay raises an error."""
+        from datetime import UTC, datetime, timedelta
+
+        from botocore.exceptions import ClientError
+
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"cancel-done-archive-{suffix}"
+        replay_name = f"cancel-done-replay-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(ArchiveName=archive_name, EventSourceArn=bus_arn)
+            now = datetime.now(UTC)
+            archive_arn = f"arn:aws:events:us-east-1:123456789012:archive/{archive_name}"
+            events.start_replay(
+                ReplayName=replay_name,
+                EventSourceArn=archive_arn,
+                EventStartTime=now - timedelta(hours=1),
+                EventEndTime=now,
+                Destination={"Arn": bus_arn},
+            )
+            # Replay completes instantly for empty archives; canceling raises error
+            with pytest.raises(ClientError):
+                events.cancel_replay(ReplayName=replay_name)
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventBridgeConnectionLifecycle:
+    """Connection CRUD lifecycle: create, describe, update, list, delete."""
+
+    def test_create_update_describe_delete_connection(self, events):
+        """Full connection lifecycle."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"conn-lc-{suffix}"
+        try:
+            create_resp = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret-v1",
+                    }
+                },
+            )
+            assert "ConnectionArn" in create_resp
+            assert "ConnectionState" in create_resp
+
+            desc = events.describe_connection(Name=conn_name)
+            assert desc["Name"] == conn_name
+            assert desc["AuthorizationType"] == "API_KEY"
+            assert "ConnectionArn" in desc
+            assert "ConnectionState" in desc
+
+            update_resp = events.update_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret-v2",
+                    }
+                },
+            )
+            assert "ConnectionArn" in update_resp
+
+            desc2 = events.describe_connection(Name=conn_name)
+            assert desc2["Name"] == conn_name
+            assert desc2["AuthorizationType"] == "API_KEY"
+        finally:
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+    def test_delete_connection_then_describe_raises(self, events):
+        """Delete connection, then describe raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"del-verify-conn-{suffix}"
+        events.create_connection(
+            Name=conn_name,
+            AuthorizationType="API_KEY",
+            AuthParameters={
+                "ApiKeyAuthParameters": {
+                    "ApiKeyName": "x-api-key",
+                    "ApiKeyValue": "secret",
+                }
+            },
+        )
+        events.delete_connection(Name=conn_name)
+        with pytest.raises(ClientError) as exc:
+            events.describe_connection(Name=conn_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestEventBridgeApiDestinationLifecycle:
+    """API Destination CRUD lifecycle."""
+
+    def test_create_update_describe_delete_api_destination(self, events):
+        """Full API destination lifecycle."""
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"dest-lc-conn-{suffix}"
+        dest_name = f"dest-lc-{suffix}"
+        try:
+            conn = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret",
+                    }
+                },
+            )
+            conn_arn = conn["ConnectionArn"]
+
+            create_resp = events.create_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/v1",
+                HttpMethod="POST",
+                InvocationRateLimitPerSecond=10,
+            )
+            assert "ApiDestinationArn" in create_resp
+            assert "ApiDestinationState" in create_resp
+
+            desc = events.describe_api_destination(Name=dest_name)
+            assert desc["Name"] == dest_name
+            assert desc["InvocationEndpoint"] == "https://example.com/v1"
+            assert desc["HttpMethod"] == "POST"
+            assert desc["InvocationRateLimitPerSecond"] == 10
+            assert "ConnectionArn" in desc
+
+            update_resp = events.update_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/v2",
+                HttpMethod="PUT",
+                InvocationRateLimitPerSecond=20,
+            )
+            assert "ApiDestinationArn" in update_resp
+
+            desc2 = events.describe_api_destination(Name=dest_name)
+            assert desc2["InvocationEndpoint"] == "https://example.com/v2"
+            assert desc2["HttpMethod"] == "PUT"
+            assert desc2["InvocationRateLimitPerSecond"] == 20
+        finally:
+            try:
+                events.delete_api_destination(Name=dest_name)
+            except Exception:
+                pass
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+    def test_delete_api_destination_then_describe_raises(self, events):
+        """Delete API destination, then describe raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        suffix = uuid.uuid4().hex[:8]
+        conn_name = f"del-dest-conn2-{suffix}"
+        dest_name = f"del-dest2-{suffix}"
+        try:
+            conn = events.create_connection(
+                Name=conn_name,
+                AuthorizationType="API_KEY",
+                AuthParameters={
+                    "ApiKeyAuthParameters": {
+                        "ApiKeyName": "x-api-key",
+                        "ApiKeyValue": "secret",
+                    }
+                },
+            )
+            conn_arn = conn["ConnectionArn"]
+            events.create_api_destination(
+                Name=dest_name,
+                ConnectionArn=conn_arn,
+                InvocationEndpoint="https://example.com/api",
+                HttpMethod="POST",
+            )
+            events.delete_api_destination(Name=dest_name)
+            with pytest.raises(ClientError) as exc:
+                events.describe_api_destination(Name=dest_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            try:
+                events.delete_connection(Name=conn_name)
+            except Exception:
+                pass
+
+
+class TestEventBridgePartnerLifecycle:
+    """Partner event source lifecycle tests."""
+
+    def test_create_list_delete_partner_event_source(self, events):
+        """CreatePartnerEventSource, ListPartnerEventSources, DeletePartnerEventSource."""
+        suffix = uuid.uuid4().hex[:8]
+        source_name = f"aws.partner/example.com/{suffix}/lifecycle"
+        account = "123456789012"
+        try:
+            events.create_partner_event_source(Name=source_name, Account=account)
+
+            # Describe should work
+            desc = events.describe_partner_event_source(Name=source_name)
+            assert desc["Name"] == source_name
+            assert "Arn" in desc
+        finally:
+            try:
+                events.delete_partner_event_source(Name=source_name, Account=account)
+            except Exception:
+                pass
+
+    def test_list_event_sources_returns_list(self, events):
+        """ListEventSources returns EventSources key with a list."""
+        resp = events.list_event_sources()
+        assert "EventSources" in resp
+        assert isinstance(resp["EventSources"], list)
+
+    def test_list_partner_event_source_accounts_returns_list(self, events):
+        """ListPartnerEventSourceAccounts returns the expected key."""
+        resp = events.list_partner_event_source_accounts(
+            EventSourceName="aws.partner/example.com/test"
+        )
+        assert "PartnerEventSourceAccounts" in resp
+        assert isinstance(resp["PartnerEventSourceAccounts"], list)
+
+
+class TestEventBridgePutEventsDetail:
+    """PutEvents with rich detail payloads."""
+
+    def test_put_events_with_detail_and_event_bus(self, events):
+        """PutEvents with detail targeting default bus explicitly."""
+        resp = events.put_events(
+            Entries=[
+                {
+                    "Source": "test.detail",
+                    "DetailType": "DetailedEvent",
+                    "Detail": json.dumps({"orderId": "abc-123", "amount": 99.99}),
+                    "EventBusName": "default",
+                }
+            ]
+        )
+        assert resp["FailedEntryCount"] == 0
+        assert len(resp["Entries"]) == 1
+        assert "EventId" in resp["Entries"][0]
+
+    def test_put_events_with_resources(self, events):
+        """PutEvents including Resources field."""
+        resp = events.put_events(
+            Entries=[
+                {
+                    "Source": "test.resources",
+                    "DetailType": "ResourceEvent",
+                    "Detail": json.dumps({"action": "created"}),
+                    "Resources": [
+                        "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+                    ],
+                }
+            ]
+        )
+        assert resp["FailedEntryCount"] == 0
+        assert len(resp["Entries"]) == 1
+
+
+class TestEventBridgeArchiveUpdate:
+    """Tests for UpdateArchive with various fields."""
+
+    def test_update_archive_description_and_retention(self, events):
+        """UpdateArchive changes description and retention days."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"upd-full-archive-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+                Description="Original description",
+                RetentionDays=7,
+            )
+            desc1 = events.describe_archive(ArchiveName=archive_name)
+            assert desc1["RetentionDays"] == 7
+            assert desc1["Description"] == "Original description"
+
+            events.update_archive(
+                ArchiveName=archive_name,
+                Description="Updated description",
+                RetentionDays=30,
+            )
+            desc2 = events.describe_archive(ArchiveName=archive_name)
+            assert desc2["RetentionDays"] == 30
+            assert desc2["Description"] == "Updated description"
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+    def test_update_archive_event_pattern(self, events):
+        """UpdateArchive changes the event pattern filter."""
+        suffix = uuid.uuid4().hex[:8]
+        archive_name = f"upd-pattern-archive-{suffix}"
+        bus = events.describe_event_bus(Name="default")
+        bus_arn = bus["Arn"]
+        try:
+            events.create_archive(
+                ArchiveName=archive_name,
+                EventSourceArn=bus_arn,
+                EventPattern=json.dumps({"source": ["old.source"]}),
+            )
+            events.update_archive(
+                ArchiveName=archive_name,
+                EventPattern=json.dumps({"source": ["new.source"]}),
+            )
+            desc = events.describe_archive(ArchiveName=archive_name)
+            pattern = json.loads(desc["EventPattern"])
+            assert pattern["source"] == ["new.source"]
+        finally:
+            events.delete_archive(ArchiveName=archive_name)
+
+
+class TestEventBridgeRuleOnCustomBus:
+    """Tests for rules on custom event buses."""
+
+    def test_rule_lifecycle_on_custom_bus(self, events):
+        """PutRule, DescribeRule, ListRules, DeleteRule on a custom event bus."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"custom-rule-bus-{suffix}"
+        rule_name = f"custom-bus-rule-{suffix}"
+        try:
+            events.create_event_bus(Name=bus_name)
+            resp = events.put_rule(
+                Name=rule_name,
+                EventBusName=bus_name,
+                ScheduleExpression="rate(1 hour)",
+                State="ENABLED",
+            )
+            assert "RuleArn" in resp
+
+            desc = events.describe_rule(Name=rule_name, EventBusName=bus_name)
+            assert desc["Name"] == rule_name
+            assert desc["State"] == "ENABLED"
+
+            rules = events.list_rules(EventBusName=bus_name)
+            rule_names = [r["Name"] for r in rules["Rules"]]
+            assert rule_name in rule_names
+
+            events.disable_rule(Name=rule_name, EventBusName=bus_name)
+            desc2 = events.describe_rule(Name=rule_name, EventBusName=bus_name)
+            assert desc2["State"] == "DISABLED"
+
+            events.enable_rule(Name=rule_name, EventBusName=bus_name)
+            desc3 = events.describe_rule(Name=rule_name, EventBusName=bus_name)
+            assert desc3["State"] == "ENABLED"
+        finally:
+            try:
+                events.delete_rule(Name=rule_name, EventBusName=bus_name)
+            except Exception:
+                pass
+            try:
+                events.delete_event_bus(Name=bus_name)
+            except Exception:
+                pass
+
+    def test_targets_on_custom_bus_rule(self, events):
+        """PutTargets, ListTargetsByRule, RemoveTargets on custom bus rule."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"tgt-bus-{suffix}"
+        rule_name = f"tgt-bus-rule-{suffix}"
+        try:
+            events.create_event_bus(Name=bus_name)
+            events.put_rule(
+                Name=rule_name,
+                EventBusName=bus_name,
+                ScheduleExpression="rate(1 hour)",
+            )
+            resp = events.put_targets(
+                Rule=rule_name,
+                EventBusName=bus_name,
+                Targets=[
+                    {"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:queue-a"},
+                ],
+            )
+            assert resp["FailedEntryCount"] == 0
+
+            targets = events.list_targets_by_rule(Rule=rule_name, EventBusName=bus_name)
+            assert len(targets["Targets"]) == 1
+            assert targets["Targets"][0]["Id"] == "t1"
+
+            events.remove_targets(Rule=rule_name, EventBusName=bus_name, Ids=["t1"])
+            targets2 = events.list_targets_by_rule(Rule=rule_name, EventBusName=bus_name)
+            assert len(targets2["Targets"]) == 0
+        finally:
+            try:
+                events.remove_targets(Rule=rule_name, EventBusName=bus_name, Ids=["t1"])
+            except Exception:
+                pass
+            try:
+                events.delete_rule(Name=rule_name, EventBusName=bus_name)
+            except Exception:
+                pass
+            try:
+                events.delete_event_bus(Name=bus_name)
+            except Exception:
+                pass
+
+
+class TestEventBridgeTagsOnEventBus:
+    """Tag lifecycle on event buses with more assertions."""
+
+    def test_create_bus_with_tags_then_list(self, events):
+        """Create event bus with tags, then list tags to verify."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"tagged-bus-{suffix}"
+        try:
+            resp = events.create_event_bus(
+                Name=bus_name,
+                Tags=[
+                    {"Key": "project", "Value": "robotocore"},
+                    {"Key": "env", "Value": "test"},
+                ],
+            )
+            bus_arn = resp["EventBusArn"]
+
+            tags_resp = events.list_tags_for_resource(ResourceARN=bus_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["project"] == "robotocore"
+            assert tag_map["env"] == "test"
+        finally:
+            events.delete_event_bus(Name=bus_name)
+
+    def test_tag_untag_event_bus(self, events):
+        """Tag, list, untag, verify removal on event bus."""
+        suffix = uuid.uuid4().hex[:8]
+        bus_name = f"tag-untag-bus-{suffix}"
+        try:
+            resp = events.create_event_bus(Name=bus_name)
+            bus_arn = resp["EventBusArn"]
+
+            events.tag_resource(
+                ResourceARN=bus_arn,
+                Tags=[
+                    {"Key": "alpha", "Value": "1"},
+                    {"Key": "beta", "Value": "2"},
+                    {"Key": "gamma", "Value": "3"},
+                ],
+            )
+            tags = events.list_tags_for_resource(ResourceARN=bus_arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["Tags"]}
+            assert tag_map["alpha"] == "1"
+            assert tag_map["beta"] == "2"
+            assert tag_map["gamma"] == "3"
+
+            events.untag_resource(ResourceARN=bus_arn, TagKeys=["beta"])
+            tags2 = events.list_tags_for_resource(ResourceARN=bus_arn)
+            keys = [t["Key"] for t in tags2["Tags"]]
+            assert "alpha" in keys
+            assert "beta" not in keys
+            assert "gamma" in keys
+        finally:
+            events.delete_event_bus(Name=bus_name)
+
+
+class TestEventBridgeListRuleNamesByTargetExtended:
+    """Extended tests for ListRuleNamesByTarget."""
+
+    def test_multiple_rules_same_target(self, events):
+        """Two rules with the same target ARN both appear in ListRuleNamesByTarget."""
+        suffix = uuid.uuid4().hex[:8]
+        target_arn = f"arn:aws:sqs:us-east-1:123456789012:shared-queue-{suffix}"
+        rule1 = f"shared-tgt-rule1-{suffix}"
+        rule2 = f"shared-tgt-rule2-{suffix}"
+        try:
+            events.put_rule(Name=rule1, ScheduleExpression="rate(1 hour)")
+            events.put_rule(Name=rule2, ScheduleExpression="rate(2 hours)")
+            events.put_targets(Rule=rule1, Targets=[{"Id": "t1", "Arn": target_arn}])
+            events.put_targets(Rule=rule2, Targets=[{"Id": "t1", "Arn": target_arn}])
+
+            resp = events.list_rule_names_by_target(TargetArn=target_arn)
+            assert rule1 in resp["RuleNames"]
+            assert rule2 in resp["RuleNames"]
+        finally:
+            try:
+                events.remove_targets(Rule=rule1, Ids=["t1"])
+            except Exception:
+                pass
+            try:
+                events.remove_targets(Rule=rule2, Ids=["t1"])
+            except Exception:
+                pass
+            try:
+                events.delete_rule(Name=rule1)
+            except Exception:
+                pass
+            try:
+                events.delete_rule(Name=rule2)
+            except Exception:
+                pass

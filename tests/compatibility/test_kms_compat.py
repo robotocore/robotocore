@@ -1204,3 +1204,108 @@ class TestKMSNewOps:
             assert err_code in ("UnsupportedOperationException", "ValidationException")
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_connect_disconnect_custom_key_store(self, kms):
+        """ConnectCustomKeyStore and DisconnectCustomKeyStore lifecycle."""
+        cert = (
+            "-----BEGIN CERTIFICATE-----\n"
+            "MIIBxTCCAWugAwIBAgIJAJOa3euMFsRTMA0GCSqGSIb3DQEBCwUA\n"
+            "MCMxITAfBgNVBAMMGHRlc3QtY2VydC5leGFtcGxlLmNvbTAeFw0y\n"
+            "MzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMCMxITAfBgNVBAMM\n"
+            "GHRlc3QtY2VydC5leGFtcGxlLmNvbTBcMA0GCSqGSIb3DQEBAQUA\n"
+            "A0sAMEgCQQC7o96FCEhXvbChIGMB3xPCGnTo0GQWKP8XlprawKK/\n"
+            "BBQqFnJjnJx0aSCQq7W8ByAE9fs+E6M3bMRnyPz1AgMBAAGjUDBO\n"
+            "MB0GA1UdDgQWBBR4W1DKWFynW8rD5aF5MNb9w3VUQTB8BgNVHSME\n"
+            "ADAAgBR4W1DKWFynW8rD5aF5MNb9w3VUQTAMBgNVHRMEBTADAQH/\n"
+            "MA0GCSqGSIb3DQEBCwUAA0EAYiWXhZk9WsP46PqFi+sJlBFVKs7v\n"
+            "EHrJKVHRw/SRZAmLYv3aGMi/0BXk2Q==\n"
+            "-----END CERTIFICATE-----"
+        )
+        resp = kms.create_custom_key_store(
+            CustomKeyStoreName="connect-test-cks",
+            CloudHsmClusterId="cluster-1234567890abc",
+            TrustAnchorCertificate=cert,
+            KeyStorePassword="kmsP@ssw0rd!",
+        )
+        store_id = resp["CustomKeyStoreId"]
+        try:
+            # Connect
+            connect_resp = kms.connect_custom_key_store(CustomKeyStoreId=store_id)
+            assert connect_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Disconnect
+            disconnect_resp = kms.disconnect_custom_key_store(CustomKeyStoreId=store_id)
+            assert disconnect_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            kms.delete_custom_key_store(CustomKeyStoreId=store_id)
+
+    def test_update_custom_key_store(self, kms):
+        """UpdateCustomKeyStore changes the store name."""
+        cert = (
+            "-----BEGIN CERTIFICATE-----\n"
+            "MIIBxTCCAWugAwIBAgIJAJOa3euMFsRTMA0GCSqGSIb3DQEBCwUA\n"
+            "MCMxITAfBgNVBAMMGHRlc3QtY2VydC5leGFtcGxlLmNvbTAeFw0y\n"
+            "MzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMCMxITAfBgNVBAMM\n"
+            "GHRlc3QtY2VydC5leGFtcGxlLmNvbTBcMA0GCSqGSIb3DQEBAQUA\n"
+            "A0sAMEgCQQC7o96FCEhXvbChIGMB3xPCGnTo0GQWKP8XlprawKK/\n"
+            "BBQqFnJjnJx0aSCQq7W8ByAE9fs+E6M3bMRnyPz1AgMBAAGjUDBO\n"
+            "MB0GA1UdDgQWBBR4W1DKWFynW8rD5aF5MNb9w3VUQTB8BgNVHSME\n"
+            "ADAAgBR4W1DKWFynW8rD5aF5MNb9w3VUQTAMBgNVHRMEBTADAQH/\n"
+            "MA0GCSqGSIb3DQEBCwUAA0EAYiWXhZk9WsP46PqFi+sJlBFVKs7v\n"
+            "EHrJKVHRw/SRZAmLYv3aGMi/0BXk2Q==\n"
+            "-----END CERTIFICATE-----"
+        )
+        resp = kms.create_custom_key_store(
+            CustomKeyStoreName="update-cks-orig",
+            CloudHsmClusterId="cluster-1234567890abc",
+            TrustAnchorCertificate=cert,
+            KeyStorePassword="kmsP@ssw0rd!",
+        )
+        store_id = resp["CustomKeyStoreId"]
+        try:
+            update_resp = kms.update_custom_key_store(
+                CustomKeyStoreId=store_id,
+                NewCustomKeyStoreName="update-cks-renamed",
+            )
+            assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            desc = kms.describe_custom_key_stores(CustomKeyStoreId=store_id)
+            assert desc["CustomKeyStores"][0]["CustomKeyStoreName"] == "update-cks-renamed"
+        finally:
+            kms.delete_custom_key_store(CustomKeyStoreId=store_id)
+
+    def test_derive_shared_secret(self, kms):
+        """DeriveSharedSecret with ECC KEY_AGREEMENT key."""
+        key = kms.create_key(
+            Description="dss-test",
+            KeySpec="ECC_NIST_P256",
+            KeyUsage="KEY_AGREEMENT",
+        )
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            pub = kms.get_public_key(KeyId=key_id)
+            resp = kms.derive_shared_secret(
+                KeyId=key_id,
+                KeyAgreementAlgorithm="ECDH",
+                PublicKey=pub["PublicKey"],
+            )
+            assert "SharedSecret" in resp
+            assert "KeyId" in resp
+            assert "KeyAgreementAlgorithm" in resp
+            assert resp["KeyAgreementAlgorithm"] == "ECDH"
+            assert len(resp["SharedSecret"]) > 0
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
+
+    def test_update_primary_region(self, kms):
+        """UpdatePrimaryRegion on a multi-region key."""
+        key = kms.create_key(Description="upr-test", MultiRegion=True)
+        key_id = key["KeyMetadata"]["KeyId"]
+        try:
+            resp = kms.update_primary_region(
+                KeyId=key_id,
+                PrimaryRegion="eu-west-1",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)

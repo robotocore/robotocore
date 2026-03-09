@@ -46,6 +46,31 @@ class TestElastiCacheSubnetGroupOperations:
         resp = elasticache.describe_cache_subnet_groups()
         assert "CacheSubnetGroups" in resp
 
+    def test_delete_cache_subnet_group(self, elasticache):
+        name = _unique("sg")
+        elasticache.create_cache_subnet_group(
+            CacheSubnetGroupName=name,
+            CacheSubnetGroupDescription="for delete test",
+            SubnetIds=["subnet-12345678"],
+        )
+        resp = elasticache.delete_cache_subnet_group(CacheSubnetGroupName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            elasticache.describe_cache_subnet_groups(CacheSubnetGroupName=name)
+        assert (
+            "NotFound" in exc.value.response["Error"]["Code"]
+            or "not found" in str(exc.value).lower()
+        )
+
+    def test_delete_nonexistent_cache_subnet_group(self, elasticache):
+        with pytest.raises(ClientError) as exc:
+            elasticache.delete_cache_subnet_group(CacheSubnetGroupName="nonexistent-sg")
+        assert (
+            "NotFound" in exc.value.response["Error"]["Code"]
+            or "not found" in str(exc.value).lower()
+        )
+
     def test_create_subnet_group_duplicate_error(self, elasticache):
         name = _unique("sg")
         elasticache.create_cache_subnet_group(
