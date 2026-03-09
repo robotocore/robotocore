@@ -838,3 +838,96 @@ class TestOrganizationsPolicyExtra:
         assert "Targets" in resp
         target_ids = [t["TargetId"] for t in resp["Targets"]]
         assert root_id in target_ids
+
+
+class TestOrganizationsHandshakeOperations:
+    """Tests for handshake operations: invite, describe, cancel, list."""
+
+    def test_list_handshakes_for_account(self, orgs):
+        """ListHandshakesForAccount returns handshake list (may be empty)."""
+        resp = orgs.list_handshakes_for_account()
+        assert "Handshakes" in resp
+        assert isinstance(resp["Handshakes"], list)
+
+    def test_list_handshakes_for_organization(self, orgs):
+        """ListHandshakesForOrganization returns handshake list."""
+        orgs.create_organization(FeatureSet="ALL")
+        resp = orgs.list_handshakes_for_organization()
+        assert "Handshakes" in resp
+        assert isinstance(resp["Handshakes"], list)
+
+    def test_invite_account_and_describe_handshake(self, orgs):
+        """InviteAccountToOrganization creates a handshake that can be described."""
+        orgs.create_organization(FeatureSet="ALL")
+        resp = orgs.invite_account_to_organization(Target={"Id": "333333333333", "Type": "ACCOUNT"})
+        handshake = resp["Handshake"]
+        assert "Id" in handshake
+        assert handshake["State"] == "OPEN"
+        assert handshake["Action"] == "INVITE"
+
+        # Describe the handshake by ID
+        desc = orgs.describe_handshake(HandshakeId=handshake["Id"])
+        assert desc["Handshake"]["Id"] == handshake["Id"]
+        assert desc["Handshake"]["State"] == "OPEN"
+
+    def test_invite_account_appears_in_list(self, orgs):
+        """InviteAccountToOrganization handshake shows in list operations."""
+        orgs.create_organization(FeatureSet="ALL")
+        resp = orgs.invite_account_to_organization(Target={"Id": "444444444444", "Type": "ACCOUNT"})
+        handshake_id = resp["Handshake"]["Id"]
+
+        # Should appear in org handshakes
+        org_handshakes = orgs.list_handshakes_for_organization()
+        hs_ids = [h["Id"] for h in org_handshakes["Handshakes"]]
+        assert handshake_id in hs_ids
+
+        # Should appear in account handshakes
+        acct_handshakes = orgs.list_handshakes_for_account()
+        acct_hs_ids = [h["Id"] for h in acct_handshakes["Handshakes"]]
+        assert handshake_id in acct_hs_ids
+
+    def test_cancel_handshake(self, orgs):
+        """CancelHandshake changes state to CANCELED."""
+        orgs.create_organization(FeatureSet="ALL")
+        resp = orgs.invite_account_to_organization(Target={"Id": "555555555555", "Type": "ACCOUNT"})
+        handshake_id = resp["Handshake"]["Id"]
+
+        cancel_resp = orgs.cancel_handshake(HandshakeId=handshake_id)
+        assert cancel_resp["Handshake"]["Id"] == handshake_id
+        assert cancel_resp["Handshake"]["State"] == "CANCELED"
+
+    def test_describe_handshake_not_found(self, orgs):
+        """DescribeHandshake raises error for nonexistent handshake."""
+        orgs.create_organization(FeatureSet="ALL")
+        with pytest.raises(orgs.exceptions.ClientError) as exc_info:
+            orgs.describe_handshake(HandshakeId="h-0000000000")
+        assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] >= 400
+
+
+class TestOrganizationsEffectivePolicy:
+    """Tests for DescribeEffectivePolicy operation."""
+
+    def test_describe_effective_policy(self, orgs):
+        """DescribeEffectivePolicy returns effective policy for caller account."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        resp = orgs.describe_effective_policy(PolicyType="SERVICE_CONTROL_POLICY")
+        assert "EffectivePolicy" in resp
+        effective = resp["EffectivePolicy"]
+        assert "PolicyContent" in effective
+        assert effective["PolicyType"] == "SERVICE_CONTROL_POLICY"
+
+    def test_describe_effective_policy_with_target(self, orgs):
+        """DescribeEffectivePolicy returns policy for specific target account."""
+        orgs.create_organization(FeatureSet="ALL")
+        root_id = orgs.list_roots()["Roots"][0]["Id"]
+        orgs.enable_policy_type(RootId=root_id, PolicyType="SERVICE_CONTROL_POLICY")
+
+        master_id = orgs.list_accounts()["Accounts"][0]["Id"]
+        resp = orgs.describe_effective_policy(
+            PolicyType="SERVICE_CONTROL_POLICY", TargetId=master_id
+        )
+        assert "EffectivePolicy" in resp
+        assert resp["EffectivePolicy"]["TargetId"] == master_id

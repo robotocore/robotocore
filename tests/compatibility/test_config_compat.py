@@ -1517,3 +1517,137 @@ class TestRemediationConfigurationCRUD:
         resp = client.describe_remediation_configurations(ConfigRuleNames=[rule_name])
         assert len(resp["RemediationConfigurations"]) == 0
         client.delete_config_rule(ConfigRuleName=rule_name)
+
+
+class TestAggregateComplianceOperations:
+    """Test aggregate compliance operations requiring a configuration aggregator."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    @pytest.fixture
+    def aggregator(self, client):
+        import uuid
+
+        name = f"test-agg-{uuid.uuid4().hex[:8]}"
+        client.put_configuration_aggregator(
+            ConfigurationAggregatorName=name,
+            AccountAggregationSources=[
+                {
+                    "AccountIds": ["123456789012"],
+                    "AllAwsRegions": True,
+                }
+            ],
+        )
+        yield name
+        client.delete_configuration_aggregator(ConfigurationAggregatorName=name)
+
+    def test_describe_aggregate_compliance_by_config_rules(self, client, aggregator):
+        """DescribeAggregateComplianceByConfigRules returns compliance list."""
+        resp = client.describe_aggregate_compliance_by_config_rules(
+            ConfigurationAggregatorName=aggregator
+        )
+        assert "AggregateComplianceByConfigRules" in resp
+        assert isinstance(resp["AggregateComplianceByConfigRules"], list)
+
+    def test_describe_aggregate_compliance_by_conformance_packs(self, client, aggregator):
+        """DescribeAggregateComplianceByConformancePacks returns compliance list."""
+        resp = client.describe_aggregate_compliance_by_conformance_packs(
+            ConfigurationAggregatorName=aggregator
+        )
+        assert "AggregateComplianceByConformancePacks" in resp
+        assert isinstance(resp["AggregateComplianceByConformancePacks"], list)
+
+    def test_get_aggregate_config_rule_compliance_summary(self, client, aggregator):
+        """GetAggregateConfigRuleComplianceSummary returns compliance counts."""
+        resp = client.get_aggregate_config_rule_compliance_summary(
+            ConfigurationAggregatorName=aggregator
+        )
+        assert "AggregateComplianceCounts" in resp
+        assert isinstance(resp["AggregateComplianceCounts"], list)
+
+    def test_get_aggregate_conformance_pack_compliance_summary(self, client, aggregator):
+        """GetAggregateConformancePackComplianceSummary returns summaries."""
+        resp = client.get_aggregate_conformance_pack_compliance_summary(
+            ConfigurationAggregatorName=aggregator
+        )
+        assert "AggregateConformancePackComplianceSummaries" in resp
+        assert isinstance(resp["AggregateConformancePackComplianceSummaries"], list)
+
+    def test_get_aggregate_discovered_resource_counts(self, client, aggregator):
+        """GetAggregateDiscoveredResourceCounts returns resource counts."""
+        resp = client.get_aggregate_discovered_resource_counts(
+            ConfigurationAggregatorName=aggregator
+        )
+        assert "TotalDiscoveredResources" in resp
+        assert isinstance(resp["TotalDiscoveredResources"], int)
+
+    def test_get_aggregate_compliance_details_by_config_rule(self, client, aggregator):
+        """GetAggregateComplianceDetailsByConfigRule returns evaluation results."""
+        resp = client.get_aggregate_compliance_details_by_config_rule(
+            ConfigurationAggregatorName=aggregator,
+            ConfigRuleName="nonexistent-rule",
+            ComplianceType="NON_COMPLIANT",
+            AccountId="123456789012",
+            AwsRegion="us-east-1",
+        )
+        assert "AggregateEvaluationResults" in resp
+        assert isinstance(resp["AggregateEvaluationResults"], list)
+
+    def test_list_aggregate_discovered_resources_with_aggregator(self, client, aggregator):
+        """ListAggregateDiscoveredResources returns resource identifiers."""
+        resp = client.list_aggregate_discovered_resources(
+            ConfigurationAggregatorName=aggregator,
+            ResourceType="AWS::S3::Bucket",
+        )
+        assert "ResourceIdentifiers" in resp
+        assert isinstance(resp["ResourceIdentifiers"], list)
+
+
+class TestRemediationExtraOperations:
+    """Test remediation exception and execution status operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_describe_remediation_exceptions(self, client):
+        """DescribeRemediationExceptions returns empty list for a rule."""
+        resp = client.describe_remediation_exceptions(ConfigRuleName="nonexistent-rule")
+        assert "RemediationExceptions" in resp
+        assert isinstance(resp["RemediationExceptions"], list)
+
+    def test_describe_remediation_execution_status(self, client):
+        """DescribeRemediationExecutionStatus returns empty list for a rule."""
+        resp = client.describe_remediation_execution_status(ConfigRuleName="nonexistent-rule")
+        assert "RemediationExecutionStatuses" in resp
+        assert isinstance(resp["RemediationExecutionStatuses"], list)
+
+
+class TestConformancePackComplianceOperations:
+    """Test conformance pack compliance operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_describe_conformance_pack_compliance_nonexistent(self, client):
+        """DescribeConformancePackCompliance raises for nonexistent pack."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_conformance_pack_compliance(ConformancePackName="nonexistent-pack-xyz")
+        assert "NoSuchConformancePackException" in exc.value.response["Error"]["Code"]
+
+    def test_get_conformance_pack_compliance_details_nonexistent(self, client):
+        """GetConformancePackComplianceDetails raises for nonexistent pack."""
+        with pytest.raises(ClientError) as exc:
+            client.get_conformance_pack_compliance_details(
+                ConformancePackName="nonexistent-pack-xyz"
+            )
+        assert "NoSuchConformancePackException" in exc.value.response["Error"]["Code"]
+
+    def test_get_resource_evaluation_summary_nonexistent(self, client):
+        """GetResourceEvaluationSummary raises for nonexistent evaluation."""
+        with pytest.raises(ClientError) as exc:
+            client.get_resource_evaluation_summary(ResourceEvaluationId="fake-eval-id")
+        assert "ResourceNotFoundException" in exc.value.response["Error"]["Code"]
