@@ -68,18 +68,22 @@ jobs:
       - run: uv run mypy src/robotocore/ --ignore-missing-imports
         continue-on-error: true  # Non-blocking during transition
 
-  # ── Unit test shards (run in parallel) ─────────────────────────────────────
+  # ── Unit test shards (run in parallel, on Python 3.12 + 3.13) ─────────────
 
   unit-gateway:
-    name: "unit: gateway + protocols + providers"
+    name: "unit: gateway (${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - uses: astral-sh/setup-uv@v4
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: true
       - run: uv sync --extra dev
       - run: >
@@ -90,16 +94,23 @@ jobs:
           tests/unit/test_handler_chain_unit.py
           tests/unit/test_iam_middleware.py
           -n4 -q --tb=short
-          --junitxml=results-unit-gateway.xml
+          --junitxml=results-unit-gateway-${{ matrix.python-version }}.xml
+          --cov=src/robotocore --cov-report=xml:coverage-unit-gateway-${{ matrix.python-version }}.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-unit-gateway
-          path: results-unit-gateway.xml
+          name: test-results-unit-gateway-${{ matrix.python-version }}
+          path: |
+            results-unit-gateway-${{ matrix.python-version }}.xml
+            coverage-unit-gateway-${{ matrix.python-version }}.xml
 
   unit-services:
-    name: "unit: service providers"
+    name: "unit: services (${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,29 +123,36 @@ jobs:
           ruby-version: 3.3
       - uses: astral-sh/setup-uv@v4
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: true
       - run: uv sync --extra dev
       - run: >
           uv run pytest tests/unit/services/
           -n4 -q --tb=short
-          --junitxml=results-unit-services.xml
+          --junitxml=results-unit-services-${{ matrix.python-version }}.xml
+          --cov=src/robotocore --cov-report=xml:coverage-unit-services-${{ matrix.python-version }}.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-unit-services
-          path: results-unit-services.xml
+          name: test-results-unit-services-${{ matrix.python-version }}
+          path: |
+            results-unit-services-${{ matrix.python-version }}.xml
+            coverage-unit-services-${{ matrix.python-version }}.xml
 
   unit-infra:
-    name: "unit: infra (chaos, audit, state, extensions, observability)"
+    name: "unit: infra (${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - uses: astral-sh/setup-uv@v4
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: true
       - run: uv sync --extra dev
       - name: Run infra unit tests
@@ -148,12 +166,15 @@ jobs:
           --ignore=tests/unit/test_handler_chain_unit.py
           --ignore=tests/unit/test_iam_middleware.py
           -n4 -q --tb=short
-          --junitxml=results-unit-infra.xml
+          --junitxml=results-unit-infra-${{ matrix.python-version }}.xml
+          --cov=src/robotocore --cov-report=xml:coverage-unit-infra-${{ matrix.python-version }}.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-unit-infra
-          path: results-unit-infra.xml
+          name: test-results-unit-infra-${{ matrix.python-version }}
+          path: |
+            results-unit-infra-${{ matrix.python-version }}.xml
+            coverage-unit-infra-${{ matrix.python-version }}.xml
 
   # ── Integration + compatibility ────────────────────────────────────────────
 
@@ -205,6 +226,7 @@ jobs:
           uv run pytest tests/compatibility/
           --ignore=tests/compatibility/test_cross_service_compat.py
           -n4 --dist=loadfile -q --tb=short
+          --reruns=2 --reruns-delay=1
           --junitxml=results-compat.xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -244,6 +266,7 @@ jobs:
           ENDPOINT_URL=http://localhost:4566
           uv run pytest tests/compatibility/test_cross_service_compat.py
           -v --tb=short
+          --reruns=2 --reruns-delay=2
           --junitxml=results-cross-service.xml
       - name: Validate test quality
         if: always()
@@ -291,6 +314,7 @@ jobs:
           tests/iac/sam/
           tests/iac/serverless/
           -v --tb=short
+          --reruns=2 --reruns-delay=1
           --junitxml=results-iac.xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -424,3 +448,57 @@ jobs:
         with:
           name: parity-report
           path: parity-report.json
+
+  # ── Aggregate results ─────────────────────────────────────────────────────
+
+  test-summary:
+    name: "Test summary"
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - unit-gateway
+      - unit-services
+      - unit-infra
+      - integration-tests
+      - compatibility-tests
+      - cross-service-tests
+      - iac-tests
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          merge-multiple: true
+          path: test-results/
+      - name: Test results summary
+        run: |
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          total_tests=0
+          total_failures=0
+          total_errors=0
+          total_skipped=0
+          for f in test-results/*.xml; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f" .xml | sed 's/^results-//')
+            tests=$(grep -o 'tests="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*' || echo 0)
+            failures=$(grep -o 'failures="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*' || echo 0)
+            errors=$(grep -o 'errors="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*' || echo 0)
+            skipped=$(grep -o 'skipped="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*' || echo 0)
+            time=$(grep -o 'time="[0-9.]*"' "$f" | head -1 | grep -o '[0-9.]*' || echo 0)
+            total_tests=$((total_tests + tests))
+            total_failures=$((total_failures + failures))
+            total_errors=$((total_errors + errors))
+            total_skipped=$((total_skipped + skipped))
+            status="✅"
+            if [ "$failures" -gt 0 ] || [ "$errors" -gt 0 ]; then status="❌"; fi
+            echo "| ${status} ${name} | ${tests} | ${failures} | ${errors} | ${skipped} | ${time}s |" >> results.md
+          done
+          echo "| Suite | Tests | Failures | Errors | Skipped | Time |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|----------|--------|---------|------|" >> $GITHUB_STEP_SUMMARY
+          cat results.md >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total: ${total_tests} tests, ${total_failures} failures, ${total_errors} errors, ${total_skipped} skipped**" >> $GITHUB_STEP_SUMMARY
+          if [ "$total_failures" -gt 0 ] || [ "$total_errors" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Some tests failed. Check individual job logs for details." >> $GITHUB_STEP_SUMMARY
+          fi

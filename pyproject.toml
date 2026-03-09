@@ -38,9 +38,12 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-xdist>=3.5",
+    "pytest-cov>=5.0",
+    "pytest-rerunfailures>=14.0",
     "ruff>=0.5",
     "mypy>=1.10",
     "coverage>=7.5",
+    "pre-commit>=3.7",
 ]
 
 [project.scripts]
@@ -70,6 +73,22 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "iac: IaC integration tests (requires running server)",
+    "compat: Compatibility tests (requires running server)",
+    "integration: Integration tests",
+    "parity: AWS parity tests (requires running server)",
+]
+
+[tool.coverage.run]
+source = ["src/robotocore"]
+omit = ["*/tests/*", "*/scripts/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
 ]
 
 [tool.uv.sources]
