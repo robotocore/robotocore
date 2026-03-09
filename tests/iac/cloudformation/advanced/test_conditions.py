@@ -1,85 +1,119 @@
-"""Tests for CloudFormation Conditions (conditional resource creation)."""
+"""CFN advanced engine test: conditions."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
-from botocore.exceptions import ClientError
+import yaml
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Parameters:
-  Environment:
-    Type: String
-    Default: dev
-Conditions:
-  IsProd: !Equals [!Ref Environment, prod]
-Resources:
-  AlwaysBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-always"
-  ProdOnlyBucket:
-    Type: AWS::S3::Bucket
-    Condition: IsProd
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-prod-only"
-Outputs:
-  AlwaysBucketName:
-    Value: !Ref AlwaysBucket
-"""
+TEMPLATE = yaml.dump(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Parameters": {
+            "Environment": {
+                "Type": "String",
+                "AllowedValues": ["dev", "prod"],
+                "Default": "dev",
+            }
+        },
+        "Conditions": {
+            "IsProd": {"Fn::Equals": [{"Ref": "Environment"}, "prod"]},
+        },
+        "Resources": {
+            "AlwaysBucket": {
+                "Type": "AWS::S3::Bucket",
+                "Properties": {"BucketName": "PLACEHOLDER_BUCKET"},
+            },
+            "ProdOnlyQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Condition": "IsProd",
+                "Properties": {"QueueName": "PLACEHOLDER_QUEUE"},
+            },
+        },
+        "Outputs": {
+            "BucketName": {"Value": "PLACEHOLDER_BUCKET"},
+            "QueueCreated": {
+                "Condition": "IsProd",
+                "Value": "yes",
+            },
+        },
+    }
+)
+
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
 
 
-def _bucket_exists(s3_client, bucket_name: str) -> bool:
-    """Check whether a bucket exists."""
-    try:
-        s3_client.head_bucket(Bucket=bucket_name)
-        return True
-    except ClientError:
-        return False
+@pytest.fixture(scope="module")
+def sqs(ensure_server):
+    return make_client("sqs")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestConditions:
-    """Verify conditional resource creation based on parameter values."""
+    def test_condition_true_creates_resource(self, runner, cfn, sqs):
+        """When Environment=prod, the conditional SQS queue IS created."""
+        stack_name = _unique("cond-prod")
+        bucket_name = _unique("cond-prod-bkt")
+        queue_name = _unique("cond-prod-q")
 
-    def test_dev_skips_prod_bucket(self, cfn, test_run_id):
-        """With Environment=dev, AlwaysBucket exists but ProdOnlyBucket does not."""
-        stack_name = f"{test_run_id}-cond-dev"
+        tmpl = TEMPLATE.replace("PLACEHOLDER_BUCKET", bucket_name).replace(
+            "PLACEHOLDER_QUEUE", queue_name
+        )
+
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE, params={"Environment": "dev"})
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
+            runner.deploy_stack(stack_name, tmpl, params={"Environment": "prod"})
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs.get("QueueCreated") == "yes"
 
-            s3 = make_client("s3")
-            assert _bucket_exists(s3, f"{stack_name}-always")
-            assert not _bucket_exists(s3, f"{stack_name}-prod-only")
+            # Verify queue exists
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert any(queue_name in u for u in urls), "Prod queue should exist"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_prod_creates_both_buckets(self, cfn, test_run_id):
-        """With Environment=prod, both AlwaysBucket and ProdOnlyBucket exist."""
-        stack_name = f"{test_run_id}-cond-prod"
-        try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE, params={"Environment": "prod"})
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
+    def test_condition_false_skips_resource(self, runner, cfn, sqs):
+        """When Environment=dev, the conditional SQS queue is NOT created."""
+        stack_name = _unique("cond-dev")
+        bucket_name = _unique("cond-dev-bkt")
+        queue_name = _unique("cond-dev-q")
 
-            s3 = make_client("s3")
-            assert _bucket_exists(s3, f"{stack_name}-always")
-            assert _bucket_exists(s3, f"{stack_name}-prod-only")
+        tmpl = TEMPLATE.replace("PLACEHOLDER_BUCKET", bucket_name).replace(
+            "PLACEHOLDER_QUEUE", queue_name
+        )
+
+        try:
+            runner.deploy_stack(stack_name, tmpl, params={"Environment": "dev"})
+            outputs = runner.get_stack_outputs(stack_name)
+            # QueueCreated output should not exist (condition is false)
+            assert "QueueCreated" not in outputs
+
+            # Verify queue does NOT exist
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert not any(queue_name in u for u in urls), "Dev queue should not exist"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass

@@ -1,104 +1,101 @@
-"""Tests for CloudFormation stack rollback behavior on failure."""
+"""CFN advanced engine test: rollback on failure."""
 
 from __future__ import annotations
 
-import time
+import uuid
 
 import pytest
-from botocore.exceptions import ClientError
+import yaml
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-INVALID_RESOURCE_TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  BadResource:
-    Type: AWS::Fake::DoesNotExist
-    Properties:
-      Name: this-will-fail
-"""
 
-MIXED_TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  GoodBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-good"
-  BadResource:
-    Type: AWS::Fake::DoesNotExist
-    Properties:
-      Name: this-will-fail
-"""
-
-
-def _wait_for_terminal_state(client, stack_name, timeout=60):
-    """Poll until stack reaches a terminal failure state."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            resp = client.describe_stacks(StackName=stack_name)
-            status = resp["Stacks"][0]["StackStatus"]
-            if status.endswith("_COMPLETE") or status.endswith("_FAILED"):
-                return status
-        except ClientError:
-            return "DELETE_COMPLETE"
-        time.sleep(1)
-    raise TimeoutError(f"Stack {stack_name} did not reach terminal state in {timeout}s")
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
+
+
+@pytest.fixture(scope="module")
+def s3(ensure_server):
+    return make_client("s3")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestRollback:
-    """Verify stack rollback on creation failure."""
+    def test_invalid_resource_causes_rollback(self, runner, cfn, s3):
+        """Stack with valid S3 bucket + invalid resource should rollback and clean up."""
+        stack_name = _unique("rb-inv")
+        bucket_name = _unique("rb-bucket")
 
-    def test_invalid_resource_type_causes_rollback(self, cfn, test_run_id):
-        """A template with an invalid resource type should result in ROLLBACK_COMPLETE."""
-        stack_name = f"{test_run_id}-rb-invalid"
-        client = make_client("cloudformation")
+        template = yaml.dump(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "GoodBucket": {
+                        "Type": "AWS::S3::Bucket",
+                        "Properties": {"BucketName": bucket_name},
+                    },
+                    "BadResource": {
+                        "Type": "AWS::FakeService::DoesNotExist",
+                        "Properties": {},
+                        "DependsOn": ["GoodBucket"],
+                    },
+                },
+            }
+        )
+
+        # deploy_stack will raise because the stack hits ROLLBACK_COMPLETE
+        with pytest.raises(RuntimeError, match="ROLLBACK"):
+            runner.deploy_stack(stack_name, template)
+
+        # Verify the stack reached ROLLBACK_COMPLETE
+        stack = cfn.describe_stacks(StackName=stack_name)["Stacks"][0]
+        assert stack["StackStatus"] == "ROLLBACK_COMPLETE"
+
+        # The S3 bucket should have been cleaned up during rollback
+        buckets = [b["Name"] for b in s3.list_buckets()["Buckets"]]
+        assert bucket_name not in buckets, "Bucket should be cleaned up on rollback"
+
+        # Cleanup
         try:
-            client.create_stack(
-                StackName=stack_name,
-                TemplateBody=INVALID_RESOURCE_TEMPLATE,
-                Capabilities=["CAPABILITY_IAM"],
-            )
+            runner.delete_stack(stack_name)
+        except Exception:
+            pass
 
-            status = _wait_for_terminal_state(client, stack_name)
+    def test_entirely_invalid_template_fails(self, runner, cfn):
+        """Stack with only invalid resource types should fail."""
+        stack_name = _unique("rb-allinv")
 
-            assert status in ("ROLLBACK_COMPLETE", "CREATE_FAILED"), (
-                f"Expected rollback state, got {status}"
-            )
-        finally:
-            try:
-                cfn.delete_stack(stack_name)
-            except Exception:
-                pass
+        template = yaml.dump(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "BadOne": {
+                        "Type": "AWS::Nonexistent::Service",
+                        "Properties": {},
+                    }
+                },
+            }
+        )
 
-    def test_mixed_valid_invalid_resources(self, cfn, test_run_id):
-        """A template mixing valid and invalid resources should fail the stack."""
-        stack_name = f"{test_run_id}-rb-mixed"
-        client = make_client("cloudformation")
+        with pytest.raises(RuntimeError, match="ROLLBACK"):
+            runner.deploy_stack(stack_name, template)
+
+        stack = cfn.describe_stacks(StackName=stack_name)["Stacks"][0]
+        assert stack["StackStatus"] == "ROLLBACK_COMPLETE"
+
         try:
-            client.create_stack(
-                StackName=stack_name,
-                TemplateBody=MIXED_TEMPLATE,
-                Capabilities=["CAPABILITY_IAM"],
-            )
-
-            status = _wait_for_terminal_state(client, stack_name)
-
-            assert status in ("ROLLBACK_COMPLETE", "CREATE_FAILED"), (
-                f"Expected failure state, got {status}"
-            )
-        finally:
-            try:
-                cfn.delete_stack(stack_name)
-            except Exception:
-                pass
+            runner.delete_stack(stack_name)
+        except Exception:
+            pass

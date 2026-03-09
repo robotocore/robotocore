@@ -1,109 +1,111 @@
-"""Tests for CloudFormation template parameters."""
+"""CFN advanced engine test: parameters."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
-from botocore.exceptions import ClientError
+import yaml
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Parameters:
-  EnvName:
-    Type: String
-    Default: dev
-  BucketSuffix:
-    Type: String
-    AllowedValues:
-      - data
-      - logs
-      - assets
-    Default: data
-Resources:
-  Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-${EnvName}-${BucketSuffix}"
-Outputs:
-  BucketName:
-    Value: !Ref Bucket
-"""
+DEFAULT_BUCKET = f"param-default-{uuid.uuid4().hex[:8]}"
+
+TEMPLATE = yaml.dump(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Parameters": {
+            "BucketName": {
+                "Type": "String",
+                "Default": DEFAULT_BUCKET,
+            },
+            "Environment": {
+                "Type": "String",
+                "AllowedValues": ["dev", "staging", "prod"],
+                "Default": "dev",
+            },
+        },
+        "Resources": {
+            "TestBucket": {
+                "Type": "AWS::S3::Bucket",
+                "Properties": {"BucketName": {"Ref": "BucketName"}},
+            }
+        },
+        "Outputs": {
+            "BucketNameOut": {
+                "Value": {"Ref": "BucketName"},
+            },
+            "EnvOut": {
+                "Value": {"Ref": "Environment"},
+            },
+        },
+    }
+)
+
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestParameters:
-    """Verify parameter defaults, overrides, and validation."""
-
-    def test_deploy_with_defaults(self, cfn, test_run_id):
-        """Deploy with default params -> bucket name contains 'dev' and 'data'."""
-        stack_name = f"{test_run_id}-param-def"
+    def test_deploy_with_defaults(self, runner, cfn):
+        """Deploy with default params, verify outputs match defaults."""
+        stack_name = _unique("param-def")
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            bucket_name = outputs["BucketName"]
-            assert "dev" in bucket_name
-            assert "data" in bucket_name
+            runner.deploy_stack(stack_name, TEMPLATE)
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs["BucketNameOut"] == DEFAULT_BUCKET
+            assert outputs["EnvOut"] == "dev"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_deploy_with_custom_params(self, cfn, test_run_id):
-        """Deploy with custom params -> bucket name reflects them."""
-        stack_name = f"{test_run_id}-param-cust"
+    def test_deploy_with_custom_params(self, runner, cfn):
+        """Deploy with custom BucketName, verify output matches."""
+        stack_name = _unique("param-cust")
+        custom_bucket = _unique("custom-bkt")
         try:
-            stack = cfn.deploy_stack(
+            runner.deploy_stack(
                 stack_name,
                 TEMPLATE,
-                params={"EnvName": "prod", "BucketSuffix": "logs"},
+                params={"BucketName": custom_bucket, "Environment": "prod"},
             )
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            bucket_name = outputs["BucketName"]
-            assert "prod" in bucket_name
-            assert "logs" in bucket_name
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs["BucketNameOut"] == custom_bucket
+            assert outputs["EnvOut"] == "prod"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_deploy_with_invalid_allowed_value(self, cfn, test_run_id):
-        """Deploy with a value not in AllowedValues -> should fail."""
-        stack_name = f"{test_run_id}-param-bad"
-        client = make_client("cloudformation")
+    def test_invalid_allowed_value_rejected(self, runner):
+        """Deploy with invalid Environment value should fail validation."""
+        stack_name = _unique("param-bad")
         try:
-            with pytest.raises(ClientError) as exc_info:
-                client.create_stack(
-                    StackName=stack_name,
-                    TemplateBody=TEMPLATE,
-                    Parameters=[
-                        {"ParameterKey": "EnvName", "ParameterValue": "staging"},
-                        {"ParameterKey": "BucketSuffix", "ParameterValue": "invalid-value"},
-                    ],
-                    Capabilities=["CAPABILITY_IAM"],
+            with pytest.raises(Exception, match="AllowedValues|ValidationError"):
+                runner.deploy_stack(
+                    stack_name,
+                    TEMPLATE,
+                    params={"Environment": "invalid-env"},
                 )
-            err_msg = str(exc_info.value)
-            assert (
-                "invalid-value" in err_msg
-                or "AllowedValues" in err_msg
-                or "ValidationError" in err_msg
-            )
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass

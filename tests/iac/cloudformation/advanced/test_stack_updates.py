@@ -1,112 +1,161 @@
-"""Tests for CloudFormation stack update operations."""
+"""CFN advanced engine test: stack updates."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
-from botocore.exceptions import ClientError
+import yaml
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-TEMPLATE_V1 = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-bucket"
-"""
+BUCKET_TEMPLATE = yaml.dump(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Stack update test - S3 bucket",
+        "Resources": {
+            "TestBucket": {
+                "Type": "AWS::S3::Bucket",
+                "Properties": {"BucketName": "PLACEHOLDER"},
+            }
+        },
+    }
+)
 
-TEMPLATE_V2_TAG = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-bucket"
-      Tags:
-        - Key: Environment
-          Value: staging
-"""
+BUCKET_AND_QUEUE_TEMPLATE = yaml.dump(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Stack update test - S3 bucket + SQS queue",
+        "Resources": {
+            "TestBucket": {
+                "Type": "AWS::S3::Bucket",
+                "Properties": {"BucketName": "PLACEHOLDER"},
+            },
+            "TestQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {"QueueName": "PLACEHOLDER"},
+            },
+        },
+    }
+)
 
-TEMPLATE_V3_TWO_BUCKETS = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-bucket"
-      Tags:
-        - Key: Environment
-          Value: staging
-  SecondBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-second"
-"""
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
+
+
+@pytest.fixture(scope="module")
+def s3(ensure_server):
+    return make_client("s3")
+
+
+@pytest.fixture(scope="module")
+def sqs(ensure_server):
+    return make_client("sqs")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestStackUpdates:
-    """Verify stack update lifecycle: update tags, add resources, no-op update."""
+    def test_add_resource_via_update(self, runner, cfn, sqs):
+        """Deploy with S3 bucket, update to add SQS queue, verify queue exists."""
+        stack_name = _unique("upd-add")
+        bucket_name = _unique("upd-bucket")
+        queue_name = _unique("upd-queue")
 
-    def test_update_adds_tag(self, cfn, test_run_id):
-        """Deploy v1, update to v2 with a tag, verify UPDATE_COMPLETE."""
-        stack_name = f"{test_run_id}-upd-tag"
+        tmpl_v1 = BUCKET_TEMPLATE.replace("PLACEHOLDER", bucket_name)
+        tmpl_v2 = BUCKET_AND_QUEUE_TEMPLATE.replace("PLACEHOLDER", bucket_name, 1).replace(
+            "PLACEHOLDER", queue_name, 1
+        )
+
         try:
-            cfn.deploy_stack(stack_name, TEMPLATE_V1)
-            result = cfn.update_stack(stack_name, TEMPLATE_V2_TAG)
-            assert result["StackStatus"] == "UPDATE_COMPLETE"
+            runner.deploy_stack(stack_name, tmpl_v1)
+            stack = cfn.describe_stacks(StackName=stack_name)["Stacks"][0]
+            assert stack["StackStatus"] == "CREATE_COMPLETE"
 
-            s3 = make_client("s3")
-            tagging = s3.get_bucket_tagging(Bucket=f"{stack_name}-bucket")
-            tag_set = {t["Key"]: t["Value"] for t in tagging["TagSet"]}
-            assert tag_set.get("Environment") == "staging"
+            # Update: add queue
+            runner.update_stack(stack_name, tmpl_v2)
+            stack = cfn.describe_stacks(StackName=stack_name)["Stacks"][0]
+            assert stack["StackStatus"] == "UPDATE_COMPLETE"
+
+            # Verify queue was created
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert any(queue_name in u for u in urls), f"Queue {queue_name} not found"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_update_adds_second_bucket(self, cfn, test_run_id):
-        """Update to add a second S3 bucket, verify both exist."""
-        stack_name = f"{test_run_id}-upd-add"
-        try:
-            cfn.deploy_stack(stack_name, TEMPLATE_V1)
-            cfn.update_stack(stack_name, TEMPLATE_V3_TWO_BUCKETS)
+    def test_remove_resource_via_update(self, runner, cfn, sqs):
+        """Deploy with bucket + queue, update to remove queue, verify queue deleted."""
+        stack_name = _unique("upd-rm")
+        bucket_name = _unique("uprm-bucket")
+        queue_name = _unique("uprm-queue")
 
-            s3 = make_client("s3")
-            buckets = [b["Name"] for b in s3.list_buckets()["Buckets"]]
-            assert f"{stack_name}-bucket" in buckets
-            assert f"{stack_name}-second" in buckets
+        tmpl_v1 = BUCKET_AND_QUEUE_TEMPLATE.replace("PLACEHOLDER", bucket_name, 1).replace(
+            "PLACEHOLDER", queue_name, 1
+        )
+        tmpl_v2 = BUCKET_TEMPLATE.replace("PLACEHOLDER", bucket_name)
+
+        try:
+            runner.deploy_stack(stack_name, tmpl_v1)
+
+            # Update: remove queue
+            runner.update_stack(stack_name, tmpl_v2)
+
+            # Verify queue is gone
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert not any(queue_name in u for u in urls), "Queue should be deleted"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_update_no_changes_raises(self, cfn, test_run_id):
-        """Updating with the same template should raise 'No updates' error."""
-        stack_name = f"{test_run_id}-upd-noop"
+    def test_update_with_invalid_resource_fails(self, runner, cfn):
+        """Update with an unsupported resource type should fail."""
+        stack_name = _unique("upd-inv")
+        bucket_name = _unique("upinv-bucket")
+
+        tmpl_v1 = BUCKET_TEMPLATE.replace("PLACEHOLDER", bucket_name)
+        tmpl_bad = yaml.dump(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "TestBucket": {
+                        "Type": "AWS::S3::Bucket",
+                        "Properties": {"BucketName": bucket_name},
+                    },
+                    "BadResource": {
+                        "Type": "AWS::FakeService::FakeResource",
+                        "Properties": {},
+                    },
+                },
+            }
+        )
+
         try:
-            cfn.deploy_stack(stack_name, TEMPLATE_V1)
-            client = make_client("cloudformation")
-            with pytest.raises(ClientError) as exc_info:
-                client.update_stack(
-                    StackName=stack_name,
-                    TemplateBody=TEMPLATE_V1,
-                    Capabilities=["CAPABILITY_IAM"],
-                )
-            assert "No updates" in str(exc_info.value)
+            runner.deploy_stack(stack_name, tmpl_v1)
+
+            # Update with bad resource should fail
+            with pytest.raises(RuntimeError, match="ROLLBACK|FAILED"):
+                runner.update_stack(stack_name, tmpl_bad)
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass

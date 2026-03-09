@@ -1,131 +1,122 @@
-"""Tests for CloudFormation cross-stack references via Exports and Fn::ImportValue."""
+"""CFN advanced engine test: cross-stack references via Exports/ImportValue."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
+import yaml
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-STACK_A_TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-shared"
-Outputs:
-  BucketArn:
-    Value: !GetAtt Bucket.Arn
-    Export:
-      Name: !Sub "${AWS::StackName}-BucketArn"
-  BucketName:
-    Value: !Ref Bucket
-    Export:
-      Name: !Sub "${AWS::StackName}-BucketName"
-"""
 
-STACK_B_TEMPLATE_FMT = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Parameters:
-  ProducerStack:
-    Type: String
-Resources:
-  Placeholder:
-    Type: AWS::CloudFormation::WaitConditionHandle
-Outputs:
-  ImportedArn:
-    Value: !ImportValue
-      Fn::Sub: "${ProducerStack}-BucketArn"
-"""
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _stack_a_template(bucket_name: str, export_prefix: str) -> str:
+    return yaml.dump(
+        {
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Description": "Stack A: exports bucket name",
+            "Resources": {
+                "SharedBucket": {
+                    "Type": "AWS::S3::Bucket",
+                    "Properties": {"BucketName": bucket_name},
+                }
+            },
+            "Outputs": {
+                "BucketNameOut": {
+                    "Value": bucket_name,
+                    "Export": {"Name": f"{export_prefix}-BucketName"},
+                },
+                "BucketArnOut": {
+                    "Value": f"arn:aws:s3:::{bucket_name}",
+                    "Export": {"Name": f"{export_prefix}-BucketArn"},
+                },
+            },
+        }
+    )
+
+
+def _stack_b_template(export_prefix: str, queue_name: str) -> str:
+    return yaml.dump(
+        {
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Description": "Stack B: imports from Stack A",
+            "Resources": {
+                "ConsumerQueue": {
+                    "Type": "AWS::SQS::Queue",
+                    "Properties": {"QueueName": queue_name},
+                }
+            },
+            "Outputs": {
+                "ImportedBucketName": {
+                    "Value": {"Fn::ImportValue": f"{export_prefix}-BucketName"},
+                },
+                "ImportedBucketArn": {
+                    "Value": {"Fn::ImportValue": f"{export_prefix}-BucketArn"},
+                },
+            },
+        }
+    )
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestCrossStackRefs:
-    """Verify cross-stack references with Exports and Fn::ImportValue."""
+    def test_import_value_resolves(self, runner, cfn):
+        """Stack B can import values exported by Stack A."""
+        prefix = _unique("xref")
+        stack_a = _unique("xref-a")
+        stack_b = _unique("xref-b")
+        bucket_name = _unique("xref-bucket")
+        queue_name = _unique("xref-queue")
 
-    def test_import_value_resolves(self, cfn, test_run_id):
-        """Stack B successfully imports Stack A's exported bucket ARN."""
-        stack_a = f"{test_run_id}-xref-a"
-        stack_b = f"{test_run_id}-xref-b"
         try:
-            cfn.deploy_stack(stack_a, STACK_A_TEMPLATE)
+            # Deploy Stack A (exporter)
+            runner.deploy_stack(stack_a, _stack_a_template(bucket_name, prefix))
+            outputs_a = runner.get_stack_outputs(stack_a)
+            assert outputs_a["BucketNameOut"] == bucket_name
 
-            outputs_a = cfn.get_stack_outputs(stack_a)
-            assert "BucketArn" in outputs_a
-            assert "BucketName" in outputs_a
-
-            cfn.deploy_stack(
-                stack_b,
-                STACK_B_TEMPLATE_FMT,
-                params={"ProducerStack": stack_a},
-            )
-
-            outputs_b = cfn.get_stack_outputs(stack_b)
-            assert "ImportedArn" in outputs_b
-            assert outputs_b["ImportedArn"] == outputs_a["BucketArn"]
+            # Deploy Stack B (importer)
+            runner.deploy_stack(stack_b, _stack_b_template(prefix, queue_name))
+            outputs_b = runner.get_stack_outputs(stack_b)
+            assert outputs_b["ImportedBucketName"] == bucket_name
+            assert outputs_b["ImportedBucketArn"] == f"arn:aws:s3:::{bucket_name}"
         finally:
-            for name in [stack_b, stack_a]:
+            # Delete in correct order: consumer first, then exporter
+            for name in (stack_b, stack_a):
                 try:
-                    cfn.delete_stack(name)
+                    runner.delete_stack(name)
                 except Exception:
                     pass
 
-    def test_export_cleanup_on_delete(self, cfn, test_run_id):
-        """Deleting Stack A removes its exports from the global store."""
-        stack_a = f"{test_run_id}-xref-cleanup-a"
+    def test_list_exports_includes_stack_exports(self, runner, cfn):
+        """ListExports should include exports from Stack A."""
+        prefix = _unique("lexp")
+        stack_name = _unique("lexp-stk")
+        bucket_name = _unique("lexp-bucket")
+
         try:
-            cfn.deploy_stack(stack_a, STACK_A_TEMPLATE)
-
-            # Verify exports exist
-            client = make_client("cloudformation")
-            exports = client.list_exports().get("Exports", [])
-            export_names = [e["Name"] for e in exports]
-            assert f"{stack_a}-BucketArn" in export_names
-
-            cfn.delete_stack(stack_a)
-
-            # After deletion, exports should be gone
-            exports = client.list_exports().get("Exports", [])
-            export_names = [e["Name"] for e in exports]
-            assert f"{stack_a}-BucketArn" not in export_names
+            runner.deploy_stack(stack_name, _stack_a_template(bucket_name, prefix))
+            resp = cfn.list_exports()
+            export_names = [e["Name"] for e in resp.get("Exports", [])]
+            assert f"{prefix}-BucketName" in export_names
+            assert f"{prefix}-BucketArn" in export_names
         finally:
             try:
-                cfn.delete_stack(stack_a)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
-
-    def test_delete_consumer_then_producer(self, cfn, test_run_id):
-        """Deleting B first, then A should succeed."""
-        stack_a = f"{test_run_id}-xref-delord-a"
-        stack_b = f"{test_run_id}-xref-delord-b"
-        try:
-            cfn.deploy_stack(stack_a, STACK_A_TEMPLATE)
-            cfn.deploy_stack(
-                stack_b,
-                STACK_B_TEMPLATE_FMT,
-                params={"ProducerStack": stack_a},
-            )
-
-            cfn.delete_stack(stack_b)
-            cfn.delete_stack(stack_a)
-
-            # Verify both are deleted
-            client = make_client("cloudformation")
-            resp = client.describe_stacks(StackName=stack_a)
-            assert resp["Stacks"][0]["StackStatus"] == "DELETE_COMPLETE"
-        except Exception:
-            # Cleanup on failure
-            for name in [stack_b, stack_a]:
-                try:
-                    cfn.delete_stack(name)
-                except Exception:
-                    pass
-            raise

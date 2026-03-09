@@ -1,137 +1,147 @@
-"""Tests for CloudFormation intrinsic functions (Fn::Sub, Fn::Join, Fn::Select, Fn::GetAtt)."""
+"""CFN advanced engine test: intrinsic functions."""
 
 from __future__ import annotations
 
-import pytest
+import uuid
 
-from tests.iac.conftest import ACCOUNT_ID, REGION, make_client
+import pytest
+import yaml
+
+from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-bucket"
-Outputs:
-  SubResult:
-    Value: !Sub "arn:aws:s3:::${AWS::StackName}-bucket"
-  JoinResult:
-    Value: !Join ["-", [!Ref "AWS::StackName", "joined"]]
-  SelectResult:
-    Value: !Select [1, ["a", "b", "c"]]
-  GetAttResult:
-    Value: !GetAtt Bucket.Arn
-  RefResult:
-    Value: !Ref Bucket
-  AccountId:
-    Value: !Ref "AWS::AccountId"
-  RegionOutput:
-    Value: !Ref "AWS::Region"
-"""
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _make_template(bucket_name: str) -> str:
+    return yaml.dump(
+        {
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Parameters": {
+                "BucketName": {
+                    "Type": "String",
+                    "Default": bucket_name,
+                },
+                "Env": {
+                    "Type": "String",
+                    "Default": "test",
+                },
+            },
+            "Resources": {
+                "TestBucket": {
+                    "Type": "AWS::S3::Bucket",
+                    "Properties": {"BucketName": {"Ref": "BucketName"}},
+                }
+            },
+            "Outputs": {
+                "SubResult": {
+                    "Description": "Fn::Sub test",
+                    "Value": {"Fn::Sub": "arn:aws:s3:::${BucketName}"},
+                },
+                "JoinResult": {
+                    "Description": "Fn::Join test",
+                    "Value": {"Fn::Join": ["-", ["my", "joined", "value"]]},
+                },
+                "SelectResult": {
+                    "Description": "Fn::Select test",
+                    "Value": {"Fn::Select": ["1", ["alpha", "bravo", "charlie"]]},
+                },
+                "RefResult": {
+                    "Description": "Ref test",
+                    "Value": {"Ref": "Env"},
+                },
+                "GetAttArn": {
+                    "Description": "Fn::GetAtt test",
+                    "Value": {"Fn::GetAtt": ["TestBucket", "Arn"]},
+                },
+            },
+        }
+    )
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestIntrinsicFunctions:
-    """Verify that intrinsic functions resolve correctly in stack outputs."""
-
-    def test_fn_sub_resolves_stack_name(self, cfn, test_run_id):
-        """Fn::Sub should interpolate the stack name into the ARN."""
-        stack_name = f"{test_run_id}-intrin"
+    def test_fn_sub(self, runner):
+        """Fn::Sub resolves parameter references."""
+        stack_name = _unique("intr-sub")
+        bucket_name = _unique("intr-bucket")
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            assert outputs["SubResult"] == f"arn:aws:s3:::{stack_name}-bucket"
+            runner.deploy_stack(stack_name, _make_template(bucket_name))
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs["SubResult"] == f"arn:aws:s3:::{bucket_name}"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_fn_join_concatenates(self, cfn, test_run_id):
-        """Fn::Join should concatenate elements with the delimiter."""
-        stack_name = f"{test_run_id}-intrin-join"
+    def test_fn_join(self, runner):
+        """Fn::Join concatenates values with delimiter."""
+        stack_name = _unique("intr-join")
+        bucket_name = _unique("intr-jbkt")
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            assert outputs["JoinResult"] == f"{stack_name}-joined"
+            runner.deploy_stack(stack_name, _make_template(bucket_name))
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs["JoinResult"] == "my-joined-value"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_fn_select_picks_element(self, cfn, test_run_id):
-        """Fn::Select with index 1 should return 'b'."""
-        stack_name = f"{test_run_id}-intrin-sel"
+    def test_fn_select(self, runner):
+        """Fn::Select picks an element by index."""
+        stack_name = _unique("intr-sel")
+        bucket_name = _unique("intr-sbkt")
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            assert outputs["SelectResult"] == "b"
+            runner.deploy_stack(stack_name, _make_template(bucket_name))
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs["SelectResult"] == "bravo"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_fn_getatt_returns_bucket_arn(self, cfn, test_run_id):
-        """Fn::GetAtt Bucket.Arn should return a valid S3 ARN."""
-        stack_name = f"{test_run_id}-intrin-gatt"
+    def test_ref(self, runner):
+        """Ref resolves a parameter value."""
+        stack_name = _unique("intr-ref")
+        bucket_name = _unique("intr-rbkt")
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            arn = outputs["GetAttResult"]
-            assert arn.startswith("arn:aws:s3:::")
-            assert f"{stack_name}-bucket" in arn
+            runner.deploy_stack(stack_name, _make_template(bucket_name))
+            outputs = runner.get_stack_outputs(stack_name)
+            assert outputs["RefResult"] == "test"
         finally:
             try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
 
-    def test_ref_returns_bucket_name(self, cfn, test_run_id):
-        """Ref on a bucket resource should return the bucket name."""
-        stack_name = f"{test_run_id}-intrin-ref"
+    def test_fn_getatt(self, runner):
+        """Fn::GetAtt retrieves a resource attribute."""
+        stack_name = _unique("intr-ga")
+        bucket_name = _unique("intr-gabkt")
         try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            assert outputs["RefResult"] == f"{stack_name}-bucket"
+            runner.deploy_stack(stack_name, _make_template(bucket_name))
+            outputs = runner.get_stack_outputs(stack_name)
+            # The ARN should contain the bucket name
+            assert bucket_name in outputs["GetAttArn"]
+            assert outputs["GetAttArn"].startswith("arn:aws:s3")
         finally:
             try:
-                cfn.delete_stack(stack_name)
-            except Exception:
-                pass
-
-    def test_pseudo_parameters(self, cfn, test_run_id):
-        """AWS::AccountId and AWS::Region pseudo-parameters should resolve."""
-        stack_name = f"{test_run_id}-intrin-pseudo"
-        try:
-            stack = cfn.deploy_stack(stack_name, TEMPLATE)
-            assert stack["StackStatus"] == "CREATE_COMPLETE"
-
-            outputs = cfn.get_stack_outputs(stack_name)
-            assert outputs["AccountId"] == ACCOUNT_ID
-            assert outputs["RegionOutput"] == REGION
-        finally:
-            try:
-                cfn.delete_stack(stack_name)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass

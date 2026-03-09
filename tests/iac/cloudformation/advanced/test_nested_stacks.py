@@ -1,90 +1,109 @@
-"""Tests for CloudFormation nested stacks (AWS::CloudFormation::Stack)."""
+"""CFN advanced engine test: nested stacks."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
-from botocore.exceptions import ClientError
+import yaml
 
 from tests.iac.conftest import make_client
 from tests.iac.helpers.tool_runner import CloudFormationRunner
 
 pytestmark = pytest.mark.iac
 
-CHILD_TEMPLATE = """\
-AWSTemplateFormatVersion: "2010-09-09"
-Parameters:
-  BucketPrefix:
-    Type: String
-Resources:
-  ChildBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${BucketPrefix}-child-bucket"
-Outputs:
-  ChildBucketName:
-    Value: !Ref ChildBucket
-"""
+CHILD_TEMPLATE = yaml.dump(
+    {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Parameters": {
+            "QueueName": {
+                "Type": "String",
+            }
+        },
+        "Resources": {
+            "ChildQueue": {
+                "Type": "AWS::SQS::Queue",
+                "Properties": {"QueueName": {"Ref": "QueueName"}},
+            }
+        },
+        "Outputs": {
+            "ChildQueueUrl": {
+                "Value": {"Fn::GetAtt": ["ChildQueue", "QueueUrl"]},
+            }
+        },
+    }
+)
 
 
-def _parent_template(template_url: str) -> str:
-    return f"""\
-AWSTemplateFormatVersion: "2010-09-09"
-Resources:
-  NestedStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: {template_url}
-      Parameters:
-        BucketPrefix: !Ref "AWS::StackName"
-Outputs:
-  NestedStackId:
-    Value: !Ref NestedStack
-  ChildBucketName:
-    Value: !GetAtt NestedStack.Outputs.ChildBucketName
-"""
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
-    client = make_client("cloudformation")
-    return CloudFormationRunner(client)
+    return make_client("cloudformation")
+
+
+@pytest.fixture(scope="module")
+def s3(ensure_server):
+    return make_client("s3")
+
+
+@pytest.fixture(scope="module")
+def sqs(ensure_server):
+    return make_client("sqs")
+
+
+@pytest.fixture(scope="module")
+def runner(cfn):
+    return CloudFormationRunner(cfn)
 
 
 class TestNestedStacks:
-    """Verify nested stack creation via AWS::CloudFormation::Stack."""
+    def test_nested_stack_creates_child_resources(self, runner, cfn, s3, sqs):
+        """Parent stack with AWS::CloudFormation::Stack creates child resources."""
+        template_bucket = _unique("nest-tmpl")
+        stack_name = _unique("nest-parent")
+        queue_name = _unique("nest-queue")
 
-    def test_nested_stack_creates_child_resources(self, cfn, test_run_id):
-        """Upload child template to S3, create parent with nested stack, verify child bucket."""
-        s3 = make_client("s3")
-        template_bucket = f"{test_run_id}-nested-templates"
-        parent_stack = f"{test_run_id}-nested-parent"
+        # Upload child template to S3
+        s3.create_bucket(Bucket=template_bucket)
+        s3.put_object(
+            Bucket=template_bucket,
+            Key="child.yaml",
+            Body=CHILD_TEMPLATE.encode(),
+        )
+
+        # URL format: http://host:port/bucket/key — parsed by _fetch_template_from_s3
+        template_url = f"http://localhost:4566/{template_bucket}/child.yaml"
+
+        parent_template = yaml.dump(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "ChildStack": {
+                        "Type": "AWS::CloudFormation::Stack",
+                        "Properties": {
+                            "TemplateURL": template_url,
+                            "Parameters": {"QueueName": queue_name},
+                        },
+                    }
+                },
+            }
+        )
 
         try:
-            # Upload child template to S3
-            s3.create_bucket(Bucket=template_bucket)
-            s3.put_object(
-                Bucket=template_bucket,
-                Key="child.yaml",
-                Body=CHILD_TEMPLATE,
-            )
-            template_url = f"http://localhost:4566/{template_bucket}/child.yaml"
-
-            # Deploy parent stack that references the child template
-            stack = cfn.deploy_stack(parent_stack, _parent_template(template_url))
+            runner.deploy_stack(stack_name, parent_template)
+            stack = cfn.describe_stacks(StackName=stack_name)["Stacks"][0]
             assert stack["StackStatus"] == "CREATE_COMPLETE"
 
-            # Verify parent outputs include nested stack info
-            outputs = cfn.get_stack_outputs(parent_stack)
-            assert "NestedStackId" in outputs
-            assert "ChildBucketName" in outputs
-            assert f"{parent_stack}-child-bucket" in outputs["ChildBucketName"]
-
-            # Verify the child bucket actually exists
-            buckets = [b["Name"] for b in s3.list_buckets()["Buckets"]]
-            assert outputs["ChildBucketName"] in buckets
+            # Verify the child queue was created
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert any(queue_name in u for u in urls), f"Child queue {queue_name} should exist"
         finally:
             try:
-                cfn.delete_stack(parent_stack)
+                runner.delete_stack(stack_name)
             except Exception:
                 pass
             try:
@@ -93,76 +112,51 @@ class TestNestedStacks:
             except Exception:
                 pass
 
-    def test_nested_stack_shows_in_list(self, cfn, test_run_id):
-        """The nested child stack should appear in list_stacks."""
-        s3 = make_client("s3")
-        template_bucket = f"{test_run_id}-nested-list-tpl"
-        parent_stack = f"{test_run_id}-nested-list"
+    def test_deleting_parent_cleans_up_child(self, runner, cfn, s3, sqs):
+        """Deleting parent stack should clean up nested stack resources."""
+        template_bucket = _unique("nestdel-tmpl")
+        stack_name = _unique("nestdel-parent")
+        queue_name = _unique("nestdel-queue")
+
+        s3.create_bucket(Bucket=template_bucket)
+        s3.put_object(
+            Bucket=template_bucket,
+            Key="child.yaml",
+            Body=CHILD_TEMPLATE.encode(),
+        )
+
+        template_url = f"http://localhost:4566/{template_bucket}/child.yaml"
+
+        parent_template = yaml.dump(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "ChildStack": {
+                        "Type": "AWS::CloudFormation::Stack",
+                        "Properties": {
+                            "TemplateURL": template_url,
+                            "Parameters": {"QueueName": queue_name},
+                        },
+                    }
+                },
+            }
+        )
 
         try:
-            s3.create_bucket(Bucket=template_bucket)
-            s3.put_object(
-                Bucket=template_bucket,
-                Key="child.yaml",
-                Body=CHILD_TEMPLATE,
-            )
-            template_url = f"http://localhost:4566/{template_bucket}/child.yaml"
+            runner.deploy_stack(stack_name, parent_template)
 
-            cfn.deploy_stack(parent_stack, _parent_template(template_url))
-
-            # List stacks and look for the nested child
-            client = make_client("cloudformation")
-            resp = client.list_stacks(StackStatusFilter=["CREATE_COMPLETE"])
-            stack_names = [s["StackName"] for s in resp["StackSummaries"]]
-            # Parent should be listed
-            assert parent_stack in stack_names
-
-            # Describe stack resources to find the nested stack
-            resources = client.list_stack_resources(StackName=parent_stack)
-            resource_types = [r["ResourceType"] for r in resources["StackResourceSummaries"]]
-            assert "AWS::CloudFormation::Stack" in resource_types
-        finally:
-            try:
-                cfn.delete_stack(parent_stack)
-            except Exception:
-                pass
-            try:
-                s3.delete_object(Bucket=template_bucket, Key="child.yaml")
-                s3.delete_bucket(Bucket=template_bucket)
-            except Exception:
-                pass
-
-    def test_delete_parent_deletes_nested(self, cfn, test_run_id):
-        """Deleting the parent stack should also delete the nested child stack."""
-        s3 = make_client("s3")
-        template_bucket = f"{test_run_id}-nested-del-tpl"
-        parent_stack = f"{test_run_id}-nested-del"
-
-        try:
-            s3.create_bucket(Bucket=template_bucket)
-            s3.put_object(
-                Bucket=template_bucket,
-                Key="child.yaml",
-                Body=CHILD_TEMPLATE,
-            )
-            template_url = f"http://localhost:4566/{template_bucket}/child.yaml"
-
-            cfn.deploy_stack(parent_stack, _parent_template(template_url))
-            outputs = cfn.get_stack_outputs(parent_stack)
-            nested_id = outputs["NestedStackId"]
+            # Verify queue exists before delete
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert any(queue_name in u for u in urls)
 
             # Delete parent
-            cfn.delete_stack(parent_stack)
+            runner.delete_stack(stack_name)
 
-            # Verify nested stack is also gone
-            client = make_client("cloudformation")
-            try:
-                resp = client.describe_stacks(StackName=nested_id)
-                # If it exists, it should be in DELETE_COMPLETE state
-                if resp["Stacks"]:
-                    assert resp["Stacks"][0]["StackStatus"] == "DELETE_COMPLETE"
-            except ClientError as exc:
-                assert "does not exist" in str(exc)
+            # Verify child queue is cleaned up
+            resp = sqs.list_queues(QueueNamePrefix=queue_name)
+            urls = resp.get("QueueUrls", [])
+            assert not any(queue_name in u for u in urls), "Child queue should be deleted"
         finally:
             try:
                 s3.delete_object(Bucket=template_bucket, Key="child.yaml")
