@@ -881,3 +881,469 @@ class TestDMSEndpointAdvanced:
         resp = dms.describe_replication_subnet_groups()
         assert "ReplicationSubnetGroups" in resp
         assert isinstance(resp["ReplicationSubnetGroups"], list)
+
+
+class TestDMSDescribeReplicationTasks:
+    """Tests for DescribeReplicationTasks operation."""
+
+    def _create_task_prereqs(self, dms):
+        """Create endpoints and replication instance needed for a replication task."""
+        uid = uuid.uuid4().hex[:8]
+        src = dms.create_endpoint(
+            EndpointIdentifier=f"src-{uid}",
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        tgt = dms.create_endpoint(
+            EndpointIdentifier=f"tgt-{uid}",
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=f"ri-{uid}",
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        return {
+            "source_arn": src["Endpoint"]["EndpointArn"],
+            "target_arn": tgt["Endpoint"]["EndpointArn"],
+            "ri_arn": ri["ReplicationInstance"]["ReplicationInstanceArn"],
+        }
+
+    def _cleanup_prereqs(self, dms, prereqs):
+        dms.delete_endpoint(EndpointArn=prereqs["source_arn"])
+        dms.delete_endpoint(EndpointArn=prereqs["target_arn"])
+        dms.delete_replication_instance(ReplicationInstanceArn=prereqs["ri_arn"])
+
+    def test_describe_replication_tasks_with_task_id_filter(self, dms):
+        """DescribeReplicationTasks filtered by replication-task-id returns matching task."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            task = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task_arn = task["ReplicationTask"]["ReplicationTaskArn"]
+            resp = dms.describe_replication_tasks(
+                Filters=[{"Name": "replication-task-id", "Values": [task_id]}]
+            )
+            assert len(resp["ReplicationTasks"]) == 1
+            assert resp["ReplicationTasks"][0]["ReplicationTaskIdentifier"] == task_id
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_describe_replication_tasks_filter_no_match(self, dms):
+        """DescribeReplicationTasks with non-matching filter returns empty list."""
+        resp = dms.describe_replication_tasks(
+            Filters=[{"Name": "replication-task-id", "Values": ["nonexistent-task"]}]
+        )
+        assert resp["ReplicationTasks"] == []
+
+    def test_describe_replication_tasks_with_ri_arn_filter(self, dms):
+        """DescribeReplicationTasks filtered by replication-instance-arn."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            task = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task_arn = task["ReplicationTask"]["ReplicationTaskArn"]
+            resp = dms.describe_replication_tasks(
+                Filters=[{"Name": "replication-instance-arn", "Values": [prereqs["ri_arn"]]}]
+            )
+            assert len(resp["ReplicationTasks"]) >= 1
+            task_ids = [t["ReplicationTaskIdentifier"] for t in resp["ReplicationTasks"]]
+            assert task_id in task_ids
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_describe_replication_tasks_has_task_details(self, dms):
+        """DescribeReplicationTasks returns task with expected fields."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            task = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load",
+                TableMappings='{"rules":[]}',
+            )
+            task_arn = task["ReplicationTask"]["ReplicationTaskArn"]
+            resp = dms.describe_replication_tasks(
+                Filters=[{"Name": "replication-task-id", "Values": [task_id]}]
+            )
+            t = resp["ReplicationTasks"][0]
+            assert t["MigrationType"] == "full-load"
+            assert "Status" in t
+            assert "ReplicationTaskArn" in t
+            assert "TableMappings" in t
+            dms.delete_replication_task(ReplicationTaskArn=task_arn)
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+
+class TestDMSConnectionsAdvanced:
+    """Tests for DescribeConnections with filters and after TestConnection."""
+
+    def test_describe_connections_with_filter_no_match(self, dms):
+        """DescribeConnections with non-matching filter returns empty list."""
+        resp = dms.describe_connections(
+            Filters=[
+                {
+                    "Name": "endpoint-arn",
+                    "Values": ["arn:aws:dms:us-east-1:123456789012:endpoint:nonexistent"],
+                }
+            ]
+        )
+        assert resp["Connections"] == []
+
+    def test_describe_connections_after_test_connection(self, dms):
+        """DescribeConnections finds connection created by TestConnection."""
+        ri_id = _unique("ri")
+        ep_id = _unique("ep")
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = ri["ReplicationInstance"]["ReplicationInstanceArn"]
+        ep = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        ep_arn = ep["Endpoint"]["EndpointArn"]
+        try:
+            dms.test_connection(
+                ReplicationInstanceArn=ri_arn,
+                EndpointArn=ep_arn,
+            )
+            resp = dms.describe_connections(Filters=[{"Name": "endpoint-arn", "Values": [ep_arn]}])
+            assert len(resp["Connections"]) == 1
+            conn = resp["Connections"][0]
+            assert conn["EndpointArn"] == ep_arn
+            assert conn["ReplicationInstanceArn"] == ri_arn
+            assert "Status" in conn
+        finally:
+            dms.delete_endpoint(EndpointArn=ep_arn)
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+
+class TestDMSReplicationTaskMigrationTypes:
+    """Tests for replication tasks with different migration types."""
+
+    def _create_task_prereqs(self, dms):
+        uid = uuid.uuid4().hex[:8]
+        src = dms.create_endpoint(
+            EndpointIdentifier=f"src-{uid}",
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        tgt = dms.create_endpoint(
+            EndpointIdentifier=f"tgt-{uid}",
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=f"ri-{uid}",
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        return {
+            "source_arn": src["Endpoint"]["EndpointArn"],
+            "target_arn": tgt["Endpoint"]["EndpointArn"],
+            "ri_arn": ri["ReplicationInstance"]["ReplicationInstanceArn"],
+        }
+
+    def _cleanup_prereqs(self, dms, prereqs):
+        dms.delete_endpoint(EndpointArn=prereqs["source_arn"])
+        dms.delete_endpoint(EndpointArn=prereqs["target_arn"])
+        dms.delete_replication_instance(ReplicationInstanceArn=prereqs["ri_arn"])
+
+    def test_create_replication_task_cdc(self, dms):
+        """CreateReplicationTask with MigrationType=cdc."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            resp = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="cdc",
+                TableMappings='{"rules":[]}',
+            )
+            assert resp["ReplicationTask"]["MigrationType"] == "cdc"
+            assert resp["ReplicationTask"]["ReplicationTaskIdentifier"] == task_id
+            dms.delete_replication_task(
+                ReplicationTaskArn=resp["ReplicationTask"]["ReplicationTaskArn"]
+            )
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+    def test_create_replication_task_full_load_and_cdc(self, dms):
+        """CreateReplicationTask with MigrationType=full-load-and-cdc."""
+        prereqs = self._create_task_prereqs(dms)
+        task_id = _unique("task")
+        try:
+            resp = dms.create_replication_task(
+                ReplicationTaskIdentifier=task_id,
+                SourceEndpointArn=prereqs["source_arn"],
+                TargetEndpointArn=prereqs["target_arn"],
+                ReplicationInstanceArn=prereqs["ri_arn"],
+                MigrationType="full-load-and-cdc",
+                TableMappings='{"rules":[]}',
+            )
+            assert resp["ReplicationTask"]["MigrationType"] == "full-load-and-cdc"
+            dms.delete_replication_task(
+                ReplicationTaskArn=resp["ReplicationTask"]["ReplicationTaskArn"]
+            )
+        finally:
+            self._cleanup_prereqs(dms, prereqs)
+
+
+class TestDMSSubnetGroupFilters:
+    """Tests for DescribeReplicationSubnetGroups with filters."""
+
+    def test_describe_replication_subnet_groups_filter_no_match(self, dms):
+        """DescribeReplicationSubnetGroups with non-matching filter returns empty."""
+        resp = dms.describe_replication_subnet_groups(
+            Filters=[
+                {
+                    "Name": "replication-subnet-group-id",
+                    "Values": ["nonexistent-group"],
+                }
+            ]
+        )
+        assert resp["ReplicationSubnetGroups"] == []
+
+    def test_describe_replication_subnet_groups_with_filter(self, dms, ec2):
+        """DescribeReplicationSubnetGroups with matching filter returns group."""
+        vpc = ec2.create_vpc(CidrBlock="10.80.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.80.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        sub2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.80.2.0/24", AvailabilityZone="us-east-1b"
+        )
+
+        sg_id = _unique("rsg")
+        dms.create_replication_subnet_group(
+            ReplicationSubnetGroupIdentifier=sg_id,
+            ReplicationSubnetGroupDescription="Filter test",
+            SubnetIds=[sub1["Subnet"]["SubnetId"], sub2["Subnet"]["SubnetId"]],
+        )
+        try:
+            resp = dms.describe_replication_subnet_groups(
+                Filters=[{"Name": "replication-subnet-group-id", "Values": [sg_id]}]
+            )
+            assert len(resp["ReplicationSubnetGroups"]) == 1
+            assert resp["ReplicationSubnetGroups"][0]["ReplicationSubnetGroupIdentifier"] == sg_id
+        finally:
+            dms.delete_replication_subnet_group(ReplicationSubnetGroupIdentifier=sg_id)
+
+
+class TestDMSEndpointFilterAdvanced:
+    """Tests for DescribeEndpoints with various filter types."""
+
+    def test_describe_endpoints_engine_name_filter(self, dms):
+        """DescribeEndpoints with engine-name filter returns only matching engines."""
+        ep_mysql = _unique("ep")
+        ep_pg = _unique("ep")
+        mysql_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_mysql,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        pg_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_pg,
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        try:
+            resp = dms.describe_endpoints(Filters=[{"Name": "engine-name", "Values": ["mysql"]}])
+            engines = [e["EngineName"] for e in resp["Endpoints"]]
+            assert all(e == "mysql" for e in engines)
+        finally:
+            dms.delete_endpoint(EndpointArn=mysql_resp["Endpoint"]["EndpointArn"])
+            dms.delete_endpoint(EndpointArn=pg_resp["Endpoint"]["EndpointArn"])
+
+    def test_describe_endpoints_endpoint_arn_filter(self, dms):
+        """DescribeEndpoints with endpoint-arn filter returns specific endpoint."""
+        ep_id = _unique("ep")
+        create_resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        arn = create_resp["Endpoint"]["EndpointArn"]
+        try:
+            resp = dms.describe_endpoints(Filters=[{"Name": "endpoint-arn", "Values": [arn]}])
+            assert len(resp["Endpoints"]) == 1
+            assert resp["Endpoints"][0]["EndpointArn"] == arn
+        finally:
+            dms.delete_endpoint(EndpointArn=arn)
+
+
+class TestDMSReplicationInstanceFilterAdvanced:
+    """Tests for DescribeReplicationInstances with additional filters."""
+
+    def test_describe_ri_with_class_filter(self, dms):
+        """DescribeReplicationInstances filtered by replication-instance-class."""
+        ri_id = _unique("ri")
+        resp = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = resp["ReplicationInstance"]["ReplicationInstanceArn"]
+        try:
+            desc = dms.describe_replication_instances(
+                Filters=[
+                    {
+                        "Name": "replication-instance-class",
+                        "Values": ["dms.t3.micro"],
+                    }
+                ]
+            )
+            classes = [i["ReplicationInstanceClass"] for i in desc["ReplicationInstances"]]
+            assert all(c == "dms.t3.micro" for c in classes)
+            assert len(desc["ReplicationInstances"]) >= 1
+        finally:
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+
+class TestDMSEndpointEngines:
+    """Tests for creating endpoints with different engine types."""
+
+    def test_create_endpoint_oracle(self, dms):
+        """Create source endpoint with Oracle engine."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="oracle",
+            ServerName="localhost",
+            Port=1521,
+            Username="admin",
+            Password="password",
+            DatabaseName="ORCL",
+        )
+        ep = resp["Endpoint"]
+        assert ep["EngineName"] == "oracle"
+        assert ep["Port"] == 1521
+        assert ep["DatabaseName"] == "ORCL"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_mariadb(self, dms):
+        """Create source endpoint with MariaDB engine."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="mariadb",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        ep = resp["Endpoint"]
+        assert ep["EngineName"] == "mariadb"
+        assert ep["EndpointType"] == "source"
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+    def test_create_endpoint_sqlserver(self, dms):
+        """Create source endpoint with SQL Server engine."""
+        ep_id = _unique("ep")
+        resp = dms.create_endpoint(
+            EndpointIdentifier=ep_id,
+            EndpointType="source",
+            EngineName="sqlserver",
+            ServerName="localhost",
+            Port=1433,
+            Username="admin",
+            Password="password",
+            DatabaseName="master",
+        )
+        ep = resp["Endpoint"]
+        assert ep["EngineName"] == "sqlserver"
+        assert ep["Port"] == 1433
+        dms.delete_endpoint(EndpointArn=ep["EndpointArn"])
+
+
+class TestDMSReplicationInstanceSubnetGroup:
+    """Tests for creating replication instance in a subnet group."""
+
+    def test_create_replication_instance_in_subnet_group(self, dms, ec2):
+        """CreateReplicationInstance with ReplicationSubnetGroupIdentifier."""
+        vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.90.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        sub2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.90.2.0/24", AvailabilityZone="us-east-1b"
+        )
+
+        sg_id = _unique("rsg")
+        dms.create_replication_subnet_group(
+            ReplicationSubnetGroupIdentifier=sg_id,
+            ReplicationSubnetGroupDescription="For RI test",
+            SubnetIds=[sub1["Subnet"]["SubnetId"], sub2["Subnet"]["SubnetId"]],
+        )
+        ri_id = _unique("ri")
+        try:
+            resp = dms.create_replication_instance(
+                ReplicationInstanceIdentifier=ri_id,
+                ReplicationInstanceClass="dms.t3.micro",
+                ReplicationSubnetGroupIdentifier=sg_id,
+            )
+            ri = resp["ReplicationInstance"]
+            assert ri["ReplicationInstanceIdentifier"] == ri_id
+            assert "ReplicationInstanceArn" in ri
+            dms.delete_replication_instance(ReplicationInstanceArn=ri["ReplicationInstanceArn"])
+        finally:
+            dms.delete_replication_subnet_group(ReplicationSubnetGroupIdentifier=sg_id)
