@@ -964,10 +964,10 @@ class TestSSMGapStubs:
         assert isinstance(resp["Summaries"], list)
 
     def test_list_ops_item_related_items(self, ssm):
-        """ListOpsItemRelatedItems returns empty list."""
-        resp = ssm.list_ops_item_related_items(OpsItemId="oi-0000000000")
-        assert "Summaries" in resp
-        assert isinstance(resp["Summaries"], list)
+        """ListOpsItemRelatedItems raises DoesNotExistException for nonexistent OpsItem."""
+        with pytest.raises(ClientError) as exc:
+            ssm.list_ops_item_related_items(OpsItemId="oi-0000000000")
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
 
     def test_list_ops_metadata(self, ssm):
         """ListOpsMetadata returns empty list."""
@@ -2444,12 +2444,12 @@ class TestSSMOpsMetadataOperations:
     """Tests for OpsMetadata operations."""
 
     def test_get_ops_metadata(self, ssm):
-        """GetOpsMetadata returns metadata for a given ARN."""
-        resp = ssm.get_ops_metadata(
-            OpsMetadataArn="arn:aws:ssm:us-east-1:123456789012:opsmetadata/fake-metadata"
-        )
-        assert "ResourceId" in resp
-        assert "Metadata" in resp
+        """GetOpsMetadata raises DoesNotExistException for nonexistent ARN."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_ops_metadata(
+                OpsMetadataArn="arn:aws:ssm:us-east-1:123456789012:opsmetadata/fake-metadata"
+            )
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
 
     def test_create_and_delete_ops_metadata(self, ssm):
         """CreateOpsMetadata creates metadata, DeleteOpsMetadata removes it."""

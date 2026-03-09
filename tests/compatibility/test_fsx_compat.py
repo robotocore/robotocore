@@ -280,10 +280,10 @@ class TestFSxFileSystemAliases:
             fsx.delete_file_system(FileSystemId=fs_id)
 
     def test_describe_file_system_aliases_nonexistent(self, fsx):
-        """DescribeFileSystemAliases for nonexistent fs raises ResourceNotFoundException."""
+        """DescribeFileSystemAliases for nonexistent fs raises FileSystemNotFound."""
         with pytest.raises(ClientError) as exc:
             fsx.describe_file_system_aliases(FileSystemId="fs-does-not-exist")
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        assert exc.value.response["Error"]["Code"] == "FileSystemNotFound"
 
     def test_associate_file_system_aliases(self, fsx):
         """AssociateFileSystemAliases returns Aliases list."""
