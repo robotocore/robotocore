@@ -1597,3 +1597,163 @@ class TestCloudFrontUpdateOriginRequestPolicy:
         config = update_resp["OriginRequestPolicy"]["OriginRequestPolicyConfig"]
         assert config["Comment"] == "updated"
         assert "ETag" in update_resp
+
+
+class TestCloudFrontKeyValueStoreCRUD:
+    """Tests for KeyValueStore create/describe/update/delete."""
+
+    def test_list_key_value_stores_empty(self, cf):
+        resp = cf.list_key_value_stores()
+        kvs_list = resp["KeyValueStoreList"]
+        assert "Quantity" in kvs_list
+        assert "MaxItems" in kvs_list
+
+    def test_create_key_value_store(self, cf):
+        name = _unique("kvs")
+        resp = cf.create_key_value_store(Name=name, Comment="test kvs")
+        kvs = resp["KeyValueStore"]
+        assert kvs["Name"] == name
+        assert "Id" in kvs
+        assert "ARN" in kvs
+        assert kvs["Status"] is not None
+        assert "ETag" in resp
+
+    def test_describe_key_value_store(self, cf):
+        name = _unique("kvs")
+        create_resp = cf.create_key_value_store(Name=name, Comment="describe test")
+        kvs_id = create_resp["KeyValueStore"]["Name"]
+
+        desc_resp = cf.describe_key_value_store(Name=kvs_id)
+        kvs = desc_resp["KeyValueStore"]
+        assert kvs["Name"] == name
+        assert "Id" in kvs
+        assert "ARN" in kvs
+        assert "ETag" in desc_resp
+
+    def test_update_key_value_store(self, cf):
+        name = _unique("kvs")
+        create_resp = cf.create_key_value_store(Name=name, Comment="original")
+        etag = create_resp["ETag"]
+
+        update_resp = cf.update_key_value_store(Name=name, IfMatch=etag, Comment="updated")
+        kvs = update_resp["KeyValueStore"]
+        assert kvs["Name"] == name
+        assert "Id" in kvs
+        assert "ETag" in update_resp
+
+    def test_delete_key_value_store(self, cf):
+        name = _unique("kvs")
+        create_resp = cf.create_key_value_store(Name=name, Comment="delete test")
+        etag = create_resp["ETag"]
+
+        # May need to use the update etag if update was done
+        del_resp = cf.delete_key_value_store(Name=name, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontRealtimeLogConfigCRUD:
+    """Tests for RealtimeLogConfig create/update operations."""
+
+    def _rlc_endpoint(self):
+        return {
+            "StreamType": "Kinesis",
+            "KinesisStreamConfig": {
+                "RoleARN": "arn:aws:iam::123456789012:role/test-role",
+                "StreamARN": "arn:aws:kinesis:us-east-1:123456789012:stream/test-stream",
+            },
+        }
+
+    def test_create_realtime_log_config(self, cf):
+        name = _unique("rlc")
+        resp = cf.create_realtime_log_config(
+            EndPoints=[self._rlc_endpoint()],
+            Fields=["timestamp", "c-ip"],
+            Name=name,
+            SamplingRate=100,
+        )
+        rlc = resp["RealtimeLogConfig"]
+        assert rlc["Name"] == name
+        assert "ARN" in rlc
+        assert rlc["SamplingRate"] == 100
+        assert len(rlc["Fields"]) == 2
+
+    def test_update_realtime_log_config(self, cf):
+        name = _unique("rlc")
+        create_resp = cf.create_realtime_log_config(
+            EndPoints=[self._rlc_endpoint()],
+            Fields=["timestamp", "c-ip"],
+            Name=name,
+            SamplingRate=100,
+        )
+        rlc_arn = create_resp["RealtimeLogConfig"]["ARN"]
+
+        update_resp = cf.update_realtime_log_config(
+            ARN=rlc_arn,
+            EndPoints=[self._rlc_endpoint()],
+            Fields=["timestamp", "c-ip", "cs-method"],
+            Name=name,
+            SamplingRate=50,
+        )
+        rlc = update_resp["RealtimeLogConfig"]
+        assert rlc["SamplingRate"] == 50
+        assert len(rlc["Fields"]) == 3
+
+    def test_list_realtime_log_configs_after_create(self, cf):
+        name = _unique("rlc")
+        cf.create_realtime_log_config(
+            EndPoints=[self._rlc_endpoint()],
+            Fields=["timestamp"],
+            Name=name,
+            SamplingRate=100,
+        )
+        resp = cf.list_realtime_log_configs()
+        items = resp.get("RealtimeLogConfigs", {}).get("Items", [])
+        names = [item["Name"] for item in items]
+        assert name in names
+
+
+class TestCloudFrontStreamingDistributionWithTags:
+    """Tests for CreateStreamingDistributionWithTags."""
+
+    def test_create_streaming_distribution_with_tags(self, cf):
+        resp = cf.create_streaming_distribution_with_tags(
+            StreamingDistributionConfigWithTags={
+                "StreamingDistributionConfig": {
+                    "CallerReference": str(uuid.uuid4()),
+                    "S3Origin": {
+                        "DomainName": "mybucket.s3.amazonaws.com",
+                        "OriginAccessIdentity": "",
+                    },
+                    "Comment": "test-with-tags",
+                    "TrustedSigners": {"Enabled": False, "Quantity": 0},
+                    "Enabled": True,
+                },
+                "Tags": {"Items": [{"Key": "env", "Value": "test"}]},
+            }
+        )
+        sd = resp["StreamingDistribution"]
+        assert "Id" in sd
+        assert sd["StreamingDistributionConfig"]["Comment"] == "test-with-tags"
+
+    def test_create_streaming_distribution_with_tags_verify_tags(self, cf):
+        resp = cf.create_streaming_distribution_with_tags(
+            StreamingDistributionConfigWithTags={
+                "StreamingDistributionConfig": {
+                    "CallerReference": str(uuid.uuid4()),
+                    "S3Origin": {
+                        "DomainName": "mybucket.s3.amazonaws.com",
+                        "OriginAccessIdentity": "",
+                    },
+                    "Comment": "verify-tags",
+                    "TrustedSigners": {"Enabled": False, "Quantity": 0},
+                    "Enabled": True,
+                },
+                "Tags": {"Items": [{"Key": "team", "Value": "platform"}]},
+            }
+        )
+        sd_arn = resp["StreamingDistribution"]["ARN"]
+
+        tags_resp = cf.list_tags_for_resource(Resource=sd_arn)
+        tag_items = tags_resp["Tags"]["Items"]
+        tag_keys = [t["Key"] for t in tag_items]
+        assert "team" in tag_keys

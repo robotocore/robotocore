@@ -1,5 +1,6 @@
 """Bedrock compatibility tests."""
 
+import datetime
 import uuid
 
 import pytest
@@ -889,3 +890,204 @@ class TestBedrockRegisterMarketplaceEndpoint:
                 modelSourceIdentifier="amazon.titan-text-express-v1",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockAutomatedReasoningPolicyCRUD:
+    """Tests for automated reasoning policy create/update/delete operations."""
+
+    _FAKE_POLICY_ARN = (
+        "arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/fake123456"
+    )
+
+    def test_create_automated_reasoning_policy(self, bedrock):
+        """CreateAutomatedReasoningPolicy returns a policyArn."""
+        name = _unique("arp")
+        r = bedrock.create_automated_reasoning_policy(
+            name=name,
+            policyDefinition={
+                "version": "1.0",
+                "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+            },
+        )
+        assert "policyArn" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_automated_reasoning_policy_not_found(self, bedrock):
+        """UpdateAutomatedReasoningPolicy with fake ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.update_automated_reasoning_policy(
+                policyArn=self._FAKE_POLICY_ARN,
+                policyDefinition={
+                    "version": "1.0",
+                    "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_cancel_automated_reasoning_policy_build_workflow_not_found(self, bedrock):
+        """CancelAutomatedReasoningPolicyBuildWorkflow with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.cancel_automated_reasoning_policy_build_workflow(
+                policyArn=self._FAKE_POLICY_ARN,
+                buildWorkflowId="fake-workflow-id",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_automated_reasoning_policy_build_workflow_not_found(self, bedrock):
+        """StartAutomatedReasoningPolicyBuildWorkflow with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.start_automated_reasoning_policy_build_workflow(
+                policyArn=self._FAKE_POLICY_ARN,
+                buildWorkflowType="INGEST_CONTENT",
+                sourceContent={
+                    "policyDefinition": {
+                        "version": "1.0",
+                        "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+                    }
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_automated_reasoning_policy_test_workflow_not_found(self, bedrock):
+        """StartAutomatedReasoningPolicyTestWorkflow with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.start_automated_reasoning_policy_test_workflow(
+                policyArn=self._FAKE_POLICY_ARN,
+                buildWorkflowId="fake-workflow-id",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_automated_reasoning_policy_build_workflow_not_found(self, bedrock):
+        """DeleteAutomatedReasoningPolicyBuildWorkflow with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_automated_reasoning_policy_build_workflow(
+                policyArn=self._FAKE_POLICY_ARN,
+                buildWorkflowId="fake-workflow-id",
+                lastUpdatedAt=datetime.datetime(2024, 1, 1),
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_automated_reasoning_policy_test_case_not_found(self, bedrock):
+        """DeleteAutomatedReasoningPolicyTestCase with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_automated_reasoning_policy_test_case(
+                policyArn=self._FAKE_POLICY_ARN,
+                testCaseId="fake-test-case-id",
+                lastUpdatedAt=datetime.datetime(2024, 1, 1),
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_automated_reasoning_policy_test_case_not_found(self, bedrock):
+        """CreateAutomatedReasoningPolicyTestCase with fake policy raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.create_automated_reasoning_policy_test_case(
+                policyArn=self._FAKE_POLICY_ARN,
+                guardContent="test guard content string",
+                expectedAggregatedFindingsResult="PASS",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_automated_reasoning_policy_test_case_not_found(self, bedrock):
+        """UpdateAutomatedReasoningPolicyTestCase with fake policy raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.update_automated_reasoning_policy_test_case(
+                policyArn=self._FAKE_POLICY_ARN,
+                testCaseId="fake-test-case-id",
+                guardContent="updated content",
+                lastUpdatedAt=datetime.datetime(2024, 1, 1),
+                expectedAggregatedFindingsResult="FAIL",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_export_automated_reasoning_policy_version_not_found(self, bedrock):
+        """ExportAutomatedReasoningPolicyVersion with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.export_automated_reasoning_policy_version(
+                policyArn=self._FAKE_POLICY_ARN,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_automated_reasoning_policy_not_found(self, bedrock):
+        """DeleteAutomatedReasoningPolicy with fake ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_automated_reasoning_policy(policyArn=self._FAKE_POLICY_ARN)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockCustomModelDeploymentCRUD:
+    """Tests for custom model deployment create/update/delete operations."""
+
+    def test_create_custom_model_deployment(self, bedrock):
+        """CreateCustomModelDeployment returns a deployment ARN."""
+        name = _unique("deploy")
+        r = bedrock.create_custom_model_deployment(
+            modelDeploymentName=name,
+            modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model",
+        )
+        assert "customModelDeploymentArn" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_custom_model_deployment_not_found(self, bedrock):
+        """DeleteCustomModelDeployment with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_custom_model_deployment(
+                customModelDeploymentIdentifier="nonexistent-deployment"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_custom_model_deployment_not_found(self, bedrock):
+        """UpdateCustomModelDeployment with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.update_custom_model_deployment(
+                modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model",
+                customModelDeploymentIdentifier="nonexistent-deployment",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockFoundationModelAgreementOps:
+    """Tests for foundation model agreement operations."""
+
+    def test_create_foundation_model_agreement(self, bedrock):
+        """CreateFoundationModelAgreement returns modelId."""
+        r = bedrock.create_foundation_model_agreement(
+            offerToken="test-offer-token",
+            modelId="anthropic.claude-v2",
+        )
+        assert r["modelId"] == "anthropic.claude-v2"
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_foundation_model_agreement(self, bedrock):
+        """DeleteFoundationModelAgreement returns 200."""
+        r = bedrock.delete_foundation_model_agreement(modelId="anthropic.claude-v2")
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockEnforcedGuardrailConfigOps:
+    """Tests for enforced guardrail configuration operations."""
+
+    def test_delete_enforced_guardrail_configuration(self, bedrock):
+        """DeleteEnforcedGuardrailConfiguration returns 200."""
+        r = bedrock.delete_enforced_guardrail_configuration(configId="test-config")
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_enforced_guardrail_configuration(self, bedrock):
+        """PutEnforcedGuardrailConfiguration returns configId."""
+        r = bedrock.put_enforced_guardrail_configuration(
+            guardrailInferenceConfig={
+                "guardrailIdentifier": "test-guardrail-id",
+                "guardrailVersion": "1",
+                "inputTags": '{"source": "user"}',
+            },
+        )
+        assert "configId" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockUseCaseOps:
+    """Tests for use case for model access operations."""
+
+    def test_put_use_case_for_model_access(self, bedrock):
+        """PutUseCaseForModelAccess returns 200."""
+        r = bedrock.put_use_case_for_model_access(formData=b"use_case=testing")
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
