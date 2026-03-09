@@ -1352,3 +1352,214 @@ class TestQuickSightTopicOperations:
             )
         err_str = str(exc_info.value)
         assert "ResourceNotFoundException" in err_str or "InvalidParameterValue" in err_str
+
+
+class TestQuickSightListOpsExtended:
+    """Additional List operations returning empty lists."""
+
+    def test_list_action_connectors(self, quicksight):
+        resp = quicksight.list_action_connectors(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_list_brands(self, quicksight):
+        resp = quicksight.list_brands(AwsAccountId=ACCOUNT_ID)
+        assert "Brands" in resp
+
+    def test_list_custom_permissions(self, quicksight):
+        resp = quicksight.list_custom_permissions(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert isinstance(resp["CustomPermissionsList"], list)
+
+    def test_list_flows(self, quicksight):
+        resp = quicksight.list_flows(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_list_identity_propagation_configs(self, quicksight):
+        resp = quicksight.list_identity_propagation_configs(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert isinstance(resp["Services"], list)
+
+    def test_list_refresh_schedules(self, quicksight):
+        resp = quicksight.list_refresh_schedules(AwsAccountId=ACCOUNT_ID, DataSetId="fake")
+        assert resp["Status"] == 200
+        assert isinstance(resp["RefreshSchedules"], list)
+
+    def test_list_role_memberships(self, quicksight):
+        resp = quicksight.list_role_memberships(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, Role="ADMIN"
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["MembersList"], list)
+
+    def test_list_self_upgrades(self, quicksight):
+        resp = quicksight.list_self_upgrades(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_list_topic_refresh_schedules_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.list_topic_refresh_schedules(AwsAccountId=ACCOUNT_ID, TopicId="fake")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_list_topic_reviewed_answers_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.list_topic_reviewed_answers(AwsAccountId=ACCOUNT_ID, TopicId="fake")
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightDescribeOpsExtended:
+    """Additional Describe operations with fake/nonexistent IDs."""
+
+    def test_describe_account_custom_permission(self, quicksight):
+        resp = quicksight.describe_account_custom_permission(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_action_connector(self, quicksight):
+        resp = quicksight.describe_action_connector(
+            AwsAccountId=ACCOUNT_ID, ActionConnectorId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_action_connector_permissions(self, quicksight):
+        resp = quicksight.describe_action_connector_permissions(
+            AwsAccountId=ACCOUNT_ID, ActionConnectorId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_asset_bundle_export_job(self, quicksight):
+        resp = quicksight.describe_asset_bundle_export_job(
+            AwsAccountId=ACCOUNT_ID, AssetBundleExportJobId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "JobStatus" in resp
+
+    def test_describe_asset_bundle_import_job(self, quicksight):
+        resp = quicksight.describe_asset_bundle_import_job(
+            AwsAccountId=ACCOUNT_ID, AssetBundleImportJobId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "JobStatus" in resp
+
+    def test_describe_brand(self, quicksight):
+        resp = quicksight.describe_brand(AwsAccountId=ACCOUNT_ID, BrandId="fake")
+        assert "RequestId" in resp
+
+    def test_describe_brand_assignment(self, quicksight):
+        resp = quicksight.describe_brand_assignment(AwsAccountId=ACCOUNT_ID)
+        assert "RequestId" in resp
+
+    def test_describe_brand_published_version(self, quicksight):
+        resp = quicksight.describe_brand_published_version(AwsAccountId=ACCOUNT_ID, BrandId="fake")
+        assert "RequestId" in resp
+
+    def test_describe_custom_permissions(self, quicksight):
+        resp = quicksight.describe_custom_permissions(
+            AwsAccountId=ACCOUNT_ID, CustomPermissionsName="fake"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_dashboard_snapshot_job(self, quicksight):
+        resp = quicksight.describe_dashboard_snapshot_job(
+            AwsAccountId=ACCOUNT_ID, DashboardId="fake", SnapshotJobId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "JobStatus" in resp
+
+    def test_describe_dashboards_qa_configuration(self, quicksight):
+        resp = quicksight.describe_dashboards_qa_configuration(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_data_set_refresh_properties(self, quicksight):
+        resp = quicksight.describe_data_set_refresh_properties(
+            AwsAccountId=ACCOUNT_ID, DataSetId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_default_q_business_application(self, quicksight):
+        resp = quicksight.describe_default_q_business_application(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_key_registration(self, quicksight):
+        resp = quicksight.describe_key_registration(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert isinstance(resp["KeyRegistration"], list)
+
+    def test_describe_q_personalization_configuration(self, quicksight):
+        resp = quicksight.describe_q_personalization_configuration(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "PersonalizationMode" in resp
+
+    def test_describe_quick_sight_q_search_configuration(self, quicksight):
+        resp = quicksight.describe_quick_sight_q_search_configuration(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "QSearchStatus" in resp
+
+    def test_describe_refresh_schedule_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.describe_refresh_schedule(
+                AwsAccountId=ACCOUNT_ID, DataSetId="fake", ScheduleId="fake"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_describe_role_custom_permission(self, quicksight):
+        resp = quicksight.describe_role_custom_permission(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, Role="ADMIN"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_self_upgrade_configuration(self, quicksight):
+        resp = quicksight.describe_self_upgrade_configuration(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_topic_refresh(self, quicksight):
+        resp = quicksight.describe_topic_refresh(
+            AwsAccountId=ACCOUNT_ID, TopicId="fake", RefreshId="fake"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_describe_topic_refresh_schedule_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.describe_topic_refresh_schedule(
+                AwsAccountId=ACCOUNT_ID, TopicId="fake", DatasetId="fake"
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
+class TestQuickSightGetOps:
+    """Test Get operations."""
+
+    def test_get_dashboard_embed_url(self, quicksight):
+        resp = quicksight.get_dashboard_embed_url(
+            AwsAccountId=ACCOUNT_ID, DashboardId="fake", IdentityType="ANONYMOUS"
+        )
+        assert resp["Status"] == 200
+        assert "EmbedUrl" in resp
+
+    def test_get_session_embed_url(self, quicksight):
+        resp = quicksight.get_session_embed_url(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        assert "EmbedUrl" in resp
+
+    def test_get_flow_metadata(self, quicksight):
+        resp = quicksight.get_flow_metadata(AwsAccountId=ACCOUNT_ID, FlowId="fake")
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_get_flow_permissions(self, quicksight):
+        resp = quicksight.get_flow_permissions(AwsAccountId=ACCOUNT_ID, FlowId="fake")
+        assert resp["Status"] == 200
+        assert isinstance(resp["Permissions"], list)
