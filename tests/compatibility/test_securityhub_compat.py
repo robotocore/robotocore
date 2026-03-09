@@ -720,3 +720,282 @@ class TestSecurityHubBatchUpdateFindings:
         )
         assert "ProcessedFindings" in resp
         assert len(resp["ProcessedFindings"]) >= 1
+
+
+class TestSecurityHubProducts:
+    """Tests for DescribeProducts and related operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_describe_products_returns_list(self, client):
+        """DescribeProducts returns a Products list."""
+        resp = client.describe_products()
+        assert "Products" in resp
+        assert isinstance(resp["Products"], list)
+
+    def test_describe_products_with_max_results(self, client):
+        """DescribeProducts accepts MaxResults parameter."""
+        resp = client.describe_products(MaxResults=5)
+        assert "Products" in resp
+        assert isinstance(resp["Products"], list)
+
+    def test_describe_products_v2_returns_list(self, client):
+        """DescribeProductsV2 returns a ProductsV2 list."""
+        resp = client.describe_products_v2()
+        assert "ProductsV2" in resp
+        assert isinstance(resp["ProductsV2"], list)
+
+
+class TestSecurityHubStandards:
+    """Tests for standards-related operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_describe_standards_returns_list(self, client):
+        """DescribeStandards returns Standards list."""
+        resp = client.describe_standards()
+        assert "Standards" in resp
+        assert isinstance(resp["Standards"], list)
+
+    def test_get_enabled_standards_returns_list(self, client):
+        """GetEnabledStandards returns StandardsSubscriptions list."""
+        resp = client.get_enabled_standards()
+        assert "StandardsSubscriptions" in resp
+        assert isinstance(resp["StandardsSubscriptions"], list)
+
+    def test_describe_standards_controls_nonexistent(self, client):
+        """DescribeStandardsControls raises error for nonexistent subscription."""
+        fake_arn = (
+            "arn:aws:securityhub:us-east-1:123456789012:"
+            "subscription/aws-foundational-security-best-practices/v/1.0.0"
+        )
+        with pytest.raises(ClientError) as exc:
+            client.describe_standards_controls(StandardsSubscriptionArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_standards_control_associations(self, client):
+        """ListStandardsControlAssociations returns associations list."""
+        resp = client.list_standards_control_associations(SecurityControlId="IAM.1")
+        assert "StandardsControlAssociationSummaries" in resp
+        assert isinstance(resp["StandardsControlAssociationSummaries"], list)
+
+
+class TestSecurityHubInsights:
+    """Tests for insights operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_get_insights_returns_list(self, client):
+        """GetInsights returns Insights list."""
+        resp = client.get_insights()
+        assert "Insights" in resp
+        assert isinstance(resp["Insights"], list)
+
+    def test_get_insight_results_nonexistent(self, client):
+        """GetInsightResults raises error for nonexistent insight."""
+        fake_arn = (
+            "arn:aws:securityhub:us-east-1:123456789012:insight/123456789012/custom/nonexistent"
+        )
+        with pytest.raises(ClientError) as exc:
+            client.get_insight_results(InsightArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSecurityHubInvitations:
+    """Tests for invitations operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_get_invitations_count(self, client):
+        """GetInvitationsCount returns an integer count."""
+        resp = client.get_invitations_count()
+        assert "InvitationsCount" in resp
+        assert isinstance(resp["InvitationsCount"], int)
+
+    def test_list_invitations_returns_list(self, client):
+        """ListInvitations returns Invitations list."""
+        resp = client.list_invitations()
+        assert "Invitations" in resp
+        assert isinstance(resp["Invitations"], list)
+
+
+class TestSecurityHubAutomationRules:
+    """Tests for automation rules operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_list_automation_rules_returns_list(self, client):
+        """ListAutomationRules returns AutomationRulesMetadata list."""
+        resp = client.list_automation_rules()
+        assert "AutomationRulesMetadata" in resp
+        assert isinstance(resp["AutomationRulesMetadata"], list)
+
+
+class TestSecurityHubConfigurationPolicies:
+    """Tests for configuration policy operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_list_configuration_policies_returns_list(self, client):
+        """ListConfigurationPolicies returns summaries list."""
+        resp = client.list_configuration_policies()
+        assert "ConfigurationPolicySummaries" in resp
+        assert isinstance(resp["ConfigurationPolicySummaries"], list)
+
+    def test_list_configuration_policy_associations_returns_list(self, client):
+        """ListConfigurationPolicyAssociations returns summaries list."""
+        resp = client.list_configuration_policy_associations()
+        assert "ConfigurationPolicyAssociationSummaries" in resp
+        assert isinstance(resp["ConfigurationPolicyAssociationSummaries"], list)
+
+    def test_get_configuration_policy_nonexistent(self, client):
+        """GetConfigurationPolicy raises error for nonexistent policy."""
+        with pytest.raises(ClientError) as exc:
+            client.get_configuration_policy(Identifier="fake-policy-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSecurityHubFindingAggregators:
+    """Tests for finding aggregator operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_list_finding_aggregators_returns_list(self, client):
+        """ListFindingAggregators returns FindingAggregators list."""
+        resp = client.list_finding_aggregators()
+        assert "FindingAggregators" in resp
+        assert isinstance(resp["FindingAggregators"], list)
+
+    def test_get_finding_aggregator_nonexistent(self, client):
+        """GetFindingAggregator raises error for nonexistent aggregator."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:finding-aggregator/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            client.get_finding_aggregator(FindingAggregatorArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSecurityHubAdminAccounts:
+    """Tests for organization admin account operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_list_organization_admin_accounts_returns_list(self, client):
+        """ListOrganizationAdminAccounts returns AdminAccounts list."""
+        resp = client.list_organization_admin_accounts()
+        assert "AdminAccounts" in resp
+        assert isinstance(resp["AdminAccounts"], list)
+
+
+class TestSecurityHubSecurityControls:
+    """Tests for security control definitions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_list_security_control_definitions_returns_list(self, client):
+        """ListSecurityControlDefinitions returns definitions list."""
+        resp = client.list_security_control_definitions()
+        assert "SecurityControlDefinitions" in resp
+        assert isinstance(resp["SecurityControlDefinitions"], list)
+
+    def test_get_security_control_definition(self, client):
+        """GetSecurityControlDefinition returns a definition for a known control."""
+        resp = client.get_security_control_definition(SecurityControlId="IAM.1")
+        assert "SecurityControlDefinition" in resp
+        defn = resp["SecurityControlDefinition"]
+        assert "SecurityControlId" in defn
+        assert defn["SecurityControlId"] == "IAM.1"
+
+
+class TestSecurityHubFindingHistory:
+    """Tests for finding history operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_get_finding_history_returns_records(self, client):
+        """GetFindingHistory returns Records list."""
+        resp = client.get_finding_history(
+            FindingIdentifier={
+                "Id": "nonexistent-finding",
+                "ProductArn": (
+                    "arn:aws:securityhub:us-east-1:123456789012:product/123456789012/default"
+                ),
+            }
+        )
+        assert "Records" in resp
+        assert isinstance(resp["Records"], list)
+
+
+class TestSecurityHubV2Operations:
+    """Tests for SecurityHub V2 API operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_get_findings_v2_returns_list(self, client):
+        """GetFindingsV2 returns Findings list."""
+        resp = client.get_findings_v2()
+        assert "Findings" in resp
+        assert isinstance(resp["Findings"], list)
+
+    def test_list_aggregators_v2_returns_list(self, client):
+        """ListAggregatorsV2 returns AggregatorsV2 list."""
+        resp = client.list_aggregators_v2()
+        assert "AggregatorsV2" in resp
+        assert isinstance(resp["AggregatorsV2"], list)
+
+    def test_list_connectors_v2_returns_list(self, client):
+        """ListConnectorsV2 returns Connectors list."""
+        resp = client.list_connectors_v2()
+        assert "Connectors" in resp
+        assert isinstance(resp["Connectors"], list)
+
+    def test_get_resources_v2_returns_list(self, client):
+        """GetResourcesV2 returns Resources list."""
+        resp = client.get_resources_v2()
+        assert "Resources" in resp
+        assert isinstance(resp["Resources"], list)
+
+    def test_describe_security_hub_v2_not_subscribed(self, client):
+        """DescribeSecurityHubV2 raises error when not subscribed."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_security_hub_v2()
+        assert exc.value.response["Error"]["Code"] == "InvalidAccessException"
+
+    def test_get_automation_rule_v2_nonexistent(self, client):
+        """GetAutomationRuleV2 raises error for nonexistent rule."""
+        with pytest.raises(ClientError) as exc:
+            client.get_automation_rule_v2(Identifier="fake-rule-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_connector_v2_nonexistent(self, client):
+        """GetConnectorV2 raises error for nonexistent connector."""
+        with pytest.raises(ClientError) as exc:
+            client.get_connector_v2(ConnectorId="fake-connector-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_automation_rules_v2_error(self, client):
+        """ListAutomationRulesV2 raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.list_automation_rules_v2()
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
