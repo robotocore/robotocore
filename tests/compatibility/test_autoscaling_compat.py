@@ -1105,3 +1105,227 @@ class TestAutoScalingStepScalingPolicy:
         policies = desc["ScalingPolicies"]
         assert len(policies) == 1
         assert len(policies[0]["StepAdjustments"]) == 2
+
+
+class TestAutoScalingDeleteNotificationConfiguration:
+    """Tests for DeleteNotificationConfiguration."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("delnot-lc")
+        self.asg_name = _unique("delnot-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_delete_notification_configuration(self, autoscaling):
+        """DeleteNotificationConfiguration removes a notification config."""
+        topic_arn = "arn:aws:sns:us-east-1:123456789012:del-notif-topic"
+        autoscaling.put_notification_configuration(
+            AutoScalingGroupName=self.asg_name,
+            TopicARN=topic_arn,
+            NotificationTypes=["autoscaling:EC2_INSTANCE_LAUNCH"],
+        )
+        resp = autoscaling.delete_notification_configuration(
+            AutoScalingGroupName=self.asg_name,
+            TopicARN=topic_arn,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it was removed
+        desc = autoscaling.describe_notification_configurations(
+            AutoScalingGroupNames=[self.asg_name],
+        )
+        found = [c for c in desc["NotificationConfigurations"] if c["TopicARN"] == topic_arn]
+        assert len(found) == 0
+
+
+class TestAutoScalingLoadBalancerAttachDetach:
+    """Tests for AttachLoadBalancers, DetachLoadBalancers,
+    AttachLoadBalancerTargetGroups, DetachLoadBalancerTargetGroups."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("lbad-lc")
+        self.asg_name = _unique("lbad-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=0,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_attach_load_balancers(self, autoscaling):
+        """AttachLoadBalancers attaches a classic LB to the ASG."""
+        resp = autoscaling.attach_load_balancers(
+            AutoScalingGroupName=self.asg_name,
+            LoadBalancerNames=["my-classic-lb"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_attach_and_detach_load_balancers(self, autoscaling):
+        """AttachLoadBalancers then DetachLoadBalancers with a real ELB name."""
+        elb = make_client("elb")
+        lb_name = _unique("clb")[:32]
+        elb.create_load_balancer(
+            LoadBalancerName=lb_name,
+            Listeners=[
+                {
+                    "Protocol": "HTTP",
+                    "LoadBalancerPort": 80,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 80,
+                }
+            ],
+            AvailabilityZones=["us-east-1a"],
+        )
+        try:
+            resp = autoscaling.attach_load_balancers(
+                AutoScalingGroupName=self.asg_name,
+                LoadBalancerNames=[lb_name],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            resp = autoscaling.detach_load_balancers(
+                AutoScalingGroupName=self.asg_name,
+                LoadBalancerNames=[lb_name],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            elb.delete_load_balancer(LoadBalancerName=lb_name)
+
+    def test_attach_and_detach_load_balancer_target_groups(self, autoscaling):
+        """AttachLoadBalancerTargetGroups then DetachLoadBalancerTargetGroups."""
+        elbv2 = make_client("elbv2")
+        ec2 = make_client("ec2")
+        # Create VPC and target group
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            tg = elbv2.create_target_group(
+                Name=_unique("tg")[:32],
+                Protocol="HTTP",
+                Port=80,
+                VpcId=vpc_id,
+            )
+            tg_arn = tg["TargetGroups"][0]["TargetGroupArn"]
+            try:
+                resp = autoscaling.attach_load_balancer_target_groups(
+                    AutoScalingGroupName=self.asg_name,
+                    TargetGroupARNs=[tg_arn],
+                )
+                assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+                resp = autoscaling.detach_load_balancer_target_groups(
+                    AutoScalingGroupName=self.asg_name,
+                    TargetGroupARNs=[tg_arn],
+                )
+                assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            finally:
+                elbv2.delete_target_group(TargetGroupArn=tg_arn)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestAutoScalingSetInstanceHealth:
+    """Tests for SetInstanceHealth."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("sih-lc")
+        self.asg_name = _unique("sih-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=1,
+            MaxSize=1,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        autoscaling.delete_auto_scaling_group(AutoScalingGroupName=self.asg_name, ForceDelete=True)
+        autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+
+    def test_set_instance_health(self, autoscaling):
+        """SetInstanceHealth marks an instance as Unhealthy."""
+        resp = autoscaling.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[self.asg_name],
+        )
+        instances = resp["AutoScalingGroups"][0]["Instances"]
+        assert len(instances) >= 1
+        instance_id = instances[0]["InstanceId"]
+        resp = autoscaling.set_instance_health(
+            InstanceId=instance_id,
+            HealthStatus="Unhealthy",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAutoScalingTerminateInstance:
+    """Tests for TerminateInstanceInAutoScalingGroup."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_asg(self, autoscaling):
+        self.lc_name = _unique("ti-lc")
+        self.asg_name = _unique("ti-asg")
+        autoscaling.create_launch_configuration(
+            LaunchConfigurationName=self.lc_name,
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+        )
+        autoscaling.create_auto_scaling_group(
+            AutoScalingGroupName=self.asg_name,
+            LaunchConfigurationName=self.lc_name,
+            MinSize=1,
+            MaxSize=2,
+            AvailabilityZones=["us-east-1a"],
+        )
+        yield
+        try:
+            autoscaling.delete_auto_scaling_group(
+                AutoScalingGroupName=self.asg_name, ForceDelete=True
+            )
+        except Exception:
+            pass
+        try:
+            autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
+        except Exception:
+            pass
+
+    def test_terminate_instance_in_auto_scaling_group(self, autoscaling):
+        """TerminateInstanceInAutoScalingGroup terminates an instance and returns Activity."""
+        resp = autoscaling.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[self.asg_name],
+        )
+        instances = resp["AutoScalingGroups"][0]["Instances"]
+        assert len(instances) >= 1
+        instance_id = instances[0]["InstanceId"]
+        resp = autoscaling.terminate_instance_in_auto_scaling_group(
+            InstanceId=instance_id,
+            ShouldDecrementDesiredCapacity=True,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Activity" in resp
+        assert resp["Activity"]["Cause"] is not None

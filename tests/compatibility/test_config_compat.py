@@ -930,6 +930,28 @@ class TestOrganizationConformancePack:
             )
         assert "NoSuchOrganizationConformancePackException" in exc.value.response["Error"]["Code"]
 
+    def test_put_organization_conformance_pack(self, client):
+        """PutOrganizationConformancePack creates a pack and returns an ARN."""
+        import uuid
+
+        name = f"org-cp-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = client.put_organization_conformance_pack(
+                OrganizationConformancePackName=name,
+                TemplateS3Uri="s3://fake-bucket/template.yaml",
+            )
+            assert "OrganizationConformancePackArn" in resp
+            assert name in resp["OrganizationConformancePackArn"]
+            # Verify it appears in describe
+            desc = client.describe_organization_conformance_packs(
+                OrganizationConformancePackNames=[name]
+            )
+            assert len(desc["OrganizationConformancePacks"]) == 1
+            pack = desc["OrganizationConformancePacks"][0]
+            assert pack["OrganizationConformancePackName"] == name
+        finally:
+            client.delete_organization_conformance_pack(OrganizationConformancePackName=name)
+
 
 class TestRetentionConfiguration:
     """Test RetentionConfiguration operations."""

@@ -710,3 +710,102 @@ class TestCloudTrailEventConfigurationOperations:
     def test_get_event_configuration(self, cloudtrail):
         resp = cloudtrail.get_event_configuration()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudTrailCreateTrailErrors:
+    """Tests for CreateTrail error cases."""
+
+    def test_create_trail_nonexistent_bucket(self, cloudtrail):
+        """create_trail with a nonexistent S3 bucket raises S3BucketDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.create_trail(
+                Name=_unique("ct-trail"),
+                S3BucketName="nonexistent-bucket-" + uuid.uuid4().hex[:8],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "S3BucketDoesNotExistException"
+
+
+class TestCloudTrailEventDataStoreAdvanced:
+    """Tests for EventDataStore with advanced options."""
+
+    def test_create_event_data_store_with_advanced_selectors(self, cloudtrail):
+        """CreateEventDataStore with AdvancedEventSelectors returns them."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(
+            Name=name,
+            AdvancedEventSelectors=[
+                {
+                    "Name": "management-events",
+                    "FieldSelectors": [{"Field": "eventCategory", "Equals": ["Management"]}],
+                }
+            ],
+        )
+        assert resp["Name"] == name
+        assert "AdvancedEventSelectors" in resp
+        assert len(resp["AdvancedEventSelectors"]) == 1
+        assert resp["AdvancedEventSelectors"][0]["Name"] == "management-events"
+
+    def test_create_event_data_store_organization_enabled(self, cloudtrail):
+        """CreateEventDataStore with OrganizationEnabled=True."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(Name=name, OrganizationEnabled=True)
+        assert resp["OrganizationEnabled"] is True
+
+    def test_create_event_data_store_termination_protection(self, cloudtrail):
+        """CreateEventDataStore with TerminationProtectionEnabled=True."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(Name=name, TerminationProtectionEnabled=True)
+        assert resp["TerminationProtectionEnabled"] is True
+
+    def test_get_event_data_store_advanced_selectors(self, cloudtrail):
+        """GetEventDataStore returns AdvancedEventSelectors that were set at creation."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(
+            Name=name,
+            AdvancedEventSelectors=[
+                {
+                    "Name": "data-events",
+                    "FieldSelectors": [{"Field": "eventCategory", "Equals": ["Data"]}],
+                }
+            ],
+        )
+        eds_arn = create_resp["EventDataStoreArn"]
+        get_resp = cloudtrail.get_event_data_store(EventDataStore=eds_arn)
+        assert len(get_resp["AdvancedEventSelectors"]) == 1
+        assert get_resp["AdvancedEventSelectors"][0]["Name"] == "data-events"
+
+
+class TestCloudTrailQueryAdvanced:
+    """Tests for query operations with additional assertions."""
+
+    def test_describe_query_has_query_string(self, cloudtrail):
+        """DescribeQuery returns the QueryString used to start the query."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_id = eds["EventDataStoreArn"].split("/")[-1]
+        stmt = f"SELECT * FROM {eds_id} LIMIT 1"
+        q = cloudtrail.start_query(QueryStatement=stmt)
+        qid = q["QueryId"]
+        desc = cloudtrail.describe_query(QueryId=qid)
+        assert desc["QueryId"] == qid
+        assert desc["QueryString"] == stmt
+
+    def test_get_query_results_has_statistics(self, cloudtrail):
+        """GetQueryResults returns QueryStatistics."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_id = eds["EventDataStoreArn"].split("/")[-1]
+        q = cloudtrail.start_query(QueryStatement=f"SELECT * FROM {eds_id} LIMIT 1")
+        qid = q["QueryId"]
+        resp = cloudtrail.get_query_results(QueryId=qid)
+        assert "QueryStatistics" in resp
+        assert "ResultsCount" in resp["QueryStatistics"]
+
+
+class TestCloudTrailDescribeTrailsEdgeCases:
+    """Tests for DescribeTrails edge cases."""
+
+    def test_describe_trails_nonexistent_name(self, cloudtrail):
+        """describe_trails with a nonexistent trail name returns empty list."""
+        resp = cloudtrail.describe_trails(
+            trailNameList=["nonexistent-trail-" + uuid.uuid4().hex[:8]]
+        )
+        assert resp["trailList"] == []
