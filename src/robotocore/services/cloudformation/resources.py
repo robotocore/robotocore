@@ -155,6 +155,15 @@ def _create_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
         except Exception:
             pass
 
+    # Apply versioning configuration if present
+    versioning_config = resource.properties.get("VersioningConfiguration")
+    if versioning_config:
+        try:
+            status = versioning_config.get("Status", "Suspended")
+            s3.put_bucket_versioning(name, status)
+        except Exception:
+            pass
+
     # Apply tags if present (Moto expects dict[str, str])
     bucket_tags = resource.properties.get("Tags", [])
     if bucket_tags:
@@ -2438,18 +2447,151 @@ def _delete_cfn_wait_condition(resource: CfnResource, region: str, account_id: s
 # --- CloudFormation::Stack (nested stacks) ---
 
 
+def _fetch_template_from_s3(template_url: str, account_id: str, region: str) -> str:
+    """Fetch a template body from an S3 URL by reading directly from the Moto backend."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(template_url)
+    path_parts = parsed.path.lstrip("/").split("/", 1)
+    if len(path_parts) == 2:
+        bucket, key = path_parts[0], path_parts[1]
+        try:
+            s3_backend = _moto_global_backend("s3", account_id)
+            obj = s3_backend.get_object(bucket, key)
+            return obj.value.decode("utf-8")
+        except Exception:
+            pass
+
+    import urllib.request
+
+    with urllib.request.urlopen(template_url) as resp:  # noqa: S310
+        return resp.read().decode("utf-8")
+
+
 def _create_cfn_stack(resource: CfnResource, region: str, account_id: str) -> None:
-    stack_id = (
-        f"arn:aws:cloudformation:{region}:{account_id}"
-        f":stack/nested-{uuid.uuid4().hex[:8]}/{uuid.uuid4()}"
+    from robotocore.services.cloudformation.engine import (
+        CfnStack,
+        build_dependency_order,
+        evaluate_conditions,
+        parse_template,
+        resolve_intrinsics,
     )
+    from robotocore.services.cloudformation.provider import _get_store
+
+    template_url = resource.properties.get("TemplateURL", "")
+    if not template_url:
+        resource.status = "CREATE_FAILED"
+        return
+
+    try:
+        template_body = _fetch_template_from_s3(template_url, account_id, region)
+    except Exception as exc:
+        resource.status = "CREATE_FAILED"
+        raise RuntimeError(f"Failed to fetch nested template from {template_url}: {exc}") from exc
+
+    nested_name = f"nested-{uuid.uuid4().hex[:8]}"
+    stack_id = f"arn:aws:cloudformation:{region}:{account_id}:stack/{nested_name}/{uuid.uuid4()}"
+
+    cfn_params = {}
+    raw_params = resource.properties.get("Parameters", {})
+    if isinstance(raw_params, dict):
+        for k, v in raw_params.items():
+            cfn_params[k] = str(v)
+
+    child_stack = CfnStack(
+        stack_id=stack_id,
+        stack_name=nested_name,
+        template_body=template_body,
+        parameters=cfn_params,
+    )
+
+    template = parse_template(template_body)
+
+    for pname, pdef in template.get("Parameters", {}).items():
+        if pname not in child_stack.parameters and "Default" in pdef:
+            child_stack.parameters[pname] = str(pdef["Default"])
+
+    child_stack.parameters["AWS::Region"] = region
+    child_stack.parameters["AWS::AccountId"] = account_id
+    child_stack.parameters["AWS::StackName"] = nested_name
+    child_stack.parameters["AWS::StackId"] = stack_id
+
+    resource_defs = template.get("Resources", {})
+    order = build_dependency_order(template)
+
+    conditions = evaluate_conditions(
+        template, child_stack.resources, child_stack.parameters, region, account_id
+    )
+    child_stack.parameters["__conditions__"] = conditions
+
+    store = _get_store(region)
+
+    for logical_id in order:
+        res_def = resource_defs[logical_id]
+        condition_name = res_def.get("Condition")
+        if condition_name and not conditions.get(condition_name, True):
+            continue
+
+        res_type = res_def["Type"]
+        raw_props = res_def.get("Properties", {})
+        resolved_props = resolve_intrinsics(
+            raw_props, child_stack.resources, child_stack.parameters, region, account_id
+        )
+
+        child_resource = CfnResource(
+            logical_id=logical_id,
+            resource_type=res_type,
+            properties=resolved_props,
+        )
+        create_resource(child_resource, region, account_id)
+        child_stack.resources[logical_id] = child_resource
+
+    for out_name, out_def in template.get("Outputs", {}).items():
+        condition_name = out_def.get("Condition")
+        if condition_name and not conditions.get(condition_name, True):
+            continue
+        value = resolve_intrinsics(
+            out_def.get("Value"),
+            child_stack.resources,
+            child_stack.parameters,
+            region,
+            account_id,
+        )
+        child_stack.outputs[out_name] = {
+            "OutputKey": out_name,
+            "OutputValue": str(value),
+            "Description": out_def.get("Description", ""),
+        }
+
+    child_stack.status = "CREATE_COMPLETE"
+    store.put_stack(child_stack)
+
     resource.physical_id = stack_id
     resource.attributes["StackId"] = stack_id
+    for out_name, out_data in child_stack.outputs.items():
+        resource.attributes[f"Outputs.{out_name}"] = out_data["OutputValue"]
     resource.status = "CREATE_COMPLETE"
 
 
 def _delete_cfn_stack(resource: CfnResource, region: str, account_id: str) -> None:
-    pass
+    if not resource.physical_id:
+        return
+
+    from robotocore.services.cloudformation.provider import _get_store
+
+    store = _get_store(region)
+    child_stack = store.get_stack(resource.physical_id)
+    if not child_stack:
+        return
+
+    for logical_id in reversed(list(child_stack.resources.keys())):
+        child_resource = child_stack.resources[logical_id]
+        try:
+            delete_resource(child_resource, region, account_id)
+        except Exception:
+            pass
+
+    child_stack.status = "DELETE_COMPLETE"
 
 
 # --- Cognito::UserPoolClient ---

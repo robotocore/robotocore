@@ -287,23 +287,50 @@ class TestLambdaAlias:
 
 class TestLambdaEventSourceMapping:
     def test_create_success(self):
-        mock = MagicMock()
-        mock.create_event_source_mapping.return_value = SimpleNamespace(uuid="esm-123")
-        with _mock_regional("lambda") as p:
-            p.return_value = mock
+        # The real handler uses native ESM store, not Moto. It generates a UUID.
+        import re
+
+        with (
+            patch(
+                "robotocore.services.cloudformation.resources._esm_lock",
+                new=__import__("threading").Lock(),
+                create=True,
+            ),
+            patch(
+                "robotocore.services.cloudformation.resources._esm_store",
+                new={},
+                create=True,
+            ),
+            patch(
+                "robotocore.services.lambda_.provider._esm_lock",
+                new=__import__("threading").Lock(),
+            ),
+            patch(
+                "robotocore.services.lambda_.provider._esm_store",
+                new={},
+            ),
+        ):
             res = _resource(
                 "AWS::Lambda::EventSourceMapping",
                 {"FunctionName": "fn1", "EventSourceArn": "arn:sqs:q"},
             )
             create_resource(res, REGION, ACCOUNT_ID)
-        assert res.physical_id == "esm-123"
+        # physical_id is a UUID
+        assert re.match(r"^[0-9a-f\-]{36}$", res.physical_id)
         assert res.status == "CREATE_COMPLETE"
 
-    def test_create_fallback(self):
-        mock = MagicMock()
-        mock.create_event_source_mapping.side_effect = Exception("nope")
-        with _mock_regional("lambda") as p:
-            p.return_value = mock
+    def test_create_with_defaults(self):
+        # Test with empty properties — should still succeed with UUID
+        with (
+            patch(
+                "robotocore.services.lambda_.provider._esm_lock",
+                new=__import__("threading").Lock(),
+            ),
+            patch(
+                "robotocore.services.lambda_.provider._esm_store",
+                new={},
+            ),
+        ):
             res = _resource("AWS::Lambda::EventSourceMapping", {})
             create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id is not None
@@ -1231,9 +1258,12 @@ class TestSsmDocument:
 
 class TestKinesisStream:
     def test_create(self):
-        mock = MagicMock()
-        with _mock_regional("kinesis") as p:
-            p.return_value = mock
+        # The real handler uses native Kinesis store, not Moto _moto_backend.
+        mock_store = MagicMock()
+        with patch(
+            "robotocore.services.kinesis.models._get_store",
+            return_value=mock_store,
+        ):
             res = _resource(
                 "AWS::Kinesis::Stream",
                 {"Name": "my-stream", "ShardCount": 2},
@@ -1241,7 +1271,7 @@ class TestKinesisStream:
             create_resource(res, REGION, ACCOUNT_ID)
         assert res.physical_id == "my-stream"
         assert "stream/my-stream" in res.attributes["Arn"]
-        mock.create_stream.assert_called_once_with("my-stream", 2)
+        mock_store.create_stream.assert_called_once_with("my-stream", 2, REGION, ACCOUNT_ID)
         assert res.status == "CREATE_COMPLETE"
 
     def test_delete(self):
@@ -1522,19 +1552,32 @@ class TestAcmCertificate:
 
 class TestCognitoUserPool:
     def test_create(self):
-        mock = MagicMock()
-        mock.create_user_pool.return_value = SimpleNamespace(
-            id="us-east-1_abc123",
-            arn="arn:aws:cognito-idp:us-east-1:999:userpool/us-east-1_abc123",
-        )
-        with _mock_regional("cognitoidp") as p:
-            p.return_value = mock
+        # The real handler uses the native Cognito store, not Moto.
+        # It generates a random pool ID like "us-east-1_<hex8>".
+        mock_store = MagicMock()
+        mock_store.pools = {}
+        mock_store.users = {}
+        mock_store.clients = {}
+        mock_store.groups = {}
+        mock_store.user_groups = {}
+        mock_store.lock = __import__("threading").Lock()
+        with (
+            patch(
+                "robotocore.services.cloudformation.resources._get_cognito_store",
+                return_value=mock_store,
+                create=True,
+            ),
+            patch(
+                "robotocore.services.cognito.provider._get_store",
+                return_value=mock_store,
+            ),
+        ):
             res = _resource(
                 "AWS::Cognito::UserPool",
                 {"UserPoolName": "my-pool"},
             )
             create_resource(res, REGION, ACCOUNT_ID)
-        assert res.physical_id == "us-east-1_abc123"
+        assert res.physical_id.startswith("us-east-1_")
         assert "userpool" in res.attributes["Arn"]
         assert res.status == "CREATE_COMPLETE"
 
@@ -1835,9 +1878,31 @@ class TestLambdaUrl:
 
 
 class TestCfnStack:
-    def test_create_nested(self):
+    def test_create_nested_no_template_url(self):
+        """Without TemplateURL, nested stack creation should fail."""
         res = _resource("AWS::CloudFormation::Stack", {})
         create_resource(res, REGION, ACCOUNT_ID)
+        assert res.status == "CREATE_FAILED"
+
+    def test_create_nested_with_template(self):
+        """With a TemplateURL and mocked S3 fetch, nested stack should succeed."""
+        import json
+
+        template = json.dumps({"AWSTemplateFormatVersion": "2010-09-09", "Resources": {}})
+        with (
+            patch(
+                "robotocore.services.cloudformation.resources._fetch_template_from_s3",
+                return_value=template,
+            ),
+            patch(
+                "robotocore.services.cloudformation.provider._get_store",
+            ),
+        ):
+            res = _resource(
+                "AWS::CloudFormation::Stack",
+                {"TemplateURL": "https://s3.amazonaws.com/bucket/template.json"},
+            )
+            create_resource(res, REGION, ACCOUNT_ID)
         assert "cloudformation" in res.physical_id
         assert "nested" in res.physical_id
         assert res.status == "CREATE_COMPLETE"
@@ -1999,7 +2064,7 @@ class TestEdgeCases:
             "AWS::IAM::UserToGroupAddition",
             "AWS::CloudFormation::WaitConditionHandle",
             "AWS::CloudFormation::WaitCondition",
-            "AWS::CloudFormation::Stack",
+            # AWS::CloudFormation::Stack requires TemplateURL — tested separately
             "AWS::Cognito::UserPoolClient",
             "AWS::Cognito::IdentityPool",
             "AWS::WAFv2::WebACL",
@@ -2015,8 +2080,17 @@ class TestEdgeCases:
             assert res.status == "CREATE_COMPLETE", f"{rtype} failed"
             assert res.physical_id is not None, f"{rtype} no physical_id"
 
-    def test_unknown_type_still_works(self):
+    def test_unknown_type_raises_value_error(self):
+        """Unsupported resource types (not Custom::) raise ValueError."""
+        import pytest
+
         res = _resource("AWS::Custom::Whatever", {})
+        with pytest.raises(ValueError, match="Unsupported CloudFormation resource type"):
+            create_resource(res, REGION, ACCOUNT_ID)
+
+    def test_custom_prefix_type_works(self):
+        """Custom:: prefix resources are handled as custom resources."""
+        res = _resource("Custom::MySpecialThing", {})
         create_resource(res, REGION, ACCOUNT_ID)
         assert res.status == "CREATE_COMPLETE"
 

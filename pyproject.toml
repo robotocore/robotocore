@@ -68,6 +68,9 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "iac: IaC integration tests (requires running server)",
+]
 
 [tool.uv.sources]
 moto = { git = "https://github.com/JackDanger/moto.git", branch = "master" }
