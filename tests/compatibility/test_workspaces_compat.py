@@ -227,3 +227,197 @@ class TestWorkSpacesDirectoryValidation:
                 WorkspaceCreationProperties={"EnableInternetAccess": True},
             )
         assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestWorkSpacesAccountOperations:
+    """Tests for WorkSpaces account-level operations."""
+
+    def test_describe_account(self, workspaces):
+        """DescribeAccount returns account info."""
+        resp = workspaces.describe_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DedicatedTenancySupport" in resp or "DedicatedTenancyManagementCidrRange" in resp
+
+    def test_describe_account_modifications(self, workspaces):
+        """DescribeAccountModifications returns list of modifications."""
+        resp = workspaces.describe_account_modifications()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccountModifications" in resp
+        assert isinstance(resp["AccountModifications"], list)
+
+
+class TestWorkSpacesBundleOperations:
+    """Tests for WorkSpaces bundle operations."""
+
+    def test_describe_workspace_bundles(self, workspaces):
+        """DescribeWorkspaceBundles returns available bundles."""
+        resp = workspaces.describe_workspace_bundles()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Bundles" in resp
+        assert isinstance(resp["Bundles"], list)
+
+
+class TestWorkSpacesIpGroupOperations:
+    """Tests for WorkSpaces IP group operations."""
+
+    def test_describe_ip_groups(self, workspaces):
+        """DescribeIpGroups returns IP groups (possibly empty)."""
+        resp = workspaces.describe_ip_groups()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Result" in resp
+        assert isinstance(resp["Result"], list)
+
+
+class TestWorkSpacesConnectionAliasOperations:
+    """Tests for WorkSpaces connection alias operations."""
+
+    def test_describe_connection_aliases(self, workspaces):
+        """DescribeConnectionAliases returns aliases (possibly empty)."""
+        resp = workspaces.describe_connection_aliases()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ConnectionAliases" in resp
+        assert isinstance(resp["ConnectionAliases"], list)
+
+
+class TestWorkSpacesPoolOperations:
+    """Tests for WorkSpaces pool operations."""
+
+    def test_describe_workspaces_pools(self, workspaces):
+        """DescribeWorkspacesPools returns pools (possibly empty)."""
+        resp = workspaces.describe_workspaces_pools()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "WorkspacesPools" in resp
+        assert isinstance(resp["WorkspacesPools"], list)
+
+
+class TestWorkSpacesConnectionStatusOperations:
+    """Tests for WorkSpaces connection status operations."""
+
+    def test_describe_workspaces_connection_status(self, workspaces):
+        """DescribeWorkspacesConnectionStatus returns status list."""
+        resp = workspaces.describe_workspaces_connection_status()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "WorkspacesConnectionStatus" in resp
+        assert isinstance(resp["WorkspacesConnectionStatus"], list)
+
+
+class TestWorkSpacesAccountLinkOperations:
+    """Tests for WorkSpaces account link operations."""
+
+    def test_list_account_links(self, workspaces):
+        """ListAccountLinks returns list of account links."""
+        resp = workspaces.list_account_links()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccountLinks" in resp
+        assert isinstance(resp["AccountLinks"], list)
+
+    def test_get_account_link_nonexistent(self, workspaces):
+        """GetAccountLink for nonexistent link raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.get_account_link(LinkId="al-nonexistent12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesManagementCidrOperations:
+    """Tests for WorkSpaces management CIDR operations."""
+
+    def test_list_available_management_cidr_ranges(self, workspaces):
+        """ListAvailableManagementCidrRanges returns CIDR ranges."""
+        resp = workspaces.list_available_management_cidr_ranges(
+            ManagementCidrRangeConstraint="10.0.0.0/8"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ManagementCidrRanges" in resp
+        assert isinstance(resp["ManagementCidrRanges"], list)
+
+
+class TestWorkSpacesApplicationOperations:
+    """Tests for WorkSpaces application operations."""
+
+    def test_describe_applications(self, workspaces):
+        """DescribeApplications returns list of applications."""
+        resp = workspaces.describe_applications()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Applications" in resp
+        assert isinstance(resp["Applications"], list)
+
+    def test_describe_application_associations(self, workspaces):
+        """DescribeApplicationAssociations returns associations for an app."""
+        resp = workspaces.describe_application_associations(
+            ApplicationId="wsa-fake12345",
+            AssociatedResourceTypes=["WORKSPACE"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+
+class TestWorkSpacesAssociationOperations:
+    """Tests for WorkSpaces association operations."""
+
+    def test_describe_bundle_associations(self, workspaces):
+        """DescribeBundleAssociations returns associations for a bundle."""
+        resp = workspaces.describe_bundle_associations(
+            BundleId="wsb-fake12345",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+    def test_describe_image_associations(self, workspaces):
+        """DescribeImageAssociations returns associations for an image."""
+        resp = workspaces.describe_image_associations(
+            ImageId="wsi-fake12345",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+    def test_describe_workspace_associations(self, workspaces):
+        """DescribeWorkspaceAssociations returns associations for a workspace."""
+        resp = workspaces.describe_workspace_associations(
+            WorkspaceId="ws-fake12345",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
+
+
+class TestWorkSpacesConnectClientAddIns:
+    """Tests for WorkSpaces Connect Client Add-Ins operations."""
+
+    def test_describe_connect_client_add_ins(self, workspaces):
+        """DescribeConnectClientAddIns returns add-ins for a directory."""
+        resp = workspaces.describe_connect_client_add_ins(ResourceId="d-0000000000")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AddIns" in resp
+        assert isinstance(resp["AddIns"], list)
+
+
+class TestWorkSpacesSnapshotOperations:
+    """Tests for WorkSpaces snapshot operations."""
+
+    def test_describe_workspace_snapshots_nonexistent(self, workspaces):
+        """DescribeWorkspaceSnapshots for nonexistent workspace raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_workspace_snapshots(WorkspaceId="ws-fake12345abc")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesPoolSessionOperations:
+    """Tests for WorkSpaces pool session operations."""
+
+    def test_describe_workspaces_pool_sessions_nonexistent(self, workspaces):
+        """DescribeWorkspacesPoolSessions for nonexistent pool raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.describe_workspaces_pool_sessions(PoolId="wspool-fake12345")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
