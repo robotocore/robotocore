@@ -7,6 +7,13 @@ import pytest
 
 from tests.compatibility.conftest import make_client
 
+APPROVAL_RULE_CONTENT = (
+    '{"Version": "2018-11-08", "Statements": [{"Type": "Approvers", "NumberOfApprovalsNeeded": 1}]}'
+)
+APPROVAL_RULE_CONTENT_2 = (
+    '{"Version": "2018-11-08", "Statements": [{"Type": "Approvers", "NumberOfApprovalsNeeded": 2}]}'
+)
+
 
 @pytest.fixture
 def codecommit():
@@ -15,6 +22,38 @@ def codecommit():
 
 def _unique(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _create_repo_with_commit(cc, name=None):
+    """Helper: create a repo with an initial commit on 'main'. Returns (name, commit_id)."""
+    if name is None:
+        name = _unique("repo")
+    cc.create_repository(repositoryName=name)
+    resp = cc.create_commit(
+        repositoryName=name,
+        branchName="main",
+        putFiles=[{"filePath": "README.md", "fileContent": b"Hello World"}],
+        authorName="test",
+        email="test@test.com",
+        commitMessage="Initial commit",
+    )
+    return name, resp["commitId"]
+
+
+def _create_repo_with_feature_branch(cc, name=None):
+    """Create repo with main + feature branch."""
+    name, main_commit = _create_repo_with_commit(cc, name)
+    cc.create_branch(repositoryName=name, branchName="feature", commitId=main_commit)
+    resp = cc.create_commit(
+        repositoryName=name,
+        branchName="feature",
+        putFiles=[{"filePath": "feature.txt", "fileContent": b"Feature work"}],
+        authorName="test",
+        email="test@test.com",
+        commitMessage="Feature commit",
+        parentCommitId=main_commit,
+    )
+    return name, main_commit, resp["commitId"]
 
 
 class TestCodeCommitRepositoryOperations:
@@ -145,3 +184,79 @@ class TestCodeCommitRepositoryOperations:
         finally:
             codecommit.delete_repository(repositoryName=name1)
             codecommit.delete_repository(repositoryName=name2)
+
+    def test_list_repositories(self, codecommit):
+        """ListRepositories returns created repos."""
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.list_repositories()
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "repositories" in resp
+            names = [r["repositoryName"] for r in resp["repositories"]]
+            assert name in names
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_batch_get_repositories(self, codecommit):
+        """BatchGetRepositories returns metadata for requested repos."""
+        name1 = _unique("repo")
+        name2 = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name1)
+            codecommit.create_repository(repositoryName=name2)
+            resp = codecommit.batch_get_repositories(repositoryNames=[name1, name2])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert len(resp["repositories"]) == 2
+            returned_names = {r["repositoryName"] for r in resp["repositories"]}
+            assert name1 in returned_names
+            assert name2 in returned_names
+        finally:
+            codecommit.delete_repository(repositoryName=name1)
+            codecommit.delete_repository(repositoryName=name2)
+
+    def test_batch_get_repositories_not_found(self, codecommit):
+        """BatchGetRepositories returns repositoriesNotFound for missing repos."""
+        resp = codecommit.batch_get_repositories(repositoryNames=[_unique("nonexistent")])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert len(resp["repositoriesNotFound"]) == 1
+
+    def test_update_repository_description(self, codecommit):
+        """UpdateRepositoryDescription changes the description."""
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            codecommit.update_repository_description(
+                repositoryName=name, repositoryDescription="new desc"
+            )
+            resp = codecommit.get_repository(repositoryName=name)
+            assert resp["repositoryMetadata"]["repositoryDescription"] == "new desc"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_update_repository_name(self, codecommit):
+        """UpdateRepositoryName renames the repository."""
+        old_name = _unique("repo")
+        new_name = _unique("repo-renamed")
+        try:
+            codecommit.create_repository(repositoryName=old_name)
+            codecommit.update_repository_name(oldName=old_name, newName=new_name)
+            resp = codecommit.get_repository(repositoryName=new_name)
+            assert resp["repositoryMetadata"]["repositoryName"] == new_name
+            with pytest.raises(botocore.exceptions.ClientError):
+                codecommit.get_repository(repositoryName=old_name)
+        finally:
+            codecommit.delete_repository(repositoryName=new_name)
+
+    def test_update_repository_encryption_key(self, codecommit):
+        """UpdateRepositoryEncryptionKey completes without error."""
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.update_repository_encryption_key(
+                repositoryName=name,
+                kmsKeyId="arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codecommit.delete_repository(repositoryName=name)

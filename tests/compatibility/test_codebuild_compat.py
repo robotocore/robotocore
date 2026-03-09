@@ -515,3 +515,599 @@ class TestCodeBuildBatchGetBuilds:
             assert build_id in resp.get("ids", [])
         finally:
             codebuild.delete_project(name=name)
+
+
+class TestCodeBuildReportGroupOperations:
+    """Tests for CodeBuild report group CRUD operations."""
+
+    def test_create_report_group(self, codebuild):
+        """CreateReportGroup creates a report group and returns its details."""
+        name = _unique("rg")
+        try:
+            resp = codebuild.create_report_group(
+                name=name,
+                type="TEST",
+                exportConfig={"exportConfigType": "NO_EXPORT"},
+            )
+            rg = resp["reportGroup"]
+            assert rg["name"] == name
+            assert rg["type"] == "TEST"
+            assert rg["arn"].endswith(f"report-group/{name}")
+        finally:
+            codebuild.delete_report_group(
+                arn=f"arn:aws:codebuild:us-east-1:123456789012:report-group/{name}"
+            )
+
+    def test_list_report_groups(self, codebuild):
+        """ListReportGroups returns ARNs of created report groups."""
+        name = _unique("rg")
+        try:
+            codebuild.create_report_group(
+                name=name,
+                type="TEST",
+                exportConfig={"exportConfigType": "NO_EXPORT"},
+            )
+            resp = codebuild.list_report_groups()
+            arns = resp["reportGroups"]
+            assert isinstance(arns, list)
+            matching = [a for a in arns if name in a]
+            assert len(matching) == 1
+        finally:
+            codebuild.delete_report_group(
+                arn=f"arn:aws:codebuild:us-east-1:123456789012:report-group/{name}"
+            )
+
+    def test_batch_get_report_groups(self, codebuild):
+        """BatchGetReportGroups returns details for report groups."""
+        name = _unique("rg")
+        arn = f"arn:aws:codebuild:us-east-1:123456789012:report-group/{name}"
+        try:
+            codebuild.create_report_group(
+                name=name,
+                type="TEST",
+                exportConfig={"exportConfigType": "NO_EXPORT"},
+            )
+            resp = codebuild.batch_get_report_groups(reportGroupArns=[arn])
+            assert len(resp["reportGroups"]) == 1
+            assert resp["reportGroups"][0]["name"] == name
+        finally:
+            codebuild.delete_report_group(arn=arn)
+
+    def test_update_report_group(self, codebuild):
+        """UpdateReportGroup modifies a report group."""
+        name = _unique("rg")
+        arn = f"arn:aws:codebuild:us-east-1:123456789012:report-group/{name}"
+        try:
+            codebuild.create_report_group(
+                name=name,
+                type="TEST",
+                exportConfig={"exportConfigType": "NO_EXPORT"},
+            )
+            resp = codebuild.update_report_group(
+                arn=arn,
+                exportConfig={"exportConfigType": "NO_EXPORT"},
+            )
+            assert resp["reportGroup"]["arn"] == arn
+        finally:
+            codebuild.delete_report_group(arn=arn)
+
+    def test_delete_report_group(self, codebuild):
+        """DeleteReportGroup removes a report group."""
+        name = _unique("rg")
+        arn = f"arn:aws:codebuild:us-east-1:123456789012:report-group/{name}"
+        codebuild.create_report_group(
+            name=name,
+            type="TEST",
+            exportConfig={"exportConfigType": "NO_EXPORT"},
+        )
+        resp = codebuild.delete_report_group(arn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        groups = codebuild.list_report_groups()["reportGroups"]
+        assert arn not in groups
+
+    def test_batch_get_report_groups_nonexistent(self, codebuild):
+        """BatchGetReportGroups with nonexistent ARN returns empty."""
+        resp = codebuild.batch_get_report_groups(
+            reportGroupArns=["arn:aws:codebuild:us-east-1:123456789012:report-group/nonexistent"]
+        )
+        assert resp["reportGroups"] == []
+
+
+class TestCodeBuildSourceCredentialOperations:
+    """Tests for CodeBuild source credential operations."""
+
+    def test_import_source_credentials(self, codebuild):
+        """ImportSourceCredentials stores credentials and returns ARN."""
+        try:
+            resp = codebuild.import_source_credentials(
+                token="ghp_faketoken123",
+                serverType="GITHUB",
+                authType="PERSONAL_ACCESS_TOKEN",
+                shouldOverwrite=True,
+            )
+            assert "arn" in resp
+            assert "codebuild" in resp["arn"]
+        finally:
+            try:
+                codebuild.delete_source_credentials(arn=resp["arn"])
+            except Exception:
+                pass
+
+    def test_list_source_credentials(self, codebuild):
+        """ListSourceCredentials returns stored credentials info."""
+        try:
+            imp = codebuild.import_source_credentials(
+                token="ghp_listtest123",
+                serverType="GITHUB",
+                authType="PERSONAL_ACCESS_TOKEN",
+                shouldOverwrite=True,
+            )
+            resp = codebuild.list_source_credentials()
+            infos = resp["sourceCredentialsInfos"]
+            assert isinstance(infos, list)
+            assert len(infos) >= 1
+            github_creds = [i for i in infos if i["serverType"] == "GITHUB"]
+            assert len(github_creds) >= 1
+        finally:
+            try:
+                codebuild.delete_source_credentials(arn=imp["arn"])
+            except Exception:
+                pass
+
+    def test_delete_source_credentials(self, codebuild):
+        """DeleteSourceCredentials removes stored credentials."""
+        imp = codebuild.import_source_credentials(
+            token="ghp_deltest123",
+            serverType="BITBUCKET",
+            authType="BASIC_AUTH",
+            username="testuser",
+        )
+        arn = imp["arn"]
+        resp = codebuild.delete_source_credentials(arn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCodeBuildWebhookOperations:
+    """Tests for CodeBuild webhook operations."""
+
+    def _create_github_project(self, codebuild):
+        name = _unique("wh-proj")
+        codebuild.create_project(
+            name=name,
+            source={"type": "GITHUB", "location": "https://github.com/test/repo.git"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+        )
+        return name
+
+    def test_create_webhook(self, codebuild):
+        """CreateWebhook creates a webhook for a project."""
+        name = self._create_github_project(codebuild)
+        try:
+            resp = codebuild.create_webhook(projectName=name)
+            wh = resp["webhook"]
+            assert "url" in wh
+            assert "payloadUrl" in wh or "url" in wh
+        finally:
+            try:
+                codebuild.delete_webhook(projectName=name)
+            except Exception:
+                pass
+            codebuild.delete_project(name=name)
+
+    def test_delete_webhook(self, codebuild):
+        """DeleteWebhook removes the webhook from a project."""
+        name = self._create_github_project(codebuild)
+        try:
+            codebuild.create_webhook(projectName=name)
+            resp = codebuild.delete_webhook(projectName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_update_webhook(self, codebuild):
+        """UpdateWebhook modifies a project webhook."""
+        name = self._create_github_project(codebuild)
+        try:
+            codebuild.create_webhook(projectName=name)
+            resp = codebuild.update_webhook(projectName=name, rotateSecret=True)
+            assert "webhook" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                codebuild.delete_webhook(projectName=name)
+            except Exception:
+                pass
+            codebuild.delete_project(name=name)
+
+
+class TestCodeBuildFleetOperations:
+    """Tests for CodeBuild fleet operations."""
+
+    def test_create_fleet(self, codebuild):
+        """CreateFleet creates a fleet and returns its details."""
+        name = _unique("fleet")
+        fleet_arn = None
+        try:
+            resp = codebuild.create_fleet(
+                name=name,
+                baseCapacity=1,
+                environmentType="LINUX_CONTAINER",
+                computeType="BUILD_GENERAL1_SMALL",
+            )
+            fleet = resp["fleet"]
+            fleet_arn = fleet["arn"]
+            assert fleet["name"] == name
+            assert fleet["baseCapacity"] == 1
+            assert "arn" in fleet
+        finally:
+            if fleet_arn:
+                codebuild.delete_fleet(arn=fleet_arn)
+
+    def test_list_fleets(self, codebuild):
+        """ListFleets returns ARNs of created fleets."""
+        name = _unique("fleet")
+        fleet_arn = None
+        try:
+            r = codebuild.create_fleet(
+                name=name,
+                baseCapacity=1,
+                environmentType="LINUX_CONTAINER",
+                computeType="BUILD_GENERAL1_SMALL",
+            )
+            fleet_arn = r["fleet"]["arn"]
+            resp = codebuild.list_fleets()
+            assert isinstance(resp["fleets"], list)
+            assert fleet_arn in resp["fleets"]
+        finally:
+            if fleet_arn:
+                codebuild.delete_fleet(arn=fleet_arn)
+
+    def test_batch_get_fleets(self, codebuild):
+        """BatchGetFleets returns details for given fleet names."""
+        name = _unique("fleet")
+        fleet_arn = None
+        try:
+            r = codebuild.create_fleet(
+                name=name,
+                baseCapacity=1,
+                environmentType="LINUX_CONTAINER",
+                computeType="BUILD_GENERAL1_SMALL",
+            )
+            fleet_arn = r["fleet"]["arn"]
+            resp = codebuild.batch_get_fleets(names=[name])
+            assert len(resp["fleets"]) == 1
+            assert resp["fleets"][0]["name"] == name
+        finally:
+            if fleet_arn:
+                codebuild.delete_fleet(arn=fleet_arn)
+
+    def test_delete_fleet(self, codebuild):
+        """DeleteFleet removes a fleet."""
+        name = _unique("fleet")
+        r = codebuild.create_fleet(
+            name=name,
+            baseCapacity=1,
+            environmentType="LINUX_CONTAINER",
+            computeType="BUILD_GENERAL1_SMALL",
+        )
+        fleet_arn = r["fleet"]["arn"]
+        resp = codebuild.delete_fleet(arn=fleet_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify gone
+        fleets = codebuild.list_fleets()["fleets"]
+        assert fleet_arn not in fleets
+
+    def test_update_fleet(self, codebuild):
+        """UpdateFleet modifies fleet settings."""
+        name = _unique("fleet")
+        fleet_arn = None
+        try:
+            r = codebuild.create_fleet(
+                name=name,
+                baseCapacity=1,
+                environmentType="LINUX_CONTAINER",
+                computeType="BUILD_GENERAL1_SMALL",
+            )
+            fleet_arn = r["fleet"]["arn"]
+            resp = codebuild.update_fleet(arn=fleet_arn, baseCapacity=2)
+            assert resp["fleet"]["baseCapacity"] == 2
+        finally:
+            if fleet_arn:
+                codebuild.delete_fleet(arn=fleet_arn)
+
+
+class TestCodeBuildResourcePolicyOperations:
+    """Tests for CodeBuild resource policy operations."""
+
+    def test_put_resource_policy(self, codebuild):
+        """PutResourcePolicy sets a policy on a resource."""
+        resource_arn = "arn:aws:codebuild:us-east-1:123456789012:report-group/policy-test"
+        try:
+            resp = codebuild.put_resource_policy(
+                policy='{"Version":"2012-10-17","Statement":[]}',
+                resourceArn=resource_arn,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "resourceArn" in resp
+        finally:
+            try:
+                codebuild.delete_resource_policy(resourceArn=resource_arn)
+            except Exception:
+                pass
+
+    def test_get_resource_policy(self, codebuild):
+        """GetResourcePolicy retrieves a resource policy."""
+        resource_arn = "arn:aws:codebuild:us-east-1:123456789012:report-group/get-policy-test"
+        try:
+            codebuild.put_resource_policy(
+                policy='{"Version":"2012-10-17","Statement":[]}',
+                resourceArn=resource_arn,
+            )
+            resp = codebuild.get_resource_policy(resourceArn=resource_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "policy" in resp
+        finally:
+            try:
+                codebuild.delete_resource_policy(resourceArn=resource_arn)
+            except Exception:
+                pass
+
+    def test_delete_resource_policy(self, codebuild):
+        """DeleteResourcePolicy removes a resource policy."""
+        resource_arn = "arn:aws:codebuild:us-east-1:123456789012:report-group/del-policy-test"
+        codebuild.put_resource_policy(
+            policy='{"Version":"2012-10-17","Statement":[]}',
+            resourceArn=resource_arn,
+        )
+        resp = codebuild.delete_resource_policy(resourceArn=resource_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCodeBuildMiscOperations:
+    """Tests for miscellaneous CodeBuild operations."""
+
+    def _create_project(self, codebuild):
+        name = _unique("project")
+        codebuild.create_project(
+            name=name,
+            source={"type": "S3", "location": "my-bucket/source.zip"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+        )
+        return name
+
+    def test_invalidate_project_cache(self, codebuild):
+        """InvalidateProjectCache succeeds for a project."""
+        name = self._create_project(codebuild)
+        try:
+            resp = codebuild.invalidate_project_cache(projectName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_batch_delete_builds(self, codebuild):
+        """BatchDeleteBuilds removes builds and returns deleted IDs."""
+        name = self._create_project(codebuild)
+        try:
+            b = codebuild.start_build(projectName=name)
+            build_id = b["build"]["id"]
+            resp = codebuild.batch_delete_builds(ids=[build_id])
+            assert build_id in resp.get("buildsDeleted", [])
+            assert resp.get("buildsNotDeleted", []) == []
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_update_project(self, codebuild):
+        """UpdateProject modifies project settings."""
+        name = self._create_project(codebuild)
+        try:
+            resp = codebuild.update_project(name=name, description="updated description")
+            assert resp["project"]["description"] == "updated description"
+            assert resp["project"]["name"] == name
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_update_project_visibility(self, codebuild):
+        """UpdateProjectVisibility changes project visibility."""
+        name = self._create_project(codebuild)
+        try:
+            arn = f"arn:aws:codebuild:us-east-1:123456789012:project/{name}"
+            resp = codebuild.update_project_visibility(projectArn=arn, projectVisibility="PRIVATE")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_retry_build(self, codebuild):
+        """RetryBuild retries a build and returns build details."""
+        name = self._create_project(codebuild)
+        try:
+            b = codebuild.start_build(projectName=name)
+            build_id = b["build"]["id"]
+            resp = codebuild.retry_build(id=build_id)
+            assert "build" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_list_curated_environment_images(self, codebuild):
+        """ListCuratedEnvironmentImages returns platform list."""
+        resp = codebuild.list_curated_environment_images()
+        assert "platforms" in resp
+        assert isinstance(resp["platforms"], list)
+
+    def test_list_reports(self, codebuild):
+        """ListReports returns report ARNs."""
+        resp = codebuild.list_reports()
+        assert "reports" in resp
+        assert isinstance(resp["reports"], list)
+
+    def test_list_shared_projects(self, codebuild):
+        """ListSharedProjects returns shared project ARNs."""
+        resp = codebuild.list_shared_projects()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_shared_report_groups(self, codebuild):
+        """ListSharedReportGroups returns shared report group ARNs."""
+        resp = codebuild.list_shared_report_groups()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_test_cases(self, codebuild):
+        """DescribeTestCases returns test case list for a report."""
+        resp = codebuild.describe_test_cases(
+            reportArn="arn:aws:codebuild:us-east-1:123456789012:report/fake-report"
+        )
+        assert "testCases" in resp
+        assert isinstance(resp["testCases"], list)
+
+    def test_describe_code_coverages(self, codebuild):
+        """DescribeCodeCoverages returns code coverage list for a report."""
+        resp = codebuild.describe_code_coverages(
+            reportArn="arn:aws:codebuild:us-east-1:123456789012:report/fake-report"
+        )
+        assert "codeCoverages" in resp
+        assert isinstance(resp["codeCoverages"], list)
+
+    def test_get_report_group_trend(self, codebuild):
+        """GetReportGroupTrend returns trend stats for a report group."""
+        resp = codebuild.get_report_group_trend(
+            reportGroupArn="arn:aws:codebuild:us-east-1:123456789012:report-group/fake",
+            trendField="TOTAL",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_report(self, codebuild):
+        """DeleteReport succeeds for a report ARN."""
+        resp = codebuild.delete_report(
+            arn="arn:aws:codebuild:us-east-1:123456789012:report/fake-report"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_batch_get_reports_nonexistent(self, codebuild):
+        """BatchGetReports with nonexistent ARNs returns empty."""
+        resp = codebuild.batch_get_reports(
+            reportArns=["arn:aws:codebuild:us-east-1:123456789012:report/nonexistent"]
+        )
+        assert "reports" in resp
+
+    def test_list_reports_for_report_group(self, codebuild):
+        """ListReportsForReportGroup returns reports in a group."""
+        name = _unique("rg")
+        arn = f"arn:aws:codebuild:us-east-1:123456789012:report-group/{name}"
+        try:
+            codebuild.create_report_group(
+                name=name,
+                type="TEST",
+                exportConfig={"exportConfigType": "NO_EXPORT"},
+            )
+            resp = codebuild.list_reports_for_report_group(reportGroupArn=arn)
+            assert "reports" in resp
+            assert isinstance(resp["reports"], list)
+        finally:
+            codebuild.delete_report_group(arn=arn)
+
+
+class TestCodeBuildBatchOperations:
+    """Tests for CodeBuild build batch operations."""
+
+    def _create_batch_project(self, codebuild):
+        name = _unique("batch-proj")
+        codebuild.create_project(
+            name=name,
+            source={"type": "S3", "location": "my-bucket/source.zip"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+            buildBatchConfig={"serviceRole": "arn:aws:iam::123456789012:role/codebuild-role"},
+        )
+        return name
+
+    def test_start_build_batch(self, codebuild):
+        """StartBuildBatch starts a build batch."""
+        name = self._create_batch_project(codebuild)
+        try:
+            resp = codebuild.start_build_batch(projectName=name)
+            batch = resp["buildBatch"]
+            assert batch["projectName"] == name
+            assert "id" in batch
+            assert "arn" in batch
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_list_build_batches(self, codebuild):
+        """ListBuildBatches returns batch IDs."""
+        resp = codebuild.list_build_batches()
+        assert "ids" in resp
+        assert isinstance(resp["ids"], list)
+
+    def test_list_build_batches_for_project(self, codebuild):
+        """ListBuildBatchesForProject returns batch IDs for a project."""
+        name = self._create_batch_project(codebuild)
+        try:
+            resp = codebuild.list_build_batches_for_project(projectName=name)
+            assert "ids" in resp
+            assert isinstance(resp["ids"], list)
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_stop_build_batch(self, codebuild):
+        """StopBuildBatch stops a build batch."""
+        name = self._create_batch_project(codebuild)
+        try:
+            b = codebuild.start_build_batch(projectName=name)
+            bb_id = b["buildBatch"]["id"]
+            resp = codebuild.stop_build_batch(id=bb_id)
+            assert "buildBatch" in resp
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_delete_build_batch(self, codebuild):
+        """DeleteBuildBatch deletes a build batch."""
+        name = self._create_batch_project(codebuild)
+        try:
+            b = codebuild.start_build_batch(projectName=name)
+            bb_id = b["buildBatch"]["id"]
+            resp = codebuild.delete_build_batch(id=bb_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_retry_build_batch(self, codebuild):
+        """RetryBuildBatch retries a build batch."""
+        name = self._create_batch_project(codebuild)
+        try:
+            b = codebuild.start_build_batch(projectName=name)
+            bb_id = b["buildBatch"]["id"]
+            resp = codebuild.retry_build_batch(id=bb_id)
+            assert "buildBatch" in resp
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_batch_get_build_batches(self, codebuild):
+        """BatchGetBuildBatches returns batch details."""
+        name = self._create_batch_project(codebuild)
+        try:
+            b = codebuild.start_build_batch(projectName=name)
+            bb_id = b["buildBatch"]["id"]
+            resp = codebuild.batch_get_build_batches(ids=[bb_id])
+            assert len(resp["buildBatches"]) == 1
+            assert resp["buildBatches"][0]["id"] == bb_id
+        finally:
+            codebuild.delete_project(name=name)

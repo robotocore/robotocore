@@ -17,6 +17,30 @@ def pinpoint():
     return make_client("pinpoint")
 
 
+@pytest.fixture
+def app_id(pinpoint):
+    """Create a Pinpoint app and yield its ID; delete on teardown."""
+    resp = pinpoint.create_app(CreateApplicationRequest={"Name": _unique("app")})
+    aid = resp["ApplicationResponse"]["Id"]
+    yield aid
+    pinpoint.delete_app(ApplicationId=aid)
+
+
+@pytest.fixture
+def segment_id(pinpoint, app_id):
+    """Create a segment in the test app and yield its ID."""
+    resp = pinpoint.create_segment(
+        ApplicationId=app_id,
+        WriteSegmentRequest={
+            "Name": _unique("seg"),
+            "Dimensions": {
+                "Demographic": {"AppVersion": {"DimensionType": "INCLUSIVE", "Values": ["1.0"]}}
+            },
+        },
+    )
+    return resp["SegmentResponse"]["Id"]
+
+
 class TestPinpointAppOperations:
     def test_create_app(self, pinpoint):
         name = _unique("app")
