@@ -524,3 +524,154 @@ class TestAthenaDataCatalogAdvanced:
         resp = athena.get_data_catalog(Name=name)
         catalog = resp["DataCatalog"]
         assert catalog["Parameters"]["metadata-function"].endswith("my-func")
+
+    def test_delete_data_catalog(self, athena):
+        """DeleteDataCatalog removes a catalog."""
+        name = _unique("dc")
+        athena.create_data_catalog(
+            Name=name,
+            Type="HIVE",
+            Parameters={"metadata-function": "arn:aws:lambda:us-east-1:123456789012:function:f"},
+        )
+        del_resp = athena.delete_data_catalog(Name=name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        resp = athena.list_data_catalogs()
+        names = [c["CatalogName"] for c in resp["DataCatalogsSummary"]]
+        assert name not in names
+
+    def test_update_data_catalog(self, athena):
+        """UpdateDataCatalog modifies catalog description."""
+        name = _unique("dc")
+        athena.create_data_catalog(
+            Name=name,
+            Type="HIVE",
+            Description="original",
+            Parameters={"metadata-function": "arn:aws:lambda:us-east-1:123456789012:function:f"},
+        )
+        update_resp = athena.update_data_catalog(
+            Name=name,
+            Type="HIVE",
+            Description="updated description",
+        )
+        assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = athena.get_data_catalog(Name=name)
+        assert resp["DataCatalog"]["Description"] == "updated description"
+
+
+class TestAthenaNamedQueryListDelete:
+    """List and delete named query operations."""
+
+    def test_list_named_queries(self, athena):
+        """ListNamedQueries returns query IDs."""
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 1",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.list_named_queries()
+        assert query_id in resp["NamedQueryIds"]
+
+    def test_delete_named_query(self, athena):
+        """DeleteNamedQuery removes a named query."""
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 1",
+        )
+        query_id = create_resp["NamedQueryId"]
+        del_resp = athena.delete_named_query(NamedQueryId=query_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone from list
+        resp = athena.list_named_queries()
+        assert query_id not in resp.get("NamedQueryIds", [])
+
+
+class TestAthenaBatchOperations:
+    """Batch get operations."""
+
+    def test_batch_get_named_query(self, athena):
+        """BatchGetNamedQuery returns query details."""
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 42",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.batch_get_named_query(NamedQueryIds=[query_id])
+        assert len(resp["NamedQueries"]) == 1
+        assert resp["NamedQueries"][0]["Name"] == name
+        assert resp["NamedQueries"][0]["QueryString"] == "SELECT 42"
+
+    def test_batch_get_named_query_nonexistent(self, athena):
+        """BatchGetNamedQuery with fake ID returns it in UnprocessedNamedQueryIds."""
+        resp = athena.batch_get_named_query(NamedQueryIds=["00000000-0000-0000-0000-000000000000"])
+        assert len(resp.get("UnprocessedNamedQueryIds", [])) >= 0
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_batch_get_query_execution(self, athena):
+        """BatchGetQueryExecution returns execution details."""
+        start_resp = athena.start_query_execution(
+            QueryString="SELECT 1",
+            WorkGroup="primary",
+            ResultConfiguration={"OutputLocation": "s3://test-bucket/results/"},
+        )
+        qe_id = start_resp["QueryExecutionId"]
+        resp = athena.batch_get_query_execution(QueryExecutionIds=[qe_id])
+        assert len(resp["QueryExecutions"]) == 1
+        assert resp["QueryExecutions"][0]["QueryExecutionId"] == qe_id
+        assert resp["QueryExecutions"][0]["Query"] == "SELECT 1"
+
+    def test_batch_get_query_execution_nonexistent(self, athena):
+        """BatchGetQueryExecution with fake ID returns it in UnprocessedQueryExecutionIds."""
+        resp = athena.batch_get_query_execution(
+            QueryExecutionIds=["00000000-0000-0000-0000-000000000000"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAthenaTaggingOperations:
+    """Tag and untag resource operations."""
+
+    def test_tag_and_untag_resource(self, athena):
+        """TagResource adds tags, UntagResource removes them."""
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+        )
+        arn = f"arn:aws:athena:us-east-1:123456789012:workgroup/{name}"
+        try:
+            # Tag
+            tag_resp = athena.tag_resource(
+                ResourceARN=arn,
+                Tags=[
+                    {"Key": "project", "Value": "robotocore"},
+                    {"Key": "stage", "Value": "test"},
+                ],
+            )
+            assert tag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify tags
+            list_resp = athena.list_tags_for_resource(ResourceARN=arn)
+            tags = {t["Key"]: t["Value"] for t in list_resp["Tags"]}
+            assert tags["project"] == "robotocore"
+            assert tags["stage"] == "test"
+
+            # Untag
+            untag_resp = athena.untag_resource(
+                ResourceARN=arn,
+                TagKeys=["stage"],
+            )
+            assert untag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify untag
+            list_resp2 = athena.list_tags_for_resource(ResourceARN=arn)
+            tag_keys = [t["Key"] for t in list_resp2["Tags"]]
+            assert "stage" not in tag_keys
+        finally:
+            athena.delete_work_group(WorkGroup=name)

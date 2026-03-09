@@ -268,3 +268,12 @@ class TestComprehendAutoCoverage:
         resp = client.list_tags_for_resource(ResourceArn=fake_arn)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(resp.get("Tags", []), list)
+
+    def test_detect_pii_entities(self, client):
+        """DetectPiiEntities returns PII entity list."""
+        resp = client.detect_pii_entities(
+            Text="My SSN is 123-45-6789 and my email is test@example.com",
+            LanguageCode="en",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Entities"], list)

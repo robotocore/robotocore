@@ -943,6 +943,70 @@ class TestSesv2AutoCoverage:
         finally:
             client.delete_email_identity(EmailIdentity=domain)
 
+    def test_get_account(self, client):
+        """GetAccount returns account-level SES details."""
+        resp = client.get_account()
+        assert "SendQuota" in resp
+        assert "SendingEnabled" in resp
+        assert "EnforcementStatus" in resp
+        assert "DedicatedIpAutoWarmupEnabled" in resp
+
+    def test_get_configuration_set_event_destinations(self, client):
+        """GetConfigurationSetEventDestinations returns event destinations list."""
+        name = _uid("csevt")
+        client.create_configuration_set(ConfigurationSetName=name)
+        try:
+            resp = client.get_configuration_set_event_destinations(ConfigurationSetName=name)
+            assert "EventDestinations" in resp
+            assert isinstance(resp["EventDestinations"], list)
+        finally:
+            client.delete_configuration_set(ConfigurationSetName=name)
+
+    def test_list_custom_verification_email_templates(self, client):
+        """ListCustomVerificationEmailTemplates returns templates list."""
+        resp = client.list_custom_verification_email_templates()
+        assert "CustomVerificationEmailTemplates" in resp
+        assert isinstance(resp["CustomVerificationEmailTemplates"], list)
+
+    def test_create_and_get_custom_verification_email_template(self, client):
+        """CreateCustomVerificationEmailTemplate + GetCustomVerificationEmailTemplate."""
+        tmpl_name = _uid("cvtmpl")
+        client.create_custom_verification_email_template(
+            TemplateName=tmpl_name,
+            FromEmailAddress="test@example.com",
+            TemplateSubject="Please verify",
+            TemplateContent="<html>Click to verify</html>",
+            SuccessRedirectionURL="https://example.com/success",
+            FailureRedirectionURL="https://example.com/failure",
+        )
+        try:
+            resp = client.get_custom_verification_email_template(TemplateName=tmpl_name)
+            assert resp["TemplateName"] == tmpl_name
+            assert resp["FromEmailAddress"] == "test@example.com"
+            assert resp["TemplateSubject"] == "Please verify"
+            assert resp["SuccessRedirectionURL"] == "https://example.com/success"
+            assert resp["FailureRedirectionURL"] == "https://example.com/failure"
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=tmpl_name)
+
+    def test_list_custom_verification_email_templates_after_create(self, client):
+        """ListCustomVerificationEmailTemplates includes created template."""
+        tmpl_name = _uid("cvlist")
+        client.create_custom_verification_email_template(
+            TemplateName=tmpl_name,
+            FromEmailAddress="list@example.com",
+            TemplateSubject="Verify",
+            TemplateContent="<html>Verify</html>",
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
+        )
+        try:
+            resp = client.list_custom_verification_email_templates()
+            names = [t["TemplateName"] for t in resp["CustomVerificationEmailTemplates"]]
+            assert tmpl_name in names
+        finally:
+            client.delete_custom_verification_email_template(TemplateName=tmpl_name)
+
     def test_list_email_identities_has_identity_type(self, client):
         """ListEmailIdentities entries have IdentityType and IdentityName."""
         email = f"{_uid('lit')}@example.com"
