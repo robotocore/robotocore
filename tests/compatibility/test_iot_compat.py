@@ -2510,3 +2510,9 @@ class TestIoTStreamCrudOperations:
         desc = iot.describe_stream(streamId=stream_id)
         assert desc["streamInfo"]["description"] == "updated"
         iot.delete_stream(streamId=stream_id)
+
+
+class TestIoTOTAUpdates:
+    def test_list_ota_updates(self, iot):
+        resp = iot.list_ota_updates()
+        assert "otaUpdates" in resp

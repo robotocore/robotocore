@@ -1039,3 +1039,9 @@ class TestAthenaAdditional:
             assert isinstance(resp["Sessions"], list)
         finally:
             athena.delete_work_group(WorkGroup=wg_name)
+
+
+class TestAthenaListOps:
+    def test_list_application_dpu_sizes(self, athena):
+        resp = athena.list_application_dpu_sizes()
+        assert "ApplicationDPUSizes" in resp

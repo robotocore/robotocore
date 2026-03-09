@@ -2021,3 +2021,19 @@ class TestRoute53VPCAssociationAuthorization:
             assert vpc_id not in vpc_ids2
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestRoute53VPCOps:
+    def test_get_dnssec(self, route53, hosted_zone):
+        resp = route53.get_dnssec(HostedZoneId=hosted_zone)
+        assert "Status" in resp or "KeySigningKeys" in resp
+
+    def test_list_hosted_zones_by_vpc(self, route53):
+        resp = route53.list_hosted_zones_by_vpc(VPCId="vpc-12345678", VPCRegion="us-east-1")
+        assert "HostedZoneSummaries" in resp
+
+    def test_list_vpc_association_authorizations(self, route53, hosted_zone):
+        resp = route53.list_vpc_association_authorizations(
+            HostedZoneId=hosted_zone,
+        )
+        assert "VPCs" in resp
