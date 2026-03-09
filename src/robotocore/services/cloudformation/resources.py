@@ -39,9 +39,7 @@ def create_resource(resource: CfnResource, region: str, account_id: str) -> None
     if handler:
         handler(resource, region, account_id)
     else:
-        # Unknown resource type — assign a fake physical ID
-        resource.physical_id = f"{rtype.replace('::', '-').lower()}-{uuid.uuid4().hex[:8]}"
-        resource.status = "CREATE_COMPLETE"
+        raise ValueError(f"Unsupported CloudFormation resource type: {rtype}")
 
 
 def delete_resource(resource: CfnResource, region: str, account_id: str) -> None:
@@ -141,10 +139,36 @@ def _create_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
         "BucketName", f"cfn-{resource.logical_id.lower()}-{uuid.uuid4().hex[:8]}"
     )
     s3.create_bucket(name, region)
+
+    # Apply website configuration if present (Moto stores raw XML bytes)
+    website_config = resource.properties.get("WebsiteConfiguration")
+    if website_config:
+        try:
+            index_doc = website_config.get("IndexDocument", "index.html")
+            error_doc = website_config.get("ErrorDocument", "")
+            xml_parts = ["<WebsiteConfiguration>"]
+            xml_parts.append(f"<IndexDocument><Suffix>{index_doc}</Suffix></IndexDocument>")
+            if error_doc:
+                xml_parts.append(f"<ErrorDocument><Key>{error_doc}</Key></ErrorDocument>")
+            xml_parts.append("</WebsiteConfiguration>")
+            s3.put_bucket_website(name, "".join(xml_parts).encode())
+        except Exception:
+            pass
+
+    # Apply tags if present (Moto expects dict[str, str])
+    bucket_tags = resource.properties.get("Tags", [])
+    if bucket_tags:
+        try:
+            tags_dict = {t["Key"]: t["Value"] for t in bucket_tags if "Key" in t}
+            s3.put_bucket_tagging(name, tags_dict)
+        except Exception:
+            pass
+
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:s3:::{name}"
     resource.attributes["DomainName"] = f"{name}.s3.amazonaws.com"
     resource.attributes["RegionalDomainName"] = f"{name}.s3.{region}.amazonaws.com"
+    resource.attributes["WebsiteURL"] = f"http://{name}.s3-website-{region}.amazonaws.com"
     resource.status = "CREATE_COMPLETE"
 
 
@@ -426,7 +450,7 @@ def _create_lambda_function(resource: CfnResource, region: str, account_id: str)
     if env_vars:
         spec["Environment"] = {"Variables": env_vars}
     fn = lmbda.create_function(spec)
-    resource.physical_id = fn.function_arn
+    resource.physical_id = name
     resource.attributes["Arn"] = fn.function_arn
     resource.attributes["FunctionName"] = name
     resource.status = "CREATE_COMPLETE"
@@ -1340,35 +1364,34 @@ def _create_cloudwatch_alarm(resource: CfnResource, region: str, account_id: str
         "AlarmName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
     )
-    try:
-        cw.put_metric_alarm(
-            name=name,
-            namespace=resource.properties.get("Namespace", "AWS/Custom"),
-            metric_name=resource.properties.get("MetricName", ""),
-            comparison_operator=resource.properties.get(
-                "ComparisonOperator", "GreaterThanThreshold"
-            ),
-            evaluation_periods=resource.properties.get("EvaluationPeriods", 1),
-            period=resource.properties.get("Period", 300),
-            threshold=resource.properties.get("Threshold", 0),
-            statistic=resource.properties.get("Statistic", "Average"),
-            description=resource.properties.get("AlarmDescription", ""),
-            actions_enabled=resource.properties.get("ActionsEnabled", True),
-            ok_actions=resource.properties.get("OKActions", []),
-            alarm_actions=resource.properties.get("AlarmActions", []),
-            insufficient_data_actions=resource.properties.get("InsufficientDataActions", []),
-            dimensions=[],
-            unit="",
-            treat_missing_data="missing",
-            datapoints_to_alarm=resource.properties.get("DatapointsToAlarm", None),
-            evaluate_low_sample_count_percentile="",
-            extended_statistic="",
-            tags=[],
-            rule=None,
-            metrics=None,
-        )
-    except Exception:
-        pass
+    raw_dims = resource.properties.get("Dimensions", [])
+    dims = []
+    for d in raw_dims:
+        dims.append({"name": d.get("Name", ""), "value": d.get("Value", "")})
+    cw.put_metric_alarm(
+        name=name,
+        namespace=resource.properties.get("Namespace", "AWS/Custom"),
+        metric_name=resource.properties.get("MetricName", ""),
+        comparison_operator=resource.properties.get("ComparisonOperator", "GreaterThanThreshold"),
+        evaluation_periods=resource.properties.get("EvaluationPeriods", 1),
+        period=resource.properties.get("Period", 300),
+        threshold=resource.properties.get("Threshold", 0),
+        statistic=resource.properties.get("Statistic", "Average"),
+        description=resource.properties.get("AlarmDescription", ""),
+        actions_enabled=resource.properties.get("ActionsEnabled", True),
+        ok_actions=resource.properties.get("OKActions", []),
+        alarm_actions=resource.properties.get("AlarmActions", []),
+        insufficient_data_actions=resource.properties.get("InsufficientDataActions", []),
+        dimensions=dims,
+        unit="",
+        treat_missing_data="missing",
+        datapoints_to_alarm=resource.properties.get("DatapointsToAlarm", None),
+        evaluate_low_sample_count_percentile="",
+        extended_statistic="",
+        tags=[],
+        rule=None,
+        metrics=None,
+    )
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:cloudwatch:{region}:{account_id}:alarm:{name}"
     resource.status = "CREATE_COMPLETE"
@@ -1632,10 +1655,7 @@ def _create_kinesis_stream(resource: CfnResource, region: str, account_id: str) 
         ),
     )
     shard_count = resource.properties.get("ShardCount", 1)
-    try:
-        kinesis.create_stream(name, shard_count)
-    except Exception:
-        pass
+    kinesis.create_stream(name, shard_count)
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:kinesis:{region}:{account_id}:stream/{name}"
     resource.status = "CREATE_COMPLETE"
@@ -1945,26 +1965,32 @@ def _create_cognito_user_pool(resource: CfnResource, region: str, account_id: st
         "UserPoolName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
     )
-    try:
-        cognito = _moto_backend("cognitoidp", account_id, region)
-        pool = cognito.create_user_pool(name)
-        pool_id = getattr(pool, "id", None) or (getattr(pool, "user_pool_id", None))
-        if not pool_id:
-            pool_id = f"{region}_{uuid.uuid4().hex[:9]}"
-        resource.physical_id = pool_id
-        resource.attributes["UserPoolId"] = pool_id
-        arn = (
-            getattr(pool, "arn", None)
-            or f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}"
-        )
-        resource.attributes["Arn"] = arn
-        resource.attributes["ProviderName"] = f"cognito-idp.{region}.amazonaws.com/{pool_id}"
-    except Exception:
+    cognito = _moto_backend("cognitoidp", account_id, region)
+    # Build extended config from CFN properties
+    extended_config = {}
+    for key in (
+        "Policies",
+        "AutoVerifiedAttributes",
+        "Schema",
+        "MfaConfiguration",
+        "LambdaConfig",
+        "UsernameAttributes",
+        "AliasAttributes",
+    ):
+        if key in resource.properties:
+            extended_config[key] = resource.properties[key]
+    pool = cognito.create_user_pool(name, extended_config)
+    pool_id = getattr(pool, "id", None) or getattr(pool, "user_pool_id", None)
+    if not pool_id:
         pool_id = f"{region}_{uuid.uuid4().hex[:9]}"
-        resource.physical_id = pool_id
-        resource.attributes["UserPoolId"] = pool_id
-        resource.attributes["Arn"] = f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}"
-        resource.attributes["ProviderName"] = f"cognito-idp.{region}.amazonaws.com/{pool_id}"
+    resource.physical_id = pool_id
+    resource.attributes["UserPoolId"] = pool_id
+    arn = (
+        getattr(pool, "arn", None)
+        or f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}"
+    )
+    resource.attributes["Arn"] = arn
+    resource.attributes["ProviderName"] = f"cognito-idp.{region}.amazonaws.com/{pool_id}"
     resource.status = "CREATE_COMPLETE"
 
 
@@ -2370,10 +2396,19 @@ def _delete_cfn_stack(resource: CfnResource, region: str, account_id: str) -> No
 
 
 def _create_cognito_user_pool_client(resource: CfnResource, region: str, account_id: str) -> None:
-    cid = uuid.uuid4().hex[:26]
+    cognito = _moto_backend("cognitoidp", account_id, region)
+    pool_id = resource.properties.get("UserPoolId", "")
+    generate_secret = resource.properties.get("GenerateSecret", False)
+    client_name = resource.properties.get("ClientName", resource.logical_id)
+    extended_config = {"ClientName": client_name}
+    for key in ("ExplicitAuthFlows", "AllowedOAuthFlows", "CallbackURLs", "LogoutURLs"):
+        if key in resource.properties:
+            extended_config[key] = resource.properties[key]
+    client = cognito.create_user_pool_client(pool_id, generate_secret, extended_config)
+    cid = getattr(client, "id", None) or uuid.uuid4().hex[:26]
     resource.physical_id = cid
     resource.attributes["ClientId"] = cid
-    resource.attributes["Name"] = resource.properties.get("ClientName", resource.logical_id)
+    resource.attributes["Name"] = client_name
     resource.status = "CREATE_COMPLETE"
 
 
