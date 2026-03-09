@@ -4398,3 +4398,399 @@ class TestEC2DescribeSubnetsFiltered:
             ec2.delete_subnet(SubnetId=sub1["Subnet"]["SubnetId"])
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2FleetOperations:
+    """Fleet create/describe/delete operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_describe_delete_fleet(self, ec2):
+        lt_name = _unique("fleet-lt")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=lt_name,
+            LaunchTemplateData={"InstanceType": "t2.micro", "ImageId": "ami-12345678"},
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            r = ec2.create_fleet(
+                LaunchTemplateConfigs=[
+                    {
+                        "LaunchTemplateSpecification": {
+                            "LaunchTemplateId": lt_id,
+                            "Version": "$Latest",
+                        },
+                        "Overrides": [{"InstanceType": "t2.micro"}],
+                    }
+                ],
+                TargetCapacitySpecification={
+                    "TotalTargetCapacity": 1,
+                    "DefaultTargetCapacityType": "on-demand",
+                },
+                Type="instant",
+            )
+            fleet_id = r["FleetId"]
+            assert fleet_id.startswith("fleet-")
+
+            described = ec2.describe_fleets(FleetIds=[fleet_id])
+            assert len(described["Fleets"]) == 1
+            assert described["Fleets"][0]["FleetId"] == fleet_id
+
+            ec2.delete_fleets(FleetIds=[fleet_id], TerminateInstances=True)
+            # Verify deletion
+            after = ec2.describe_fleets(FleetIds=[fleet_id])
+            if after["Fleets"]:
+                assert after["Fleets"][0]["FleetState"] in (
+                    "deleted_running",
+                    "deleted_terminating",
+                    "deleted",
+                )
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+    def test_fleet_has_target_capacity(self, ec2):
+        lt_name = _unique("fleet-lt")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=lt_name,
+            LaunchTemplateData={"InstanceType": "t2.micro", "ImageId": "ami-12345678"},
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            r = ec2.create_fleet(
+                LaunchTemplateConfigs=[
+                    {
+                        "LaunchTemplateSpecification": {
+                            "LaunchTemplateId": lt_id,
+                            "Version": "$Latest",
+                        },
+                        "Overrides": [{"InstanceType": "t2.micro"}],
+                    }
+                ],
+                TargetCapacitySpecification={
+                    "TotalTargetCapacity": 2,
+                    "DefaultTargetCapacityType": "on-demand",
+                },
+                Type="instant",
+            )
+            fleet_id = r["FleetId"]
+            described = ec2.describe_fleets(FleetIds=[fleet_id])
+            spec = described["Fleets"][0]["TargetCapacitySpecification"]
+            assert spec["TotalTargetCapacity"] == 2
+
+            ec2.delete_fleets(FleetIds=[fleet_id], TerminateInstances=True)
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+
+class TestEC2SpotFleetOperations:
+    """Spot Fleet request/describe/cancel operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_request_describe_cancel_spot_fleet(self, ec2):
+        r = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 1,
+                "SpotPrice": "0.05",
+                "AllocationStrategy": "lowestPrice",
+                "LaunchSpecifications": [
+                    {
+                        "ImageId": "ami-12345678",
+                        "InstanceType": "t2.micro",
+                    }
+                ],
+            }
+        )
+        fleet_id = r["SpotFleetRequestId"]
+        assert fleet_id.startswith("sfr-")
+
+        described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert len(described["SpotFleetRequestConfigs"]) == 1
+        config = described["SpotFleetRequestConfigs"][0]
+        assert config["SpotFleetRequestId"] == fleet_id
+        assert config["SpotFleetRequestConfig"]["TargetCapacity"] == 1
+
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        assert len(cancel["SuccessfulFleetRequests"]) == 1
+        assert cancel["SuccessfulFleetRequests"][0]["SpotFleetRequestId"] == fleet_id
+
+    def test_describe_spot_fleet_instances(self, ec2):
+        r = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 1,
+                "SpotPrice": "0.05",
+                "AllocationStrategy": "lowestPrice",
+                "LaunchSpecifications": [
+                    {
+                        "ImageId": "ami-12345678",
+                        "InstanceType": "t2.micro",
+                    }
+                ],
+            }
+        )
+        fleet_id = r["SpotFleetRequestId"]
+        try:
+            instances = ec2.describe_spot_fleet_instances(SpotFleetRequestId=fleet_id)
+            assert "ActiveInstances" in instances
+            assert instances["SpotFleetRequestId"] == fleet_id
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+
+class TestEC2ImportKeyPair:
+    """ImportKeyPair operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_import_key_pair(self, ec2):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        pub = key.public_key().public_bytes(
+            serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
+        )
+        key_name = _unique("imported-key")
+        r = ec2.import_key_pair(KeyName=key_name, PublicKeyMaterial=pub)
+        try:
+            assert "KeyFingerprint" in r
+            assert r["KeyName"] == key_name
+
+            described = ec2.describe_key_pairs(KeyNames=[key_name])
+            assert len(described["KeyPairs"]) == 1
+            assert described["KeyPairs"][0]["KeyName"] == key_name
+        finally:
+            ec2.delete_key_pair(KeyName=key_name)
+
+
+class TestEC2VPCEndpointServiceConfig:
+    """VPC Endpoint Service Configuration CRUD operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _create_nlb(self, ec2):
+        """Create a VPC, subnet, and NLB for endpoint service testing."""
+        import boto3
+        from botocore.config import Config
+
+        elbv2 = boto3.client(
+            "elbv2",
+            endpoint_url="http://localhost:4566",
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+            config=Config(),
+        )
+        vpc = ec2.create_vpc(CidrBlock="10.210.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.210.1.0/24")
+        sub_id = sub["Subnet"]["SubnetId"]
+        nlb_name = _unique("nlb")
+        nlb = elbv2.create_load_balancer(Name=nlb_name, Subnets=[sub_id], Type="network")
+        nlb_arn = nlb["LoadBalancers"][0]["LoadBalancerArn"]
+        return elbv2, vpc_id, sub_id, nlb_arn
+
+    def test_create_describe_delete_vpc_endpoint_service_config(self, ec2):
+        elbv2, vpc_id, sub_id, nlb_arn = self._create_nlb(ec2)
+        try:
+            r = ec2.create_vpc_endpoint_service_configuration(
+                NetworkLoadBalancerArns=[nlb_arn],
+            )
+            svc_id = r["ServiceConfiguration"]["ServiceId"]
+            assert svc_id.startswith("vpce-svc-")
+
+            described = ec2.describe_vpc_endpoint_service_configurations(ServiceIds=[svc_id])
+            assert len(described["ServiceConfigurations"]) == 1
+            assert described["ServiceConfigurations"][0]["ServiceId"] == svc_id
+
+            ec2.delete_vpc_endpoint_service_configurations(ServiceIds=[svc_id])
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=nlb_arn)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_modify_vpc_endpoint_service_configuration(self, ec2):
+        elbv2, vpc_id, sub_id, nlb_arn = self._create_nlb(ec2)
+        try:
+            svc = ec2.create_vpc_endpoint_service_configuration(
+                NetworkLoadBalancerArns=[nlb_arn],
+            )
+            svc_id = svc["ServiceConfiguration"]["ServiceId"]
+
+            r = ec2.modify_vpc_endpoint_service_configuration(
+                ServiceId=svc_id,
+                AcceptanceRequired=True,
+            )
+            assert r["Return"] is True
+
+            described = ec2.describe_vpc_endpoint_service_configurations(ServiceIds=[svc_id])
+            assert described["ServiceConfigurations"][0]["AcceptanceRequired"] is True
+
+            ec2.delete_vpc_endpoint_service_configurations(ServiceIds=[svc_id])
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=nlb_arn)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_vpc_endpoint_service_permissions(self, ec2):
+        elbv2, vpc_id, sub_id, nlb_arn = self._create_nlb(ec2)
+        try:
+            svc = ec2.create_vpc_endpoint_service_configuration(
+                NetworkLoadBalancerArns=[nlb_arn],
+            )
+            svc_id = svc["ServiceConfiguration"]["ServiceId"]
+
+            # Add permissions
+            ec2.modify_vpc_endpoint_service_permissions(
+                ServiceId=svc_id,
+                AddAllowedPrincipals=["arn:aws:iam::123456789012:root"],
+            )
+
+            perms = ec2.describe_vpc_endpoint_service_permissions(ServiceId=svc_id)
+            assert len(perms["AllowedPrincipals"]) == 1
+            assert perms["AllowedPrincipals"][0]["Principal"] == "arn:aws:iam::123456789012:root"
+
+            ec2.delete_vpc_endpoint_service_configurations(ServiceIds=[svc_id])
+        finally:
+            elbv2.delete_load_balancer(LoadBalancerArn=nlb_arn)
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2DescribeFilters:
+    """Describe operations with filters."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_regions_by_name(self, ec2):
+        r = ec2.describe_regions(RegionNames=["us-east-1"])
+        assert len(r["Regions"]) == 1
+        assert r["Regions"][0]["RegionName"] == "us-east-1"
+        assert "Endpoint" in r["Regions"][0]
+
+    def test_describe_availability_zones_with_filter(self, ec2):
+        r = ec2.describe_availability_zones(
+            Filters=[{"Name": "zone-name", "Values": ["us-east-1a"]}]
+        )
+        assert len(r["AvailabilityZones"]) == 1
+        assert r["AvailabilityZones"][0]["ZoneName"] == "us-east-1a"
+
+    def test_describe_instance_types_with_filter(self, ec2):
+        r = ec2.describe_instance_types(Filters=[{"Name": "instance-type", "Values": ["t2.micro"]}])
+        assert len(r["InstanceTypes"]) == 1
+        assert r["InstanceTypes"][0]["InstanceType"] == "t2.micro"
+        assert "MemoryInfo" in r["InstanceTypes"][0]
+        assert "VCpuInfo" in r["InstanceTypes"][0]
+
+    def test_describe_reserved_instances_offerings_filtered(self, ec2):
+        r = ec2.describe_reserved_instances_offerings(
+            InstanceType="t2.micro",
+            ProductDescription="Linux/UNIX",
+            MaxResults=5,
+        )
+        assert "ReservedInstancesOfferings" in r
+        assert len(r["ReservedInstancesOfferings"]) > 0
+        offering = r["ReservedInstancesOfferings"][0]
+        assert offering["InstanceType"] == "t2.micro"
+
+    def test_describe_account_attributes_has_known_attrs(self, ec2):
+        r = ec2.describe_account_attributes()
+        attr_names = {a["AttributeName"] for a in r["AccountAttributes"]}
+        assert "supported-platforms" in attr_names
+        assert "default-vpc" in attr_names
+
+    def test_describe_vpc_endpoint_services_has_entries(self, ec2):
+        r = ec2.describe_vpc_endpoint_services()
+        assert "ServiceNames" in r
+        assert len(r["ServiceNames"]) > 0
+        # Should include well-known services
+        assert any("s3" in sn for sn in r["ServiceNames"])
+
+
+class TestEC2VPCEndpointInterface:
+    """VPC Endpoint Interface type operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_describe_delete_interface_vpc_endpoint(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.211.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            r = ec2.create_vpc_endpoint(
+                VpcId=vpc_id,
+                ServiceName="com.amazonaws.us-east-1.sqs",
+                VpcEndpointType="Interface",
+            )
+            vpce_id = r["VpcEndpoint"]["VpcEndpointId"]
+            assert vpce_id.startswith("vpce-")
+            assert r["VpcEndpoint"]["VpcEndpointType"] == "Interface"
+
+            described = ec2.describe_vpc_endpoints(VpcEndpointIds=[vpce_id])
+            assert len(described["VpcEndpoints"]) == 1
+            assert described["VpcEndpoints"][0]["VpcEndpointType"] == "Interface"
+            assert described["VpcEndpoints"][0]["VpcId"] == vpc_id
+
+            ec2.delete_vpc_endpoints(VpcEndpointIds=[vpce_id])
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ModifyVpcTenancy:
+    """Modify VPC tenancy operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_vpc_tenancy(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.212.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            r = ec2.modify_vpc_tenancy(VpcId=vpc_id, InstanceTenancy="default")
+            assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2DHCPOptionsDetailed:
+    """DHCP Options with multiple configurations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_dhcp_options_with_multiple_configs(self, ec2):
+        r = ec2.create_dhcp_options(
+            DhcpConfigurations=[
+                {"Key": "domain-name", "Values": ["example.com"]},
+                {"Key": "domain-name-servers", "Values": ["8.8.8.8", "8.8.4.4"]},
+            ]
+        )
+        dopt_id = r["DhcpOptions"]["DhcpOptionsId"]
+        try:
+            assert dopt_id.startswith("dopt-")
+
+            described = ec2.describe_dhcp_options(DhcpOptionsIds=[dopt_id])
+            assert len(described["DhcpOptions"]) == 1
+            configs = described["DhcpOptions"][0]["DhcpConfigurations"]
+            config_keys = {c["Key"] for c in configs}
+            assert "domain-name" in config_keys
+            assert "domain-name-servers" in config_keys
+        finally:
+            ec2.delete_dhcp_options(DhcpOptionsId=dopt_id)

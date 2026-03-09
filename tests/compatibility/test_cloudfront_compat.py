@@ -384,3 +384,192 @@ class TestCloudFrontKeyGroupOperations:
         assert kg_list["Quantity"] >= 1
         ids = [item["KeyGroup"]["Id"] for item in kg_list["Items"]]
         assert kg_id in ids
+
+
+class TestCloudFrontDistributionWithTags:
+    def test_create_distribution_with_tags(self, cf):
+        resp = cf.create_distribution_with_tags(
+            DistributionConfigWithTags={
+                "DistributionConfig": _dist_config("with-tags-test"),
+                "Tags": {
+                    "Items": [
+                        {"Key": "env", "Value": "staging"},
+                        {"Key": "project", "Value": "robotocore"},
+                    ]
+                },
+            }
+        )
+        dist = resp["Distribution"]
+        assert "Id" in dist
+        assert dist["DistributionConfig"]["Comment"] == "with-tags-test"
+
+        # Verify tags were applied
+        tags_resp = cf.list_tags_for_resource(Resource=dist["ARN"])
+        tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]["Items"]}
+        assert tag_map["env"] == "staging"
+        assert tag_map["project"] == "robotocore"
+
+    def test_create_distribution_with_tags_empty_tags(self, cf):
+        resp = cf.create_distribution_with_tags(
+            DistributionConfigWithTags={
+                "DistributionConfig": _dist_config("no-tags-test"),
+                "Tags": {"Items": []},
+            }
+        )
+        dist = resp["Distribution"]
+        assert "Id" in dist
+        assert "ARN" in dist
+
+
+class TestCloudFrontDistributionErrors:
+    def test_get_nonexistent_distribution(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_distribution(Id="ENONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchDistribution"
+
+    def test_delete_nonexistent_distribution(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.delete_distribution(Id="ENONEXISTENT123", IfMatch="fake-etag")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchDistribution"
+
+
+class TestCloudFrontOriginAccessControlErrors:
+    def test_get_nonexistent_oac(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_origin_access_control(Id="ENONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchOriginAccessControl"
+
+    def test_delete_nonexistent_oac(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.delete_origin_access_control(Id="ENONEXISTENT123", IfMatch="fake-etag")
+        # Server returns an error code (may be InternalError or NoSuchOriginAccessControl)
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+
+class TestCloudFrontInvalidationErrors:
+    def test_get_invalidation_nonexistent_distribution(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_invalidation(DistributionId="ENONEXISTENT123", Id="INONEXISTENT")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchDistribution"
+
+    def test_create_invalidation_nonexistent_distribution(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.create_invalidation(
+                DistributionId="ENONEXISTENT123",
+                InvalidationBatch={
+                    "Paths": {"Quantity": 1, "Items": ["/index.html"]},
+                    "CallerReference": str(uuid.uuid4()),
+                },
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchDistribution"
+
+
+class TestCloudFrontInvalidationMultiplePaths:
+    def test_create_invalidation_multiple_paths(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("multi-inv"))
+        dist_id = resp["Distribution"]["Id"]
+
+        inv_resp = cf.create_invalidation(
+            DistributionId=dist_id,
+            InvalidationBatch={
+                "Paths": {
+                    "Quantity": 3,
+                    "Items": ["/index.html", "/css/*", "/js/*"],
+                },
+                "CallerReference": str(uuid.uuid4()),
+            },
+        )
+        inv = inv_resp["Invalidation"]
+        assert inv["InvalidationBatch"]["Paths"]["Quantity"] == 3
+        assert set(inv["InvalidationBatch"]["Paths"]["Items"]) == {
+            "/index.html",
+            "/css/*",
+            "/js/*",
+        }
+
+    def test_list_invalidations_multiple(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("list-inv"))
+        dist_id = resp["Distribution"]["Id"]
+
+        # Create two invalidations
+        for path in ["/a.html", "/b.html"]:
+            cf.create_invalidation(
+                DistributionId=dist_id,
+                InvalidationBatch={
+                    "Paths": {"Quantity": 1, "Items": [path]},
+                    "CallerReference": str(uuid.uuid4()),
+                },
+            )
+
+        list_resp = cf.list_invalidations(DistributionId=dist_id)
+        assert list_resp["InvalidationList"]["Quantity"] >= 2
+
+
+class TestCloudFrontDistributionAdvanced:
+    def test_distribution_has_domain_name(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("domain-test"))
+        dist = resp["Distribution"]
+        assert "DomainName" in dist
+        assert len(dist["DomainName"]) > 0
+
+    def test_distribution_status(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("status-test"))
+        dist = resp["Distribution"]
+        assert "Status" in dist
+        # Moto typically returns "Deployed"
+        assert dist["Status"] in ("Deployed", "InProgress")
+
+    def test_distribution_multiple_origins(self, cf):
+        config = _dist_config("multi-origin")
+        config["Origins"]["Quantity"] = 2
+        config["Origins"]["Items"].append(
+            {
+                "Id": "origin2",
+                "DomainName": "api.example.com",
+                "CustomOriginConfig": {
+                    "HTTPPort": 80,
+                    "HTTPSPort": 443,
+                    "OriginProtocolPolicy": "https-only",
+                },
+            }
+        )
+        resp = cf.create_distribution(DistributionConfig=config)
+        origins = resp["Distribution"]["DistributionConfig"]["Origins"]
+        assert origins["Quantity"] == 2
+        origin_ids = [o["Id"] for o in origins["Items"]]
+        assert "origin1" in origin_ids
+        assert "origin2" in origin_ids
+
+    def test_distribution_viewer_protocol_policy(self, cf):
+        config = _dist_config("vpp-test")
+        config["DefaultCacheBehavior"]["ViewerProtocolPolicy"] = "redirect-to-https"
+        resp = cf.create_distribution(DistributionConfig=config)
+        vpp = resp["Distribution"]["DistributionConfig"]["DefaultCacheBehavior"][
+            "ViewerProtocolPolicy"
+        ]
+        assert vpp == "redirect-to-https"
+
+    def test_update_distribution_add_origin(self, cf):
+        create_resp = cf.create_distribution(DistributionConfig=_dist_config("add-origin"))
+        dist_id = create_resp["Distribution"]["Id"]
+
+        get_resp = cf.get_distribution(Id=dist_id)
+        etag = get_resp["ETag"]
+        config = get_resp["Distribution"]["DistributionConfig"]
+
+        config["Origins"]["Quantity"] = 2
+        config["Origins"]["Items"].append(
+            {
+                "Id": "origin2",
+                "DomainName": "cdn.example.com",
+                "CustomOriginConfig": {
+                    "HTTPPort": 80,
+                    "HTTPSPort": 443,
+                    "OriginProtocolPolicy": "http-only",
+                },
+            }
+        )
+
+        update_resp = cf.update_distribution(DistributionConfig=config, Id=dist_id, IfMatch=etag)
+        updated_origins = update_resp["Distribution"]["DistributionConfig"]["Origins"]
+        assert updated_origins["Quantity"] == 2

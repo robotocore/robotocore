@@ -93,6 +93,22 @@ class TestIoTThingTypeOperations:
         iot.deprecate_thing_type(thingTypeName=name)
         iot.delete_thing_type(thingTypeName=name)
 
+    def test_create_thing_type_with_searchable_attributes(self, iot):
+        name = _unique("type")
+        resp = iot.create_thing_type(
+            thingTypeName=name,
+            thingTypeProperties={
+                "thingTypeDescription": "with attrs",
+                "searchableAttributes": ["attr1", "attr2"],
+            },
+        )
+        assert resp["thingTypeName"] == name
+        desc = iot.describe_thing_type(thingTypeName=name)
+        assert "attr1" in desc["thingTypeProperties"]["searchableAttributes"]
+        assert "attr2" in desc["thingTypeProperties"]["searchableAttributes"]
+        iot.deprecate_thing_type(thingTypeName=name)
+        iot.delete_thing_type(thingTypeName=name)
+
     def test_describe_thing_type(self, iot):
         name = _unique("type")
         iot.create_thing_type(
@@ -114,6 +130,15 @@ class TestIoTThingTypeOperations:
         iot.deprecate_thing_type(thingTypeName=name)
         iot.delete_thing_type(thingTypeName=name)
 
+    def test_list_thing_types_with_name_filter(self, iot):
+        name = _unique("type")
+        iot.create_thing_type(thingTypeName=name)
+        resp = iot.list_thing_types(thingTypeName=name)
+        names = [t["thingTypeName"] for t in resp["thingTypes"]]
+        assert name in names
+        iot.deprecate_thing_type(thingTypeName=name)
+        iot.delete_thing_type(thingTypeName=name)
+
     def test_deprecate_then_delete_thing_type(self, iot):
         name = _unique("type")
         iot.create_thing_type(thingTypeName=name)
@@ -122,6 +147,32 @@ class TestIoTThingTypeOperations:
         with pytest.raises(ClientError) as exc:
             iot.describe_thing_type(thingTypeName=name)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_deprecate_and_undeprecate_thing_type(self, iot):
+        name = _unique("type")
+        iot.create_thing_type(thingTypeName=name)
+        iot.deprecate_thing_type(thingTypeName=name)
+        desc = iot.describe_thing_type(thingTypeName=name)
+        assert desc["thingTypeMetadata"]["deprecated"] is True
+        # Undeprecate
+        iot.deprecate_thing_type(thingTypeName=name, undoDeprecate=True)
+        desc2 = iot.describe_thing_type(thingTypeName=name)
+        assert desc2["thingTypeMetadata"]["deprecated"] is False
+        # Cleanup
+        iot.deprecate_thing_type(thingTypeName=name)
+        iot.delete_thing_type(thingTypeName=name)
+
+    def test_create_thing_with_thing_type(self, iot):
+        tt_name = _unique("type")
+        iot.create_thing_type(thingTypeName=tt_name)
+        thing_name = _unique("thing")
+        resp = iot.create_thing(thingName=thing_name, thingTypeName=tt_name)
+        assert resp["thingName"] == thing_name
+        desc = iot.describe_thing(thingName=thing_name)
+        assert desc["thingTypeName"] == tt_name
+        iot.delete_thing(thingName=thing_name)
+        iot.deprecate_thing_type(thingTypeName=tt_name)
+        iot.delete_thing_type(thingTypeName=tt_name)
 
 
 class TestIoTThingGroupOperations:
@@ -159,6 +210,43 @@ class TestIoTThingGroupOperations:
         things_resp = iot.list_things_in_thing_group(thingGroupName=grp)
         assert thing in things_resp["things"]
         iot.remove_thing_from_thing_group(thingGroupName=grp, thingName=thing)
+        iot.delete_thing(thingName=thing)
+        iot.delete_thing_group(thingGroupName=grp)
+
+    def test_create_thing_group_with_properties(self, iot):
+        name = _unique("grp")
+        resp = iot.create_thing_group(
+            thingGroupName=name,
+            thingGroupProperties={
+                "thingGroupDescription": "test desc",
+                "attributePayload": {"attributes": {"key1": "val1"}},
+            },
+        )
+        assert resp["thingGroupName"] == name
+        desc = iot.describe_thing_group(thingGroupName=name)
+        assert desc["thingGroupProperties"]["thingGroupDescription"] == "test desc"
+        iot.delete_thing_group(thingGroupName=name)
+
+    def test_create_nested_thing_group(self, iot):
+        parent = _unique("parent")
+        child = _unique("child")
+        iot.create_thing_group(thingGroupName=parent)
+        resp = iot.create_thing_group(thingGroupName=child, parentGroupName=parent)
+        assert resp["thingGroupName"] == child
+        desc = iot.describe_thing_group(thingGroupName=child)
+        assert desc["thingGroupMetadata"]["parentGroupName"] == parent
+        iot.delete_thing_group(thingGroupName=child)
+        iot.delete_thing_group(thingGroupName=parent)
+
+    def test_remove_thing_from_thing_group(self, iot):
+        grp = _unique("grp")
+        thing = _unique("thing")
+        iot.create_thing_group(thingGroupName=grp)
+        iot.create_thing(thingName=thing)
+        iot.add_thing_to_thing_group(thingGroupName=grp, thingName=thing)
+        iot.remove_thing_from_thing_group(thingGroupName=grp, thingName=thing)
+        things_resp = iot.list_things_in_thing_group(thingGroupName=grp)
+        assert thing not in things_resp["things"]
         iot.delete_thing(thingName=thing)
         iot.delete_thing_group(thingGroupName=grp)
 
@@ -336,82 +424,67 @@ class TestIoTTopicRuleOperations:
         iot.delete_topic_rule(ruleName=name)
 
 
-class TestIotAutoCoverage:
-    """Auto-generated coverage tests for iot."""
+class TestIoTEndpointAndConfigOperations:
+    """Tests for endpoint, indexing, and registration code operations."""
 
-    @pytest.fixture
-    def client(self):
-        return make_client("iot")
-
-    def test_add_thing_to_billing_group(self, client):
-        """AddThingToBillingGroup returns a response."""
-        try:
-            client.add_thing_to_billing_group()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
-
-    def test_describe_endpoint(self, client):
-        """DescribeEndpoint returns a response."""
-        resp = client.describe_endpoint()
+    def test_describe_endpoint(self, iot):
+        resp = iot.describe_endpoint()
         assert "endpointAddress" in resp
 
-    def test_get_indexing_configuration(self, client):
-        """GetIndexingConfiguration returns a response."""
-        resp = client.get_indexing_configuration()
+    def test_describe_endpoint_data_type(self, iot):
+        resp = iot.describe_endpoint(endpointType="iot:Data")
+        assert "endpointAddress" in resp
+
+    def test_describe_endpoint_ats_type(self, iot):
+        resp = iot.describe_endpoint(endpointType="iot:Data-ATS")
+        assert "endpointAddress" in resp
+
+    def test_get_indexing_configuration(self, iot):
+        resp = iot.get_indexing_configuration()
         assert "thingIndexingConfiguration" in resp
 
-    def test_get_registration_code(self, client):
-        """GetRegistrationCode returns a response."""
-        resp = client.get_registration_code()
-        assert "registrationCode" in resp
+    def test_update_indexing_configuration(self, iot):
+        resp = iot.update_indexing_configuration(
+            thingIndexingConfiguration={"thingIndexingMode": "OFF"}
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_billing_groups(self, client):
-        """ListBillingGroups returns a response."""
-        resp = client.list_billing_groups()
+    def test_get_registration_code(self, iot):
+        resp = iot.get_registration_code()
+        assert "registrationCode" in resp
+        assert len(resp["registrationCode"]) > 0
+
+    def test_search_index(self, iot):
+        resp = iot.search_index(queryString="thingName:*")
+        assert "things" in resp
+
+    def test_list_certificates_by_ca(self, iot):
+        resp = iot.list_certificates_by_ca(caCertificateId="a" * 64)
+        assert "certificates" in resp
+
+    def test_list_billing_groups(self, iot):
+        resp = iot.list_billing_groups()
         assert "billingGroups" in resp
 
-    def test_list_domain_configurations(self, client):
-        """ListDomainConfigurations returns a response."""
-        resp = client.list_domain_configurations()
+    def test_list_domain_configurations(self, iot):
+        resp = iot.list_domain_configurations()
         assert "domainConfigurations" in resp
 
-    def test_list_job_templates(self, client):
-        """ListJobTemplates returns a response."""
-        resp = client.list_job_templates()
+    def test_list_job_templates(self, iot):
+        resp = iot.list_job_templates()
         assert "jobTemplates" in resp
 
-    def test_list_jobs(self, client):
-        """ListJobs returns a response."""
-        resp = client.list_jobs()
+    def test_list_jobs(self, iot):
+        resp = iot.list_jobs()
         assert "jobs" in resp
 
-    def test_list_role_aliases(self, client):
-        """ListRoleAliases returns a response."""
-        resp = client.list_role_aliases()
+    def test_list_role_aliases(self, iot):
+        resp = iot.list_role_aliases()
         assert "roleAliases" in resp
 
-    def test_list_topic_rules(self, client):
-        """ListTopicRules returns a response."""
-        resp = client.list_topic_rules()
+    def test_list_topic_rules(self, iot):
+        resp = iot.list_topic_rules()
         assert "rules" in resp
-
-    def test_remove_thing_from_billing_group(self, client):
-        """RemoveThingFromBillingGroup returns a response."""
-        try:
-            client.remove_thing_from_billing_group()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
-
-    def test_update_indexing_configuration(self, client):
-        """UpdateIndexingConfiguration returns a response."""
-        client.update_indexing_configuration()
-
-    def test_update_thing_groups_for_thing(self, client):
-        """UpdateThingGroupsForThing returns a response."""
-        try:
-            client.update_thing_groups_for_thing()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
 
 
 class TestIoTBillingGroupOperations:
@@ -873,6 +946,62 @@ class TestIoTThingGroupExtendedOperations:
         iot.delete_thing(thingName=thing)
         iot.delete_thing_group(thingGroupName=grp)
 
+    def test_update_thing_groups_for_thing_add(self, iot):
+        grp = _unique("grp")
+        thing = _unique("thing")
+        iot.create_thing_group(thingGroupName=grp)
+        iot.create_thing(thingName=thing)
+        resp = iot.update_thing_groups_for_thing(thingName=thing, thingGroupsToAdd=[grp])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        groups = iot.list_thing_groups_for_thing(thingName=thing)
+        group_names = [g["groupName"] for g in groups["thingGroups"]]
+        assert grp in group_names
+        # Cleanup
+        iot.remove_thing_from_thing_group(thingGroupName=grp, thingName=thing)
+        iot.delete_thing(thingName=thing)
+        iot.delete_thing_group(thingGroupName=grp)
+
+    def test_update_thing_groups_for_thing_remove(self, iot):
+        grp = _unique("grp")
+        thing = _unique("thing")
+        iot.create_thing_group(thingGroupName=grp)
+        iot.create_thing(thingName=thing)
+        iot.add_thing_to_thing_group(thingGroupName=grp, thingName=thing)
+        resp = iot.update_thing_groups_for_thing(thingName=thing, thingGroupsToRemove=[grp])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        groups = iot.list_thing_groups_for_thing(thingName=thing)
+        group_names = [g["groupName"] for g in groups["thingGroups"]]
+        assert grp not in group_names
+        iot.delete_thing(thingName=thing)
+        iot.delete_thing_group(thingGroupName=grp)
+
+    def test_add_thing_to_billing_group(self, iot):
+        bg = _unique("bg")
+        thing = _unique("thing")
+        iot.create_billing_group(billingGroupName=bg)
+        iot.create_thing(thingName=thing)
+        resp = iot.add_thing_to_billing_group(billingGroupName=bg, thingName=thing)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        things_resp = iot.list_things_in_billing_group(billingGroupName=bg)
+        assert thing in things_resp["things"]
+        # Cleanup
+        iot.remove_thing_from_billing_group(billingGroupName=bg, thingName=thing)
+        iot.delete_thing(thingName=thing)
+        iot.delete_billing_group(billingGroupName=bg)
+
+    def test_remove_thing_from_billing_group(self, iot):
+        bg = _unique("bg")
+        thing = _unique("thing")
+        iot.create_billing_group(billingGroupName=bg)
+        iot.create_thing(thingName=thing)
+        iot.add_thing_to_billing_group(billingGroupName=bg, thingName=thing)
+        resp = iot.remove_thing_from_billing_group(billingGroupName=bg, thingName=thing)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        things_resp = iot.list_things_in_billing_group(billingGroupName=bg)
+        assert thing not in things_resp["things"]
+        iot.delete_thing(thingName=thing)
+        iot.delete_billing_group(billingGroupName=bg)
+
     def test_list_things_in_billing_group(self, iot):
         bg = _unique("bg")
         thing = _unique("thing")
@@ -1036,12 +1165,6 @@ class TestIoTThingPrincipalsV2Operations:
         iot.delete_thing(thingName=name)
 
 
-class TestIoTSearchIndexOperations:
-    def test_search_index(self, iot):
-        resp = iot.search_index(queryString="thingName:*")
-        assert "things" in resp
-
-
 def _make_ca_cert():
     """Generate a self-signed CA certificate and its private key."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -1095,6 +1218,13 @@ def _make_device_cert(ca_key):
         .sign(ca_key, hashes.SHA256())
     )
     return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+class TestIoTCACertificateErrorOperations:
+    def test_describe_ca_certificate_not_found(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_ca_certificate(certificateId="a" * 64)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestIoTCACertificateOperations:

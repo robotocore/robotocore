@@ -1688,3 +1688,314 @@ class TestGlueBatchDeleteJobs:
             with pytest.raises(ClientError) as exc:
                 glue.get_job(JobName=jn)
             assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueSessionOperations:
+    """Tests for Glue interactive session CRUD."""
+
+    def test_create_and_get_session(self, glue):
+        ses_id = _unique("ses")
+        glue.create_session(
+            Id=ses_id,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        try:
+            resp = glue.get_session(Id=ses_id)
+            assert resp["Session"]["Id"] == ses_id
+            assert resp["Session"]["Role"] == "arn:aws:iam::123456789012:role/glue-role"
+        finally:
+            glue.delete_session(Id=ses_id)
+
+    def test_list_sessions_includes_created(self, glue):
+        ses_id = _unique("ses")
+        glue.create_session(
+            Id=ses_id,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        try:
+            resp = glue.list_sessions()
+            assert ses_id in resp["Ids"]
+        finally:
+            glue.delete_session(Id=ses_id)
+
+    def test_stop_session(self, glue):
+        ses_id = _unique("ses")
+        glue.create_session(
+            Id=ses_id,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        try:
+            resp = glue.stop_session(Id=ses_id)
+            assert resp["Id"] == ses_id
+        finally:
+            glue.delete_session(Id=ses_id)
+
+    def test_delete_session(self, glue):
+        ses_id = _unique("ses")
+        glue.create_session(
+            Id=ses_id,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        resp = glue.delete_session(Id=ses_id)
+        assert resp["Id"] == ses_id
+
+        with pytest.raises(ClientError) as exc:
+            glue.get_session(Id=ses_id)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_nonexistent_session_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.get_session(Id="fake-session-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_stop_nonexistent_session_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.stop_session(Id="fake-session-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueDevEndpointOperations:
+    """Tests for Glue DevEndpoint CRUD."""
+
+    def test_create_and_get_dev_endpoint(self, glue):
+        name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.get_dev_endpoint(EndpointName=name)
+            assert resp["DevEndpoint"]["EndpointName"] == name
+            assert resp["DevEndpoint"]["RoleArn"] == "arn:aws:iam::123456789012:role/glue-role"
+        finally:
+            glue.delete_dev_endpoint(EndpointName=name)
+
+    def test_get_dev_endpoints_includes_created(self, glue):
+        name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.get_dev_endpoints()
+            de_names = [d["EndpointName"] for d in resp["DevEndpoints"]]
+            assert name in de_names
+        finally:
+            glue.delete_dev_endpoint(EndpointName=name)
+
+    def test_delete_dev_endpoint(self, glue):
+        name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        glue.delete_dev_endpoint(EndpointName=name)
+
+        with pytest.raises(ClientError) as exc:
+            glue.get_dev_endpoint(EndpointName=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_delete_nonexistent_dev_endpoint_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.delete_dev_endpoint(EndpointName="fake-de-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueWorkflowRunOperations:
+    """Tests for Workflow run lifecycle operations."""
+
+    def test_start_workflow_run(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name)
+        try:
+            resp = glue.start_workflow_run(Name=name)
+            assert "RunId" in resp
+            assert resp["RunId"]
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_get_workflow_run(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name)
+        try:
+            run_resp = glue.start_workflow_run(Name=name)
+            run_id = run_resp["RunId"]
+
+            resp = glue.get_workflow_run(Name=name, RunId=run_id)
+            assert resp["Run"]["Name"] == name
+            assert resp["Run"]["WorkflowRunId"] == run_id
+            assert "Status" in resp["Run"]
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_get_workflow_runs(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name)
+        try:
+            glue.start_workflow_run(Name=name)
+            resp = glue.get_workflow_runs(Name=name)
+            assert len(resp["Runs"]) >= 1
+            assert resp["Runs"][0]["Name"] == name
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_put_and_get_workflow_run_properties(self, glue):
+        name = _unique("wf")
+        glue.create_workflow(Name=name)
+        try:
+            run_resp = glue.start_workflow_run(Name=name)
+            run_id = run_resp["RunId"]
+
+            glue.put_workflow_run_properties(
+                Name=name, RunId=run_id, RunProperties={"key1": "val1", "key2": "val2"}
+            )
+
+            resp = glue.get_workflow_run_properties(Name=name, RunId=run_id)
+            assert resp["RunProperties"]["key1"] == "val1"
+            assert resp["RunProperties"]["key2"] == "val2"
+        finally:
+            glue.delete_workflow(Name=name)
+
+    def test_start_workflow_run_nonexistent_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.start_workflow_run(Name="fake-wf-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_workflow_runs_nonexistent_fails(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.get_workflow_runs(Name="fake-wf-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueRegisterSchemaVersion:
+    """Tests for RegisterSchemaVersion."""
+
+    def test_register_schema_version(self, glue):
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name, Description="test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            resp = glue.register_schema_version(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"},{"name":"name","type":"string"}]}',  # noqa: E501
+            )
+            assert resp["VersionNumber"] == 2
+            assert resp["Status"] == "AVAILABLE"
+            assert "SchemaVersionId" in resp
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+
+class TestGluePutSchemaVersionMetadata:
+    """Tests for PutSchemaVersionMetadata."""
+
+    def test_put_schema_version_metadata(self, glue):
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name, Description="test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}',
+        )
+        try:
+            sv_resp = glue.get_schema_version(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaVersionNumber={"LatestVersion": True},
+            )
+            sv_id = sv_resp["SchemaVersionId"]
+
+            resp = glue.put_schema_version_metadata(
+                SchemaVersionId=sv_id,
+                MetadataKeyValue={"MetadataKey": "testkey", "MetadataValue": "testval"},
+            )
+            assert resp["MetadataKey"] == "testkey"
+            assert resp["MetadataValue"] == "testval"
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+
+class TestGlueBatchUpdatePartition:
+    """Tests for BatchUpdatePartition."""
+
+    def _make_db_and_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "string"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def _sd(self, location):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": location,
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_batch_update_partition(self, glue):
+        db_name, tbl_name = self._make_db_and_table(glue)
+        try:
+            glue.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2024"],
+                    "StorageDescriptor": self._sd("s3://bucket/path/year=2024"),
+                },
+            )
+            resp = glue.batch_update_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Entries=[
+                    {
+                        "PartitionValueList": ["2024"],
+                        "PartitionInput": {
+                            "Values": ["2024"],
+                            "StorageDescriptor": self._sd("s3://bucket/path/year=2024-updated"),
+                        },
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            part = glue.get_partition(
+                DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2024"]
+            )
+            assert "2024-updated" in part["Partition"]["StorageDescriptor"]["Location"]
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
