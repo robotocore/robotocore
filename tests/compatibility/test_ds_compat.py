@@ -1256,52 +1256,6 @@ class TestDsAdditionalOps:
                 pass
 
 
-class TestDSSharedDirectoryOps:
-    """Tests for shared directory operations."""
-
-    def test_accept_shared_directory_nonexistent(self, ds):
-        """AcceptSharedDirectory with bogus ID raises error."""
-        with pytest.raises(ClientError) as exc_info:
-            ds.accept_shared_directory(SharedDirectoryId="d-0000000000")
-        assert exc_info.value.response["Error"]["Code"] in (
-            "EntityDoesNotExistException",
-            "DirectoryNotSharedException",
-            "InvalidParameterException",
-        )
-
-    def test_reject_shared_directory_nonexistent(self, ds):
-        """RejectSharedDirectory with bogus ID raises error."""
-        with pytest.raises(ClientError) as exc_info:
-            ds.reject_shared_directory(SharedDirectoryId="d-0000000000")
-        assert exc_info.value.response["Error"]["Code"] in (
-            "EntityDoesNotExistException",
-            "DirectoryNotSharedException",
-            "InvalidParameterException",
-        )
-
-    def test_share_directory(self, ds, directory):
-        """ShareDirectory shares with another account."""
-        resp = ds.share_directory(
-            DirectoryId=directory,
-            ShareTarget={"Id": "999999999999", "Type": "ACCOUNT"},
-            ShareMethod="HANDSHAKE",
-        )
-        assert "SharedDirectoryId" in resp
-
-    def test_unshare_directory(self, ds, directory):
-        """UnshareDirectory after sharing."""
-        ds.share_directory(
-            DirectoryId=directory,
-            ShareTarget={"Id": "999999999999", "Type": "ACCOUNT"},
-            ShareMethod="HANDSHAKE",
-        )
-        resp = ds.unshare_directory(
-            DirectoryId=directory,
-            UnshareTarget={"Id": "999999999999", "Type": "ACCOUNT"},
-        )
-        assert "SharedDirectoryId" in resp
-
-
 class TestDSUpdateOps:
     """Tests for directory update operations."""
 

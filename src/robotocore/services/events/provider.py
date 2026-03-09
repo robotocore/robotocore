@@ -676,6 +676,20 @@ def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
     then uses async dispatch via thread pool to avoid deadlocking the
     event loop when the Lambda function calls back to the server.
     """
+    # Validate function exists so the caller's try/except catches the error
+    # and routes to DLQ. invoke_lambda_async is fire-and-forget (thread pool),
+    # so errors there don't propagate back.
+    func_name = arn.rsplit(":", 1)[-1]
+    try:
+        from moto.backends import get_backend
+
+        backend = get_backend("lambda")[account_id][region]
+        backend.get_function(func_name)
+    except (ImportError, KeyError, TypeError):
+        pass  # Backend not available (e.g. unit tests) — skip check
+    except Exception:
+        raise RuntimeError(f"Lambda function not found: {func_name}")
+
     from robotocore.services.lambda_.invoke import (
         invoke_lambda_async,
     )
