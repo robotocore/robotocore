@@ -397,3 +397,177 @@ class TestCloudDirectoryTagOps:
             assert isinstance(tag_resp["Tags"], list)
         finally:
             clouddirectory_client.delete_schema(SchemaArn=arn)
+
+
+class TestCloudDirectorySchemaQueries:
+    """Tests for schema query operations."""
+
+    def test_list_managed_schema_arns(self, clouddirectory_client):
+        """ListManagedSchemaArns returns a list."""
+        resp = clouddirectory_client.list_managed_schema_arns()
+        assert "SchemaArns" in resp
+        assert isinstance(resp["SchemaArns"], list)
+
+    def test_get_schema_as_json(self, clouddirectory_client, published_schema):
+        """GetSchemaAsJson returns schema document for a published schema."""
+        resp = clouddirectory_client.get_schema_as_json(
+            SchemaArn=published_schema["PublishedSchemaArn"],
+        )
+        assert "Name" in resp
+        assert "Document" in resp
+
+    def test_list_applied_schema_arns(self, clouddirectory_client, directory):
+        """ListAppliedSchemaArns returns a list for a directory."""
+        resp = clouddirectory_client.list_applied_schema_arns(
+            DirectoryArn=directory["DirectoryArn"],
+        )
+        assert "SchemaArns" in resp
+        assert isinstance(resp["SchemaArns"], list)
+
+    def test_list_facet_names(self, clouddirectory_client, published_schema):
+        """ListFacetNames returns a list for a published schema."""
+        resp = clouddirectory_client.list_facet_names(
+            SchemaArn=published_schema["PublishedSchemaArn"],
+        )
+        assert "FacetNames" in resp
+        assert isinstance(resp["FacetNames"], list)
+
+    def test_list_typed_link_facet_names(self, clouddirectory_client, published_schema):
+        """ListTypedLinkFacetNames returns a list for a published schema."""
+        resp = clouddirectory_client.list_typed_link_facet_names(
+            SchemaArn=published_schema["PublishedSchemaArn"],
+        )
+        assert "FacetNames" in resp
+        assert isinstance(resp["FacetNames"], list)
+
+
+class TestCloudDirectoryObjectQueries:
+    """Tests for object query operations against a directory."""
+
+    def test_get_object_information(self, clouddirectory_client, directory):
+        """GetObjectInformation returns info for root object."""
+        resp = clouddirectory_client.get_object_information(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "ObjectIdentifier" in resp
+
+    def test_list_object_children(self, clouddirectory_client, directory):
+        """ListObjectChildren returns children of root object."""
+        resp = clouddirectory_client.list_object_children(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "Children" in resp
+        assert isinstance(resp["Children"], dict)
+
+    def test_list_object_parents(self, clouddirectory_client, directory):
+        """ListObjectParents returns parents for root object."""
+        resp = clouddirectory_client.list_object_parents(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "Parents" in resp
+        assert isinstance(resp["Parents"], dict)
+
+    def test_list_object_parent_paths(self, clouddirectory_client, directory):
+        """ListObjectParentPaths returns paths for root object."""
+        resp = clouddirectory_client.list_object_parent_paths(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+        )
+        assert "PathToObjectIdentifiersList" in resp
+        assert isinstance(resp["PathToObjectIdentifiersList"], list)
+
+    def test_list_object_attributes(self, clouddirectory_client, directory):
+        """ListObjectAttributes returns attributes for root object."""
+        resp = clouddirectory_client.list_object_attributes(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
+
+    def test_list_object_policies(self, clouddirectory_client, directory):
+        """ListObjectPolicies returns policies for root object."""
+        resp = clouddirectory_client.list_object_policies(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "AttachedPolicyIds" in resp
+        assert isinstance(resp["AttachedPolicyIds"], list)
+
+    def test_list_attached_indices(self, clouddirectory_client, directory):
+        """ListAttachedIndices returns indices for root object."""
+        resp = clouddirectory_client.list_attached_indices(
+            DirectoryArn=directory["DirectoryArn"],
+            TargetReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "IndexAttachments" in resp
+        assert isinstance(resp["IndexAttachments"], list)
+
+    def test_list_incoming_typed_links(self, clouddirectory_client, directory):
+        """ListIncomingTypedLinks returns typed links for root object."""
+        resp = clouddirectory_client.list_incoming_typed_links(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+        )
+        assert "LinkSpecifiers" in resp
+        assert isinstance(resp["LinkSpecifiers"], list)
+
+    def test_list_outgoing_typed_links(self, clouddirectory_client, directory):
+        """ListOutgoingTypedLinks returns typed links for root object."""
+        resp = clouddirectory_client.list_outgoing_typed_links(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+        )
+        assert "TypedLinkSpecifiers" in resp
+        assert isinstance(resp["TypedLinkSpecifiers"], list)
+
+    def test_list_policy_attachments(self, clouddirectory_client, directory):
+        """ListPolicyAttachments returns object IDs for root object."""
+        resp = clouddirectory_client.list_policy_attachments(
+            DirectoryArn=directory["DirectoryArn"],
+            PolicyReference={"Selector": "/"},
+            ConsistencyLevel="EVENTUAL",
+        )
+        assert "ObjectIdentifiers" in resp
+        assert isinstance(resp["ObjectIdentifiers"], list)
+
+    def test_get_link_attributes(self, clouddirectory_client, directory):
+        """GetLinkAttributes returns attributes for a typed link specifier."""
+        applied_arn = directory["AppliedSchemaArn"]
+        resp = clouddirectory_client.get_link_attributes(
+            DirectoryArn=directory["DirectoryArn"],
+            TypedLinkSpecifier={
+                "TypedLinkFacet": {
+                    "SchemaArn": applied_arn,
+                    "TypedLinkName": "fake",
+                },
+                "SourceObjectReference": {"Selector": "/"},
+                "TargetObjectReference": {"Selector": "/"},
+                "IdentityAttributeValues": [],
+            },
+            AttributeNames=["attr1"],
+        )
+        assert "Attributes" in resp
+
+    def test_get_object_attributes(self, clouddirectory_client, directory):
+        """GetObjectAttributes returns attributes for an object facet."""
+        applied_arn = directory["AppliedSchemaArn"]
+        resp = clouddirectory_client.get_object_attributes(
+            DirectoryArn=directory["DirectoryArn"],
+            ObjectReference={"Selector": "/"},
+            SchemaFacet={
+                "SchemaArn": applied_arn,
+                "FacetName": "fake",
+            },
+            AttributeNames=["attr1"],
+        )
+        assert "Attributes" in resp
