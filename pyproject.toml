@@ -79,3 +79,8 @@ moto = { git = "https://github.com/JackDanger/moto.git", branch = "robotocore/al
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
+
+[dependency-groups]
+dev = [
+    "freezegun>=1.5.5",
+]

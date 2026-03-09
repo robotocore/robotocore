@@ -462,6 +462,95 @@ def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
         return {"tags": list(_tags.get(arn, []))}
 
 
+# --- Version Management ---
+
+# version storage: sm_arn -> list of version dicts
+_versions: dict[str, list[dict]] = {}
+
+
+def _validate_state_machine_definition(params: dict, region: str, account_id: str) -> dict:
+    """ValidateStateMachineDefinition — validate ASL JSON."""
+    definition = params.get("definition", "")
+    result = "OK"
+    diagnostics: list[dict] = []
+    try:
+        json.loads(definition)
+    except Exception:
+        result = "FAIL"
+        diagnostics.append(
+            {
+                "severity": "ERROR",
+                "code": "INVALID_JSON_DESCRIPTION",
+                "message": "Could not parse the state machine definition.",
+            }
+        )
+    return {"result": result, "diagnostics": diagnostics, "truncated": False}
+
+
+def _publish_state_machine_version(params: dict, region: str, account_id: str) -> dict:
+    """PublishStateMachineVersion — create a numbered version snapshot."""
+    sm_arn = params.get("stateMachineArn", "")
+    description = params.get("description")
+
+    with _exec_lock:
+        sm = _state_machines.get(sm_arn)
+        if not sm:
+            raise SfnError("StateMachineDoesNotExist", f"State machine not found: {sm_arn}")
+
+        versions = _versions.setdefault(sm_arn, [])
+        version_number = len(versions) + 1
+        version_arn = f"{sm_arn}:{version_number}"
+        now = time.time()
+        version_entry = {
+            "stateMachineVersionArn": version_arn,
+            "creationDate": now,
+            "description": description,
+        }
+        versions.append(version_entry)
+
+    return {
+        "stateMachineVersionArn": version_arn,
+        "creationDate": now,
+    }
+
+
+def _list_state_machine_versions(params: dict, region: str, account_id: str) -> dict:
+    """ListStateMachineVersions — return all versions for a state machine."""
+    sm_arn = params.get("stateMachineArn", "")
+
+    with _exec_lock:
+        sm = _state_machines.get(sm_arn)
+        if not sm:
+            raise SfnError("StateMachineDoesNotExist", f"State machine not found: {sm_arn}")
+        versions = _versions.get(sm_arn, [])
+        items = [
+            {
+                "stateMachineVersionArn": v["stateMachineVersionArn"],
+                "creationDate": v["creationDate"],
+            }
+            for v in reversed(versions)
+        ]
+    return {"stateMachineVersions": items}
+
+
+def _delete_state_machine_version(params: dict, region: str, account_id: str) -> dict:
+    """DeleteStateMachineVersion — remove a specific version."""
+    version_arn = params.get("stateMachineVersionArn", "")
+
+    # Parse: arn:...:stateMachine:name:version_number
+    parts = version_arn.rsplit(":", 1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        raise SfnError("ValidationException", f"Invalid version ARN: {version_arn}")
+
+    sm_arn = parts[0]
+    int(parts[1])
+
+    with _exec_lock:
+        versions = _versions.get(sm_arn, [])
+        _versions[sm_arn] = [v for v in versions if v["stateMachineVersionArn"] != version_arn]
+    return {}
+
+
 # --- Helpers ---
 
 
@@ -518,4 +607,8 @@ _ACTION_MAP = {
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tags_for_resource,
     "DescribeStateMachineForExecution": _describe_state_machine_for_execution,
+    "ValidateStateMachineDefinition": _validate_state_machine_definition,
+    "PublishStateMachineVersion": _publish_state_machine_version,
+    "ListStateMachineVersions": _list_state_machine_versions,
+    "DeleteStateMachineVersion": _delete_state_machine_version,
 }
