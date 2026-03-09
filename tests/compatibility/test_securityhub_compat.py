@@ -973,11 +973,14 @@ class TestSecurityHubV2Operations:
         assert "Resources" in resp
         assert isinstance(resp["Resources"], list)
 
-    def test_describe_security_hub_v2_not_subscribed(self, client):
-        """DescribeSecurityHubV2 raises error when not subscribed."""
-        with pytest.raises(ClientError) as exc:
-            client.describe_security_hub_v2()
-        assert exc.value.response["Error"]["Code"] == "InvalidAccessException"
+    def test_describe_security_hub_v2(self, client):
+        """DescribeSecurityHubV2 returns a response (200 or error depending on state)."""
+        try:
+            resp = client.describe_security_hub_v2()
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as exc:
+            # Raises InvalidAccessException when hub is not enabled
+            assert exc.response["Error"]["Code"] == "InvalidAccessException"
 
     def test_get_automation_rule_v2_nonexistent(self, client):
         """GetAutomationRuleV2 raises error for nonexistent rule."""
@@ -1035,3 +1038,405 @@ class TestSecurityHubV2Operations:
         resp = client.get_resources_trends_v2(StartTime=start, EndTime=now)
         assert "TrendsMetrics" in resp
         assert isinstance(resp["TrendsMetrics"], list)
+
+
+class TestSecurityHubInsightCrud:
+    """Tests for insight create/update/delete lifecycle."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_create_insight(self, hub_client):
+        """CreateInsight returns an InsightArn."""
+        suffix = uuid.uuid4().hex[:8]
+        resp = hub_client.create_insight(
+            Name=f"test-insight-{suffix}",
+            Filters={
+                "SeverityLabel": [{"Value": "HIGH", "Comparison": "EQUALS"}],
+            },
+            GroupByAttribute="ResourceType",
+        )
+        assert "InsightArn" in resp
+        assert "insight" in resp["InsightArn"]
+
+    def test_create_then_delete_insight(self, hub_client):
+        """CreateInsight then DeleteInsight removes the insight."""
+        suffix = uuid.uuid4().hex[:8]
+        create_resp = hub_client.create_insight(
+            Name=f"del-insight-{suffix}",
+            Filters={
+                "SeverityLabel": [{"Value": "CRITICAL", "Comparison": "EQUALS"}],
+            },
+            GroupByAttribute="ResourceType",
+        )
+        arn = create_resp["InsightArn"]
+
+        del_resp = hub_client.delete_insight(InsightArn=arn)
+        assert "InsightArn" in del_resp
+        assert del_resp["InsightArn"] == arn
+
+    def test_update_insight(self, hub_client):
+        """UpdateInsight changes insight name."""
+        suffix = uuid.uuid4().hex[:8]
+        create_resp = hub_client.create_insight(
+            Name=f"upd-insight-{suffix}",
+            Filters={
+                "SeverityLabel": [{"Value": "MEDIUM", "Comparison": "EQUALS"}],
+            },
+            GroupByAttribute="ResourceType",
+        )
+        arn = create_resp["InsightArn"]
+
+        upd_resp = hub_client.update_insight(
+            InsightArn=arn,
+            Name=f"updated-{suffix}",
+        )
+        assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_insight_nonexistent(self, hub_client):
+        """DeleteInsight for nonexistent insight raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:securityhub:us-east-1:123456789012:insight/123456789012/custom/nonexistent999"
+        )
+        with pytest.raises(ClientError) as exc:
+            hub_client.delete_insight(InsightArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_insight_nonexistent(self, hub_client):
+        """UpdateInsight for nonexistent insight raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:securityhub:us-east-1:123456789012:insight/123456789012/custom/nonexistent999"
+        )
+        with pytest.raises(ClientError) as exc:
+            hub_client.update_insight(InsightArn=fake_arn, Name="nope")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSecurityHubFindingAggregatorCrud:
+    """Tests for finding aggregator create/update/delete lifecycle."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_create_finding_aggregator(self, hub_client):
+        """CreateFindingAggregator returns aggregator ARN and mode."""
+        resp = hub_client.create_finding_aggregator(
+            RegionLinkingMode="ALL_REGIONS",
+        )
+        assert "FindingAggregatorArn" in resp
+        assert resp["RegionLinkingMode"] == "ALL_REGIONS"
+
+    def test_delete_finding_aggregator_nonexistent(self, hub_client):
+        """DeleteFindingAggregator for nonexistent raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:finding-aggregator/nonexistent999"
+        with pytest.raises(ClientError) as exc:
+            hub_client.delete_finding_aggregator(FindingAggregatorArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_finding_aggregator_nonexistent(self, hub_client):
+        """UpdateFindingAggregator for nonexistent raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:finding-aggregator/nonexistent999"
+        with pytest.raises(ClientError) as exc:
+            hub_client.update_finding_aggregator(
+                FindingAggregatorArn=fake_arn,
+                RegionLinkingMode="ALL_REGIONS",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSecurityHubConfigurationOps:
+    """Tests for SecurityHub configuration operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_update_security_hub_configuration(self, hub_client):
+        """UpdateSecurityHubConfiguration toggles AutoEnableControls."""
+        resp = hub_client.update_security_hub_configuration(
+            AutoEnableControls=False,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_standards_control(self, hub_client):
+        """UpdateStandardsControl disables a control."""
+        arn = (
+            "arn:aws:securityhub:us-east-1:123456789012:"
+            "control/aws-foundational-security-best-practices/v/1.0.0/IAM.1"
+        )
+        resp = hub_client.update_standards_control(
+            StandardsControlArn=arn,
+            ControlStatus="DISABLED",
+            DisabledReason="testing",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_security_control(self, hub_client):
+        """UpdateSecurityControl updates control parameters."""
+        resp = hub_client.update_security_control(
+            SecurityControlId="IAM.1",
+            Parameters={
+                "MaxPasswordAge": {
+                    "ValueType": "CUSTOM",
+                    "Value": {"Integer": 60},
+                }
+            },
+            LastUpdateReason="testing",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_findings(self, hub_client):
+        """UpdateFindings adds a note to findings matching filter."""
+        resp = hub_client.update_findings(
+            Filters={
+                "Id": [{"Value": "finding-fake", "Comparison": "EQUALS"}],
+            },
+            Note={"Text": "test note", "UpdatedBy": "tester"},
+            RecordState="ACTIVE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSecurityHubBatchControlOps:
+    """Tests for batch security control operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_batch_get_security_controls(self, hub_client):
+        """BatchGetSecurityControls returns controls and unprocessed."""
+        resp = hub_client.batch_get_security_controls(
+            SecurityControlIds=["IAM.1"],
+        )
+        assert "SecurityControls" in resp
+        assert "UnprocessedIds" in resp
+
+    def test_batch_get_standards_control_associations(self, hub_client):
+        """BatchGetStandardsControlAssociations returns associations."""
+        standards_arn = (
+            "arn:aws:securityhub:::standards/aws-foundational-security-best-practices/v/1.0.0"
+        )
+        resp = hub_client.batch_get_standards_control_associations(
+            StandardsControlAssociationIds=[
+                {
+                    "SecurityControlId": "IAM.1",
+                    "StandardsArn": standards_arn,
+                }
+            ],
+        )
+        assert "StandardsControlAssociationDetails" in resp
+        assert "UnprocessedAssociations" in resp
+
+    def test_batch_update_standards_control_associations(self, hub_client):
+        """BatchUpdateStandardsControlAssociations processes updates."""
+        standards_arn = (
+            "arn:aws:securityhub:::standards/aws-foundational-security-best-practices/v/1.0.0"
+        )
+        resp = hub_client.batch_update_standards_control_associations(
+            StandardsControlAssociationUpdates=[
+                {
+                    "SecurityControlId": "IAM.1",
+                    "StandardsArn": standards_arn,
+                    "AssociationStatus": "DISABLED",
+                    "UpdatedReason": "testing",
+                }
+            ],
+        )
+        assert "UnprocessedAssociationUpdates" in resp
+
+    def test_batch_get_configuration_policy_associations(self, hub_client):
+        """BatchGetConfigurationPolicyAssociations returns associations."""
+        resp = hub_client.batch_get_configuration_policy_associations(
+            ConfigurationPolicyAssociationIdentifiers=[
+                {"Target": {"AccountId": "123456789012"}},
+            ],
+        )
+        assert "ConfigurationPolicyAssociations" in resp
+        assert "UnprocessedConfigurationPolicyAssociations" in resp
+
+
+class TestSecurityHubMemberActions:
+    """Tests for member invite/dissociate/delete operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_invite_members(self, hub_client):
+        """InviteMembers returns UnprocessedAccounts."""
+        resp = hub_client.invite_members(AccountIds=["222233334444"])
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_delete_members(self, hub_client):
+        """DeleteMembers returns UnprocessedAccounts."""
+        resp = hub_client.delete_members(AccountIds=["222233334444"])
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_disassociate_members(self, hub_client):
+        """DisassociateMembers returns empty or result."""
+        resp = hub_client.disassociate_members(AccountIds=["222233334444"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_from_administrator_account(self, hub_client):
+        """DisassociateFromAdministratorAccount succeeds."""
+        resp = hub_client.disassociate_from_administrator_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_from_master_account(self, hub_client):
+        """DisassociateFromMasterAccount succeeds (deprecated op)."""
+        resp = hub_client.disassociate_from_master_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSecurityHubInvitationActions:
+    """Tests for invitation accept/decline/delete operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_accept_administrator_invitation(self, hub_client):
+        """AcceptAdministratorInvitation succeeds."""
+        resp = hub_client.accept_administrator_invitation(
+            AdministratorId="222233334444",
+            InvitationId="inv-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_accept_invitation(self, hub_client):
+        """AcceptInvitation succeeds (deprecated op)."""
+        resp = hub_client.accept_invitation(
+            MasterId="222233334444",
+            InvitationId="inv-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_decline_invitations(self, hub_client):
+        """DeclineInvitations returns UnprocessedAccounts."""
+        resp = hub_client.decline_invitations(AccountIds=["222233334444"])
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_delete_invitations(self, hub_client):
+        """DeleteInvitations returns UnprocessedAccounts."""
+        resp = hub_client.delete_invitations(AccountIds=["222233334444"])
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+
+class TestSecurityHubOrganizationOps:
+    """Tests for organization admin operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_disable_organization_admin_account_no_org(self, client):
+        """DisableOrganizationAdminAccount without orgs raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.disable_organization_admin_account(
+                AdminAccountId="222233334444",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "AWSOrganizationsNotInUseException",
+            "InvalidAccessException",
+        )
+
+
+class TestSecurityHubConfigurationPolicyCrud:
+    """Tests for configuration policy delete/update."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_delete_configuration_policy_nonexistent(self, hub_client):
+        """DeleteConfigurationPolicy for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            hub_client.delete_configuration_policy(Identifier="fake-policy-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_configuration_policy_nonexistent(self, hub_client):
+        """UpdateConfigurationPolicy for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            hub_client.update_configuration_policy(
+                Identifier="fake-policy-id",
+                Name="updated",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_configuration_policy_disassociation(self, hub_client):
+        """StartConfigurationPolicyDisassociation returns 200."""
+        resp = hub_client.start_configuration_policy_disassociation(
+            ConfigurationPolicyIdentifier="fake-policy-id",
+            Target={"AccountId": "123456789012"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

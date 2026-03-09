@@ -457,3 +457,511 @@ class TestWorkSpacesCustomImageImportOperations:
         with pytest.raises(ClientError) as exc:
             workspaces.describe_custom_workspace_image_import(ImageId="wsi-fake12345")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesIpGroupCrud:
+    """Tests for IP group create/update/delete lifecycle."""
+
+    def test_create_ip_group(self, workspaces):
+        """CreateIpGroup returns a GroupId."""
+        resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp"),
+            GroupDesc="compat test group",
+        )
+        assert "GroupId" in resp
+        assert resp["GroupId"].startswith("wsipg-")
+
+    def test_create_and_delete_ip_group(self, workspaces):
+        """CreateIpGroup then DeleteIpGroup succeeds."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-del"),
+            GroupDesc="to delete",
+        )
+        group_id = create_resp["GroupId"]
+
+        del_resp = workspaces.delete_ip_group(GroupId=group_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_ip_group_nonexistent(self, workspaces):
+        """DeleteIpGroup for nonexistent group raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId="wsipg-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_authorize_ip_rules(self, workspaces):
+        """AuthorizeIpRules adds rules to an IP group."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-auth"),
+            GroupDesc="auth test",
+        )
+        group_id = create_resp["GroupId"]
+
+        auth_resp = workspaces.authorize_ip_rules(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "private"}],
+        )
+        assert auth_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_authorize_ip_rules_nonexistent(self, workspaces):
+        """AuthorizeIpRules for nonexistent group raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.authorize_ip_rules(
+                GroupId="wsipg-nonexistent999",
+                UserRules=[{"ipRule": "10.0.0.0/8"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_revoke_ip_rules_nonexistent(self, workspaces):
+        """RevokeIpRules for nonexistent group raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.revoke_ip_rules(
+                GroupId="wsipg-nonexistent999",
+                UserRules=["10.0.0.0/8"],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_rules_of_ip_group_nonexistent(self, workspaces):
+        """UpdateRulesOfIpGroup for nonexistent group raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_rules_of_ip_group(
+                GroupId="wsipg-nonexistent999",
+                UserRules=[{"ipRule": "10.0.0.0/8"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesConnectionAliasCrud:
+    """Tests for connection alias create/delete lifecycle."""
+
+    def test_create_connection_alias(self, workspaces):
+        """CreateConnectionAlias returns an AliasId."""
+        resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias')}.example.com",
+        )
+        assert "AliasId" in resp
+        assert resp["AliasId"].startswith("wsca-")
+
+    def test_delete_connection_alias_nonexistent(self, workspaces):
+        """DeleteConnectionAlias for nonexistent alias raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_connection_alias(AliasId="wsca-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_associate_connection_alias_nonexistent(self, workspaces):
+        """AssociateConnectionAlias for nonexistent alias raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.associate_connection_alias(
+                AliasId="wsca-nonexistent999",
+                ResourceId="d-fake12345",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_disassociate_connection_alias_nonexistent(self, workspaces):
+        """DisassociateConnectionAlias for nonexistent alias raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.disassociate_connection_alias(AliasId="wsca-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_connection_alias_permission_nonexistent(self, workspaces):
+        """UpdateConnectionAliasPermission for nonexistent alias raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_connection_alias_permission(
+                AliasId="wsca-nonexistent999",
+                ConnectionAliasPermission={
+                    "SharedAccountId": "123456789012",
+                    "AllowAssociation": True,
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesModifyOperations:
+    """Tests for various Modify operations."""
+
+    def test_modify_account(self, workspaces):
+        """ModifyAccount sets dedicated tenancy support."""
+        resp = workspaces.modify_account(
+            DedicatedTenancySupport="ENABLED",
+            DedicatedTenancyManagementCidrRange="10.0.0.0/16",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_modify_workspace_state_nonexistent(self, workspaces):
+        """ModifyWorkspaceState for nonexistent workspace raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-nonexistent999",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_modify_workspace_properties_nonexistent(self, workspaces):
+        """ModifyWorkspaceProperties for nonexistent workspace raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_properties(
+                WorkspaceId="ws-nonexistent999",
+                WorkspaceProperties={"RunningMode": "AUTO_STOP"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_modify_workspace_access_properties_nonexistent(self, workspaces):
+        """ModifyWorkspaceAccessProperties for nonexistent directory raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_access_properties(
+                ResourceId="d-nonexistent999",
+                WorkspaceAccessProperties={"DeviceTypeWindows": "ALLOW"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_modify_saml_properties_nonexistent(self, workspaces):
+        """ModifySamlProperties for nonexistent directory raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_saml_properties(
+                ResourceId="d-nonexistent999",
+                SamlProperties={"Status": "DISABLED"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_modify_certificate_based_auth_nonexistent(self, workspaces):
+        """ModifyCertificateBasedAuthProperties for nonexistent dir raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_certificate_based_auth_properties(
+                ResourceId="d-nonexistent999",
+                CertificateBasedAuthProperties={"Status": "DISABLED"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_modify_streaming_properties_nonexistent(self, workspaces):
+        """ModifyStreamingProperties for nonexistent directory raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_streaming_properties(
+                ResourceId="d-nonexistent999",
+                StreamingProperties={
+                    "StreamingExperiencePreferredProtocol": "TCP",
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_modify_endpoint_encryption_mode_nonexistent(self, workspaces):
+        """ModifyEndpointEncryptionMode for nonexistent dir raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_endpoint_encryption_mode(
+                DirectoryId="d-nonexistent999",
+                EndpointEncryptionMode="FIPS_140",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesWorkspaceActions:
+    """Tests for workspace-level actions on nonexistent workspaces."""
+
+    def test_restore_workspace_nonexistent(self, workspaces):
+        """RestoreWorkspace for nonexistent workspace raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.restore_workspace(WorkspaceId="ws-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_migrate_workspace_nonexistent(self, workspaces):
+        """MigrateWorkspace for nonexistent workspace raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.migrate_workspace(
+                SourceWorkspaceId="ws-nonexistent999",
+                BundleId="wsb-fake12345",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesBundleCrud:
+    """Tests for workspace bundle create/delete/update lifecycle."""
+
+    def test_create_workspace_bundle(self, workspaces):
+        """CreateWorkspaceBundle returns a WorkspaceBundle."""
+        resp = workspaces.create_workspace_bundle(
+            BundleName=_unique("bundle"),
+            BundleDescription="compat test bundle",
+            ImageId="wsi-fake12345",
+            ComputeType={"Name": "VALUE"},
+            UserStorage={"Capacity": "10"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "WorkspaceBundle" in resp
+
+    def test_delete_workspace_bundle(self, workspaces):
+        """DeleteWorkspaceBundle succeeds for any bundle ID."""
+        resp = workspaces.delete_workspace_bundle(BundleId="wsb-fake12345")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_workspace_bundle_nonexistent(self, workspaces):
+        """UpdateWorkspaceBundle for nonexistent bundle raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_workspace_bundle(BundleId="wsb-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesImageCrud:
+    """Tests for workspace image operations."""
+
+    def test_delete_workspace_image(self, workspaces):
+        """DeleteWorkspaceImage succeeds."""
+        resp = workspaces.delete_workspace_image(ImageId="wsi-fake12345")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_workspace_image(self, workspaces):
+        """ImportWorkspaceImage returns an ImageId."""
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-fake12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img"),
+            ImageDescription="compat test image",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ImageId" in resp
+
+    def test_copy_workspace_image(self, workspaces):
+        """CopyWorkspaceImage returns an ImageId."""
+        resp = workspaces.copy_workspace_image(
+            Name=_unique("copy"),
+            SourceImageId="wsi-fake12345",
+            SourceRegion="us-west-2",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ImageId" in resp
+
+    def test_create_updated_workspace_image(self, workspaces):
+        """CreateUpdatedWorkspaceImage returns an ImageId."""
+        resp = workspaces.create_updated_workspace_image(
+            Name=_unique("updated"),
+            SourceImageId="wsi-fake12345",
+            Description="compat test updated image",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ImageId" in resp
+
+
+class TestWorkSpacesPoolCrud:
+    """Tests for workspace pool operations."""
+
+    def test_create_workspaces_pool(self, workspaces):
+        """CreateWorkspacesPool returns a WorkspacesPool."""
+        resp = workspaces.create_workspaces_pool(
+            PoolName=_unique("pool"),
+            BundleId="wsb-fake12345",
+            DirectoryId="d-fake12345",
+            Description="compat test pool",
+            Capacity={"DesiredUserSessions": 1},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "WorkspacesPool" in resp
+
+    def test_start_workspaces_pool_nonexistent(self, workspaces):
+        """StartWorkspacesPool for nonexistent pool raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.start_workspaces_pool(PoolId="wspool-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_workspaces_pool_nonexistent(self, workspaces):
+        """StopWorkspacesPool for nonexistent pool raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.stop_workspaces_pool(PoolId="wspool-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_terminate_workspaces_pool_nonexistent(self, workspaces):
+        """TerminateWorkspacesPool for nonexistent pool raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.terminate_workspaces_pool(PoolId="wspool-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_workspaces_pool_nonexistent(self, workspaces):
+        """UpdateWorkspacesPool for nonexistent pool raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_workspaces_pool(PoolId="wspool-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesAccountLinkCrud:
+    """Tests for account link operations."""
+
+    def test_create_account_link_invitation(self, workspaces):
+        """CreateAccountLinkInvitation returns an AccountLink."""
+        resp = workspaces.create_account_link_invitation(
+            TargetAccountId="222233334444",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccountLink" in resp
+
+    def test_accept_account_link_invitation_nonexistent(self, workspaces):
+        """AcceptAccountLinkInvitation for nonexistent link raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.accept_account_link_invitation(LinkId="al-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_account_link_invitation_nonexistent(self, workspaces):
+        """DeleteAccountLinkInvitation for nonexistent link raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_account_link_invitation(LinkId="al-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_reject_account_link_invitation_nonexistent(self, workspaces):
+        """RejectAccountLinkInvitation for nonexistent link raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.reject_account_link_invitation(LinkId="al-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesApplicationActions:
+    """Tests for workspace application operations."""
+
+    def test_associate_workspace_application(self, workspaces):
+        """AssociateWorkspaceApplication returns a response."""
+        resp = workspaces.associate_workspace_application(
+            WorkspaceId="ws-fake12345",
+            ApplicationId="wsa-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_workspace_application(self, workspaces):
+        """DisassociateWorkspaceApplication returns a response."""
+        resp = workspaces.disassociate_workspace_application(
+            WorkspaceId="ws-fake12345",
+            ApplicationId="wsa-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_deploy_workspace_applications(self, workspaces):
+        """DeployWorkspaceApplications returns a response."""
+        resp = workspaces.deploy_workspace_applications(
+            WorkspaceId="ws-fake12345",
+            Force=True,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesDirectoryActions:
+    """Tests for directory-scoped operations on nonexistent dirs."""
+
+    def test_associate_ip_groups_nonexistent(self, workspaces):
+        """AssociateIpGroups for nonexistent directory raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.associate_ip_groups(
+                DirectoryId="d-nonexistent999",
+                GroupIds=["wsipg-fake12345"],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_disassociate_ip_groups_nonexistent(self, workspaces):
+        """DisassociateIpGroups for nonexistent directory raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.disassociate_ip_groups(
+                DirectoryId="d-nonexistent999",
+                GroupIds=["wsipg-fake12345"],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_client_branding_nonexistent(self, workspaces):
+        """ImportClientBranding for nonexistent directory raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.import_client_branding(
+                ResourceId="d-nonexistent999",
+                DeviceTypeWindows={"Logo": b"x" * 100},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesConnectClientAddIn:
+    """Tests for Connect Client Add-In create."""
+
+    def test_create_connect_client_add_in(self, workspaces):
+        """CreateConnectClientAddIn returns an AddInId."""
+        resp = workspaces.create_connect_client_add_in(
+            ResourceId="d-fake12345",
+            Name=_unique("addin"),
+            URL="https://example.com",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AddInId" in resp
+
+
+class TestWorkSpacesStandbyWorkspaces:
+    """Tests for standby workspace operations."""
+
+    def test_create_standby_workspaces(self, workspaces):
+        """CreateStandbyWorkspaces returns response with pending/failed lists."""
+        resp = workspaces.create_standby_workspaces(
+            PrimaryRegion="us-east-1",
+            StandbyWorkspaces=[
+                {
+                    "PrimaryWorkspaceId": "ws-fake12345",
+                    "DirectoryId": "d-fake12345",
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PendingStandbyWorkspaces" in resp or "FailedStandbyRequests" in resp
+
+
+class TestWorkSpacesDeleteTags:
+    """Tests for DeleteTags operation."""
+
+    def test_delete_tags(self, workspaces):
+        """DeleteTags succeeds even for nonexistent resources."""
+        resp = workspaces.delete_tags(
+            ResourceId="ws-fake12345",
+            TagKeys=["env"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
