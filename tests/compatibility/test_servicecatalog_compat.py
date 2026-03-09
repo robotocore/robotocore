@@ -367,6 +367,267 @@ class TestServiceCatalogPortfolioAccessEmpty:
             servicecatalog.delete_portfolio(Id=pid)
 
 
+class TestServiceCatalogListOpsEmpty:
+    """Tests for list operations that return empty results."""
+
+    def test_list_accepted_portfolio_shares(self, servicecatalog):
+        resp = servicecatalog.list_accepted_portfolio_shares()
+        assert "PortfolioDetails" in resp
+        assert isinstance(resp["PortfolioDetails"], list)
+
+    def test_list_record_history(self, servicecatalog):
+        resp = servicecatalog.list_record_history()
+        assert "RecordDetails" in resp
+        assert isinstance(resp["RecordDetails"], list)
+
+    def test_list_service_actions(self, servicecatalog):
+        resp = servicecatalog.list_service_actions()
+        assert "ServiceActionSummaries" in resp
+        assert isinstance(resp["ServiceActionSummaries"], list)
+
+    def test_list_tag_options(self, servicecatalog):
+        resp = servicecatalog.list_tag_options()
+        assert "TagOptionDetails" in resp
+        assert isinstance(resp["TagOptionDetails"], list)
+
+    def test_list_provisioned_product_plans(self, servicecatalog):
+        resp = servicecatalog.list_provisioned_product_plans()
+        assert "ProvisionedProductPlans" in resp
+        assert isinstance(resp["ProvisionedProductPlans"], list)
+
+
+class TestServiceCatalogListOpsWithResources:
+    """Tests for list operations that need existing resources."""
+
+    @pytest.fixture
+    def portfolio_and_product(self, servicecatalog):
+        """Create a portfolio with an associated product."""
+        pid = servicecatalog.create_portfolio(
+            DisplayName=_uid("lp-pf"),
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )["PortfolioDetail"]["Id"]
+        prod = servicecatalog.create_product(
+            Name=_uid("lp-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = prod["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        servicecatalog.associate_product_with_portfolio(ProductId=prod_id, PortfolioId=pid)
+        pa_resp = servicecatalog.list_provisioning_artifacts(ProductId=prod_id)
+        pa_id = pa_resp["ProvisioningArtifactDetails"][0]["Id"]
+        yield {"portfolio_id": pid, "product_id": prod_id, "pa_id": pa_id}
+        servicecatalog.disassociate_product_from_portfolio(ProductId=prod_id, PortfolioId=pid)
+        servicecatalog.delete_product(Id=prod_id)
+        servicecatalog.delete_portfolio(Id=pid)
+
+    def test_list_constraints_for_portfolio(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_constraints_for_portfolio(
+            PortfolioId=portfolio_and_product["portfolio_id"]
+        )
+        assert "ConstraintDetails" in resp
+        assert isinstance(resp["ConstraintDetails"], list)
+
+    def test_list_launch_paths(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_launch_paths(ProductId=portfolio_and_product["product_id"])
+        assert "LaunchPathSummaries" in resp
+        assert isinstance(resp["LaunchPathSummaries"], list)
+
+    def test_list_portfolios_for_product(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_portfolios_for_product(
+            ProductId=portfolio_and_product["product_id"]
+        )
+        assert "PortfolioDetails" in resp
+        assert isinstance(resp["PortfolioDetails"], list)
+        pf_ids = [p["Id"] for p in resp["PortfolioDetails"]]
+        assert portfolio_and_product["portfolio_id"] in pf_ids
+
+    def test_list_principals_for_portfolio(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_principals_for_portfolio(
+            PortfolioId=portfolio_and_product["portfolio_id"]
+        )
+        assert "Principals" in resp
+        assert isinstance(resp["Principals"], list)
+
+    def test_list_provisioning_artifacts(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_provisioning_artifacts(
+            ProductId=portfolio_and_product["product_id"]
+        )
+        assert "ProvisioningArtifactDetails" in resp
+        assert isinstance(resp["ProvisioningArtifactDetails"], list)
+        assert len(resp["ProvisioningArtifactDetails"]) >= 1
+        pa = resp["ProvisioningArtifactDetails"][0]
+        assert "Id" in pa
+        assert "Name" in pa
+
+    def test_list_budgets_for_resource(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_budgets_for_resource(
+            ResourceId=portfolio_and_product["product_id"]
+        )
+        assert "Budgets" in resp
+        assert isinstance(resp["Budgets"], list)
+
+    def test_list_service_actions_for_provisioning_artifact(
+        self, servicecatalog, portfolio_and_product
+    ):
+        resp = servicecatalog.list_service_actions_for_provisioning_artifact(
+            ProductId=portfolio_and_product["product_id"],
+            ProvisioningArtifactId=portfolio_and_product["pa_id"],
+        )
+        assert "ServiceActionSummaries" in resp
+        assert isinstance(resp["ServiceActionSummaries"], list)
+
+    def test_list_organization_portfolio_access(self, servicecatalog, portfolio_and_product):
+        resp = servicecatalog.list_organization_portfolio_access(
+            PortfolioId=portfolio_and_product["portfolio_id"],
+            OrganizationNodeType="ACCOUNT",
+        )
+        assert "OrganizationNodes" in resp
+        assert isinstance(resp["OrganizationNodes"], list)
+
+    def test_list_resources_for_tag_option(self, servicecatalog):
+        resp = servicecatalog.list_resources_for_tag_option(TagOptionId="to-fake")
+        assert "ResourceDetails" in resp
+        assert isinstance(resp["ResourceDetails"], list)
+
+    def test_list_provisioning_artifacts_for_service_action(self, servicecatalog):
+        resp = servicecatalog.list_provisioning_artifacts_for_service_action(
+            ServiceActionId="act-fake123"
+        )
+        assert "ProvisioningArtifactViews" in resp
+        assert isinstance(resp["ProvisioningArtifactViews"], list)
+
+    def test_list_stack_instances_for_provisioned_product(self, servicecatalog):
+        resp = servicecatalog.list_stack_instances_for_provisioned_product(
+            ProvisionedProductId="pp-fake"
+        )
+        assert "StackInstances" in resp
+        assert isinstance(resp["StackInstances"], list)
+
+
+class TestServiceCatalogDescribeOps:
+    """Tests for Describe operations."""
+
+    @pytest.fixture
+    def product_with_artifact(self, servicecatalog):
+        """Create a product and return its IDs."""
+        prod = servicecatalog.create_product(
+            Name=_uid("desc-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = prod["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        pa_resp = servicecatalog.list_provisioning_artifacts(ProductId=prod_id)
+        pa_id = pa_resp["ProvisioningArtifactDetails"][0]["Id"]
+        yield {"product_id": prod_id, "pa_id": pa_id}
+        servicecatalog.delete_product(Id=prod_id)
+
+    def test_describe_product_as_admin(self, servicecatalog, product_with_artifact):
+        resp = servicecatalog.describe_product_as_admin(Id=product_with_artifact["product_id"])
+        assert "ProductViewDetail" in resp
+        assert "ProvisioningArtifactSummaries" in resp
+        assert isinstance(resp["ProvisioningArtifactSummaries"], list)
+        assert "Tags" in resp
+        assert "Budgets" in resp
+
+    def test_describe_provisioning_artifact(self, servicecatalog, product_with_artifact):
+        resp = servicecatalog.describe_provisioning_artifact(
+            ProductId=product_with_artifact["product_id"],
+            ProvisioningArtifactId=product_with_artifact["pa_id"],
+        )
+        assert "ProvisioningArtifactDetail" in resp
+        assert "Info" in resp
+        assert "Status" in resp
+        pa = resp["ProvisioningArtifactDetail"]
+        assert "Id" in pa
+        assert pa["Id"] == product_with_artifact["pa_id"]
+
+    def test_describe_provisioning_parameters(self, servicecatalog, product_with_artifact):
+        resp = servicecatalog.describe_provisioning_parameters(
+            ProductId=product_with_artifact["product_id"],
+            ProvisioningArtifactId=product_with_artifact["pa_id"],
+        )
+        assert "ProvisioningArtifactParameters" in resp
+        assert "ConstraintSummaries" in resp
+        assert isinstance(resp["ConstraintSummaries"], list)
+
+    def test_describe_copy_product_status(self, servicecatalog):
+        """DescribeCopyProductStatus with fake token returns result."""
+        resp = servicecatalog.describe_copy_product_status(CopyProductToken="fake-token")
+        assert "CopyProductStatus" in resp
+
+    def test_describe_portfolio_share_status(self, servicecatalog):
+        """DescribePortfolioShareStatus with fake token returns result."""
+        resp = servicecatalog.describe_portfolio_share_status(PortfolioShareToken="fake-token")
+        assert "PortfolioShareToken" in resp
+        assert "Status" in resp
+
+    def test_describe_service_action_execution_parameters(self, servicecatalog):
+        """DescribeServiceActionExecutionParameters returns params list."""
+        resp = servicecatalog.describe_service_action_execution_parameters(
+            ProvisionedProductId="pp-fake",
+            ServiceActionId="act-fake",
+        )
+        assert "ServiceActionParameters" in resp
+        assert isinstance(resp["ServiceActionParameters"], list)
+
+
+class TestServiceCatalogDescribeNotFound:
+    """Tests for Describe operations that return ResourceNotFoundException."""
+
+    def test_describe_constraint_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_constraint(Id="cs-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_product_view_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_product_view(Id="prodview-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_provisioned_product_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_provisioned_product(Id="pp-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_provisioned_product_plan_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_provisioned_product_plan(PlanId="pp-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_record_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_record(Id="rec-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_service_action_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_service_action(Id="act-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_tag_option_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_tag_option(Id="to-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_provisioned_product_outputs_not_found(self, servicecatalog):
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.get_provisioned_product_outputs(ProvisionedProductId="pp-fake123")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestServiceCatalogPortfolioShare:
     def test_create_and_delete_portfolio_share(self, servicecatalog):
         name = _uid("portfolio")
