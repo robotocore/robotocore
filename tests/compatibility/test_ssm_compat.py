@@ -2902,6 +2902,169 @@ class TestSSMStopAutomationExecutionCancel:
             ssm.delete_document(Name=doc_name)
 
 
+class TestSSMServiceSettings:
+    """Tests for ServiceSetting update/reset operations."""
+
+    def test_update_service_setting(self, ssm):
+        """UpdateServiceSetting changes the setting value."""
+        resp = ssm.update_service_setting(
+            SettingId="/ssm/parameter-store/high-throughput-enabled",
+            SettingValue="true",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it took effect
+        get_resp = ssm.get_service_setting(SettingId="/ssm/parameter-store/high-throughput-enabled")
+        assert "ServiceSetting" in get_resp
+
+    def test_reset_service_setting(self, ssm):
+        """ResetServiceSetting resets the setting to default."""
+        # First update, then reset
+        ssm.update_service_setting(
+            SettingId="/ssm/parameter-store/high-throughput-enabled",
+            SettingValue="true",
+        )
+        resp = ssm.reset_service_setting(SettingId="/ssm/parameter-store/high-throughput-enabled")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ServiceSetting" in resp
+
+
+class TestSSMSessions:
+    """Tests for session management operations."""
+
+    def test_start_session(self, ssm):
+        """StartSession returns a session ID."""
+        resp = ssm.start_session(Target="i-1234567890abcdef0")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SessionId" in resp
+
+    def test_terminate_session(self, ssm):
+        """TerminateSession terminates a session by ID."""
+        # Start a session first
+        start_resp = ssm.start_session(Target="i-1234567890abcdef0")
+        session_id = start_resp["SessionId"]
+        resp = ssm.terminate_session(SessionId=session_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SessionId" in resp
+
+    def test_resume_session(self, ssm):
+        """ResumeSession resumes an existing session."""
+        # Start a session first
+        start_resp = ssm.start_session(Target="i-1234567890abcdef0")
+        session_id = start_resp["SessionId"]
+        resp = ssm.resume_session(SessionId=session_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SessionId" in resp
+
+
+class TestSSMComplianceItems:
+    """Tests for PutComplianceItems operation."""
+
+    def test_put_compliance_items(self, ssm):
+        """PutComplianceItems stores compliance data."""
+        resp = ssm.put_compliance_items(
+            ResourceId="i-1234567890abcdef0",
+            ResourceType="ManagedInstance",
+            ComplianceType="Custom:TestCompliance",
+            ExecutionSummary={"ExecutionTime": "2026-01-01T00:00:00Z"},
+            Items=[{"Severity": "MEDIUM", "Status": "COMPLIANT"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSSMDocumentMetadata:
+    """Tests for UpdateDocumentMetadata operation."""
+
+    def test_update_document_metadata_nonexistent(self, ssm):
+        """UpdateDocumentMetadata on a nonexistent doc raises InvalidDocument."""
+        with pytest.raises(ClientError) as exc:
+            ssm.update_document_metadata(
+                Name="nonexistent-doc-xyz-999",
+                DocumentReviews={
+                    "Action": "Approve",
+                    "Comment": [{"Content": "looks good", "Type": "Comment"}],
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidDocument"
+
+    def test_update_document_metadata_on_existing(self, ssm):
+        """UpdateDocumentMetadata on an existing document."""
+        doc_name = _unique("docmeta")
+        ssm.create_document(
+            Name=doc_name,
+            Content=(
+                '{"schemaVersion":"2.2","mainSteps":'
+                '[{"action":"aws:runShellScript","name":"run",'
+                '"inputs":{"runCommand":["echo hi"]}}]}'
+            ),
+            DocumentType="Command",
+            DocumentFormat="JSON",
+        )
+        try:
+            resp = ssm.update_document_metadata(
+                Name=doc_name,
+                DocumentReviews={
+                    "Action": "Approve",
+                    "Comment": [{"Content": "approved", "Type": "Comment"}],
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+
+class TestSSMAccessRequest:
+    """Tests for StartAccessRequest and GetAccessToken operations."""
+
+    def test_start_access_request(self, ssm):
+        """StartAccessRequest returns an AccessRequestId."""
+        resp = ssm.start_access_request(
+            Reason="testing access",
+            Targets=[{"Key": "InstanceIds", "Values": ["i-1234567890abcdef0"]}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccessRequestId" in resp
+
+    def test_get_access_token(self, ssm):
+        """GetAccessToken returns credentials."""
+        resp = ssm.get_access_token(AccessRequestId="ar-1234567890abcdef0")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccessRequestStatus" in resp
+
+
+class TestSSMExecutionPreview:
+    """Tests for StartExecutionPreview operation."""
+
+    def test_start_execution_preview(self, ssm):
+        """StartExecutionPreview returns an ExecutionPreviewId."""
+        resp = ssm.start_execution_preview(
+            DocumentName="AWS-RunShellScript",
+            ExecutionInputs={"Automation": {"Parameters": {}}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ExecutionPreviewId" in resp
+
+
+class TestSSMResourceDataSyncUpdate:
+    """Tests for UpdateResourceDataSync operation."""
+
+    def test_update_resource_data_sync_nonexistent(self, ssm):
+        """UpdateResourceDataSync on nonexistent sync raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.update_resource_data_sync(
+                SyncName="nonexistent-sync-xyz-999",
+                SyncType="SyncFromSource",
+                SyncSource={
+                    "SourceType": "AWS:SSM:ManagedInstance",
+                    "SourceRegions": ["us-east-1"],
+                    "IncludeFutureRegions": True,
+                },
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "DoesNotExistException",
+            "ResourceDataSyncNotFoundException",
+        )
+
+
 class TestSSMUpdateManagedInstanceRole:
     """Tests for UpdateManagedInstanceRole operation."""
 

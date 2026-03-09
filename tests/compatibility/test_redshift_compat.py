@@ -2469,3 +2469,59 @@ class TestRedshiftMiscOperations:
             TargetReservedNodeOfferingId="nonexistent-offering",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestRedshiftSnapshotScheduleLifecycle:
+    """Tests for snapshot schedule modify/delete operations."""
+
+    @pytest.fixture
+    def redshift(self):
+        return make_client("redshift")
+
+    def test_delete_snapshot_schedule(self, redshift):
+        """DeleteSnapshotSchedule removes the schedule."""
+        sid = f"del-sched-{_uid()}"
+        redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(24 hours)"],
+        )
+        resp = redshift.delete_snapshot_schedule(ScheduleIdentifier=sid)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify it's gone
+        desc = redshift.describe_snapshot_schedules(ScheduleIdentifier=sid)
+        assert len(desc["SnapshotSchedules"]) == 0
+
+    def test_modify_snapshot_schedule(self, redshift):
+        """ModifySnapshotSchedule updates the schedule definition."""
+        sid = f"mod-sched-{_uid()}"
+        redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        try:
+            resp = redshift.modify_snapshot_schedule(
+                ScheduleIdentifier=sid,
+                ScheduleDefinitions=["rate(24 hours)"],
+            )
+            assert resp["ScheduleIdentifier"] == sid
+            assert "rate(24 hours)" in resp["ScheduleDefinitions"]
+        finally:
+            redshift.delete_snapshot_schedule(ScheduleIdentifier=sid)
+
+    def test_modify_endpoint_access_not_found(self, redshift):
+        """ModifyEndpointAccess with nonexistent endpoint raises EndpointNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.modify_endpoint_access(
+                EndpointName=f"ep-{_uid()}",
+            )
+        assert "EndpointNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_get_cluster_credentials_with_iam_with_cluster_id(self, redshift):
+        """GetClusterCredentialsWithIAM with a cluster identifier returns credentials."""
+        resp = redshift.get_cluster_credentials_with_iam(
+            ClusterIdentifier=f"fake-cluster-{_uid()}",
+        )
+        assert "DbUser" in resp
+        assert "DbPassword" in resp
+        assert "Expiration" in resp
