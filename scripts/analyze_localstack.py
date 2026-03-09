@@ -456,7 +456,7 @@ def analyze_robotocore_gap(community: dict, enterprise: dict) -> dict[str, dict]
         ls_tier = _LS_TIER.get(reg_name, _LS_TIER.get(service, "unknown"))
 
         if missing_ops or not has_provider:
-            gaps[service] = {
+            gaps[reg_name] = {
                 "has_provider": has_provider,
                 "community_ops": len(community_ops),
                 "robotocore_ops": len(robotocore_ops),
