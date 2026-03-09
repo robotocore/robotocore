@@ -223,6 +223,18 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             {"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:
+        # Werkzeug HTTPExceptions from Moto contain the proper error response
+        from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
+
+        if isinstance(e, WerkzeugHTTPException):
+            resp = e.get_response()
+            body_text = resp.get_data(as_text=True) if resp else str(e)
+            status_code = e.code or 400
+            return Response(
+                content=body_text,
+                status_code=status_code,
+                headers={"Content-Type": "application/json"},
+            )
         _diag_record(
             exc=e,
             service=service_name,
@@ -310,6 +322,17 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             {"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:
+        from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
+
+        if isinstance(e, WerkzeugHTTPException):
+            resp = e.get_response()
+            body_text = resp.get_data(as_text=True) if resp else str(e)
+            status_code = e.code or 400
+            return Response(
+                content=body_text,
+                status_code=status_code,
+                headers={"Content-Type": "application/json"},
+            )
         _diag_record(
             exc=e,
             service=service_name,
