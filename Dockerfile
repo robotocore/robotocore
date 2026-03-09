@@ -19,9 +19,19 @@ RUN uv sync --no-dev --no-install-project
 COPY src/ src/
 RUN uv sync --no-dev
 
-# Strip git clones and caches from the venv to save ~300MB
+# Strip build artifacts and unused transitive deps (~90MB savings)
 RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
-    rm -rf /app/.venv/src/*/.git /root/.cache/uv
+    rm -rf /app/.venv/src/*/.git /root/.cache/uv \
+    /app/.venv/lib/python3.12/site-packages/cfnlint \
+    /app/.venv/lib/python3.12/site-packages/cfn_lint*.dist-info \
+    /app/.venv/lib/python3.12/site-packages/sympy \
+    /app/.venv/lib/python3.12/site-packages/sympy*.dist-info \
+    /app/.venv/lib/python3.12/site-packages/networkx \
+    /app/.venv/lib/python3.12/site-packages/networkx*.dist-info \
+    /app/.venv/lib/python3.12/site-packages/mpmath \
+    /app/.venv/lib/python3.12/site-packages/mpmath*.dist-info \
+    /app/.venv/lib/python3.12/site-packages/setuptools \
+    /app/.venv/lib/python3.12/site-packages/setuptools*.dist-info
 
 # ---- Runtime stage: slim image with just python + venv ----
 FROM python:3.12-slim
