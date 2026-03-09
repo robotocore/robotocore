@@ -1499,3 +1499,194 @@ class TestGuardDutyAcceptAdministratorInvitation:
         )
         resp = guardduty.get_administrator_account(DetectorId=detector)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyArchiveFindings:
+    """Tests for ArchiveFindings and UnarchiveFindings."""
+
+    def test_archive_findings(self, guardduty, detector):
+        """ArchiveFindings returns 200 even with fake finding IDs."""
+        resp = guardduty.archive_findings(DetectorId=detector, FindingIds=["fake-finding-id-1"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_unarchive_findings(self, guardduty, detector):
+        """UnarchiveFindings returns 200 even with fake finding IDs."""
+        resp = guardduty.unarchive_findings(DetectorId=detector, FindingIds=["fake-finding-id-1"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_archive_then_unarchive_findings(self, guardduty, detector):
+        """Create sample findings, archive them, then unarchive."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        findings = guardduty.list_findings(DetectorId=detector)
+        finding_ids = findings["FindingIds"]
+        assert len(finding_ids) > 0
+
+        resp = guardduty.archive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        resp = guardduty.unarchive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyUpdateFindingsFeedback:
+    """Tests for UpdateFindingsFeedback."""
+
+    def test_update_findings_feedback_useful(self, guardduty, detector):
+        """UpdateFindingsFeedback with USEFUL returns 200."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        findings = guardduty.list_findings(DetectorId=detector)
+        finding_ids = findings["FindingIds"]
+        assert len(finding_ids) > 0
+
+        resp = guardduty.update_findings_feedback(
+            DetectorId=detector, FindingIds=finding_ids[:1], Feedback="USEFUL"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_findings_feedback_not_useful(self, guardduty, detector):
+        """UpdateFindingsFeedback with NOT_USEFUL returns 200."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        findings = guardduty.list_findings(DetectorId=detector)
+        finding_ids = findings["FindingIds"]
+        assert len(finding_ids) > 0
+
+        resp = guardduty.update_findings_feedback(
+            DetectorId=detector, FindingIds=finding_ids[:1], Feedback="NOT_USEFUL"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyInviteMembers:
+    """Tests for InviteMembers."""
+
+    def test_invite_members(self, guardduty, detector):
+        """InviteMembers returns 200 with UnprocessedAccounts."""
+        resp = guardduty.invite_members(DetectorId=detector, AccountIds=["111122223333"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+    def test_invite_multiple_members(self, guardduty, detector):
+        """InviteMembers with multiple accounts."""
+        resp = guardduty.invite_members(
+            DetectorId=detector,
+            AccountIds=["111122223333", "444455556666"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+
+class TestGuardDutyInvitationOps:
+    """Tests for GetInvitationsCount, DeclineInvitations, DeleteInvitations."""
+
+    def test_get_invitations_count(self, guardduty):
+        """GetInvitationsCount returns a count."""
+        resp = guardduty.get_invitations_count()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InvitationsCount" in resp
+        assert isinstance(resp["InvitationsCount"], int)
+
+    def test_decline_invitations(self, guardduty):
+        """DeclineInvitations returns 200."""
+        resp = guardduty.decline_invitations(AccountIds=["111122223333"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+    def test_delete_invitations(self, guardduty):
+        """DeleteInvitations returns 200."""
+        resp = guardduty.delete_invitations(AccountIds=["111122223333"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+
+class TestGuardDutyDisassociate:
+    """Tests for Disassociate operations."""
+
+    def test_disassociate_from_administrator_account(self, guardduty, detector):
+        """DisassociateFromAdministratorAccount returns 200."""
+        resp = guardduty.disassociate_from_administrator_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_from_master_account(self, guardduty, detector):
+        """DisassociateFromMasterAccount returns 200."""
+        resp = guardduty.disassociate_from_master_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_members(self, guardduty, detector):
+        """DisassociateMembers returns 200."""
+        resp = guardduty.disassociate_members(DetectorId=detector, AccountIds=["111122223333"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+
+class TestGuardDutyAcceptInvitation:
+    """Tests for AcceptInvitation (legacy API)."""
+
+    def test_accept_invitation(self, guardduty, detector):
+        """AcceptInvitation (legacy) returns 200."""
+        resp = guardduty.accept_invitation(
+            DetectorId=detector,
+            MasterId="111122223333",
+            InvitationId="fake-invitation-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyListCoverage:
+    """Tests for ListCoverage."""
+
+    def test_list_coverage(self, guardduty, detector):
+        """ListCoverage returns Resources list."""
+        resp = guardduty.list_coverage(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Resources" in resp
+        assert isinstance(resp["Resources"], list)
+
+
+class TestGuardDutyUpdateMemberDetectors:
+    """Tests for UpdateMemberDetectors."""
+
+    def test_update_member_detectors(self, guardduty, detector):
+        """UpdateMemberDetectors returns UnprocessedAccounts."""
+        resp = guardduty.update_member_detectors(DetectorId=detector, AccountIds=["111122223333"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+
+class TestGuardDutyUpdateMalwareScanSettings:
+    """Tests for UpdateMalwareScanSettings."""
+
+    def test_update_malware_scan_settings(self, guardduty, detector):
+        """UpdateMalwareScanSettings returns 200."""
+        resp = guardduty.update_malware_scan_settings(
+            DetectorId=detector,
+            ScanResourceCriteria={
+                "Include": {"EC2_INSTANCE_TAG": {"MapEquals": [{"Key": "env", "Value": "prod"}]}}
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_malware_scan_settings_empty_criteria(self, guardduty, detector):
+        """UpdateMalwareScanSettings with empty criteria returns 200."""
+        resp = guardduty.update_malware_scan_settings(DetectorId=detector, ScanResourceCriteria={})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyStartMalwareScan:
+    """Tests for StartMalwareScan."""
+
+    def test_start_malware_scan(self, guardduty):
+        """StartMalwareScan returns a ScanId."""
+        resp = guardduty.start_malware_scan(
+            ResourceArn="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ScanId" in resp

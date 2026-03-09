@@ -788,3 +788,263 @@ class TestNeptuneOrderableInstances:
         assert "OrderableDBInstanceOptions" in resp
         assert isinstance(resp["OrderableDBInstanceOptions"], list)
         assert len(resp["OrderableDBInstanceOptions"]) > 0
+
+
+class TestNeptuneDescribeDBEngineVersions:
+    """Tests for DescribeDBEngineVersions."""
+
+    def test_describe_db_engine_versions(self, neptune):
+        resp = neptune.describe_db_engine_versions(Engine="neptune")
+        assert "DBEngineVersions" in resp
+        assert isinstance(resp["DBEngineVersions"], list)
+        assert len(resp["DBEngineVersions"]) > 0
+
+    def test_describe_db_engine_versions_has_engine(self, neptune):
+        resp = neptune.describe_db_engine_versions(Engine="neptune")
+        for ver in resp["DBEngineVersions"]:
+            assert ver["Engine"] == "neptune"
+            assert "EngineVersion" in ver
+
+    def test_describe_db_engine_versions_has_param_group_family(self, neptune):
+        resp = neptune.describe_db_engine_versions(Engine="neptune")
+        for ver in resp["DBEngineVersions"]:
+            assert "DBParameterGroupFamily" in ver
+
+
+class TestNeptuneEngineDefaultClusterParameters:
+    """Tests for DescribeEngineDefaultClusterParameters."""
+
+    def test_describe_engine_default_cluster_parameters(self, neptune):
+        resp = neptune.describe_engine_default_cluster_parameters(DBParameterGroupFamily="neptune1")
+        result = resp["EngineDefaults"]
+        assert "Parameters" in result
+        assert isinstance(result["Parameters"], list)
+
+    def test_describe_engine_default_cluster_parameters_has_family(self, neptune):
+        resp = neptune.describe_engine_default_cluster_parameters(DBParameterGroupFamily="neptune1")
+        assert resp["EngineDefaults"]["DBParameterGroupFamily"] == "neptune1"
+
+
+class TestNeptuneEngineDefaultParameters:
+    """Tests for DescribeEngineDefaultParameters."""
+
+    def test_describe_engine_default_parameters(self, neptune):
+        resp = neptune.describe_engine_default_parameters(DBParameterGroupFamily="neptune1")
+        result = resp["EngineDefaults"]
+        assert "Parameters" in result
+        assert isinstance(result["Parameters"], list)
+
+    def test_describe_engine_default_parameters_has_family(self, neptune):
+        resp = neptune.describe_engine_default_parameters(DBParameterGroupFamily="neptune1")
+        assert resp["EngineDefaults"]["DBParameterGroupFamily"] == "neptune1"
+
+
+class TestNeptuneDescribeEventCategories:
+    """Tests for DescribeEventCategories."""
+
+    def test_describe_event_categories(self, neptune):
+        resp = neptune.describe_event_categories()
+        assert "EventCategoriesMapList" in resp
+        assert isinstance(resp["EventCategoriesMapList"], list)
+
+
+class TestNeptuneDescribePendingMaintenanceActions:
+    """Tests for DescribePendingMaintenanceActions."""
+
+    def test_describe_pending_maintenance_actions(self, neptune):
+        resp = neptune.describe_pending_maintenance_actions()
+        assert "PendingMaintenanceActions" in resp
+        assert isinstance(resp["PendingMaintenanceActions"], list)
+
+
+class TestNeptuneDescribeValidDBInstanceModifications:
+    """Tests for DescribeValidDBInstanceModifications."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, neptune, subnet_ids):
+        self.neptune = neptune
+        self.sg_name = _unique("valid-sg")
+        self.cluster_id = _unique("valid-cl")
+        self.inst_id = _unique("valid-inst")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=self.sg_name,
+            DBSubnetGroupDescription="valid mod tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=self.sg_name,
+        )
+        neptune.create_db_instance(
+            DBInstanceIdentifier=self.inst_id,
+            DBInstanceClass="db.r5.large",
+            Engine="neptune",
+            DBClusterIdentifier=self.cluster_id,
+        )
+        yield
+        neptune.delete_db_instance(DBInstanceIdentifier=self.inst_id, SkipFinalSnapshot=True)
+        neptune.delete_db_cluster(DBClusterIdentifier=self.cluster_id, SkipFinalSnapshot=True)
+        neptune.delete_db_subnet_group(DBSubnetGroupName=self.sg_name)
+
+    def test_describe_valid_db_instance_modifications(self, neptune):
+        resp = neptune.describe_valid_db_instance_modifications(DBInstanceIdentifier=self.inst_id)
+        msg = resp["ValidDBInstanceModificationsMessage"]
+        assert "Storage" in msg
+        assert isinstance(msg["Storage"], list)
+
+    def test_describe_valid_db_instance_modifications_nonexistent(self, neptune):
+        with pytest.raises(ClientError) as exc_info:
+            neptune.describe_valid_db_instance_modifications(
+                DBInstanceIdentifier="nonexistent-instance"
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+
+class TestNeptuneDescribeDBClusterEndpoints:
+    """Tests for DescribeDBClusterEndpoints."""
+
+    def test_describe_db_cluster_endpoints_empty(self, neptune):
+        resp = neptune.describe_db_cluster_endpoints()
+        assert "DBClusterEndpoints" in resp
+        assert isinstance(resp["DBClusterEndpoints"], list)
+
+
+class TestNeptuneDBClusterEndpointOperations:
+    """Tests for CreateDBClusterEndpoint with a real cluster."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, neptune, subnet_ids):
+        self.neptune = neptune
+        self.sg_name = _unique("ep-sg")
+        self.cluster_id = _unique("ep-cl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=self.sg_name,
+            DBSubnetGroupDescription="endpoint tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=self.sg_name,
+        )
+        yield
+        neptune.delete_db_cluster(DBClusterIdentifier=self.cluster_id, SkipFinalSnapshot=True)
+        neptune.delete_db_subnet_group(DBSubnetGroupName=self.sg_name)
+
+    def test_create_db_cluster_endpoint(self, neptune):
+        ep_id = _unique("ep")
+        resp = neptune.create_db_cluster_endpoint(
+            DBClusterIdentifier=self.cluster_id,
+            DBClusterEndpointIdentifier=ep_id,
+            EndpointType="READER",
+        )
+        assert resp["DBClusterEndpointIdentifier"] == ep_id
+        assert resp["EndpointType"] == "READER"
+        assert resp["DBClusterIdentifier"] == self.cluster_id
+
+    def test_describe_db_cluster_endpoints_filtered(self, neptune):
+        ep_id = _unique("ep")
+        neptune.create_db_cluster_endpoint(
+            DBClusterIdentifier=self.cluster_id,
+            DBClusterEndpointIdentifier=ep_id,
+            EndpointType="READER",
+        )
+        resp = neptune.describe_db_cluster_endpoints(DBClusterIdentifier=self.cluster_id)
+        ep_ids = [e["DBClusterEndpointIdentifier"] for e in resp["DBClusterEndpoints"]]
+        assert ep_id in ep_ids
+
+
+class TestNeptuneModifyGlobalCluster:
+    """Tests for ModifyGlobalCluster and FailoverGlobalCluster."""
+
+    def test_modify_global_cluster(self, neptune):
+        gc_id = _unique("gc-mod")
+        neptune.create_global_cluster(GlobalClusterIdentifier=gc_id, Engine="neptune")
+        try:
+            new_id = _unique("gc-new")
+            resp = neptune.modify_global_cluster(
+                GlobalClusterIdentifier=gc_id,
+                NewGlobalClusterIdentifier=new_id,
+            )
+            assert resp["GlobalCluster"]["GlobalClusterIdentifier"] == new_id
+            neptune.delete_global_cluster(GlobalClusterIdentifier=new_id)
+        except Exception:
+            try:
+                neptune.delete_global_cluster(GlobalClusterIdentifier=gc_id)
+            except Exception:
+                pass
+            raise
+
+    def test_modify_nonexistent_global_cluster(self, neptune):
+        with pytest.raises(ClientError) as exc_info:
+            neptune.modify_global_cluster(
+                GlobalClusterIdentifier="nonexistent-gc",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_failover_global_cluster_nonexistent(self, neptune):
+        with pytest.raises(ClientError) as exc_info:
+            neptune.failover_global_cluster(
+                GlobalClusterIdentifier="nonexistent-gc",
+                TargetDbClusterIdentifier="arn:aws:rds:us-east-1:123456789012:cluster:fake",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+
+class TestNeptuneApplyPendingMaintenanceAction:
+    """Tests for ApplyPendingMaintenanceAction."""
+
+    def test_apply_pending_maintenance_action(self, neptune, subnet_ids):
+        sg_name = _unique("maint-sg")
+        cluster_id = _unique("maint-cl")
+        inst_id = _unique("maint-inst")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg_name,
+            DBSubnetGroupDescription="maintenance tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=sg_name,
+        )
+        neptune.create_db_instance(
+            DBInstanceIdentifier=inst_id,
+            DBInstanceClass="db.r5.large",
+            Engine="neptune",
+            DBClusterIdentifier=cluster_id,
+        )
+        try:
+            resp = neptune.apply_pending_maintenance_action(
+                ResourceIdentifier=f"arn:aws:rds:us-east-1:123456789012:db:{inst_id}",
+                ApplyAction="system-update",
+                OptInType="immediate",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ResourcePendingMaintenanceActions" in resp
+        finally:
+            neptune.delete_db_instance(DBInstanceIdentifier=inst_id, SkipFinalSnapshot=True)
+            neptune.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg_name)
+
+
+class TestNeptuneModifyEventSubscription:
+    """Tests for ModifyEventSubscription."""
+
+    def test_modify_event_subscription(self, neptune):
+        name = _unique("nep-sub")
+        neptune.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        try:
+            resp = neptune.modify_event_subscription(SubscriptionName=name, Enabled=False)
+            assert resp["EventSubscription"]["CustSubscriptionId"] == name
+        finally:
+            neptune.delete_event_subscription(SubscriptionName=name)
+
+    def test_modify_nonexistent_event_subscription(self, neptune):
+        with pytest.raises(ClientError) as exc_info:
+            neptune.modify_event_subscription(SubscriptionName="nonexistent-sub")
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
