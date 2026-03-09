@@ -680,3 +680,112 @@ class TestECRBatchScanningConfig:
             repositoryNames=[repo],
         )
         assert "scanningConfigurations" in resp
+
+
+class TestECRErrorPaths:
+    """Tests that verify proper error responses for nonexistent resources."""
+
+    def test_describe_repositories_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.describe_repositories(repositoryNames=["nonexistent-repo-xyz-999"])
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_delete_repository_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.delete_repository(repositoryName="nonexistent-repo-xyz-999")
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_list_images_nonexistent_repo(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.list_images(repositoryName="nonexistent-repo-xyz-999")
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_describe_images_nonexistent_repo(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.describe_images(repositoryName="nonexistent-repo-xyz-999")
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_get_repository_policy_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.get_repository_policy(repositoryName="nonexistent-repo-xyz-999")
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_delete_repository_policy_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.delete_repository_policy(repositoryName="nonexistent-repo-xyz-999")
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_set_repository_policy_nonexistent(self, ecr):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "Test",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": ["ecr:GetDownloadUrlForLayer"],
+                    }
+                ],
+            }
+        )
+        with pytest.raises(ClientError) as exc_info:
+            ecr.set_repository_policy(repositoryName="nonexistent-repo-xyz-999", policyText=policy)
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_get_lifecycle_policy_nonexistent_repo(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.get_lifecycle_policy(repositoryName="nonexistent-repo-xyz-999")
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_put_image_scanning_config_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.put_image_scanning_configuration(
+                repositoryName="nonexistent-repo-xyz-999",
+                imageScanningConfiguration={"scanOnPush": True},
+            )
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_start_image_scan_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.start_image_scan(
+                repositoryName="nonexistent-repo-xyz-999",
+                imageId={"imageTag": "latest"},
+            )
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_describe_image_scan_findings_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.describe_image_scan_findings(
+                repositoryName="nonexistent-repo-xyz-999",
+                imageId={"imageTag": "latest"},
+            )
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_delete_lifecycle_policy_nonexistent_repo(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.delete_lifecycle_policy(repositoryName="nonexistent-repo-xyz-999")
+        error_str = str(exc_info.value)
+        assert (
+            "RepositoryNotFoundException" in error_str
+            or "LifecyclePolicyNotFoundException" in error_str
+        )
+
+    def test_put_image_tag_mutability_nonexistent(self, ecr):
+        with pytest.raises(ClientError) as exc_info:
+            ecr.put_image_tag_mutability(
+                repositoryName="nonexistent-repo-xyz-999",
+                imageTagMutability="IMMUTABLE",
+            )
+        assert "RepositoryNotFoundException" in str(exc_info.value)
+
+    def test_create_repository_already_exists(self, ecr):
+        repo_name = _unique("duprepo")
+        resp = ecr.create_repository(repositoryName=repo_name)
+        assert resp["repository"]["repositoryName"] == repo_name
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ecr.create_repository(repositoryName=repo_name)
+            assert "RepositoryAlreadyExistsException" in str(exc_info.value)
+        finally:
+            ecr.delete_repository(repositoryName=repo_name)

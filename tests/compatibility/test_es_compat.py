@@ -2,6 +2,7 @@
 
 import uuid
 
+import botocore.exceptions
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -180,7 +181,8 @@ class TestEsAutoCoverage:
 
     def test_delete_elasticsearch_service_role(self, client):
         """DeleteElasticsearchServiceRole returns a response."""
-        client.delete_elasticsearch_service_role()
+        resp = client.delete_elasticsearch_service_role()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_inbound_cross_cluster_search_connections(self, client):
         """DescribeInboundCrossClusterSearchConnections returns a response."""
@@ -216,3 +218,84 @@ class TestEsAutoCoverage:
         """ListVpcEndpoints returns a response."""
         resp = client.list_vpc_endpoints()
         assert "VpcEndpointSummaryList" in resp
+
+    def test_describe_domain_nonexistent(self, client):
+        """DescribeElasticsearchDomain with fake domain raises ResourceNotFoundException."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            client.describe_elasticsearch_domain(DomainName="nonexistent-domain-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_domain_config_nonexistent(self, client):
+        """DescribeElasticsearchDomainConfig with fake domain raises ResourceNotFoundException."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            client.describe_elasticsearch_domain_config(DomainName="nonexistent-domain-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_domain_config_nonexistent(self, client):
+        """UpdateElasticsearchDomainConfig with fake domain raises ResourceNotFoundException."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            client.update_elasticsearch_domain_config(DomainName="nonexistent-domain-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_compatible_versions_no_domain(self, client):
+        """GetCompatibleElasticsearchVersions without domain returns all versions."""
+        resp = client.get_compatible_elasticsearch_versions()
+        assert "CompatibleElasticsearchVersions" in resp
+
+    def test_list_elasticsearch_versions_has_entries(self, client):
+        """ListElasticsearchVersions returns a non-empty list."""
+        resp = client.list_elasticsearch_versions()
+        assert len(resp["ElasticsearchVersions"]) > 0
+
+    def test_describe_domains_empty_list(self, client):
+        """DescribeElasticsearchDomains with empty list returns empty result."""
+        resp = client.describe_elasticsearch_domains(DomainNames=[])
+        assert "DomainStatusList" in resp
+
+    def test_list_tags_for_domain(self, client):
+        """ListTags returns tags for a domain with no tags."""
+        name = f"es-{_uid()}"
+        create = client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        arn = create["DomainStatus"]["ARN"]
+        try:
+            resp = client.list_tags(ARN=arn)
+            assert "TagList" in resp
+            assert isinstance(resp["TagList"], list)
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_describe_packages_empty(self, client):
+        """DescribePackages returns empty list when no packages exist."""
+        resp = client.describe_packages()
+        assert isinstance(resp["PackageDetailsList"], list)
+
+    def test_describe_inbound_connections_empty(self, client):
+        """DescribeInboundCrossClusterSearchConnections returns empty list."""
+        resp = client.describe_inbound_cross_cluster_search_connections()
+        assert isinstance(resp["CrossClusterSearchConnections"], list)
+
+    def test_describe_outbound_connections_empty(self, client):
+        """DescribeOutboundCrossClusterSearchConnections returns empty list."""
+        resp = client.describe_outbound_cross_cluster_search_connections()
+        assert isinstance(resp["CrossClusterSearchConnections"], list)
+
+    def test_domain_endpoint(self, client):
+        """Created domain has an Endpoint field."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = client.describe_elasticsearch_domain(DomainName=name)
+            assert "Endpoint" in resp["DomainStatus"]
+            assert name in resp["DomainStatus"]["Endpoint"]
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_domain_processing_status(self, client):
+        """Created domain has Processing field."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = client.describe_elasticsearch_domain(DomainName=name)
+            assert "Processing" in resp["DomainStatus"]
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
