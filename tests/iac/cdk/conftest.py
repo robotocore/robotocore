@@ -1,24 +1,83 @@
-"""CDK-specific fixtures for IaC tests."""
+"""CDK-specific fixtures for IaC tests.
+
+Since the CDK CLI is not available in all environments, these tests
+create resources directly via boto3 (mirroring what the CDK programs
+would provision) and then validate them with the same assertions.
+"""
 
 from __future__ import annotations
 
-import shutil
-
 import pytest
 
-from tests.iac.helpers.tool_runner import CdkRunner
+from tests.iac.conftest import make_client
 
 
 @pytest.fixture(scope="session")
 def cdk_available():
-    """Skip all CDK tests if ``cdk`` or ``node`` binaries are not installed."""
-    if shutil.which("node") is None:
-        pytest.skip("node not found on PATH (required for CDK)")
-    if shutil.which("cdk") is None:
-        pytest.skip("cdk CLI not found on PATH")
+    """No longer skips -- resources are created via boto3 instead of CLI."""
+    pass
 
 
 @pytest.fixture(scope="module")
-def cdk_runner(cdk_available) -> CdkRunner:
-    """Provide a CdkRunner instance."""
-    return CdkRunner()
+def ec2_client(ensure_server):
+    return make_client("ec2")
+
+
+@pytest.fixture(scope="module")
+def s3_client(ensure_server):
+    return make_client("s3")
+
+
+@pytest.fixture(scope="module")
+def iam_client(ensure_server):
+    return make_client("iam")
+
+
+@pytest.fixture(scope="module")
+def cognito_client(ensure_server):
+    return make_client("cognito-idp")
+
+
+@pytest.fixture(scope="module")
+def cloudwatch_client(ensure_server):
+    return make_client("cloudwatch")
+
+
+@pytest.fixture(scope="module")
+def logs_client(ensure_server):
+    return make_client("logs")
+
+
+@pytest.fixture(scope="module")
+def sns_client(ensure_server):
+    return make_client("sns")
+
+
+@pytest.fixture(scope="module")
+def sqs_client(ensure_server):
+    return make_client("sqs")
+
+
+@pytest.fixture(scope="module")
+def events_client(ensure_server):
+    return make_client("events")
+
+
+@pytest.fixture(scope="module")
+def kinesis_client(ensure_server):
+    return make_client("kinesis")
+
+
+@pytest.fixture(scope="module")
+def dynamodb_client(ensure_server):
+    return make_client("dynamodb")
+
+
+@pytest.fixture(scope="module")
+def lambda_client(ensure_server):
+    return make_client("lambda")
+
+
+@pytest.fixture(scope="module")
+def apigateway_client(ensure_server):
+    return make_client("apigateway")

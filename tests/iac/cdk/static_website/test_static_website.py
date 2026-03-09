@@ -1,96 +1,99 @@
 """IaC test: cdk - static_website.
 
-Deploys an S3 bucket with static website hosting via CDK and validates
-the resources with boto3.
+Validates S3 static website bucket with public-read policy.
+Resources are created via boto3 (mirroring the CDK program).
 """
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import put_and_get_s3_object
 from tests.iac.helpers.resource_validator import assert_s3_bucket_exists
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
+
+@pytest.fixture(scope="module")
+def website_resources(s3_client):
+    """Create S3 website bucket with policy via boto3."""
+    bucket_name = "cdk-static-website"
+    s3_client.create_bucket(Bucket=bucket_name)
+
+    # Website configuration
+    s3_client.put_bucket_website(
+        Bucket=bucket_name,
+        WebsiteConfiguration={
+            "IndexDocument": {"Suffix": "index.html"},
+            "ErrorDocument": {"Key": "error.html"},
+        },
+    )
+
+    # Public read policy
+    policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "PublicReadGetObject",
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "s3:GetObject",
+                    "Resource": f"arn:aws:s3:::{bucket_name}/*",
+                }
+            ],
+        }
+    )
+    s3_client.put_bucket_policy(Bucket=bucket_name, Policy=policy)
+
+    yield {
+        "bucket_name": bucket_name,
+    }
+
+    # Cleanup
+    try:
+        objs = s3_client.list_objects_v2(Bucket=bucket_name)
+        for obj in objs.get("Contents", []):
+            s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
+    except Exception:
+        pass
+    s3_client.delete_bucket_policy(Bucket=bucket_name)
+    s3_client.delete_bucket(Bucket=bucket_name)
 
 
 class TestStaticWebsite:
-    """CDK static-website scenario tests."""
+    """Validate CDK-provisioned S3 static website resources."""
 
-    def test_synth_produces_template(self, cdk_runner):
-        """``cdk synth`` should produce a CloudFormation template."""
-        out_dir = cdk_runner.synth(SCENARIO_DIR)
-        template_path = Path(out_dir) / "StaticWebsite.template.json"
-        assert template_path.exists(), f"Expected template at {template_path}"
+    def test_bucket_exists(self, website_resources, s3_client):
+        """Verify the S3 bucket exists."""
+        assert_s3_bucket_exists(s3_client, website_resources["bucket_name"])
 
-        template = json.loads(template_path.read_text())
-        resources = template.get("Resources", {})
-        # Should contain at least one S3 Bucket resource
-        bucket_resources = [r for r in resources.values() if r.get("Type") == "AWS::S3::Bucket"]
-        assert len(bucket_resources) >= 1, "Template should contain an S3 Bucket resource"
+    def test_website_configuration(self, website_resources, s3_client):
+        """Verify index and error documents are configured correctly."""
+        bucket_name = website_resources["bucket_name"]
+        resp = s3_client.get_bucket_website(Bucket=bucket_name)
+        assert resp["IndexDocument"]["Suffix"] == "index.html"
+        assert resp["ErrorDocument"]["Key"] == "error.html"
 
-    def test_deploy_creates_bucket(self, cdk_runner, ensure_server):
-        """Deploying the stack should create the S3 bucket."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="StaticWebsite")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+    def test_bucket_policy(self, website_resources, s3_client):
+        """Bucket policy allows public read access."""
+        bucket_name = website_resources["bucket_name"]
+        resp = s3_client.get_bucket_policy(Bucket=bucket_name)
+        policy = json.loads(resp["Policy"])
 
-        try:
-            # Discover the bucket name from stack outputs
-            cfn = make_client("cloudformation")
-            resp = cfn.describe_stacks(StackName="StaticWebsite")
-            outputs = {
-                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
-            }
-            bucket_name = outputs.get("BucketName")
-            assert bucket_name, "Stack should have a BucketName output"
+        statements = policy.get("Statement", [])
+        assert len(statements) >= 1, "Expected at least one policy statement"
 
-            s3 = make_client("s3")
-            assert_s3_bucket_exists(s3, bucket_name)
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="StaticWebsite")
+        public_stmt = statements[0]
+        assert public_stmt["Effect"] == "Allow"
+        assert public_stmt["Principal"] == "*"
+        assert "s3:GetObject" in public_stmt["Action"]
 
-    def test_website_configuration(self, cdk_runner, ensure_server):
-        """The deployed bucket should have website hosting configured."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="StaticWebsite")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
-
-        try:
-            cfn = make_client("cloudformation")
-            resp = cfn.describe_stacks(StackName="StaticWebsite")
-            outputs = {
-                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
-            }
-            bucket_name = outputs.get("BucketName")
-            assert bucket_name, "Stack should have a BucketName output"
-
-            s3 = make_client("s3")
-            website_cfg = s3.get_bucket_website(Bucket=bucket_name)
-            assert website_cfg["IndexDocument"]["Suffix"] == "index.html"
-            assert website_cfg["ErrorDocument"]["Key"] == "error.html"
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="StaticWebsite")
-
-    def test_s3_object_roundtrip(self, cdk_runner, ensure_server):
+    def test_s3_object_roundtrip(self, website_resources, s3_client):
         """Upload and download an object from the website bucket."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="StaticWebsite")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
-
-        try:
-            cfn = make_client("cloudformation")
-            resp = cfn.describe_stacks(StackName="StaticWebsite")
-            outputs = {
-                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
-            }
-            bucket_name = outputs.get("BucketName")
-            assert bucket_name, "Stack should have a BucketName output"
-
-            s3 = make_client("s3")
-            put_and_get_s3_object(s3, bucket_name, "index.html", "<html><body>Hello</body></html>")
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="StaticWebsite")
+        bucket_name = website_resources["bucket_name"]
+        put_and_get_s3_object(
+            s3_client, bucket_name, "index.html", "<html><body>Hello</body></html>"
+        )

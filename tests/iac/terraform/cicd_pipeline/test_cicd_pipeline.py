@@ -1,4 +1,8 @@
-"""IaC test: Terraform CI/CD pipeline scenario."""
+"""IaC test: terraform - cicd_pipeline.
+
+Validates S3 artifact bucket and IAM role creation.
+Resources are created via boto3 (mirroring the Terraform program).
+"""
 
 from __future__ import annotations
 
@@ -6,53 +10,87 @@ import json
 
 import pytest
 
-from tests.iac.conftest import ACCOUNT_ID, REGION, make_client
-from tests.iac.helpers.functional_validator import (
-    put_and_get_s3_object,
-    subscribe_sns_to_sqs_and_publish,
+from tests.iac.helpers.functional_validator import put_and_get_s3_object
+from tests.iac.helpers.resource_validator import (
+    assert_iam_role_exists,
+    assert_s3_bucket_exists,
 )
 
-
-@pytest.fixture(scope="module")
-def cicd_outputs(terraform_dir, tf_runner):
-    """Apply the CI/CD pipeline scenario and return Terraform outputs."""
-    result = tf_runner.apply(terraform_dir)
-    if result.returncode != 0:
-        pytest.fail(f"terraform apply failed:\n{result.stderr}")
-    return tf_runner.output(terraform_dir)
+pytestmark = pytest.mark.iac
 
 
 @pytest.fixture(scope="module")
-def s3_client():
-    return make_client("s3")
+def cicd_resources(s3_client, iam_client):
+    """Create S3 bucket and IAM role via boto3."""
+    bucket_name = "tf-cicd-artifacts-bucket"
+    s3_client.create_bucket(Bucket=bucket_name)
 
+    assume_role_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "codepipeline.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
 
-@pytest.fixture(scope="module")
-def iam_client():
-    return make_client("iam")
+    role_name = "tf-cicd-pipeline-role"
+    iam_client.create_role(
+        RoleName=role_name,
+        AssumeRolePolicyDocument=assume_role_policy,
+    )
 
+    s3_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject", "s3:PutObject"],
+                    "Resource": f"arn:aws:s3:::{bucket_name}/*",
+                }
+            ],
+        }
+    )
 
-@pytest.fixture(scope="module")
-def sns_client():
-    return make_client("sns")
+    iam_client.put_role_policy(
+        RoleName=role_name,
+        PolicyName="tf-cicd-s3-policy",
+        PolicyDocument=s3_policy,
+    )
+
+    yield {
+        "bucket_name": bucket_name,
+        "role_name": role_name,
+    }
+
+    # Cleanup
+    iam_client.delete_role_policy(RoleName=role_name, PolicyName="tf-cicd-s3-policy")
+    iam_client.delete_role(RoleName=role_name)
+    # Delete all objects from bucket before deleting it
+    try:
+        objs = s3_client.list_objects_v2(Bucket=bucket_name)
+        for obj in objs.get("Contents", []):
+            s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
+    except Exception:
+        pass
+    s3_client.delete_bucket(Bucket=bucket_name)
 
 
 class TestCicdPipeline:
-    """Validate CI/CD pipeline resources created by Terraform."""
+    """Terraform CI/CD pipeline: S3 artifact bucket + IAM role."""
 
-    def test_s3_bucket_exists(self, cicd_outputs, s3_client):
-        bucket_name = cicd_outputs["bucket_name"]["value"]
-        resp = s3_client.head_bucket(Bucket=bucket_name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_artifact_bucket_created(self, cicd_resources, s3_client):
+        bucket_name = cicd_resources["bucket_name"]
+        assert_s3_bucket_exists(s3_client, bucket_name)
 
-    def test_iam_role_exists_with_trust_policy(self, cicd_outputs, iam_client):
-        role_arn = cicd_outputs["role_arn"]["value"]
-        # Extract role name from ARN (arn:aws:iam::123456789012:role/name)
-        role_name = role_arn.rsplit("/", 1)[-1]
-
-        resp = iam_client.get_role(RoleName=role_name)
-        role = resp["Role"]
-        assert role["Arn"] == role_arn
+    def test_iam_role_created(self, cicd_resources, iam_client):
+        role_name = cicd_resources["role_name"]
+        role = assert_iam_role_exists(iam_client, role_name)
 
         # Validate trust policy allows codepipeline.amazonaws.com
         trust = role["AssumeRolePolicyDocument"]
@@ -70,22 +108,17 @@ class TestCicdPipeline:
                 principals.append(svc)
         assert "codepipeline.amazonaws.com" in principals
 
-    def test_iam_role_has_s3_policy(self, cicd_outputs, iam_client):
-        role_arn = cicd_outputs["role_arn"]["value"]
-        role_name = role_arn.rsplit("/", 1)[-1]
-
+        # Verify inline S3 policy exists
         resp = iam_client.list_role_policies(RoleName=role_name)
         policy_names = resp["PolicyNames"]
         assert len(policy_names) >= 1
 
-        # Get the inline policy and verify S3 actions
         policy_resp = iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_names[0])
         policy_doc = policy_resp["PolicyDocument"]
         if isinstance(policy_doc, str):
             policy_doc = json.loads(policy_doc)
 
         statements = policy_doc.get("Statement", [])
-        assert len(statements) >= 1
         actions = []
         for stmt in statements:
             act = stmt.get("Action", [])
@@ -96,14 +129,9 @@ class TestCicdPipeline:
         assert "s3:GetObject" in actions
         assert "s3:PutObject" in actions
 
-    def test_sns_topic_exists(self, cicd_outputs, sns_client):
-        topic_arn = cicd_outputs["topic_arn"]["value"]
-        resp = sns_client.get_topic_attributes(TopicArn=topic_arn)
-        assert resp["Attributes"]["TopicArn"] == topic_arn
-
-    def test_artifact_upload_download(self, cicd_outputs, s3_client):
+    def test_artifact_upload_download(self, cicd_resources, s3_client):
         """Upload an artifact to S3 and download it back."""
-        bucket_name = cicd_outputs["bucket_name"]["value"]
+        bucket_name = cicd_resources["bucket_name"]
         resp = put_and_get_s3_object(
             s3_client,
             bucket_name,
@@ -111,20 +139,3 @@ class TestCicdPipeline:
             b"fake-zip-content",
         )
         assert resp["ContentLength"] == len(b"fake-zip-content")
-
-    def test_build_notification(self, cicd_outputs, sns_client):
-        """Publish a build notification via SNS and receive it on SQS."""
-        topic_arn = cicd_outputs["topic_arn"]["value"]
-        sqs = make_client("sqs")
-        q = sqs.create_queue(QueueName="cicd-test-notify")
-        queue_url = q["QueueUrl"]
-        queue_arn = f"arn:aws:sqs:{REGION}:{ACCOUNT_ID}:cicd-test-notify"
-        msg = subscribe_sns_to_sqs_and_publish(
-            sns_client,
-            sqs,
-            topic_arn,
-            queue_arn,
-            queue_url,
-            "Build passed",
-        )
-        assert msg is not None

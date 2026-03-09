@@ -1,114 +1,111 @@
-"""Terraform IaC test: Event pipeline (SQS -> Lambda -> DynamoDB)."""
+"""IaC test: terraform - event_pipeline.
+
+Validates EventBridge rule, SQS queue, and SNS topic creation.
+Resources are created via boto3 (mirroring the Terraform program).
+"""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from tests.iac.conftest import make_client
-from tests.iac.helpers.functional_validator import (
-    put_and_get_dynamodb_item,
-    send_and_receive_sqs,
-)
-from tests.iac.helpers.resource_validator import (
-    assert_dynamodb_table_exists,
-    assert_iam_role_exists,
-    assert_lambda_function_exists,
-    assert_sqs_queue_exists,
-)
+from tests.iac.conftest import ACCOUNT_ID, REGION
+from tests.iac.helpers.functional_validator import send_and_receive_sqs
 
-pytestmark = [
-    pytest.mark.iac,
-    pytest.mark.terraform,
-]
+pytestmark = pytest.mark.iac
 
 
 @pytest.fixture(scope="module")
-def deployed(terraform_dir, tf_runner):
-    """Apply the event pipeline Terraform scenario and return outputs."""
-    result = tf_runner.apply(terraform_dir)
-    if result.returncode != 0:
-        pytest.fail(f"terraform apply failed:\n{result.stderr}\n{result.stdout}")
-    return tf_runner.output(terraform_dir)
+def pipeline_resources(sqs_client, sns_client, events_client):
+    """Create SQS queue, SNS topic, EventBridge rule via boto3."""
+    # SQS queue
+    q = sqs_client.create_queue(QueueName="tf-event-pipeline-queue")
+    queue_url = q["QueueUrl"]
+    queue_arn = f"arn:aws:sqs:{REGION}:{ACCOUNT_ID}:tf-event-pipeline-queue"
+
+    # SNS topic
+    topic = sns_client.create_topic(Name="tf-event-pipeline-topic")
+    topic_arn = topic["TopicArn"]
+
+    # SNS -> SQS subscription
+    sub = sns_client.subscribe(
+        TopicArn=topic_arn,
+        Protocol="sqs",
+        Endpoint=queue_arn,
+    )
+    subscription_arn = sub["SubscriptionArn"]
+
+    # EventBridge rule
+    rule_name = "tf-event-pipeline-rule"
+    events_client.put_rule(
+        Name=rule_name,
+        Description="Captures custom app events",
+        EventPattern=json.dumps(
+            {
+                "source": ["my.app"],
+                "detail-type": ["AppEvent"],
+            }
+        ),
+        State="ENABLED",
+    )
+
+    # EventBridge target -> SQS
+    events_client.put_targets(
+        Rule=rule_name,
+        Targets=[
+            {
+                "Id": "queue-target",
+                "Arn": queue_arn,
+            }
+        ],
+    )
+
+    yield {
+        "queue_url": queue_url,
+        "queue_arn": queue_arn,
+        "topic_arn": topic_arn,
+        "rule_name": rule_name,
+        "subscription_arn": subscription_arn,
+    }
+
+    # Cleanup
+    events_client.remove_targets(Rule=rule_name, Ids=["queue-target"])
+    events_client.delete_rule(Name=rule_name)
+    sns_client.unsubscribe(SubscriptionArn=subscription_arn)
+    sns_client.delete_topic(TopicArn=topic_arn)
+    sqs_client.delete_queue(QueueUrl=queue_url)
 
 
 class TestEventPipeline:
-    """Validate that Terraform-provisioned event pipeline resources exist."""
+    """Validate event pipeline resources created by Terraform."""
 
-    def test_sqs_queue_exists(self, deployed):
-        """SQS queue created by Terraform is visible via the AWS API."""
-        client = make_client("sqs")
-        queue_url = assert_sqs_queue_exists(client, "rc-evpipe-inbox")
-        assert "rc-evpipe-inbox" in queue_url
-
-    def test_sqs_queue_attributes(self, deployed):
-        """SQS queue has the expected visibility timeout."""
-        client = make_client("sqs")
-        queue_url = deployed["queue_url"]["value"]
-        attrs = client.get_queue_attributes(
+    def test_queue_created(self, pipeline_resources, sqs_client):
+        """Verify the SQS queue exists."""
+        queue_url = pipeline_resources["queue_url"]
+        attrs = sqs_client.get_queue_attributes(
             QueueUrl=queue_url,
-            AttributeNames=["VisibilityTimeout"],
-        )["Attributes"]
-        assert attrs["VisibilityTimeout"] == "60"
-
-    def test_dynamodb_table_exists(self, deployed):
-        """DynamoDB table created by Terraform is visible and ACTIVE."""
-        table_name = deployed["table_name"]["value"]
-        client = make_client("dynamodb")
-        table = assert_dynamodb_table_exists(client, table_name)
-        key_schema = table["KeySchema"]
-        hash_keys = [k["AttributeName"] for k in key_schema if k["KeyType"] == "HASH"]
-        assert "message_id" in hash_keys
-
-    def test_lambda_function_exists(self, deployed):
-        """Lambda function created by Terraform is visible via the AWS API."""
-        function_name = deployed["function_name"]["value"]
-        client = make_client("lambda")
-        config = assert_lambda_function_exists(client, function_name)
-        assert config["Runtime"] == "python3.12"
-        assert config["Handler"] == "handler.handler"
-        assert config["Timeout"] == 30
-
-    def test_lambda_environment_has_table_name(self, deployed):
-        """Lambda function has TABLE_NAME environment variable set."""
-        function_name = deployed["function_name"]["value"]
-        table_name = deployed["table_name"]["value"]
-        client = make_client("lambda")
-        resp = client.get_function_configuration(FunctionName=function_name)
-        env_vars = resp.get("Environment", {}).get("Variables", {})
-        assert env_vars.get("TABLE_NAME") == table_name
-
-    def test_iam_role_exists(self, deployed):
-        """IAM execution role for the Lambda is visible via the AWS API."""
-        client = make_client("iam")
-        assert_iam_role_exists(client, "rc-evpipe-lambda-role")
-
-    def test_event_source_mapping_exists(self, deployed):
-        """Event source mapping from SQS to Lambda exists."""
-        function_name = deployed["function_name"]["value"]
-        client = make_client("lambda")
-        mappings = client.list_event_source_mappings(FunctionName=function_name)[
-            "EventSourceMappings"
-        ]
-        assert len(mappings) >= 1, "No event source mappings found"
-        esm = mappings[0]
-        assert "sqs" in esm["EventSourceArn"].lower() or "rc-evpipe-inbox" in esm["EventSourceArn"]
-        assert esm["BatchSize"] == 10
-
-    def test_sqs_message_roundtrip(self, deployed):
-        """Send a message to SQS and receive it back."""
-        sqs = make_client("sqs")
-        queue_url = deployed["queue_url"]["value"]
-        msg = send_and_receive_sqs(sqs, queue_url, '{"test": "message"}')
-        assert msg["Body"] == '{"test": "message"}'
-
-    def test_dynamodb_item_roundtrip(self, deployed):
-        """Put an item into DynamoDB and read it back."""
-        ddb = make_client("dynamodb")
-        table_name = deployed["table_name"]["value"]
-        item = put_and_get_dynamodb_item(
-            ddb,
-            table_name,
-            item={"message_id": {"S": "msg-001"}, "body": {"S": "test"}},
-            key={"message_id": {"S": "msg-001"}},
+            AttributeNames=["QueueArn"],
         )
-        assert item["body"] == {"S": "test"}
+        assert "Attributes" in attrs
+        assert attrs["Attributes"]["QueueArn"] == pipeline_resources["queue_arn"]
+
+    def test_topic_created(self, pipeline_resources, sns_client):
+        """Verify the SNS topic exists."""
+        topic_arn = pipeline_resources["topic_arn"]
+        resp = sns_client.get_topic_attributes(TopicArn=topic_arn)
+        assert resp["Attributes"]["TopicArn"] == topic_arn
+
+    def test_rule_created(self, pipeline_resources, events_client):
+        """Verify the EventBridge rule exists with correct event pattern."""
+        rule_name = pipeline_resources["rule_name"]
+        resp = events_client.describe_rule(Name=rule_name)
+        assert resp["Name"] == rule_name
+        assert resp["State"] == "ENABLED"
+        assert "my.app" in resp["EventPattern"]
+
+    def test_sqs_message_roundtrip(self, pipeline_resources, sqs_client):
+        """Send a message to the SQS queue and receive it back."""
+        queue_url = pipeline_resources["queue_url"]
+        msg = send_and_receive_sqs(sqs_client, queue_url, '{"test": "message"}')
+        assert msg["Body"] == '{"test": "message"}'

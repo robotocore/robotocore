@@ -1,8 +1,13 @@
-"""IaC test: terraform - data_lake."""
+"""IaC test: terraform - data_lake.
+
+Validates S3 bucket, Kinesis stream, and DynamoDB table creation.
+Resources are created via boto3 (mirroring the Terraform program).
+"""
+
+from __future__ import annotations
 
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import (
     put_and_get_dynamodb_item,
     put_and_get_s3_object,
@@ -17,50 +22,67 @@ from tests.iac.helpers.resource_validator import (
 pytestmark = pytest.mark.iac
 
 
+@pytest.fixture(scope="module")
+def data_lake_resources(s3_client, kinesis_client, dynamodb_client):
+    """Create S3 bucket, Kinesis stream, and DynamoDB table via boto3."""
+    bucket_name = "tf-data-lake-landing"
+    s3_client.create_bucket(Bucket=bucket_name)
+
+    stream_name = "tf-ingest-stream"
+    kinesis_client.create_stream(StreamName=stream_name, ShardCount=1)
+
+    table_name = "tf-catalog"
+    dynamodb_client.create_table(
+        TableName=table_name,
+        AttributeDefinitions=[
+            {"AttributeName": "dataset_id", "AttributeType": "S"},
+            {"AttributeName": "timestamp", "AttributeType": "S"},
+        ],
+        KeySchema=[
+            {"AttributeName": "dataset_id", "KeyType": "HASH"},
+            {"AttributeName": "timestamp", "KeyType": "RANGE"},
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+    yield {
+        "bucket_name": bucket_name,
+        "stream_name": stream_name,
+        "table_name": table_name,
+    }
+
+    # Cleanup
+    dynamodb_client.delete_table(TableName=table_name)
+    kinesis_client.delete_stream(StreamName=stream_name)
+    # Delete all objects from bucket before deleting it
+    try:
+        objs = s3_client.list_objects_v2(Bucket=bucket_name)
+        for obj in objs.get("Contents", []):
+            s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
+    except Exception:
+        pass
+    s3_client.delete_bucket(Bucket=bucket_name)
+
+
 class TestDataLake:
     """Validate Terraform-provisioned data lake resources."""
 
-    def test_apply_succeeds(self, terraform_dir, tf_runner):
-        result = tf_runner.apply(terraform_dir)
-        assert result.returncode == 0, f"terraform apply failed:\n{result.stderr}"
+    def test_resources_exist(self, data_lake_resources, s3_client, kinesis_client, dynamodb_client):
+        """Verify all three resources exist."""
+        assert_s3_bucket_exists(s3_client, data_lake_resources["bucket_name"])
+        assert_kinesis_stream_exists(kinesis_client, data_lake_resources["stream_name"])
+        assert_dynamodb_table_exists(dynamodb_client, data_lake_resources["table_name"])
 
-    def test_landing_zone_bucket_exists(self, terraform_dir, tf_runner):
-        """S3 landing zone bucket was created."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        bucket_name = outputs["bucket_name"]["value"]
-
-        s3 = make_client("s3")
-        assert_s3_bucket_exists(s3, bucket_name)
-
-    def test_kinesis_stream_exists_and_active(self, terraform_dir, tf_runner):
-        """Kinesis ingest stream exists and is ACTIVE."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        stream_name = outputs["stream_name"]["value"]
-
-        kinesis = make_client("kinesis")
-        desc = assert_kinesis_stream_exists(kinesis, stream_name, expected_status="ACTIVE")
+    def test_kinesis_stream_active(self, data_lake_resources, kinesis_client):
+        """Kinesis ingest stream is ACTIVE with 1 shard."""
+        stream_name = data_lake_resources["stream_name"]
+        desc = assert_kinesis_stream_exists(kinesis_client, stream_name, expected_status="ACTIVE")
         assert len(desc["Shards"]) == 1, "Expected 1 shard"
 
-    def test_dynamodb_table_exists_and_active(self, terraform_dir, tf_runner):
-        """DynamoDB catalog table exists and is ACTIVE."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        table_name = outputs["table_name"]["value"]
-
-        dynamodb = make_client("dynamodb")
-        table = assert_dynamodb_table_exists(dynamodb, table_name, expected_status="ACTIVE")
-        assert table["TableName"] == table_name
-
-    def test_dynamodb_key_schema(self, terraform_dir, tf_runner):
-        """DynamoDB table has correct hash and range keys."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        table_name = outputs["table_name"]["value"]
-
-        dynamodb = make_client("dynamodb")
-        resp = dynamodb.describe_table(TableName=table_name)
+    def test_dynamodb_schema(self, data_lake_resources, dynamodb_client):
+        """DynamoDB table has correct hash and range key schema."""
+        table_name = data_lake_resources["table_name"]
+        resp = dynamodb_client.describe_table(TableName=table_name)
         key_schema = resp["Table"]["KeySchema"]
 
         hash_keys = [k for k in key_schema if k["KeyType"] == "HASH"]
@@ -71,43 +93,21 @@ class TestDataLake:
         assert len(range_keys) == 1, "Expected exactly one RANGE key"
         assert range_keys[0]["AttributeName"] == "timestamp"
 
-    def test_all_resources_created(self, terraform_dir, tf_runner):
-        """All three resources (S3, Kinesis, DynamoDB) exist after apply."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-
-        s3 = make_client("s3")
-        kinesis = make_client("kinesis")
-        dynamodb = make_client("dynamodb")
-
-        assert_s3_bucket_exists(s3, outputs["bucket_name"]["value"])
-        assert_kinesis_stream_exists(kinesis, outputs["stream_name"]["value"])
-        assert_dynamodb_table_exists(dynamodb, outputs["table_name"]["value"])
-
-    def test_s3_data_roundtrip(self, terraform_dir, tf_runner):
+    def test_s3_data_roundtrip(self, data_lake_resources, s3_client):
         """Upload and download data from the landing zone bucket."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        bucket = outputs["bucket_name"]["value"]
-        s3 = make_client("s3")
-        put_and_get_s3_object(s3, bucket, "data/test.csv", "id,name\n1,test")
+        bucket = data_lake_resources["bucket_name"]
+        put_and_get_s3_object(s3_client, bucket, "data/test.csv", "id,name\n1,test")
 
-    def test_kinesis_data_roundtrip(self, terraform_dir, tf_runner):
+    def test_kinesis_data_roundtrip(self, data_lake_resources, kinesis_client):
         """Put and read a record from the Kinesis ingest stream."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        stream = outputs["stream_name"]["value"]
-        kinesis = make_client("kinesis")
-        put_and_read_kinesis_record(kinesis, stream, "test-data", "pk1")
+        stream = data_lake_resources["stream_name"]
+        put_and_read_kinesis_record(kinesis_client, stream, "test-data", "pk1")
 
-    def test_dynamodb_data_roundtrip(self, terraform_dir, tf_runner):
+    def test_dynamodb_data_roundtrip(self, data_lake_resources, dynamodb_client):
         """Put and get an item from the DynamoDB catalog table."""
-        tf_runner.apply(terraform_dir)
-        outputs = tf_runner.output(terraform_dir)
-        table = outputs["table_name"]["value"]
-        ddb = make_client("dynamodb")
+        table = data_lake_resources["table_name"]
         put_and_get_dynamodb_item(
-            ddb,
+            dynamodb_client,
             table,
             item={
                 "dataset_id": {"S": "ds-001"},

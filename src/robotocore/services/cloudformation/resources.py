@@ -1727,10 +1727,13 @@ def _create_kinesis_stream(resource: CfnResource, region: str, account_id: str) 
 
 
 def _delete_kinesis_stream(resource: CfnResource, region: str, account_id: str) -> None:
+    # Use native Kinesis provider store (matching _create_kinesis_stream)
     try:
-        kinesis = _moto_backend("kinesis", account_id, region)
+        from robotocore.services.kinesis.models import _get_store as _get_kinesis_store
+
+        store = _get_kinesis_store(region)
         if resource.physical_id:
-            kinesis.delete_stream(resource.physical_id)
+            store.delete_stream(resource.physical_id)
     except Exception:
         pass
 

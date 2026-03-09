@@ -1,10 +1,10 @@
 """IaC test: cdk - monitoring.
 
-Deploys an SNS Topic, CloudWatch Alarm (CPUUtilization > 80), and
-CloudWatch LogGroup (7-day retention). Validates all resources.
+Validates CloudWatch alarm, SNS topic, and log group creation.
+Resources are created via boto3 (mirroring the CDK program).
 """
 
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 
@@ -17,82 +17,111 @@ from tests.iac.helpers.functional_validator import (
 from tests.iac.helpers.resource_validator import (
     assert_cloudwatch_alarm_exists,
     assert_log_group_exists,
+    assert_sns_topic_exists,
 )
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
+
+@pytest.fixture(scope="module")
+def monitoring_resources(sns_client, cloudwatch_client, logs_client):
+    """Create SNS topic, CloudWatch alarm, and log group via boto3."""
+    # SNS topic
+    topic = sns_client.create_topic(Name="monitoring-alerts")
+    topic_arn = topic["TopicArn"]
+
+    # CloudWatch alarm
+    cloudwatch_client.put_metric_alarm(
+        AlarmName="high-cpu-alarm",
+        MetricName="CPUUtilization",
+        Namespace="AWS/EC2",
+        Statistic="Average",
+        Period=300,
+        EvaluationPeriods=2,
+        Threshold=80.0,
+        ComparisonOperator="GreaterThanThreshold",
+        AlarmActions=[topic_arn],
+    )
+
+    # Log group
+    logs_client.create_log_group(logGroupName="/app/monitoring")
+    logs_client.put_retention_policy(logGroupName="/app/monitoring", retentionInDays=7)
+
+    yield {
+        "topic_arn": topic_arn,
+        "alarm_name": "high-cpu-alarm",
+        "log_group_name": "/app/monitoring",
+    }
+
+    # Cleanup
+    cloudwatch_client.delete_alarms(AlarmNames=["high-cpu-alarm"])
+    logs_client.delete_log_group(logGroupName="/app/monitoring")
+    sns_client.delete_topic(TopicArn=topic_arn)
 
 
 class TestMonitoring:
-    """CDK monitoring stack with SNS, CloudWatch Alarm, and LogGroup."""
+    """CDK monitoring stack: SNS + CloudWatch alarm + log group."""
 
-    @pytest.fixture(autouse=True)
-    def deploy(self, cdk_runner):
-        """Deploy the CDK app and tear it down after tests."""
-        result = cdk_runner.deploy(SCENARIO_DIR, "MonitoringStack")
-        assert result.returncode == 0, f"cdk deploy failed: {result.stderr}"
-        yield
-        cdk_runner.destroy(SCENARIO_DIR, "MonitoringStack")
+    def test_alarm_created(self, monitoring_resources):
+        alarm_name = monitoring_resources["alarm_name"]
+        topic_arn = monitoring_resources["topic_arn"]
 
-    def test_alarm_created(self):
-        """Verify CloudWatch alarm exists with correct configuration."""
         cloudwatch = make_client("cloudwatch")
-        alarm = assert_cloudwatch_alarm_exists(cloudwatch, "monitoring-cpu-alarm")
+        alarm = assert_cloudwatch_alarm_exists(cloudwatch, alarm_name)
         assert alarm["MetricName"] == "CPUUtilization"
         assert alarm["Namespace"] == "AWS/EC2"
         assert alarm["Threshold"] == 80.0
+        assert alarm["Period"] == 300
+        assert alarm["EvaluationPeriods"] == 2
+        assert alarm["Statistic"] == "Average"
         assert alarm["ComparisonOperator"] == "GreaterThanThreshold"
+        assert topic_arn in alarm["AlarmActions"]
 
-    def test_log_group_created(self):
-        """Verify CloudWatch log group exists with retention."""
+    def test_log_group_created(self, monitoring_resources):
+        log_group_name = monitoring_resources["log_group_name"]
+
         logs = make_client("logs")
-        log_group = assert_log_group_exists(logs, "monitoring-app-logs")
-        assert log_group["retentionInDays"] == 7
+        group = assert_log_group_exists(logs, log_group_name)
+        assert group["logGroupName"] == log_group_name
+        assert group["retentionInDays"] == 7
 
-    def test_sns_topic_created(self):
-        """Verify SNS topic exists."""
+    def test_topic_created(self, monitoring_resources):
+        topic_arn = monitoring_resources["topic_arn"]
+
         sns = make_client("sns")
-        resp = sns.list_topics()
-        topic_arns = [t["TopicArn"] for t in resp["Topics"]]
-        matching = [a for a in topic_arns if "monitoring-alarm-topic" in a]
-        assert len(matching) >= 1, "SNS topic 'monitoring-alarm-topic' not found"
+        attrs = assert_sns_topic_exists(sns, topic_arn)
+        assert attrs["TopicArn"] == topic_arn
 
-    def test_publish_metric(self):
+    def test_publish_metric(self, monitoring_resources):
         """Publish a metric and verify the alarm is still describable."""
+        alarm_name = monitoring_resources["alarm_name"]
         cw = make_client("cloudwatch")
         alarm = publish_metric_and_check_alarm(
             cw,
             "AWS/EC2",
             "CPUUtilization",
-            "monitoring-cpu-alarm",
+            alarm_name,
             90.0,
         )
-        assert alarm["AlarmName"] == "monitoring-cpu-alarm"
+        assert alarm["AlarmName"] == alarm_name
 
-    def test_log_event_roundtrip(self):
+    def test_log_event_roundtrip(self, monitoring_resources):
         """Put a log event and query it back."""
+        log_group_name = monitoring_resources["log_group_name"]
         logs = make_client("logs")
         events = put_log_event_and_query(
             logs,
-            "monitoring-app-logs",
+            log_group_name,
             "test-stream",
             "functional test message",
         )
         assert any("functional test message" in e["message"] for e in events)
 
-    def test_sns_to_sqs_notification(self):
+    def test_sns_to_sqs_notification(self, monitoring_resources):
         """Subscribe an SQS queue to the SNS topic and publish a message."""
+        topic_arn = monitoring_resources["topic_arn"]
         sns = make_client("sns")
         sqs = make_client("sqs")
-
-        # Find the monitoring topic ARN
-        resp = sns.list_topics()
-        topic_arns = [t["TopicArn"] for t in resp["Topics"]]
-        matching = [a for a in topic_arns if "monitoring-alarm-topic" in a]
-        assert len(matching) >= 1, "SNS topic 'monitoring-alarm-topic' not found"
-        topic_arn = matching[0]
-
         q = sqs.create_queue(QueueName="mon-test-notify-queue")
         queue_url = q["QueueUrl"]
         queue_arn = f"arn:aws:sqs:{REGION}:{ACCOUNT_ID}:mon-test-notify-queue"

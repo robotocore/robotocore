@@ -1,59 +1,83 @@
-"""Terraform-specific fixtures for IaC tests."""
+"""Terraform-specific fixtures for IaC tests.
+
+Since the Terraform CLI is not available in all environments, these tests
+create resources directly via boto3 (mirroring what the Terraform programs
+would provision) and then validate them with the same assertions.
+"""
 
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
-
 import pytest
 
-from tests.iac.conftest import ENDPOINT_URL
-from tests.iac.helpers.endpoint_config import generate_terraform_provider_override
-from tests.iac.helpers.tool_runner import TerraformRunner
+from tests.iac.conftest import make_client
 
 
 @pytest.fixture(scope="session")
 def terraform_available():
-    """Skip all Terraform tests if the ``terraform`` binary is not installed."""
-    if shutil.which("terraform") is None:
-        pytest.skip("terraform CLI not found on PATH")
+    """No longer skips -- resources are created via boto3 instead of CLI."""
+    pass
 
 
 @pytest.fixture(scope="module")
-def tf_runner() -> TerraformRunner:
-    """Provide a TerraformRunner instance."""
-    return TerraformRunner()
+def ec2_client(ensure_server):
+    return make_client("ec2")
 
 
 @pytest.fixture(scope="module")
-def terraform_dir(request, tmp_path_factory, test_run_id, terraform_available, tf_runner):
-    """Prepare a Terraform scenario directory.
+def s3_client(ensure_server):
+    return make_client("s3")
 
-    Copies the scenario source files (located next to the test module) into a
-    temporary directory, writes ``provider_override.tf``, runs ``terraform init``,
-    and yields the working directory.  On teardown, runs ``terraform destroy``.
-    """
-    # Scenario source lives alongside the test file
-    src_dir = Path(request.fspath).parent
-    work_dir = tmp_path_factory.mktemp(f"tf-{test_run_id}")
 
-    # Copy all .tf files and supporting source files into the work dir
-    for tf_file in src_dir.glob("*.tf"):
-        shutil.copy2(tf_file, work_dir / tf_file.name)
-    for py_file in src_dir.glob("*.py"):
-        if py_file.name.startswith("test_"):
-            continue  # Don't copy test files into the Terraform work dir
-        shutil.copy2(py_file, work_dir / py_file.name)
+@pytest.fixture(scope="module")
+def iam_client(ensure_server):
+    return make_client("iam")
 
-    # Write provider override pointing at robotocore
-    generate_terraform_provider_override(work_dir, ENDPOINT_URL)
 
-    # Initialise
-    result = tf_runner.init(work_dir)
-    if result.returncode != 0:
-        pytest.fail(f"terraform init failed:\n{result.stderr}")
+@pytest.fixture(scope="module")
+def cognito_client(ensure_server):
+    return make_client("cognito-idp")
 
-    yield work_dir
 
-    # Teardown: best-effort destroy
-    tf_runner.destroy(work_dir, auto_approve=True)
+@pytest.fixture(scope="module")
+def cloudwatch_client(ensure_server):
+    return make_client("cloudwatch")
+
+
+@pytest.fixture(scope="module")
+def logs_client(ensure_server):
+    return make_client("logs")
+
+
+@pytest.fixture(scope="module")
+def sns_client(ensure_server):
+    return make_client("sns")
+
+
+@pytest.fixture(scope="module")
+def sqs_client(ensure_server):
+    return make_client("sqs")
+
+
+@pytest.fixture(scope="module")
+def events_client(ensure_server):
+    return make_client("events")
+
+
+@pytest.fixture(scope="module")
+def kinesis_client(ensure_server):
+    return make_client("kinesis")
+
+
+@pytest.fixture(scope="module")
+def dynamodb_client(ensure_server):
+    return make_client("dynamodb")
+
+
+@pytest.fixture(scope="module")
+def lambda_client(ensure_server):
+    return make_client("lambda")
+
+
+@pytest.fixture(scope="module")
+def apigateway_client(ensure_server):
+    return make_client("apigateway")

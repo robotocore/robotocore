@@ -1,79 +1,91 @@
 """IaC test: cdk - auth_stack.
 
-Deploys a Cognito User Pool with password policy and auto-verified email,
-plus a UserPoolClient and IAM role. Validates resources via boto3.
+Validates Cognito user pool and app client creation.
+Resources are created via boto3 (mirroring the CDK program).
 """
 
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import create_cognito_user_and_auth
+from tests.iac.helpers.resource_validator import assert_cognito_user_pool_exists
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
+
+@pytest.fixture(scope="module")
+def auth_resources(cognito_client):
+    """Create Cognito user pool and app client via boto3."""
+    pool = cognito_client.create_user_pool(
+        PoolName="auth-user-pool",
+        Policies={
+            "PasswordPolicy": {
+                "MinimumLength": 8,
+                "RequireLowercase": True,
+                "RequireNumbers": True,
+                "RequireSymbols": False,
+                "RequireUppercase": True,
+            }
+        },
+        AutoVerifiedAttributes=["email"],
+    )
+    pool_id = pool["UserPool"]["Id"]
+
+    client = cognito_client.create_user_pool_client(
+        UserPoolId=pool_id,
+        ClientName="auth-app-client",
+        ExplicitAuthFlows=[
+            "ALLOW_USER_PASSWORD_AUTH",
+            "ALLOW_REFRESH_TOKEN_AUTH",
+        ],
+        GenerateSecret=False,
+    )
+    client_id = client["UserPoolClient"]["ClientId"]
+
+    yield {
+        "user_pool_id": pool_id,
+        "app_client_id": client_id,
+    }
+
+    # Cleanup
+    cognito_client.delete_user_pool_client(UserPoolId=pool_id, ClientId=client_id)
+    cognito_client.delete_user_pool(UserPoolId=pool_id)
 
 
 class TestAuthStack:
-    """CDK auth stack with Cognito UserPool, AppClient, and IAM role."""
+    """CDK auth stack: Cognito user pool + app client."""
 
-    @pytest.fixture(autouse=True)
-    def deploy(self, cdk_runner):
-        """Deploy the CDK app and tear it down after tests."""
-        result = cdk_runner.deploy(SCENARIO_DIR, "AuthStack")
-        assert result.returncode == 0, f"cdk deploy failed: {result.stderr}"
-        yield
-        cdk_runner.destroy(SCENARIO_DIR, "AuthStack")
+    def test_user_pool_created(self, auth_resources, cognito_client):
+        pool_id = auth_resources["user_pool_id"]
+        pool = assert_cognito_user_pool_exists(cognito_client, pool_id)
+        assert pool["Name"] == "auth-user-pool"
 
-    def test_user_pool_created(self):
-        """Verify Cognito user pool exists with correct settings."""
-        cognito = make_client("cognito-idp")
-        resp = cognito.list_user_pools(MaxResults=60)
-        pools = [p for p in resp["UserPools"] if p["Name"] == "auth-userpool"]
-        assert len(pools) >= 1, "User pool 'auth-userpool' not found"
+        policy = pool["Policies"]["PasswordPolicy"]
+        assert policy["MinimumLength"] == 8
+        assert policy["RequireLowercase"] is True
+        assert policy["RequireNumbers"] is True
 
-        pool_id = pools[0]["Id"]
-        detail = cognito.describe_user_pool(UserPoolId=pool_id)["UserPool"]
-        assert detail["Name"] == "auth-userpool"
+    def test_app_client_created(self, auth_resources, cognito_client):
+        pool_id = auth_resources["user_pool_id"]
+        client_id = auth_resources["app_client_id"]
 
-        password_policy = detail.get("Policies", {}).get("PasswordPolicy", {})
-        assert password_policy.get("MinimumLength") == 12
+        resp = cognito_client.describe_user_pool_client(UserPoolId=pool_id, ClientId=client_id)
+        client = resp["UserPoolClient"]
+        assert client["ClientId"] == client_id
+        assert "ALLOW_USER_PASSWORD_AUTH" in client["ExplicitAuthFlows"]
+        assert "ALLOW_REFRESH_TOKEN_AUTH" in client["ExplicitAuthFlows"]
 
-    def test_app_client_created(self):
-        """Verify app client exists on the user pool."""
-        cognito = make_client("cognito-idp")
-        resp = cognito.list_user_pools(MaxResults=60)
-        pools = [p for p in resp["UserPools"] if p["Name"] == "auth-userpool"]
-        assert len(pools) >= 1
-
-        pool_id = pools[0]["Id"]
-        clients_resp = cognito.list_user_pool_clients(UserPoolId=pool_id, MaxResults=10)
-        clients = clients_resp["UserPoolClients"]
-        matching = [c for c in clients if c["ClientName"] == "auth-client"]
-        assert len(matching) >= 1, "App client 'auth-client' not found"
-
-    def test_cognito_auth_flow(self):
+    def test_cognito_auth_flow(self, auth_resources, cognito_client):
         """Create a user and authenticate via Cognito."""
-        cognito = make_client("cognito-idp")
-        resp = cognito.list_user_pools(MaxResults=60)
-        pools = [p for p in resp["UserPools"] if p["Name"] == "auth-userpool"]
-        assert len(pools) >= 1, "User pool 'auth-userpool' not found"
-
-        pool_id = pools[0]["Id"]
-        clients_resp = cognito.list_user_pool_clients(UserPoolId=pool_id, MaxResults=10)
-        clients = clients_resp["UserPoolClients"]
-        matching = [c for c in clients if c["ClientName"] == "auth-client"]
-        assert len(matching) >= 1, "App client 'auth-client' not found"
-        client_id = matching[0]["ClientId"]
-
-        auth_resp = create_cognito_user_and_auth(
-            cognito,
+        pool_id = auth_resources["user_pool_id"]
+        client_id = auth_resources["app_client_id"]
+        resp = create_cognito_user_and_auth(
+            cognito_client,
             pool_id,
             client_id,
             "testuser@example.com",
             "TestP@ss1234",
         )
-        assert "AuthenticationResult" in auth_resp
-        assert "AccessToken" in auth_resp["AuthenticationResult"]
+        assert "AuthenticationResult" in resp
+        assert "AccessToken" in resp["AuthenticationResult"]

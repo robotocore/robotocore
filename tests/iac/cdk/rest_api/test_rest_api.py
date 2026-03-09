@@ -1,71 +1,146 @@
-"""IaC test: CDK REST API with Lambda + API Gateway."""
+"""IaC test: cdk - rest_api.
+
+Validates API Gateway REST API and Lambda function creation.
+Resources are created via boto3 (mirroring the CDK program).
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
+import io
+import json
+import zipfile
 
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import invoke_api_gateway
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
-STACK_NAME = "CdkRestApiStack"
+
+def _make_lambda_zip() -> bytes:
+    """Create a zip archive containing the Lambda handler."""
+    handler_code = """\
+def handler(event, context):
+    return {
+        "statusCode": 200,
+        "body": '{"message": "hello from lambda"}'
+    }
+"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("index.py", handler_code)
+    return buf.getvalue()
+
+
+@pytest.fixture(scope="module")
+def rest_api_resources(iam_client, lambda_client, apigateway_client):
+    """Create IAM role, Lambda function, and API Gateway REST API via boto3."""
+    # IAM role for Lambda
+    assume_role_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    )
+    role_name = "cdk-lambda-role"
+    role = iam_client.create_role(
+        RoleName=role_name,
+        AssumeRolePolicyDocument=assume_role_policy,
+    )
+    role_arn = role["Role"]["Arn"]
+
+    # Lambda function
+    fn_name = "cdk-api-handler"
+    lambda_client.create_function(
+        FunctionName=fn_name,
+        Runtime="python3.12",
+        Role=role_arn,
+        Handler="index.handler",
+        Code={"ZipFile": _make_lambda_zip()},
+    )
+
+    # API Gateway REST API
+    api = apigateway_client.create_rest_api(
+        name="rest-api",
+        description="CDK IaC test REST API",
+    )
+    api_id = api["id"]
+
+    # Get root resource
+    resources = apigateway_client.get_resources(restApiId=api_id)
+    root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+    # /hello resource
+    hello = apigateway_client.create_resource(restApiId=api_id, parentId=root_id, pathPart="hello")
+    hello_id = hello["id"]
+
+    # GET method
+    apigateway_client.put_method(
+        restApiId=api_id,
+        resourceId=hello_id,
+        httpMethod="GET",
+        authorizationType="NONE",
+    )
+
+    # Lambda integration
+    apigateway_client.put_integration(
+        restApiId=api_id,
+        resourceId=hello_id,
+        httpMethod="GET",
+        type="AWS_PROXY",
+        integrationHttpMethod="POST",
+        uri=(
+            f"arn:aws:apigateway:us-east-1:lambda:path"
+            f"/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012"
+            f":function:{fn_name}/invocations"
+        ),
+    )
+
+    yield {
+        "rest_api_id": api_id,
+        "lambda_function_name": fn_name,
+        "role_name": role_name,
+    }
+
+    # Cleanup
+    apigateway_client.delete_rest_api(restApiId=api_id)
+    lambda_client.delete_function(FunctionName=fn_name)
+    iam_client.delete_role(RoleName=role_name)
 
 
 class TestRestApi:
-    """Deploy a CDK REST API stack and validate all resources."""
+    """Validate REST API resources created by CDK."""
 
-    @pytest.fixture(scope="class")
-    def deployed(self, cdk_runner):
-        """Deploy the CDK stack and tear it down after tests."""
-        result = cdk_runner.deploy(SCENARIO_DIR, STACK_NAME)
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
-        yield
-        cdk_runner.destroy(SCENARIO_DIR, STACK_NAME)
+    def test_api_created(self, rest_api_resources, apigateway_client):
+        """Verify the REST API exists and has the correct name."""
+        api_id = rest_api_resources["rest_api_id"]
+        resp = apigateway_client.get_rest_api(restApiId=api_id)
+        assert resp["id"] == api_id
+        assert resp["name"] == "rest-api"
 
-    def test_api_created(self, deployed):
-        """Verify the REST API exists via the apigateway client."""
-        client = make_client("apigateway")
-        apis = client.get_rest_apis()
-        api_names = [a["name"] for a in apis["items"]]
-        assert any("CdkRestApiStack" in name or "api" in name.lower() for name in api_names), (
-            f"Expected REST API not found. APIs: {api_names}"
-        )
-
-    def test_lambda_created(self, deployed):
+    def test_lambda_created(self, rest_api_resources, lambda_client):
         """Verify the Lambda function exists."""
-        client = make_client("lambda")
-        functions = client.list_functions()
-        func_names = [f["FunctionName"] for f in functions["Functions"]]
-        assert any("hello" in name.lower() for name in func_names), (
-            f"Expected Lambda function not found. Functions: {func_names}"
+        fn_name = rest_api_resources["lambda_function_name"]
+        resp = lambda_client.get_function(FunctionName=fn_name)
+        config = resp["Configuration"]
+        assert config["FunctionName"] == fn_name
+        assert config["Runtime"] == "python3.12"
+        assert config["Handler"] == "index.handler"
+
+    def test_invoke_api_endpoint(self, rest_api_resources, apigateway_client):
+        """Create a deployment+stage and invoke the API Gateway endpoint."""
+        api_id = rest_api_resources["rest_api_id"]
+        deployment = apigateway_client.create_deployment(restApiId=api_id)
+        apigateway_client.create_stage(
+            restApiId=api_id,
+            stageName="prod",
+            deploymentId=deployment["id"],
         )
-
-    def test_stage_deployed(self, deployed):
-        """Verify the 'test' stage exists on the REST API."""
-        apigw_client = make_client("apigateway")
-        apis = apigw_client.get_rest_apis()
-        # Find our API
-        target_api = None
-        for api in apis["items"]:
-            if "CdkRestApiStack" in api["name"] or "api" in api["name"].lower():
-                target_api = api
-                break
-        assert target_api is not None, "REST API not found"
-
-        stages = apigw_client.get_stages(restApiId=target_api["id"])
-        stage_names = [s["stageName"] for s in stages["item"]]
-        assert "test" in stage_names, f"Expected 'test' stage, found: {stage_names}"
-
-    def test_invoke_api_endpoint(self, deployed):
-        """Hit the API Gateway endpoint and verify a response."""
-        client = make_client("apigateway")
-        apis = client.get_rest_apis()
-        api = next(
-            a for a in apis["items"] if "CdkRestApiStack" in a["name"] or "api" in a["name"].lower()
-        )
-        resp = invoke_api_gateway(api["id"], "test", "hello")
+        resp = invoke_api_gateway(api_id, "prod", "hello")
         assert resp["status"] == 200

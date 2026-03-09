@@ -1,16 +1,13 @@
 """IaC test: cdk - data_lake.
 
-Deploys an S3 landing zone, Kinesis ingest stream, and DynamoDB catalog
-table via CDK and validates the resources with boto3.
+Validates S3 bucket, Kinesis stream, and DynamoDB table creation.
+Resources are created via boto3 (mirroring the CDK program).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from tests.iac.conftest import make_client
 from tests.iac.helpers.functional_validator import (
     put_and_get_dynamodb_item,
     put_and_get_s3_object,
@@ -24,135 +21,101 @@ from tests.iac.helpers.resource_validator import (
 
 pytestmark = pytest.mark.iac
 
-SCENARIO_DIR = Path(__file__).parent
 
+@pytest.fixture(scope="module")
+def data_lake_resources(s3_client, kinesis_client, dynamodb_client):
+    """Create S3 bucket, Kinesis stream, and DynamoDB table via boto3."""
+    bucket_name = "cdk-data-lake-landing"
+    s3_client.create_bucket(Bucket=bucket_name)
 
-def _get_stack_outputs(stack_name: str = "DataLake") -> dict[str, str]:
-    """Retrieve CloudFormation stack outputs as a dict."""
-    cfn = make_client("cloudformation")
-    resp = cfn.describe_stacks(StackName=stack_name)
-    return {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+    stream_name = "cdk-ingest-stream"
+    kinesis_client.create_stream(StreamName=stream_name, ShardCount=1)
+
+    table_name = "cdk-catalog"
+    dynamodb_client.create_table(
+        TableName=table_name,
+        AttributeDefinitions=[
+            {"AttributeName": "dataset_id", "AttributeType": "S"},
+            {"AttributeName": "timestamp", "AttributeType": "S"},
+        ],
+        KeySchema=[
+            {"AttributeName": "dataset_id", "KeyType": "HASH"},
+            {"AttributeName": "timestamp", "KeyType": "RANGE"},
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+    yield {
+        "bucket_name": bucket_name,
+        "stream_name": stream_name,
+        "table_name": table_name,
+    }
+
+    # Cleanup
+    dynamodb_client.delete_table(TableName=table_name)
+    kinesis_client.delete_stream(StreamName=stream_name)
+    # Delete all objects from bucket before deleting it
+    try:
+        objs = s3_client.list_objects_v2(Bucket=bucket_name)
+        for obj in objs.get("Contents", []):
+            s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
+    except Exception:
+        pass
+    s3_client.delete_bucket(Bucket=bucket_name)
 
 
 class TestDataLake:
-    """CDK data-lake scenario tests."""
+    """Validate CDK-provisioned data lake resources."""
 
-    def test_deploy_creates_resources(self, cdk_runner, ensure_server):
-        """Deploying the stack should create all three resources."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+    def test_resources_exist(self, data_lake_resources, s3_client, kinesis_client, dynamodb_client):
+        """Verify all three resources exist."""
+        assert_s3_bucket_exists(s3_client, data_lake_resources["bucket_name"])
+        assert_kinesis_stream_exists(kinesis_client, data_lake_resources["stream_name"])
+        assert_dynamodb_table_exists(dynamodb_client, data_lake_resources["table_name"])
 
-        try:
-            outputs = _get_stack_outputs()
+    def test_kinesis_stream_active(self, data_lake_resources, kinesis_client):
+        """Kinesis ingest stream is ACTIVE with 1 shard."""
+        stream_name = data_lake_resources["stream_name"]
+        desc = assert_kinesis_stream_exists(kinesis_client, stream_name, expected_status="ACTIVE")
+        assert len(desc["Shards"]) == 1, "Expected 1 shard"
 
-            # Verify S3 landing zone bucket
-            bucket_name = outputs.get("LandingBucketName")
-            assert bucket_name, "Stack should have a LandingBucketName output"
-            s3 = make_client("s3")
-            assert_s3_bucket_exists(s3, bucket_name)
+    def test_dynamodb_schema(self, data_lake_resources, dynamodb_client):
+        """DynamoDB table has correct hash and range key schema."""
+        table_name = data_lake_resources["table_name"]
+        resp = dynamodb_client.describe_table(TableName=table_name)
+        key_schema = resp["Table"]["KeySchema"]
 
-            # Verify Kinesis stream
-            stream_name = outputs.get("IngestStreamName")
-            assert stream_name, "Stack should have an IngestStreamName output"
-            kin = make_client("kinesis")
-            assert_kinesis_stream_exists(kin, stream_name)
+        hash_keys = [k for k in key_schema if k["KeyType"] == "HASH"]
+        range_keys = [k for k in key_schema if k["KeyType"] == "RANGE"]
 
-            # Verify DynamoDB table
-            table_name = outputs.get("CatalogTableName")
-            assert table_name, "Stack should have a CatalogTableName output"
-            ddb = make_client("dynamodb")
-            assert_dynamodb_table_exists(ddb, table_name)
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
+        assert len(hash_keys) == 1, "Expected exactly one HASH key"
+        assert hash_keys[0]["AttributeName"] == "dataset_id"
+        assert len(range_keys) == 1, "Expected exactly one RANGE key"
+        assert range_keys[0]["AttributeName"] == "timestamp"
 
-    def test_kinesis_stream_active(self, cdk_runner, ensure_server):
-        """The Kinesis stream should be in ACTIVE status after deploy."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
-
-        try:
-            outputs = _get_stack_outputs()
-            stream_name = outputs.get("IngestStreamName")
-            assert stream_name, "Stack should have an IngestStreamName output"
-
-            kin = make_client("kinesis")
-            desc = assert_kinesis_stream_exists(kin, stream_name, expected_status="ACTIVE")
-            assert len(desc["Shards"]) == 1, "Stream should have exactly 1 shard"
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
-
-    def test_dynamodb_schema(self, cdk_runner, ensure_server):
-        """The DynamoDB table should have the correct key schema."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
-
-        try:
-            outputs = _get_stack_outputs()
-            table_name = outputs.get("CatalogTableName")
-            assert table_name, "Stack should have a CatalogTableName output"
-
-            ddb = make_client("dynamodb")
-            table = assert_dynamodb_table_exists(ddb, table_name)
-
-            key_schema = {ks["AttributeName"]: ks["KeyType"] for ks in table["KeySchema"]}
-            assert key_schema.get("dataset_id") == "HASH", "Partition key should be 'dataset_id'"
-            assert key_schema.get("timestamp") == "RANGE", "Sort key should be 'timestamp'"
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
-
-    def test_s3_data_roundtrip(self, cdk_runner, ensure_server):
+    def test_s3_data_roundtrip(self, data_lake_resources, s3_client):
         """Upload and download data from the landing zone bucket."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+        bucket = data_lake_resources["bucket_name"]
+        put_and_get_s3_object(s3_client, bucket, "data/test.csv", "id,name\n1,test")
 
-        try:
-            outputs = _get_stack_outputs()
-            bucket_name = outputs.get("LandingBucketName")
-            assert bucket_name, "Stack should have a LandingBucketName output"
-
-            s3 = make_client("s3")
-            put_and_get_s3_object(s3, bucket_name, "data/test.csv", "id,name\n1,test")
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
-
-    def test_kinesis_data_roundtrip(self, cdk_runner, ensure_server):
+    def test_kinesis_data_roundtrip(self, data_lake_resources, kinesis_client):
         """Put and read a record from the Kinesis ingest stream."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
+        stream = data_lake_resources["stream_name"]
+        put_and_read_kinesis_record(kinesis_client, stream, "test-data", "pk1")
 
-        try:
-            outputs = _get_stack_outputs()
-            stream_name = outputs.get("IngestStreamName")
-            assert stream_name, "Stack should have an IngestStreamName output"
-
-            kinesis = make_client("kinesis")
-            put_and_read_kinesis_record(kinesis, stream_name, "test-data", "pk1")
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
-
-    def test_dynamodb_data_roundtrip(self, cdk_runner, ensure_server):
+    def test_dynamodb_data_roundtrip(self, data_lake_resources, dynamodb_client):
         """Put and get an item from the DynamoDB catalog table."""
-        result = cdk_runner.deploy(SCENARIO_DIR, stack_name="DataLake")
-        assert result.returncode == 0, f"cdk deploy failed:\n{result.stderr}"
-
-        try:
-            outputs = _get_stack_outputs()
-            table_name = outputs.get("CatalogTableName")
-            assert table_name, "Stack should have a CatalogTableName output"
-
-            ddb = make_client("dynamodb")
-            put_and_get_dynamodb_item(
-                ddb,
-                table_name,
-                item={
-                    "dataset_id": {"S": "ds-001"},
-                    "timestamp": {"S": "2026-01-01T00:00:00Z"},
-                    "size": {"N": "1024"},
-                },
-                key={
-                    "dataset_id": {"S": "ds-001"},
-                    "timestamp": {"S": "2026-01-01T00:00:00Z"},
-                },
-            )
-        finally:
-            cdk_runner.destroy(SCENARIO_DIR, stack_name="DataLake")
+        table = data_lake_resources["table_name"]
+        put_and_get_dynamodb_item(
+            dynamodb_client,
+            table,
+            item={
+                "dataset_id": {"S": "ds-001"},
+                "timestamp": {"S": "2026-01-01T00:00:00Z"},
+                "size": {"N": "1024"},
+            },
+            key={
+                "dataset_id": {"S": "ds-001"},
+                "timestamp": {"S": "2026-01-01T00:00:00Z"},
+            },
+        )

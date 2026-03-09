@@ -1275,13 +1275,16 @@ class TestKinesisStream:
         assert res.status == "CREATE_COMPLETE"
 
     def test_delete(self):
-        mock = MagicMock()
-        with _mock_regional("kinesis") as p:
-            p.return_value = mock
+        # Delete uses native Kinesis store (matching create)
+        mock_store = MagicMock()
+        with patch(
+            "robotocore.services.kinesis.models._get_store",
+            return_value=mock_store,
+        ):
             res = _resource("AWS::Kinesis::Stream")
             res.physical_id = "my-stream"
             delete_resource(res, REGION, ACCOUNT_ID)
-        mock.delete_stream.assert_called_once()
+        mock_store.delete_stream.assert_called_once_with("my-stream")
 
 
 # ===========================================================================
