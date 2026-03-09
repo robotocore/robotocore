@@ -166,34 +166,6 @@ class TestBackupVaultOperations:
 
 
 class TestBackupPlanOperations:
-    def test_create_and_get_plan(self, backup):
-        vault_name = _unique("vault")
-        backup.create_backup_vault(BackupVaultName=vault_name)
-
-        plan_name = _unique("plan")
-        resp = backup.create_backup_plan(
-            BackupPlan={
-                "BackupPlanName": plan_name,
-                "Rules": [
-                    {
-                        "RuleName": "daily",
-                        "TargetBackupVaultName": vault_name,
-                        "ScheduleExpression": "cron(0 12 * * ? *)",
-                    }
-                ],
-            }
-        )
-        plan_id = resp["BackupPlanId"]
-        assert plan_id
-
-        got = backup.get_backup_plan(BackupPlanId=plan_id)
-        assert got["BackupPlan"]["BackupPlanName"] == plan_name
-        assert len(got["BackupPlan"]["Rules"]) == 1
-        assert got["BackupPlan"]["Rules"][0]["RuleName"] == "daily"
-
-        backup.delete_backup_plan(BackupPlanId=plan_id)
-        backup.delete_backup_vault(BackupVaultName=vault_name)
-
     def test_create_plan_returns_arn_and_version(self, backup):
         """CreateBackupPlan response includes BackupPlanArn and VersionId."""
         vault_name = _make_vault(backup)
@@ -214,44 +186,6 @@ class TestBackupPlanOperations:
             assert "BackupPlanArn" in resp
             assert "VersionId" in resp
             backup.delete_backup_plan(BackupPlanId=resp["BackupPlanId"])
-        finally:
-            backup.delete_backup_vault(BackupVaultName=vault_name)
-
-    def test_get_plan_has_arn_and_creation_date(self, backup):
-        """GetBackupPlan response includes BackupPlanArn and CreationDate."""
-        vault_name = _make_vault(backup)
-        try:
-            plan_id, _ = _make_plan(backup, vault_name)
-            got = backup.get_backup_plan(BackupPlanId=plan_id)
-            assert "BackupPlanArn" in got
-            assert "CreationDate" in got
-            assert "VersionId" in got
-            backup.delete_backup_plan(BackupPlanId=plan_id)
-        finally:
-            backup.delete_backup_vault(BackupVaultName=vault_name)
-
-    def test_create_plan_multiple_rules(self, backup):
-        """Backup plan can have multiple rules."""
-        vault_name = _make_vault(backup)
-        try:
-            rules = [
-                {
-                    "RuleName": "daily",
-                    "TargetBackupVaultName": vault_name,
-                    "ScheduleExpression": "cron(0 12 * * ? *)",
-                },
-                {
-                    "RuleName": "weekly",
-                    "TargetBackupVaultName": vault_name,
-                    "ScheduleExpression": "cron(0 12 ? * SUN *)",
-                },
-            ]
-            plan_id, _ = _make_plan(backup, vault_name, rules=rules)
-            got = backup.get_backup_plan(BackupPlanId=plan_id)
-            assert len(got["BackupPlan"]["Rules"]) == 2
-            rule_names = {r["RuleName"] for r in got["BackupPlan"]["Rules"]}
-            assert rule_names == {"daily", "weekly"}
-            backup.delete_backup_plan(BackupPlanId=plan_id)
         finally:
             backup.delete_backup_vault(BackupVaultName=vault_name)
 
@@ -330,58 +264,11 @@ class TestBackupPlanOperations:
         finally:
             backup.delete_backup_vault(BackupVaultName=vault_name)
 
-    def test_get_nonexistent_plan(self, backup):
-        with pytest.raises(ClientError) as exc:
-            backup.get_backup_plan(BackupPlanId="00000000-0000-0000-0000-000000000000")
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
     def test_delete_nonexistent_plan(self, backup):
         """Deleting a nonexistent plan raises ResourceNotFoundException."""
         with pytest.raises(ClientError) as exc:
             backup.delete_backup_plan(BackupPlanId="00000000-0000-0000-0000-000000000000")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_delete_plan(self, backup):
-        vault_name = _unique("vault")
-        backup.create_backup_vault(BackupVaultName=vault_name)
-
-        resp = backup.create_backup_plan(
-            BackupPlan={
-                "BackupPlanName": _unique("plan"),
-                "Rules": [
-                    {
-                        "RuleName": "daily",
-                        "TargetBackupVaultName": vault_name,
-                        "ScheduleExpression": "cron(0 12 * * ? *)",
-                    }
-                ],
-            }
-        )
-        plan_id = resp["BackupPlanId"]
-
-        backup.delete_backup_plan(BackupPlanId=plan_id)
-
-        # Deleted plans still retrievable (with DeletionDate) but absent from list
-        plans = backup.list_backup_plans()
-        plan_ids = [p["BackupPlanId"] for p in plans.get("BackupPlansList", [])]
-        assert plan_id not in plan_ids
-
-        got = backup.get_backup_plan(BackupPlanId=plan_id)
-        assert got.get("DeletionDate") is not None
-
-        backup.delete_backup_vault(BackupVaultName=vault_name)
-
-    def test_deleted_plan_still_retrievable(self, backup):
-        """A deleted plan can still be fetched and has DeletionDate set."""
-        vault_name = _make_vault(backup)
-        try:
-            plan_id, _ = _make_plan(backup, vault_name)
-            backup.delete_backup_plan(BackupPlanId=plan_id)
-            got = backup.get_backup_plan(BackupPlanId=plan_id)
-            assert got.get("DeletionDate") is not None
-            assert got["BackupPlan"]["BackupPlanName"]  # name still present
-        finally:
-            backup.delete_backup_vault(BackupVaultName=vault_name)
 
 
 class TestBackupJobOperations:

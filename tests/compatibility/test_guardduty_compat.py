@@ -292,3 +292,186 @@ class TestGuardDutyOrganizationAdminAccountOperations:
     def test_enable_organization_admin_account(self, guardduty):
         resp = guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyFilterListOperations:
+    def test_list_filters_empty(self, guardduty, detector):
+        resp = guardduty.list_filters(DetectorId=detector)
+        assert "FilterNames" in resp
+        assert isinstance(resp["FilterNames"], list)
+
+    def test_list_filters_with_filter(self, guardduty, detector):
+        filter_name = _unique("filter")
+        guardduty.create_filter(
+            DetectorId=detector,
+            Name=filter_name,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+        )
+        try:
+            resp = guardduty.list_filters(DetectorId=detector)
+            assert filter_name in resp["FilterNames"]
+        finally:
+            guardduty.delete_filter(DetectorId=detector, FilterName=filter_name)
+
+    def test_list_filters_multiple(self, guardduty, detector):
+        names = [_unique("filter") for _ in range(3)]
+        for name in names:
+            guardduty.create_filter(
+                DetectorId=detector,
+                Name=name,
+                FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+            )
+        try:
+            resp = guardduty.list_filters(DetectorId=detector)
+            for name in names:
+                assert name in resp["FilterNames"]
+        finally:
+            for name in names:
+                guardduty.delete_filter(DetectorId=detector, FilterName=name)
+
+
+class TestGuardDutyIPSetOperations:
+    def test_create_and_get_ipset(self, guardduty, detector):
+        name = _unique("ipset")
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ipset.txt",
+            Activate=True,
+        )
+        ipset_id = resp["IpSetId"]
+        assert ipset_id
+
+        detail = guardduty.get_ip_set(DetectorId=detector, IpSetId=ipset_id)
+        assert detail["Name"] == name
+        assert detail["Format"] == "TXT"
+        assert detail["Location"] == "s3://my-bucket/ipset.txt"
+
+        guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+    def test_list_ipsets_empty(self, guardduty, detector):
+        resp = guardduty.list_ip_sets(DetectorId=detector)
+        assert "IpSetIds" in resp
+        assert isinstance(resp["IpSetIds"], list)
+
+    def test_list_ipsets_with_ipset(self, guardduty, detector):
+        name = _unique("ipset")
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ipset.txt",
+            Activate=False,
+        )
+        ipset_id = resp["IpSetId"]
+        try:
+            listed = guardduty.list_ip_sets(DetectorId=detector)
+            assert ipset_id in listed["IpSetIds"]
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+    def test_get_ipset_returns_status(self, guardduty, detector):
+        name = _unique("ipset")
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ipset.txt",
+            Activate=False,
+        )
+        ipset_id = resp["IpSetId"]
+        try:
+            detail = guardduty.get_ip_set(DetectorId=detector, IpSetId=ipset_id)
+            assert "Status" in detail
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+    def test_get_nonexistent_ipset_raises_error(self, guardduty, detector):
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_ip_set(DetectorId=detector, IpSetId="nonexistent00000000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyThreatIntelSetOperations:
+    def test_create_and_get_threat_intel_set(self, guardduty, detector):
+        name = _unique("tiset")
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/threatintel.txt",
+            Activate=True,
+        )
+        tiset_id = resp["ThreatIntelSetId"]
+        assert tiset_id
+
+        detail = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+        assert detail["Name"] == name
+        assert detail["Format"] == "TXT"
+        assert detail["Location"] == "s3://my-bucket/threatintel.txt"
+
+        guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+
+    def test_list_threat_intel_sets_empty(self, guardduty, detector):
+        resp = guardduty.list_threat_intel_sets(DetectorId=detector)
+        assert "ThreatIntelSetIds" in resp
+        assert isinstance(resp["ThreatIntelSetIds"], list)
+
+    def test_list_threat_intel_sets_with_set(self, guardduty, detector):
+        name = _unique("tiset")
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/threatintel.txt",
+            Activate=False,
+        )
+        tiset_id = resp["ThreatIntelSetId"]
+        try:
+            listed = guardduty.list_threat_intel_sets(DetectorId=detector)
+            assert tiset_id in listed["ThreatIntelSetIds"]
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+
+    def test_get_threat_intel_set_returns_status(self, guardduty, detector):
+        name = _unique("tiset")
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/threatintel.txt",
+            Activate=False,
+        )
+        tiset_id = resp["ThreatIntelSetId"]
+        try:
+            detail = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+            assert "Status" in detail
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+
+    def test_get_nonexistent_threat_intel_set_raises_error(self, guardduty, detector):
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_threat_intel_set(
+                DetectorId=detector, ThreatIntelSetId="nonexistent00000000000000000000"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyTagOperations:
+    def test_list_tags_for_detector(self, guardduty):
+        resp = guardduty.create_detector(Enable=True, Tags={"env": "test", "project": "roboto"})
+        detector_id = resp["DetectorId"]
+        try:
+            arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector_id}"
+            tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tags_resp
+            assert tags_resp["Tags"]["env"] == "test"
+            assert tags_resp["Tags"]["project"] == "roboto"
+        finally:
+            guardduty.delete_detector(DetectorId=detector_id)
+
+    def test_list_tags_for_resource_empty_tags(self, guardduty, detector):
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert "Tags" in tags_resp

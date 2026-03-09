@@ -526,7 +526,8 @@ class TestRedshiftAutoCoverage:
 
     def test_revoke_endpoint_access(self, client):
         """RevokeEndpointAccess returns a response."""
-        client.revoke_endpoint_access()
+        resp = client.revoke_endpoint_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_cluster_security_group(self, client):
         """CreateClusterSecurityGroup creates and returns the group."""
@@ -1295,3 +1296,232 @@ class TestRedshiftExpandedCoverage:
         tags = {t["Key"]: t["Value"] for t in resp["ClusterSecurityGroup"].get("Tags", [])}
         assert tags.get("dept") == "eng"
         redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+
+class TestRedshiftAdditionalCoverage:
+    """Additional tests for deeper Redshift coverage."""
+
+    @pytest.fixture
+    def redshift(self):
+        return make_client("redshift")
+
+    def test_get_cluster_credentials_with_iam_on_cluster(self, redshift):
+        """GetClusterCredentialsWithIAM with a real cluster returns credentials."""
+        cid = f"iamcred-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.get_cluster_credentials_with_iam(
+                ClusterIdentifier=cid,
+            )
+            assert "DbUser" in resp
+            assert "Expiration" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_snapshots_after_create(self, redshift):
+        """DescribeClusterSnapshots returns snapshots filtered by snapshot identifier."""
+        cid = f"snapdsc-{_uid()}"
+        snap_id = f"snap-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(
+                SnapshotIdentifier=snap_id,
+                ClusterIdentifier=cid,
+            )
+            resp = redshift.describe_cluster_snapshots(
+                SnapshotIdentifier=snap_id,
+            )
+            assert len(resp["Snapshots"]) == 1
+            assert resp["Snapshots"][0]["SnapshotIdentifier"] == snap_id
+            assert resp["Snapshots"][0]["ClusterIdentifier"] == cid
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_cluster_parameter_groups_by_name(self, redshift):
+        """DescribeClusterParameterGroups filtered by name."""
+        name = f"pg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="test param group",
+        )
+        try:
+            resp = redshift.describe_cluster_parameter_groups(
+                ParameterGroupName=name,
+            )
+            groups = resp["ParameterGroups"]
+            assert len(groups) == 1
+            assert groups[0]["ParameterGroupName"] == name
+            assert groups[0]["ParameterGroupFamily"] == "redshift-1.0"
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_describe_events_by_source_identifier(self, redshift):
+        """DescribeEvents filtered by source type cluster."""
+        resp = redshift.describe_events(SourceType="cluster")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_orderable_cluster_options_with_node_type(self, redshift):
+        """DescribeOrderableClusterOptions filtered by node type."""
+        resp = redshift.describe_orderable_cluster_options(NodeType="dc2.large")
+        assert "OrderableClusterOptions" in resp
+        assert isinstance(resp["OrderableClusterOptions"], list)
+
+    def test_describe_cluster_versions_with_family(self, redshift):
+        """DescribeClusterVersions filtered by parameter group family."""
+        resp = redshift.describe_cluster_versions(
+            ClusterParameterGroupFamily="redshift-1.0",
+        )
+        assert "ClusterVersions" in resp
+        assert isinstance(resp["ClusterVersions"], list)
+
+    def test_describe_default_cluster_parameters_family(self, redshift):
+        """DescribeDefaultClusterParameters for redshift-1.0."""
+        resp = redshift.describe_default_cluster_parameters(
+            ParameterGroupFamily="redshift-1.0",
+        )
+        params = resp["DefaultClusterParameters"]
+        assert "ParameterGroupFamily" in params
+        assert params["ParameterGroupFamily"] == "redshift-1.0"
+        assert "Parameters" in params
+
+    def test_describe_logging_status_on_cluster(self, redshift):
+        """DescribeLoggingStatus on a specific cluster."""
+        cid = f"logstat-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.describe_logging_status(ClusterIdentifier=cid)
+            assert "LoggingEnabled" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_create_and_describe_snapshot_schedule(self, redshift):
+        """Create and describe a snapshot schedule."""
+        sched_id = f"sched-{_uid()}"
+        resp = redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sched_id,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        assert resp["ScheduleIdentifier"] == sched_id
+        assert "rate(12 hours)" in resp["ScheduleDefinitions"]
+
+        # Describe
+        desc = redshift.describe_snapshot_schedules(
+            ScheduleIdentifier=sched_id,
+        )
+        assert len(desc["SnapshotSchedules"]) == 1
+        assert desc["SnapshotSchedules"][0]["ScheduleIdentifier"] == sched_id
+
+    def test_describe_account_attributes_has_keys(self, redshift):
+        """DescribeAccountAttributes returns AccountAttributes list with expected structure."""
+        resp = redshift.describe_account_attributes()
+        assert "AccountAttributes" in resp
+        assert isinstance(resp["AccountAttributes"], list)
+
+    def test_describe_storage_returns_totals(self, redshift):
+        """DescribeStorage returns backup and provisioned storage totals."""
+        resp = redshift.describe_storage()
+        assert "TotalBackupSizeInMegaBytes" in resp
+        assert "TotalProvisionedStorageInMegaBytes" in resp
+
+    def test_describe_tags_on_tagged_cluster(self, redshift):
+        """DescribeTags on a cluster with tags returns the tags."""
+        cid = f"tagged-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        try:
+            resp = redshift.describe_tags(ResourceType="cluster")
+            assert "TaggedResources" in resp
+            assert isinstance(resp["TaggedResources"], list)
+            # At least our tagged cluster should appear
+            assert len(resp["TaggedResources"]) >= 1
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_describe_event_categories_for_cluster(self, redshift):
+        """DescribeEventCategories filtered by source type."""
+        resp = redshift.describe_event_categories(SourceType="cluster")
+        assert "EventCategoriesMapList" in resp
+        assert isinstance(resp["EventCategoriesMapList"], list)
+
+    def test_describe_reserved_node_offerings_structure(self, redshift):
+        """DescribeReservedNodeOfferings returns list with expected structure."""
+        resp = redshift.describe_reserved_node_offerings()
+        assert "ReservedNodeOfferings" in resp
+        assert isinstance(resp["ReservedNodeOfferings"], list)
+
+    def test_describe_cluster_subnet_groups_create_describe_delete(self, redshift):
+        """Full CRUD for cluster subnet groups."""
+        import boto3
+        from botocore.config import Config
+
+        ec2 = boto3.client(
+            "ec2",
+            endpoint_url="http://localhost:4566",
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+            config=Config(),
+        )
+        # Create VPC and subnets
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+
+        name = f"sng-{_uid()}"
+        try:
+            resp = redshift.create_cluster_subnet_group(
+                ClusterSubnetGroupName=name,
+                Description="test subnet group",
+                SubnetIds=[subnet_id],
+            )
+            assert resp["ClusterSubnetGroup"]["ClusterSubnetGroupName"] == name
+
+            desc = redshift.describe_cluster_subnet_groups(
+                ClusterSubnetGroupName=name,
+            )
+            assert len(desc["ClusterSubnetGroups"]) == 1
+            assert desc["ClusterSubnetGroups"][0]["ClusterSubnetGroupName"] == name
+
+            redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=name)
+
+            # After delete, should get error
+            with pytest.raises(ClientError) as exc_info:
+                redshift.describe_cluster_subnet_groups(
+                    ClusterSubnetGroupName=name,
+                )
+            assert "ClusterSubnetGroupNotFoundFault" in str(exc_info.value)
+        finally:
+            ec2.delete_subnet(SubnetId=subnet_id)
+            ec2.delete_vpc(VpcId=vpc_id)
