@@ -63,12 +63,17 @@ lint-project: ## Structural lint: registry sync, test quality, protocol drift (n
 gap-analysis: ## Full gap analysis: robotocore vs LocalStack AND vs 100% botocore
 	@echo ""
 	@echo "══════════════════════════════════════════════════════════════════"
-	@echo "  Gap 1: Robotocore vs LocalStack community operations"
+	@echo "  Gap 1: Robotocore vs LocalStack — tier-by-tier comparison"
+	@echo "══════════════════════════════════════════════════════════════════"
+	uv run python scripts/analyze_localstack.py --tier-analysis
+	@echo ""
+	@echo "══════════════════════════════════════════════════════════════════"
+	@echo "  Gap 2: Robotocore vs LocalStack — community operation gaps"
 	@echo "══════════════════════════════════════════════════════════════════"
 	uv run python scripts/analyze_localstack.py --robotocore-gap
 	@echo ""
 	@echo "══════════════════════════════════════════════════════════════════"
-	@echo "  Gap 2: Robotocore vs 100% botocore AWS operation coverage"
+	@echo "  Gap 3: Robotocore vs 100% botocore AWS operation coverage"
 	@echo "══════════════════════════════════════════════════════════════════"
 	uv run python scripts/generate_parity_report.py
 
