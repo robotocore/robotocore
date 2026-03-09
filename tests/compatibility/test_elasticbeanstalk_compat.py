@@ -55,6 +55,38 @@ class TestApplicationOperations:
             eb.delete_application(ApplicationName=name)
 
 
+class TestApplicationVersionOperations:
+    def test_create_application_version(self, eb):
+        """CreateApplicationVersion creates a version."""
+        app_name = _unique("ver-app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            resp = eb.create_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1",
+                Description="initial version",
+            )
+            assert resp["ApplicationVersion"]["VersionLabel"] == "v1"
+            assert resp["ApplicationVersion"]["ApplicationName"] == app_name
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+    def test_describe_application_versions_filtered(self, eb):
+        """DescribeApplicationVersions filters by application."""
+        app_name = _unique("dver-app")
+        eb.create_application(ApplicationName=app_name)
+        eb.create_application_version(
+            ApplicationName=app_name,
+            VersionLabel="v1",
+        )
+        try:
+            resp = eb.describe_application_versions(ApplicationName=app_name)
+            assert len(resp["ApplicationVersions"]) >= 1
+            assert resp["ApplicationVersions"][0]["VersionLabel"] == "v1"
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+
 class TestSolutionStacks:
     def test_list_available_solution_stacks(self, eb):
         resp = eb.list_available_solution_stacks()
