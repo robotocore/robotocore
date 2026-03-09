@@ -1583,3 +1583,40 @@ class TestSSMSendCommandExtended:
         assert len(list_resp["Commands"]) == 1
         assert list_resp["Commands"][0]["CommandId"] == cid
         assert list_resp["Commands"][0]["DocumentName"] == "AWS-RunShellScript"
+
+    def test_get_command_invocation(self, ssm):
+        """GetCommandInvocation retrieves invocation details for a command."""
+        instance_id = "i-00000002"
+        resp = ssm.send_command(
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["echo hello"]},
+            InstanceIds=[instance_id],
+        )
+        command_id = resp["Command"]["CommandId"]
+        inv_resp = ssm.get_command_invocation(
+            CommandId=command_id,
+            InstanceId=instance_id,
+        )
+        assert inv_resp["CommandId"] == command_id
+        assert inv_resp["InstanceId"] == instance_id
+        assert "Status" in inv_resp
+
+    def test_get_patch_baseline_for_patch_group(self, ssm):
+        """GetPatchBaselineForPatchGroup returns the baseline for a group."""
+        name = _unique("pb-forpg")
+        resp = ssm.create_patch_baseline(Name=name)
+        baseline_id = resp["BaselineId"]
+        group_name = _unique("pg")
+        try:
+            ssm.register_patch_baseline_for_patch_group(
+                BaselineId=baseline_id, PatchGroup=group_name
+            )
+            pg_resp = ssm.get_patch_baseline_for_patch_group(PatchGroup=group_name)
+            assert pg_resp["BaselineId"] == baseline_id
+            assert pg_resp["PatchGroup"] == group_name
+
+            ssm.deregister_patch_baseline_for_patch_group(
+                BaselineId=baseline_id, PatchGroup=group_name
+            )
+        finally:
+            ssm.delete_patch_baseline(BaselineId=baseline_id)

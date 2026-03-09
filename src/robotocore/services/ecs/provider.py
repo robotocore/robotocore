@@ -30,6 +30,9 @@ class EcsStore:
         self.task_definitions: dict[str, list[dict]] = {}  # family -> [revisions]
         self.services: dict[str, dict[str, dict]] = {}  # cluster -> service_name -> svc
         self.tasks: dict[str, dict[str, dict]] = {}  # cluster -> task_id -> task
+        self.container_instances: dict[str, dict[str, dict]] = {}  # cluster -> ci_id -> ci
+        self.task_sets: dict[str, dict[str, dict]] = {}  # service_arn -> ts_id -> task_set
+        self.attributes: dict[str, list[dict]] = {}  # cluster -> [attributes]
         self.tags: dict[str, list[dict]] = {}  # arn -> [tags]
         self.lock = threading.RLock()
 
@@ -654,6 +657,348 @@ def _json_response(data: dict) -> Response:
     )
 
 
+# ---------------------------------------------------------------------------
+# Container Instances
+# ---------------------------------------------------------------------------
+
+
+def _register_container_instance(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+
+    doc_str = params.get("instanceIdentityDocument", "{}")
+    doc = json.loads(doc_str) if isinstance(doc_str, str) else doc_str
+    ec2_instance_id = doc.get("instanceId", f"i-{_new_id()[:17]}")
+
+    ci_id = _new_id()
+    ci_arn = f"arn:aws:ecs:{region}:{account_id}:container-instance/{cluster_name}/{ci_id}"
+
+    ci = {
+        "containerInstanceArn": ci_arn,
+        "ec2InstanceId": ec2_instance_id,
+        "status": "ACTIVE",
+        "registeredResources": [
+            {"name": "CPU", "type": "INTEGER", "integerValue": 2048},
+            {"name": "MEMORY", "type": "INTEGER", "integerValue": 3768},
+        ],
+        "remainingResources": [
+            {"name": "CPU", "type": "INTEGER", "integerValue": 2048},
+            {"name": "MEMORY", "type": "INTEGER", "integerValue": 3768},
+        ],
+        "runningTasksCount": 0,
+        "pendingTasksCount": 0,
+        "agentConnected": True,
+        "attributes": params.get("attributes", []),
+        "tags": params.get("tags", []),
+    }
+
+    with store.lock:
+        store.container_instances.setdefault(cluster_name, {})[ci_id] = ci
+        store.clusters[cluster_name]["registeredContainerInstancesCount"] += 1
+        if ci["tags"]:
+            store.tags[ci_arn] = ci["tags"]
+
+    return {"containerInstance": ci}
+
+
+def _deregister_container_instance(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+
+    ci_ref = params.get("containerInstance", "")
+    ci_id = ci_ref.split("/")[-1] if "/" in ci_ref else ci_ref
+
+    with store.lock:
+        ci_map = store.container_instances.get(cluster_name, {})
+        ci = ci_map.get(ci_id)
+        if not ci:
+            raise EcsError(
+                "InvalidParameterException",
+                f"Container instance {ci_ref} not found.",
+            )
+        ci["status"] = "INACTIVE"
+        ci["agentConnected"] = False
+        store.tags.pop(ci.get("containerInstanceArn", ""), None)
+        del ci_map[ci_id]
+        store.clusters[cluster_name]["registeredContainerInstancesCount"] = max(
+            0, store.clusters[cluster_name]["registeredContainerInstancesCount"] - 1
+        )
+
+    return {"containerInstance": ci}
+
+
+def _describe_container_instances(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    ci_refs = params.get("containerInstances", [])
+    found = []
+    failures = []
+
+    with store.lock:
+        ci_map = store.container_instances.get(cluster_name, {})
+        for ref in ci_refs:
+            ci_id = ref.split("/")[-1] if "/" in ref else ref
+            ci = ci_map.get(ci_id)
+            if ci:
+                found.append(ci)
+            else:
+                failures.append({"arn": ref, "reason": "MISSING"})
+
+    return {"containerInstances": found, "failures": failures}
+
+
+def _update_container_instances_state(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+
+    ci_refs = params.get("containerInstances", [])
+    new_status = params.get("status", "ACTIVE")
+    found = []
+    failures = []
+
+    with store.lock:
+        ci_map = store.container_instances.get(cluster_name, {})
+        for ref in ci_refs:
+            ci_id = ref.split("/")[-1] if "/" in ref else ref
+            ci = ci_map.get(ci_id)
+            if ci:
+                ci["status"] = new_status
+                found.append(ci)
+            else:
+                failures.append({"arn": ref, "reason": "MISSING"})
+
+    return {"containerInstances": found, "failures": failures}
+
+
+def _list_container_instances(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    with store.lock:
+        ci_map = store.container_instances.get(cluster_name, {})
+        arns = [ci["containerInstanceArn"] for ci in ci_map.values()]
+    return {"containerInstanceArns": arns}
+
+
+# ---------------------------------------------------------------------------
+# Task Sets
+# ---------------------------------------------------------------------------
+
+
+def _create_task_set(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+
+    svc_ref = params.get("service", "")
+    svc_name = svc_ref.split("/")[-1] if "/" in svc_ref else svc_ref
+
+    with store.lock:
+        services = store.services.get(cluster_name, {})
+        svc = services.get(svc_name)
+        if not svc:
+            raise EcsError("ServiceNotFoundException", f"Service {svc_name} not found.", 404)
+
+        svc_arn = svc["serviceArn"]
+        ts_id = _new_id()
+        ts_arn = f"arn:aws:ecs:{region}:{account_id}:task-set/{cluster_name}/{svc_name}/{ts_id}"
+
+        task_set = {
+            "id": ts_id,
+            "taskSetArn": ts_arn,
+            "serviceArn": svc_arn,
+            "clusterArn": store.clusters[cluster_name]["clusterArn"],
+            "taskDefinition": params.get("taskDefinition", ""),
+            "status": "ACTIVE",
+            "computedDesiredCount": 0,
+            "pendingCount": 0,
+            "runningCount": 0,
+            "stabilityStatus": "STEADY_STATE",
+            "scale": params.get("scale", {"value": 100.0, "unit": "PERCENT"}),
+            "launchType": params.get("launchType", "FARGATE"),
+            "networkConfiguration": params.get("networkConfiguration", {}),
+            "loadBalancers": params.get("loadBalancers", []),
+            "tags": params.get("tags", []),
+            "createdAt": time.time(),
+        }
+
+        store.task_sets.setdefault(svc_arn, {})[ts_id] = task_set
+        if task_set["tags"]:
+            store.tags[ts_arn] = task_set["tags"]
+
+    return {"taskSet": task_set}
+
+
+def _describe_task_sets(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    svc_ref = params.get("service", "")
+    svc_name = svc_ref.split("/")[-1] if "/" in svc_ref else svc_ref
+    ts_refs = params.get("taskSets", [])
+
+    with store.lock:
+        services = store.services.get(cluster_name, {})
+        svc = services.get(svc_name)
+        if not svc:
+            raise EcsError("ServiceNotFoundException", f"Service {svc_name} not found.", 404)
+
+        svc_arn = svc["serviceArn"]
+        ts_map = store.task_sets.get(svc_arn, {})
+
+        if ts_refs:
+            found = []
+            for ref in ts_refs:
+                ts_id = ref.split("/")[-1] if "/" in ref else ref
+                ts = ts_map.get(ts_id)
+                if ts:
+                    found.append(ts)
+        else:
+            found = list(ts_map.values())
+
+    return {"taskSets": found}
+
+
+def _update_task_set(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    svc_ref = params.get("service", "")
+    svc_name = svc_ref.split("/")[-1] if "/" in svc_ref else svc_ref
+    ts_ref = params.get("taskSet", "")
+    ts_id = ts_ref.split("/")[-1] if "/" in ts_ref else ts_ref
+
+    with store.lock:
+        services = store.services.get(cluster_name, {})
+        svc = services.get(svc_name)
+        if not svc:
+            raise EcsError("ServiceNotFoundException", f"Service {svc_name} not found.", 404)
+
+        svc_arn = svc["serviceArn"]
+        ts_map = store.task_sets.get(svc_arn, {})
+        ts = ts_map.get(ts_id)
+        if not ts:
+            raise EcsError("InvalidParameterException", f"Task set {ts_ref} not found.")
+
+        if "scale" in params:
+            ts["scale"] = params["scale"]
+
+    return {"taskSet": ts}
+
+
+def _delete_task_set(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    svc_ref = params.get("service", "")
+    svc_name = svc_ref.split("/")[-1] if "/" in svc_ref else svc_ref
+    ts_ref = params.get("taskSet", "")
+    ts_id = ts_ref.split("/")[-1] if "/" in ts_ref else ts_ref
+
+    with store.lock:
+        services = store.services.get(cluster_name, {})
+        svc = services.get(svc_name)
+        if not svc:
+            raise EcsError("ServiceNotFoundException", f"Service {svc_name} not found.", 404)
+
+        svc_arn = svc["serviceArn"]
+        ts_map = store.task_sets.get(svc_arn, {})
+        ts = ts_map.get(ts_id)
+        if not ts:
+            raise EcsError("InvalidParameterException", f"Task set {ts_ref} not found.")
+
+        ts["status"] = "INACTIVE"
+        store.tags.pop(ts.get("taskSetArn", ""), None)
+        del ts_map[ts_id]
+
+    return {"taskSet": ts}
+
+
+# ---------------------------------------------------------------------------
+# Attributes
+# ---------------------------------------------------------------------------
+
+
+def _put_attributes(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+
+    attrs = params.get("attributes", [])
+    with store.lock:
+        existing = store.attributes.setdefault(cluster_name, [])
+        for attr in attrs:
+            # Replace existing attribute with same name+targetId+targetType
+            key = (attr.get("name"), attr.get("targetId"), attr.get("targetType"))
+            existing[:] = [
+                a
+                for a in existing
+                if (a.get("name"), a.get("targetId"), a.get("targetType")) != key
+            ]
+            existing.append(attr)
+
+    return {"attributes": attrs}
+
+
+def _delete_attributes(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+
+    attrs_to_del = params.get("attributes", [])
+    with store.lock:
+        existing = store.attributes.get(cluster_name, [])
+        for attr in attrs_to_del:
+            key = (attr.get("name"), attr.get("targetId"), attr.get("targetType"))
+            existing[:] = [
+                a
+                for a in existing
+                if (a.get("name"), a.get("targetId"), a.get("targetType")) != key
+            ]
+
+    return {"attributes": attrs_to_del}
+
+
+def _list_attributes(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    target_type = params.get("targetType", "")
+    attr_name = params.get("attributeName")
+
+    with store.lock:
+        all_attrs = store.attributes.get(cluster_name, [])
+        filtered = [a for a in all_attrs if not target_type or a.get("targetType") == target_type]
+        if attr_name:
+            filtered = [a for a in filtered if a.get("name") == attr_name]
+
+    return {"attributes": filtered}
+
+
+# ---------------------------------------------------------------------------
+# Delete Task Definitions (batch)
+# ---------------------------------------------------------------------------
+
+
+def _delete_task_definitions(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    td_refs = params.get("taskDefinitions", [])
+    deleted = []
+    failures = []
+
+    with store.lock:
+        for ref in td_refs:
+            td = _resolve_task_definition(store, ref)
+            if td:
+                td["status"] = "DELETE_IN_PROGRESS"
+                deleted.append(td)
+            else:
+                failures.append(
+                    {
+                        "arn": ref,
+                        "reason": (
+                            "The specified task definition does not exist. "
+                            "Specify a valid account, family, revision and try again."
+                        ),
+                    }
+                )
+
+    return {"taskDefinitions": deleted, "failures": failures}
+
+
 def _put_cluster_capacity_providers(
     store: EcsStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -688,6 +1033,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "ListTaskDefinitions": _list_task_definitions,
     "ListTaskDefinitionFamilies": _list_task_definition_families,
     "DeregisterTaskDefinition": _deregister_task_definition,
+    "DeleteTaskDefinitions": _delete_task_definitions,
     "CreateService": _create_service,
     "DescribeServices": _describe_services,
     "ListServices": _list_services,
@@ -697,6 +1043,18 @@ _ACTION_MAP: dict[str, Callable] = {
     "DescribeTasks": _describe_tasks,
     "ListTasks": _list_tasks,
     "StopTask": _stop_task,
+    "RegisterContainerInstance": _register_container_instance,
+    "DeregisterContainerInstance": _deregister_container_instance,
+    "DescribeContainerInstances": _describe_container_instances,
+    "UpdateContainerInstancesState": _update_container_instances_state,
+    "ListContainerInstances": _list_container_instances,
+    "CreateTaskSet": _create_task_set,
+    "DescribeTaskSets": _describe_task_sets,
+    "UpdateTaskSet": _update_task_set,
+    "DeleteTaskSet": _delete_task_set,
+    "PutAttributes": _put_attributes,
+    "DeleteAttributes": _delete_attributes,
+    "ListAttributes": _list_attributes,
     "TagResource": _tag_resource,
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tags_for_resource,

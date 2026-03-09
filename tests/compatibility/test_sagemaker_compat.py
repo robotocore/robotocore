@@ -1686,3 +1686,249 @@ class TestSageMakerDescribeNotFound:
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_trial(TrialName="fake-trial-nonexistent")
         assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+
+
+class TestSageMakerNotebookLifecycleConfigCRUD:
+    """NotebookInstanceLifecycleConfig CRUD tests."""
+
+    def test_create_and_describe_lifecycle_config(self, sagemaker):
+        name = _uid("lc")
+        resp = sagemaker.create_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName=name,
+            OnCreate=[{"Content": "IyEvYmluL2Jhc2gKZWNobyBoZWxsbw=="}],
+        )
+        assert "NotebookInstanceLifecycleConfigArn" in resp
+        try:
+            desc = sagemaker.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+            assert desc["NotebookInstanceLifecycleConfigName"] == name
+            assert "NotebookInstanceLifecycleConfigArn" in desc
+        finally:
+            sagemaker.delete_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+
+    def test_delete_lifecycle_config(self, sagemaker):
+        name = _uid("lc")
+        sagemaker.create_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName=name,
+            OnCreate=[{"Content": "IyEvYmluL2Jhc2gKZWNobyBoZWxsbw=="}],
+        )
+        resp = sagemaker.delete_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName=name
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify deletion: describe should fail
+        with pytest.raises(ClientError):
+            sagemaker.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+
+    def test_describe_lifecycle_config_not_found(self, sagemaker):
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName="fake-lc-nonexistent"
+            )
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] >= 400
+
+
+class TestSageMakerFeatureGroupCRUD:
+    """FeatureGroup create and describe tests."""
+
+    def test_create_and_describe_feature_group(self, sagemaker):
+        name = _uid("fg")
+        resp = sagemaker.create_feature_group(
+            FeatureGroupName=name,
+            RecordIdentifierFeatureName="record_id",
+            EventTimeFeatureName="event_time",
+            FeatureDefinitions=[
+                {"FeatureName": "record_id", "FeatureType": "String"},
+                {"FeatureName": "event_time", "FeatureType": "String"},
+                {"FeatureName": "feature1", "FeatureType": "Integral"},
+            ],
+            OfflineStoreConfig={"S3StorageConfig": {"S3Uri": "s3://bucket/feature-store"}},
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "FeatureGroupArn" in resp
+        desc = sagemaker.describe_feature_group(FeatureGroupName=name)
+        assert desc["FeatureGroupName"] == name
+        assert len(desc["FeatureDefinitions"]) == 3
+        assert "FeatureGroupStatus" in desc
+
+
+class TestSageMakerClusterOperations:
+    """Cluster operations tests.
+
+    Note: create_cluster has a Moto bug (creates resource but also raises
+    ResourceInUse), so we test delete_cluster and list_cluster_nodes against
+    clusters that were already created despite the error.
+    """
+
+    def _force_create_cluster(self, sagemaker, name):
+        """Create a cluster, ignoring the ResourceInUse bug in Moto."""
+        try:
+            sagemaker.create_cluster(
+                ClusterName=name,
+                InstanceGroups=[
+                    {
+                        "InstanceCount": 1,
+                        "InstanceGroupName": "worker-group",
+                        "InstanceType": "ml.m5.xlarge",
+                        "LifeCycleConfig": {
+                            "SourceS3Uri": "s3://sagemaker-bucket/lifecycle",
+                            "OnCreate": "on_create.sh",
+                        },
+                        "ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole",
+                    }
+                ],
+            )
+        except ClientError:
+            pass  # Moto bug: creates cluster then raises ResourceInUse
+
+    def test_delete_cluster(self, sagemaker):
+        name = _uid("cl")
+        self._force_create_cluster(sagemaker, name)
+        # Verify it exists
+        desc = sagemaker.describe_cluster(ClusterName=name)
+        assert desc["ClusterName"] == name
+        # Delete it
+        del_resp = sagemaker.delete_cluster(ClusterName=name)
+        assert "ClusterArn" in del_resp
+
+    def test_list_cluster_nodes(self, sagemaker):
+        name = _uid("cl")
+        self._force_create_cluster(sagemaker, name)
+        try:
+            resp = sagemaker.list_cluster_nodes(ClusterName=name)
+            assert "ClusterNodeSummaries" in resp
+            assert isinstance(resp["ClusterNodeSummaries"], list)
+        finally:
+            sagemaker.delete_cluster(ClusterName=name)
+
+
+class TestSageMakerAutoMLJobV2:
+    """AutoMLJobV2 create and stop tests."""
+
+    def test_create_auto_ml_job_v2(self, sagemaker):
+        name = _uid("aml")
+        resp = sagemaker.create_auto_ml_job_v2(
+            AutoMLJobName=name,
+            AutoMLJobInputDataConfig=[
+                {
+                    "ChannelType": "training",
+                    "DataSource": {
+                        "S3DataSource": {
+                            "S3DataType": "S3Prefix",
+                            "S3Uri": "s3://bucket/data",
+                        }
+                    },
+                }
+            ],
+            OutputDataConfig={"S3OutputPath": "s3://bucket/output"},
+            AutoMLProblemTypeConfig={
+                "TabularJobConfig": {
+                    "TargetAttributeName": "target",
+                    "ProblemType": "BinaryClassification",
+                    "CompletionCriteria": {
+                        "MaxCandidates": 10,
+                    },
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "AutoMLJobArn" in resp
+
+    def test_stop_auto_ml_job(self, sagemaker):
+        name = _uid("aml")
+        sagemaker.create_auto_ml_job_v2(
+            AutoMLJobName=name,
+            AutoMLJobInputDataConfig=[
+                {
+                    "ChannelType": "training",
+                    "DataSource": {
+                        "S3DataSource": {
+                            "S3DataType": "S3Prefix",
+                            "S3Uri": "s3://bucket/data",
+                        }
+                    },
+                }
+            ],
+            OutputDataConfig={"S3OutputPath": "s3://bucket/output"},
+            AutoMLProblemTypeConfig={
+                "TabularJobConfig": {
+                    "TargetAttributeName": "target",
+                    "ProblemType": "BinaryClassification",
+                    "CompletionCriteria": {
+                        "MaxCandidates": 10,
+                    },
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        resp = sagemaker.stop_auto_ml_job(AutoMLJobName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerDeleteOperations:
+    """Delete operations for compilation job and hyper parameter tuning job."""
+
+    def test_delete_compilation_job(self, sagemaker):
+        name = _uid("cj")
+        sagemaker.create_compilation_job(
+            CompilationJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            InputConfig={
+                "S3Uri": "s3://bucket/model.tar.gz",
+                "DataInputConfig": '{"input":[1,3,224,224]}',
+                "Framework": "PYTORCH",
+            },
+            OutputConfig={
+                "S3OutputLocation": "s3://bucket/out",
+                "TargetDevice": "ml_m4",
+            },
+            StoppingCondition={"MaxRuntimeInSeconds": 900},
+        )
+        resp = sagemaker.delete_compilation_job(CompilationJobName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_hyper_parameter_tuning_job(self, sagemaker):
+        name = _uid("hpt")
+        sagemaker.create_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName=name,
+            HyperParameterTuningJobConfig={
+                "Strategy": "Bayesian",
+                "ResourceLimits": {
+                    "MaxNumberOfTrainingJobs": 10,
+                    "MaxParallelTrainingJobs": 2,
+                },
+            },
+            TrainingJobDefinition={
+                "StaticHyperParameters": {"epochs": "10"},
+                "AlgorithmSpecification": {
+                    "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                    "TrainingInputMode": "File",
+                },
+                "RoleArn": "arn:aws:iam::123456789012:role/SageMakerRole",
+                "InputDataConfig": [
+                    {
+                        "ChannelName": "train",
+                        "DataSource": {
+                            "S3DataSource": {
+                                "S3DataType": "S3Prefix",
+                                "S3Uri": "s3://bucket/train",
+                            }
+                        },
+                    }
+                ],
+                "OutputDataConfig": {"S3OutputPath": "s3://bucket/output"},
+                "ResourceConfig": {
+                    "InstanceType": "ml.m4.xlarge",
+                    "InstanceCount": 1,
+                    "VolumeSizeInGB": 10,
+                },
+                "StoppingCondition": {"MaxRuntimeInSeconds": 3600},
+            },
+        )
+        resp = sagemaker.delete_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

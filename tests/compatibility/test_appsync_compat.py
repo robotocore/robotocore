@@ -451,6 +451,136 @@ class TestEventApiOps:
             client.delete_channel_namespace(apiId=event_api, name=name)
 
 
+class TestApiCache:
+    """Tests for API cache CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api(self, client):
+        created = client.create_graphql_api(name=_unique("cache-api"), authenticationType="API_KEY")
+        api_id = created["graphqlApi"]["apiId"]
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_create_api_cache(self, client, api):
+        resp = client.create_api_cache(
+            apiId=api,
+            apiCachingBehavior="FULL_REQUEST_CACHING",
+            type="T2_SMALL",
+            ttl=3600,
+            transitEncryptionEnabled=False,
+        )
+        assert "apiCache" in resp
+        assert resp["apiCache"]["type"] == "T2_SMALL"
+        assert resp["apiCache"]["status"] == "AVAILABLE"
+
+    def test_get_api_cache(self, client, api):
+        client.create_api_cache(
+            apiId=api,
+            apiCachingBehavior="FULL_REQUEST_CACHING",
+            type="T2_SMALL",
+            ttl=3600,
+            transitEncryptionEnabled=False,
+        )
+        resp = client.get_api_cache(apiId=api)
+        assert "apiCache" in resp
+        assert resp["apiCache"]["ttl"] == 3600
+
+    def test_update_api_cache(self, client, api):
+        client.create_api_cache(
+            apiId=api,
+            apiCachingBehavior="FULL_REQUEST_CACHING",
+            type="T2_SMALL",
+            ttl=3600,
+            transitEncryptionEnabled=False,
+        )
+        resp = client.update_api_cache(
+            apiId=api,
+            apiCachingBehavior="PER_RESOLVER_CACHING",
+            type="T2_MEDIUM",
+            ttl=7200,
+        )
+        assert resp["apiCache"]["type"] == "T2_MEDIUM"
+        assert resp["apiCache"]["ttl"] == 7200
+
+    def test_delete_api_cache(self, client, api):
+        client.create_api_cache(
+            apiId=api,
+            apiCachingBehavior="FULL_REQUEST_CACHING",
+            type="T2_SMALL",
+            ttl=3600,
+            transitEncryptionEnabled=False,
+        )
+        client.delete_api_cache(apiId=api)
+        with pytest.raises(Exception):
+            client.get_api_cache(apiId=api)
+
+    def test_flush_api_cache(self, client, api):
+        client.create_api_cache(
+            apiId=api,
+            apiCachingBehavior="FULL_REQUEST_CACHING",
+            type="T2_SMALL",
+            ttl=3600,
+            transitEncryptionEnabled=False,
+        )
+        # flush_api_cache should succeed without error
+        resp = client.flush_api_cache(apiId=api)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestUpdateApiKey:
+    """Tests for update_api_key operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api(self, client):
+        created = client.create_graphql_api(
+            name=_unique("updkey-api"), authenticationType="API_KEY"
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_update_api_key_description(self, client, api):
+        key = client.create_api_key(apiId=api, description="original desc")
+        key_id = key["apiKey"]["id"]
+        resp = client.update_api_key(apiId=api, id=key_id, description="updated desc")
+        assert "apiKey" in resp
+        assert resp["apiKey"]["description"] == "updated desc"
+
+
+class TestIntrospectionSchema:
+    """Tests for get_introspection_schema operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api_with_schema(self, client):
+        import base64
+
+        created = client.create_graphql_api(name=_unique("intro-api"), authenticationType="API_KEY")
+        api_id = created["graphqlApi"]["apiId"]
+        schema = b"type Query { hello: String }"
+        client.start_schema_creation(apiId=api_id, definition=base64.b64encode(schema))
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_get_introspection_schema_sdl(self, client, api_with_schema):
+        resp = client.get_introspection_schema(apiId=api_with_schema, format="SDL")
+        assert "schema" in resp
+        # The schema body is a StreamingBody
+        body = resp["schema"].read()
+        assert len(body) > 0
+
+
 class TestAppsyncAutoCoverage:
     """Auto-generated coverage tests for appsync."""
 

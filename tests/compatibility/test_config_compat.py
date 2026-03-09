@@ -870,6 +870,51 @@ class TestConfigAutoCoverage:
         client.start_config_rules_evaluation()
 
 
+class TestConfigBatchResourceConfig:
+    """Tests for batch resource config operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_batch_get_resource_config(self, client):
+        """BatchGetResourceConfig returns results for known resource keys."""
+        resp = client.batch_get_resource_config(
+            resourceKeys=[
+                {
+                    "resourceType": "AWS::S3::Bucket",
+                    "resourceId": "nonexistent-bucket-xyz",
+                }
+            ]
+        )
+        assert "baseConfigurationItems" in resp
+        assert "unprocessedResourceKeys" in resp
+
+    def test_batch_get_aggregate_resource_config(self, client):
+        """BatchGetAggregateResourceConfig returns results."""
+        agg_name = "batch-agg-test"
+        client.put_configuration_aggregator(
+            ConfigurationAggregatorName=agg_name,
+            AccountAggregationSources=[{"AccountIds": ["123456789012"], "AllAwsRegions": True}],
+        )
+        try:
+            resp = client.batch_get_aggregate_resource_config(
+                ConfigurationAggregatorName=agg_name,
+                ResourceIdentifiers=[
+                    {
+                        "SourceAccountId": "123456789012",
+                        "SourceRegion": "us-east-1",
+                        "ResourceId": "nonexistent-bucket",
+                        "ResourceType": "AWS::S3::Bucket",
+                    }
+                ],
+            )
+            assert "BaseConfigurationItems" in resp
+            assert "UnprocessedResourceIdentifiers" in resp
+        finally:
+            client.delete_configuration_aggregator(ConfigurationAggregatorName=agg_name)
+
+
 class TestOrganizationConformancePack:
     """Test OrganizationConformancePack operations."""
 

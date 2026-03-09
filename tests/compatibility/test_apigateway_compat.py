@@ -1329,3 +1329,146 @@ class TestApigatewayAutoCoverage:
             assert "/pets" in paths
         finally:
             apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayDeleteOperations:
+    """Tests for delete operations on integration/method responses and base path mappings."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api_with_method(self, apigw):
+        """Create API with resource, method, integration, method response, integration response."""
+        import uuid
+
+        api = apigw.create_rest_api(
+            name=f"del-test-{uuid.uuid4().hex[:8]}", description="Delete ops test"
+        )
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        child = apigw.create_resource(restApiId=api_id, parentId=root_id, pathPart="deltest")
+        resource_id = child["id"]
+        apigw.put_method(
+            restApiId=api_id,
+            resourceId=resource_id,
+            httpMethod="GET",
+            authorizationType="NONE",
+        )
+        apigw.put_integration(
+            restApiId=api_id,
+            resourceId=resource_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        apigw.put_method_response(
+            restApiId=api_id,
+            resourceId=resource_id,
+            httpMethod="GET",
+            statusCode="200",
+            responseModels={"application/json": "Empty"},
+        )
+        apigw.put_integration_response(
+            restApiId=api_id,
+            resourceId=resource_id,
+            httpMethod="GET",
+            statusCode="200",
+            responseTemplates={"application/json": ""},
+        )
+        yield {"api_id": api_id, "resource_id": resource_id}
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_delete_integration_response(self, apigw, api_with_method):
+        """DeleteIntegrationResponse removes a specific integration response."""
+        api_id = api_with_method["api_id"]
+        resource_id = api_with_method["resource_id"]
+        resp = apigw.delete_integration_response(
+            restApiId=api_id,
+            resourceId=resource_id,
+            httpMethod="GET",
+            statusCode="200",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_method_response(self, apigw, api_with_method):
+        """DeleteMethodResponse removes a specific method response."""
+        api_id = api_with_method["api_id"]
+        resource_id = api_with_method["resource_id"]
+        resp = apigw.delete_method_response(
+            restApiId=api_id,
+            resourceId=resource_id,
+            httpMethod="GET",
+            statusCode="200",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_base_path_mapping(self, apigw):
+        """DeleteBasePathMapping removes a mapping from a domain."""
+        import uuid
+
+        domain_name = f"del-bpm-{uuid.uuid4().hex[:8]}.example.com"
+        api = apigw.create_rest_api(name=f"bpm-api-{uuid.uuid4().hex[:8]}")
+        api_id = api["id"]
+        try:
+            apigw.create_domain_name(
+                domainName=domain_name,
+                certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+            )
+            apigw.create_base_path_mapping(domainName=domain_name, restApiId=api_id, basePath="v1")
+            resp = apigw.delete_base_path_mapping(domainName=domain_name, basePath="v1")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202, 204)
+            # Verify it's gone
+            mappings = apigw.get_base_path_mappings(domainName=domain_name)
+            paths = [m["basePath"] for m in mappings.get("items", [])]
+            assert "v1" not in paths
+        finally:
+            try:
+                apigw.delete_domain_name(domainName=domain_name)
+            except Exception:
+                pass
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_put_rest_api(self, apigw):
+        """PutRestApi updates an API with a new definition."""
+        api = apigw.create_rest_api(name="put-rest-api-test")
+        api_id = api["id"]
+        try:
+            openapi_spec = {
+                "openapi": "3.0.1",
+                "info": {"title": "OverwrittenAPI", "version": "2.0"},
+                "paths": {
+                    "/items": {
+                        "get": {
+                            "summary": "List items",
+                            "responses": {"200": {"description": "OK"}},
+                        }
+                    }
+                },
+            }
+            body = json.dumps(openapi_spec).encode("utf-8")
+            resp = apigw.put_rest_api(restApiId=api_id, mode="overwrite", body=body)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "id" in resp
+            # Verify resources were updated - /items should exist
+            resources = apigw.get_resources(restApiId=api_id)
+            paths = [r["path"] for r in resources["items"]]
+            assert "/items" in paths
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_update_account(self, apigw):
+        """UpdateAccount modifies account-level settings (cloudwatchRoleArn)."""
+        resp = apigw.update_account(
+            patchOperations=[
+                {
+                    "op": "replace",
+                    "path": "/cloudwatchRoleArn",
+                    "value": "arn:aws:iam::123456789012:role/apigw-cw-role",
+                },
+            ]
+        )
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

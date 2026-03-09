@@ -896,3 +896,124 @@ class TestGreengrassOperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             greengrass.delete_group(GroupId=group["Id"])
+
+    # --- ConnectorDefinitionVersion ---
+
+    def test_create_connector_definition_version(self, greengrass):
+        """CreateConnectorDefinitionVersion creates a new version."""
+        resp = greengrass.create_connector_definition(
+            Name="test-cdv-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.create_connector_definition_version(
+                ConnectorDefinitionId=resp["Id"],
+                Connectors=[
+                    {
+                        "ConnectorArn": (
+                            "arn:aws:greengrass:us-east-1::/connectors/CloudWatch/versions/1"
+                        ),
+                        "Id": "conn2",
+                        "Parameters": {},
+                    }
+                ],
+            )
+            assert "Version" in result
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=resp["Id"])
+
+    def test_update_connector_definition(self, greengrass):
+        """UpdateConnectorDefinition updates a connector definition name."""
+        resp = greengrass.create_connector_definition(
+            Name="test-upd-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        conn_id = resp["Id"]
+        try:
+            greengrass.update_connector_definition(
+                ConnectorDefinitionId=conn_id, Name="updated-conn"
+            )
+            result = greengrass.get_connector_definition(ConnectorDefinitionId=conn_id)
+            assert result["Name"] == "updated-conn"
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=conn_id)
+
+    # --- CoreDefinitionVersion (create) ---
+
+    def test_create_core_definition_version(self, greengrass):
+        """CreateCoreDefinitionVersion creates a new version."""
+        resp = greengrass.create_core_definition(
+            Name="test-ccdv", InitialVersion=CORE_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.create_core_definition_version(
+                CoreDefinitionId=resp["Id"],
+                Cores=[
+                    {
+                        "CertificateArn": "arn:aws:iot:us-east-1:123456789012:cert/xyz",
+                        "Id": "core2",
+                        "ThingArn": "arn:aws:iot:us-east-1:123456789012:thing/Core2",
+                    }
+                ],
+            )
+            assert "Version" in result
+        finally:
+            greengrass.delete_core_definition(CoreDefinitionId=resp["Id"])
+
+    # --- LoggerDefinitionVersion ---
+
+    def test_create_logger_definition_version(self, greengrass):
+        """CreateLoggerDefinitionVersion creates a new version."""
+        resp = greengrass.create_logger_definition(
+            Name="test-cldv", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.create_logger_definition_version(
+                LoggerDefinitionId=resp["Id"],
+                Loggers=[
+                    {
+                        "Component": "Lambda",
+                        "Id": "logger2",
+                        "Level": "DEBUG",
+                        "Space": 2048,
+                        "Type": "FileSystem",
+                    }
+                ],
+            )
+            assert "Version" in result
+        finally:
+            greengrass.delete_logger_definition(LoggerDefinitionId=resp["Id"])
+
+    def test_update_logger_definition(self, greengrass):
+        """UpdateLoggerDefinition updates a logger definition name."""
+        resp = greengrass.create_logger_definition(
+            Name="test-upd-logger", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        logger_id = resp["Id"]
+        try:
+            greengrass.update_logger_definition(LoggerDefinitionId=logger_id, Name="updated-logger")
+            result = greengrass.get_logger_definition(LoggerDefinitionId=logger_id)
+            assert result["Name"] == "updated-logger"
+        finally:
+            greengrass.delete_logger_definition(LoggerDefinitionId=logger_id)
+
+    # --- SubscriptionDefinitionVersion (create) ---
+
+    def test_create_subscription_definition_version(self, greengrass):
+        """CreateSubscriptionDefinitionVersion creates a new version."""
+        resp = greengrass.create_subscription_definition(
+            Name="test-csdv", InitialVersion=SUBSCRIPTION_INITIAL_VERSION
+        )
+        try:
+            result = greengrass.create_subscription_definition_version(
+                SubscriptionDefinitionId=resp["Id"],
+                Subscriptions=[
+                    {
+                        "Id": "sub2",
+                        "Source": "cloud",
+                        "Subject": "topic/other",
+                        "Target": "cloud",
+                    }
+                ],
+            )
+            assert "Version" in result
+        finally:
+            greengrass.delete_subscription_definition(SubscriptionDefinitionId=resp["Id"])

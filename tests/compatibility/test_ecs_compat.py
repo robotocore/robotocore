@@ -757,3 +757,375 @@ class TestListAttributesOperation:
             assert isinstance(resp["attributes"], list)
         finally:
             ecs.delete_cluster(cluster=name)
+
+
+class TestDeleteAccountSetting:
+    """Tests for ECS DeleteAccountSetting."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_delete_account_setting(self, ecs):
+        ecs.put_account_setting(name="containerInstanceLongArnFormat", value="enabled")
+        resp = ecs.delete_account_setting(name="containerInstanceLongArnFormat")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify setting is gone by listing
+        listed = ecs.list_account_settings(name="containerInstanceLongArnFormat")
+        found = [s for s in listed["settings"] if s["name"] == "containerInstanceLongArnFormat"]
+        assert len(found) == 0
+
+    def test_delete_account_setting_idempotent(self, ecs):
+        """Deleting a setting that doesn't exist should not error."""
+        ecs.put_account_setting(name="taskLongArnFormat", value="enabled")
+        ecs.delete_account_setting(name="taskLongArnFormat")
+        # Second delete should also succeed
+        resp = ecs.delete_account_setting(name="taskLongArnFormat")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDescribeCapacityProviders:
+    """Tests for ECS DescribeCapacityProviders."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_describe_capacity_providers_empty(self, ecs):
+        resp = ecs.describe_capacity_providers(capacityProviders=["nonexistent-cp"])
+        assert "capacityProviders" in resp
+
+    def test_describe_capacity_providers_after_create(self, ecs):
+        cp_name = _unique("desc-cp")
+        ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+            },
+        )
+        try:
+            resp = ecs.describe_capacity_providers(capacityProviders=[cp_name])
+            assert len(resp["capacityProviders"]) == 1
+            assert resp["capacityProviders"][0]["name"] == cp_name
+            assert resp["capacityProviders"][0]["status"] == "ACTIVE"
+        finally:
+            ecs.delete_capacity_provider(capacityProvider=cp_name)
+
+
+class TestUpdateCapacityProvider:
+    """Tests for ECS UpdateCapacityProvider."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_update_capacity_provider_managed_scaling(self, ecs):
+        cp_name = _unique("upd-cp")
+        ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+                "managedScaling": {
+                    "status": "ENABLED",
+                    "targetCapacity": 50,
+                },
+            },
+        )
+        try:
+            resp = ecs.update_capacity_provider(
+                name=cp_name,
+                autoScalingGroupProvider={
+                    "managedScaling": {
+                        "status": "ENABLED",
+                        "targetCapacity": 80,
+                    },
+                },
+            )
+            cp = resp["capacityProvider"]
+            assert cp["name"] == cp_name
+            scaling = cp.get("autoScalingGroupProvider", {}).get("managedScaling", {})
+            assert scaling.get("targetCapacity") == 80
+        finally:
+            ecs.delete_capacity_provider(capacityProvider=cp_name)
+
+
+class TestDeleteTaskDefinitions:
+    """Tests for ECS DeleteTaskDefinitions (batch delete)."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_delete_task_definitions(self, ecs):
+        family = _unique("del-tds")
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        resp = ecs.delete_task_definitions(taskDefinitions=[f"{family}:1"])
+        assert "taskDefinitions" in resp
+        assert len(resp["taskDefinitions"]) >= 1
+
+    def test_delete_task_definitions_marks_deleted(self, ecs):
+        family = _unique("del-tds-status")
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "busybox", "memory": 64}],
+        )
+        resp = ecs.delete_task_definitions(taskDefinitions=[f"{family}:1"])
+        td = resp["taskDefinitions"][0]
+        assert td["status"] == "DELETE_IN_PROGRESS"
+
+
+class TestContainerInstanceOperations:
+    """Tests for container instance register/deregister/describe/update."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("ci-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    def test_register_container_instance(self, ecs, cluster):
+        resp = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-reg12345", "accountId": "123456789012"}'
+            ),
+        )
+        ci = resp["containerInstance"]
+        assert "containerInstanceArn" in ci
+        assert ci["status"] == "ACTIVE"
+        ecs.deregister_container_instance(
+            cluster=cluster, containerInstance=ci["containerInstanceArn"], force=True
+        )
+
+    def test_describe_container_instances(self, ecs, cluster):
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-desc12345", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        try:
+            resp = ecs.describe_container_instances(cluster=cluster, containerInstances=[ci_arn])
+            assert len(resp["containerInstances"]) == 1
+            assert resp["containerInstances"][0]["containerInstanceArn"] == ci_arn
+        finally:
+            ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
+
+    def test_deregister_container_instance(self, ecs, cluster):
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-dereg12345", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        resp = ecs.deregister_container_instance(
+            cluster=cluster, containerInstance=ci_arn, force=True
+        )
+        assert resp["containerInstance"]["containerInstanceArn"] == ci_arn
+        assert resp["containerInstance"]["status"] == "INACTIVE"
+
+    def test_update_container_instances_state(self, ecs, cluster):
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-state12345", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        try:
+            resp = ecs.update_container_instances_state(
+                cluster=cluster,
+                containerInstances=[ci_arn],
+                status="DRAINING",
+            )
+            assert len(resp["containerInstances"]) == 1
+            assert resp["containerInstances"][0]["status"] == "DRAINING"
+        finally:
+            ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
+
+
+class TestTaskSetOperations:
+    """Tests for task set create/describe/update/delete."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("ts-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("ts-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    @pytest.fixture
+    def external_service(self, ecs, cluster, task_def_arn):
+        svc_name = _unique("ts-svc")
+        ecs.create_service(
+            cluster=cluster,
+            serviceName=svc_name,
+            taskDefinition=task_def_arn,
+            desiredCount=0,
+            deploymentController={"type": "EXTERNAL"},
+        )
+        yield svc_name
+        ecs.delete_service(cluster=cluster, service=svc_name, force=True)
+
+    def test_create_task_set(self, ecs, cluster, task_def_arn, external_service):
+        resp = ecs.create_task_set(
+            cluster=cluster,
+            service=external_service,
+            taskDefinition=task_def_arn,
+        )
+        ts = resp["taskSet"]
+        assert "taskSetArn" in ts
+        assert "id" in ts
+        assert ts["status"] == "ACTIVE"
+        ecs.delete_task_set(cluster=cluster, service=external_service, taskSet=ts["id"])
+
+    def test_describe_task_sets(self, ecs, cluster, task_def_arn, external_service):
+        create_resp = ecs.create_task_set(
+            cluster=cluster,
+            service=external_service,
+            taskDefinition=task_def_arn,
+        )
+        ts_id = create_resp["taskSet"]["id"]
+        try:
+            resp = ecs.describe_task_sets(
+                cluster=cluster, service=external_service, taskSets=[ts_id]
+            )
+            assert len(resp["taskSets"]) == 1
+            assert resp["taskSets"][0]["id"] == ts_id
+        finally:
+            ecs.delete_task_set(cluster=cluster, service=external_service, taskSet=ts_id)
+
+    def test_update_task_set(self, ecs, cluster, task_def_arn, external_service):
+        create_resp = ecs.create_task_set(
+            cluster=cluster,
+            service=external_service,
+            taskDefinition=task_def_arn,
+        )
+        ts_id = create_resp["taskSet"]["id"]
+        try:
+            resp = ecs.update_task_set(
+                cluster=cluster,
+                service=external_service,
+                taskSet=ts_id,
+                scale={"value": 50.0, "unit": "PERCENT"},
+            )
+            assert resp["taskSet"]["scale"]["value"] == 50.0
+            assert resp["taskSet"]["scale"]["unit"] == "PERCENT"
+        finally:
+            ecs.delete_task_set(cluster=cluster, service=external_service, taskSet=ts_id)
+
+    def test_delete_task_set(self, ecs, cluster, task_def_arn, external_service):
+        create_resp = ecs.create_task_set(
+            cluster=cluster,
+            service=external_service,
+            taskDefinition=task_def_arn,
+        )
+        ts_id = create_resp["taskSet"]["id"]
+        resp = ecs.delete_task_set(cluster=cluster, service=external_service, taskSet=ts_id)
+        assert resp["taskSet"]["status"] == "INACTIVE"
+
+
+class TestAttributeOperations:
+    """Tests for ECS put/delete/list attributes."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("attr-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    def test_put_attributes(self, ecs, cluster):
+        resp = ecs.put_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "env",
+                    "value": "production",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-id",
+                }
+            ],
+        )
+        assert "attributes" in resp
+        assert len(resp["attributes"]) == 1
+        assert resp["attributes"][0]["name"] == "env"
+
+    def test_list_attributes_after_put(self, ecs, cluster):
+        ecs.put_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "team",
+                    "value": "platform",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-id-2",
+                }
+            ],
+        )
+        resp = ecs.list_attributes(cluster=cluster, targetType="container-instance")
+        assert "attributes" in resp
+        names = [a["name"] for a in resp["attributes"]]
+        assert "team" in names
+
+    def test_delete_attributes(self, ecs, cluster):
+        ecs.put_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "temp-attr",
+                    "value": "temp-val",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-id-3",
+                }
+            ],
+        )
+        resp = ecs.delete_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "temp-attr",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-id-3",
+                }
+            ],
+        )
+        assert "attributes" in resp
+        # Verify it's gone
+        listed = ecs.list_attributes(cluster=cluster, targetType="container-instance")
+        names = [a["name"] for a in listed["attributes"] if a.get("targetId") == "fake-ci-id-3"]
+        assert "temp-attr" not in names

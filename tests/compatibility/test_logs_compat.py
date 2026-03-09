@@ -4,6 +4,7 @@ import time
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -1578,3 +1579,85 @@ class TestLogsDeliverySourceOperations:
         client = make_client("logs")
         with pytest.raises(client.exceptions.ResourceNotFoundException):
             client.delete_delivery_source(name="nonexistent-source")
+
+
+class TestLogsDeliveryOperations:
+    """Tests for Delivery create/get/delete and delivery source operations."""
+
+    def test_put_delivery_source(self):
+        """PutDeliverySource creates a delivery source for a supported service."""
+        client = make_client("logs")
+        name = _unique("delsrc")
+        # Moto requires a supported service in the ARN (cloudfront, bedrock, etc.)
+        arn = "arn:aws:cloudfront::123456789012:distribution/EXAMPLE"
+        resp = client.put_delivery_source(
+            name=name,
+            resourceArn=arn,
+            logType="ACCESS_LOGS",
+        )
+        assert "deliverySource" in resp
+        assert resp["deliverySource"]["name"] == name
+
+    def test_get_delivery_nonexistent(self):
+        """GetDelivery with nonexistent ID raises ResourceNotFoundException."""
+        client = make_client("logs")
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_delivery(id="nonexistent-delivery-id")
+
+    def test_delete_delivery_nonexistent(self):
+        """DeleteDelivery with nonexistent ID raises ResourceNotFoundException."""
+        client = make_client("logs")
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_delivery(id="nonexistent-delivery-id")
+
+    def test_delete_delivery_destination_policy_nonexistent(self):
+        """DeleteDeliveryDestinationPolicy with nonexistent name raises error."""
+        client = make_client("logs")
+        with pytest.raises((client.exceptions.ResourceNotFoundException, ClientError)):
+            client.delete_delivery_destination_policy(deliveryDestinationName="nonexistent-dest")
+
+    def test_create_delivery_and_get_delivery(self):
+        """CreateDelivery creates a delivery, GetDelivery retrieves it."""
+        client = make_client("logs")
+        src_name = _unique("delsrc")
+        dest_name = _unique("deldest")
+        group_name = _unique("/test/delivery-dest")
+
+        # Create log group for destination
+        client.create_log_group(logGroupName=group_name)
+        try:
+            # Create delivery source (cloudfront)
+            cf_arn = "arn:aws:cloudfront::123456789012:distribution/ABCDEF"
+            client.put_delivery_source(name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS")
+            # Create delivery destination (log group)
+            dest_resp = client.put_delivery_destination(
+                name=dest_name,
+                deliveryDestinationConfiguration={
+                    "destinationResourceArn": (
+                        f"arn:aws:logs:us-east-1:123456789012:log-group:{group_name}"
+                    )
+                },
+            )
+            dest_arn = dest_resp["deliveryDestination"]["arn"]
+
+            # Create delivery
+            create_resp = client.create_delivery(
+                deliverySourceName=src_name,
+                deliveryDestinationArn=dest_arn,
+            )
+            assert "delivery" in create_resp
+            delivery_id = create_resp["delivery"]["id"]
+            assert delivery_id is not None
+
+            # Get delivery
+            get_resp = client.get_delivery(id=delivery_id)
+            assert get_resp["delivery"]["id"] == delivery_id
+            assert get_resp["delivery"]["deliverySourceName"] == src_name
+
+            # Delete delivery
+            client.delete_delivery(id=delivery_id)
+            # Verify it's gone
+            with pytest.raises(client.exceptions.ResourceNotFoundException):
+                client.get_delivery(id=delivery_id)
+        finally:
+            client.delete_log_group(logGroupName=group_name)

@@ -639,3 +639,44 @@ class TestEcrAutoCoverage:
         """GetRegistryScanningConfiguration returns a response."""
         resp = client.get_registry_scanning_configuration()
         assert "registryId" in resp
+
+
+class TestECRReplicationConfig:
+    """Tests for ECR replication configuration."""
+
+    def test_put_replication_configuration(self, ecr):
+        resp = ecr.put_replication_configuration(
+            replicationConfiguration={
+                "rules": [
+                    {
+                        "destinations": [
+                            {
+                                "region": "us-west-2",
+                                "registryId": "123456789012",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        assert "replicationConfiguration" in resp
+        rules = resp["replicationConfiguration"]["rules"]
+        assert len(rules) == 1
+        assert rules[0]["destinations"][0]["region"] == "us-west-2"
+
+
+class TestECRBatchScanningConfig:
+    """Tests for batch get repository scanning configuration."""
+
+    @pytest.fixture
+    def repo(self, ecr):
+        name = _unique("bscan-repo")
+        ecr.create_repository(repositoryName=name)
+        yield name
+        ecr.delete_repository(repositoryName=name, force=True)
+
+    def test_batch_get_repository_scanning_configuration(self, ecr, repo):
+        resp = ecr.batch_get_repository_scanning_configuration(
+            repositoryNames=[repo],
+        )
+        assert "scanningConfigurations" in resp

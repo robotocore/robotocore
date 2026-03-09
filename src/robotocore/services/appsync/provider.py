@@ -75,6 +75,10 @@ _DATA_SOURCE_ITEM = re.compile(r"^/v1/apis/([^/]+)/datasources/([^/]+)/?$")
 _TYPES_LIST = re.compile(r"^/v1/apis/([^/]+)/types/?$")
 _TYPE_ITEM = re.compile(r"^/v1/apis/([^/]+)/types/([^/]+)/?$")
 _TAGS = re.compile(r"^/v1/tags/(.+)$")
+_API_CACHE = re.compile(r"^/v1/apis/([^/]+)/ApiCaches/?$")
+_API_CACHE_UPDATE = re.compile(r"^/v1/apis/([^/]+)/ApiCaches/update/?$")
+_FLUSH_CACHE = re.compile(r"^/v1/apis/([^/]+)/FlushCache/?$")
+_INTROSPECTION_SCHEMA = re.compile(r"^/v1/apis/([^/]+)/schema/?$")
 
 # v2 Event API paths
 _V2_APIS_LIST = re.compile(r"^/v2/apis/?$")
@@ -122,6 +126,10 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
             api_id, key_id = m.group(1), m.group(2)
             if method == "DELETE":
                 return _json_response(_delete_api_key(store, api_id, key_id))
+            elif method == "POST":
+                return _json_response(
+                    _update_api_key(store, api_id, key_id, params, region, account_id)
+                )
 
         m = _API_KEYS_LIST.match(path)
         if m:
@@ -255,6 +263,42 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
             elif method == "GET":
                 return _json_response(_list_event_apis(store))
 
+        # API Cache
+        m = _API_CACHE_UPDATE.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "POST":
+                return _json_response(_update_api_cache(store, api_id, params))
+
+        m = _FLUSH_CACHE.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "DELETE":
+                _flush_api_cache(store, api_id)
+                return _json_response({})
+
+        m = _API_CACHE.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "POST":
+                return _json_response(_create_api_cache(store, api_id, params))
+            elif method == "GET":
+                return _json_response(_get_api_cache(store, api_id))
+            elif method == "DELETE":
+                _delete_api_cache(store, api_id)
+                return _json_response({})
+
+        # Introspection Schema
+        m = _INTROSPECTION_SCHEMA.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "GET":
+                fmt = request.query_params.get("format", "SDL")
+                include_directives = request.query_params.get("includeDirectives", "true")
+                return _get_introspection_schema_response(
+                    store, api_id, fmt, include_directives == "true"
+                )
+
         return _error("InvalidAction", f"Unknown path: {method} {path}", 400)
 
     except AppSyncError as e:
@@ -385,6 +429,22 @@ def _delete_api_key(store: AppSyncStore, api_id: str, key_id: str) -> dict:
             raise AppSyncError("NotFoundException", f"API key {key_id} not found.", 404)
         del keys[key_id]
     return {}
+
+
+def _update_api_key(
+    store: AppSyncStore, api_id: str, key_id: str, params: dict, region: str, account_id: str
+) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        keys = store.api_keys.get(api_id, {})
+        key = keys.get(key_id)
+        if not key:
+            raise AppSyncError("NotFoundException", f"API key {key_id} not found.", 404)
+        if "description" in params:
+            key["description"] = params["description"]
+        if "expires" in params:
+            key["expires"] = params["expires"]
+    return {"apiKey": key}
 
 
 # ---------------------------------------------------------------------------
@@ -839,3 +899,107 @@ def _require_event_api(store: AppSyncStore, api_id: str) -> None:
     with store.lock:
         if api_id not in store.event_apis:
             raise AppSyncError("NotFoundException", f"Event API {api_id} not found.", 404)
+
+
+# ---------------------------------------------------------------------------
+# API Cache
+# ---------------------------------------------------------------------------
+
+_api_caches: dict[str, dict[str, dict]] = {}  # region -> api_id -> cache
+
+
+def _create_api_cache(store: AppSyncStore, api_id: str, params: dict) -> dict:
+    _require_api(store, api_id)
+    cache = {
+        "apiCachingBehavior": params.get("apiCachingBehavior", "FULL_REQUEST_CACHING"),
+        "atRestEncryptionEnabled": params.get("atRestEncryptionEnabled", False),
+        "healthMetricsConfig": params.get("healthMetricsConfig", "DISABLED"),
+        "status": "AVAILABLE",
+        "transitEncryptionEnabled": params.get("transitEncryptionEnabled", False),
+        "ttl": params.get("ttl", 3600),
+        "type": params.get("type", "T2_SMALL"),
+    }
+    # Store per api_id in the store object (reuse store.lock)
+    with store.lock:
+        if not hasattr(store, "api_caches"):
+            store.api_caches = {}
+        store.api_caches[api_id] = cache
+    return {"apiCache": cache}
+
+
+def _get_api_cache(store: AppSyncStore, api_id: str) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        caches = getattr(store, "api_caches", {})
+        cache = caches.get(api_id)
+    if not cache:
+        raise AppSyncError("NotFoundException", f"No API cache for {api_id}.", 404)
+    return {"apiCache": cache}
+
+
+def _update_api_cache(store: AppSyncStore, api_id: str, params: dict) -> dict:
+    _require_api(store, api_id)
+    with store.lock:
+        caches = getattr(store, "api_caches", {})
+        cache = caches.get(api_id)
+        if not cache:
+            raise AppSyncError("NotFoundException", f"No API cache for {api_id}.", 404)
+        for key in (
+            "apiCachingBehavior",
+            "ttl",
+            "type",
+            "transitEncryptionEnabled",
+            "atRestEncryptionEnabled",
+            "healthMetricsConfig",
+        ):
+            if key in params:
+                cache[key] = params[key]
+    return {"apiCache": cache}
+
+
+def _delete_api_cache(store: AppSyncStore, api_id: str) -> None:
+    _require_api(store, api_id)
+    with store.lock:
+        caches = getattr(store, "api_caches", {})
+        if api_id not in caches:
+            raise AppSyncError("NotFoundException", f"No API cache for {api_id}.", 404)
+        del caches[api_id]
+
+
+def _flush_api_cache(store: AppSyncStore, api_id: str) -> None:
+    _require_api(store, api_id)
+    # No-op: just verify the API and cache exist
+    with store.lock:
+        caches = getattr(store, "api_caches", {})
+        if api_id not in caches:
+            raise AppSyncError("NotFoundException", f"No API cache for {api_id}.", 404)
+
+
+# ---------------------------------------------------------------------------
+# Introspection Schema
+# ---------------------------------------------------------------------------
+
+
+def _get_introspection_schema_response(
+    store: AppSyncStore, api_id: str, fmt: str, include_directives: bool
+) -> Response:
+    _require_api(store, api_id)
+    with store.lock:
+        schema_info = store.schemas.get(api_id)
+    if not schema_info:
+        raise AppSyncError("NotFoundException", "Schema not found.", 404)
+
+    definition = schema_info.get("definition", "")
+    # Return the schema definition as-is (simplified)
+    if fmt == "JSON":
+        content = json.dumps({"__schema": {"types": [], "queryType": {"name": "Query"}}})
+        return Response(content=content, status_code=200, media_type="application/json")
+    # SDL format — return definition text
+    if isinstance(definition, bytes):
+        import base64
+
+        try:
+            definition = base64.b64decode(definition).decode("utf-8")
+        except Exception:
+            definition = definition.decode("utf-8", errors="replace")
+    return Response(content=definition, status_code=200, media_type="text/plain")

@@ -1729,3 +1729,135 @@ class TestRDSRestoreDBInstanceOperations:
                     client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
                 except ClientError:
                     pass
+
+
+class TestRDSDBShardGroupOperations:
+    """Test DBShardGroup operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_db_shard_group(self, client):
+        """CreateDBShardGroup creates a shard group for an Aurora Limitless cluster."""
+        cluster_name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=cluster_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        sg_name = _unique("compat-sg")
+        try:
+            resp = client.create_db_shard_group(
+                DBShardGroupIdentifier=sg_name,
+                DBClusterIdentifier=cluster_name,
+                MaxACU=100.0,
+            )
+            assert resp["DBShardGroupIdentifier"] == sg_name
+            assert resp["DBClusterIdentifier"] == cluster_name
+        finally:
+            try:
+                client.delete_db_shard_group(DBShardGroupIdentifier=sg_name)
+            except ClientError:
+                pass
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass
+
+
+class TestRDSDBProxyTargetRegistration:
+    """Test DBProxy target registration/deregistration and modify target group."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def proxy_with_instance(self, client, ec2_client):
+        """Create a proxy and a DB instance for target registration."""
+        vpc = ec2_client.create_vpc(CidrBlock="10.94.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.94.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.94.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        proxy_name = _unique("compat-px")
+        db_name = _unique("compat-db")
+        client.create_db_proxy(
+            DBProxyName=proxy_name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            VpcSubnetIds=subnet_ids,
+        )
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield proxy_name, db_name
+        try:
+            client.delete_db_proxy(DBProxyName=proxy_name)
+        except ClientError:
+            pass
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass
+
+    def test_register_and_deregister_db_proxy_targets(self, client, proxy_with_instance):
+        """Register and deregister a DB instance as a proxy target."""
+        proxy_name, db_name = proxy_with_instance
+        resp = client.register_db_proxy_targets(
+            DBProxyName=proxy_name,
+            DBInstanceIdentifiers=[db_name],
+        )
+        assert "DBProxyTargets" in resp
+        assert isinstance(resp["DBProxyTargets"], list)
+
+        # Deregister
+        dereg = client.deregister_db_proxy_targets(
+            DBProxyName=proxy_name,
+            DBInstanceIdentifiers=[db_name],
+        )
+        assert dereg["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_modify_db_proxy_target_group(self, client, proxy_with_instance):
+        """ModifyDBProxyTargetGroup updates connection settings."""
+        proxy_name, _ = proxy_with_instance
+        resp = client.modify_db_proxy_target_group(
+            TargetGroupName="default",
+            DBProxyName=proxy_name,
+            ConnectionPoolConfig={
+                "MaxConnectionsPercent": 50,
+                "MaxIdleConnectionsPercent": 25,
+            },
+        )
+        assert "DBProxyTargetGroup" in resp
+        assert resp["DBProxyTargetGroup"]["TargetGroupName"] == "default"

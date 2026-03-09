@@ -1546,3 +1546,39 @@ class TestEventBridgeCancelReplay:
         with pytest.raises(ClientError) as exc:
             events.cancel_replay(ReplayName="does-not-exist")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestEventBridgeTestEventPattern:
+    """Test TestEventPattern operation."""
+
+    @pytest.fixture
+    def events(self):
+        return make_client("events")
+
+    def test_test_event_pattern_match(self, events):
+        """TestEventPattern returns True when event matches pattern."""
+        resp = events.test_event_pattern(
+            EventPattern=json.dumps({"source": ["myapp.orders"]}),
+            Event=json.dumps(
+                {
+                    "source": "myapp.orders",
+                    "detail-type": "OrderPlaced",
+                    "detail": {"orderId": "123"},
+                }
+            ),
+        )
+        assert resp["Result"] is True
+
+    def test_test_event_pattern_no_match(self, events):
+        """TestEventPattern returns False when event does not match pattern."""
+        resp = events.test_event_pattern(
+            EventPattern=json.dumps({"source": ["myapp.payments"]}),
+            Event=json.dumps(
+                {
+                    "source": "myapp.orders",
+                    "detail-type": "OrderPlaced",
+                    "detail": {"orderId": "123"},
+                }
+            ),
+        )
+        assert resp["Result"] is False

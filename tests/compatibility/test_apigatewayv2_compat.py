@@ -541,6 +541,293 @@ class TestVpcLinkOperations:
             apigwv2.get_vpc_link(VpcLinkId=vpc_link_id)
 
 
+class TestIntegrationResponses:
+    """Tests for integration response CRUD operations."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("intresp-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    @pytest.fixture
+    def integration(self, apigwv2, api):
+        created = apigwv2.create_integration(
+            ApiId=api,
+            IntegrationType="HTTP_PROXY",
+            IntegrationMethod="GET",
+            IntegrationUri="https://example.com",
+            PayloadFormatVersion="1.0",
+        )
+        return created["IntegrationId"]
+
+    def test_create_integration_response(self, apigwv2, api, integration):
+        resp = apigwv2.create_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseKey="$default",
+        )
+        assert "IntegrationResponseId" in resp
+        assert resp["IntegrationResponseKey"] == "$default"
+
+    def test_get_integration_response(self, apigwv2, api, integration):
+        created = apigwv2.create_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseKey="$default",
+        )
+        resp = apigwv2.get_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseId=created["IntegrationResponseId"],
+        )
+        assert resp["IntegrationResponseKey"] == "$default"
+        assert resp["IntegrationResponseId"] == created["IntegrationResponseId"]
+
+    def test_get_integration_responses(self, apigwv2, api, integration):
+        apigwv2.create_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseKey="$default",
+        )
+        resp = apigwv2.get_integration_responses(
+            ApiId=api,
+            IntegrationId=integration,
+        )
+        assert "Items" in resp
+        assert len(resp["Items"]) >= 1
+
+    def test_update_integration_response(self, apigwv2, api, integration):
+        created = apigwv2.create_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseKey="$default",
+        )
+        resp = apigwv2.update_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseId=created["IntegrationResponseId"],
+            IntegrationResponseKey="/200/",
+        )
+        assert resp["IntegrationResponseKey"] == "/200/"
+
+    def test_delete_integration_response(self, apigwv2, api, integration):
+        created = apigwv2.create_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseKey="$default",
+        )
+        ir_id = created["IntegrationResponseId"]
+        apigwv2.delete_integration_response(
+            ApiId=api,
+            IntegrationId=integration,
+            IntegrationResponseId=ir_id,
+        )
+        resp = apigwv2.get_integration_responses(
+            ApiId=api,
+            IntegrationId=integration,
+        )
+        ids = [i["IntegrationResponseId"] for i in resp["Items"]]
+        assert ir_id not in ids
+
+
+class TestRouteResponses:
+    """Tests for route response CRUD operations."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("rresp-api"), ProtocolType="WEBSOCKET")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    @pytest.fixture
+    def route(self, apigwv2, api):
+        created = apigwv2.create_route(ApiId=api, RouteKey="$default")
+        return created["RouteId"]
+
+    def test_create_route_response(self, apigwv2, api, route):
+        resp = apigwv2.create_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseKey="$default",
+        )
+        assert "RouteResponseId" in resp
+        assert resp["RouteResponseKey"] == "$default"
+
+    def test_get_route_response(self, apigwv2, api, route):
+        created = apigwv2.create_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseKey="$default",
+        )
+        resp = apigwv2.get_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseId=created["RouteResponseId"],
+        )
+        assert resp["RouteResponseKey"] == "$default"
+        assert resp["RouteResponseId"] == created["RouteResponseId"]
+
+    def test_get_route_responses(self, apigwv2, api, route):
+        apigwv2.create_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseKey="$default",
+        )
+        resp = apigwv2.get_route_responses(ApiId=api, RouteId=route)
+        assert "Items" in resp
+        assert len(resp["Items"]) >= 1
+
+    def test_update_route_response(self, apigwv2, api, route):
+        created = apigwv2.create_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseKey="$default",
+        )
+        resp = apigwv2.update_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseId=created["RouteResponseId"],
+            RouteResponseKey="$default",
+            ModelSelectionExpression="$request.body.action",
+        )
+        assert resp["RouteResponseId"] == created["RouteResponseId"]
+
+    def test_delete_route_response(self, apigwv2, api, route):
+        created = apigwv2.create_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseKey="$default",
+        )
+        rr_id = created["RouteResponseId"]
+        apigwv2.delete_route_response(
+            ApiId=api,
+            RouteId=route,
+            RouteResponseId=rr_id,
+        )
+        resp = apigwv2.get_route_responses(ApiId=api, RouteId=route)
+        ids = [r["RouteResponseId"] for r in resp["Items"]]
+        assert rr_id not in ids
+
+
+class TestCorsConfiguration:
+    """Tests for CORS configuration operations."""
+
+    def test_delete_cors_configuration(self, apigwv2):
+        api = apigwv2.create_api(
+            Name=_unique("cors-api"),
+            ProtocolType="HTTP",
+            CorsConfiguration={
+                "AllowOrigins": ["https://example.com"],
+                "AllowMethods": ["GET", "POST"],
+            },
+        )
+        api_id = api["ApiId"]
+        try:
+            # Verify CORS is set
+            resp = apigwv2.get_api(ApiId=api_id)
+            assert "CorsConfiguration" in resp
+
+            # Delete CORS
+            apigwv2.delete_cors_configuration(ApiId=api_id)
+
+            # Verify CORS is gone
+            resp = apigwv2.get_api(ApiId=api_id)
+            assert "CorsConfiguration" not in resp or resp.get("CorsConfiguration") is None
+        finally:
+            apigwv2.delete_api(ApiId=api_id)
+
+
+class TestRouteRequestParameter:
+    """Tests for route request parameter operations."""
+
+    @pytest.fixture
+    def api(self, apigwv2):
+        created = apigwv2.create_api(Name=_unique("rrp-api"), ProtocolType="HTTP")
+        yield created["ApiId"]
+        apigwv2.delete_api(ApiId=created["ApiId"])
+
+    def test_delete_route_request_parameter(self, apigwv2, api):
+        route = apigwv2.create_route(
+            ApiId=api,
+            RouteKey="GET /items/{id}",
+            RequestParameters={"route.request.querystring.filter": {"Required": True}},
+        )
+        route_id = route["RouteId"]
+        apigwv2.delete_route_request_parameter(
+            ApiId=api,
+            RouteId=route_id,
+            RequestParameterKey="route.request.querystring.filter",
+        )
+        resp = apigwv2.get_route(ApiId=api, RouteId=route_id)
+        params = resp.get("RequestParameters", {})
+        assert "route.request.querystring.filter" not in params
+
+
+class TestTagging:
+    """Tests for tag_resource and untag_resource operations."""
+
+    def test_tag_resource(self, apigwv2):
+        api = apigwv2.create_api(Name=_unique("tag-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        api_arn = f"arn:aws:apigateway:us-east-1::/apis/{api_id}"
+        try:
+            apigwv2.tag_resource(
+                ResourceArn=api_arn,
+                Tags={"team": "backend", "env": "dev"},
+            )
+            resp = apigwv2.get_tags(ResourceArn=api_arn)
+            assert resp["Tags"]["team"] == "backend"
+            assert resp["Tags"]["env"] == "dev"
+        finally:
+            apigwv2.delete_api(ApiId=api_id)
+
+    def test_untag_resource(self, apigwv2):
+        api = apigwv2.create_api(
+            Name=_unique("untag-api"),
+            ProtocolType="HTTP",
+            Tags={"keep": "yes", "remove": "me"},
+        )
+        api_id = api["ApiId"]
+        api_arn = f"arn:aws:apigateway:us-east-1::/apis/{api_id}"
+        try:
+            apigwv2.untag_resource(ResourceArn=api_arn, TagKeys=["remove"])
+            resp = apigwv2.get_tags(ResourceArn=api_arn)
+            assert "remove" not in resp["Tags"]
+            assert resp["Tags"]["keep"] == "yes"
+        finally:
+            apigwv2.delete_api(ApiId=api_id)
+
+
+class TestReimportApi:
+    """Tests for reimport_api operation."""
+
+    def test_reimport_api(self, apigwv2):
+        import json
+
+        api = apigwv2.create_api(Name=_unique("reimport-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        try:
+            openapi_spec = json.dumps(
+                {
+                    "openapi": "3.0.1",
+                    "info": {"title": "ReimportedAPI", "version": "1.0"},
+                    "paths": {
+                        "/reimported": {
+                            "get": {
+                                "responses": {"200": {"description": "OK"}},
+                            }
+                        }
+                    },
+                }
+            )
+            resp = apigwv2.reimport_api(ApiId=api_id, Body=openapi_spec)
+            assert resp["ApiId"] == api_id
+            assert "Name" in resp
+        finally:
+            apigwv2.delete_api(ApiId=api_id)
+
+
 class TestApigatewayv2AutoCoverage:
     """Auto-generated coverage tests for apigatewayv2."""
 

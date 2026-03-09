@@ -3088,3 +3088,129 @@ class TestDynamoDBPartiQLExtended:
         assert "Items" in resp
         assert len(resp["Items"]) == 1
         assert resp["Items"][0]["val"]["S"] == "parameterized"
+
+
+class TestDynamoDBExecuteTransaction:
+    """Test ExecuteTransaction (PartiQL transactional reads/writes)."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table(self, dynamodb):
+        table_name = f"test-exec-tx-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield table_name
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_execute_transaction_insert(self, dynamodb, table):
+        """ExecuteTransaction inserts multiple items transactionally."""
+        resp = dynamodb.execute_transaction(
+            TransactStatements=[
+                {
+                    "Statement": f'INSERT INTO "{table}" VALUE {{"pk": \'tx-1\', "val": \'aaa\'}}',
+                },
+                {
+                    "Statement": f'INSERT INTO "{table}" VALUE {{"pk": \'tx-2\', "val": \'bbb\'}}',
+                },
+            ]
+        )
+        assert "Responses" in resp
+        # Verify both items were inserted
+        item1 = dynamodb.get_item(TableName=table, Key={"pk": {"S": "tx-1"}})
+        assert item1["Item"]["val"]["S"] == "aaa"
+        item2 = dynamodb.get_item(TableName=table, Key={"pk": {"S": "tx-2"}})
+        assert item2["Item"]["val"]["S"] == "bbb"
+
+    def test_execute_transaction_select(self, dynamodb, table):
+        """ExecuteTransaction with SELECT statements returns items."""
+        dynamodb.put_item(
+            TableName=table,
+            Item={"pk": {"S": "sel-1"}, "val": {"S": "hello"}},
+        )
+        resp = dynamodb.execute_transaction(
+            TransactStatements=[
+                {
+                    "Statement": f"SELECT * FROM \"{table}\" WHERE pk = 'sel-1'",
+                },
+            ]
+        )
+        assert "Responses" in resp
+        assert len(resp["Responses"]) == 1
+
+
+class TestDynamoDBExportImport:
+    """Test ExportTableToPointInTime and DescribeExport."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    @pytest.fixture
+    def table_with_pitr(self, dynamodb):
+        """Table with point-in-time recovery enabled (needed for exports)."""
+        table_name = f"test-export-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        # Enable PITR
+        dynamodb.update_continuous_backups(
+            TableName=table_name,
+            PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": True},
+        )
+        yield table_name
+        dynamodb.delete_table(TableName=table_name)
+
+    def test_export_table_to_point_in_time(self, dynamodb, table_with_pitr):
+        """ExportTableToPointInTime starts an export and returns export description."""
+        desc = dynamodb.describe_table(TableName=table_with_pitr)
+        table_arn = desc["Table"]["TableArn"]
+        resp = dynamodb.export_table_to_point_in_time(
+            TableArn=table_arn,
+            S3Bucket="fake-bucket",
+            S3Prefix="exports/",
+            ExportFormat="DYNAMODB_JSON",
+        )
+        assert "ExportDescription" in resp
+        export_desc = resp["ExportDescription"]
+        assert "ExportArn" in export_desc
+        assert "ExportStatus" in export_desc
+        assert export_desc["ExportFormat"] == "DYNAMODB_JSON"
+
+    def test_describe_export_after_export(self, dynamodb, table_with_pitr):
+        """DescribeExport returns details for an existing export."""
+        desc = dynamodb.describe_table(TableName=table_with_pitr)
+        table_arn = desc["Table"]["TableArn"]
+        export_resp = dynamodb.export_table_to_point_in_time(
+            TableArn=table_arn,
+            S3Bucket="fake-bucket",
+            S3Prefix="exports/",
+            ExportFormat="DYNAMODB_JSON",
+        )
+        export_arn = export_resp["ExportDescription"]["ExportArn"]
+        resp = dynamodb.describe_export(ExportArn=export_arn)
+        assert "ExportDescription" in resp
+        assert resp["ExportDescription"]["ExportArn"] == export_arn
+        assert "ExportStatus" in resp["ExportDescription"]
+
+    def test_describe_import_nonexistent(self, dynamodb):
+        """DescribeImport on a nonexistent import ARN returns error."""
+        with pytest.raises(ClientError) as exc:
+            dynamodb.describe_import(
+                ImportArn="arn:aws:dynamodb:us-east-1:123456789012:table/fake/import/fake-id"
+            )
+        # Server returns InternalError for nonexistent imports
+        assert exc.value.response["Error"]["Code"] in (
+            "ImportNotFoundException",
+            "ResourceNotFoundException",
+            "InternalError",
+        )

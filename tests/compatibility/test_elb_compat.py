@@ -320,3 +320,241 @@ class TestELBClassicPolicies:
         desc = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
         listener_desc = desc["LoadBalancerDescriptions"][0]["ListenerDescriptions"][0]
         assert policy_name in listener_desc["PolicyNames"]
+
+    def test_create_app_cookie_stickiness_policy(self, elb, load_balancer):
+        policy_name = _unique("appcookie")
+        elb.create_app_cookie_stickiness_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+            CookieName="JSESSIONID",
+        )
+        desc = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
+        policies = desc["LoadBalancerDescriptions"][0]["Policies"]["AppCookieStickinessPolicies"]
+        policy_names = [p["PolicyName"] for p in policies]
+        assert policy_name in policy_names
+
+    def test_create_load_balancer_policy(self, elb, load_balancer):
+        policy_name = _unique("custpol")
+        elb.create_load_balancer_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+            PolicyTypeName="SSLNegotiationPolicyType",
+            PolicyAttributes=[
+                {
+                    "AttributeName": "Protocol-TLSv1.2",
+                    "AttributeValue": "true",
+                },
+            ],
+        )
+        resp = elb.describe_load_balancer_policies(
+            LoadBalancerName=load_balancer,
+            PolicyNames=[policy_name],
+        )
+        assert len(resp["PolicyDescriptions"]) == 1
+        assert resp["PolicyDescriptions"][0]["PolicyName"] == policy_name
+
+    def test_delete_load_balancer_policy(self, elb, load_balancer):
+        policy_name = _unique("delpol")
+        elb.create_lb_cookie_stickiness_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+            CookieExpirationPeriod=60,
+        )
+        elb.delete_load_balancer_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+        )
+        resp = elb.describe_load_balancer_policies(LoadBalancerName=load_balancer)
+        names = [p["PolicyName"] for p in resp["PolicyDescriptions"]]
+        assert policy_name not in names
+
+    def test_set_load_balancer_policies_for_backend_server(self, elb, load_balancer):
+        policy_name = _unique("backend")
+        elb.create_load_balancer_policy(
+            LoadBalancerName=load_balancer,
+            PolicyName=policy_name,
+            PolicyTypeName="ProxyProtocolPolicyType",
+            PolicyAttributes=[
+                {
+                    "AttributeName": "ProxyProtocol",
+                    "AttributeValue": "true",
+                },
+            ],
+        )
+        resp = elb.set_load_balancer_policies_for_backend_server(
+            LoadBalancerName=load_balancer,
+            InstancePort=80,
+            PolicyNames=[policy_name],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestELBClassicListenerManagement:
+    def test_delete_load_balancer_listeners(self, elb, load_balancer):
+        # Add a second listener first
+        elb.create_load_balancer_listeners(
+            LoadBalancerName=load_balancer,
+            Listeners=[
+                {
+                    "Protocol": "HTTP",
+                    "LoadBalancerPort": 8080,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 8080,
+                }
+            ],
+        )
+        # Verify it was added
+        desc = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
+        ports = [
+            ld["Listener"]["LoadBalancerPort"]
+            for ld in desc["LoadBalancerDescriptions"][0]["ListenerDescriptions"]
+        ]
+        assert 8080 in ports
+
+        # Delete the second listener
+        elb.delete_load_balancer_listeners(
+            LoadBalancerName=load_balancer,
+            LoadBalancerPorts=[8080],
+        )
+        desc2 = elb.describe_load_balancers(LoadBalancerNames=[load_balancer])
+        ports2 = [
+            ld["Listener"]["LoadBalancerPort"]
+            for ld in desc2["LoadBalancerDescriptions"][0]["ListenerDescriptions"]
+        ]
+        assert 8080 not in ports2
+        assert 80 in ports2
+
+
+class TestELBClassicAvailabilityZones:
+    def test_enable_availability_zones_for_load_balancer(self, elb, load_balancer):
+        resp = elb.enable_availability_zones_for_load_balancer(
+            LoadBalancerName=load_balancer,
+            AvailabilityZones=["us-east-1b"],
+        )
+        assert "us-east-1b" in resp["AvailabilityZones"]
+        assert "us-east-1a" in resp["AvailabilityZones"]
+
+    def test_disable_availability_zones_for_load_balancer(self, elb, load_balancer):
+        # First enable a second AZ
+        elb.enable_availability_zones_for_load_balancer(
+            LoadBalancerName=load_balancer,
+            AvailabilityZones=["us-east-1b"],
+        )
+        # Now disable it
+        resp = elb.disable_availability_zones_for_load_balancer(
+            LoadBalancerName=load_balancer,
+            AvailabilityZones=["us-east-1b"],
+        )
+        assert "us-east-1b" not in resp["AvailabilityZones"]
+        assert "us-east-1a" in resp["AvailabilityZones"]
+
+
+class TestELBClassicSubnetsAndSecurityGroups:
+    @pytest.fixture
+    def vpc_resources(self):
+        """Create a VPC with subnets and security group for ELB tests."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        subnet2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sg = ec2.create_security_group(
+            GroupName=_unique("elbsg"),
+            Description="ELB test SG",
+            VpcId=vpc_id,
+        )
+        yield {
+            "vpc_id": vpc_id,
+            "subnet1_id": subnet1["Subnet"]["SubnetId"],
+            "subnet2_id": subnet2["Subnet"]["SubnetId"],
+            "sg_id": sg["GroupId"],
+        }
+        try:
+            ec2.delete_security_group(GroupId=sg["GroupId"])
+            ec2.delete_subnet(SubnetId=subnet2["Subnet"]["SubnetId"])
+            ec2.delete_subnet(SubnetId=subnet1["Subnet"]["SubnetId"])
+            ec2.delete_vpc(VpcId=vpc_id)
+        except Exception:
+            pass
+
+    def test_apply_security_groups_to_load_balancer(self, elb, vpc_resources):
+        name = _unique("clb-vpc")
+        elb.create_load_balancer(
+            LoadBalancerName=name,
+            Listeners=[
+                {
+                    "Protocol": "HTTP",
+                    "LoadBalancerPort": 80,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 80,
+                }
+            ],
+            Subnets=[vpc_resources["subnet1_id"]],
+            SecurityGroups=[vpc_resources["sg_id"]],
+        )
+        try:
+            resp = elb.apply_security_groups_to_load_balancer(
+                LoadBalancerName=name,
+                SecurityGroups=[vpc_resources["sg_id"]],
+            )
+            assert vpc_resources["sg_id"] in resp["SecurityGroups"]
+        finally:
+            elb.delete_load_balancer(LoadBalancerName=name)
+
+    def test_attach_load_balancer_to_subnets(self, elb, vpc_resources):
+        name = _unique("clb-sub")
+        elb.create_load_balancer(
+            LoadBalancerName=name,
+            Listeners=[
+                {
+                    "Protocol": "HTTP",
+                    "LoadBalancerPort": 80,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 80,
+                }
+            ],
+            Subnets=[vpc_resources["subnet1_id"]],
+            SecurityGroups=[vpc_resources["sg_id"]],
+        )
+        try:
+            resp = elb.attach_load_balancer_to_subnets(
+                LoadBalancerName=name,
+                Subnets=[vpc_resources["subnet2_id"]],
+            )
+            assert vpc_resources["subnet2_id"] in resp["Subnets"]
+        finally:
+            elb.delete_load_balancer(LoadBalancerName=name)
+
+    def test_detach_load_balancer_from_subnets(self, elb, vpc_resources):
+        name = _unique("clb-det")
+        elb.create_load_balancer(
+            LoadBalancerName=name,
+            Listeners=[
+                {
+                    "Protocol": "HTTP",
+                    "LoadBalancerPort": 80,
+                    "InstanceProtocol": "HTTP",
+                    "InstancePort": 80,
+                }
+            ],
+            Subnets=[vpc_resources["subnet1_id"]],
+            SecurityGroups=[vpc_resources["sg_id"]],
+        )
+        try:
+            # Attach second subnet first
+            elb.attach_load_balancer_to_subnets(
+                LoadBalancerName=name,
+                Subnets=[vpc_resources["subnet2_id"]],
+            )
+            # Detach it
+            resp = elb.detach_load_balancer_from_subnets(
+                LoadBalancerName=name,
+                Subnets=[vpc_resources["subnet2_id"]],
+            )
+            assert vpc_resources["subnet2_id"] not in resp["Subnets"]
+        finally:
+            elb.delete_load_balancer(LoadBalancerName=name)

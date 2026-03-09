@@ -29,6 +29,12 @@ _api_mappings: dict[
     str, dict[str, dict[str, dict]]
 ] = {}  # region -> domain -> mapping_id -> mapping
 _models: dict[str, dict[str, dict[str, dict]]] = {}  # region -> api_id -> model_id -> model
+_integration_responses: dict[
+    str, dict[str, dict[str, dict[str, dict]]]
+] = {}  # region -> api_id -> integ_id -> ir_id -> ir
+_route_responses: dict[
+    str, dict[str, dict[str, dict[str, dict]]]
+] = {}  # region -> api_id -> route_id -> rr_id -> rr
 # WebSocket connection tracking
 _connections: dict[str, dict[str, dict]] = {}  # api_id -> connection_id -> conn_info
 
@@ -79,6 +85,17 @@ _API_MAPPINGS_LIST = re.compile(r"^/v2/domainnames/([^/]+)/apimappings/?$")
 _MODEL_PATH = re.compile(r"^/v2/apis/([^/]+)/models/([^/]+)$")
 _MODELS_LIST = re.compile(r"^/v2/apis/([^/]+)/models/?$")
 
+_INTEGRATION_RESPONSE_PATH = re.compile(
+    r"^/v2/apis/([^/]+)/integrations/([^/]+)/integrationresponses/([^/]+)$"
+)
+_INTEGRATION_RESPONSES_LIST = re.compile(
+    r"^/v2/apis/([^/]+)/integrations/([^/]+)/integrationresponses/?$"
+)
+_ROUTE_RESPONSE_PATH = re.compile(r"^/v2/apis/([^/]+)/routes/([^/]+)/routeresponses/([^/]+)$")
+_ROUTE_RESPONSES_LIST = re.compile(r"^/v2/apis/([^/]+)/routes/([^/]+)/routeresponses/?$")
+_CORS_PATH = re.compile(r"^/v2/apis/([^/]+)/cors/?$")
+_ROUTE_REQUEST_PARAM_PATH = re.compile(r"^/v2/apis/([^/]+)/routes/([^/]+)/requestparameters/(.+)$")
+
 
 class ApiGatewayV2Error(Exception):
     def __init__(self, code: str, message: str, status: int = 400):
@@ -109,6 +126,14 @@ async def handle_apigatewayv2_request(
             if method == "GET":
                 return _json_response(_get_apis(region))
 
+        # CORS configuration
+        m = _CORS_PATH.match(path)
+        if m:
+            api_id = m.group(1)
+            if method == "DELETE":
+                _delete_cors_configuration(api_id, region)
+                return Response(status_code=204)
+
         m = _API_PATH.match(path)
         if m:
             api_id = m.group(1)
@@ -118,6 +143,39 @@ async def handle_apigatewayv2_request(
                 return _json_response(_update_api(api_id, params, region))
             if method == "DELETE":
                 _delete_api(api_id, region)
+                return Response(status_code=204)
+            if method == "PUT":
+                # reimport_api
+                return _json_response(_reimport_api(api_id, params, region))
+
+        # Route Responses (must match before Routes — longer path)
+        m = _ROUTE_RESPONSES_LIST.match(path)
+        if m:
+            api_id, route_id = m.group(1), m.group(2)
+            if method == "POST":
+                return _json_response(_create_route_response(api_id, route_id, params, region), 201)
+            if method == "GET":
+                return _json_response(_get_route_responses(api_id, route_id, region))
+
+        m = _ROUTE_RESPONSE_PATH.match(path)
+        if m:
+            api_id, route_id, rr_id = m.group(1), m.group(2), m.group(3)
+            if method == "GET":
+                return _json_response(_get_route_response(api_id, route_id, rr_id, region))
+            if method == "PATCH":
+                return _json_response(
+                    _update_route_response(api_id, route_id, rr_id, params, region)
+                )
+            if method == "DELETE":
+                _delete_route_response(api_id, route_id, rr_id, region)
+                return Response(status_code=204)
+
+        # Route Request Parameters
+        m = _ROUTE_REQUEST_PARAM_PATH.match(path)
+        if m:
+            api_id, route_id, param_key = m.group(1), m.group(2), unquote(m.group(3))
+            if method == "DELETE":
+                _delete_route_request_parameter(api_id, route_id, param_key, region)
                 return Response(status_code=204)
 
         # Routes
@@ -138,6 +196,30 @@ async def handle_apigatewayv2_request(
                 return _json_response(_update_route(api_id, route_id, params, region))
             if method == "DELETE":
                 _delete_route(api_id, route_id, region)
+                return Response(status_code=204)
+
+        # Integration Responses (must match before Integrations — longer path)
+        m = _INTEGRATION_RESPONSES_LIST.match(path)
+        if m:
+            api_id, integ_id = m.group(1), m.group(2)
+            if method == "POST":
+                return _json_response(
+                    _create_integration_response(api_id, integ_id, params, region), 201
+                )
+            if method == "GET":
+                return _json_response(_get_integration_responses(api_id, integ_id, region))
+
+        m = _INTEGRATION_RESPONSE_PATH.match(path)
+        if m:
+            api_id, integ_id, ir_id = m.group(1), m.group(2), m.group(3)
+            if method == "GET":
+                return _json_response(_get_integration_response(api_id, integ_id, ir_id, region))
+            if method == "PATCH":
+                return _json_response(
+                    _update_integration_response(api_id, integ_id, ir_id, params, region)
+                )
+            if method == "DELETE":
+                _delete_integration_response(api_id, integ_id, ir_id, region)
                 return Response(status_code=204)
 
         # Integrations
@@ -575,6 +657,200 @@ def _delete_integration(api_id: str, integ_id: str, region: str) -> None:
         if integ_id not in integrations:
             raise ApiGatewayV2Error("NotFoundException", f"Integration {integ_id} not found", 404)
         del integrations[integ_id]
+
+
+# ---------------------------------------------------------------------------
+# Integration Response CRUD
+# ---------------------------------------------------------------------------
+
+
+def _create_integration_response(api_id: str, integ_id: str, params: dict, region: str) -> dict:
+    _require_api(api_id, region)
+    _get_integration(api_id, integ_id, region)  # ensure integration exists
+    irs = _store(_integration_responses, region, api_id, integ_id)
+    ir_id = _short_id()
+    ir = {
+        "IntegrationResponseId": ir_id,
+        "IntegrationResponseKey": params.get("IntegrationResponseKey", "$default"),
+        "ContentHandlingStrategy": params.get("ContentHandlingStrategy"),
+        "ResponseParameters": params.get("ResponseParameters"),
+        "ResponseTemplates": params.get("ResponseTemplates"),
+        "TemplateSelectionExpression": params.get("TemplateSelectionExpression"),
+    }
+    with _lock:
+        irs[ir_id] = ir
+    return ir
+
+
+def _get_integration_response(api_id: str, integ_id: str, ir_id: str, region: str) -> dict:
+    _require_api(api_id, region)
+    irs = _store(_integration_responses, region, api_id, integ_id)
+    with _lock:
+        ir = irs.get(ir_id)
+    if not ir:
+        raise ApiGatewayV2Error("NotFoundException", f"Integration response {ir_id} not found", 404)
+    return ir
+
+
+def _get_integration_responses(api_id: str, integ_id: str, region: str) -> dict:
+    _require_api(api_id, region)
+    irs = _store(_integration_responses, region, api_id, integ_id)
+    with _lock:
+        items = list(irs.values())
+    return {"Items": items}
+
+
+def _update_integration_response(
+    api_id: str, integ_id: str, ir_id: str, params: dict, region: str
+) -> dict:
+    _require_api(api_id, region)
+    irs = _store(_integration_responses, region, api_id, integ_id)
+    with _lock:
+        ir = irs.get(ir_id)
+        if not ir:
+            raise ApiGatewayV2Error(
+                "NotFoundException", f"Integration response {ir_id} not found", 404
+            )
+        for key in (
+            "IntegrationResponseKey",
+            "ContentHandlingStrategy",
+            "ResponseParameters",
+            "ResponseTemplates",
+            "TemplateSelectionExpression",
+        ):
+            if key in params:
+                ir[key] = params[key]
+    return ir
+
+
+def _delete_integration_response(api_id: str, integ_id: str, ir_id: str, region: str) -> None:
+    _require_api(api_id, region)
+    irs = _store(_integration_responses, region, api_id, integ_id)
+    with _lock:
+        if ir_id not in irs:
+            raise ApiGatewayV2Error(
+                "NotFoundException", f"Integration response {ir_id} not found", 404
+            )
+        del irs[ir_id]
+
+
+# ---------------------------------------------------------------------------
+# Route Response CRUD
+# ---------------------------------------------------------------------------
+
+
+def _create_route_response(api_id: str, route_id: str, params: dict, region: str) -> dict:
+    _require_api(api_id, region)
+    _get_route(api_id, route_id, region)  # ensure route exists
+    rrs = _store(_route_responses, region, api_id, route_id)
+    rr_id = _short_id()
+    rr = {
+        "RouteResponseId": rr_id,
+        "RouteResponseKey": params.get("RouteResponseKey", "$default"),
+        "ModelSelectionExpression": params.get("ModelSelectionExpression"),
+        "ResponseModels": params.get("ResponseModels"),
+        "ResponseParameters": params.get("ResponseParameters"),
+    }
+    with _lock:
+        rrs[rr_id] = rr
+    return rr
+
+
+def _get_route_response(api_id: str, route_id: str, rr_id: str, region: str) -> dict:
+    _require_api(api_id, region)
+    rrs = _store(_route_responses, region, api_id, route_id)
+    with _lock:
+        rr = rrs.get(rr_id)
+    if not rr:
+        raise ApiGatewayV2Error("NotFoundException", f"Route response {rr_id} not found", 404)
+    return rr
+
+
+def _get_route_responses(api_id: str, route_id: str, region: str) -> dict:
+    _require_api(api_id, region)
+    rrs = _store(_route_responses, region, api_id, route_id)
+    with _lock:
+        items = list(rrs.values())
+    return {"Items": items}
+
+
+def _update_route_response(
+    api_id: str, route_id: str, rr_id: str, params: dict, region: str
+) -> dict:
+    _require_api(api_id, region)
+    rrs = _store(_route_responses, region, api_id, route_id)
+    with _lock:
+        rr = rrs.get(rr_id)
+        if not rr:
+            raise ApiGatewayV2Error("NotFoundException", f"Route response {rr_id} not found", 404)
+        for key in (
+            "RouteResponseKey",
+            "ModelSelectionExpression",
+            "ResponseModels",
+            "ResponseParameters",
+        ):
+            if key in params:
+                rr[key] = params[key]
+    return rr
+
+
+def _delete_route_response(api_id: str, route_id: str, rr_id: str, region: str) -> None:
+    _require_api(api_id, region)
+    rrs = _store(_route_responses, region, api_id, route_id)
+    with _lock:
+        if rr_id not in rrs:
+            raise ApiGatewayV2Error("NotFoundException", f"Route response {rr_id} not found", 404)
+        del rrs[rr_id]
+
+
+# ---------------------------------------------------------------------------
+# CORS, Route Request Parameters, Reimport
+# ---------------------------------------------------------------------------
+
+
+def _delete_cors_configuration(api_id: str, region: str) -> None:
+    _require_api(api_id, region)
+    apis = _store(_apis, region)
+    with _lock:
+        api = apis.get(api_id)
+        if api:
+            api.pop("CorsConfiguration", None)
+
+
+def _delete_route_request_parameter(
+    api_id: str, route_id: str, param_key: str, region: str
+) -> None:
+    _require_api(api_id, region)
+    routes = _store(_routes, region, api_id)
+    with _lock:
+        route = routes.get(route_id)
+        if not route:
+            raise ApiGatewayV2Error("NotFoundException", f"Route {route_id} not found", 404)
+        params = route.get("RequestParameters")
+        if params and param_key in params:
+            del params[param_key]
+
+
+def _reimport_api(api_id: str, params: dict, region: str) -> dict:
+    """Reimport an API from an OpenAPI spec. Simplified implementation."""
+    _require_api(api_id, region)
+    apis = _store(_apis, region)
+    with _lock:
+        api = apis.get(api_id)
+        if not api:
+            raise ApiGatewayV2Error("NotFoundException", f"API {api_id} not found", 404)
+    # Parse the body if it's an OpenAPI spec
+    body = params.get("Body", "{}")
+    try:
+        spec = json.loads(body) if isinstance(body, str) else body
+    except (json.JSONDecodeError, TypeError):
+        spec = {}
+    # Update API name from spec info title if present
+    info = spec.get("info", {})
+    if "title" in info:
+        with _lock:
+            api["Name"] = info["title"]
+    return api
 
 
 # ---------------------------------------------------------------------------

@@ -1363,3 +1363,62 @@ class TestS3ControlStorageLens:
                 AccountId=ACCOUNT_ID, ConfigId=f"nonexistent-{_uid()}"
             )
         assert exc.value.response["Error"]["Code"] == "NoSuchConfiguration"
+
+
+class TestS3ControlTagging:
+    """Tests for S3 Control tagging operations (tag_resource, list_tags, untag_resource)."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def bucket_arn(self, s3):
+        bucket_name = f"tag-test-{_uid()}"
+        s3.create_bucket(Bucket=bucket_name)
+        arn = f"arn:aws:s3:::{bucket_name}"
+        yield arn
+        s3.delete_bucket(Bucket=bucket_name)
+
+    def test_tag_resource(self, s3control, bucket_arn):
+        """TagResource adds tags to an S3 resource."""
+        resp = s3control.tag_resource(
+            AccountId=ACCOUNT_ID,
+            ResourceArn=bucket_arn,
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_list_tags_for_resource(self, s3control, bucket_arn):
+        """ListTagsForResource retrieves tags on an S3 resource."""
+        s3control.tag_resource(
+            AccountId=ACCOUNT_ID,
+            ResourceArn=bucket_arn,
+            Tags=[{"Key": "env", "Value": "prod"}, {"Key": "team", "Value": "platform"}],
+        )
+        resp = s3control.list_tags_for_resource(AccountId=ACCOUNT_ID, ResourceArn=bucket_arn)
+        assert "Tags" in resp
+        tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tag_map["env"] == "prod"
+        assert tag_map["team"] == "platform"
+
+    def test_untag_resource(self, s3control, bucket_arn):
+        """UntagResource removes tags from an S3 resource."""
+        s3control.tag_resource(
+            AccountId=ACCOUNT_ID,
+            ResourceArn=bucket_arn,
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "x"}],
+        )
+        s3control.untag_resource(
+            AccountId=ACCOUNT_ID,
+            ResourceArn=bucket_arn,
+            TagKeys=["team"],
+        )
+        resp = s3control.list_tags_for_resource(AccountId=ACCOUNT_ID, ResourceArn=bucket_arn)
+        tag_keys = [t["Key"] for t in resp["Tags"]]
+        assert "env" in tag_keys
+        assert "team" not in tag_keys
