@@ -1346,3 +1346,174 @@ class TestConfigAggregationOperations:
         resp = config.describe_retention_configurations()
         assert "RetentionConfigurations" in resp
         assert isinstance(resp["RetentionConfigurations"], list)
+
+
+class TestOrganizationConfigRuleCRUD:
+    """Test OrganizationConfigRule create/describe/delete lifecycle."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def test_put_organization_config_rule(self, client):
+        """PutOrganizationConfigRule creates a rule and returns an ARN."""
+        import uuid
+
+        name = f"org-rule-{uuid.uuid4().hex[:8]}"
+        try:
+            resp = client.put_organization_config_rule(
+                OrganizationConfigRuleName=name,
+                OrganizationManagedRuleMetadata={
+                    "RuleIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            )
+            assert "OrganizationConfigRuleArn" in resp
+            assert resp["OrganizationConfigRuleArn"].startswith("arn:aws:config:")
+        finally:
+            client.delete_organization_config_rule(OrganizationConfigRuleName=name)
+
+    def test_describe_organization_config_rules_by_name(self, client):
+        """DescribeOrganizationConfigRules returns details for a named rule."""
+        import uuid
+
+        name = f"org-rule-{uuid.uuid4().hex[:8]}"
+        client.put_organization_config_rule(
+            OrganizationConfigRuleName=name,
+            OrganizationManagedRuleMetadata={
+                "RuleIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+            },
+        )
+        try:
+            resp = client.describe_organization_config_rules(OrganizationConfigRuleNames=[name])
+            assert len(resp["OrganizationConfigRules"]) == 1
+            rule = resp["OrganizationConfigRules"][0]
+            assert rule["OrganizationConfigRuleName"] == name
+            assert "OrganizationConfigRuleArn" in rule
+        finally:
+            client.delete_organization_config_rule(OrganizationConfigRuleName=name)
+
+    def test_describe_organization_config_rule_statuses_by_name(self, client):
+        """DescribeOrganizationConfigRuleStatuses returns status for a named rule."""
+        import uuid
+
+        name = f"org-rule-{uuid.uuid4().hex[:8]}"
+        client.put_organization_config_rule(
+            OrganizationConfigRuleName=name,
+            OrganizationManagedRuleMetadata={
+                "RuleIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+            },
+        )
+        try:
+            resp = client.describe_organization_config_rule_statuses(
+                OrganizationConfigRuleNames=[name]
+            )
+            assert "OrganizationConfigRuleStatuses" in resp
+            assert len(resp["OrganizationConfigRuleStatuses"]) >= 1
+        finally:
+            client.delete_organization_config_rule(OrganizationConfigRuleName=name)
+
+    def test_delete_organization_config_rule(self, client):
+        """DeleteOrganizationConfigRule removes the rule."""
+        import uuid
+
+        name = f"org-rule-{uuid.uuid4().hex[:8]}"
+        client.put_organization_config_rule(
+            OrganizationConfigRuleName=name,
+            OrganizationManagedRuleMetadata={
+                "RuleIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+            },
+        )
+        client.delete_organization_config_rule(OrganizationConfigRuleName=name)
+        resp = client.describe_organization_config_rules()
+        names = [r["OrganizationConfigRuleName"] for r in resp["OrganizationConfigRules"]]
+        assert name not in names
+
+    def test_delete_organization_config_rule_nonexistent(self, client):
+        """DeleteOrganizationConfigRule for nonexistent raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_organization_config_rule(
+                OrganizationConfigRuleName="nonexistent-org-rule-xyz",
+            )
+        assert "NoSuchOrganizationConfigRuleException" in exc.value.response["Error"]["Code"]
+
+
+class TestRemediationConfigurationCRUD:
+    """Test RemediationConfiguration create/describe/delete lifecycle."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("config")
+
+    def _create_rule(self, client):
+        import uuid
+
+        name = f"rem-rule-{uuid.uuid4().hex[:8]}"
+        client.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": name,
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        return name
+
+    def test_put_remediation_configurations(self, client):
+        """PutRemediationConfigurations creates a remediation config."""
+        rule_name = self._create_rule(client)
+        try:
+            resp = client.put_remediation_configurations(
+                RemediationConfigurations=[
+                    {
+                        "ConfigRuleName": rule_name,
+                        "TargetType": "SSM_DOCUMENT",
+                        "TargetId": "AWS-EnableS3BucketEncryption",
+                    }
+                ]
+            )
+            assert "FailedBatches" in resp
+            assert isinstance(resp["FailedBatches"], list)
+        finally:
+            client.delete_remediation_configuration(ConfigRuleName=rule_name)
+            client.delete_config_rule(ConfigRuleName=rule_name)
+
+    def test_describe_remediation_configurations(self, client):
+        """DescribeRemediationConfigurations returns config for a rule."""
+        rule_name = self._create_rule(client)
+        client.put_remediation_configurations(
+            RemediationConfigurations=[
+                {
+                    "ConfigRuleName": rule_name,
+                    "TargetType": "SSM_DOCUMENT",
+                    "TargetId": "AWS-EnableS3BucketEncryption",
+                }
+            ]
+        )
+        try:
+            resp = client.describe_remediation_configurations(ConfigRuleNames=[rule_name])
+            assert len(resp["RemediationConfigurations"]) == 1
+            config = resp["RemediationConfigurations"][0]
+            assert config["ConfigRuleName"] == rule_name
+            assert config["TargetType"] == "SSM_DOCUMENT"
+            assert config["TargetId"] == "AWS-EnableS3BucketEncryption"
+        finally:
+            client.delete_remediation_configuration(ConfigRuleName=rule_name)
+            client.delete_config_rule(ConfigRuleName=rule_name)
+
+    def test_delete_remediation_configuration(self, client):
+        """DeleteRemediationConfiguration removes the config."""
+        rule_name = self._create_rule(client)
+        client.put_remediation_configurations(
+            RemediationConfigurations=[
+                {
+                    "ConfigRuleName": rule_name,
+                    "TargetType": "SSM_DOCUMENT",
+                    "TargetId": "AWS-EnableS3BucketEncryption",
+                }
+            ]
+        )
+        client.delete_remediation_configuration(ConfigRuleName=rule_name)
+        resp = client.describe_remediation_configurations(ConfigRuleNames=[rule_name])
+        assert len(resp["RemediationConfigurations"]) == 0
+        client.delete_config_rule(ConfigRuleName=rule_name)

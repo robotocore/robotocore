@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -1769,3 +1770,195 @@ class TestCloudFrontStreamingDistributionWithTags:
         tag_items = tags_resp["Tags"]["Items"]
         tag_keys = [t["Key"] for t in tag_items]
         assert "team" in tag_keys
+
+
+class TestCloudFrontDeleteFunction:
+    """Test DeleteFunction removes the function and it no longer appears in list."""
+
+    def test_delete_function(self, cf):
+        name = _unique("fn")
+        resp = cf.create_function(
+            Name=name,
+            FunctionConfig={"Comment": "test", "Runtime": "cloudfront-js-1.0"},
+            FunctionCode=b"function handler(event) { return event.request; }",
+        )
+        etag = resp["ETag"]
+
+        del_resp = cf.delete_function(Name=name, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone
+        list_resp = cf.list_functions()
+        items = list_resp.get("FunctionList", {}).get("Items", [])
+        names = [f["Name"] for f in items] if items else []
+        assert name not in names
+
+
+class TestCloudFrontDeleteCachePolicy:
+    """Test DeleteCachePolicy removes the policy."""
+
+    def test_delete_cache_policy(self, cf):
+        name = _unique("cp")
+        resp = cf.create_cache_policy(
+            CachePolicyConfig={
+                "Name": name,
+                "MinTTL": 0,
+                "DefaultTTL": 86400,
+                "MaxTTL": 31536000,
+                "ParametersInCacheKeyAndForwardedToOrigin": {
+                    "EnableAcceptEncodingGzip": False,
+                    "HeadersConfig": {"HeaderBehavior": "none"},
+                    "CookiesConfig": {"CookieBehavior": "none"},
+                    "QueryStringsConfig": {"QueryStringBehavior": "none"},
+                },
+            }
+        )
+        policy_id = resp["CachePolicy"]["Id"]
+        etag = resp["ETag"]
+
+        del_resp = cf.delete_cache_policy(Id=policy_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone by trying to get it
+        with pytest.raises(ClientError) as exc:
+            cf.get_cache_policy(Id=policy_id)
+        assert "NoSuchCachePolicy" in exc.value.response["Error"]["Code"]
+
+
+class TestCloudFrontDeleteOriginRequestPolicy:
+    """Test DeleteOriginRequestPolicy removes the policy."""
+
+    def test_delete_origin_request_policy(self, cf):
+        name = _unique("orp")
+        resp = cf.create_origin_request_policy(
+            OriginRequestPolicyConfig={
+                "Name": name,
+                "Comment": "test",
+                "HeadersConfig": {"HeaderBehavior": "none"},
+                "CookiesConfig": {"CookieBehavior": "none"},
+                "QueryStringsConfig": {"QueryStringBehavior": "none"},
+            }
+        )
+        policy_id = resp["OriginRequestPolicy"]["Id"]
+        etag = resp["ETag"]
+
+        del_resp = cf.delete_origin_request_policy(Id=policy_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            cf.get_origin_request_policy(Id=policy_id)
+        assert "NoSuchOriginRequestPolicy" in exc.value.response["Error"]["Code"]
+
+
+class TestCloudFrontDeleteResponseHeadersPolicy:
+    """Test DeleteResponseHeadersPolicy removes the policy."""
+
+    def test_delete_response_headers_policy(self, cf):
+        name = _unique("rhp")
+        resp = cf.create_response_headers_policy(
+            ResponseHeadersPolicyConfig={
+                "Name": name,
+                "Comment": "test",
+                "SecurityHeadersConfig": {
+                    "XSSProtection": {"Override": True, "Protection": True},
+                },
+            }
+        )
+        policy_id = resp["ResponseHeadersPolicy"]["Id"]
+        etag = resp["ETag"]
+
+        del_resp = cf.delete_response_headers_policy(Id=policy_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            cf.get_response_headers_policy(Id=policy_id)
+        assert "NoSuchResponseHeadersPolicy" in exc.value.response["Error"]["Code"]
+
+
+class TestCloudFrontDeleteRealtimeLogConfig:
+    """Test DeleteRealtimeLogConfig removes the config."""
+
+    def _rlc_endpoint(self):
+        return {
+            "StreamType": "Kinesis",
+            "KinesisStreamConfig": {
+                "RoleARN": "arn:aws:iam::123456789012:role/test-role",
+                "StreamARN": "arn:aws:kinesis:us-east-1:123456789012:stream/test-stream",
+            },
+        }
+
+    def test_delete_realtime_log_config(self, cf):
+        name = _unique("rlc")
+        resp = cf.create_realtime_log_config(
+            EndPoints=[self._rlc_endpoint()],
+            Fields=["timestamp", "c-ip"],
+            Name=name,
+            SamplingRate=100,
+        )
+        arn = resp["RealtimeLogConfig"]["ARN"]
+
+        del_resp = cf.delete_realtime_log_config(ARN=arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone from list
+        list_resp = cf.list_realtime_log_configs()
+        items = list_resp.get("RealtimeLogConfigs", {}).get("Items", [])
+        names = [item["Name"] for item in items] if items else []
+        assert name not in names
+
+
+class TestCloudFrontDeleteKeyGroup:
+    """Test DeleteKeyGroup removes the key group and verifies deletion."""
+
+    def test_delete_key_group_verified(self, cf):
+        pub_pem = _generate_public_key_pem()
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": _unique("pk"),
+                "EncodedKey": pub_pem,
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+
+        kg_name = _unique("kg")
+        kg_resp = cf.create_key_group(KeyGroupConfig={"Name": kg_name, "Items": [pk_id]})
+        kg_id = kg_resp["KeyGroup"]["Id"]
+        etag = kg_resp["ETag"]
+
+        del_resp = cf.delete_key_group(Id=kg_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            cf.get_key_group(Id=kg_id)
+        assert "NoSuchResource" in exc.value.response["Error"]["Code"]
+
+
+class TestCloudFrontDeleteOriginAccessControl:
+    """Test DeleteOriginAccessControl removes the OAC and verifies deletion."""
+
+    def test_delete_origin_access_control_verified(self, cf):
+        oac_name = _unique("oac")
+        resp = cf.create_origin_access_control(
+            OriginAccessControlConfig={
+                "Name": oac_name,
+                "SigningProtocol": "sigv4",
+                "SigningBehavior": "always",
+                "OriginAccessControlOriginType": "s3",
+            }
+        )
+        oac_id = resp["OriginAccessControl"]["Id"]
+        # Get ETag via get call (create doesn't return it)
+        get_resp = cf.get_origin_access_control(Id=oac_id)
+        etag = get_resp.get("ETag", "")
+
+        del_resp = cf.delete_origin_access_control(Id=oac_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify it's gone
+        with pytest.raises(ClientError) as exc:
+            cf.get_origin_access_control(Id=oac_id)
+        assert "NoSuchOriginAccessControl" in exc.value.response["Error"]["Code"]
