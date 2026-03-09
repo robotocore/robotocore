@@ -1,0 +1,49 @@
+service: sls-monitoring
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+
+custom:
+  localstack:
+    endpoint: ${env:AWS_ENDPOINT_URL, 'http://localhost:4566'}
+
+resources:
+  Resources:
+    AlarmTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ${self:service}-alarms
+
+    AppLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /app/${self:service}
+        RetentionInDays: 14
+
+    HighErrorAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: ${self:service}-high-errors
+        MetricName: Errors
+        Namespace: ${self:service}
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 10
+        ComparisonOperator: GreaterThanThreshold
+        AlarmActions:
+          - !Ref AlarmTopic
+
+  Outputs:
+    TopicArn:
+      Value: !Ref AlarmTopic
+    LogGroupName:
+      Value: !Ref AppLogGroup
+    AlarmName:
+      Value: ${self:service}-high-errors
+
+plugins:
+  - serverless-localstack

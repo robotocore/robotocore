@@ -1,0 +1,22 @@
+service: sls-rest-api
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+
+custom:
+  localstack:
+    endpoint: ${env:AWS_ENDPOINT_URL, 'http://localhost:4566'}
+
+functions:
+  hello:
+    handler: handler.handler
+    events:
+      - http:
+          path: hello
+          method: get
+
+plugins:
+  - serverless-localstack

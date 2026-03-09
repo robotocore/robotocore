@@ -1,0 +1,55 @@
+service: sls-event-pipeline
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+          Resource: "*"
+
+custom:
+  localstack:
+    endpoint: ${env:AWS_ENDPOINT_URL, 'http://localhost:4566'}
+
+functions:
+  processEvent:
+    handler: handler.process
+    events:
+      - sqs:
+          arn: !GetAtt EventQueue.Arn
+
+resources:
+  Resources:
+    EventQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-events
+
+    EventsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-events
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+  Outputs:
+    QueueUrl:
+      Value: !Ref EventQueue
+    TableName:
+      Value: !Ref EventsTable
+
+plugins:
+  - serverless-localstack
