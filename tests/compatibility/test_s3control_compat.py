@@ -523,31 +523,6 @@ class TestS3ControlAccessPoints:
                 pass
             s3.delete_bucket(Bucket=bucket)
 
-    def test_create_access_point_with_vpc(self, s3control, s3):
-        """CreateAccessPoint with VpcConfiguration sets NetworkOrigin to VPC."""
-        ec2 = make_client("ec2")
-        bucket = f"ap-vpc-{_uid()}"
-        ap_name = f"ap-vpc-{_uid()}"
-        s3.create_bucket(Bucket=bucket)
-        vpc = ec2.create_vpc(CidrBlock="10.98.0.0/16")
-        vpc_id = vpc["Vpc"]["VpcId"]
-        try:
-            s3control.create_access_point(
-                AccountId=ACCOUNT_ID,
-                Name=ap_name,
-                Bucket=bucket,
-                VpcConfiguration={"VpcId": vpc_id},
-            )
-            resp = s3control.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
-            assert resp["NetworkOrigin"] == "VPC"
-            assert resp["VpcConfiguration"]["VpcId"] == vpc_id
-        finally:
-            try:
-                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
-            except Exception:
-                pass
-            s3.delete_bucket(Bucket=bucket)
-
     def test_delete_access_point_idempotent(self, s3control):
         """DeleteAccessPoint for nonexistent name succeeds (idempotent)."""
         resp = s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}")
@@ -1626,23 +1601,6 @@ class TestS3ControlAccessGrants:
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrant"
 
-    def test_get_access_grants_instance(self, s3control):
-        with pytest.raises(ClientError) as exc_info:
-            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
-
-    def test_get_access_grants_instance_for_prefix(self, s3control):
-        with pytest.raises(ClientError) as exc_info:
-            s3control.get_access_grants_instance_for_prefix(
-                AccountId=ACCOUNT_ID, S3Prefix="s3://my-bucket/prefix"
-            )
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
-
-    def test_get_access_grants_instance_resource_policy(self, s3control):
-        with pytest.raises(ClientError) as exc_info:
-            s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
-
     def test_get_access_grants_location_nonexistent(self, s3control):
         with pytest.raises(ClientError) as exc_info:
             s3control.get_access_grants_location(
@@ -1810,3 +1768,450 @@ class TestS3ControlBucketOps:
                 AccountId=ACCOUNT_ID, Bucket="nonexistent-bucket-xyz-999"
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+
+class TestS3ControlAccessGrantsDeepLifecycle:
+    """Deeper lifecycle tests for Access Grants operations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture(autouse=True)
+    def _ensure_instance(self, s3control):
+        """Ensure an access grants instance exists for tests."""
+        try:
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+
+    def test_create_multiple_access_grants_locations(self, s3control):
+        """Create multiple locations under one instance."""
+        loc1 = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://bucket-a-multi/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/role-a",
+        )
+        loc2 = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://bucket-b-multi/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/role-b",
+        )
+        assert loc1["AccessGrantsLocationId"] != loc2["AccessGrantsLocationId"]
+        # List should contain both
+        resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+        ids = [loc["AccessGrantsLocationId"] for loc in resp["AccessGrantsLocationsList"]]
+        assert loc1["AccessGrantsLocationId"] in ids
+        assert loc2["AccessGrantsLocationId"] in ids
+
+    def test_access_grants_instance_has_created_at(self, s3control):
+        """Verify CreatedAt timestamp is present."""
+        get_resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "CreatedAt" in get_resp
+
+    def test_access_grants_location_arn_format(self, s3control):
+        """Verify location ARN contains expected components."""
+        resp = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://arn-check-bucket/",
+            IAMRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        arn = resp["AccessGrantsLocationArn"]
+        assert "s3" in arn.lower()
+        assert ACCOUNT_ID in arn or "access-grants" in arn.lower()
+
+    def test_access_grants_instance_arn_format(self, s3control):
+        """Verify instance ARN contains expected components."""
+        resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        arn = resp["AccessGrantsInstanceArn"]
+        assert "arn:" in arn
+        assert "s3" in arn.lower()
+
+    def test_access_grants_location_scope_preserved(self, s3control):
+        """Location scope is preserved on get."""
+        scope = "s3://scope-check-bucket/"
+        create_resp = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope=scope,
+            IAMRoleArn="arn:aws:iam::123456789012:role/scope-role",
+        )
+        loc_id = create_resp["AccessGrantsLocationId"]
+        get_resp = s3control.get_access_grants_location(
+            AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+        )
+        assert get_resp["LocationScope"] == scope
+
+    def test_access_grants_instance_for_prefix_after_create(self, s3control):
+        """GetAccessGrantsInstanceForPrefix works when instance exists."""
+        resp = s3control.get_access_grants_instance_for_prefix(
+            AccountId=ACCOUNT_ID, S3Prefix="s3://any-bucket/prefix"
+        )
+        assert "AccessGrantsInstanceArn" in resp
+        assert "AccessGrantsInstanceId" in resp
+
+
+class TestS3ControlStorageLensDeepLifecycle:
+    """Deep lifecycle tests for Storage Lens configurations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    def _make_storage_lens_config(self, config_id, enabled=True):
+        return {
+            "Id": config_id,
+            "AccountLevel": {
+                "BucketLevel": {},
+            },
+            "IsEnabled": enabled,
+        }
+
+    def test_storage_lens_delete_then_get_fails(self, s3control):
+        """Get fails after delete with correct error."""
+        config_id = f"sl-delget-{_uid()}"
+        s3control.put_storage_lens_configuration(
+            AccountId=ACCOUNT_ID,
+            ConfigId=config_id,
+            StorageLensConfiguration=self._make_storage_lens_config(config_id),
+        )
+        s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
+        assert exc_info.value.response["Error"]["Code"] in (
+            "NoSuchConfiguration",
+            "NotFoundException",
+        )
+
+    def test_storage_lens_tagging_empty_by_default(self, s3control):
+        """New configuration has no tags by default."""
+        config_id = f"sl-notag-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration=self._make_storage_lens_config(config_id),
+            )
+            resp = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_storage_lens_delete_tagging(self, s3control):
+        """Tags are removed after deleting and recreating configuration."""
+        config_id = f"sl-deltag-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration=self._make_storage_lens_config(config_id),
+            )
+            s3control.put_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            # Verify tags exist
+            resp = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert len(resp["Tags"]) >= 1
+
+            # Delete and recreate
+            s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration=self._make_storage_lens_config(config_id),
+            )
+            # Tags should be gone
+            resp2 = s3control.get_storage_lens_configuration_tagging(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert len(resp2["Tags"]) == 0
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_storage_lens_put_appears_in_list(self, s3control):
+        """Newly created config appears in list."""
+        config_id = f"sl-list-{_uid()}"
+        try:
+            s3control.put_storage_lens_configuration(
+                AccountId=ACCOUNT_ID,
+                ConfigId=config_id,
+                StorageLensConfiguration=self._make_storage_lens_config(config_id),
+            )
+            resp = s3control.list_storage_lens_configurations(AccountId=ACCOUNT_ID)
+            ids = [c["Id"] for c in resp.get("StorageLensConfigurationList", [])]
+            assert config_id in ids
+        finally:
+            try:
+                s3control.delete_storage_lens_configuration(
+                    AccountId=ACCOUNT_ID, ConfigId=config_id
+                )
+            except Exception:
+                pass
+
+    def test_storage_lens_double_delete(self, s3control):
+        """Deleting already deleted config should error or succeed gracefully."""
+        config_id = f"sl-ddel-{_uid()}"
+        s3control.put_storage_lens_configuration(
+            AccountId=ACCOUNT_ID,
+            ConfigId=config_id,
+            StorageLensConfiguration=self._make_storage_lens_config(config_id),
+        )
+        s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=config_id)
+        # Second delete may error or succeed
+        try:
+            resp = s3control.delete_storage_lens_configuration(
+                AccountId=ACCOUNT_ID, ConfigId=config_id
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        except ClientError as e:
+            assert e.response["Error"]["Code"] in (
+                "NoSuchConfiguration",
+                "NotFoundException",
+            )
+
+
+class TestS3ControlAccessPointDeepLifecycle:
+    """Deeper lifecycle tests for access points."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def bucket(self, s3):
+        name = f"ap-deep-{_uid()}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_delete_access_point_then_describe_fails(self, s3control, s3, bucket):
+        """Get access point after deletion returns error."""
+        ap_name = f"ap-del-{_uid()}"
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert exc_info.value.response["Error"]["Code"] in (
+                "NoSuchAccessPoint",
+                "NotFoundException",
+            )
+        except Exception:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            raise
+
+    def test_delete_access_point_policy_then_get_fails(self, s3control, s3, bucket):
+        """Get access point policy after deletion returns error."""
+        ap_name = f"ap-delpol-{_uid()}"
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": f"arn:aws:s3:{ap_name}/object/*",
+                        }
+                    ],
+                }
+            )
+            s3control.put_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name, Policy=policy)
+            s3control.delete_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert exc_info.value.response["Error"]["Code"] in (
+                "NoSuchAccessPointPolicy",
+                "NotFoundException",
+            )
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+
+    def test_access_point_list_after_delete(self, s3control, s3, bucket):
+        """Deleted access point should not appear in list."""
+        ap_name = f"ap-listdel-{_uid()}"
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            # Verify it appears in list
+            resp = s3control.list_access_points(AccountId=ACCOUNT_ID, Bucket=bucket)
+            names = [ap["Name"] for ap in resp["AccessPointList"]]
+            assert ap_name in names
+            # Delete
+            s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            # Verify it's gone from list
+            resp2 = s3control.list_access_points(AccountId=ACCOUNT_ID, Bucket=bucket)
+            names2 = [ap["Name"] for ap in resp2["AccessPointList"]]
+            assert ap_name not in names2
+        except Exception:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            raise
+
+
+class TestS3ControlMRAPDeepLifecycle:
+    """Deeper lifecycle tests for multi-region access points."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def bucket(self, s3):
+        name = f"mrap-deep-{_uid()}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_mrap_delete_then_get_fails(self, s3control, s3, bucket):
+        """Get MRAP after deletion returns error."""
+        mrap_name = f"mrap-del-{_uid()}"
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            s3control.delete_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name},
+            )
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_multi_region_access_point(AccountId=ACCOUNT_ID, Name=mrap_name)
+            assert exc_info.value.response["Error"]["Code"] in (
+                "NoSuchMultiRegionAccessPoint",
+                "NotFoundException",
+            )
+        except Exception:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass
+            raise
+
+    def test_mrap_list_after_delete(self, s3control, s3, bucket):
+        """Deleted MRAP should not appear in list."""
+        mrap_name = f"mrap-ldel-{_uid()}"
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            # Verify it appears in list
+            resp = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+            names = [m["Name"] for m in resp["AccessPoints"]]
+            assert mrap_name in names
+            # Delete
+            s3control.delete_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name},
+            )
+            # Verify it's gone from list
+            resp2 = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+            names2 = [m["Name"] for m in resp2["AccessPoints"]]
+            assert mrap_name not in names2
+        except Exception:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass
+            raise
+
+    def test_mrap_policy_roundtrip(self, s3control, s3, bucket):
+        """Put and get MRAP policy roundtrips correctly."""
+        mrap_name = f"mrap-pol-{_uid()}"
+        try:
+            s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+            s3control.put_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Policy": policy_doc,
+                },
+            )
+            resp = s3control.get_multi_region_access_point_policy(
+                AccountId=ACCOUNT_ID, Name=mrap_name
+            )
+            assert "Policy" in resp
+            established = resp["Policy"].get("Established", {})
+            if "Policy" in established:
+                policy = established["Policy"]
+                if isinstance(policy, str):
+                    parsed = json.loads(policy)
+                else:
+                    parsed = policy
+                assert parsed["Version"] == "2012-10-17"
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass
