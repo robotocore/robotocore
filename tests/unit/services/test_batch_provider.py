@@ -522,7 +522,7 @@ class TestEdgeCases:
     async def test_unknown_path(self):
         req = _make_request("POST", "/v1/bogus", {})
         resp = await handle_batch_request(req, REGION, ACCOUNT)
-        assert resp.status_code == 400
+        assert resp.status_code == 501
 
     @pytest.mark.asyncio
     async def test_missing_job_name(self):

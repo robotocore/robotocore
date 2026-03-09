@@ -105,6 +105,7 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/2013-04-01/"), "route53"),
     (re.compile(r"^/2014-11-13/"), "logs"),
     (re.compile(r"^/tags$"), "resourcegroupstaggingapi"),
+    (re.compile(r"^/prod/v\d+/"), "kafka"),
     (re.compile(r"^/prod/"), "medialive"),
     (re.compile(r"^/v1/apis"), "appsync"),
     (re.compile(r"^/v1/create"), "batch"),
