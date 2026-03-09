@@ -26,10 +26,6 @@
 ## Quick Start
 
 ```bash
-# Docker Hub
-docker run -d -p 4566:4566 robotocore/robotocore:latest
-
-# GitHub Container Registry (alternative)
 docker run -d -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
