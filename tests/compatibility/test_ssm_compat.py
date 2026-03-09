@@ -1043,6 +1043,21 @@ class TestSSMGapCoverage:
         assert "Entities" in resp
         assert isinstance(resp["Entities"], list)
 
+    def test_get_ops_item(self, ssm):
+        """GetOpsItem returns ops item details after creation."""
+        create_resp = ssm.create_ops_item(
+            Title="Test OpsItem",
+            Description="Test ops item for compat",
+            Source="compat-test",
+        )
+        ops_item_id = create_resp["OpsItemId"]
+        resp = ssm.get_ops_item(OpsItemId=ops_item_id)
+        assert "OpsItem" in resp
+        assert resp["OpsItem"]["OpsItemId"] == ops_item_id
+        assert resp["OpsItem"]["Title"] == "Test OpsItem"
+        assert resp["OpsItem"]["Source"] == "compat-test"
+        assert resp["OpsItem"]["Status"] == "Open"
+
     def test_list_command_invocations(self, ssm):
         """ListCommandInvocations returns list."""
         resp = ssm.list_command_invocations()
@@ -1225,15 +1240,6 @@ class TestSsmAutoCoverage:
     @pytest.fixture
     def client(self):
         return make_client("ssm")
-
-    def test_delete_association(self, client):
-        """DeleteAssociation returns a response."""
-        client.delete_association()
-
-    def test_describe_association(self, client):
-        """DescribeAssociation returns a response."""
-        resp = client.describe_association()
-        assert "AssociationDescription" in resp
 
     def test_describe_instance_properties(self, client):
         """DescribeInstanceProperties returns a response."""

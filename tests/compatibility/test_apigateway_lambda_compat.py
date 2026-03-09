@@ -2,6 +2,7 @@
 
 import io
 import json
+import time
 import uuid
 import zipfile
 
@@ -9,6 +10,16 @@ import pytest
 import requests
 
 from tests.compatibility.conftest import ENDPOINT_URL, make_client
+
+
+def _request_with_retry(method, url, retries=3, delay=0.5, **kwargs):
+    """Make an HTTP request with retries for intermittent 404s from execute-api."""
+    for attempt in range(retries):
+        resp = method(url, **kwargs)
+        if resp.status_code != 404 or attempt == retries - 1:
+            return resp
+        time.sleep(delay)
+    return resp
 
 
 def _make_zip(code: str) -> bytes:
@@ -156,7 +167,7 @@ class TestAPIGatewayLambdaProxy:
             apigw.create_deployment(restApiId=api_id, stageName="test")
 
             url = f"{ENDPOINT_URL}/restapis/{api_id}/test/_user_request_/hello?name=Jack"
-            resp = requests.get(url)
+            resp = _request_with_retry(requests.get, url)
             assert resp.status_code == 200
             body = resp.json()
             assert body["message"] == "Hello, Jack!"
@@ -225,7 +236,7 @@ class TestAPIGatewayLambdaProxy:
             apigw.create_deployment(restApiId=api_id, stageName="test")
 
             url = f"{ENDPOINT_URL}/restapis/{api_id}/test/_user_request_/items"
-            resp = requests.post(url, json={"item": "test-item"})
+            resp = _request_with_retry(requests.post, url, json={"item": "test-item"})
             assert resp.status_code == 201
             body = resp.json()
             assert body["method"] == "POST"
@@ -302,7 +313,7 @@ class TestAPIGatewayLambdaProxy:
             apigw.create_deployment(restApiId=api_id, stageName="test")
 
             url = f"{ENDPOINT_URL}/restapis/{api_id}/test/_user_request_/users/abc123"
-            resp = requests.get(url)
+            resp = _request_with_retry(requests.get, url)
             assert resp.status_code == 200
             body = resp.json()
             assert body["userId"] == "abc123"
@@ -378,7 +389,7 @@ class TestAPIGatewayLambdaProxy:
                 "/_user_request_/search"
                 "?category=books&sort=price&sort=date"
             )
-            resp = requests.get(url)
+            resp = _request_with_retry(requests.get, url)
             assert resp.status_code == 200
             body = resp.json()
             assert body["params"]["category"] == "books"

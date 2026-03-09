@@ -384,6 +384,112 @@ class TestBackupPlanOperations:
             backup.delete_backup_vault(BackupVaultName=vault_name)
 
 
+class TestBackupJobOperations:
+    """Tests for backup job operations."""
+
+    def test_list_backup_jobs(self, backup):
+        """ListBackupJobs returns BackupJobs list."""
+        resp = backup.list_backup_jobs()
+        assert "BackupJobs" in resp
+        assert isinstance(resp["BackupJobs"], list)
+
+    def test_list_backup_jobs_empty(self, backup):
+        """ListBackupJobs returns empty list when no jobs exist."""
+        resp = backup.list_backup_jobs()
+        assert "BackupJobs" in resp
+
+    def test_describe_backup_job_nonexistent(self, backup):
+        """DescribeBackupJob for nonexistent job raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.describe_backup_job(BackupJobId="00000000-0000-0000-0000-000000000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBackupFrameworkOperations:
+    """Tests for backup framework operations."""
+
+    def test_create_and_describe_framework(self, backup):
+        """CreateFramework then DescribeFramework returns framework details."""
+        name = _unique("fw")
+        try:
+            create_resp = backup.create_framework(
+                FrameworkName=name,
+                FrameworkControls=[
+                    {"ControlName": "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK"}
+                ],
+            )
+            assert "FrameworkName" in create_resp
+            assert "FrameworkArn" in create_resp
+
+            desc = backup.describe_framework(FrameworkName=name)
+            assert desc["FrameworkName"] == name
+            assert "FrameworkArn" in desc
+            assert "CreationTime" in desc
+            assert "DeploymentStatus" in desc
+            assert len(desc["FrameworkControls"]) == 1
+        finally:
+            backup.delete_framework(FrameworkName=name)
+
+    def test_describe_framework_nonexistent(self, backup):
+        """DescribeFramework for nonexistent name raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.describe_framework(FrameworkName=_unique("no-such"))
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_frameworks(self, backup):
+        """ListFrameworks returns Frameworks list including created framework."""
+        name = _unique("fw")
+        try:
+            backup.create_framework(
+                FrameworkName=name,
+                FrameworkControls=[
+                    {"ControlName": "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK"}
+                ],
+            )
+            resp = backup.list_frameworks()
+            assert "Frameworks" in resp
+            names = [f["FrameworkName"] for f in resp["Frameworks"]]
+            assert name in names
+        finally:
+            backup.delete_framework(FrameworkName=name)
+
+    def test_list_frameworks_empty(self, backup):
+        """ListFrameworks returns Frameworks key even when empty."""
+        resp = backup.list_frameworks()
+        assert "Frameworks" in resp
+        assert isinstance(resp["Frameworks"], list)
+
+    def test_list_frameworks_has_arn(self, backup):
+        """Each framework in list should have FrameworkArn."""
+        name = _unique("fw")
+        try:
+            backup.create_framework(
+                FrameworkName=name,
+                FrameworkControls=[
+                    {"ControlName": "BACKUP_PLAN_MIN_FREQUENCY_AND_MIN_RETENTION_CHECK"}
+                ],
+            )
+            resp = backup.list_frameworks()
+            found = [f for f in resp["Frameworks"] if f["FrameworkName"] == name]
+            assert len(found) == 1
+            assert "FrameworkArn" in found[0]
+        finally:
+            backup.delete_framework(FrameworkName=name)
+
+
+class TestBackupSelectionOperations:
+    """Tests for backup selection operations."""
+
+    def test_get_backup_selection_nonexistent(self, backup):
+        """GetBackupSelection for nonexistent plan raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            backup.get_backup_selection(
+                BackupPlanId="00000000-0000-0000-0000-000000000000",
+                SelectionId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestBackupAutoCoverage:
     """Auto-generated coverage tests for backup."""
 
