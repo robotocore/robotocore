@@ -596,3 +596,222 @@ class TestInspector2CisScanReports:
         resp = client.list_code_security_scan_configurations()
         assert "configurations" in resp
         assert isinstance(resp["configurations"], list)
+
+
+class TestInspector2ConfigurationUpdates:
+    """Tests for configuration update operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_update_configuration(self, client):
+        """UpdateConfiguration updates ECR scan configuration."""
+        resp = client.update_configuration(
+            ecrConfiguration={
+                "rescanDuration": "LIFETIME",
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_ec2_deep_inspection_configuration(self, client):
+        """UpdateEc2DeepInspectionConfiguration updates deep inspection paths."""
+        resp = client.update_ec2_deep_inspection_configuration(
+            packagePaths=["/usr/lib"],
+        )
+        assert "packagePaths" in resp
+        assert "status" in resp
+
+    def test_update_org_ec2_deep_inspection_configuration(self, client):
+        """UpdateOrgEc2DeepInspectionConfiguration updates org deep inspection."""
+        resp = client.update_org_ec2_deep_inspection_configuration(
+            orgPackagePaths=["/usr/lib"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_encryption_key(self, client):
+        """UpdateEncryptionKey sets encryption key for scan type."""
+        resp = client.update_encryption_key(
+            kmsKeyId="arn:aws:kms:us-east-1:123456789012:key/fake-key-id",
+            scanType="NETWORK",
+            resourceType="AWS_EC2_INSTANCE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_reset_encryption_key(self, client):
+        """ResetEncryptionKey resets encryption key for scan type."""
+        resp = client.reset_encryption_key(
+            scanType="NETWORK",
+            resourceType="AWS_EC2_INSTANCE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestInspector2ReportOperations:
+    """Tests for report and export operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_create_findings_report(self, client):
+        """CreateFindingsReport generates a findings report."""
+        resp = client.create_findings_report(
+            reportFormat="CSV",
+            s3Destination={
+                "bucketName": "my-bucket",
+                "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake",
+            },
+        )
+        assert "reportId" in resp
+
+    def test_cancel_findings_report(self, client):
+        """CancelFindingsReport cancels a report."""
+        create_resp = client.create_findings_report(
+            reportFormat="CSV",
+            s3Destination={
+                "bucketName": "my-bucket",
+                "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake",
+            },
+        )
+        report_id = create_resp["reportId"]
+        resp = client.cancel_findings_report(reportId=report_id)
+        assert "reportId" in resp
+        assert resp["reportId"] == report_id
+
+    def test_create_sbom_export(self, client):
+        """CreateSbomExport starts an SBOM export."""
+        resp = client.create_sbom_export(
+            reportFormat="CYCLONEDX_1_4",
+            s3Destination={
+                "bucketName": "my-bucket",
+                "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake",
+            },
+        )
+        assert "reportId" in resp
+
+    def test_cancel_sbom_export(self, client):
+        """CancelSbomExport cancels an SBOM export."""
+        create_resp = client.create_sbom_export(
+            reportFormat="CYCLONEDX_1_4",
+            s3Destination={
+                "bucketName": "my-bucket",
+                "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake",
+            },
+        )
+        report_id = create_resp["reportId"]
+        resp = client.cancel_sbom_export(reportId=report_id)
+        assert "reportId" in resp
+        assert resp["reportId"] == report_id
+
+
+class TestInspector2MemberDeepInspection:
+    """Tests for member EC2 deep inspection batch operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_batch_get_member_ec2_deep_inspection_status(self, client):
+        """BatchGetMemberEc2DeepInspectionStatus returns account statuses."""
+        resp = client.batch_get_member_ec2_deep_inspection_status()
+        assert "accountIds" in resp
+        assert isinstance(resp["accountIds"], list)
+        assert "failedAccountIds" in resp
+
+    def test_batch_update_member_ec2_deep_inspection_status(self, client):
+        """BatchUpdateMemberEc2DeepInspectionStatus updates member statuses."""
+        resp = client.batch_update_member_ec2_deep_inspection_status(
+            accountIds=[{"accountId": "210987654321", "activateDeepInspection": True}]
+        )
+        assert "accountIds" in resp
+        assert "failedAccountIds" in resp
+
+
+class TestInspector2CisScanManagement:
+    """Tests for CIS scan configuration management."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_update_cis_scan_configuration(self, client):
+        """UpdateCisScanConfiguration creates then updates a config."""
+        # First create a CIS scan config
+        create_resp = client.create_cis_scan_configuration(
+            scanName=_unique("cis-scan"),
+            schedule={"oneTime": {}},
+            securityLevel="LEVEL_1",
+            targets={
+                "accountIds": ["123456789012"],
+                "targetResourceTags": {"env": ["test"]},
+            },
+        )
+        scan_config_arn = create_resp["scanConfigurationArn"]
+        # Now update it
+        resp = client.update_cis_scan_configuration(
+            scanConfigurationArn=scan_config_arn,
+            scanName=_unique("cis-scan-upd"),
+            securityLevel="LEVEL_2",
+            schedule={"oneTime": {}},
+            targets={
+                "accountIds": ["123456789012"],
+                "targetResourceTags": {"env": ["test"]},
+            },
+        )
+        assert "scanConfigurationArn" in resp
+        assert resp["scanConfigurationArn"] == scan_config_arn
+
+    def test_delete_cis_scan_configuration(self, client):
+        """DeleteCisScanConfiguration removes a config."""
+        create_resp = client.create_cis_scan_configuration(
+            scanName=_unique("cis-del"),
+            schedule={"oneTime": {}},
+            securityLevel="LEVEL_1",
+            targets={
+                "accountIds": ["123456789012"],
+                "targetResourceTags": {"env": ["test"]},
+            },
+        )
+        scan_config_arn = create_resp["scanConfigurationArn"]
+        resp = client.delete_cis_scan_configuration(scanConfigurationArn=scan_config_arn)
+        assert "scanConfigurationArn" in resp
+        assert resp["scanConfigurationArn"] == scan_config_arn
+
+
+class TestInspector2CisSessionOps:
+    """Tests for CIS session operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_start_cis_session(self, client):
+        """StartCisSession starts a CIS session."""
+        resp = client.start_cis_session(
+            scanJobId="scan-fake-id",
+            message={
+                "sessionToken": "fake-token",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_send_cis_session_health(self, client):
+        """SendCisSessionHealth sends health for a CIS session."""
+        resp = client.send_cis_session_health(
+            scanJobId="scan-fake-id",
+            sessionToken="fake-token",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_cis_session(self, client):
+        """StopCisSession stops a CIS session."""
+        resp = client.stop_cis_session(
+            scanJobId="scan-fake-id",
+            sessionToken="fake-token",
+            message={
+                "status": "SUCCESS",
+                "progress": {"totalChecks": 10, "successfulChecks": 10, "failedChecks": 0},
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

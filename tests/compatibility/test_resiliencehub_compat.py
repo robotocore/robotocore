@@ -828,3 +828,240 @@ class TestResilienceHubMetricsAndGrouping:
         resp = resiliencehub.list_metrics()
         assert "rows" in resp
         assert isinstance(resp["rows"], list)
+
+
+class TestResilienceHubDeleteOperations:
+    """Tests for delete operations."""
+
+    def _full_policy(self):
+        return {
+            "Software": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "Hardware": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "AZ": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "Region": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+        }
+
+    def test_delete_app(self, resiliencehub):
+        """DeleteApp removes an app."""
+        name = _unique_name("del-app")
+        create_resp = resiliencehub.create_app(name=name)
+        app_arn = create_resp["app"]["appArn"]
+        resp = resiliencehub.delete_app(appArn=app_arn, forceDelete=True)
+        assert resp["appArn"] == app_arn
+
+    def test_delete_resiliency_policy(self, resiliencehub):
+        """DeleteResiliencyPolicy removes a policy."""
+        name = _unique_name("del-policy")
+        create_resp = resiliencehub.create_resiliency_policy(
+            policyName=name,
+            tier="NotApplicable",
+            policy=self._full_policy(),
+        )
+        policy_arn = create_resp["policy"]["policyArn"]
+        resp = resiliencehub.delete_resiliency_policy(policyArn=policy_arn)
+        assert resp["policyArn"] == policy_arn
+
+    def test_delete_app_version_app_component(self, resiliencehub):
+        """DeleteAppVersionAppComponent removes a component."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn, name="del-comp", type="AWS::EC2::Instance"
+        )
+        resp = resiliencehub.delete_app_version_app_component(appArn=app_arn, id="del-comp")
+        assert resp["appArn"] == app_arn
+        assert resp["appVersion"] == "draft"
+
+    def test_delete_app_version_resource(self, resiliencehub):
+        """DeleteAppVersionResource removes a resource."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn, name="del-res-comp", type="AWS::EC2::Instance"
+        )
+        resiliencehub.create_app_version_resource(
+            appArn=app_arn,
+            appComponents=["del-res-comp"],
+            logicalResourceId={"identifier": "del-res"},
+            physicalResourceId="i-del123",
+            resourceType="AWS::EC2::Instance",
+        )
+        resp = resiliencehub.delete_app_version_resource(
+            appArn=app_arn,
+            logicalResourceId={"identifier": "del-res"},
+        )
+        assert resp["appArn"] == app_arn
+        assert resp["appVersion"] == "draft"
+
+
+class TestResilienceHubUpdateOperations:
+    """Tests for update operations."""
+
+    def _full_policy(self):
+        return {
+            "Software": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "Hardware": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "AZ": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+            "Region": {"rpoInSecs": 3600, "rtoInSecs": 3600},
+        }
+
+    def test_update_app(self, resiliencehub):
+        """UpdateApp modifies an app's description."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.update_app(appArn=app_arn, description="Updated desc")
+        assert resp["app"]["appArn"] == app_arn
+        assert resp["app"]["description"] == "Updated desc"
+
+    def test_update_resiliency_policy(self, resiliencehub):
+        """UpdateResiliencyPolicy modifies a policy."""
+        create_resp = resiliencehub.create_resiliency_policy(
+            policyName=_unique_name("policy"),
+            tier="NotApplicable",
+            policy=self._full_policy(),
+        )
+        policy_arn = create_resp["policy"]["policyArn"]
+        resp = resiliencehub.update_resiliency_policy(
+            policyArn=policy_arn,
+            policyName=_unique_name("updated-policy"),
+            tier="Important",
+            policy=self._full_policy(),
+        )
+        assert resp["policy"]["policyArn"] == policy_arn
+        assert resp["policy"]["tier"] == "Important"
+
+    def test_update_app_version(self, resiliencehub):
+        """UpdateAppVersion returns appArn and appVersion."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.update_app_version(appArn=app_arn)
+        assert resp["appArn"] == app_arn
+        assert "appVersion" in resp
+
+    def test_update_app_version_app_component(self, resiliencehub):
+        """UpdateAppVersionAppComponent modifies a component."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn, name="upd-comp", type="AWS::EC2::Instance"
+        )
+        resp = resiliencehub.update_app_version_app_component(
+            appArn=app_arn, id="upd-comp", type="AWS::EC2::Instance"
+        )
+        assert resp["appArn"] == app_arn
+        assert "appComponent" in resp
+
+    def test_update_app_version_resource(self, resiliencehub):
+        """UpdateAppVersionResource modifies a resource."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resiliencehub.create_app_version_app_component(
+            appArn=app_arn, name="upd-res-comp", type="AWS::EC2::Instance"
+        )
+        resiliencehub.create_app_version_resource(
+            appArn=app_arn,
+            appComponents=["upd-res-comp"],
+            logicalResourceId={"identifier": "upd-res"},
+            physicalResourceId="i-upd123",
+            resourceType="AWS::EC2::Instance",
+        )
+        resp = resiliencehub.update_app_version_resource(
+            appArn=app_arn,
+            logicalResourceId={"identifier": "upd-res"},
+            physicalResourceId="i-upd456",
+        )
+        assert resp["appArn"] == app_arn
+        assert "physicalResource" in resp
+
+
+class TestResilienceHubDraftResourceOperations:
+    """Tests for draft resource mapping operations."""
+
+    def test_add_draft_app_version_resource_mappings(self, resiliencehub):
+        """AddDraftAppVersionResourceMappings adds mappings."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.add_draft_app_version_resource_mappings(
+            appArn=app_arn,
+            resourceMappings=[
+                {
+                    "mappingType": "Resource",
+                    "physicalResourceId": {
+                        "identifier": "i-abc123",
+                        "type": "Native",
+                    },
+                    "resourceName": "my-ec2",
+                }
+            ],
+        )
+        assert resp["appArn"] == app_arn
+        assert "appVersion" in resp
+        assert "resourceMappings" in resp
+
+    def test_remove_draft_app_version_resource_mappings(self, resiliencehub):
+        """RemoveDraftAppVersionResourceMappings removes mappings."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resiliencehub.add_draft_app_version_resource_mappings(
+            appArn=app_arn,
+            resourceMappings=[
+                {
+                    "mappingType": "Resource",
+                    "physicalResourceId": {
+                        "identifier": "i-abc123",
+                        "type": "Native",
+                    },
+                    "resourceName": "my-ec2",
+                }
+            ],
+        )
+        resp = resiliencehub.remove_draft_app_version_resource_mappings(
+            appArn=app_arn,
+            resourceNames=["my-ec2"],
+        )
+        assert resp["appArn"] == app_arn
+        assert "appVersion" in resp
+
+    def test_put_draft_app_version_template(self, resiliencehub):
+        """PutDraftAppVersionTemplate sets a template body."""
+        import json
+
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        template = json.dumps({"resources": []})
+        resp = resiliencehub.put_draft_app_version_template(
+            appArn=app_arn, appTemplateBody=template
+        )
+        assert resp["appArn"] == app_arn
+        assert "appVersion" in resp
+
+    def test_resolve_app_version_resources(self, resiliencehub):
+        """ResolveAppVersionResources triggers resource resolution."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.resolve_app_version_resources(appArn=app_arn, appVersion="draft")
+        assert resp["appArn"] == app_arn
+        assert "appVersion" in resp
+        assert "status" in resp
+
+
+class TestResilienceHubAssessmentAndExport:
+    """Tests for assessment and export operations."""
+
+    def test_start_app_assessment(self, resiliencehub):
+        """StartAppAssessment creates an assessment."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        # Publish so assessment can be started
+        resiliencehub.publish_app_version(appArn=app_arn)
+        resp = resiliencehub.start_app_assessment(
+            appArn=app_arn,
+            appVersion="release",
+            assessmentName=_unique_name("assessment"),
+        )
+        assert "assessment" in resp
+        assert resp["assessment"]["appArn"] == app_arn
+
+    def test_start_metrics_export(self, resiliencehub):
+        """StartMetricsExport initiates a metrics export."""
+        resp = resiliencehub.start_metrics_export(
+            bucketName="my-export-bucket",
+        )
+        assert "metricsExportId" in resp
+        assert "status" in resp
+
+    def test_start_resource_grouping_recommendation_task(self, resiliencehub):
+        """StartResourceGroupingRecommendationTask starts grouping task."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.start_resource_grouping_recommendation_task(appArn=app_arn)
+        assert resp["appArn"] == app_arn
+        assert "groupingId" in resp

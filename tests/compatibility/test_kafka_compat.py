@@ -606,3 +606,272 @@ class TestMSKTags:
         kafka.tag_resource(ResourceArn=cluster_arn, Tags={"key": "new"})
         resp = kafka.list_tags_for_resource(ResourceArn=cluster_arn)
         assert resp["Tags"]["key"] == "new"
+
+
+class TestMSKConfigurationDelete:
+    """Tests for MSK configuration delete operations."""
+
+    def test_delete_configuration(self, kafka):
+        name = _unique("del-config")
+        server_properties = base64.b64encode(b"log.retention.hours=168").decode("utf-8")
+        create_resp = kafka.create_configuration(
+            Name=name,
+            ServerProperties=server_properties,
+            KafkaVersions=["2.8.1"],
+        )
+        config_arn = create_resp["Arn"]
+        del_resp = kafka.delete_configuration(Arn=config_arn)
+        assert del_resp["Arn"] == config_arn
+        assert "State" in del_resp
+
+    def test_update_configuration(self, kafka):
+        name = _unique("upd-config")
+        server_properties = base64.b64encode(b"log.retention.hours=168").decode("utf-8")
+        create_resp = kafka.create_configuration(
+            Name=name,
+            ServerProperties=server_properties,
+            KafkaVersions=["2.8.1"],
+        )
+        config_arn = create_resp["Arn"]
+        new_props = base64.b64encode(b"log.retention.hours=72").decode("utf-8")
+        upd_resp = kafka.update_configuration(
+            Arn=config_arn,
+            ServerProperties=new_props,
+        )
+        assert "Arn" in upd_resp
+        assert "LatestRevision" in upd_resp
+
+
+class TestMSKClusterPolicyOperations:
+    """Tests for MSK cluster policy operations."""
+
+    @pytest.fixture
+    def cluster_arn(self, kafka):
+        name = _unique("policy-cluster")
+        resp = kafka.create_cluster(
+            ClusterName=name,
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        return resp["ClusterArn"]
+
+    def test_put_cluster_policy(self, kafka, cluster_arn):
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "kafka-cluster:*",
+                        "Resource": cluster_arn,
+                    }
+                ],
+            }
+        )
+        resp = kafka.put_cluster_policy(ClusterArn=cluster_arn, Policy=policy)
+        assert "CurrentVersion" in resp
+
+    def test_put_then_delete_cluster_policy(self, kafka, cluster_arn):
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "kafka-cluster:*",
+                        "Resource": cluster_arn,
+                    }
+                ],
+            }
+        )
+        kafka.put_cluster_policy(ClusterArn=cluster_arn, Policy=policy)
+        resp = kafka.delete_cluster_policy(ClusterArn=cluster_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestMSKClusterUpdateOperations:
+    """Tests for MSK cluster update operations."""
+
+    @pytest.fixture
+    def cluster_arn(self, kafka):
+        name = _unique("upd-cluster")
+        resp = kafka.create_cluster(
+            ClusterName=name,
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        return resp["ClusterArn"]
+
+    def _get_current_version(self, kafka, cluster_arn):
+        desc = kafka.describe_cluster(ClusterArn=cluster_arn)
+        return desc["ClusterInfo"]["CurrentVersion"]
+
+    def test_update_broker_count(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_broker_count(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            TargetNumberOfBrokerNodes=6,
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_broker_type(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_broker_type(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            TargetInstanceType="kafka.m5.xlarge",
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_broker_storage(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_broker_storage(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            TargetBrokerEBSVolumeInfo=[
+                {"KafkaBrokerNodeId": "1", "VolumeSizeGB": 200},
+                {"KafkaBrokerNodeId": "2", "VolumeSizeGB": 200},
+                {"KafkaBrokerNodeId": "3", "VolumeSizeGB": 200},
+            ],
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_monitoring(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_monitoring(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            EnhancedMonitoring="PER_TOPIC_PER_BROKER",
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_security(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_security(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            ClientAuthentication={"Unauthenticated": {"Enabled": True}},
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_connectivity(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_connectivity(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            ConnectivityInfo={
+                "PublicAccess": {"Type": "DISABLED"},
+            },
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_cluster_kafka_version(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_cluster_kafka_version(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            TargetKafkaVersion="3.3.1",
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_storage(self, kafka, cluster_arn):
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_storage(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            StorageMode="LOCAL",
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_reboot_broker(self, kafka, cluster_arn):
+        resp = kafka.reboot_broker(
+            ClusterArn=cluster_arn,
+            BrokerIds=["1"],
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+    def test_update_cluster_configuration(self, kafka, cluster_arn):
+        # Create a configuration first
+        server_properties = base64.b64encode(b"log.retention.hours=72").decode("utf-8")
+        config_resp = kafka.create_configuration(
+            Name=_unique("upd-cfg"),
+            ServerProperties=server_properties,
+            KafkaVersions=["2.8.1"],
+        )
+        config_arn = config_resp["Arn"]
+        version = self._get_current_version(kafka, cluster_arn)
+        resp = kafka.update_cluster_configuration(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            ConfigurationInfo={"Arn": config_arn, "Revision": 1},
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
+
+
+class TestMSKScramSecrets:
+    """Tests for MSK SCRAM secret operations."""
+
+    @pytest.fixture
+    def cluster_arn(self, kafka):
+        name = _unique("scram-cluster")
+        resp = kafka.create_cluster(
+            ClusterName=name,
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        return resp["ClusterArn"]
+
+    def test_batch_associate_scram_secret(self, kafka, cluster_arn):
+        resp = kafka.batch_associate_scram_secret(
+            ClusterArn=cluster_arn,
+            SecretArnList=[
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:AmazonMSK_secret1"
+            ],
+        )
+        assert "ClusterArn" in resp
+        assert "UnprocessedScramSecrets" in resp
+
+    def test_batch_disassociate_scram_secret(self, kafka, cluster_arn):
+        kafka.batch_associate_scram_secret(
+            ClusterArn=cluster_arn,
+            SecretArnList=[
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:AmazonMSK_secret2"
+            ],
+        )
+        resp = kafka.batch_disassociate_scram_secret(
+            ClusterArn=cluster_arn,
+            SecretArnList=[
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:AmazonMSK_secret2"
+            ],
+        )
+        assert "ClusterArn" in resp
+        assert "UnprocessedScramSecrets" in resp
