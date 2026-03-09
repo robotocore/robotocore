@@ -1051,3 +1051,260 @@ class TestGreengrassOperations:
             assert "Version" in result
         finally:
             greengrass.delete_subscription_definition(SubscriptionDefinitionId=resp["Id"])
+
+    # --- Group with InitialVersion ---
+
+    def test_create_group_with_initial_version(self, greengrass):
+        """CreateGroup with InitialVersion creates both group and version."""
+        cd = greengrass.create_core_definition(Name="gi-core", InitialVersion=CORE_INITIAL_VERSION)
+        try:
+            group = greengrass.create_group(
+                Name="test-init-ver",
+                InitialVersion={"CoreDefinitionVersionArn": cd["LatestVersionArn"]},
+            )
+            assert "Id" in group
+            assert "LatestVersion" in group
+            assert len(group["LatestVersion"]) > 0
+            greengrass.delete_group(GroupId=group["Id"])
+        finally:
+            greengrass.delete_core_definition(CoreDefinitionId=cd["Id"])
+
+    # --- Full GroupVersion with multiple definitions ---
+
+    def test_group_version_with_multiple_definitions(self, greengrass):
+        """CreateGroupVersion with core + function + logger defs."""
+        cd = greengrass.create_core_definition(
+            Name="full-core", InitialVersion=CORE_INITIAL_VERSION
+        )
+        fd = greengrass.create_function_definition(
+            Name="full-func", InitialVersion=FUNCTION_INITIAL_VERSION
+        )
+        group = greengrass.create_group(Name="full-group")
+        try:
+            gv = greengrass.create_group_version(
+                GroupId=group["Id"],
+                CoreDefinitionVersionArn=cd["LatestVersionArn"],
+                FunctionDefinitionVersionArn=fd["LatestVersionArn"],
+            )
+            result = greengrass.get_group_version(GroupId=group["Id"], GroupVersionId=gv["Version"])
+            defn = result["Definition"]
+            assert "CoreDefinitionVersionArn" in defn
+            assert "FunctionDefinitionVersionArn" in defn
+        finally:
+            greengrass.delete_group(GroupId=group["Id"])
+            greengrass.delete_core_definition(CoreDefinitionId=cd["Id"])
+            greengrass.delete_function_definition(FunctionDefinitionId=fd["Id"])
+
+    # --- List groups returns created groups ---
+
+    def test_list_groups_contains_created(self, greengrass):
+        """ListGroups returns previously created groups."""
+        g1 = greengrass.create_group(Name="list-g1")
+        g2 = greengrass.create_group(Name="list-g2")
+        try:
+            resp = greengrass.list_groups()
+            ids = {g["Id"] for g in resp["Groups"]}
+            assert g1["Id"] in ids
+            assert g2["Id"] in ids
+        finally:
+            greengrass.delete_group(GroupId=g1["Id"])
+            greengrass.delete_group(GroupId=g2["Id"])
+
+    # --- Deployment list contains created deployment ---
+
+    def test_list_deployments_contains_created(self, greengrass):
+        """ListDeployments returns a deployment after creation."""
+        cd = greengrass.create_core_definition(
+            Name="deplist-core", InitialVersion=CORE_INITIAL_VERSION
+        )
+        group = greengrass.create_group(Name="deplist-group")
+        try:
+            gv = greengrass.create_group_version(
+                GroupId=group["Id"],
+                CoreDefinitionVersionArn=cd["LatestVersionArn"],
+            )
+            dep = greengrass.create_deployment(
+                GroupId=group["Id"],
+                GroupVersionId=gv["Version"],
+                DeploymentType="NewDeployment",
+            )
+            result = greengrass.list_deployments(GroupId=group["Id"])
+            dep_ids = [d["DeploymentId"] for d in result["Deployments"]]
+            assert dep["DeploymentId"] in dep_ids
+        finally:
+            greengrass.delete_group(GroupId=group["Id"])
+            greengrass.delete_core_definition(CoreDefinitionId=cd["Id"])
+
+    # --- Definition Arn fields ---
+
+    def test_connector_definition_has_arn(self, greengrass):
+        """CreateConnectorDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_connector_definition(
+            Name="arn-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+            assert "greengrass" in resp["Arn"]
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=resp["Id"])
+
+    def test_core_definition_has_arn(self, greengrass):
+        """CreateCoreDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_core_definition(
+            Name="arn-core", InitialVersion=CORE_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+        finally:
+            greengrass.delete_core_definition(CoreDefinitionId=resp["Id"])
+
+    def test_device_definition_has_arn(self, greengrass):
+        """CreateDeviceDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_device_definition(
+            Name="arn-dev", InitialVersion=DEVICE_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+        finally:
+            greengrass.delete_device_definition(DeviceDefinitionId=resp["Id"])
+
+    def test_function_definition_has_arn(self, greengrass):
+        """CreateFunctionDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_function_definition(
+            Name="arn-func", InitialVersion=FUNCTION_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+        finally:
+            greengrass.delete_function_definition(FunctionDefinitionId=resp["Id"])
+
+    def test_logger_definition_has_arn(self, greengrass):
+        """CreateLoggerDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_logger_definition(
+            Name="arn-logger", InitialVersion=LOGGER_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+        finally:
+            greengrass.delete_logger_definition(LoggerDefinitionId=resp["Id"])
+
+    def test_resource_definition_has_arn(self, greengrass):
+        """CreateResourceDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_resource_definition(
+            Name="arn-res", InitialVersion=RESOURCE_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+        finally:
+            greengrass.delete_resource_definition(ResourceDefinitionId=resp["Id"])
+
+    def test_subscription_definition_has_arn(self, greengrass):
+        """CreateSubscriptionDefinition returns Arn and LatestVersionArn."""
+        resp = greengrass.create_subscription_definition(
+            Name="arn-sub", InitialVersion=SUBSCRIPTION_INITIAL_VERSION
+        )
+        try:
+            assert "Arn" in resp
+            assert "LatestVersionArn" in resp
+        finally:
+            greengrass.delete_subscription_definition(SubscriptionDefinitionId=resp["Id"])
+
+    def test_group_has_arn(self, greengrass):
+        """CreateGroup returns Arn."""
+        group = greengrass.create_group(Name="arn-group")
+        try:
+            assert "Arn" in group
+            assert "greengrass" in group["Arn"]
+        finally:
+            greengrass.delete_group(GroupId=group["Id"])
+
+    # --- Multiple versions per definition ---
+
+    def test_connector_multiple_versions(self, greengrass):
+        """Creating 2 versions results in 2 items in ListConnectorDefinitionVersions."""
+        resp = greengrass.create_connector_definition(
+            Name="mv-conn", InitialVersion=CONNECTOR_INITIAL_VERSION
+        )
+        try:
+            greengrass.create_connector_definition_version(
+                ConnectorDefinitionId=resp["Id"],
+                Connectors=[
+                    {
+                        "ConnectorArn": (
+                            "arn:aws:greengrass:us-east-1::/connectors/CloudWatch/versions/1"
+                        ),
+                        "Id": "conn2",
+                        "Parameters": {},
+                    }
+                ],
+            )
+            versions = greengrass.list_connector_definition_versions(
+                ConnectorDefinitionId=resp["Id"]
+            )
+            assert len(versions["Versions"]) == 2
+        finally:
+            greengrass.delete_connector_definition(ConnectorDefinitionId=resp["Id"])
+
+    def test_core_multiple_versions(self, greengrass):
+        """Creating 2 core versions results in 2 items in list."""
+        resp = greengrass.create_core_definition(
+            Name="mv-core", InitialVersion=CORE_INITIAL_VERSION
+        )
+        try:
+            greengrass.create_core_definition_version(
+                CoreDefinitionId=resp["Id"],
+                Cores=[
+                    {
+                        "CertificateArn": "arn:aws:iot:us-east-1:123456789012:cert/xyz",
+                        "Id": "core2",
+                        "ThingArn": "arn:aws:iot:us-east-1:123456789012:thing/Core2",
+                    }
+                ],
+            )
+            versions = greengrass.list_core_definition_versions(CoreDefinitionId=resp["Id"])
+            assert len(versions["Versions"]) == 2
+        finally:
+            greengrass.delete_core_definition(CoreDefinitionId=resp["Id"])
+
+    # --- Update then verify via Get ---
+
+    def test_update_group_name_persists(self, greengrass):
+        """UpdateGroup name change is reflected in GetGroup."""
+        group = greengrass.create_group(Name="pre-update")
+        try:
+            greengrass.update_group(GroupId=group["Id"], Name="post-update")
+            result = greengrass.get_group(GroupId=group["Id"])
+            assert result["Name"] == "post-update"
+        finally:
+            greengrass.delete_group(GroupId=group["Id"])
+
+    # --- Deployment status ---
+
+    def test_deployment_status_has_type(self, greengrass):
+        """GetDeploymentStatus returns DeploymentType."""
+        cd = greengrass.create_core_definition(Name="ds-core", InitialVersion=CORE_INITIAL_VERSION)
+        group = greengrass.create_group(Name="ds-group")
+        try:
+            gv = greengrass.create_group_version(
+                GroupId=group["Id"],
+                CoreDefinitionVersionArn=cd["LatestVersionArn"],
+            )
+            dep = greengrass.create_deployment(
+                GroupId=group["Id"],
+                GroupVersionId=gv["Version"],
+                DeploymentType="NewDeployment",
+            )
+            result = greengrass.get_deployment_status(
+                GroupId=group["Id"], DeploymentId=dep["DeploymentId"]
+            )
+            assert "DeploymentType" in result
+            assert result["DeploymentType"] == "NewDeployment"
+        finally:
+            greengrass.delete_group(GroupId=group["Id"])
+            greengrass.delete_core_definition(CoreDefinitionId=cd["Id"])

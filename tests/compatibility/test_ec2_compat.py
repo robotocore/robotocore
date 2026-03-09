@@ -7235,6 +7235,54 @@ class TestEC2NewDescribeAndListOps:
         assert "AccountAttributes" in resp
 
 
+class TestEC2DescribeAggregateIdFormat:
+    """Tests for DescribeAggregateIdFormat."""
+
+    def test_describe_aggregate_id_format(self, ec2):
+        """DescribeAggregateIdFormat returns HTTP 200."""
+        resp = ec2.describe_aggregate_id_format()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2SerialConsoleAccess:
+    """Tests for serial console access status."""
+
+    def test_get_serial_console_access_status(self, ec2):
+        """GetSerialConsoleAccessStatus returns HTTP 200."""
+        resp = ec2.get_serial_console_access_status()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2AcceptVpcEndpointConnections:
+    """Tests for accepting VPC endpoint connections."""
+
+    def test_accept_vpc_endpoint_connections_invalid_service(self, ec2):
+        """AcceptVpcEndpointConnections returns error for invalid service ID."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            ec2.accept_vpc_endpoint_connections(
+                ServiceId="vpce-svc-00000000000000000",
+                VpcEndpointIds=["vpce-00000000000000000"],
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+
+class TestEC2UnassignIpv6Addresses:
+    """Tests for unassigning IPv6 addresses from network interfaces."""
+
+    def test_unassign_ipv6_addresses_invalid_eni(self, ec2):
+        """UnassignIpv6Addresses returns error for non-existent ENI."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            ec2.unassign_ipv6_addresses(
+                NetworkInterfaceId="eni-00000000000000000",
+                Ipv6Addresses=["2001:db8::1"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidNetworkInterfaceID.NotFound"
+
+
 class TestEC2SubnetCidrBlockAssociation:
     """Tests for associating/disassociating IPv6 CIDR blocks with subnets."""
 
