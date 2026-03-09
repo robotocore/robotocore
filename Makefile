@@ -1,6 +1,8 @@
 .PHONY: test test-all unit-test integration-test compat-test compat-test-hot lint format \
         docker-build docker-run docker-compare parity-report gap-analysis clean \
-        start stop status smoke help test-quality validate-tests lint-project
+        start stop status smoke help test-quality validate-tests lint-project \
+        test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
+        test-iac-pulumi test-iac-serverless test-iac-sam
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
@@ -24,6 +26,29 @@ integration-test: ## Run integration tests (auto-manages server)
 
 test-all: ## Run all tests: unit + compat + integration
 	$(DEV) test-all
+
+## ── IaC tests ────────────────────────────────────────────────────────────────
+
+test-iac: ## Run all IaC tests (requires running server + tool binaries)
+	uv run pytest tests/iac/ -q --tb=short
+
+test-iac-terraform: ## Run Terraform IaC tests
+	uv run pytest tests/iac/terraform/ -q --tb=short
+
+test-iac-cloudformation: ## Run CloudFormation IaC tests
+	uv run pytest tests/iac/cloudformation/ -q --tb=short
+
+test-iac-cdk: ## Run CDK IaC tests
+	uv run pytest tests/iac/cdk/ -q --tb=short
+
+test-iac-pulumi: ## Run Pulumi IaC tests
+	uv run pytest tests/iac/pulumi/ -q --tb=short
+
+test-iac-serverless: ## Run Serverless Framework IaC tests
+	uv run pytest tests/iac/serverless/ -q --tb=short
+
+test-iac-sam: ## Run SAM IaC tests
+	uv run pytest tests/iac/sam/ -q --tb=short
 
 ## ── Server ───────────────────────────────────────────────────────────────────
 

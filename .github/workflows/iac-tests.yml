@@ -1,0 +1,150 @@
+name: IaC Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/iac/**"
+      - "src/robotocore/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/iac/**"
+      - "src/robotocore/**"
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run Terraform IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/terraform/ -q --tb=short
+
+  cloudformation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run CloudFormation IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/cloudformation/ -q --tb=short
+
+  cdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g aws-cdk
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run CDK IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/cdk/ -q --tb=short
+
+  pulumi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pulumi/actions@v5
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run Pulumi IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/pulumi/ -q --tb=short
+
+  serverless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g serverless
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run Serverless Framework IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/serverless/ -q --tb=short
+
+  sam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install aws-sam-cli
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run SAM IaC tests
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest tests/iac/sam/ -q --tb=short
