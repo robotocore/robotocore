@@ -27,9 +27,22 @@ TESTS_DIR = Path("tests/apps")
 
 # Fixtures already in conftest.py — tests should use these, not redefine
 CONFTEST_FIXTURES = {
-    "s3", "sqs", "dynamodb", "lambda_client", "events", "secretsmanager",
-    "sns", "iam", "apigateway", "stepfunctions", "kinesis", "cloudwatch",
-    "logs", "ssm", "boto_session", "unique_name",
+    "s3",
+    "sqs",
+    "dynamodb",
+    "lambda_client",
+    "events",
+    "secretsmanager",
+    "sns",
+    "iam",
+    "apigateway",
+    "stepfunctions",
+    "kinesis",
+    "cloudwatch",
+    "logs",
+    "ssm",
+    "boto_session",
+    "unique_name",
 }
 
 
@@ -52,24 +65,30 @@ class AppTestVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import):
         for alias in node.names:
             if "mock" in (alias.name or "").lower() or "mock" in (alias.asname or "").lower():
-                self.mock_imports.append({
-                    "line": node.lineno,
-                    "name": alias.name,
-                })
+                self.mock_imports.append(
+                    {
+                        "line": node.lineno,
+                        "name": alias.name,
+                    }
+                )
 
     def visit_ImportFrom(self, node: ast.ImportFrom):
         module = node.module or ""
         if "mock" in module.lower():
-            self.mock_imports.append({
-                "line": node.lineno,
-                "name": module,
-            })
+            self.mock_imports.append(
+                {
+                    "line": node.lineno,
+                    "name": module,
+                }
+            )
         for alias in node.names:
             if "mock" in (alias.name or "").lower():
-                self.mock_imports.append({
-                    "line": node.lineno,
-                    "name": f"{module}.{alias.name}",
-                })
+                self.mock_imports.append(
+                    {
+                        "line": node.lineno,
+                        "name": f"{module}.{alias.name}",
+                    }
+                )
 
     def visit_ClassDef(self, node: ast.ClassDef):
         old = self._current_class
@@ -83,16 +102,20 @@ class AppTestVisitor(ast.NodeVisitor):
             for dec in node.decorator_list:
                 if isinstance(dec, ast.Attribute) and dec.attr == "fixture":
                     if node.name in CONFTEST_FIXTURES:
-                        self.redefined_fixtures.append({
-                            "line": node.lineno,
-                            "name": node.name,
-                        })
+                        self.redefined_fixtures.append(
+                            {
+                                "line": node.lineno,
+                                "name": node.name,
+                            }
+                        )
                 elif isinstance(dec, ast.Name) and dec.id == "fixture":
                     if node.name in CONFTEST_FIXTURES:
-                        self.redefined_fixtures.append({
-                            "line": node.lineno,
-                            "name": node.name,
-                        })
+                        self.redefined_fixtures.append(
+                            {
+                                "line": node.lineno,
+                                "name": node.name,
+                            }
+                        )
 
         if not node.name.startswith("test_"):
             self.generic_visit(node)
@@ -168,10 +191,7 @@ class AppTestVisitor(ast.NodeVisitor):
                     isinstance(child.type, ast.Name) and child.type.id == "Exception"
                 ):
                     # Check if body is just 'pass'
-                    if (
-                        len(child.body) == 1
-                        and isinstance(child.body[0], ast.Pass)
-                    ):
+                    if len(child.body) == 1 and isinstance(child.body[0], ast.Pass):
                         lines.append(child.lineno)
         return lines
 
@@ -200,18 +220,22 @@ def check_source_patterns(filepath: Path) -> list[dict]:
     for i, line in enumerate(lines, 1):
         # Check for mocking patterns
         if "patch(" in line and ("boto" in line or "client" in line):
-            issues.append({
-                "line": i,
-                "type": "mocking_boto",
-                "detail": line.strip(),
-            })
+            issues.append(
+                {
+                    "line": i,
+                    "type": "mocking_boto",
+                    "detail": line.strip(),
+                }
+            )
         if "@mock" in line.lower() or "monkeypatch" in line.lower():
             if "boto" in line.lower() or "aws" in line.lower():
-                issues.append({
-                    "line": i,
-                    "type": "mocking_aws",
-                    "detail": line.strip(),
-                })
+                issues.append(
+                    {
+                        "line": i,
+                        "type": "mocking_aws",
+                        "detail": line.strip(),
+                    }
+                )
 
     return issues
 
@@ -230,12 +254,8 @@ def analyze_file(filepath: Path) -> dict:
     total_tests = len(visitor.tests)
     tests_with_issues = [t for t in visitor.tests if t["issues"]]
     tests_no_assert = [t for t in visitor.tests if "no_assert" in t["issues"]]
-    tests_param_val = [
-        t for t in visitor.tests if "catches_param_validation_error" in t["issues"]
-    ]
-    tests_datetime_now = [
-        t for t in visitor.tests if any("datetime_now" in i for i in t["issues"])
-    ]
+    tests_param_val = [t for t in visitor.tests if "catches_param_validation_error" in t["issues"]]
+    tests_datetime_now = [t for t in visitor.tests if any("datetime_now" in i for i in t["issues"])]
     tests_bare_except = [
         t for t in visitor.tests if any("bare_except_pass" in i for i in t["issues"])
     ]
@@ -269,7 +289,7 @@ def print_report(results: list[dict]) -> int:
         total_tests += r["total_tests"]
         file_issues = 0
 
-        header = f"\n{'='*60}\n{filepath} ({r['total_tests']} tests)\n{'='*60}"
+        header = f"\n{'=' * 60}\n{filepath} ({r['total_tests']} tests)\n{'=' * 60}"
 
         issues_text = []
 
@@ -319,11 +339,11 @@ def print_report(results: list[dict]) -> int:
         else:
             print(f"\n{filepath}: {r['total_tests']} tests — ALL CLEAN")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"TOTAL: {total_tests} tests, {total_issues} issues")
     if total_issues == 0:
         print("All app tests look good!")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     return 1 if total_issues > 0 else 0
 
