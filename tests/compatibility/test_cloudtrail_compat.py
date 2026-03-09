@@ -496,6 +496,59 @@ class TestCloudTrailEventDataStoreOperations:
             )
         assert exc_info.value.response["Error"]["Code"] == "EventDataStoreNotFoundException"
 
+    def test_create_event_data_store(self, cloudtrail):
+        """CreateEventDataStore returns ARN, Name, and Status."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(Name=name)
+        assert resp["Name"] == name
+        assert resp["Status"] == "ENABLED"
+        assert "EventDataStoreArn" in resp
+        assert "CreatedTimestamp" in resp
+
+    def test_create_event_data_store_and_get(self, cloudtrail):
+        """Created EDS is retrievable via GetEventDataStore."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = create_resp["EventDataStoreArn"]
+        get_resp = cloudtrail.get_event_data_store(EventDataStore=eds_arn)
+        assert get_resp["Name"] == name
+        assert get_resp["Status"] == "ENABLED"
+        assert get_resp["EventDataStoreArn"] == eds_arn
+
+    def test_create_event_data_store_appears_in_list(self, cloudtrail):
+        """Created EDS appears in ListEventDataStores."""
+        name = _unique("ct-eds")
+        create_resp = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = create_resp["EventDataStoreArn"]
+        list_resp = cloudtrail.list_event_data_stores()
+        arns = [e.get("EventDataStoreArn") for e in list_resp["EventDataStores"]]
+        assert eds_arn in arns
+
+    def test_create_event_data_store_with_retention(self, cloudtrail):
+        """CreateEventDataStore with custom RetentionPeriod."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(Name=name, RetentionPeriod=90)
+        assert resp["RetentionPeriod"] == 90
+
+    def test_create_event_data_store_multi_region(self, cloudtrail):
+        """CreateEventDataStore with MultiRegionEnabled."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(Name=name, MultiRegionEnabled=True)
+        assert resp["MultiRegionEnabled"] is True
+
+    def test_create_event_data_store_with_tags(self, cloudtrail):
+        """CreateEventDataStore and verify tags via AddTags/ListTags."""
+        name = _unique("ct-eds")
+        resp = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = resp["EventDataStoreArn"]
+        cloudtrail.add_tags(
+            ResourceId=eds_arn,
+            TagsList=[{"Key": "env", "Value": "test"}],
+        )
+        tags_resp = cloudtrail.list_tags(ResourceIdList=[eds_arn])
+        tags = {t["Key"]: t["Value"] for t in tags_resp["ResourceTagList"][0]["TagsList"]}
+        assert tags["env"] == "test"
+
 
 class TestCloudTrailChannelOperations:
     """Tests for Channel operations."""
@@ -513,6 +566,53 @@ class TestCloudTrailChannelOperations:
             )
         assert exc_info.value.response["Error"]["Code"] == "ChannelNotFoundException"
 
+    def test_create_channel_and_get(self, cloudtrail):
+        """CreateChannel returns ChannelArn; GetChannel retrieves it."""
+        # Need an EDS for channel destination
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        name = _unique("ct-ch")
+        ch = cloudtrail.create_channel(
+            Name=name,
+            Source="Custom",
+            Destinations=[{"Type": "EVENT_DATA_STORE", "Location": eds_arn}],
+        )
+        assert "ChannelArn" in ch
+        ch_arn = ch["ChannelArn"]
+
+        get_resp = cloudtrail.get_channel(Channel=ch_arn)
+        assert get_resp["ChannelArn"] == ch_arn
+        assert get_resp["Name"] == name
+        assert get_resp["Source"] == "Custom"
+
+    def test_create_channel_appears_in_list(self, cloudtrail):
+        """Created channel appears in ListChannels."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        ch = cloudtrail.create_channel(
+            Name=_unique("ct-ch"),
+            Source="Custom",
+            Destinations=[{"Type": "EVENT_DATA_STORE", "Location": eds_arn}],
+        )
+        ch_arn = ch["ChannelArn"]
+        list_resp = cloudtrail.list_channels()
+        arns = [c.get("ChannelArn") for c in list_resp["Channels"]]
+        assert ch_arn in arns
+
+    def test_get_channel_destinations(self, cloudtrail):
+        """GetChannel returns destinations for a created channel."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        ch = cloudtrail.create_channel(
+            Name=_unique("ct-ch"),
+            Source="Custom",
+            Destinations=[{"Type": "EVENT_DATA_STORE", "Location": eds_arn}],
+        )
+        ch_arn = ch["ChannelArn"]
+        get_resp = cloudtrail.get_channel(Channel=ch_arn)
+        assert len(get_resp["Destinations"]) >= 1
+        assert get_resp["Destinations"][0]["Type"] == "EVENT_DATA_STORE"
+
 
 class TestCloudTrailQueryOperations:
     """Tests for Query operations."""
@@ -525,6 +625,35 @@ class TestCloudTrailQueryOperations:
             )
         assert exc_info.value.response["Error"]["Code"] == "QueryIdNotFoundException"
 
+    def test_start_query_returns_query_id(self, cloudtrail):
+        """StartQuery returns a QueryId."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_id = eds["EventDataStoreArn"].split("/")[-1]
+        resp = cloudtrail.start_query(QueryStatement=f"SELECT * FROM {eds_id} LIMIT 1")
+        assert "QueryId" in resp
+        assert len(resp["QueryId"]) > 0
+
+    def test_start_query_and_describe(self, cloudtrail):
+        """StartQuery followed by DescribeQuery returns query status."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_id = eds["EventDataStoreArn"].split("/")[-1]
+        q = cloudtrail.start_query(QueryStatement=f"SELECT * FROM {eds_id} LIMIT 1")
+        qid = q["QueryId"]
+        desc = cloudtrail.describe_query(QueryId=qid)
+        assert desc["QueryId"] == qid
+        assert "QueryStatus" in desc
+
+    def test_start_query_and_get_results(self, cloudtrail):
+        """StartQuery followed by GetQueryResults returns result structure."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_id = eds["EventDataStoreArn"].split("/")[-1]
+        q = cloudtrail.start_query(QueryStatement=f"SELECT * FROM {eds_id} LIMIT 1")
+        qid = q["QueryId"]
+        resp = cloudtrail.get_query_results(QueryId=qid)
+        assert "QueryStatus" in resp
+        assert "QueryResultRows" in resp
+        assert isinstance(resp["QueryResultRows"], list)
+
 
 class TestCloudTrailResourcePolicyOperations:
     """Tests for ResourcePolicy operations."""
@@ -535,6 +664,35 @@ class TestCloudTrailResourcePolicyOperations:
                 ResourceArn="arn:aws:cloudtrail:us-east-1:123456789012:trail/nonexistent"
             )
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_and_get_resource_policy(self, cloudtrail):
+        """PutResourcePolicy sets a policy, GetResourcePolicy retrieves it."""
+        import json
+
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "test-policy",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "123456789012"},
+                        "Action": "cloudtrail:GetEventDataStore",
+                        "Resource": eds_arn,
+                    }
+                ],
+            }
+        )
+        put_resp = cloudtrail.put_resource_policy(ResourceArn=eds_arn, ResourcePolicy=policy_doc)
+        assert put_resp["ResourceArn"] == eds_arn
+
+        get_resp = cloudtrail.get_resource_policy(ResourceArn=eds_arn)
+        assert get_resp["ResourceArn"] == eds_arn
+        assert isinstance(get_resp["ResourcePolicy"], str)
+        parsed = json.loads(get_resp["ResourcePolicy"])
+        assert parsed["Statement"][0]["Sid"] == "test-policy"
 
 
 class TestCloudTrailDashboardOperations:

@@ -1052,13 +1052,13 @@ class TestLogsExtended:
         logs.put_resource_policy(policyName=policy_name, policyDocument=policy_doc)
         try:
             resp = logs.describe_resource_policies()
-            names = [p["policyName"] for p in resp["resourcePolicies"]]
+            names = [p["policyName"] for p in resp["resourcePolicies"] if "policyName" in p]
             assert policy_name in names
         finally:
             logs.delete_resource_policy(policyName=policy_name)
         # Verify deletion
         resp = logs.describe_resource_policies()
-        names = [p["policyName"] for p in resp["resourcePolicies"]]
+        names = [p["policyName"] for p in resp["resourcePolicies"] if "policyName" in p]
         assert policy_name not in names
 
     def test_put_destination_policy(self, logs):
@@ -1391,7 +1391,7 @@ class TestLogsAutoCoverage:
         client.put_resource_policy(policyName=policy_name, policyDocument=policy_doc)
         try:
             resp = client.describe_resource_policies()
-            matching = [p for p in resp["resourcePolicies"] if p["policyName"] == policy_name]
+            matching = [p for p in resp["resourcePolicies"] if p.get("policyName") == policy_name]
             assert len(matching) == 1
             assert "policyDocument" in matching[0]
         finally:
@@ -1399,7 +1399,7 @@ class TestLogsAutoCoverage:
 
         # Verify deletion
         resp = client.describe_resource_policies()
-        names = [p["policyName"] for p in resp["resourcePolicies"]]
+        names = [p.get("policyName") for p in resp["resourcePolicies"]]
         assert policy_name not in names
 
     def test_put_destination_describe_delete(self, client):
@@ -2083,4 +2083,163 @@ class TestLogsNewOps:
         """ListLogGroupsForQuery with fake queryId raises ResourceNotFoundException."""
         with pytest.raises(ClientError) as exc:
             logs.list_log_groups_for_query(queryId="fake-query-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_log_anomaly_detector(self, logs):
+        """CreateLogAnomalyDetector creates a detector and returns ARN."""
+        group = f"/test/anomaly-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            group_arn = _log_group_arn(group)
+            resp = logs.create_log_anomaly_detector(logGroupArnList=[group_arn])
+            assert "anomalyDetectorArn" in resp
+            assert resp["anomalyDetectorArn"]
+            logs.delete_log_anomaly_detector(anomalyDetectorArn=resp["anomalyDetectorArn"])
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_delete_log_anomaly_detector_nonexistent(self, logs):
+        """DeleteLogAnomalyDetector with nonexistent ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_log_anomaly_detector(
+                anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:fake"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_account_policy(self, logs):
+        """DeleteAccountPolicy with nonexistent policy raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_account_policy(
+                policyName="nonexistent-policy",
+                policyType="DATA_PROTECTION_POLICY",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_data_protection_policy_nonexistent(self, logs):
+        """DeleteDataProtectionPolicy on nonexistent group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_data_protection_policy(logGroupIdentifier="/nonexistent/group")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_index_policy_nonexistent(self, logs):
+        """DeleteIndexPolicy on nonexistent group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_index_policy(logGroupIdentifier="/nonexistent/group")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_integration_nonexistent(self, logs):
+        """DeleteIntegration with nonexistent name raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_integration(integrationName="nonexistent-integration")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_query_definition_nonexistent(self, logs):
+        """DeleteQueryDefinition with nonexistent ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_query_definition(queryDefinitionId="fake-query-def-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_transformer_nonexistent(self, logs):
+        """DeleteTransformer on nonexistent group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.delete_transformer(logGroupIdentifier="/nonexistent/group")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_log_fields(self, logs):
+        """GetLogFields returns a 200 response."""
+        resp = logs.get_log_fields(
+            dataSourceName="test-source",
+            dataSourceType="CLOUDWATCH_LOG_GROUP",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_aggregate_log_group_summaries(self, logs):
+        """ListAggregateLogGroupSummaries returns summaries list."""
+        resp = logs.list_aggregate_log_group_summaries(groupBy="LOG_CLASS")
+        assert "aggregateLogGroupSummaries" in resp
+        assert isinstance(resp["aggregateLogGroupSummaries"], list)
+
+    def test_put_account_policy_data_protection(self, logs):
+        """PutAccountPolicy with DATA_PROTECTION_POLICY type succeeds."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Name": "test-data-protection",
+                "Description": "test",
+                "Version": "2021-06-01",
+                "Statement": [
+                    {
+                        "Sid": "audit-policy",
+                        "DataIdentifier": [
+                            "arn:aws:dataprotection::aws:data-identifier/EmailAddress"
+                        ],
+                        "Operation": {"Audit": {"FindingsDestination": {}}},
+                    }
+                ],
+            }
+        )
+        resp = logs.put_account_policy(
+            policyName="test-dp-policy",
+            policyDocument=policy,
+            policyType="DATA_PROTECTION_POLICY",
+        )
+        assert "accountPolicy" in resp
+        assert resp["accountPolicy"]["policyName"] == "test-dp-policy"
+        logs.delete_account_policy(
+            policyName="test-dp-policy",
+            policyType="DATA_PROTECTION_POLICY",
+        )
+
+    def test_put_bearer_token_authentication_nonexistent(self, logs):
+        """PutBearerTokenAuthentication on nonexistent group raises error."""
+        with pytest.raises(ClientError) as exc:
+            logs.put_bearer_token_authentication(
+                logGroupIdentifier="/nonexistent/group",
+                bearerTokenAuthenticationEnabled=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_data_protection_policy_nonexistent(self, logs):
+        """PutDataProtectionPolicy on nonexistent group raises ResourceNotFoundException."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Name": "test",
+                "Version": "2021-06-01",
+                "Statement": [
+                    {
+                        "Sid": "audit",
+                        "DataIdentifier": [
+                            "arn:aws:dataprotection::aws:data-identifier/EmailAddress"
+                        ],
+                        "Operation": {"Audit": {"FindingsDestination": {}}},
+                    }
+                ],
+            }
+        )
+        with pytest.raises(ClientError) as exc:
+            logs.put_data_protection_policy(
+                logGroupIdentifier="/nonexistent/group",
+                policyDocument=policy,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_index_policy_nonexistent(self, logs):
+        """PutIndexPolicy on nonexistent group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.put_index_policy(
+                logGroupIdentifier="/nonexistent/group",
+                policyDocument='{"Fields": ["@timestamp"]}',
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_log_anomaly_detector_nonexistent(self, logs):
+        """UpdateLogAnomalyDetector with nonexistent ARN raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.update_log_anomaly_detector(
+                anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:fake",
+                enabled=False,
+            )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

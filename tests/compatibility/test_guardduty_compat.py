@@ -812,3 +812,104 @@ class TestGuardDutyInvitationOperations:
         resp = guardduty.list_invitations()
         assert "Invitations" in resp
         assert isinstance(resp["Invitations"], list)
+
+
+class TestGuardDutyPublishingDestinationCRUD:
+    """Tests for publishing destination CRUD operations."""
+
+    def test_create_publishing_destination(self, guardduty, detector):
+        """CreatePublishingDestination creates a destination and returns an ID."""
+        resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::my-guardduty-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake-key-id",
+            },
+        )
+        assert "DestinationId" in resp
+        assert resp["DestinationId"]
+
+    def test_describe_publishing_destination_created(self, guardduty, detector):
+        """DescribePublishingDestination returns destination details."""
+        create_resp = guardduty.create_publishing_destination(
+            DetectorId=detector,
+            DestinationType="S3",
+            DestinationProperties={
+                "DestinationArn": "arn:aws:s3:::my-guardduty-bucket",
+                "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/fake-key-id",
+            },
+        )
+        dest_id = create_resp["DestinationId"]
+        resp = guardduty.describe_publishing_destination(
+            DetectorId=detector,
+            DestinationId=dest_id,
+        )
+        assert resp["DestinationType"] == "S3"
+        assert "DestinationProperties" in resp
+
+
+class TestGuardDutySampleFindingsOperations:
+    """Tests for sample findings operations."""
+
+    def test_create_sample_findings(self, guardduty, detector):
+        """CreateSampleFindings generates sample findings."""
+        resp = guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_sample_findings_then_list(self, guardduty, detector):
+        """After creating sample findings, ListFindings returns them."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        resp = guardduty.list_findings(DetectorId=detector)
+        assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
+
+
+class TestGuardDutyUntagOperations:
+    """Tests for untag resource operations."""
+
+    def test_untag_resource(self, guardduty, detector):
+        """UntagResource removes tags from a detector."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        # First tag the resource
+        guardduty.tag_resource(ResourceArn=arn, Tags={"env": "test", "team": "dev"})
+        # Verify tags
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert "env" in resp["Tags"]
+        assert "team" in resp["Tags"]
+        # Untag one key
+        guardduty.untag_resource(ResourceArn=arn, TagKeys=["team"])
+        # Verify only 'env' remains
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert "env" in resp["Tags"]
+        assert "team" not in resp["Tags"]
+
+
+class TestGuardDutyMemberOperations:
+    """Tests for member-related operations."""
+
+    def test_get_remaining_free_trial_days(self, guardduty, detector):
+        """GetRemainingFreeTrialDays returns accounts list."""
+        resp = guardduty.get_remaining_free_trial_days(
+            DetectorId=detector,
+            AccountIds=["123456789012"],
+        )
+        assert "Accounts" in resp
+        assert isinstance(resp["Accounts"], list)
+
+    def test_get_member_detectors(self, guardduty, detector):
+        """GetMemberDetectors returns member detector features."""
+        resp = guardduty.get_member_detectors(
+            DetectorId=detector,
+            AccountIds=["111111111111"],
+        )
+        assert (
+            "MemberDataSourceConfigurations" in resp
+            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        )

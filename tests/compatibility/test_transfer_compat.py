@@ -1476,3 +1476,261 @@ class TestTransferExecutionOperations:
             assert "Status" in desc["Execution"]
         finally:
             transfer.delete_workflow(WorkflowId=workflow_id)
+
+    def test_list_executions_empty(self, transfer):
+        """ListExecutions on workflow with no executions returns empty list."""
+        wf = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "list-exec-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ]
+        )
+        workflow_id = wf["WorkflowId"]
+        try:
+            resp = transfer.list_executions(WorkflowId=workflow_id)
+            assert resp["WorkflowId"] == workflow_id
+            assert "Executions" in resp
+            assert isinstance(resp["Executions"], list)
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
+
+
+class TestTransferServerLifecycle:
+    """Tests for Transfer server start/stop and update operations."""
+
+    def test_stop_server_changes_state(self, transfer):
+        """StopServer sets server state to OFFLINE."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.stop_server(ServerId=server_id)
+            desc = transfer.describe_server(ServerId=server_id)
+            assert desc["Server"]["State"] == "OFFLINE"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_start_server_changes_state(self, transfer):
+        """StartServer sets server state back to ONLINE."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.stop_server(ServerId=server_id)
+            transfer.start_server(ServerId=server_id)
+            desc = transfer.describe_server(ServerId=server_id)
+            assert desc["Server"]["State"] == "ONLINE"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_update_server_endpoint_type(self, transfer):
+        """UpdateServer can change EndpointType."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            update_resp = transfer.update_server(ServerId=server_id, EndpointType="PUBLIC")
+            assert update_resp["ServerId"] == server_id
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_users_empty(self, transfer):
+        """ListUsers on a new server returns empty list."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            users_resp = transfer.list_users(ServerId=server_id)
+            assert users_resp["ServerId"] == server_id
+            assert users_resp["Users"] == []
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_users_contains_created(self, transfer):
+        """ListUsers includes a user after creation."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.create_user(
+                ServerId=server_id,
+                UserName="testuser",
+                Role="arn:aws:iam::123456789012:role/transfer-role",
+            )
+            users_resp = transfer.list_users(ServerId=server_id)
+            usernames = [u["UserName"] for u in users_resp["Users"]]
+            assert "testuser" in usernames
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_host_keys_on_new_server(self, transfer):
+        """ListHostKeys returns response with HostKeys key."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            hk_resp = transfer.list_host_keys(ServerId=server_id)
+            assert hk_resp["ServerId"] == server_id
+            assert "HostKeys" in hk_resp
+            assert isinstance(hk_resp["HostKeys"], list)
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_update_user_home_directory(self, transfer):
+        """UpdateUser can change HomeDirectory."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            transfer.create_user(
+                ServerId=server_id,
+                UserName="upd-user",
+                Role="arn:aws:iam::123456789012:role/transfer-role",
+            )
+            update_resp = transfer.update_user(
+                ServerId=server_id,
+                UserName="upd-user",
+                HomeDirectory="/new-home",
+            )
+            assert update_resp["ServerId"] == server_id
+            assert update_resp["UserName"] == "upd-user"
+
+            desc = transfer.describe_user(ServerId=server_id, UserName="upd-user")
+            assert desc["User"]["HomeDirectory"] == "/new-home"
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_update_user_role(self, transfer):
+        """UpdateUser can change Role."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        new_role = "arn:aws:iam::123456789012:role/new-role"
+        try:
+            transfer.create_user(
+                ServerId=server_id,
+                UserName="role-user",
+                Role="arn:aws:iam::123456789012:role/old-role",
+            )
+            transfer.update_user(
+                ServerId=server_id,
+                UserName="role-user",
+                Role=new_role,
+            )
+            desc = transfer.describe_user(ServerId=server_id, UserName="role-user")
+            assert desc["User"]["Role"] == new_role
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_list_users_multiple(self, transfer):
+        """ListUsers returns all created users."""
+        resp = transfer.create_server(IdentityProviderType="SERVICE_MANAGED")
+        server_id = resp["ServerId"]
+        try:
+            for name in ["user-a", "user-b", "user-c"]:
+                transfer.create_user(
+                    ServerId=server_id,
+                    UserName=name,
+                    Role="arn:aws:iam::123456789012:role/transfer-role",
+                )
+            users_resp = transfer.list_users(ServerId=server_id)
+            usernames = {u["UserName"] for u in users_resp["Users"]}
+            assert {"user-a", "user-b", "user-c"}.issubset(usernames)
+        finally:
+            transfer.delete_server(ServerId=server_id)
+
+    def test_create_workflow_with_description(self, transfer):
+        """CreateWorkflow with Description stores it."""
+        resp = transfer.create_workflow(
+            Description="My test workflow",
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "desc-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ],
+        )
+        workflow_id = resp["WorkflowId"]
+        try:
+            desc = transfer.describe_workflow(WorkflowId=workflow_id)
+            assert desc["Workflow"]["Description"] == "My test workflow"
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
+
+    def test_create_workflow_with_tags(self, transfer):
+        """CreateWorkflow with Tags stores them."""
+        resp = transfer.create_workflow(
+            Description="tagged wf",
+            Tags=[{"Key": "env", "Value": "test"}],
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "tag-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ],
+        )
+        workflow_id = resp["WorkflowId"]
+        try:
+            desc = transfer.describe_workflow(WorkflowId=workflow_id)
+            tags = {t["Key"]: t["Value"] for t in desc["Workflow"].get("Tags", [])}
+            assert tags.get("env") == "test"
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)
+
+    def test_create_workflow_with_on_exception_steps(self, transfer):
+        """CreateWorkflow with OnExceptionSteps stores them."""
+        resp = transfer.create_workflow(
+            Steps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "main-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "dest/",
+                            }
+                        },
+                    },
+                }
+            ],
+            OnExceptionSteps=[
+                {
+                    "Type": "COPY",
+                    "CopyStepDetails": {
+                        "Name": "err-step",
+                        "DestinationFileLocation": {
+                            "S3FileLocation": {
+                                "Bucket": "test-bucket",
+                                "Key": "error/",
+                            }
+                        },
+                    },
+                }
+            ],
+        )
+        workflow_id = resp["WorkflowId"]
+        try:
+            desc = transfer.describe_workflow(WorkflowId=workflow_id)
+            assert len(desc["Workflow"]["OnExceptionSteps"]) == 1
+            assert desc["Workflow"]["OnExceptionSteps"][0]["Type"] == "COPY"
+        finally:
+            transfer.delete_workflow(WorkflowId=workflow_id)

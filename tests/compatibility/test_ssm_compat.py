@@ -2600,3 +2600,136 @@ class TestSSMResourcePolicyOps:
         )
         assert "Policies" in resp
         assert isinstance(resp["Policies"], list)
+
+    def test_put_resource_policy(self, ssm):
+        """PutResourcePolicy attaches a policy to a parameter."""
+        import json
+
+        param_name = f"/test/rp-{uuid.uuid4().hex[:8]}"
+        ssm.put_parameter(Name=param_name, Value="test", Type="String")
+        try:
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": "ssm:GetParameter",
+                            "Resource": f"arn:aws:ssm:us-east-1:123456789012:parameter{param_name}",
+                        }
+                    ],
+                }
+            )
+            resp = ssm.put_resource_policy(
+                ResourceArn=f"arn:aws:ssm:us-east-1:123456789012:parameter{param_name}",
+                Policy=policy_doc,
+            )
+            assert "PolicyId" in resp
+            assert resp["PolicyId"]
+        finally:
+            ssm.delete_parameter(Name=param_name)
+
+    def test_delete_resource_policy(self, ssm):
+        """DeleteResourcePolicy removes a previously put policy."""
+        import json
+
+        param_name = f"/test/rp-del-{uuid.uuid4().hex[:8]}"
+        ssm.put_parameter(Name=param_name, Value="test", Type="String")
+        try:
+            resource_arn = f"arn:aws:ssm:us-east-1:123456789012:parameter{param_name}"
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                            "Action": "ssm:GetParameter",
+                            "Resource": resource_arn,
+                        }
+                    ],
+                }
+            )
+            put_resp = ssm.put_resource_policy(
+                ResourceArn=resource_arn,
+                Policy=policy_doc,
+            )
+            policy_id = put_resp["PolicyId"]
+            policy_hash = put_resp["PolicyHash"]
+
+            del_resp = ssm.delete_resource_policy(
+                ResourceArn=resource_arn,
+                PolicyId=policy_id,
+                PolicyHash=policy_hash,
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssm.delete_parameter(Name=param_name)
+
+
+class TestSSMOpsItemRelatedItems:
+    """Tests for SSM OpsItem related item operations."""
+
+    def test_associate_ops_item_related_item(self, ssm):
+        """AssociateOpsItemRelatedItem links a related item to an OpsItem."""
+        create_resp = ssm.create_ops_item(
+            Title="Test OpsItem RI",
+            Source="test",
+            Description="test ops item for related items",
+        )
+        ops_item_id = create_resp["OpsItemId"]
+        try:
+            resp = ssm.associate_ops_item_related_item(
+                OpsItemId=ops_item_id,
+                AssociationType="IsParentOf",
+                ResourceType="AWS::SSMOpsItem::OpsItem",
+                ResourceUri="arn:aws:ssm:us-east-1:123456789012:opsitem/oi-fake",
+            )
+            assert "AssociationId" in resp
+            assert resp["AssociationId"]
+        finally:
+            ssm.delete_ops_item(OpsItemId=ops_item_id)
+
+    def test_disassociate_ops_item_related_item(self, ssm):
+        """DisassociateOpsItemRelatedItem removes a related item from an OpsItem."""
+        create_resp = ssm.create_ops_item(
+            Title="Test OpsItem Disassoc",
+            Source="test",
+            Description="test ops item for disassociation",
+        )
+        ops_item_id = create_resp["OpsItemId"]
+        try:
+            assoc_resp = ssm.associate_ops_item_related_item(
+                OpsItemId=ops_item_id,
+                AssociationType="IsParentOf",
+                ResourceType="AWS::SSMOpsItem::OpsItem",
+                ResourceUri="arn:aws:ssm:us-east-1:123456789012:opsitem/oi-fake",
+            )
+            assoc_id = assoc_resp["AssociationId"]
+
+            disassoc_resp = ssm.disassociate_ops_item_related_item(
+                OpsItemId=ops_item_id,
+                AssociationId=assoc_id,
+            )
+            assert disassoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssm.delete_ops_item(OpsItemId=ops_item_id)
+
+
+class TestSSMUpdateAssociationStatus:
+    """Tests for SSM UpdateAssociationStatus."""
+
+    def test_update_association_status_nonexistent(self, ssm):
+        """UpdateAssociationStatus with nonexistent association raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.update_association_status(
+                Name="AWS-RunShellScript",
+                InstanceId="i-1234567890abcdef0",
+                AssociationStatus={
+                    "Date": "2024-01-01T00:00:00Z",
+                    "Name": "Success",
+                    "Message": "test update",
+                },
+            )
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
