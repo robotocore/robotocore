@@ -118,7 +118,7 @@ jobs:
 
 robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
-- **147 AWS services** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 140 more
+- **147 AWS services, 6,400+ operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 140 more (70% of all AWS API operations covered)
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
 - **Multi-account** — unlimited isolated AWS accounts, all in one container
 - **Single container** — one `docker run` command, no config, no cloud
@@ -409,8 +409,8 @@ uv run python -m robotocore.main
 ### Tests
 
 ```bash
-uv run pytest tests/unit/           # 2,874 unit tests
-uv run pytest tests/compatibility/  # 3,451 compatibility tests (requires running server)
+uv run pytest tests/unit/           # 3,448 unit tests
+uv run pytest tests/compatibility/  # 9,185 compatibility tests (requires running server)
 uv run pytest tests/integration/    # 58 integration tests (requires Docker)
 ```
 

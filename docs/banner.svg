@@ -158,7 +158,7 @@
     <!-- Tests badge -->
     <rect x="112" y="0" width="110" height="24" rx="5" fill="#d69e63" opacity="0.15"/>
     <rect x="112" y="0" width="110" height="24" rx="5" fill="none" stroke="#d69e63" stroke-width="0.8" opacity="0.4"/>
-    <text x="167" y="16.5" font-family="monospace" font-size="11" fill="#ca7b55" text-anchor="middle" font-weight="bold">6600+ tests</text>
+    <text x="167" y="16.5" font-family="monospace" font-size="11" fill="#ca7b55" text-anchor="middle" font-weight="bold">12,600+ tests</text>
 
     <!-- MIT badge -->
     <rect x="230" y="0" width="66" height="24" rx="5" fill="#7d8258" opacity="0.15"/>
