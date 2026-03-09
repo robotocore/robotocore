@@ -549,6 +549,94 @@ class TestCloudFrontDistributionAdvanced:
         ]
         assert vpp == "redirect-to-https"
 
+    def test_list_cache_policies(self, cf):
+        resp = cf.list_cache_policies()
+        assert "CachePolicyList" in resp
+
+    def test_list_functions(self, cf):
+        resp = cf.list_functions()
+        assert "FunctionList" in resp
+
+    def test_list_response_headers_policies(self, cf):
+        resp = cf.list_response_headers_policies()
+        assert "ResponseHeadersPolicyList" in resp
+
+    def test_create_and_describe_function(self, cf):
+        name = _unique("func")
+        create_resp = cf.create_function(
+            Name=name,
+            FunctionConfig={"Comment": "test", "Runtime": "cloudfront-js-2.0"},
+            FunctionCode=b"function handler(event) { return event.request; }",
+        )
+        etag = create_resp["ETag"]
+        func_name = create_resp["FunctionSummary"]["Name"]
+
+        desc = cf.describe_function(Name=func_name)
+        assert desc["FunctionSummary"]["Name"] == func_name
+
+        cf.delete_function(Name=func_name, IfMatch=etag)
+
+    def test_create_and_get_function(self, cf):
+        name = _unique("func")
+        create_resp = cf.create_function(
+            Name=name,
+            FunctionConfig={"Comment": "test get", "Runtime": "cloudfront-js-2.0"},
+            FunctionCode=b"function handler(event) { return event.request; }",
+        )
+        etag = create_resp["ETag"]
+        func_name = create_resp["FunctionSummary"]["Name"]
+
+        get_resp = cf.get_function(Name=func_name)
+        assert get_resp["ContentType"] is not None
+        assert "ETag" in get_resp
+
+        cf.delete_function(Name=func_name, IfMatch=etag)
+
+    def test_create_and_get_cache_policy(self, cf):
+        name = _unique("cpol")
+        create_resp = cf.create_cache_policy(
+            CachePolicyConfig={
+                "Name": name,
+                "MinTTL": 60,
+                "DefaultTTL": 86400,
+                "MaxTTL": 31536000,
+                "ParametersInCacheKeyAndForwardedToOrigin": {
+                    "EnableAcceptEncodingGzip": True,
+                    "HeadersConfig": {"HeaderBehavior": "none"},
+                    "CookiesConfig": {"CookieBehavior": "none"},
+                    "QueryStringsConfig": {"QueryStringBehavior": "none"},
+                },
+            }
+        )
+        policy_id = create_resp["CachePolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        get_resp = cf.get_cache_policy(Id=policy_id)
+        assert get_resp["CachePolicy"]["Id"] == policy_id
+        assert get_resp["CachePolicy"]["CachePolicyConfig"]["Name"] == name
+
+        cf.delete_cache_policy(Id=policy_id, IfMatch=etag)
+
+    def test_create_and_get_response_headers_policy(self, cf):
+        name = _unique("rhpol")
+        create_resp = cf.create_response_headers_policy(
+            ResponseHeadersPolicyConfig={
+                "Name": name,
+                "Comment": "test policy",
+                "SecurityHeadersConfig": {
+                    "XSSProtection": {"Override": True, "Protection": True},
+                },
+            }
+        )
+        policy_id = create_resp["ResponseHeadersPolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        get_resp = cf.get_response_headers_policy(Id=policy_id)
+        assert get_resp["ResponseHeadersPolicy"]["Id"] == policy_id
+        assert get_resp["ResponseHeadersPolicy"]["ResponseHeadersPolicyConfig"]["Name"] == name
+
+        cf.delete_response_headers_policy(Id=policy_id, IfMatch=etag)
+
     def test_update_distribution_add_origin(self, cf):
         create_resp = cf.create_distribution(DistributionConfig=_dist_config("add-origin"))
         dist_id = create_resp["Distribution"]["Id"]

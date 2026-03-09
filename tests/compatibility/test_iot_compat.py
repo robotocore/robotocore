@@ -1536,3 +1536,113 @@ class TestIoTCACertificateOperations:
         new_id = resp["certificateId"]
         iot.update_certificate(certificateId=new_id, newStatus="INACTIVE")
         iot.delete_certificate(certificateId=new_id)
+
+
+class TestIoTAuthorizerOperations:
+    def test_list_authorizers(self, iot):
+        resp = iot.list_authorizers()
+        assert "authorizers" in resp
+
+    def test_describe_authorizer(self, iot):
+        name = _unique("auth")
+        iot.create_authorizer(
+            authorizerName=name,
+            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:auth",
+        )
+        resp = iot.describe_authorizer(authorizerName=name)
+        assert resp["authorizerDescription"]["authorizerName"] == name
+        assert "authorizerArn" in resp["authorizerDescription"]
+        iot.delete_authorizer(authorizerName=name)
+
+
+class TestIoTCustomMetricOperations:
+    def test_list_custom_metrics(self, iot):
+        resp = iot.list_custom_metrics()
+        assert "metricNames" in resp
+
+    def test_describe_custom_metric(self, iot):
+        name = _unique("metric")
+        iot.create_custom_metric(
+            metricName=name,
+            metricType="string-list",
+            clientRequestToken="tok",
+        )
+        resp = iot.describe_custom_metric(metricName=name)
+        assert resp["metricName"] == name
+        assert resp["metricType"] == "string-list"
+        iot.delete_custom_metric(metricName=name)
+
+
+class TestIoTDimensionOperations:
+    def test_list_dimensions(self, iot):
+        resp = iot.list_dimensions()
+        assert "dimensionNames" in resp
+
+    def test_describe_dimension(self, iot):
+        name = _unique("dim")
+        iot.create_dimension(
+            name=name,
+            type="TOPIC_FILTER",
+            stringValues=["topic/*"],
+            clientRequestToken="tok",
+        )
+        resp = iot.describe_dimension(name=name)
+        assert resp["name"] == name
+        assert resp["type"] == "TOPIC_FILTER"
+        iot.delete_dimension(name=name)
+
+
+class TestIoTFleetMetricOperations:
+    def test_list_fleet_metrics(self, iot):
+        resp = iot.list_fleet_metrics()
+        assert "fleetMetrics" in resp
+
+    def test_describe_fleet_metric(self, iot):
+        name = _unique("fleet")
+        iot.create_fleet_metric(
+            metricName=name,
+            queryString="*",
+            period=300,
+            aggregationField="registry.version",
+            aggregationType={"name": "Statistics", "values": ["count"]},
+            indexName="AWS_Things",
+        )
+        resp = iot.describe_fleet_metric(metricName=name)
+        assert resp["metricName"] == name
+        assert resp["queryString"] == "*"
+        iot.delete_fleet_metric(metricName=name)
+
+
+class TestIoTProvisioningTemplateOperations:
+    def test_list_provisioning_templates(self, iot):
+        resp = iot.list_provisioning_templates()
+        assert "templates" in resp
+
+    def test_describe_provisioning_template(self, iot):
+        name = _unique("prov")
+        iot.create_provisioning_template(
+            templateName=name,
+            templateBody='{"Parameters":{},"Resources":{}}',
+            provisioningRoleArn="arn:aws:iam::123456789012:role/prov",
+        )
+        resp = iot.describe_provisioning_template(templateName=name)
+        assert resp["templateName"] == name
+        assert "templateArn" in resp
+        iot.delete_provisioning_template(templateName=name)
+
+
+class TestIoTSecurityProfileOperations:
+    def test_list_security_profiles(self, iot):
+        resp = iot.list_security_profiles()
+        assert "securityProfileIdentifiers" in resp
+
+    def test_describe_security_profile(self, iot):
+        name = _unique("secprof")
+        iot.create_security_profile(
+            securityProfileName=name,
+            securityProfileDescription="test",
+        )
+        resp = iot.describe_security_profile(securityProfileName=name)
+        assert resp["securityProfileName"] == name
+        assert "securityProfileArn" in resp
+        iot.delete_security_profile(securityProfileName=name)
