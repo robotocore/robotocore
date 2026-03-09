@@ -433,6 +433,56 @@ class TestTranscribeGapStubs:
         assert "Vocabularies" in resp
 
 
+class TestTranscribeErrorHandling:
+    """Tests for error handling on nonexistent resources."""
+
+    @pytest.fixture
+    def transcribe(self):
+        return make_client("transcribe")
+
+    def test_get_transcription_job_nonexistent(self, transcribe):
+        """GetTranscriptionJob for nonexistent job raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            transcribe.get_transcription_job(TranscriptionJobName="nonexistent-job-xyz")
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_get_vocabulary_nonexistent(self, transcribe):
+        """GetVocabulary for nonexistent vocabulary raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            transcribe.get_vocabulary(VocabularyName="nonexistent-vocab-xyz")
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_vocabulary_nonexistent(self, transcribe):
+        """DeleteVocabulary for nonexistent vocabulary raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            transcribe.delete_vocabulary(VocabularyName="nonexistent-vocab-xyz")
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_get_medical_transcription_job_nonexistent(self, transcribe):
+        """GetMedicalTranscriptionJob for nonexistent job raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            transcribe.get_medical_transcription_job(
+                MedicalTranscriptionJobName="nonexistent-job-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_get_medical_vocabulary_nonexistent(self, transcribe):
+        """GetMedicalVocabulary for nonexistent vocab raises BadRequestException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            transcribe.get_medical_vocabulary(VocabularyName="nonexistent-vocab-xyz")
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+
 class TestTranscribeAutoCoverage:
     """Auto-generated coverage tests for transcribe."""
 
