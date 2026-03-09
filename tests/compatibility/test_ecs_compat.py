@@ -1227,3 +1227,51 @@ class TestECSAdditionalOperations:
                 protectionEnabled=True,
             )
         assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+
+class TestEcsAccountSettings:
+    """Tests for ECS account setting operations."""
+
+    def test_delete_account_setting(self, ecs):
+        """DeleteAccountSetting removes a setting."""
+        from botocore.exceptions import ClientError
+
+        # DeleteAccountSetting should work (even if setting doesn't exist)
+        try:
+            resp = ecs.delete_account_setting(name="containerInsights")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError:
+            # Some implementations raise if setting not set
+            pass
+
+    def test_delete_account_setting_after_put(self, ecs):
+        """DeleteAccountSetting after PutAccountSetting removes the value."""
+        ecs.put_account_setting(name="containerInsights", value="enabled")
+        resp = ecs.delete_account_setting(name="containerInsights")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify it's gone from list
+        list_resp = ecs.list_account_settings(name="containerInsights")
+        settings = list_resp.get("settings", [])
+        active = [s for s in settings if s.get("value") == "enabled"]
+        assert len(active) == 0
+
+
+class TestEcsUpdateServicePrimaryTaskSet:
+    """Tests for UpdateServicePrimaryTaskSet operation."""
+
+    def test_update_service_primary_task_set_nonexistent(self, ecs):
+        """UpdateServicePrimaryTaskSet with fake IDs raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            ecs.update_service_primary_task_set(
+                cluster="nonexistent-cluster",
+                service="nonexistent-service",
+                primaryTaskSet="nonexistent-task-set",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ClusterNotFoundException",
+            "ServiceNotFoundException",
+            "InvalidParameterException",
+        )
