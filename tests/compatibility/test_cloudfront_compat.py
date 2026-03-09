@@ -1153,3 +1153,447 @@ class TestCloudFrontContinuousDeployment:
         with pytest.raises(cf.exceptions.ClientError) as exc_info:
             cf.get_continuous_deployment_policy_config(Id="ECDP123")
         assert exc_info.value.response["Error"]["Code"] == "NoSuchContinuousDeploymentPolicy"
+
+
+class TestCloudFrontAssociateAlias:
+    """Tests for AssociateAlias operation."""
+
+    def test_associate_alias(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("alias-test"))
+        dist_id = resp["Distribution"]["Id"]
+
+        alias_resp = cf.associate_alias(
+            TargetDistributionId=dist_id, Alias="alias-test.example.com"
+        )
+        assert alias_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontStreamingDistributionCRUD:
+    """Tests for streaming distribution create/update/delete."""
+
+    def _streaming_config(self, comment="test streaming"):
+        return {
+            "CallerReference": str(uuid.uuid4()),
+            "S3Origin": {
+                "DomainName": "mybucket.s3.amazonaws.com",
+                "OriginAccessIdentity": "",
+            },
+            "Comment": comment,
+            "TrustedSigners": {"Enabled": False, "Quantity": 0},
+            "Enabled": True,
+        }
+
+    def test_create_streaming_distribution(self, cf):
+        resp = cf.create_streaming_distribution(
+            StreamingDistributionConfig=self._streaming_config("create-sd")
+        )
+        sd = resp["StreamingDistribution"]
+        assert "Id" in sd
+        assert sd["StreamingDistributionConfig"]["Comment"] == "create-sd"
+
+    def test_update_streaming_distribution(self, cf):
+        config = self._streaming_config("update-sd")
+        resp = cf.create_streaming_distribution(StreamingDistributionConfig=config)
+        sd_id = resp["StreamingDistribution"]["Id"]
+        etag = resp["ETag"]
+        caller_ref = resp["StreamingDistribution"]["StreamingDistributionConfig"]["CallerReference"]
+
+        updated_config = self._streaming_config("updated-sd")
+        updated_config["CallerReference"] = caller_ref
+        updated_config["Enabled"] = False
+        update_resp = cf.update_streaming_distribution(
+            Id=sd_id, IfMatch=etag, StreamingDistributionConfig=updated_config
+        )
+        assert (
+            update_resp["StreamingDistribution"]["StreamingDistributionConfig"]["Comment"]
+            == "updated-sd"
+        )
+        assert "ETag" in update_resp
+
+    def test_delete_streaming_distribution(self, cf):
+        config = self._streaming_config("delete-sd")
+        resp = cf.create_streaming_distribution(StreamingDistributionConfig=config)
+        sd_id = resp["StreamingDistribution"]["Id"]
+        etag = resp["ETag"]
+        caller_ref = resp["StreamingDistribution"]["StreamingDistributionConfig"]["CallerReference"]
+
+        # Disable before deleting
+        disabled_config = self._streaming_config("delete-sd")
+        disabled_config["CallerReference"] = caller_ref
+        disabled_config["Enabled"] = False
+        update_resp = cf.update_streaming_distribution(
+            Id=sd_id, IfMatch=etag, StreamingDistributionConfig=disabled_config
+        )
+        new_etag = update_resp["ETag"]
+
+        del_resp = cf.delete_streaming_distribution(Id=sd_id, IfMatch=new_etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontMonitoringSubscriptionCRUD:
+    """Tests for monitoring subscription create/delete."""
+
+    def test_create_monitoring_subscription(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("mon-sub-test"))
+        dist_id = resp["Distribution"]["Id"]
+
+        mon_resp = cf.create_monitoring_subscription(
+            DistributionId=dist_id,
+            MonitoringSubscription={
+                "RealtimeMetricsSubscriptionConfig": {
+                    "RealtimeMetricsSubscriptionStatus": "Enabled"
+                }
+            },
+        )
+        config = mon_resp["MonitoringSubscription"]["RealtimeMetricsSubscriptionConfig"]
+        assert config["RealtimeMetricsSubscriptionStatus"] == "Enabled"
+
+    def test_delete_monitoring_subscription(self, cf):
+        resp = cf.create_distribution(DistributionConfig=_dist_config("del-mon-sub"))
+        dist_id = resp["Distribution"]["Id"]
+
+        cf.create_monitoring_subscription(
+            DistributionId=dist_id,
+            MonitoringSubscription={
+                "RealtimeMetricsSubscriptionConfig": {
+                    "RealtimeMetricsSubscriptionStatus": "Enabled"
+                }
+            },
+        )
+
+        del_resp = cf.delete_monitoring_subscription(DistributionId=dist_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontTestFunction:
+    """Tests for TestFunction operation."""
+
+    def test_test_function(self, cf):
+        name = _unique("testfn")
+        create_resp = cf.create_function(
+            Name=name,
+            FunctionConfig={"Comment": "test fn", "Runtime": "cloudfront-js-2.0"},
+            FunctionCode=b"function handler(event) { return event.request; }",
+        )
+        etag = create_resp["ETag"]
+
+        event_object = (
+            b'{"version":"1.0","context":{"eventType":"viewer-request"},'
+            b'"viewer":{"ip":"1.2.3.4"},'
+            b'"request":{"method":"GET","uri":"/","headers":{},"cookies":{},"querystring":{}}}'
+        )
+
+        test_resp = cf.test_function(Name=name, IfMatch=etag, EventObject=event_object)
+        assert "TestResult" in test_resp
+        assert "FunctionSummary" in test_resp["TestResult"]
+        assert "FunctionOutput" in test_resp["TestResult"]
+
+        cf.delete_function(Name=name, IfMatch=etag)
+
+
+class TestCloudFrontOriginAccessIdentityCRUD:
+    """Tests for OAI update and delete operations."""
+
+    def _create_oai(self, cf):
+        ref = str(uuid.uuid4())
+        resp = cf.create_cloud_front_origin_access_identity(
+            CloudFrontOriginAccessIdentityConfig={
+                "CallerReference": ref,
+                "Comment": "test oai crud",
+            }
+        )
+        oai_id = resp["CloudFrontOriginAccessIdentity"]["Id"]
+        etag = resp["ETag"]
+        return oai_id, ref, etag
+
+    def test_update_cloud_front_origin_access_identity(self, cf):
+        oai_id, ref, etag = self._create_oai(cf)
+
+        resp = cf.update_cloud_front_origin_access_identity(
+            Id=oai_id,
+            IfMatch=etag,
+            CloudFrontOriginAccessIdentityConfig={
+                "CallerReference": ref,
+                "Comment": "updated oai",
+            },
+        )
+        config = resp["CloudFrontOriginAccessIdentity"]["CloudFrontOriginAccessIdentityConfig"]
+        assert config["Comment"] == "updated oai"
+        assert "ETag" in resp
+
+    def test_delete_cloud_front_origin_access_identity(self, cf):
+        oai_id, ref, etag = self._create_oai(cf)
+
+        del_resp = cf.delete_cloud_front_origin_access_identity(Id=oai_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+        # Verify deleted
+        listed = cf.list_cloud_front_origin_access_identities()
+        items = listed["CloudFrontOriginAccessIdentityList"].get("Items", [])
+        ids = [item["Id"] for item in items] if items else []
+        assert oai_id not in ids
+
+
+class TestCloudFrontContinuousDeploymentCRUD:
+    """Tests for continuous deployment policy create/delete."""
+
+    def _create_cdp(self, cf):
+        resp = cf.create_continuous_deployment_policy(
+            ContinuousDeploymentPolicyConfig={
+                "StagingDistributionDnsNames": {
+                    "Quantity": 1,
+                    "Items": [f"staging-{uuid.uuid4().hex[:8]}.example.com"],
+                },
+                "Enabled": True,
+                "TrafficConfig": {
+                    "Type": "SingleWeight",
+                    "SingleWeightConfig": {"Weight": 0.1},
+                },
+            }
+        )
+        cdp_id = resp["ContinuousDeploymentPolicy"]["Id"]
+        etag = resp["ETag"]
+        return cdp_id, etag
+
+    def test_create_continuous_deployment_policy(self, cf):
+        cdp_id, etag = self._create_cdp(cf)
+        assert cdp_id is not None
+
+        get_resp = cf.get_continuous_deployment_policy(Id=cdp_id)
+        assert get_resp["ContinuousDeploymentPolicy"]["Id"] == cdp_id
+
+    def test_delete_continuous_deployment_policy(self, cf):
+        cdp_id, etag = self._create_cdp(cf)
+
+        # Re-fetch to get fresh etag
+        get_resp = cf.get_continuous_deployment_policy(Id=cdp_id)
+        fresh_etag = get_resp["ETag"]
+
+        del_resp = cf.delete_continuous_deployment_policy(Id=cdp_id, IfMatch=fresh_etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontFieldLevelEncryptionCRUD:
+    """Tests for field-level encryption config and profile create/update/delete."""
+
+    def _create_flep(self, cf):
+        """Create a field level encryption profile (requires a public key)."""
+        pub_pem = _generate_public_key_pem()
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": _unique("pk"),
+                "EncodedKey": pub_pem,
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+
+        flep_name = _unique("flep")
+        caller_ref = str(uuid.uuid4())
+        resp = cf.create_field_level_encryption_profile(
+            FieldLevelEncryptionProfileConfig={
+                "Name": flep_name,
+                "CallerReference": caller_ref,
+                "Comment": "test flep",
+                "EncryptionEntities": {
+                    "Quantity": 1,
+                    "Items": [
+                        {
+                            "PublicKeyId": pk_id,
+                            "ProviderId": "test-provider",
+                            "FieldPatterns": {"Quantity": 1, "Items": ["CreditCard"]},
+                        }
+                    ],
+                },
+            }
+        )
+        flep_id = resp["FieldLevelEncryptionProfile"]["Id"]
+        etag = resp["ETag"]
+        return flep_id, flep_name, caller_ref, pk_id, etag
+
+    def _create_fle(self, cf, flep_id):
+        """Create a field level encryption config using a profile."""
+        caller_ref = str(uuid.uuid4())
+        resp = cf.create_field_level_encryption_config(
+            FieldLevelEncryptionConfig={
+                "CallerReference": caller_ref,
+                "Comment": "test fle",
+                "QueryArgProfileConfig": {
+                    "ForwardWhenQueryArgProfileIsUnknown": True,
+                    "QueryArgProfiles": {"Quantity": 0},
+                },
+                "ContentTypeProfileConfig": {
+                    "ForwardWhenContentTypeIsUnknown": True,
+                    "ContentTypeProfiles": {
+                        "Quantity": 1,
+                        "Items": [
+                            {
+                                "Format": "URLEncoded",
+                                "ProfileId": flep_id,
+                                "ContentType": "application/x-www-form-urlencoded",
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        fle_id = resp["FieldLevelEncryption"]["Id"]
+        etag = resp["ETag"]
+        return fle_id, caller_ref, etag
+
+    def test_create_field_level_encryption_profile(self, cf):
+        flep_id, flep_name, _, pk_id, _ = self._create_flep(cf)
+        assert flep_id is not None
+
+        get_resp = cf.get_field_level_encryption_profile(Id=flep_id)
+        config = get_resp["FieldLevelEncryptionProfile"]["FieldLevelEncryptionProfileConfig"]
+        assert config["Name"] == flep_name
+
+    def test_update_field_level_encryption_profile(self, cf):
+        flep_id, flep_name, caller_ref, pk_id, etag = self._create_flep(cf)
+
+        resp = cf.update_field_level_encryption_profile(
+            Id=flep_id,
+            IfMatch=etag,
+            FieldLevelEncryptionProfileConfig={
+                "Name": flep_name,
+                "CallerReference": caller_ref,
+                "Comment": "updated flep",
+                "EncryptionEntities": {
+                    "Quantity": 1,
+                    "Items": [
+                        {
+                            "PublicKeyId": pk_id,
+                            "ProviderId": "test-provider",
+                            "FieldPatterns": {"Quantity": 1, "Items": ["CreditCard"]},
+                        }
+                    ],
+                },
+            },
+        )
+        config = resp["FieldLevelEncryptionProfile"]["FieldLevelEncryptionProfileConfig"]
+        assert config["Comment"] == "updated flep"
+        assert "ETag" in resp
+
+    def test_delete_field_level_encryption_profile(self, cf):
+        flep_id, _, _, _, _ = self._create_flep(cf)
+
+        get_resp = cf.get_field_level_encryption_profile(Id=flep_id)
+        etag = get_resp["ETag"]
+
+        del_resp = cf.delete_field_level_encryption_profile(Id=flep_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_create_field_level_encryption_config(self, cf):
+        flep_id, _, _, _, _ = self._create_flep(cf)
+        fle_id, _, _ = self._create_fle(cf, flep_id)
+        assert fle_id is not None
+
+        get_resp = cf.get_field_level_encryption(Id=fle_id)
+        assert get_resp["FieldLevelEncryption"]["Id"] == fle_id
+
+    def test_update_field_level_encryption_config(self, cf):
+        flep_id, _, _, _, _ = self._create_flep(cf)
+        fle_id, caller_ref, etag = self._create_fle(cf, flep_id)
+
+        resp = cf.update_field_level_encryption_config(
+            Id=fle_id,
+            IfMatch=etag,
+            FieldLevelEncryptionConfig={
+                "CallerReference": caller_ref,
+                "Comment": "updated fle",
+                "QueryArgProfileConfig": {
+                    "ForwardWhenQueryArgProfileIsUnknown": True,
+                    "QueryArgProfiles": {"Quantity": 0},
+                },
+                "ContentTypeProfileConfig": {
+                    "ForwardWhenContentTypeIsUnknown": True,
+                    "ContentTypeProfiles": {
+                        "Quantity": 1,
+                        "Items": [
+                            {
+                                "Format": "URLEncoded",
+                                "ProfileId": flep_id,
+                                "ContentType": "application/x-www-form-urlencoded",
+                            }
+                        ],
+                    },
+                },
+            },
+        )
+        config = resp["FieldLevelEncryption"]["FieldLevelEncryptionConfig"]
+        assert config["Comment"] == "updated fle"
+        assert "ETag" in resp
+
+    def test_delete_field_level_encryption_config(self, cf):
+        flep_id, _, _, _, _ = self._create_flep(cf)
+        fle_id, _, etag = self._create_fle(cf, flep_id)
+
+        del_resp = cf.delete_field_level_encryption_config(Id=fle_id, IfMatch=etag)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontUpdatePublicKey:
+    """Tests for UpdatePublicKey operation."""
+
+    def test_update_public_key(self, cf):
+        pub_pem = _generate_public_key_pem()
+        name = _unique("pk")
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": name,
+                "EncodedKey": pub_pem,
+                "Comment": "original",
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+        etag = pk_resp["ETag"]
+        caller_ref = pk_resp["PublicKey"]["PublicKeyConfig"]["CallerReference"]
+
+        update_resp = cf.update_public_key(
+            Id=pk_id,
+            IfMatch=etag,
+            PublicKeyConfig={
+                "CallerReference": caller_ref,
+                "Name": name,
+                "EncodedKey": pub_pem,
+                "Comment": "updated-pk",
+            },
+        )
+        assert update_resp["PublicKey"]["Id"] == pk_id
+        assert "ETag" in update_resp
+        assert update_resp["PublicKey"]["PublicKeyConfig"]["Name"] == name
+
+
+class TestCloudFrontUpdateOriginRequestPolicy:
+    """Tests for UpdateOriginRequestPolicy operation."""
+
+    def test_update_origin_request_policy(self, cf):
+        name = _unique("orp")
+        create_resp = cf.create_origin_request_policy(
+            OriginRequestPolicyConfig={
+                "Name": name,
+                "Comment": "original",
+                "HeadersConfig": {"HeaderBehavior": "none"},
+                "CookiesConfig": {"CookieBehavior": "none"},
+                "QueryStringsConfig": {"QueryStringBehavior": "none"},
+            }
+        )
+        policy_id = create_resp["OriginRequestPolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        update_resp = cf.update_origin_request_policy(
+            Id=policy_id,
+            IfMatch=etag,
+            OriginRequestPolicyConfig={
+                "Name": name,
+                "Comment": "updated",
+                "HeadersConfig": {"HeaderBehavior": "none"},
+                "CookiesConfig": {"CookieBehavior": "none"},
+                "QueryStringsConfig": {"QueryStringBehavior": "none"},
+            },
+        )
+        config = update_resp["OriginRequestPolicy"]["OriginRequestPolicyConfig"]
+        assert config["Comment"] == "updated"
+        assert "ETag" in update_resp
