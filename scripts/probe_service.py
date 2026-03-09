@@ -260,11 +260,11 @@ def probe_operation(
         if status_code == 501:
             return "not_implemented", "not implemented (501)"
 
-        if "not implemented" in msg.lower() or "unknown" in msg.lower():
+        if msg and ("not implemented" in msg.lower() or "unknown" in msg.lower()):
             return "not_implemented", f"not implemented ({code})"
 
         # Other 4xx errors generally mean it IS implemented
-        return "working", f"likely implemented ({code}: {msg[:60]})"
+        return "working", f"likely implemented ({code}: {(msg or '')[:60]})"
 
     except botocore.exceptions.ParamValidationError:
         return "needs_params", "client-side validation (never contacted server)"
