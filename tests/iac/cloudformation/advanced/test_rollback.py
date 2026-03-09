@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -33,6 +35,21 @@ Resources:
 """
 
 
+def _wait_for_terminal_state(client, stack_name, timeout=60):
+    """Poll until stack reaches a terminal failure state."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            resp = client.describe_stacks(StackName=stack_name)
+            status = resp["Stacks"][0]["StackStatus"]
+            if status.endswith("_COMPLETE") or status.endswith("_FAILED"):
+                return status
+        except ClientError:
+            return "DELETE_COMPLETE"
+        time.sleep(1)
+    raise TimeoutError(f"Stack {stack_name} did not reach terminal state in {timeout}s")
+
+
 @pytest.fixture(scope="module")
 def cfn(ensure_server):
     client = make_client("cloudformation")
@@ -53,22 +70,7 @@ class TestRollback:
                 Capabilities=["CAPABILITY_IAM"],
             )
 
-            # Wait for the stack to settle into a terminal state
-            import time
-
-            deadline = time.monotonic() + 60
-            status = None
-            while time.monotonic() < deadline:
-                try:
-                    resp = client.describe_stacks(StackName=stack_name)
-                    status = resp["Stacks"][0]["StackStatus"]
-                    if status in ("ROLLBACK_COMPLETE", "CREATE_FAILED", "DELETE_COMPLETE"):
-                        break
-                except ClientError:
-                    # Stack may have been deleted
-                    status = "DELETE_COMPLETE"
-                    break
-                time.sleep(2)
+            status = _wait_for_terminal_state(client, stack_name)
 
             assert status in ("ROLLBACK_COMPLETE", "CREATE_FAILED"), (
                 f"Expected rollback state, got {status}"
@@ -90,20 +92,7 @@ class TestRollback:
                 Capabilities=["CAPABILITY_IAM"],
             )
 
-            import time
-
-            deadline = time.monotonic() + 60
-            status = None
-            while time.monotonic() < deadline:
-                try:
-                    resp = client.describe_stacks(StackName=stack_name)
-                    status = resp["Stacks"][0]["StackStatus"]
-                    if status in ("ROLLBACK_COMPLETE", "CREATE_FAILED", "DELETE_COMPLETE"):
-                        break
-                except ClientError:
-                    status = "DELETE_COMPLETE"
-                    break
-                time.sleep(2)
+            status = _wait_for_terminal_state(client, stack_name)
 
             assert status in ("ROLLBACK_COMPLETE", "CREATE_FAILED"), (
                 f"Expected failure state, got {status}"
