@@ -2289,3 +2289,139 @@ class TestRedshiftAdditionalOps:
         resp = redshift.get_identity_center_auth_token(ClusterIds=["fake-cluster"])
         assert "Token" in resp
         assert "ExpirationTime" in resp
+
+
+class TestRedshiftHsmOps:
+    """Tests for Redshift HSM client certificate and configuration operations."""
+
+    def test_create_and_delete_hsm_client_certificate(self, redshift):
+        """CreateHsmClientCertificate creates cert, DeleteHsmClientCertificate removes it."""
+        cert_id = f"hsm-cert-{_uid()}"
+        create_resp = redshift.create_hsm_client_certificate(
+            HsmClientCertificateIdentifier=cert_id,
+        )
+        cert = create_resp["HsmClientCertificate"]
+        assert cert["HsmClientCertificateIdentifier"] == cert_id
+        assert "HsmClientCertificatePublicKey" in cert
+
+        del_resp = redshift.delete_hsm_client_certificate(
+            HsmClientCertificateIdentifier=cert_id,
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_and_delete_hsm_configuration(self, redshift):
+        """CreateHsmConfiguration creates config, DeleteHsmConfiguration removes it."""
+        config_id = f"hsm-cfg-{_uid()}"
+        create_resp = redshift.create_hsm_configuration(
+            HsmConfigurationIdentifier=config_id,
+            Description="Test HSM config",
+            HsmIpAddress="10.0.0.1",
+            HsmPartitionName="test-partition",
+            HsmPartitionPassword="P@ssw0rd!",
+            HsmServerPublicCertificate="MIIBogIBAAJBALR...",
+        )
+        cfg = create_resp["HsmConfiguration"]
+        assert cfg["HsmConfigurationIdentifier"] == config_id
+        assert cfg["Description"] == "Test HSM config"
+
+        del_resp = redshift.delete_hsm_configuration(
+            HsmConfigurationIdentifier=config_id,
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestRedshiftEventSubscriptionOps:
+    """Tests for Redshift event subscription operations."""
+
+    def test_create_modify_delete_event_subscription(self, redshift):
+        """Create, modify, and delete an event subscription."""
+        sub_name = f"evt-sub-{_uid()}"
+        sns_arn = "arn:aws:sns:us-east-1:123456789012:test-topic"
+
+        create_resp = redshift.create_event_subscription(
+            SubscriptionName=sub_name,
+            SnsTopicArn=sns_arn,
+        )
+        sub = create_resp["EventSubscription"]
+        assert sub["CustSubscriptionId"] == sub_name
+        assert sub["SnsTopicArn"] == sns_arn
+
+        mod_resp = redshift.modify_event_subscription(
+            SubscriptionName=sub_name,
+            Severity="ERROR",
+        )
+        assert mod_resp["EventSubscription"]["CustSubscriptionId"] == sub_name
+
+        del_resp = redshift.delete_event_subscription(
+            SubscriptionName=sub_name,
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestRedshiftResourcePolicyOps:
+    """Tests for Redshift resource policy operations."""
+
+    def test_get_resource_policy_nonexistent(self, redshift):
+        """GetResourcePolicy with no policy raises ResourceNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            redshift.get_resource_policy(
+                ResourceArn="arn:aws:redshift:us-east-1:123456789012:cluster:fake"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_put_and_delete_resource_policy(self, redshift):
+        """PutResourcePolicy sets a policy, DeleteResourcePolicy removes it."""
+        resource_arn = "arn:aws:redshift:us-east-1:123456789012:namespace:test-ns"
+        policy = (
+            '{"Version":"2012-10-17","Statement":'
+            '[{"Effect":"Allow","Principal":{"AWS":"123456789012"},'
+            '"Action":"redshift:GetClusterCredentials",'
+            '"Resource":"*"}]}'
+        )
+        put_resp = redshift.put_resource_policy(
+            ResourceArn=resource_arn,
+            Policy=policy,
+        )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ResourcePolicy" in put_resp
+
+        del_resp = redshift.delete_resource_policy(ResourceArn=resource_arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestRedshiftPartnerOps:
+    """Tests for Redshift partner operations."""
+
+    def test_add_partner_cluster_not_found(self, redshift):
+        """AddPartner with nonexistent cluster raises ClusterNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.add_partner(
+                AccountId="123456789012",
+                ClusterIdentifier="nonexistent-cluster",
+                DatabaseName="dev",
+                PartnerName="test-partner",
+            )
+        assert "ClusterNotFound" in exc.value.response["Error"]["Code"]
+
+    def test_delete_partner_not_found(self, redshift):
+        """DeletePartner with nonexistent partner raises PartnerNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.delete_partner(
+                AccountId="123456789012",
+                ClusterIdentifier="nonexistent-cluster",
+                DatabaseName="dev",
+                PartnerName="test-partner",
+            )
+        assert exc.value.response["Error"]["Code"] == "PartnerNotFound"
+
+    def test_update_partner_status_not_found(self, redshift):
+        """UpdatePartnerStatus with nonexistent partner raises PartnerNotFound."""
+        with pytest.raises(ClientError) as exc:
+            redshift.update_partner_status(
+                AccountId="123456789012",
+                ClusterIdentifier="nonexistent-cluster",
+                DatabaseName="dev",
+                PartnerName="test-partner",
+                Status="Active",
+            )
+        assert exc.value.response["Error"]["Code"] == "PartnerNotFound"
