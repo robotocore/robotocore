@@ -7922,3 +7922,642 @@ class TestEC2SpotComputeOps:
             assert len(filtered["SpotInstanceRequests"]) >= 1
         finally:
             ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+
+class TestEC2TrafficMirrorFilterRuleCRUD:
+    """Tests for TrafficMirrorFilterRule create/delete lifecycle."""
+
+    def test_create_traffic_mirror_filter_rule(self, ec2):
+        """CreateTrafficMirrorFilterRule creates an ingress rule."""
+        f = ec2.create_traffic_mirror_filter(Description="tmfr-test")
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        try:
+            resp = ec2.create_traffic_mirror_filter_rule(
+                TrafficMirrorFilterId=fid,
+                TrafficDirection="ingress",
+                RuleNumber=1,
+                RuleAction="accept",
+                DestinationCidrBlock="0.0.0.0/0",
+                SourceCidrBlock="0.0.0.0/0",
+            )
+            rule = resp["TrafficMirrorFilterRule"]
+            assert rule["TrafficMirrorFilterRuleId"].startswith("tmfr-")
+            assert rule["TrafficDirection"] == "ingress"
+            assert rule["RuleAction"] == "accept"
+            assert rule["RuleNumber"] == 1
+            ec2.delete_traffic_mirror_filter_rule(
+                TrafficMirrorFilterRuleId=rule["TrafficMirrorFilterRuleId"]
+            )
+        finally:
+            ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=fid)
+
+    def test_create_egress_traffic_mirror_filter_rule(self, ec2):
+        """CreateTrafficMirrorFilterRule creates an egress rule."""
+        f = ec2.create_traffic_mirror_filter(Description="tmfr-egress")
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        try:
+            resp = ec2.create_traffic_mirror_filter_rule(
+                TrafficMirrorFilterId=fid,
+                TrafficDirection="egress",
+                RuleNumber=2,
+                RuleAction="reject",
+                DestinationCidrBlock="10.0.0.0/8",
+                SourceCidrBlock="192.168.0.0/16",
+            )
+            rule = resp["TrafficMirrorFilterRule"]
+            assert rule["TrafficDirection"] == "egress"
+            assert rule["RuleAction"] == "reject"
+            assert rule["DestinationCidrBlock"] == "10.0.0.0/8"
+            assert rule["SourceCidrBlock"] == "192.168.0.0/16"
+            ec2.delete_traffic_mirror_filter_rule(
+                TrafficMirrorFilterRuleId=rule["TrafficMirrorFilterRuleId"]
+            )
+        finally:
+            ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=fid)
+
+    def test_delete_traffic_mirror_filter_rule(self, ec2):
+        """DeleteTrafficMirrorFilterRule removes a rule."""
+        f = ec2.create_traffic_mirror_filter(Description="tmfr-del")
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        try:
+            resp = ec2.create_traffic_mirror_filter_rule(
+                TrafficMirrorFilterId=fid,
+                TrafficDirection="ingress",
+                RuleNumber=1,
+                RuleAction="accept",
+                DestinationCidrBlock="0.0.0.0/0",
+                SourceCidrBlock="0.0.0.0/0",
+            )
+            rule_id = resp["TrafficMirrorFilterRule"]["TrafficMirrorFilterRuleId"]
+            del_resp = ec2.delete_traffic_mirror_filter_rule(TrafficMirrorFilterRuleId=rule_id)
+            assert del_resp["TrafficMirrorFilterRuleId"] == rule_id
+        finally:
+            ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=fid)
+
+    def test_create_traffic_mirror_filter_rule_with_protocol(self, ec2):
+        """CreateTrafficMirrorFilterRule with protocol filter."""
+        f = ec2.create_traffic_mirror_filter(Description="tmfr-proto")
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        try:
+            resp = ec2.create_traffic_mirror_filter_rule(
+                TrafficMirrorFilterId=fid,
+                TrafficDirection="ingress",
+                RuleNumber=10,
+                RuleAction="accept",
+                DestinationCidrBlock="0.0.0.0/0",
+                SourceCidrBlock="0.0.0.0/0",
+                Protocol=6,  # TCP
+            )
+            rule = resp["TrafficMirrorFilterRule"]
+            assert rule["Protocol"] == 6
+            ec2.delete_traffic_mirror_filter_rule(
+                TrafficMirrorFilterRuleId=rule["TrafficMirrorFilterRuleId"]
+            )
+        finally:
+            ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=fid)
+
+
+class TestEC2IpamScopeLifecycle:
+    """Tests for IPAM Scope create/describe/delete."""
+
+    def test_create_ipam_scope(self, ec2):
+        """CreateIpamScope creates a custom scope in an IPAM."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            resp = ec2.create_ipam_scope(IpamId=ipam_id, Description="test-scope")
+            scope = resp["IpamScope"]
+            assert scope["IpamScopeId"].startswith("ipam-scope-")
+            assert scope["Description"] == "test-scope"
+            assert scope["IpamScopeType"] == "private"
+            ec2.delete_ipam_scope(IpamScopeId=scope["IpamScopeId"])
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_create_and_delete_ipam_scope(self, ec2):
+        """DeleteIpamScope removes a custom scope."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            scope = ec2.create_ipam_scope(IpamId=ipam_id, Description="del-scope")
+            scope_id = scope["IpamScope"]["IpamScopeId"]
+            ec2.delete_ipam_scope(IpamScopeId=scope_id)
+            # Verify scope is gone from filtered describe
+            scopes = ec2.describe_ipam_scopes(
+                Filters=[{"Name": "ipam-scope-id", "Values": [scope_id]}]
+            )
+            # Should be empty or in deleting state
+            active = [
+                s["IpamScopeId"]
+                for s in scopes["IpamScopes"]
+                if s.get("State") == "create-complete"
+            ]
+            assert scope_id not in active
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_describe_ipam_scopes_includes_defaults(self, ec2):
+        """DescribeIpamScopes includes default public/private scopes from IPAM."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            scopes = ec2.describe_ipam_scopes(Filters=[{"Name": "ipam-id", "Values": [ipam_id]}])
+            scope_types = {s["IpamScopeType"] for s in scopes["IpamScopes"]}
+            assert "private" in scope_types
+            assert "public" in scope_types
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_ipam_scope_has_ipam_arn(self, ec2):
+        """Created IPAM scope has IpamArn field."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            scope = ec2.create_ipam_scope(IpamId=ipam_id)
+            assert "IpamArn" in scope["IpamScope"]
+            assert scope["IpamScope"]["IpamArn"].startswith("arn:aws:ec2:")
+            ec2.delete_ipam_scope(IpamScopeId=scope["IpamScope"]["IpamScopeId"])
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2IpamPoolModifyDelete:
+    """Tests for IPAM Pool modify/delete operations."""
+
+    def test_modify_ipam_pool_description(self, ec2):
+        """ModifyIpamPool updates pool description."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            scopes = ec2.describe_ipam_scopes(
+                Filters=[
+                    {"Name": "ipam-id", "Values": [ipam_id]},
+                    {"Name": "ipam-scope-type", "Values": ["private"]},
+                ]
+            )
+            scope_id = scopes["IpamScopes"][0]["IpamScopeId"]
+            pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+            pool_id = pool["IpamPool"]["IpamPoolId"]
+            try:
+                mod = ec2.modify_ipam_pool(IpamPoolId=pool_id, Description="updated-desc")
+                assert mod["IpamPool"]["Description"] == "updated-desc"
+            finally:
+                ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_delete_ipam_pool(self, ec2):
+        """DeleteIpamPool removes an IPAM pool."""
+        ipam = ec2.create_ipam(OperatingRegions=[{"RegionName": "us-east-1"}])
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            scopes = ec2.describe_ipam_scopes(
+                Filters=[
+                    {"Name": "ipam-id", "Values": [ipam_id]},
+                    {"Name": "ipam-scope-type", "Values": ["private"]},
+                ]
+            )
+            scope_id = scopes["IpamScopes"][0]["IpamScopeId"]
+            pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+            pool_id = pool["IpamPool"]["IpamPoolId"]
+            del_resp = ec2.delete_ipam_pool(IpamPoolId=pool_id)
+            assert del_resp["IpamPool"]["IpamPoolId"] == pool_id
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2CapacityReservationFleetLifecycle:
+    """Tests for Capacity Reservation Fleet create/modify/cancel."""
+
+    def test_create_capacity_reservation_fleet(self, ec2):
+        """CreateCapacityReservationFleet creates a fleet."""
+        resp = ec2.create_capacity_reservation_fleet(
+            InstanceTypeSpecifications=[
+                {
+                    "InstanceType": "t2.micro",
+                    "InstancePlatform": "Linux/UNIX",
+                    "Weight": 1.0,
+                }
+            ],
+            TotalTargetCapacity=1,
+        )
+        assert resp["CapacityReservationFleetId"].startswith("crf-")
+        assert resp["TotalTargetCapacity"] == 1
+        fleet_id = resp["CapacityReservationFleetId"]
+        ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+
+    def test_describe_capacity_reservation_fleet_by_id(self, ec2):
+        """DescribeCapacityReservationFleets returns fleet by ID."""
+        resp = ec2.create_capacity_reservation_fleet(
+            InstanceTypeSpecifications=[
+                {
+                    "InstanceType": "t2.micro",
+                    "InstancePlatform": "Linux/UNIX",
+                    "Weight": 1.0,
+                }
+            ],
+            TotalTargetCapacity=1,
+        )
+        fleet_id = resp["CapacityReservationFleetId"]
+        try:
+            desc = ec2.describe_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+            fleets = desc["CapacityReservationFleets"]
+            assert len(fleets) >= 1
+            fleet_ids = [f["CapacityReservationFleetId"] for f in fleets]
+            assert fleet_id in fleet_ids
+        finally:
+            ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+
+    def test_modify_capacity_reservation_fleet(self, ec2):
+        """ModifyCapacityReservationFleet updates target capacity."""
+        resp = ec2.create_capacity_reservation_fleet(
+            InstanceTypeSpecifications=[
+                {
+                    "InstanceType": "t2.micro",
+                    "InstancePlatform": "Linux/UNIX",
+                    "Weight": 1.0,
+                }
+            ],
+            TotalTargetCapacity=1,
+        )
+        fleet_id = resp["CapacityReservationFleetId"]
+        try:
+            mod = ec2.modify_capacity_reservation_fleet(
+                CapacityReservationFleetId=fleet_id,
+                TotalTargetCapacity=2,
+            )
+            assert mod["Return"] is True
+        finally:
+            ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+
+    def test_cancel_capacity_reservation_fleet(self, ec2):
+        """CancelCapacityReservationFleets cancels a fleet."""
+        resp = ec2.create_capacity_reservation_fleet(
+            InstanceTypeSpecifications=[
+                {
+                    "InstanceType": "t2.micro",
+                    "InstancePlatform": "Linux/UNIX",
+                    "Weight": 1.0,
+                }
+            ],
+            TotalTargetCapacity=1,
+        )
+        fleet_id = resp["CapacityReservationFleetId"]
+        cancel = ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+        assert "SuccessfulFleetCancellations" in cancel
+        assert "FailedFleetCancellations" in cancel
+
+    def test_capacity_reservation_fleet_has_state(self, ec2):
+        """Created fleet has State field."""
+        resp = ec2.create_capacity_reservation_fleet(
+            InstanceTypeSpecifications=[
+                {
+                    "InstanceType": "t2.micro",
+                    "InstancePlatform": "Linux/UNIX",
+                    "Weight": 1.0,
+                }
+            ],
+            TotalTargetCapacity=1,
+        )
+        fleet_id = resp["CapacityReservationFleetId"]
+        try:
+            assert resp["State"] == "active"
+        finally:
+            ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+
+
+class TestEC2ModifyCapacityReservation:
+    """Tests for ModifyCapacityReservation."""
+
+    def test_modify_capacity_reservation_instance_count(self, ec2):
+        """ModifyCapacityReservation updates instance count."""
+        cr = ec2.create_capacity_reservation(
+            InstanceType="t2.micro",
+            InstancePlatform="Linux/UNIX",
+            InstanceCount=1,
+            AvailabilityZone="us-east-1a",
+        )
+        cr_id = cr["CapacityReservation"]["CapacityReservationId"]
+        try:
+            mod = ec2.modify_capacity_reservation(CapacityReservationId=cr_id, InstanceCount=2)
+            assert mod["Return"] is True
+        finally:
+            ec2.cancel_capacity_reservation(CapacityReservationId=cr_id)
+
+    def test_modify_capacity_reservation_end_date_type(self, ec2):
+        """ModifyCapacityReservation can change end date type."""
+        cr = ec2.create_capacity_reservation(
+            InstanceType="t2.micro",
+            InstancePlatform="Linux/UNIX",
+            InstanceCount=1,
+            AvailabilityZone="us-east-1a",
+        )
+        cr_id = cr["CapacityReservation"]["CapacityReservationId"]
+        try:
+            mod = ec2.modify_capacity_reservation(
+                CapacityReservationId=cr_id, EndDateType="unlimited"
+            )
+            assert mod["Return"] is True
+        finally:
+            ec2.cancel_capacity_reservation(CapacityReservationId=cr_id)
+
+
+class TestEC2TransitGatewayPrefixListReference:
+    """Tests for TGW prefix list reference create/delete."""
+
+    def test_create_transit_gateway_prefix_list_reference(self, ec2):
+        """CreateTransitGatewayPrefixListReference creates a blackhole reference."""
+        tgw = ec2.create_transit_gateway(Description="plr-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rt = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rt_id = rt["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            try:
+                pl = ec2.create_managed_prefix_list(
+                    PrefixListName=_unique("plr"),
+                    MaxEntries=5,
+                    AddressFamily="IPv4",
+                )
+                pl_id = pl["PrefixList"]["PrefixListId"]
+                try:
+                    resp = ec2.create_transit_gateway_prefix_list_reference(
+                        TransitGatewayRouteTableId=rt_id,
+                        PrefixListId=pl_id,
+                        Blackhole=True,
+                    )
+                    ref = resp["TransitGatewayPrefixListReference"]
+                    assert ref["PrefixListId"] == pl_id
+                    assert ref["TransitGatewayRouteTableId"] == rt_id
+                    ec2.delete_transit_gateway_prefix_list_reference(
+                        TransitGatewayRouteTableId=rt_id, PrefixListId=pl_id
+                    )
+                finally:
+                    ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+            finally:
+                ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rt_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_delete_transit_gateway_prefix_list_reference(self, ec2):
+        """DeleteTransitGatewayPrefixListReference removes reference."""
+        tgw = ec2.create_transit_gateway(Description="plr-del")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rt = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rt_id = rt["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            try:
+                pl = ec2.create_managed_prefix_list(
+                    PrefixListName=_unique("plr-del"),
+                    MaxEntries=5,
+                    AddressFamily="IPv4",
+                )
+                pl_id = pl["PrefixList"]["PrefixListId"]
+                try:
+                    ec2.create_transit_gateway_prefix_list_reference(
+                        TransitGatewayRouteTableId=rt_id,
+                        PrefixListId=pl_id,
+                        Blackhole=True,
+                    )
+                    del_resp = ec2.delete_transit_gateway_prefix_list_reference(
+                        TransitGatewayRouteTableId=rt_id, PrefixListId=pl_id
+                    )
+                    assert "TransitGatewayPrefixListReference" in del_resp
+                finally:
+                    ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+            finally:
+                ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rt_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2AssignIpv6Addresses:
+    """Tests for assigning/unassigning IPv6 addresses."""
+
+    def test_assign_ipv6_addresses(self, ec2):
+        """AssignIpv6Addresses assigns an IPv6 address to an ENI."""
+        vpc = ec2.create_vpc(CidrBlock="10.87.0.0/16", AmazonProvidedIpv6CidrBlock=True)
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            desc = ec2.describe_vpcs(VpcIds=[vpc_id])
+            ipv6_assocs = desc["Vpcs"][0].get("Ipv6CidrBlockAssociationSet", [])
+            if not ipv6_assocs:
+                pytest.skip("VPC did not get IPv6 CIDR")
+            ipv6_cidr = ipv6_assocs[0]["Ipv6CidrBlock"]
+            parts = ipv6_cidr.split(":")
+            subnet_cidr = ":".join(parts[:4]) + "::/64"
+            sub = ec2.create_subnet(
+                VpcId=vpc_id,
+                CidrBlock="10.87.1.0/24",
+                Ipv6CidrBlock=subnet_cidr,
+            )
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id)
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    resp = ec2.assign_ipv6_addresses(NetworkInterfaceId=eni_id, Ipv6AddressCount=1)
+                    assert "AssignedIpv6Addresses" in resp
+                    assert len(resp["AssignedIpv6Addresses"]) == 1
+                    assert resp["NetworkInterfaceId"] == eni_id
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_assign_and_unassign_ipv6_addresses(self, ec2):
+        """AssignIpv6Addresses then UnassignIpv6Addresses round-trip."""
+        vpc = ec2.create_vpc(CidrBlock="10.86.0.0/16", AmazonProvidedIpv6CidrBlock=True)
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            desc = ec2.describe_vpcs(VpcIds=[vpc_id])
+            ipv6_assocs = desc["Vpcs"][0].get("Ipv6CidrBlockAssociationSet", [])
+            if not ipv6_assocs:
+                pytest.skip("VPC did not get IPv6 CIDR")
+            ipv6_cidr = ipv6_assocs[0]["Ipv6CidrBlock"]
+            parts = ipv6_cidr.split(":")
+            subnet_cidr = ":".join(parts[:4]) + "::/64"
+            sub = ec2.create_subnet(
+                VpcId=vpc_id,
+                CidrBlock="10.86.1.0/24",
+                Ipv6CidrBlock=subnet_cidr,
+            )
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id)
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    assign_resp = ec2.assign_ipv6_addresses(
+                        NetworkInterfaceId=eni_id, Ipv6AddressCount=1
+                    )
+                    addrs = assign_resp["AssignedIpv6Addresses"]
+                    unassign_resp = ec2.unassign_ipv6_addresses(
+                        NetworkInterfaceId=eni_id, Ipv6Addresses=addrs
+                    )
+                    assert unassign_resp["NetworkInterfaceId"] == eni_id
+                    assert len(unassign_resp["UnassignedIpv6Addresses"]) == 1
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2StartNetworkInsightsAnalysis:
+    """Tests for StartNetworkInsightsAnalysis."""
+
+    def test_start_network_insights_analysis(self, ec2):
+        """StartNetworkInsightsAnalysis launches analysis on a path."""
+        vpc = ec2.create_vpc(CidrBlock="10.85.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.85.1.0/24")
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                eni1 = ec2.create_network_interface(SubnetId=subnet_id)
+                eni2 = ec2.create_network_interface(SubnetId=subnet_id)
+                eni1_id = eni1["NetworkInterface"]["NetworkInterfaceId"]
+                eni2_id = eni2["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    path = ec2.create_network_insights_path(
+                        Source=eni1_id, Destination=eni2_id, Protocol="tcp"
+                    )
+                    path_id = path["NetworkInsightsPath"]["NetworkInsightsPathId"]
+                    try:
+                        analysis = ec2.start_network_insights_analysis(
+                            NetworkInsightsPathId=path_id
+                        )
+                        a = analysis["NetworkInsightsAnalysis"]
+                        assert a["NetworkInsightsAnalysisId"].startswith("nia-")
+                        assert a["NetworkInsightsPathId"] == path_id
+                        assert "Status" in a
+                    finally:
+                        ec2.delete_network_insights_path(NetworkInsightsPathId=path_id)
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni1_id)
+                    ec2.delete_network_interface(NetworkInterfaceId=eni2_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_network_insights_analyses_after_start(self, ec2):
+        """DescribeNetworkInsightsAnalyses returns started analysis."""
+        vpc = ec2.create_vpc(CidrBlock="10.84.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.84.1.0/24")
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                eni1 = ec2.create_network_interface(SubnetId=subnet_id)
+                eni2 = ec2.create_network_interface(SubnetId=subnet_id)
+                eni1_id = eni1["NetworkInterface"]["NetworkInterfaceId"]
+                eni2_id = eni2["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    path = ec2.create_network_insights_path(
+                        Source=eni1_id, Destination=eni2_id, Protocol="tcp"
+                    )
+                    path_id = path["NetworkInsightsPath"]["NetworkInsightsPathId"]
+                    try:
+                        analysis = ec2.start_network_insights_analysis(
+                            NetworkInsightsPathId=path_id
+                        )
+                        nia_id = analysis["NetworkInsightsAnalysis"]["NetworkInsightsAnalysisId"]
+                        desc = ec2.describe_network_insights_analyses(
+                            NetworkInsightsAnalysisIds=[nia_id]
+                        )
+                        assert len(desc["NetworkInsightsAnalyses"]) == 1
+                        assert (
+                            desc["NetworkInsightsAnalyses"][0]["NetworkInsightsAnalysisId"]
+                            == nia_id
+                        )
+                    finally:
+                        ec2.delete_network_insights_path(NetworkInsightsPathId=path_id)
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni1_id)
+                    ec2.delete_network_interface(NetworkInterfaceId=eni2_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2LocalGatewayRouteTableCRUD:
+    """Tests for local gateway route table create/describe/delete."""
+
+    def test_create_local_gateway_route_table_id_prefix(self, ec2):
+        """Created local gateway route table has lgw-rtb- prefix."""
+        resp = ec2.create_local_gateway_route_table(LocalGatewayId="lgw-00000000000000001")
+        rt_id = resp["LocalGatewayRouteTable"]["LocalGatewayRouteTableId"]
+        try:
+            assert rt_id.startswith("lgw-rtb-")
+        finally:
+            ec2.delete_local_gateway_route_table(LocalGatewayRouteTableId=rt_id)
+
+    def test_describe_local_gateway_route_tables_by_id(self, ec2):
+        """DescribeLocalGatewayRouteTables includes created table."""
+        resp = ec2.create_local_gateway_route_table(LocalGatewayId="lgw-00000000000000002")
+        rt_id = resp["LocalGatewayRouteTable"]["LocalGatewayRouteTableId"]
+        try:
+            desc = ec2.describe_local_gateway_route_tables(LocalGatewayRouteTableIds=[rt_id])
+            rt_ids = [t["LocalGatewayRouteTableId"] for t in desc["LocalGatewayRouteTables"]]
+            assert rt_id in rt_ids
+        finally:
+            ec2.delete_local_gateway_route_table(LocalGatewayRouteTableId=rt_id)
+
+    def test_delete_local_gateway_route_table(self, ec2):
+        """DeleteLocalGatewayRouteTable removes a route table."""
+        resp = ec2.create_local_gateway_route_table(LocalGatewayId="lgw-00000000000000003")
+        rt_id = resp["LocalGatewayRouteTable"]["LocalGatewayRouteTableId"]
+        # Count before delete
+        before = ec2.describe_local_gateway_route_tables()
+        before_count = len(before["LocalGatewayRouteTables"])
+        ec2.delete_local_gateway_route_table(LocalGatewayRouteTableId=rt_id)
+        after = ec2.describe_local_gateway_route_tables()
+        after_count = len(after["LocalGatewayRouteTables"])
+        assert after_count < before_count
+
+
+class TestEC2ModifyInstanceSourceDestCheck:
+    """Tests for ModifyInstanceAttribute with SourceDestCheck."""
+
+    def test_modify_instance_source_dest_check(self, ec2):
+        """ModifyInstanceAttribute can disable SourceDestCheck."""
+        vpc = ec2.create_vpc(CidrBlock="10.83.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.83.1.0/24")
+            subnet_id = sub["Subnet"]["SubnetId"]
+            try:
+                inst = ec2.run_instances(
+                    ImageId="ami-12345678",
+                    InstanceType="t2.micro",
+                    MinCount=1,
+                    MaxCount=1,
+                    SubnetId=subnet_id,
+                )
+                iid = inst["Instances"][0]["InstanceId"]
+                try:
+                    ec2.modify_instance_attribute(InstanceId=iid, SourceDestCheck={"Value": False})
+                    desc = ec2.describe_instance_attribute(
+                        InstanceId=iid, Attribute="sourceDestCheck"
+                    )
+                    assert desc["SourceDestCheck"]["Value"] is False
+                finally:
+                    ec2.terminate_instances(InstanceIds=[iid])
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2DescribeInstanceStatusAll:
+    """Tests for DescribeInstanceStatus with IncludeAllInstances."""
+
+    def test_describe_instance_status_include_all(self, ec2):
+        """DescribeInstanceStatus with IncludeAllInstances returns list."""
+        resp = ec2.describe_instance_status(IncludeAllInstances=True)
+        assert "InstanceStatuses" in resp
+        assert isinstance(resp["InstanceStatuses"], list)
