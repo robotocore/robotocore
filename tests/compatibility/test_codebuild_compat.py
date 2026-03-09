@@ -1161,6 +1161,17 @@ class TestCodeBuildSandboxOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "sandbox" in resp
 
+    def test_batch_get_command_executions(self, codebuild):
+        """BatchGetCommandExecutions with nonexistent IDs returns empty."""
+        resp = codebuild.batch_get_command_executions(
+            sandboxId="nonexistent-sandbox-id",
+            commandExecutionIds=["nonexistent-id"],
+        )
+        assert "commandExecutions" in resp
+        assert isinstance(resp["commandExecutions"], list)
+        assert resp["commandExecutions"] == []
+        assert "nonexistent-id" in resp.get("commandExecutionsNotFound", [])
+
     def test_start_command_execution_nonexistent(self, codebuild):
         """StartCommandExecution on nonexistent sandbox raises ResourceNotFoundException."""
         with pytest.raises(Exception) as exc_info:
