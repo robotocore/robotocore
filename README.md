@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Built <em>entirely</em> with AI by <a href="https://github.com/JackDanger">Jack Danger</a> | <a href="https://jackdanger.com/promptlog/">All prompts saved</a> in <a href="prompts/"><code>prompts/</code></a>.
+  Built <em>entirely</em> with AI by <a href="https://github.com/JackDanger">Jack Danger</a> | <a href="https://jackdanger.com/promptlog/">All prompts saved</a> in <a href="prompts/"><code>prompts/</code></a>
 </p>
 
 ---
