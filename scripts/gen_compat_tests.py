@@ -3,7 +3,7 @@
 
 Creates pytest test files that exercise the major operations of each AWS service.
 Tests are endpoint-agnostic (controlled by ENDPOINT_URL env var) so they can run
-against both robotocore and LocalStack/real AWS.
+against both robotocore and real AWS.
 
 Enhanced: generates smart default parameters for required fields based on shape analysis.
 
@@ -369,7 +369,7 @@ def generate_test_file(
     lines = [
         f'"""Compatibility tests for {service_full}.',
         "",
-        "These tests run against both robotocore and LocalStack to verify parity.",
+        "These tests run against robotocore to verify AWS API compatibility.",
         '"""',
         "",
         "import json",

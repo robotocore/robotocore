@@ -26,7 +26,7 @@ def print_banner(*, host: str, port: int) -> None:
         f"Port: {port} | Services: {total_services} | Native providers: {native_count}",
         "",
         f"Listening on http://{host}:{port}",
-        "DNS: *.localhost.localstack.cloud resolves to 127.0.0.1",
+        f"DNS: use AWS_ENDPOINT_URL=http://localhost:{port}",
         "",
         "Ready.",
         "",

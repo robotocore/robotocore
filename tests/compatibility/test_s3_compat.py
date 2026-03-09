@@ -1,4 +1,4 @@
-"""S3 compatibility tests — verify robotocore matches LocalStack behavior."""
+"""S3 compatibility tests — verify robotocore matches AWS behavior."""
 
 import json
 import os

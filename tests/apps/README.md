@@ -14,7 +14,7 @@ These tests simulate real applications using AWS services. They are **completely
 
 ## Running
 
-Against robotocore or LocalStack:
+Against robotocore:
 
 ```bash
 AWS_ENDPOINT_URL=http://localhost:4566 pytest tests/apps/ -v
@@ -39,7 +39,7 @@ pytest tests/apps/ -v
 
 ## Design principles
 
-- **Zero internal imports**: No `robotocore`, `localstack`, or `moto` imports. These tests don't know what backend they're running against.
+- **Zero internal imports**: No `robotocore` or `moto` imports. These tests don't know what backend they're running against.
 - **Realistic naming**: Resource names use app-domain language (`user-uploads-bucket`, `order-processing-queue`) with UUID suffixes to avoid collisions.
 - **Self-cleaning**: Every test cleans up its resources via fixtures.
-- **Portable**: Works against robotocore, LocalStack, or real AWS without modification.
+- **Portable**: Works against robotocore or real AWS without modification.

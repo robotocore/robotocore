@@ -1,7 +1,7 @@
 """Bridge layer that forwards incoming AWS requests to Moto backends.
 
 Uses Werkzeug URL routing against Moto's flask_paths to find the correct
-BaseResponse.dispatch endpoint, matching the pattern used by LocalStack.
+BaseResponse.dispatch endpoint.
 """
 
 import os

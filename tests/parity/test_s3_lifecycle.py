@@ -1,9 +1,7 @@
 """S3 lifecycle parity tests.
 
 Tests S3 CRUD operations, presigned URLs, versioning, and multipart upload.
-These cover core S3 operations that any LocalStack-compatible emulator must support.
-
-Derived from common S3 usage patterns tested across LocalStack's integration tests.
+These cover core S3 operations that any AWS-compatible emulator must support.
 """
 
 import uuid

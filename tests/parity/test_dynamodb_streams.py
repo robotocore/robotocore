@@ -1,6 +1,7 @@
 """DynamoDB Streams -> Lambda parity test.
 
-Derived from LocalStack's bookstore scenario:
+Derived from the bookstore scenario pattern:
+DynamoDB table with stream -> Lambda ESM -> secondary table.
 
 Tests DynamoDB Streams configuration and event source mapping setup.
 The original bookstore app creates a DDB table with streams, then uses

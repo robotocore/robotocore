@@ -1,11 +1,11 @@
 # Robotocore
 
-An MIT-licensed, open-source AWS emulator built on top of Moto with 100% feature parity with LocalStack Community Edition. Runs as a single Docker container on ARM Mac.
+An MIT-licensed, open-source AWS emulator built on top of Moto. Runs as a single Docker container on ARM Mac.
 
 ## Project Philosophy
 
 - **Free forever**: MIT license, no registration, no telemetry, no paid tiers
-- **Drop-in LocalStack replacement**: Same port (4566), same request routing, same response format
+- **Drop-in replacement**: Same port (4566), same request routing, same response format as other AWS emulators
 - **Built on Moto**: Leverage Moto's ~195 service implementations as the foundation
 - **Behavioral fidelity where it matters**: Lambda actually executes, SQS has real visibility timeouts, etc.
 - **Single container**: One `docker run` command to get all of AWS locally
@@ -75,7 +75,7 @@ robotocore/
 ├── tests/
 │   ├── unit/                  # Fast, no-network tests
 │   ├── integration/           # Tests against running container
-│   └── compatibility/         # Tests that verify LocalStack parity
+│   └── compatibility/         # Tests that verify AWS parity
 ├── scripts/
 │   ├── dev.py                 # Dev server lifecycle & test runner
 │   ├── smoke_test.py          # Cross-service smoke test
@@ -83,7 +83,7 @@ robotocore/
 │   └── ...                    # gen_provider, gen_compat_tests, batch_register, etc.
 ├── vendor/
 │   ├── moto/                  # Git submodule: getmoto/moto
-│   └── localstack/            # Git submodule: localstack/localstack
+│   └── localstack/            # Git submodule (reference implementation)
 └── docker/
     └── entrypoint.sh          # Container entrypoint
 ```
@@ -139,9 +139,9 @@ make status                            # Check if server is running
 
 ## Key Technical Decisions
 
-1. **Gateway on port 4566**: Matches LocalStack's default so existing `aws --endpoint-url` configs work unchanged
+1. **Gateway on port 4566**: Standard AWS emulator port so existing `aws --endpoint-url` configs work unchanged
 2. **Moto as the service layer**: Don't reimplement what Moto already does well. Wrap it, extend it, fix its gaps.
-3. **Protocol handling via botocore specs**: Use botocore's own service JSON specs to parse/serialize requests, same as LocalStack's ASF does
+3. **Protocol handling via botocore specs**: Use botocore's own service JSON specs to parse/serialize requests
 4. **In-memory state by default**: No persistence layer needed for dev/test use. Optional persistence can come later.
 5. **Plugin system**: `RobotocorePlugin` base class with entry point, env var, and directory discovery.
 6. **ASGI with uvicorn**: Modern async-capable HTTP server
@@ -165,14 +165,10 @@ make status                            # Check if server is running
   - `moto/{service}/responses.py` — Request/response handling
   - `moto/{service}/urls.py` — URL patterns
 
-  - `localstack-core/localstack/aws/gateway.py` — Gateway implementation
-  - `localstack-core/localstack/aws/protocol/` — Protocol parsers/serializers
-  - `localstack-core/localstack/aws/handlers/` — Handler chain
-  - `localstack-core/localstack/services/` — Service providers
 
 ## Service Coverage (147 services registered)
 
-All LocalStack Community services are implemented. 38 have native providers with enhanced fidelity; 109 are Moto-backed. 11 broken services were deregistered (Moto ops all return 500).
+147 AWS services are implemented. 38 have native providers with enhanced fidelity; 109 are Moto-backed. 11 broken services were deregistered (Moto ops all return 500).
 
 **Native providers** (38): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
 
@@ -201,9 +197,9 @@ Or use the batch tool: `uv run python scripts/batch_register_services.py --servi
 ## Working with Agents
 
 When using Claude Code agents on this project:
-- Always read vendor source before implementing a feature — understand how both Moto and LocalStack handle it
+- Always read vendor source before implementing a feature — understand how Moto handles it
 - Run tests after every change
-- Keep compatibility tests as the north star — if it works the same as LocalStack, it's correct
+- Keep compatibility tests as the north star — if it works the same as AWS, it's correct
 - Prefer extending Moto over reimplementing from scratch
 
 ### Parallel work with git worktrees

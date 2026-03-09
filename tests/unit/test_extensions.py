@@ -299,7 +299,7 @@ class TestLocalStackExtensionAdapter:
         mock_ext.version = "2.0"
         adapter = LocalStackExtensionAdapter(mock_ext)
         assert adapter.name == "ls-test"
-        assert "LocalStack" in adapter.description
+        assert "External extension" in adapter.description
 
     def test_on_startup_calls_platform_start_and_ready(self):
         mock_ext = MagicMock()

@@ -1,4 +1,4 @@
-"""SQS compatibility tests — verify robotocore matches LocalStack behavior."""
+"""SQS compatibility tests — verify robotocore matches AWS behavior."""
 
 import json
 import os

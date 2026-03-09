@@ -1,6 +1,6 @@
 """Handler chain for processing AWS requests through a pipeline.
 
-Modeled after LocalStack's handler chain pattern:
+Handler chain pattern:
 - Request handlers run in order, can modify the request context
 - Response handlers run after the service provider returns
 - Exception handlers catch errors during processing
