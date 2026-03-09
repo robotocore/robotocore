@@ -714,3 +714,33 @@ class TestCERecommendationGeneration:
         assert "RecommendationId" in resp
         assert "GenerationStartedTime" in resp
         assert "EstimatedCompletionTime" in resp
+
+
+class TestCEAdditionalOps:
+    """Tests for additional Cost Explorer operations."""
+
+    def test_start_commitment_purchase_analysis(self, ce):
+        """StartCommitmentPurchaseAnalysis returns analysis ID."""
+        resp = ce.start_commitment_purchase_analysis(
+            CommitmentPurchaseAnalysisConfiguration={
+                "SavingsPlansPurchaseAnalysisConfiguration": {
+                    "AccountScope": "PAYER",
+                    "AnalysisType": "MAX_SAVINGS",
+                    "SavingsPlansToAdd": [
+                        {
+                            "PaymentOption": "NO_UPFRONT",
+                            "SavingsPlansType": "COMPUTE_SP",
+                            "TermInYears": "ONE_YEAR",
+                            "OfferingId": "fake-offering-id",
+                            "SavingsPlansCommitment": 1.0,
+                        }
+                    ],
+                    "LookBackTimePeriod": {
+                        "Start": "2024-01-01",
+                        "End": "2024-12-31",
+                    },
+                }
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AnalysisId" in resp
