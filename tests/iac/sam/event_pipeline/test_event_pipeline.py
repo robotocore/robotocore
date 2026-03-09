@@ -1,37 +1,22 @@
 """IaC test: sam - event_pipeline."""
 
-import time
 from pathlib import Path
 
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.stack_deployer import delete_stack, deploy_and_yield, get_stack_outputs
 
 pytestmark = pytest.mark.iac
 
 
 @pytest.fixture(scope="module")
 def deployed_stack(ensure_server, test_run_id):
-    cfn = make_client("cloudformation")
     template = (Path(__file__).parent / "template.yaml").read_text()
     stack_name = f"{test_run_id}-sam-event-pipeline"
-    cfn.create_stack(
-        StackName=stack_name,
-        TemplateBody=template,
-        Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
-    )
-    for _ in range(60):
-        resp = cfn.describe_stacks(StackName=stack_name)
-        status = resp["Stacks"][0]["StackStatus"]
-        if status == "CREATE_COMPLETE":
-            yield resp["Stacks"][0]
-            cfn.delete_stack(StackName=stack_name)
-            return
-        if "FAILED" in status or "ROLLBACK" in status:
-            pytest.skip(f"SAM stack failed: {status}")
-            return
-        time.sleep(1)
-    pytest.skip("SAM stack timed out")
+    stack = deploy_and_yield(stack_name, template)
+    yield stack
+    delete_stack(stack_name)
 
 
 class TestEventPipeline:
@@ -39,7 +24,7 @@ class TestEventPipeline:
         assert deployed_stack["StackStatus"] == "CREATE_COMPLETE"
 
     def test_queue_exists(self, deployed_stack, ensure_server):
-        outputs = {o["OutputKey"]: o["OutputValue"] for o in deployed_stack.get("Outputs", [])}
+        outputs = get_stack_outputs(deployed_stack)
         queue_url = outputs.get("QueueUrl")
         assert queue_url is not None, "QueueUrl output missing"
 
@@ -49,7 +34,7 @@ class TestEventPipeline:
         assert resp["Attributes"]["VisibilityTimeout"] == "120"
 
     def test_table_exists(self, deployed_stack, ensure_server):
-        outputs = {o["OutputKey"]: o["OutputValue"] for o in deployed_stack.get("Outputs", [])}
+        outputs = get_stack_outputs(deployed_stack)
         table_name = outputs.get("TableName")
         assert table_name is not None, "TableName output missing"
 
@@ -59,7 +44,7 @@ class TestEventPipeline:
         assert resp["Table"]["KeySchema"][0]["AttributeName"] == "pk"
 
     def test_function_exists(self, deployed_stack, ensure_server):
-        outputs = {o["OutputKey"]: o["OutputValue"] for o in deployed_stack.get("Outputs", [])}
+        outputs = get_stack_outputs(deployed_stack)
         function_name = outputs.get("FunctionName")
         assert function_name is not None, "FunctionName output missing"
 
