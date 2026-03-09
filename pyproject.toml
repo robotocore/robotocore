@@ -47,11 +47,13 @@ dev = [
 robotocore = "robotocore.main:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/robotocore/__init__.py"
+source = "vcs"
+# CalVer: tags like v2026.3.8 become version 2026.3.8
+# Between tags, dev suffix is appended (e.g. 2026.3.8.dev2+gabcdef)
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/robotocore"]

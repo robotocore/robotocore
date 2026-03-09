@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0  # need tags for CalVer
+          fetch-depth: 0  # need full history for CalVer tags
 
       # Multi-arch Docker build
       - name: Set up QEMU
@@ -48,12 +48,9 @@ jobs:
         id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # Manual tag push — use the tag as-is
             VERSION="${GITHUB_REF#refs/tags/v}"
           else
-            # Auto-version from date
             BASE="$(date -u +%Y.%-m.%-d)"
-            # Check for existing tags today
             EXISTING=$(git tag -l "v${BASE}" "v${BASE}.*" | wc -l | tr -d ' ')
             if [ "$EXISTING" -eq 0 ]; then
               VERSION="$BASE"
@@ -64,11 +61,11 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Releasing version: $VERSION"
 
-      # Update __version__ in source before building
-      - name: Set version in source
+      # Tag the commit before building so hatch-vcs picks up the version
+      - name: Create git tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          sed -i "s/__version__ = \".*\"/__version__ = \"${{ steps.version.outputs.VERSION }}\"/" \
-            src/robotocore/__init__.py
+          git tag "v${{ steps.version.outputs.VERSION }}"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -76,6 +73,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            SETUPTOOLS_SCM_PRETEND_VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
             robotocore/robotocore:${{ steps.version.outputs.VERSION }}
             robotocore/robotocore:latest
@@ -84,11 +83,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Tag the commit (only for auto-versioned main pushes)
-      - name: Create git tag
+      # Push the tag after a successful build
+      - name: Push git tag
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          git tag "v${{ steps.version.outputs.VERSION }}"
           git push origin "v${{ steps.version.outputs.VERSION }}"
 
       # GitHub Release

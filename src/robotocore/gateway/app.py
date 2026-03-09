@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from robotocore import __version__
 from robotocore.gateway.handler_chain import HandlerChain, RequestContext
 from robotocore.gateway.handlers import (
     audit_response_handler,
@@ -183,7 +184,7 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "status": "running",
-            "version": "1.0.0",
+            "version": __version__,
             "uptime_seconds": round(uptime, 1),
             "services": services_status,
         }

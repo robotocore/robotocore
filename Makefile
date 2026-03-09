@@ -128,11 +128,8 @@ release: ## Tag and push a CalVer release (auto-publishes Docker images via CI)
 	EXISTING=$$(git tag -l "v$$VERSION" "v$$VERSION.*" | wc -l | tr -d ' ') && \
 	if [ "$$EXISTING" -gt 0 ]; then VERSION="$$VERSION.$$EXISTING"; fi && \
 	echo "Releasing v$$VERSION" && \
-	sed -i '' "s/__version__ = \".*\"/__version__ = \"$$VERSION\"/" src/robotocore/__init__.py && \
-	git add src/robotocore/__init__.py && \
-	git commit -m "Release v$$VERSION" && \
 	git tag "v$$VERSION" && \
-	git push origin main "v$$VERSION"
+	git push origin "v$$VERSION"
 
 ## ── Misc ─────────────────────────────────────────────────────────────────────
 

@@ -16,6 +16,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+# Version set by CI from CalVer git tag
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=dev
+
 # Install dependencies first for layer caching
 COPY pyproject.toml uv.lock* README.md ./
 RUN uv sync --no-dev --no-install-project
@@ -25,7 +28,8 @@ COPY src/ src/
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Install the project itself
+# Install the project itself (SETUPTOOLS_SCM_PRETEND_VERSION tells hatch-vcs the version)
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 RUN uv sync --no-dev
 
 # Create init hook directories
@@ -43,7 +47,7 @@ EXPOSE 4566
 ENV ROBOTOCORE_HOST=0.0.0.0
 ENV ROBOTOCORE_PORT=4566
 ENV MOTO_ALLOW_NONEXISTENT_REGION=true
-ENV ROBOTOCORE_VERSION=1.0.0
+ENV ROBOTOCORE_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 
 # Run as non-root user
 USER robotocore

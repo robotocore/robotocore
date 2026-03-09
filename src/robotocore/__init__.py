@@ -1,5 +1,14 @@
 """Robotocore: Free, open-source AWS emulator built on Moto."""
 
-# CalVer: YYYY.M.D — updated automatically by CI on each release.
-# Between releases, this reflects the last tagged version.
-__version__ = "2026.3.8"
+from importlib.metadata import version as _pkg_version
+
+
+def _get_version() -> str:
+    """Derive version from package metadata (set by git tag at install time)."""
+    try:
+        return _pkg_version("robotocore")
+    except Exception:
+        return "dev"
+
+
+__version__ = _get_version()
