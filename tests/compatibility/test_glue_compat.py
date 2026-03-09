@@ -3466,3 +3466,776 @@ class TestGlueSchemaVersions:
             except Exception:
                 pass
             glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+
+class TestGlueUpdateTrigger:
+    """Tests for UpdateTrigger."""
+
+    def test_update_trigger(self, glue):
+        """UpdateTrigger modifies a trigger's description."""
+        name = _unique("trig")
+        glue.create_trigger(
+            Name=name,
+            Type="ON_DEMAND",
+            Actions=[{"JobName": "fake-job"}],
+        )
+        try:
+            resp = glue.update_trigger(
+                Name=name,
+                TriggerUpdate={"Name": name, "Description": "updated desc"},
+            )
+            assert resp["Trigger"]["Name"] == name
+        finally:
+            glue.delete_trigger(Name=name)
+
+    def test_update_trigger_not_found(self, glue):
+        """UpdateTrigger for nonexistent trigger raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_trigger(
+                Name="nonexistent-trigger-xyz",
+                TriggerUpdate={"Name": "nonexistent-trigger-xyz"},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueBatchDeleteTableVersionOp:
+    """Tests for BatchDeleteTableVersion."""
+
+    def test_batch_delete_table_version(self, glue):
+        """BatchDeleteTableVersion removes specific table versions."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        sd = {
+            "Columns": [{"Name": "c1", "Type": "string"}],
+            "Location": "s3://b/p",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+        glue.create_table(
+            DatabaseName=db_name, TableInput={"Name": tbl_name, "StorageDescriptor": sd}
+        )
+        sd2 = dict(sd, Columns=[{"Name": "c1", "Type": "string"}, {"Name": "c2", "Type": "int"}])
+        glue.update_table(
+            DatabaseName=db_name, TableInput={"Name": tbl_name, "StorageDescriptor": sd2}
+        )
+        versions = glue.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+        version_ids = [v["VersionId"] for v in versions["TableVersions"]]
+        assert len(version_ids) >= 2
+
+        try:
+            resp = glue.batch_delete_table_version(
+                DatabaseName=db_name, TableName=tbl_name, VersionIds=version_ids[:1]
+            )
+            assert "Errors" in resp
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_batch_delete_table_version_not_found_db(self, glue):
+        """BatchDeleteTableVersion for nonexistent database raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.batch_delete_table_version(
+                DatabaseName="nonexistent-db-xyz",
+                TableName="nonexistent-tbl",
+                VersionIds=["1"],
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueColumnStatisticsForTable:
+    """Tests for UpdateColumnStatisticsForTable and DeleteColumnStatisticsForTable."""
+
+    def _make_table(self, glue):
+        import datetime
+
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://b/p",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": (
+                            "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                        )
+                    },
+                },
+            },
+        )
+        return db_name, tbl_name, datetime
+
+    def test_update_column_statistics_for_table(self, glue):
+        """UpdateColumnStatisticsForTable sets column stats on a table."""
+        db_name, tbl_name, datetime = self._make_table(glue)
+        try:
+            resp = glue.update_column_statistics_for_table(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                ColumnStatisticsList=[
+                    {
+                        "ColumnName": "col1",
+                        "ColumnType": "string",
+                        "AnalyzedTime": datetime.datetime(2024, 1, 1),
+                        "StatisticsData": {
+                            "Type": "STRING",
+                            "StringColumnStatisticsData": {
+                                "MaximumLength": 100,
+                                "AverageLength": 50.0,
+                                "NumberOfNulls": 0,
+                                "NumberOfDistinctValues": 10,
+                            },
+                        },
+                    }
+                ],
+            )
+            assert "Errors" in resp
+            assert resp["Errors"] == []
+
+            get_resp = glue.get_column_statistics_for_table(
+                DatabaseName=db_name, TableName=tbl_name, ColumnNames=["col1"]
+            )
+            assert len(get_resp["ColumnStatisticsList"]) == 1
+            assert get_resp["ColumnStatisticsList"][0]["ColumnName"] == "col1"
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_delete_column_statistics_for_table_after_update(self, glue):
+        """DeleteColumnStatisticsForTable removes column stats that were previously set."""
+        db_name, tbl_name, datetime = self._make_table(glue)
+        try:
+            glue.update_column_statistics_for_table(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                ColumnStatisticsList=[
+                    {
+                        "ColumnName": "col1",
+                        "ColumnType": "string",
+                        "AnalyzedTime": datetime.datetime(2024, 1, 1),
+                        "StatisticsData": {
+                            "Type": "STRING",
+                            "StringColumnStatisticsData": {
+                                "MaximumLength": 100,
+                                "AverageLength": 50.0,
+                                "NumberOfNulls": 0,
+                                "NumberOfDistinctValues": 10,
+                            },
+                        },
+                    }
+                ],
+            )
+            resp = glue.delete_column_statistics_for_table(
+                DatabaseName=db_name, TableName=tbl_name, ColumnName="col1"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueColumnStatisticsForPartition:
+    """Tests for UpdateColumnStatisticsForPartition."""
+
+    def test_update_column_statistics_for_partition(self, glue):
+        """UpdateColumnStatisticsForPartition sets column stats on a partition."""
+        import datetime
+
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        sd = {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": "s3://b/p",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": sd,
+                "PartitionKeys": [{"Name": "dt", "Type": "string"}],
+            },
+        )
+        glue.create_partition(
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            PartitionInput={
+                "Values": ["2024-01-01"],
+                "StorageDescriptor": dict(sd, Location="s3://b/p/dt=2024-01-01"),
+            },
+        )
+        try:
+            resp = glue.update_column_statistics_for_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionValues=["2024-01-01"],
+                ColumnStatisticsList=[
+                    {
+                        "ColumnName": "col1",
+                        "ColumnType": "string",
+                        "AnalyzedTime": datetime.datetime(2024, 1, 1),
+                        "StatisticsData": {
+                            "Type": "STRING",
+                            "StringColumnStatisticsData": {
+                                "MaximumLength": 100,
+                                "AverageLength": 50.0,
+                                "NumberOfNulls": 0,
+                                "NumberOfDistinctValues": 10,
+                            },
+                        },
+                    }
+                ],
+            )
+            assert "Errors" in resp
+            assert resp["Errors"] == []
+        finally:
+            glue.delete_partition(
+                DatabaseName=db_name, TableName=tbl_name, PartitionValues=["2024-01-01"]
+            )
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueColumnStatisticsTaskSettingsCRUD:
+    """Tests for ColumnStatisticsTaskSettings CRUD."""
+
+    def _make_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://b/p",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": (
+                            "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                        )
+                    },
+                },
+            },
+        )
+        return db_name, tbl_name
+
+    def test_create_and_get_column_statistics_task_settings(self, glue):
+        """CreateColumnStatisticsTaskSettings creates settings, Get retrieves them."""
+        db_name, tbl_name = self._make_table(glue)
+        role = "arn:aws:iam::123456789012:role/test"
+        try:
+            glue.create_column_statistics_task_settings(
+                DatabaseName=db_name, TableName=tbl_name, Role=role
+            )
+            resp = glue.get_column_statistics_task_settings(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert resp["ColumnStatisticsTaskSettings"]["Role"] == role
+        finally:
+            glue.delete_column_statistics_task_settings(DatabaseName=db_name, TableName=tbl_name)
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_update_column_statistics_task_settings(self, glue):
+        """UpdateColumnStatisticsTaskSettings modifies the role."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            glue.create_column_statistics_task_settings(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Role="arn:aws:iam::123456789012:role/original",
+            )
+            resp = glue.update_column_statistics_task_settings(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Role="arn:aws:iam::123456789012:role/updated",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_column_statistics_task_settings(DatabaseName=db_name, TableName=tbl_name)
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_delete_column_statistics_task_settings(self, glue):
+        """DeleteColumnStatisticsTaskSettings removes settings."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            glue.create_column_statistics_task_settings(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Role="arn:aws:iam::123456789012:role/test",
+            )
+            glue.delete_column_statistics_task_settings(DatabaseName=db_name, TableName=tbl_name)
+            with pytest.raises(ClientError) as exc:
+                glue.get_column_statistics_task_settings(DatabaseName=db_name, TableName=tbl_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_column_statistics_task_settings_not_found(self, glue):
+        """GetColumnStatisticsTaskSettings for nonexistent raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_column_statistics_task_settings(
+                DatabaseName="nonexistent-db-xyz", TableName="nonexistent-tbl"
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueStatementOperations:
+    """Tests for RunStatement, CancelStatement, ListStatements."""
+
+    def test_run_statement(self, glue):
+        """RunStatement creates a statement in a session."""
+        sess_id = _unique("sess")
+        glue.create_session(
+            Id=sess_id,
+            Role="arn:aws:iam::123456789012:role/test",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        try:
+            resp = glue.run_statement(SessionId=sess_id, Code="print(1)")
+            assert "Id" in resp
+        finally:
+            glue.stop_session(Id=sess_id)
+            glue.delete_session(Id=sess_id)
+
+    def test_cancel_statement(self, glue):
+        """CancelStatement cancels a running statement."""
+        sess_id = _unique("sess")
+        glue.create_session(
+            Id=sess_id,
+            Role="arn:aws:iam::123456789012:role/test",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        try:
+            run_resp = glue.run_statement(SessionId=sess_id, Code="print(1)")
+            stmt_id = run_resp["Id"]
+            resp = glue.cancel_statement(SessionId=sess_id, Id=stmt_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.stop_session(Id=sess_id)
+            glue.delete_session(Id=sess_id)
+
+    def test_cancel_statement_nonexistent_session(self, glue):
+        """CancelStatement for nonexistent session raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.cancel_statement(SessionId="nonexistent-session-xyz", Id=0)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueIntegrationOperations:
+    """Tests for Integration CRUD."""
+
+    def test_create_and_describe_integration(self, glue):
+        """CreateIntegration creates an integration; DescribeIntegrations lists it."""
+        name = _unique("int")
+        resp = glue.create_integration(
+            IntegrationName=name,
+            SourceArn="arn:aws:glue:us-east-1:123456789012:database/src",
+            TargetArn="arn:aws:glue:us-east-1:123456789012:database/tgt",
+        )
+        assert "IntegrationArn" in resp
+        assert resp["IntegrationName"] == name
+
+        desc = glue.describe_integrations()
+        arns = [i["IntegrationArn"] for i in desc["Integrations"]]
+        assert resp["IntegrationArn"] in arns
+
+    def test_modify_integration(self, glue):
+        """ModifyIntegration updates an integration's description."""
+        name = _unique("int")
+        create_resp = glue.create_integration(
+            IntegrationName=name,
+            SourceArn="arn:aws:glue:us-east-1:123456789012:database/src",
+            TargetArn="arn:aws:glue:us-east-1:123456789012:database/tgt",
+        )
+        int_arn = create_resp["IntegrationArn"]
+        resp = glue.modify_integration(IntegrationIdentifier=int_arn, Description="updated")
+        assert resp["Description"] == "updated"
+
+    def test_modify_integration_not_found(self, glue):
+        """ModifyIntegration for nonexistent integration raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.modify_integration(
+                IntegrationIdentifier=("arn:aws:glue:us-east-1:123456789012:integration/fake-xyz"),
+                Description="nope",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_describe_inbound_integrations(self, glue):
+        """DescribeInboundIntegrations returns a list."""
+        resp = glue.describe_inbound_integrations(
+            TargetArn="arn:aws:glue:us-east-1:123456789012:database/tgt"
+        )
+        assert "InboundIntegrations" in resp
+
+
+class TestGlueIntegrationResourceProperty:
+    """Tests for Integration resource and table properties."""
+
+    def _make_integration(self, glue):
+        name = _unique("int")
+        resp = glue.create_integration(
+            IntegrationName=name,
+            SourceArn="arn:aws:glue:us-east-1:123456789012:database/src",
+            TargetArn="arn:aws:glue:us-east-1:123456789012:database/tgt",
+        )
+        return resp["IntegrationArn"]
+
+    def test_create_and_get_integration_resource_property(self, glue):
+        """CreateIntegrationResourceProperty sets properties; Get retrieves them."""
+        int_arn = self._make_integration(glue)
+        glue.create_integration_resource_property(
+            ResourceArn=int_arn,
+            SourceProcessingProperties={"RoleArn": "arn:aws:iam::123456789012:role/test"},
+        )
+        resp = glue.get_integration_resource_property(ResourceArn=int_arn)
+        assert resp["ResourceArn"] == int_arn
+
+    def test_delete_integration_resource_property(self, glue):
+        """DeleteIntegrationResourceProperty removes the property."""
+        int_arn = self._make_integration(glue)
+        glue.create_integration_resource_property(
+            ResourceArn=int_arn,
+            SourceProcessingProperties={"RoleArn": "arn:aws:iam::123456789012:role/test"},
+        )
+        resp = glue.delete_integration_resource_property(ResourceArn=int_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_integration_resource_property(self, glue):
+        """UpdateIntegrationResourceProperty modifies the property."""
+        int_arn = self._make_integration(glue)
+        glue.create_integration_resource_property(
+            ResourceArn=int_arn,
+            SourceProcessingProperties={"RoleArn": "arn:aws:iam::123456789012:role/test"},
+        )
+        resp = glue.update_integration_resource_property(
+            ResourceArn=int_arn,
+            SourceProcessingProperties={"RoleArn": "arn:aws:iam::123456789012:role/updated"},
+        )
+        assert resp["ResourceArn"] == int_arn
+
+    def test_create_and_get_integration_table_properties(self, glue):
+        """CreateIntegrationTableProperties sets table props; Get retrieves them."""
+        int_arn = self._make_integration(glue)
+        glue.create_integration_table_properties(ResourceArn=int_arn, TableName="test-tbl")
+        resp = glue.get_integration_table_properties(ResourceArn=int_arn, TableName="test-tbl")
+        assert resp["ResourceArn"] == int_arn
+
+    def test_delete_integration_table_properties(self, glue):
+        """DeleteIntegrationTableProperties removes table props."""
+        int_arn = self._make_integration(glue)
+        glue.create_integration_table_properties(ResourceArn=int_arn, TableName="test-tbl")
+        resp = glue.delete_integration_table_properties(ResourceArn=int_arn, TableName="test-tbl")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_integration_table_properties(self, glue):
+        """UpdateIntegrationTableProperties modifies table props."""
+        int_arn = self._make_integration(glue)
+        glue.create_integration_table_properties(ResourceArn=int_arn, TableName="test-tbl2")
+        resp = glue.update_integration_table_properties(ResourceArn=int_arn, TableName="test-tbl2")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGlueDataQualityOps:
+    """Tests for data quality operations."""
+
+    def test_list_data_quality_statistics(self, glue):
+        """ListDataQualityStatistics returns a list."""
+        resp = glue.list_data_quality_statistics()
+        assert "Statistics" in resp
+
+    def test_list_data_quality_statistic_annotations(self, glue):
+        """ListDataQualityStatisticAnnotations returns a list."""
+        resp = glue.list_data_quality_statistic_annotations()
+        assert "Annotations" in resp
+
+    def test_batch_put_data_quality_statistic_annotation(self, glue):
+        """BatchPutDataQualityStatisticAnnotation with empty list returns empty failures."""
+        resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+        assert "FailedInclusionAnnotations" in resp
+
+    def test_put_data_quality_profile_annotation(self, glue):
+        """PutDataQualityProfileAnnotation succeeds for any profile ID."""
+        resp = glue.put_data_quality_profile_annotation(
+            ProfileId="fake-profile", InclusionAnnotation="INCLUDE"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_data_quality_rule_recommendation_run(self, glue):
+        """CancelDataQualityRuleRecommendationRun succeeds (idempotent)."""
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_data_quality_ruleset_evaluation_run(self, glue):
+        """CancelDataQualityRulesetEvaluationRun succeeds (idempotent)."""
+        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-run-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_data_quality_model_result_not_found(self, glue):
+        """GetDataQualityModelResult for nonexistent raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_model_result(StatisticId="fake-stat", ProfileId="fake-profile")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_start_data_quality_rule_recommendation_run(self, glue):
+        """StartDataQualityRuleRecommendationRun returns a RunId."""
+        resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "nonexistent", "TableName": "nonexistent"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        assert "RunId" in resp
+
+
+class TestGlueDeletePartitionIndex:
+    """Tests for DeletePartitionIndex."""
+
+    def test_delete_partition_index(self, glue):
+        """DeletePartitionIndex on table with no matching index succeeds."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://b/p",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": (
+                            "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                        )
+                    },
+                },
+                "PartitionKeys": [{"Name": "dt", "Type": "string"}],
+            },
+        )
+        try:
+            resp = glue.delete_partition_index(
+                DatabaseName=db_name, TableName=tbl_name, IndexName="fake-idx"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueStartBlueprintRun:
+    """Tests for StartBlueprintRun."""
+
+    def test_start_blueprint_run(self, glue):
+        """StartBlueprintRun returns a RunId."""
+        name = _unique("bp")
+        glue.create_blueprint(Name=name, BlueprintLocation="s3://bucket/path")
+        try:
+            resp = glue.start_blueprint_run(
+                BlueprintName=name,
+                RoleArn="arn:aws:iam::123456789012:role/test",
+            )
+            assert "RunId" in resp
+        finally:
+            glue.delete_blueprint(Name=name)
+
+
+class TestGlueColumnStatisticsTaskRun:
+    """Tests for StartColumnStatisticsTaskRun and schedule ops."""
+
+    def _make_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://b/p",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": (
+                            "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                        )
+                    },
+                },
+            },
+        )
+        return db_name, tbl_name
+
+    def test_start_column_statistics_task_run(self, glue):
+        """StartColumnStatisticsTaskRun returns a task run ID."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            resp = glue.start_column_statistics_task_run(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Role="arn:aws:iam::123456789012:role/test",
+            )
+            assert "ColumnStatisticsTaskRunId" in resp
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_stop_column_statistics_task_run(self, glue):
+        """StopColumnStatisticsTaskRun succeeds after starting a run."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            glue.start_column_statistics_task_run(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Role="arn:aws:iam::123456789012:role/test",
+            )
+            resp = glue.stop_column_statistics_task_run(DatabaseName=db_name, TableName=tbl_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_start_column_statistics_task_run_schedule(self, glue):
+        """StartColumnStatisticsTaskRunSchedule succeeds."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            resp = glue.start_column_statistics_task_run_schedule(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_stop_column_statistics_task_run_schedule(self, glue):
+        """StopColumnStatisticsTaskRunSchedule succeeds."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            resp = glue.stop_column_statistics_task_run_schedule(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueMLTransformCRUD:
+    """Tests for CreateMLTransform, DeleteMLTransform, GetMLTransform, UpdateMLTransform."""
+
+    def _make_transform(self, glue):
+        name = _unique("ml")
+        resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "id"},
+            },
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        return resp["TransformId"], name
+
+    def test_create_and_delete_ml_transform(self, glue):
+        """CreateMLTransform creates a transform; DeleteMLTransform removes it."""
+        tfm_id, _ = self._make_transform(glue)
+        resp = glue.delete_ml_transform(TransformId=tfm_id)
+        assert resp["TransformId"] == tfm_id
+
+    def test_get_ml_transform_by_id(self, glue):
+        """GetMLTransform retrieves a transform by ID."""
+        tfm_id, name = self._make_transform(glue)
+        try:
+            resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert resp["Name"] == name
+            assert resp["TransformId"] == tfm_id
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+    def test_get_ml_transforms_includes_created(self, glue):
+        """GetMLTransforms returns list including the created transform."""
+        tfm_id, _ = self._make_transform(glue)
+        try:
+            resp = glue.get_ml_transforms()
+            ids = [t["TransformId"] for t in resp["Transforms"]]
+            assert tfm_id in ids
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+    def test_list_ml_transforms_includes_created(self, glue):
+        """ListMLTransforms returns IDs including the created transform."""
+        tfm_id, _ = self._make_transform(glue)
+        try:
+            resp = glue.list_ml_transforms()
+            assert tfm_id in resp["TransformIds"]
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+    def test_update_ml_transform_description(self, glue):
+        """UpdateMLTransform modifies a transform's description."""
+        tfm_id, _ = self._make_transform(glue)
+        try:
+            resp = glue.update_ml_transform(TransformId=tfm_id, Description="updated desc")
+            assert resp["TransformId"] == tfm_id
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+    def test_get_ml_task_runs_empty(self, glue):
+        """GetMLTaskRuns for a transform with no task runs returns empty list."""
+        tfm_id, _ = self._make_transform(glue)
+        try:
+            resp = glue.get_ml_task_runs(TransformId=tfm_id)
+            assert "TaskRuns" in resp
+            assert resp["TaskRuns"] == []
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+    def test_get_ml_task_run_not_found(self, glue):
+        """GetMLTaskRun for nonexistent task run raises EntityNotFoundException."""
+        tfm_id, _ = self._make_transform(glue)
+        try:
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_task_run(TransformId=tfm_id, TaskRunId="fake-task-run")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+
+class TestGlueResumeWorkflowRun:
+    """Tests for ResumeWorkflowRun."""
+
+    def test_resume_workflow_run(self, glue):
+        """ResumeWorkflowRun returns a new RunId."""
+        wf_name = _unique("wf")
+        glue.create_workflow(Name=wf_name)
+        try:
+            run_resp = glue.start_workflow_run(Name=wf_name)
+            run_id = run_resp["RunId"]
+            resp = glue.resume_workflow_run(Name=wf_name, RunId=run_id, NodeIds=["node1"])
+            assert "RunId" in resp
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+    def test_resume_workflow_run_nonexistent(self, glue):
+        """ResumeWorkflowRun for nonexistent workflow raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.resume_workflow_run(Name="nonexistent-wf-xyz", RunId="fake-run", NodeIds=["node1"])
+        assert "Error" in exc.value.response
