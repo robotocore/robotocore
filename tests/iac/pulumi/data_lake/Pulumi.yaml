@@ -1,0 +1,3 @@
+name: data-lake
+runtime: python
+description: Data lake with S3 landing zone, Kinesis stream, and DynamoDB catalog
