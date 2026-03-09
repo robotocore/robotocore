@@ -679,3 +679,648 @@ class TestNetworkManagerCoreNetworkPolicyAndRouting:
         )
         assert "CoreNetworkRoutingInformation" in resp
         assert isinstance(resp["CoreNetworkRoutingInformation"], list)
+
+
+class TestNetworkManagerConnectionOps:
+    """Tests for Connection CRUD operations."""
+
+    def test_create_connection(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        d1 = nm.create_device(GlobalNetworkId=gn_id, Description="conn-d1")["Device"]
+        d2 = nm.create_device(GlobalNetworkId=gn_id, Description="conn-d2")["Device"]
+        resp = nm.create_connection(
+            GlobalNetworkId=gn_id,
+            DeviceId=d1["DeviceId"],
+            ConnectedDeviceId=d2["DeviceId"],
+            Description="test-connection",
+        )
+        conn = resp["Connection"]
+        assert "ConnectionId" in conn
+        assert "ConnectionArn" in conn
+        assert conn["GlobalNetworkId"] == gn_id
+        assert conn["DeviceId"] == d1["DeviceId"]
+        assert conn["ConnectedDeviceId"] == d2["DeviceId"]
+
+    def test_update_connection(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        d1 = nm.create_device(GlobalNetworkId=gn_id, Description="upd-conn-d1")["Device"]
+        d2 = nm.create_device(GlobalNetworkId=gn_id, Description="upd-conn-d2")["Device"]
+        conn = nm.create_connection(
+            GlobalNetworkId=gn_id,
+            DeviceId=d1["DeviceId"],
+            ConnectedDeviceId=d2["DeviceId"],
+        )["Connection"]
+        resp = nm.update_connection(
+            GlobalNetworkId=gn_id,
+            ConnectionId=conn["ConnectionId"],
+            Description="updated-conn",
+        )
+        assert resp["Connection"]["Description"] == "updated-conn"
+        assert resp["Connection"]["ConnectionId"] == conn["ConnectionId"]
+
+    def test_delete_connection(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        d1 = nm.create_device(GlobalNetworkId=gn_id, Description="del-conn-d1")["Device"]
+        d2 = nm.create_device(GlobalNetworkId=gn_id, Description="del-conn-d2")["Device"]
+        conn = nm.create_connection(
+            GlobalNetworkId=gn_id,
+            DeviceId=d1["DeviceId"],
+            ConnectedDeviceId=d2["DeviceId"],
+        )["Connection"]
+        resp = nm.delete_connection(GlobalNetworkId=gn_id, ConnectionId=conn["ConnectionId"])
+        assert "Connection" in resp
+        assert resp["Connection"]["ConnectionId"] == conn["ConnectionId"]
+
+
+class TestNetworkManagerUpdateOps:
+    """Tests for Update operations on global network, device, site, link."""
+
+    def test_update_global_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.update_global_network(GlobalNetworkId=gn_id, Description="updated-gn")
+        assert resp["GlobalNetwork"]["Description"] == "updated-gn"
+        assert resp["GlobalNetwork"]["GlobalNetworkId"] == gn_id
+
+    def test_delete_global_network(self, nm):
+        gn = nm.create_global_network(Description="to-delete")["GlobalNetwork"]
+        resp = nm.delete_global_network(GlobalNetworkId=gn["GlobalNetworkId"])
+        assert "GlobalNetwork" in resp
+        assert resp["GlobalNetwork"]["GlobalNetworkId"] == gn["GlobalNetworkId"]
+
+    def test_update_device(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        dev = nm.create_device(GlobalNetworkId=gn_id, Description="orig")["Device"]
+        resp = nm.update_device(
+            GlobalNetworkId=gn_id, DeviceId=dev["DeviceId"], Description="updated-dev"
+        )
+        assert resp["Device"]["Description"] == "updated-dev"
+        assert resp["Device"]["DeviceId"] == dev["DeviceId"]
+
+    def test_update_site(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        site = nm.create_site(GlobalNetworkId=gn_id, Description="orig-site")["Site"]
+        resp = nm.update_site(
+            GlobalNetworkId=gn_id, SiteId=site["SiteId"], Description="updated-site"
+        )
+        assert resp["Site"]["Description"] == "updated-site"
+        assert resp["Site"]["SiteId"] == site["SiteId"]
+
+    def test_update_link(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        site = nm.create_site(GlobalNetworkId=gn_id, Description="link-site")["Site"]
+        link = nm.create_link(
+            GlobalNetworkId=gn_id,
+            SiteId=site["SiteId"],
+            Bandwidth={"UploadSpeed": 10, "DownloadSpeed": 50},
+            Description="orig-link",
+        )["Link"]
+        resp = nm.update_link(
+            GlobalNetworkId=gn_id, LinkId=link["LinkId"], Description="updated-link"
+        )
+        assert resp["Link"]["Description"] == "updated-link"
+        assert resp["Link"]["LinkId"] == link["LinkId"]
+
+
+class TestNetworkManagerLinkAssociationOps:
+    """Tests for AssociateLink and DisassociateLink."""
+
+    def test_associate_and_disassociate_link(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        site = nm.create_site(GlobalNetworkId=gn_id, Description="assoc-site")["Site"]
+        dev = nm.create_device(GlobalNetworkId=gn_id, Description="assoc-dev")["Device"]
+        link = nm.create_link(
+            GlobalNetworkId=gn_id,
+            SiteId=site["SiteId"],
+            Bandwidth={"UploadSpeed": 10, "DownloadSpeed": 50},
+        )["Link"]
+
+        resp = nm.associate_link(
+            GlobalNetworkId=gn_id, DeviceId=dev["DeviceId"], LinkId=link["LinkId"]
+        )
+        assoc = resp["LinkAssociation"]
+        assert assoc["GlobalNetworkId"] == gn_id
+        assert assoc["DeviceId"] == dev["DeviceId"]
+        assert assoc["LinkId"] == link["LinkId"]
+
+        resp2 = nm.disassociate_link(
+            GlobalNetworkId=gn_id, DeviceId=dev["DeviceId"], LinkId=link["LinkId"]
+        )
+        assert "LinkAssociation" in resp2
+
+
+class TestNetworkManagerResourcePolicyOps:
+    """Tests for PutResourcePolicy and DeleteResourcePolicy."""
+
+    def test_put_and_delete_resource_policy(self, nm, global_network):
+        import json
+
+        gn_arn = global_network["GlobalNetworkArn"]
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "networkmanager:GetCoreNetwork",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        resp = nm.put_resource_policy(ResourceArn=gn_arn, PolicyDocument=policy)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        resp2 = nm.delete_resource_policy(ResourceArn=gn_arn)
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestNetworkManagerCoreNetworkPolicyOps:
+    """Tests for PutCoreNetworkPolicy, UpdateCoreNetwork, DeleteCoreNetworkPolicyVersion."""
+
+    @pytest.fixture
+    def core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        yield cn
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_put_core_network_policy(self, nm, core_network):
+        import json
+
+        cn_id = core_network["CoreNetworkId"]
+        policy = json.dumps(
+            {
+                "version": "2021.12",
+                "core-network-configuration": {
+                    "asn-ranges": ["64512-65534"],
+                    "edge-locations": [{"location": "us-east-1"}],
+                },
+                "segments": [{"name": "prod", "edge-locations": ["us-east-1"]}],
+            }
+        )
+        resp = nm.put_core_network_policy(CoreNetworkId=cn_id, PolicyDocument=policy)
+        assert "CoreNetworkPolicy" in resp
+        assert resp["CoreNetworkPolicy"]["CoreNetworkId"] == cn_id
+
+    def test_update_core_network(self, nm, core_network):
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.update_core_network(CoreNetworkId=cn_id, Description="updated-cn")
+        assert "CoreNetwork" in resp
+        assert resp["CoreNetwork"]["CoreNetworkId"] == cn_id
+
+    def test_delete_core_network_policy_version(self, nm, core_network):
+        import json
+
+        cn_id = core_network["CoreNetworkId"]
+        policy = json.dumps(
+            {
+                "version": "2021.12",
+                "core-network-configuration": {
+                    "asn-ranges": ["64512-65534"],
+                    "edge-locations": [{"location": "us-east-1"}],
+                },
+                "segments": [{"name": "prod", "edge-locations": ["us-east-1"]}],
+            }
+        )
+        nm.put_core_network_policy(CoreNetworkId=cn_id, PolicyDocument=policy)
+        resp = nm.delete_core_network_policy_version(CoreNetworkId=cn_id, PolicyVersionId=1)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_execute_core_network_change_set_not_found(self, nm, core_network):
+        """ExecuteCoreNetworkChangeSet raises NotFoundException for missing policy."""
+        cn_id = core_network["CoreNetworkId"]
+        with pytest.raises(ClientError) as exc:
+            nm.execute_core_network_change_set(CoreNetworkId=cn_id, PolicyVersionId=999)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestNetworkManagerAttachmentOps:
+    """Tests for VPC attachment create/accept/reject/delete and connect attachment."""
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def core_network_with_vpc(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        vpc = ec2_client.create_vpc(CidrBlock="10.50.0.0/16")["Vpc"]
+        subnet = ec2_client.create_subnet(VpcId=vpc["VpcId"], CidrBlock="10.50.1.0/24")["Subnet"]
+        yield {
+            "cn": cn,
+            "vpc": vpc,
+            "subnet": subnet,
+            "gn_id": gn_id,
+        }
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_create_vpc_attachment(self, nm, core_network_with_vpc):
+        ctx = core_network_with_vpc
+        cn_id = ctx["cn"]["CoreNetworkId"]
+        vpc_arn = f"arn:aws:ec2:us-east-1:123456789012:vpc/{ctx['vpc']['VpcId']}"
+        subnet_arn = f"arn:aws:ec2:us-east-1:123456789012:subnet/{ctx['subnet']['SubnetId']}"
+        resp = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id, VpcArn=vpc_arn, SubnetArns=[subnet_arn]
+        )
+        att = resp["VpcAttachment"]["Attachment"]
+        assert "AttachmentId" in att
+        assert att["CoreNetworkId"] == cn_id
+
+    def test_accept_attachment(self, nm, core_network_with_vpc):
+        ctx = core_network_with_vpc
+        cn_id = ctx["cn"]["CoreNetworkId"]
+        vpc_arn = f"arn:aws:ec2:us-east-1:123456789012:vpc/{ctx['vpc']['VpcId']}"
+        subnet_arn = f"arn:aws:ec2:us-east-1:123456789012:subnet/{ctx['subnet']['SubnetId']}"
+        vpc_att = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id, VpcArn=vpc_arn, SubnetArns=[subnet_arn]
+        )
+        att_id = vpc_att["VpcAttachment"]["Attachment"]["AttachmentId"]
+        resp = nm.accept_attachment(AttachmentId=att_id)
+        assert "Attachment" in resp
+
+    def test_reject_attachment(self, nm, core_network_with_vpc, ec2_client):
+        ctx = core_network_with_vpc
+        cn_id = ctx["cn"]["CoreNetworkId"]
+        vpc2 = ec2_client.create_vpc(CidrBlock="10.51.0.0/16")["Vpc"]
+        sub2 = ec2_client.create_subnet(VpcId=vpc2["VpcId"], CidrBlock="10.51.1.0/24")["Subnet"]
+        vpc_arn = f"arn:aws:ec2:us-east-1:123456789012:vpc/{vpc2['VpcId']}"
+        subnet_arn = f"arn:aws:ec2:us-east-1:123456789012:subnet/{sub2['SubnetId']}"
+        vpc_att = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id, VpcArn=vpc_arn, SubnetArns=[subnet_arn]
+        )
+        att_id = vpc_att["VpcAttachment"]["Attachment"]["AttachmentId"]
+        resp = nm.reject_attachment(AttachmentId=att_id)
+        assert "Attachment" in resp
+
+    def test_delete_attachment(self, nm, core_network_with_vpc):
+        ctx = core_network_with_vpc
+        cn_id = ctx["cn"]["CoreNetworkId"]
+        vpc_arn = f"arn:aws:ec2:us-east-1:123456789012:vpc/{ctx['vpc']['VpcId']}"
+        subnet_arn = f"arn:aws:ec2:us-east-1:123456789012:subnet/{ctx['subnet']['SubnetId']}"
+        vpc_att = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id, VpcArn=vpc_arn, SubnetArns=[subnet_arn]
+        )
+        att_id = vpc_att["VpcAttachment"]["Attachment"]["AttachmentId"]
+        resp = nm.delete_attachment(AttachmentId=att_id)
+        assert "Attachment" in resp
+
+    def test_update_vpc_attachment(self, nm, core_network_with_vpc):
+        ctx = core_network_with_vpc
+        cn_id = ctx["cn"]["CoreNetworkId"]
+        vpc_arn = f"arn:aws:ec2:us-east-1:123456789012:vpc/{ctx['vpc']['VpcId']}"
+        subnet_arn = f"arn:aws:ec2:us-east-1:123456789012:subnet/{ctx['subnet']['SubnetId']}"
+        vpc_att = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id, VpcArn=vpc_arn, SubnetArns=[subnet_arn]
+        )
+        att_id = vpc_att["VpcAttachment"]["Attachment"]["AttachmentId"]
+        resp = nm.update_vpc_attachment(AttachmentId=att_id, AddSubnetArns=[], RemoveSubnetArns=[])
+        assert "VpcAttachment" in resp
+
+    def test_create_connect_attachment(self, nm, core_network_with_vpc):
+        ctx = core_network_with_vpc
+        cn_id = ctx["cn"]["CoreNetworkId"]
+        vpc_arn = f"arn:aws:ec2:us-east-1:123456789012:vpc/{ctx['vpc']['VpcId']}"
+        subnet_arn = f"arn:aws:ec2:us-east-1:123456789012:subnet/{ctx['subnet']['SubnetId']}"
+        vpc_att = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id, VpcArn=vpc_arn, SubnetArns=[subnet_arn]
+        )
+        transport_att_id = vpc_att["VpcAttachment"]["Attachment"]["AttachmentId"]
+        resp = nm.create_connect_attachment(
+            CoreNetworkId=cn_id,
+            TransportAttachmentId=transport_att_id,
+            EdgeLocation="us-east-1",
+            Options={"Protocol": "GRE"},
+        )
+        ca = resp["ConnectAttachment"]
+        assert "Attachment" in ca
+        assert ca["Attachment"]["CoreNetworkId"] == cn_id
+
+
+class TestNetworkManagerConnectPeerOps:
+    """Tests for CreateConnectPeer, DeleteConnectPeer, Associate/Disassociate."""
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def connect_attachment(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        cn_id = cn["CoreNetworkId"]
+        vpc = ec2_client.create_vpc(CidrBlock="10.60.0.0/16")["Vpc"]
+        sub = ec2_client.create_subnet(VpcId=vpc["VpcId"], CidrBlock="10.60.1.0/24")["Subnet"]
+        vpc_att = nm.create_vpc_attachment(
+            CoreNetworkId=cn_id,
+            VpcArn=f"arn:aws:ec2:us-east-1:123456789012:vpc/{vpc['VpcId']}",
+            SubnetArns=[f"arn:aws:ec2:us-east-1:123456789012:subnet/{sub['SubnetId']}"],
+        )
+        transport_id = vpc_att["VpcAttachment"]["Attachment"]["AttachmentId"]
+        ca = nm.create_connect_attachment(
+            CoreNetworkId=cn_id,
+            TransportAttachmentId=transport_id,
+            EdgeLocation="us-east-1",
+            Options={"Protocol": "GRE"},
+        )
+        ca_att_id = ca["ConnectAttachment"]["Attachment"]["AttachmentId"]
+        yield {"ca_att_id": ca_att_id, "gn_id": gn_id, "cn_id": cn_id}
+        nm.delete_core_network(CoreNetworkId=cn_id)
+
+    def test_create_connect_peer(self, nm, connect_attachment):
+        resp = nm.create_connect_peer(
+            ConnectAttachmentId=connect_attachment["ca_att_id"],
+            PeerAddress="10.0.0.1",
+        )
+        assert "ConnectPeer" in resp
+        assert "ConnectPeerId" in resp["ConnectPeer"]
+
+    def test_delete_connect_peer(self, nm, connect_attachment):
+        cp = nm.create_connect_peer(
+            ConnectAttachmentId=connect_attachment["ca_att_id"],
+            PeerAddress="10.0.0.2",
+        )["ConnectPeer"]
+        resp = nm.delete_connect_peer(ConnectPeerId=cp["ConnectPeerId"])
+        assert "ConnectPeer" in resp
+        assert resp["ConnectPeer"]["ConnectPeerId"] == cp["ConnectPeerId"]
+
+    def test_associate_and_disassociate_connect_peer(self, nm, connect_attachment):
+        gn_id = connect_attachment["gn_id"]
+        cp = nm.create_connect_peer(
+            ConnectAttachmentId=connect_attachment["ca_att_id"],
+            PeerAddress="10.0.0.3",
+        )["ConnectPeer"]
+        dev = nm.create_device(GlobalNetworkId=gn_id, Description="cp-dev")["Device"]
+
+        resp = nm.associate_connect_peer(
+            GlobalNetworkId=gn_id,
+            ConnectPeerId=cp["ConnectPeerId"],
+            DeviceId=dev["DeviceId"],
+        )
+        assert "ConnectPeerAssociation" in resp
+
+        resp2 = nm.disassociate_connect_peer(
+            GlobalNetworkId=gn_id, ConnectPeerId=cp["ConnectPeerId"]
+        )
+        assert "ConnectPeerAssociation" in resp2
+
+    def test_delete_connect_peer_not_found(self, nm):
+        """DeleteConnectPeer with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.delete_connect_peer(ConnectPeerId="cp-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestNetworkManagerTransitGatewayOps:
+    """Tests for RegisterTransitGateway, CreateTransitGatewayPeering, DeletePeering."""
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    def test_register_transit_gateway(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        tgw = ec2_client.create_transit_gateway(Description="test-tgw")["TransitGateway"]
+        resp = nm.register_transit_gateway(
+            GlobalNetworkId=gn_id, TransitGatewayArn=tgw["TransitGatewayArn"]
+        )
+        assert "TransitGatewayRegistration" in resp
+        reg = resp["TransitGatewayRegistration"]
+        assert reg["GlobalNetworkId"] == gn_id
+
+    def test_create_transit_gateway_peering(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        cn_id = cn["CoreNetworkId"]
+        tgw = ec2_client.create_transit_gateway(Description="peer-tgw")["TransitGateway"]
+        try:
+            resp = nm.create_transit_gateway_peering(
+                CoreNetworkId=cn_id,
+                TransitGatewayArn=tgw["TransitGatewayArn"],
+            )
+            assert "TransitGatewayPeering" in resp
+            peering = resp["TransitGatewayPeering"]
+            assert "Peering" in peering
+            peering_id = peering["Peering"]["PeeringId"]
+
+            # DeletePeering
+            del_resp = nm.delete_peering(PeeringId=peering_id)
+            assert "Peering" in del_resp
+        finally:
+            nm.delete_core_network(CoreNetworkId=cn_id)
+
+    def test_create_transit_gateway_route_table_attachment(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        cn_id = cn["CoreNetworkId"]
+        tgw = ec2_client.create_transit_gateway(Description="rta-tgw")["TransitGateway"]
+        try:
+            peering = nm.create_transit_gateway_peering(
+                CoreNetworkId=cn_id,
+                TransitGatewayArn=tgw["TransitGatewayArn"],
+            )
+            peering_id = peering["TransitGatewayPeering"]["Peering"]["PeeringId"]
+            rt_arn = "arn:aws:ec2:us-east-1:123456789012:transit-gateway-route-table/tgw-rtb-fake"
+            resp = nm.create_transit_gateway_route_table_attachment(
+                PeeringId=peering_id, TransitGatewayRouteTableArn=rt_arn
+            )
+            assert "TransitGatewayRouteTableAttachment" in resp
+        finally:
+            nm.delete_core_network(CoreNetworkId=cn_id)
+
+    def test_delete_peering_not_found(self, nm):
+        """DeletePeering with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.delete_peering(PeeringId="peering-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_associate_transit_gateway_connect_peer(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        dev = nm.create_device(GlobalNetworkId=gn_id, Description="tgwcp-dev")["Device"]
+        tgw_cp_arn = "arn:aws:ec2:us-east-1:123456789012:transit-gateway-connect-peer/tgw-cp-fake"
+        resp = nm.associate_transit_gateway_connect_peer(
+            GlobalNetworkId=gn_id,
+            TransitGatewayConnectPeerArn=tgw_cp_arn,
+            DeviceId=dev["DeviceId"],
+        )
+        assert "TransitGatewayConnectPeerAssociation" in resp
+
+    def test_deregister_transit_gateway_not_found(self, nm, global_network):
+        """DeregisterTransitGateway with unregistered ARN returns NotFoundException."""
+        gn_id = global_network["GlobalNetworkId"]
+        fake_arn = "arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-nonexistent"
+        with pytest.raises(ClientError) as exc:
+            nm.deregister_transit_gateway(GlobalNetworkId=gn_id, TransitGatewayArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_disassociate_transit_gateway_connect_peer_not_found(self, nm, global_network):
+        """DisassociateTransitGatewayConnectPeer with fake ARN returns NotFoundException."""
+        gn_id = global_network["GlobalNetworkId"]
+        fake_arn = (
+            "arn:aws:ec2:us-east-1:123456789012:transit-gateway-connect-peer/tgw-cp-nonexistent"
+        )
+        with pytest.raises(ClientError) as exc:
+            nm.disassociate_transit_gateway_connect_peer(
+                GlobalNetworkId=gn_id, TransitGatewayConnectPeerArn=fake_arn
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestNetworkManagerCustomerGatewayOps:
+    """Tests for AssociateCustomerGateway and DisassociateCustomerGateway."""
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    def test_associate_customer_gateway(self, nm, global_network, ec2_client):
+        gn_id = global_network["GlobalNetworkId"]
+        dev = nm.create_device(GlobalNetworkId=gn_id, Description="cgw-dev")["Device"]
+        cgw = ec2_client.create_customer_gateway(Type="ipsec.1", BgpAsn=65000, IpAddress="9.8.7.6")[
+            "CustomerGateway"
+        ]
+        cgw_arn = f"arn:aws:ec2:us-east-1:123456789012:customer-gateway/{cgw['CustomerGatewayId']}"
+        resp = nm.associate_customer_gateway(
+            GlobalNetworkId=gn_id,
+            CustomerGatewayArn=cgw_arn,
+            DeviceId=dev["DeviceId"],
+        )
+        assert "CustomerGatewayAssociation" in resp
+
+    def test_disassociate_customer_gateway_not_found(self, nm, global_network):
+        """DisassociateCustomerGateway with unassociated ARN returns NotFoundException."""
+        gn_id = global_network["GlobalNetworkId"]
+        fake_arn = "arn:aws:ec2:us-east-1:123456789012:customer-gateway/cgw-nonexistent"
+        with pytest.raises(ClientError) as exc:
+            nm.disassociate_customer_gateway(GlobalNetworkId=gn_id, CustomerGatewayArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestNetworkManagerSpecialAttachmentOps:
+    """Tests for SiteToSiteVpn, DirectConnectGateway, and PrefixList attachments."""
+
+    @pytest.fixture
+    def core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        yield cn
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_create_site_to_site_vpn_attachment(self, nm, core_network):
+        cn_id = core_network["CoreNetworkId"]
+        vpn_arn = "arn:aws:ec2:us-east-1:123456789012:vpn-connection/vpn-fake"
+        resp = nm.create_site_to_site_vpn_attachment(CoreNetworkId=cn_id, VpnConnectionArn=vpn_arn)
+        assert "SiteToSiteVpnAttachment" in resp
+
+    def test_create_direct_connect_gateway_attachment(self, nm, core_network):
+        cn_id = core_network["CoreNetworkId"]
+        dx_arn = "arn:aws:directconnect::123456789012:dx-gateway/fake"
+        resp = nm.create_direct_connect_gateway_attachment(
+            CoreNetworkId=cn_id,
+            DirectConnectGatewayArn=dx_arn,
+            EdgeLocations=["us-east-1"],
+        )
+        assert "DirectConnectGatewayAttachment" in resp
+
+    def test_create_core_network_prefix_list_association(self, nm, core_network):
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.create_core_network_prefix_list_association(
+            CoreNetworkId=cn_id,
+            PrefixListArn="arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-fake",
+            PrefixListAlias="test-alias",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_direct_connect_gateway_attachment_not_found(self, nm):
+        """UpdateDirectConnectGatewayAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.update_direct_connect_gateway_attachment(
+                AttachmentId="attachment-nonexistent",
+                EdgeLocations=["us-east-1"],
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestNetworkManagerRoutingPolicyAndMisc:
+    """Tests for routing policy labels, route analysis, and misc operations."""
+
+    @pytest.fixture
+    def core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        yield cn
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_put_attachment_routing_policy_label_not_found(self, nm, core_network):
+        """PutAttachmentRoutingPolicyLabel with fake attachment returns NotFoundException."""
+        cn_id = core_network["CoreNetworkId"]
+        with pytest.raises(ClientError) as exc:
+            nm.put_attachment_routing_policy_label(
+                CoreNetworkId=cn_id,
+                AttachmentId="attachment-nonexistent",
+                RoutingPolicyLabel="test-label",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_remove_attachment_routing_policy_label(self, nm, core_network):
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.remove_attachment_routing_policy_label(
+            CoreNetworkId=cn_id, AttachmentId="attachment-fake"
+        )
+        assert "AttachmentId" in resp
+
+    def test_start_route_analysis(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.start_route_analysis(
+            GlobalNetworkId=gn_id,
+            Source={
+                "TransitGatewayAttachmentArn": (
+                    "arn:aws:ec2:us-east-1:123456789012:transit-gateway-attachment/tgw-attach-fake"
+                ),
+                "IpAddress": "10.0.0.1",
+            },
+            Destination={
+                "TransitGatewayAttachmentArn": (
+                    "arn:aws:ec2:us-east-1:123456789012:transit-gateway-attachment/tgw-attach-fake2"
+                ),
+                "IpAddress": "10.0.1.1",
+            },
+        )
+        assert "RouteAnalysis" in resp
+        ra = resp["RouteAnalysis"]
+        assert "RouteAnalysisId" in ra
+        assert ra["GlobalNetworkId"] == gn_id
+
+    def test_start_organization_service_access_update(self, nm):
+        resp = nm.start_organization_service_access_update(Action="ENABLE")
+        assert "OrganizationStatus" in resp
+
+    def test_update_network_resource_metadata_not_found(self, nm, global_network):
+        """UpdateNetworkResourceMetadata with fake resource returns NotFoundException."""
+        gn_id = global_network["GlobalNetworkId"]
+        with pytest.raises(ClientError) as exc:
+            nm.update_network_resource_metadata(
+                GlobalNetworkId=gn_id,
+                ResourceArn="arn:aws:ec2:us-east-1:123456789012:vpc/vpc-nonexistent",
+                Metadata={"key": "val"},
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_accept_attachment_not_found(self, nm):
+        """AcceptAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.accept_attachment(AttachmentId="attachment-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_reject_attachment_not_found(self, nm):
+        """RejectAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.reject_attachment(AttachmentId="attachment-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_attachment_not_found(self, nm):
+        """DeleteAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.delete_attachment(AttachmentId="attachment-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"

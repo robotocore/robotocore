@@ -689,3 +689,203 @@ class TestBedrockCustomModelDeployments:
         """ListCustomModelDeployments returns a response."""
         r = bedrock.list_custom_model_deployments()
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockGuardrailOps:
+    """Tests for guardrail CRUD operations."""
+
+    def test_create_guardrail(self, bedrock):
+        name = _unique("guard")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked-input",
+            blockedOutputsMessaging="blocked-output",
+        )
+        assert "guardrailId" in r
+        assert "guardrailArn" in r
+        assert r["version"] == "DRAFT"
+
+    def test_create_guardrail_version(self, bedrock):
+        name = _unique("guard-ver")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = r["guardrailId"]
+        r2 = bedrock.create_guardrail_version(guardrailIdentifier=gr_id)
+        assert "guardrailId" in r2
+        assert r2["version"] == "1"
+
+    def test_update_guardrail(self, bedrock):
+        name = _unique("guard-upd")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="old-blocked",
+            blockedOutputsMessaging="old-blocked",
+        )
+        gr_id = r["guardrailId"]
+        new_name = _unique("guard-new")
+        r2 = bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=new_name,
+            blockedInputMessaging="new-blocked",
+            blockedOutputsMessaging="new-blocked",
+        )
+        assert "guardrailId" in r2
+        assert r2["updatedAt"] is not None
+
+    def test_delete_guardrail(self, bedrock):
+        name = _unique("guard-del")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = r["guardrailId"]
+        r2 = bedrock.delete_guardrail(guardrailIdentifier=gr_id)
+        assert r2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_guardrail_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_guardrail(guardrailIdentifier="nonexistent-guardrail")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_create_guardrail_then_get(self, bedrock):
+        """Created guardrail is retrievable via get_guardrail."""
+        name = _unique("guard-get")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = r["guardrailId"]
+        r2 = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert r2["name"] == name
+        assert r2["guardrailId"] == gr_id
+
+
+class TestBedrockProvisionedModelThroughputOps:
+    """Tests for provisioned model throughput CRUD operations."""
+
+    def test_create_provisioned_model_throughput(self, bedrock):
+        name = _unique("pmt")
+        r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        assert "provisionedModelArn" in r
+        assert "arn:aws:bedrock:" in r["provisionedModelArn"]
+
+    def test_update_provisioned_model_throughput(self, bedrock):
+        name = _unique("pmt-upd")
+        r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = r["provisionedModelArn"]
+        new_name = _unique("pmt-new")
+        r2 = bedrock.update_provisioned_model_throughput(
+            provisionedModelId=pmt_arn,
+            desiredProvisionedModelName=new_name,
+        )
+        assert r2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_provisioned_model_throughput(self, bedrock):
+        name = _unique("pmt-del")
+        r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = r["provisionedModelArn"]
+        r2 = bedrock.delete_provisioned_model_throughput(provisionedModelId=pmt_arn)
+        assert r2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_provisioned_model_throughput_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_provisioned_model_throughput(provisionedModelId="nonexistent-pmt")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+
+class TestBedrockModelCopyJobOps:
+    """Tests for model copy job operations."""
+
+    def test_create_model_copy_job(self, bedrock):
+        name = _unique("copy")
+        r = bedrock.create_model_copy_job(
+            sourceModelArn="arn:aws:bedrock:us-west-2:123456789012:custom-model/test-model",
+            targetModelName=name,
+        )
+        assert "jobArn" in r
+        assert "arn:aws:bedrock:" in r["jobArn"]
+        assert "model-copy-job" in r["jobArn"]
+
+
+class TestBedrockDeleteOpsWithFakeIds:
+    """Tests for delete operations with nonexistent resources."""
+
+    def test_delete_imported_model_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_imported_model(modelIdentifier="nonexistent-model")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_inference_profile_not_found(self, bedrock):
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_inference_profile(inferenceProfileIdentifier="nonexistent-profile")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_marketplace_model_endpoint_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:marketplace-model-endpoint/fake"
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_marketplace_model_endpoint(endpointArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_prompt_router_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:default-prompt-router/fake"
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_prompt_router(promptRouterArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_deregister_marketplace_model_endpoint_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:marketplace-model-endpoint/fake"
+        with pytest.raises(ClientError) as exc:
+            bedrock.deregister_marketplace_model_endpoint(endpointArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockStopOpsWithFakeIds:
+    """Tests for stop operations with nonexistent resources."""
+
+    def test_stop_evaluation_job_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:evaluation-job/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.stop_evaluation_job(jobIdentifier=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_model_invocation_job_not_found(self, bedrock):
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:model-invocation-job/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            bedrock.stop_model_invocation_job(jobIdentifier=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockRegisterMarketplaceEndpoint:
+    """Tests for RegisterMarketplaceModelEndpoint."""
+
+    def test_register_marketplace_model_endpoint_not_found(self, bedrock):
+        """RegisterMarketplaceModelEndpoint with fake endpoint returns error."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.register_marketplace_model_endpoint(
+                endpointIdentifier="arn:aws:sagemaker:us-east-1:123456789012:endpoint/fake",
+                modelSourceIdentifier="amazon.titan-text-express-v1",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
