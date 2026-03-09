@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Simple data lake with S3 landing zone, Kinesis stream, and DynamoDB catalog
+
+Resources:
+  LandingZoneBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-landing"
+
+  IngestionStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub "${AWS::StackName}-ingest"
+      ShardCount: 1
+
+  CatalogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-catalog"
+      AttributeDefinitions:
+        - AttributeName: dataset_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: dataset_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  BucketName:
+    Value: !Ref LandingZoneBucket
+  StreamName:
+    Value: !Ref IngestionStream
+  TableName:
+    Value: !Ref CatalogTable
