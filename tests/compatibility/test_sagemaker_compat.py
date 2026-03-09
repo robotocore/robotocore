@@ -2378,3 +2378,655 @@ class TestSageMakerTagsOnModelPackageGroup:
         keys = [t["Key"] for t in tags_resp["Tags"]]
         assert "env" not in keys
         assert "owner" in keys
+
+
+class TestSageMakerSearchAdditional:
+    """Search with additional resource types not covered elsewhere."""
+
+    def test_search_feature_group_resource(self, sagemaker):
+        """Search FeatureGroup returns Results list."""
+        resp = sagemaker.search(Resource="FeatureGroup")
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_search_experiment_trial_component(self, sagemaker):
+        """Search ExperimentTrialComponent returns Results list."""
+        resp = sagemaker.search(Resource="ExperimentTrialComponent")
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+
+class TestSageMakerListEndpointsFiltered:
+    """List endpoints with various filter parameters."""
+
+    def test_list_endpoints_name_contains(self, sagemaker):
+        """list_endpoints with NameContains filters correctly."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        ep_name = _uid("ep-flt")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                }
+            ],
+        )
+        sagemaker.create_endpoint(EndpointName=ep_name, EndpointConfigName=ec_name)
+        try:
+            resp = sagemaker.list_endpoints(NameContains=ep_name[:10])
+            names = [e["EndpointName"] for e in resp["Endpoints"]]
+            assert ep_name in names
+        finally:
+            sagemaker.delete_endpoint(EndpointName=ep_name)
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)
+
+    def test_list_endpoints_max_results(self, sagemaker):
+        """list_endpoints with MaxResults returns limited results."""
+        resp = sagemaker.list_endpoints(MaxResults=5)
+        assert "Endpoints" in resp
+        assert isinstance(resp["Endpoints"], list)
+
+    def test_list_endpoints_name_contains_no_match(self, sagemaker):
+        """list_endpoints with non-matching NameContains returns empty list."""
+        resp = sagemaker.list_endpoints(NameContains="zzz-nonexistent-zzz")
+        assert "Endpoints" in resp
+        assert len(resp["Endpoints"]) == 0
+
+
+class TestSageMakerListEndpointConfigsFiltered:
+    """List endpoint configs with filter parameters."""
+
+    def test_list_endpoint_configs_name_contains(self, sagemaker):
+        """list_endpoint_configs with NameContains filters correctly."""
+        resp = sagemaker.list_endpoint_configs(NameContains="zzz-nonexistent-zzz")
+        assert "EndpointConfigs" in resp
+        assert len(resp["EndpointConfigs"]) == 0
+
+    def test_list_endpoint_configs_max_results(self, sagemaker):
+        """list_endpoint_configs with MaxResults returns bounded results."""
+        resp = sagemaker.list_endpoint_configs(MaxResults=5)
+        assert "EndpointConfigs" in resp
+        assert isinstance(resp["EndpointConfigs"], list)
+
+    def test_list_endpoint_configs_sorted(self, sagemaker):
+        """list_endpoint_configs with SortBy and SortOrder."""
+        resp = sagemaker.list_endpoint_configs(SortBy="Name", SortOrder="Descending")
+        assert "EndpointConfigs" in resp
+        assert isinstance(resp["EndpointConfigs"], list)
+
+
+class TestSageMakerListModelsFiltered:
+    """List models with additional filter parameters."""
+
+    def test_list_models_max_results(self, sagemaker):
+        """list_models with MaxResults returns bounded results."""
+        resp = sagemaker.list_models(MaxResults=5)
+        assert "Models" in resp
+        assert isinstance(resp["Models"], list)
+
+    def test_list_models_sorted_descending(self, sagemaker):
+        """list_models with SortBy=Name, SortOrder=Descending."""
+        resp = sagemaker.list_models(SortBy="Name", SortOrder="Descending")
+        assert "Models" in resp
+        assert isinstance(resp["Models"], list)
+
+    def test_list_models_creation_time_filter(self, sagemaker):
+        """list_models with CreationTimeAfter returns models."""
+        from datetime import datetime
+
+        resp = sagemaker.list_models(CreationTimeAfter=datetime(2020, 1, 1))
+        assert "Models" in resp
+        assert isinstance(resp["Models"], list)
+
+
+class TestSageMakerListNotebookInstancesFiltered:
+    """List notebook instances with filter parameters."""
+
+    def test_list_notebook_instances_status_filter(self, sagemaker):
+        """list_notebook_instances with StatusEquals filter."""
+        resp = sagemaker.list_notebook_instances(StatusEquals="InService")
+        assert "NotebookInstances" in resp
+        assert isinstance(resp["NotebookInstances"], list)
+
+    def test_list_notebook_instances_name_contains(self, sagemaker):
+        """list_notebook_instances with NameContains filter."""
+        resp = sagemaker.list_notebook_instances(NameContains="zzz-nonexistent-zzz")
+        assert "NotebookInstances" in resp
+        assert len(resp["NotebookInstances"]) == 0
+
+
+class TestSageMakerListTrainingJobsFiltered:
+    """List training jobs with additional filter parameters."""
+
+    def test_list_training_jobs_name_contains(self, sagemaker):
+        """list_training_jobs with NameContains filter."""
+        resp = sagemaker.list_training_jobs(NameContains="zzz-nonexistent-zzz")
+        assert "TrainingJobSummaries" in resp
+        assert len(resp["TrainingJobSummaries"]) == 0
+
+    def test_list_training_jobs_sorted_ascending(self, sagemaker):
+        """list_training_jobs with SortBy=Name, SortOrder=Ascending."""
+        resp = sagemaker.list_training_jobs(SortBy="Name", SortOrder="Ascending")
+        assert "TrainingJobSummaries" in resp
+        assert isinstance(resp["TrainingJobSummaries"], list)
+
+
+class TestSageMakerListProcessingJobsFiltered:
+    """List processing jobs with additional filter parameters."""
+
+    def test_list_processing_jobs_status_filter(self, sagemaker):
+        """list_processing_jobs with StatusEquals filter."""
+        resp = sagemaker.list_processing_jobs(StatusEquals="Completed")
+        assert "ProcessingJobSummaries" in resp
+        assert isinstance(resp["ProcessingJobSummaries"], list)
+
+    def test_list_processing_jobs_name_contains(self, sagemaker):
+        """list_processing_jobs with NameContains filter."""
+        resp = sagemaker.list_processing_jobs(NameContains="zzz-nonexistent-zzz")
+        assert "ProcessingJobSummaries" in resp
+        assert len(resp["ProcessingJobSummaries"]) == 0
+
+    def test_list_processing_jobs_sorted(self, sagemaker):
+        """list_processing_jobs with SortBy and SortOrder."""
+        resp = sagemaker.list_processing_jobs(SortBy="Name", SortOrder="Ascending")
+        assert "ProcessingJobSummaries" in resp
+        assert isinstance(resp["ProcessingJobSummaries"], list)
+
+
+class TestSageMakerListCompilationJobsFiltered:
+    """List compilation jobs with filter parameters."""
+
+    def test_list_compilation_jobs_sorted(self, sagemaker):
+        """list_compilation_jobs with SortBy and SortOrder."""
+        resp = sagemaker.list_compilation_jobs(SortBy="Name", SortOrder="Ascending")
+        assert "CompilationJobSummaries" in resp
+        assert isinstance(resp["CompilationJobSummaries"], list)
+
+
+class TestSageMakerListTransformJobsFiltered:
+    """List transform jobs with filter parameters."""
+
+    def test_list_transform_jobs_sorted(self, sagemaker):
+        """list_transform_jobs with SortBy and SortOrder."""
+        resp = sagemaker.list_transform_jobs(SortBy="Name", SortOrder="Ascending")
+        assert "TransformJobSummaries" in resp
+        assert isinstance(resp["TransformJobSummaries"], list)
+
+
+class TestSageMakerListHPTJobsFiltered:
+    """List hyper parameter tuning jobs with filter parameters."""
+
+    def test_list_hpt_jobs_sorted(self, sagemaker):
+        """list_hyper_parameter_tuning_jobs with SortBy and SortOrder."""
+        resp = sagemaker.list_hyper_parameter_tuning_jobs(SortBy="Name", SortOrder="Ascending")
+        assert "HyperParameterTuningJobSummaries" in resp
+        assert isinstance(resp["HyperParameterTuningJobSummaries"], list)
+
+
+class TestSageMakerListExperimentsSorted:
+    """List experiments with sort parameters."""
+
+    def test_list_experiments_sorted(self, sagemaker):
+        """list_experiments with SortBy and SortOrder."""
+        resp = sagemaker.list_experiments(SortBy="Name", SortOrder="Ascending")
+        assert "ExperimentSummaries" in resp
+        assert isinstance(resp["ExperimentSummaries"], list)
+
+
+class TestSageMakerListTrialsSorted:
+    """List trials with sort parameters."""
+
+    def test_list_trials_sorted(self, sagemaker):
+        """list_trials with SortBy and SortOrder."""
+        resp = sagemaker.list_trials(SortBy="Name", SortOrder="Ascending")
+        assert "TrialSummaries" in resp
+        assert isinstance(resp["TrialSummaries"], list)
+
+
+class TestSageMakerListTrialComponentsSorted:
+    """List trial components with sort parameters."""
+
+    def test_list_trial_components_sorted(self, sagemaker):
+        """list_trial_components with SortBy and SortOrder."""
+        resp = sagemaker.list_trial_components(SortBy="Name", SortOrder="Ascending")
+        assert "TrialComponentSummaries" in resp
+        assert isinstance(resp["TrialComponentSummaries"], list)
+
+
+class TestSageMakerListModelCardsSorted:
+    """List model cards with sort parameters."""
+
+    def test_list_model_cards_sorted(self, sagemaker):
+        """list_model_cards with SortBy and SortOrder."""
+        resp = sagemaker.list_model_cards(SortBy="Name", SortOrder="Ascending")
+        assert "ModelCardSummaries" in resp
+        assert isinstance(resp["ModelCardSummaries"], list)
+
+
+class TestSageMakerListPipelinesSorted:
+    """List pipelines with sort parameters."""
+
+    def test_list_pipelines_sorted(self, sagemaker):
+        """list_pipelines with SortBy and SortOrder."""
+        resp = sagemaker.list_pipelines(SortBy="Name", SortOrder="Ascending")
+        assert "PipelineSummaries" in resp
+        assert isinstance(resp["PipelineSummaries"], list)
+
+
+class TestSageMakerListDQJobDefsSorted:
+    """List data quality job definitions with sort parameters."""
+
+    def test_list_dq_job_definitions_sorted(self, sagemaker):
+        """list_data_quality_job_definitions with SortBy and SortOrder."""
+        resp = sagemaker.list_data_quality_job_definitions(SortBy="Name", SortOrder="Ascending")
+        assert "JobDefinitionSummaries" in resp
+        assert isinstance(resp["JobDefinitionSummaries"], list)
+
+
+class TestSageMakerListModelPackageGroupsSorted:
+    """List model package groups with sort parameters."""
+
+    def test_list_model_package_groups_sorted(self, sagemaker):
+        """list_model_package_groups with SortBy and SortOrder."""
+        resp = sagemaker.list_model_package_groups(SortBy="Name", SortOrder="Ascending")
+        assert "ModelPackageGroupSummaryList" in resp
+        assert isinstance(resp["ModelPackageGroupSummaryList"], list)
+
+
+class TestSageMakerListModelPackagesSorted:
+    """List model packages with sort parameters."""
+
+    def test_list_model_packages_sorted(self, sagemaker):
+        """list_model_packages with SortBy and SortOrder."""
+        resp = sagemaker.list_model_packages(SortBy="Name", SortOrder="Ascending")
+        assert "ModelPackageSummaryList" in resp
+        assert isinstance(resp["ModelPackageSummaryList"], list)
+
+
+class TestSageMakerTagsOnTrial:
+    """Tags CRUD on Trial resources."""
+
+    def test_add_and_list_tags_on_trial(self, sagemaker):
+        """add_tags and list_tags work on trial ARNs."""
+        exp_name = _uid("exp")
+        trial_name = _uid("trial")
+        sagemaker.create_experiment(ExperimentName=exp_name)
+        sagemaker.create_trial(TrialName=trial_name, ExperimentName=exp_name)
+        try:
+            trial_arn = sagemaker.describe_trial(TrialName=trial_name)["TrialArn"]
+            sagemaker.add_tags(
+                ResourceArn=trial_arn,
+                Tags=[{"Key": "stage", "Value": "dev"}],
+            )
+            tags_resp = sagemaker.list_tags(ResourceArn=trial_arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["stage"] == "dev"
+        finally:
+            sagemaker.delete_trial(TrialName=trial_name)
+            sagemaker.delete_experiment(ExperimentName=exp_name)
+
+    def test_delete_tags_on_trial(self, sagemaker):
+        """delete_tags removes tags from a trial."""
+        exp_name = _uid("exp")
+        trial_name = _uid("trial")
+        sagemaker.create_experiment(ExperimentName=exp_name)
+        sagemaker.create_trial(TrialName=trial_name, ExperimentName=exp_name)
+        try:
+            trial_arn = sagemaker.describe_trial(TrialName=trial_name)["TrialArn"]
+            sagemaker.add_tags(
+                ResourceArn=trial_arn,
+                Tags=[
+                    {"Key": "stage", "Value": "dev"},
+                    {"Key": "team", "Value": "ml"},
+                ],
+            )
+            sagemaker.delete_tags(ResourceArn=trial_arn, TagKeys=["stage"])
+            tags_resp = sagemaker.list_tags(ResourceArn=trial_arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "stage" not in keys
+            assert "team" in keys
+        finally:
+            sagemaker.delete_trial(TrialName=trial_name)
+            sagemaker.delete_experiment(ExperimentName=exp_name)
+
+
+class TestSageMakerTagsOnTrialComponent:
+    """Tags CRUD on TrialComponent resources."""
+
+    def test_add_and_list_tags_on_trial_component(self, sagemaker):
+        """add_tags and list_tags work on trial component ARNs."""
+        tc_name = _uid("tc")
+        resp = sagemaker.create_trial_component(TrialComponentName=tc_name)
+        tc_arn = resp["TrialComponentArn"]
+        try:
+            sagemaker.add_tags(
+                ResourceArn=tc_arn,
+                Tags=[{"Key": "version", "Value": "1"}],
+            )
+            tags_resp = sagemaker.list_tags(ResourceArn=tc_arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["version"] == "1"
+        finally:
+            sagemaker.delete_trial_component(TrialComponentName=tc_name)
+
+    def test_delete_tags_on_trial_component(self, sagemaker):
+        """delete_tags removes tags from a trial component."""
+        tc_name = _uid("tc")
+        resp = sagemaker.create_trial_component(TrialComponentName=tc_name)
+        tc_arn = resp["TrialComponentArn"]
+        try:
+            sagemaker.add_tags(
+                ResourceArn=tc_arn,
+                Tags=[
+                    {"Key": "version", "Value": "1"},
+                    {"Key": "owner", "Value": "alice"},
+                ],
+            )
+            sagemaker.delete_tags(ResourceArn=tc_arn, TagKeys=["version"])
+            tags_resp = sagemaker.list_tags(ResourceArn=tc_arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "version" not in keys
+            assert "owner" in keys
+        finally:
+            sagemaker.delete_trial_component(TrialComponentName=tc_name)
+
+
+class TestSageMakerTagsOnModelCard:
+    """Tags on ModelCard resources via create_model_card."""
+
+    def test_create_model_card_with_tags(self, sagemaker):
+        """create_model_card with Tags attaches tags at creation time."""
+        name = _uid("mc")
+        resp = sagemaker.create_model_card(
+            ModelCardName=name,
+            Content='{"model_overview":{"model_id":"test"}}',
+            ModelCardStatus="Draft",
+            Tags=[{"Key": "dept", "Value": "ai"}, {"Key": "env", "Value": "test"}],
+        )
+        arn = resp["ModelCardArn"]
+        try:
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["dept"] == "ai"
+            assert tags["env"] == "test"
+        finally:
+            sagemaker.delete_model_card(ModelCardName=name)
+
+
+class TestSageMakerTagsOnDQJobDef:
+    """Tags on DataQualityJobDefinition via create with Tags."""
+
+    def test_create_dq_job_definition_with_tags(self, sagemaker):
+        """create_data_quality_job_definition with Tags attaches tags."""
+        name = _uid("dq")
+        resp = sagemaker.create_data_quality_job_definition(
+            JobDefinitionName=name,
+            DataQualityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest",
+            },
+            DataQualityJobInput={
+                "EndpointInput": {
+                    "EndpointName": "fake-ep",
+                    "LocalPath": "/opt/ml/processing/input",
+                }
+            },
+            DataQualityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {
+                        "S3Output": {
+                            "S3Uri": "s3://bucket/output",
+                            "LocalPath": "/opt/ml/processing/output",
+                        }
+                    }
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m5.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            Tags=[{"Key": "dq-env", "Value": "test"}],
+        )
+        arn = resp["JobDefinitionArn"]
+        try:
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["dq-env"] == "test"
+        finally:
+            sagemaker.delete_data_quality_job_definition(JobDefinitionName=name)
+
+
+class TestSageMakerTagsOnDomain:
+    """Tags on Domain resources via create with Tags."""
+
+    def test_create_domain_with_tags(self, sagemaker):
+        """create_domain with Tags attaches tags at creation time."""
+        name = _uid("dom")
+        resp = sagemaker.create_domain(
+            DomainName=name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+            Tags=[{"Key": "env", "Value": "dev"}],
+        )
+        arn = resp["DomainArn"]
+        try:
+            tags_resp = sagemaker.list_tags(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tags["env"] == "dev"
+        finally:
+            dom_id = arn.split("/")[-1]
+            sagemaker.delete_domain(DomainId=dom_id)
+
+
+class TestSageMakerAutoMLJobV2Detailed:
+    """Detailed AutoMLJobV2 tests."""
+
+    def test_describe_auto_ml_job_v2_fields(self, sagemaker):
+        """describe_auto_ml_job_v2 returns expected fields."""
+        name = _uid("aml")
+        sagemaker.create_auto_ml_job_v2(
+            AutoMLJobName=name,
+            AutoMLJobInputDataConfig=[
+                {
+                    "ChannelType": "training",
+                    "DataSource": {
+                        "S3DataSource": {
+                            "S3DataType": "S3Prefix",
+                            "S3Uri": "s3://bucket/data",
+                        }
+                    },
+                }
+            ],
+            OutputDataConfig={"S3OutputPath": "s3://bucket/output"},
+            AutoMLProblemTypeConfig={
+                "TabularJobConfig": {
+                    "TargetAttributeName": "target",
+                    "ProblemType": "BinaryClassification",
+                    "CompletionCriteria": {"MaxCandidates": 10},
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        desc = sagemaker.describe_auto_ml_job_v2(AutoMLJobName=name)
+        assert desc["AutoMLJobName"] == name
+        assert "AutoMLJobArn" in desc
+        assert desc["AutoMLJobStatus"] in ("InProgress", "Completed", "Failed", "Stopping")
+        assert "CreationTime" in desc
+        assert "OutputDataConfig" in desc
+        assert "RoleArn" in desc
+
+    def test_list_auto_ml_jobs_sorted(self, sagemaker):
+        """list_auto_ml_jobs with SortBy and SortOrder."""
+        resp = sagemaker.list_auto_ml_jobs(SortBy="Name", SortOrder="Ascending")
+        assert "AutoMLJobSummaries" in resp
+        assert isinstance(resp["AutoMLJobSummaries"], list)
+
+    def test_list_auto_ml_jobs_status_filter(self, sagemaker):
+        """list_auto_ml_jobs with StatusEquals filter."""
+        resp = sagemaker.list_auto_ml_jobs(StatusEquals="InProgress")
+        assert "AutoMLJobSummaries" in resp
+        assert isinstance(resp["AutoMLJobSummaries"], list)
+
+
+class TestSageMakerLifecycleConfigDetailed:
+    """Detailed NotebookInstanceLifecycleConfig tests."""
+
+    def test_lifecycle_config_on_create_and_on_start(self, sagemaker):
+        """create lifecycle config with both OnCreate and OnStart scripts."""
+        name = _uid("lc")
+        resp = sagemaker.create_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName=name,
+            OnCreate=[{"Content": "IyEvYmluL2Jhc2gKZWNobyBvbkNyZWF0ZQ=="}],
+            OnStart=[{"Content": "IyEvYmluL2Jhc2gKZWNobyBvblN0YXJ0"}],
+        )
+        assert "NotebookInstanceLifecycleConfigArn" in resp
+        try:
+            desc = sagemaker.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+            assert len(desc["OnCreate"]) == 1
+            assert len(desc["OnStart"]) == 1
+        finally:
+            sagemaker.delete_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+
+
+class TestSageMakerModelVpcConfig:
+    """Model with VpcConfig."""
+
+    def test_create_model_with_vpc_config(self, sagemaker):
+        """create_model with VpcConfig stores the config."""
+        name = _uid("model")
+        sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+            VpcConfig={
+                "SecurityGroupIds": ["sg-12345"],
+                "Subnets": ["subnet-12345"],
+            },
+        )
+        try:
+            desc = sagemaker.describe_model(ModelName=name)
+            assert "VpcConfig" in desc
+            assert "sg-12345" in desc["VpcConfig"]["SecurityGroupIds"]
+            assert "subnet-12345" in desc["VpcConfig"]["Subnets"]
+        finally:
+            sagemaker.delete_model(ModelName=name)
+
+
+class TestSageMakerMultiVariantEndpointConfig:
+    """Endpoint config with multiple production variants."""
+
+    def test_endpoint_config_multiple_variants(self, sagemaker):
+        """create_endpoint_config with two variants returns both in describe."""
+        m1 = _uid("model")
+        m2 = _uid("model")
+        ec = _uid("ec")
+        sagemaker.create_model(
+            ModelName=m1,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        sagemaker.create_model(
+            ModelName=m2,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        try:
+            sagemaker.create_endpoint_config(
+                EndpointConfigName=ec,
+                ProductionVariants=[
+                    {
+                        "VariantName": "v1",
+                        "ModelName": m1,
+                        "InitialInstanceCount": 1,
+                        "InstanceType": "ml.m4.xlarge",
+                        "InitialVariantWeight": 0.7,
+                    },
+                    {
+                        "VariantName": "v2",
+                        "ModelName": m2,
+                        "InitialInstanceCount": 1,
+                        "InstanceType": "ml.m4.xlarge",
+                        "InitialVariantWeight": 0.3,
+                    },
+                ],
+            )
+            desc = sagemaker.describe_endpoint_config(EndpointConfigName=ec)
+            pvs = desc["ProductionVariants"]
+            assert len(pvs) == 2
+            variant_names = {pv["VariantName"] for pv in pvs}
+            assert variant_names == {"v1", "v2"}
+        finally:
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec)
+            sagemaker.delete_model(ModelName=m1)
+            sagemaker.delete_model(ModelName=m2)
+
+
+class TestSageMakerDescribeNotFoundAdditional:
+    """Describe operations return proper errors for non-existent resources."""
+
+    def test_describe_processing_job_not_found_error_code(self, sagemaker):
+        """DescribeProcessingJob returns ValidationException for fake job."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_processing_job(ProcessingJobName="fake-pj-notfound-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_hyper_parameter_tuning_job_not_found_error_code(self, sagemaker):
+        """DescribeHyperParameterTuningJob returns ResourceNotFound for fake job."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_hyper_parameter_tuning_job(
+                HyperParameterTuningJobName="fake-hpt-notfound-zzz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_compilation_job_not_found_error_code(self, sagemaker):
+        """DescribeCompilationJob returns ResourceNotFound for fake job."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_compilation_job(CompilationJobName="fake-cj-notfound-zzz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_describe_transform_job_not_found_error_code(self, sagemaker):
+        """DescribeTransformJob returns ValidationException for fake job."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_transform_job(TransformJobName="fake-tj-notfound-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_describe_lifecycle_config_not_found_error_code(self, sagemaker):
+        """DescribeNotebookInstanceLifecycleConfig returns error for fake config."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName="fake-lc-notfound-zzz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_delete_domain_not_found(self, sagemaker):
+        """DeleteDomain returns ValidationException for fake domain."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.delete_domain(DomainId="d-nonexistent999")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
