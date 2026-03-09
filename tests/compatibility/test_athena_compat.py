@@ -702,3 +702,101 @@ class TestAthenaTaggingOperations:
             assert "stage" not in tag_keys
         finally:
             athena.delete_work_group(WorkGroup=name)
+
+
+class TestAthenaNewOps:
+    """Tests for newly verified Athena operations."""
+
+    def test_get_calculation_execution_nonexistent(self, athena):
+        """GetCalculationExecution with fake ID raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_calculation_execution(CalculationExecutionId="fake-calc-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_calculation_execution_code_nonexistent(self, athena):
+        """GetCalculationExecutionCode with fake ID raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_calculation_execution_code(CalculationExecutionId="fake-calc-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_calculation_execution_status_nonexistent(self, athena):
+        """GetCalculationExecutionStatus with fake ID raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_calculation_execution_status(CalculationExecutionId="fake-calc-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_capacity_assignment_configuration_nonexistent(self, athena):
+        """GetCapacityAssignmentConfiguration with fake name raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_capacity_assignment_configuration(CapacityReservationName="fake-res")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_database_nonexistent(self, athena):
+        """GetDatabase with nonexistent database raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_database(CatalogName="AwsDataCatalog", DatabaseName="nonexistent_db")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_notebook_metadata_nonexistent(self, athena):
+        """GetNotebookMetadata with fake ID raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_notebook_metadata(NotebookId="fake-notebook-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_session_nonexistent(self, athena):
+        """GetSession with fake ID raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_session(SessionId="fake-session-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_session_status_nonexistent(self, athena):
+        """GetSessionStatus with fake ID raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_session_status(SessionId="fake-session-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_get_table_metadata_nonexistent(self, athena):
+        """GetTableMetadata with fake table raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_table_metadata(
+                CatalogName="AwsDataCatalog",
+                DatabaseName="default",
+                TableName="nonexistent_table",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_list_application_dpu_sizes(self, athena):
+        """ListApplicationDPUSizes returns ApplicationDPUSizes list."""
+        resp = athena.list_application_dpu_sizes()
+        assert "ApplicationDPUSizes" in resp
+        assert isinstance(resp["ApplicationDPUSizes"], list)
+
+    def test_list_calculation_executions(self, athena):
+        """ListCalculationExecutions returns Calculations list."""
+        resp = athena.list_calculation_executions(SessionId="fake-session-id")
+        assert "Calculations" in resp
+        assert isinstance(resp["Calculations"], list)
+
+    def test_list_databases(self, athena):
+        """ListDatabases returns DatabaseList."""
+        resp = athena.list_databases(CatalogName="AwsDataCatalog")
+        assert "DatabaseList" in resp
+        assert isinstance(resp["DatabaseList"], list)
+
+    def test_list_engine_versions(self, athena):
+        """ListEngineVersions returns EngineVersions list."""
+        resp = athena.list_engine_versions()
+        assert "EngineVersions" in resp
+        assert isinstance(resp["EngineVersions"], list)
+
+    def test_list_notebook_metadata(self, athena):
+        """ListNotebookMetadata returns NotebookMetadataList."""
+        resp = athena.list_notebook_metadata(WorkGroup="primary")
+        assert "NotebookMetadataList" in resp
+        assert isinstance(resp["NotebookMetadataList"], list)
+
+    def test_list_notebook_sessions(self, athena):
+        """ListNotebookSessions returns NotebookSessionsList."""
+        resp = athena.list_notebook_sessions(NotebookId="fake-notebook-id")
+        assert "NotebookSessionsList" in resp
+        assert isinstance(resp["NotebookSessionsList"], list)

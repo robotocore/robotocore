@@ -915,3 +915,66 @@ class TestOpenSearchTagOperations:
             assert isinstance(tags["TagList"], list)
         finally:
             opensearch.delete_domain(DomainName=name)
+
+
+class TestOpenSearchNewOps:
+    """Tests for newly verified OpenSearch operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        opensearch.delete_domain(DomainName=name)
+
+    def test_describe_domain_auto_tunes(self, opensearch, domain):
+        """DescribeDomainAutoTunes returns AutoTunes list."""
+        resp = opensearch.describe_domain_auto_tunes(DomainName=domain)
+        assert "AutoTunes" in resp
+        assert isinstance(resp["AutoTunes"], list)
+
+    def test_describe_domain_change_progress(self, opensearch, domain):
+        """DescribeDomainChangeProgress returns ChangeProgressStatus."""
+        resp = opensearch.describe_domain_change_progress(DomainName=domain)
+        assert "ChangeProgressStatus" in resp
+
+    def test_describe_domain_health(self, opensearch, domain):
+        """DescribeDomainHealth returns health fields."""
+        resp = opensearch.describe_domain_health(DomainName=domain)
+        assert "DomainState" in resp
+        assert "ClusterHealth" in resp
+        assert "DataNodeCount" in resp
+        assert isinstance(resp["DataNodeCount"], (int, str))
+
+    def test_describe_domain_nodes(self, opensearch, domain):
+        """DescribeDomainNodes returns DomainNodesStatusList."""
+        resp = opensearch.describe_domain_nodes(DomainName=domain)
+        assert "DomainNodesStatusList" in resp
+        assert isinstance(resp["DomainNodesStatusList"], list)
+
+    def test_describe_dry_run_progress(self, opensearch, domain):
+        """DescribeDryRunProgress returns progress status."""
+        resp = opensearch.describe_dry_run_progress(DomainName=domain)
+        assert "DryRunProgressStatus" in resp
+        assert "DryRunConfig" in resp
+        assert "DryRunResults" in resp
+
+    def test_describe_instance_type_limits(self, opensearch):
+        """DescribeInstanceTypeLimits returns LimitsByRole."""
+        resp = opensearch.describe_instance_type_limits(
+            InstanceType="t3.small.search",
+            EngineVersion="OpenSearch_2.5",
+        )
+        assert "LimitsByRole" in resp
+        assert isinstance(resp["LimitsByRole"], dict)
+
+    def test_describe_vpc_endpoints(self, opensearch):
+        """DescribeVpcEndpoints with fake ID returns errors list."""
+        resp = opensearch.describe_vpc_endpoints(VpcEndpointIds=["vpce-fake123"])
+        assert "VpcEndpoints" in resp
+        assert "VpcEndpointErrors" in resp
+        assert isinstance(resp["VpcEndpointErrors"], list)

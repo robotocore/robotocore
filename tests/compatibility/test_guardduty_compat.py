@@ -676,3 +676,129 @@ class TestGuardDutyUpdateOperations:
         get_resp = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
         assert get_resp["Name"] == "multi-update-ti"
         assert get_resp["Location"] == "s3://multi-bucket/ti.txt"
+
+
+class TestGuardDutyFindingsOperations:
+    """Tests for Findings operations."""
+
+    def test_list_findings_empty(self, guardduty, detector):
+        resp = guardduty.list_findings(DetectorId=detector)
+        assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
+
+    def test_list_findings_with_criteria(self, guardduty, detector):
+        resp = guardduty.list_findings(
+            DetectorId=detector,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+        )
+        assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
+
+    def test_get_findings_with_fake_ids(self, guardduty, detector):
+        resp = guardduty.get_findings(DetectorId=detector, FindingIds=["nonexistent-finding-id"])
+        assert "Findings" in resp
+        assert isinstance(resp["Findings"], list)
+
+    def test_get_findings_statistics(self, guardduty, detector):
+        resp = guardduty.get_findings_statistics(
+            DetectorId=detector, FindingStatisticTypes=["COUNT_BY_SEVERITY"]
+        )
+        assert "FindingStatistics" in resp
+
+    def test_get_findings_statistics_has_count_by_severity(self, guardduty, detector):
+        resp = guardduty.get_findings_statistics(
+            DetectorId=detector, FindingStatisticTypes=["COUNT_BY_SEVERITY"]
+        )
+        assert "CountBySeverity" in resp["FindingStatistics"]
+
+
+class TestGuardDutyMasterAccountOperations:
+    """Tests for GetMasterAccount operation."""
+
+    def test_get_master_account(self, guardduty, detector):
+        resp = guardduty.get_master_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_master_account_no_master(self, guardduty, detector):
+        """When no master is configured, response still returns 200."""
+        resp = guardduty.get_master_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyOrganizationConfigOperations:
+    """Tests for DescribeOrganizationConfiguration."""
+
+    def test_describe_organization_configuration(self, guardduty, detector):
+        resp = guardduty.describe_organization_configuration(DetectorId=detector)
+        assert "AutoEnable" in resp
+        assert "MemberAccountLimitReached" in resp
+
+    def test_describe_organization_configuration_has_features(self, guardduty, detector):
+        resp = guardduty.describe_organization_configuration(DetectorId=detector)
+        assert "Features" in resp
+        assert isinstance(resp["Features"], list)
+
+
+class TestGuardDutyPublishingDestinationOperations:
+    """Tests for DescribePublishingDestination."""
+
+    def test_describe_publishing_destination_nonexistent(self, guardduty, detector):
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.describe_publishing_destination(
+                DetectorId=detector,
+                DestinationId="nonexistent00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyMalwareOperations:
+    """Tests for malware-related operations."""
+
+    def test_describe_malware_scans_empty(self, guardduty, detector):
+        resp = guardduty.describe_malware_scans(DetectorId=detector)
+        assert "Scans" in resp
+        assert isinstance(resp["Scans"], list)
+
+    def test_get_malware_scan_settings(self, guardduty, detector):
+        resp = guardduty.get_malware_scan_settings(DetectorId=detector)
+        assert "EbsSnapshotPreservation" in resp
+
+    def test_get_malware_scan_settings_has_resource_criteria(self, guardduty, detector):
+        resp = guardduty.get_malware_scan_settings(DetectorId=detector)
+        assert "ScanResourceCriteria" in resp
+
+
+class TestGuardDutyCoverageOperations:
+    """Tests for GetCoverageStatistics."""
+
+    def test_get_coverage_statistics(self, guardduty, detector):
+        resp = guardduty.get_coverage_statistics(
+            DetectorId=detector, StatisticsType=["COUNT_BY_RESOURCE_TYPE"]
+        )
+        assert "CoverageStatistics" in resp
+
+    def test_get_coverage_statistics_response_shape(self, guardduty, detector):
+        resp = guardduty.get_coverage_statistics(
+            DetectorId=detector, StatisticsType=["COUNT_BY_RESOURCE_TYPE"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyUsageOperations:
+    """Tests for GetUsageStatistics."""
+
+    def test_get_usage_statistics(self, guardduty, detector):
+        resp = guardduty.get_usage_statistics(
+            DetectorId=detector,
+            UsageStatisticType="SUM_BY_ACCOUNT",
+            UsageCriteria={"DataSources": ["FLOW_LOGS"]},
+        )
+        assert "UsageStatistics" in resp
+
+    def test_get_usage_statistics_response_shape(self, guardduty, detector):
+        resp = guardduty.get_usage_statistics(
+            DetectorId=detector,
+            UsageStatisticType="SUM_BY_ACCOUNT",
+            UsageCriteria={"DataSources": ["FLOW_LOGS"]},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

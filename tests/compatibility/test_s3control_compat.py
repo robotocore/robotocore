@@ -1574,3 +1574,135 @@ class TestS3ControlMultiRegionAccessPointMultiBucket:
                 s3.delete_bucket(Bucket=bucket_name)
             except Exception:
                 pass
+
+
+class TestS3ControlListJobs:
+    """Tests for ListJobs operation."""
+
+    def test_list_jobs_empty(self, s3control):
+        resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
+        assert "Jobs" in resp
+        assert isinstance(resp["Jobs"], list)
+
+    def test_list_jobs_returns_metadata(self, s3control):
+        resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3ControlDescribeJob:
+    """Tests for DescribeJob operation."""
+
+    def test_describe_job_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.describe_job(
+                AccountId=ACCOUNT_ID, JobId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchJob"
+
+
+class TestS3ControlAccessGrants:
+    """Tests for Access Grants operations."""
+
+    def test_list_access_grants_instances_empty(self, s3control):
+        resp = s3control.list_access_grants_instances(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstancesList" in resp
+        assert isinstance(resp["AccessGrantsInstancesList"], list)
+
+    def test_list_access_grants_empty(self, s3control):
+        resp = s3control.list_access_grants(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsList" in resp
+        assert isinstance(resp["AccessGrantsList"], list)
+
+    def test_list_access_grants_locations_empty(self, s3control):
+        resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsLocationsList" in resp
+        assert isinstance(resp["AccessGrantsLocationsList"], list)
+
+    def test_get_access_grant_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grant(
+                AccountId=ACCOUNT_ID,
+                AccessGrantId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrant"
+
+    def test_get_access_grants_instance_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
+
+    def test_get_access_grants_instance_for_prefix_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_instance_for_prefix(
+                AccountId=ACCOUNT_ID, S3Prefix="s3://my-bucket/prefix"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
+
+    def test_get_access_grants_instance_resource_policy_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
+
+    def test_get_access_grants_location_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                AccessGrantsLocationId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsLocation"
+
+
+class TestS3ControlBucketOps:
+    """Tests for bucket-level S3 Control operations."""
+
+    @pytest.fixture
+    def bucket(self, s3):
+        name = f"s3ctrl-test-{_uid()}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_get_bucket_lifecycle_configuration(self, s3control, bucket):
+        resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Rules" in resp
+        assert isinstance(resp["Rules"], list)
+
+    def test_get_bucket_policy(self, s3control, bucket):
+        resp = s3control.get_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_bucket_replication(self, s3control, bucket):
+        resp = s3control.get_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_bucket_tagging(self, s3control, bucket):
+        resp = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_bucket_versioning(self, s3control, bucket):
+        resp = s3control.get_bucket_versioning(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Status" in resp
+
+    def test_get_bucket_lifecycle_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_bucket_lifecycle_configuration(
+                AccountId=ACCOUNT_ID, Bucket="nonexistent-bucket-xyz-999"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_get_bucket_replication_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_bucket_replication(
+                AccountId=ACCOUNT_ID, Bucket="nonexistent-bucket-xyz-999"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_get_bucket_versioning_nonexistent(self, s3control):
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_bucket_versioning(
+                AccountId=ACCOUNT_ID, Bucket="nonexistent-bucket-xyz-999"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"

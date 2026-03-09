@@ -478,3 +478,77 @@ class TestCloudTrailMultipleTags:
         resp = cloudtrail.list_tags(ResourceIdList=[trail_arn])
         tags = {t["Key"]: t["Value"] for t in resp["ResourceTagList"][0]["TagsList"]}
         assert tags["env"] == "new"
+
+
+class TestCloudTrailEventDataStoreOperations:
+    """Tests for EventDataStore operations."""
+
+    def test_list_event_data_stores_empty(self, cloudtrail):
+        resp = cloudtrail.list_event_data_stores()
+        assert "EventDataStores" in resp
+        assert isinstance(resp["EventDataStores"], list)
+
+    def test_get_event_data_store_nonexistent(self, cloudtrail):
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_event_data_store(
+                EventDataStore="arn:aws:cloudtrail:us-east-1:123456789012:"
+                "eventdatastore/00000000-0000-0000-0000-000000000000"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "EventDataStoreNotFoundException"
+
+
+class TestCloudTrailChannelOperations:
+    """Tests for Channel operations."""
+
+    def test_list_channels_empty(self, cloudtrail):
+        resp = cloudtrail.list_channels()
+        assert "Channels" in resp
+        assert isinstance(resp["Channels"], list)
+
+    def test_get_channel_nonexistent(self, cloudtrail):
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_channel(
+                Channel="arn:aws:cloudtrail:us-east-1:123456789012:"
+                "channel/00000000-0000-0000-0000-000000000000"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ChannelNotFoundException"
+
+
+class TestCloudTrailQueryOperations:
+    """Tests for Query operations."""
+
+    def test_describe_query_nonexistent(self, cloudtrail):
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.describe_query(
+                EventDataStore="00000000-0000-0000-0000-000000000000",
+                QueryId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "QueryIdNotFoundException"
+
+
+class TestCloudTrailResourcePolicyOperations:
+    """Tests for ResourcePolicy operations."""
+
+    def test_get_resource_policy_nonexistent(self, cloudtrail):
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_resource_policy(
+                ResourceArn="arn:aws:cloudtrail:us-east-1:123456789012:trail/nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudTrailDashboardOperations:
+    """Tests for Dashboard operations."""
+
+    def test_get_dashboard_nonexistent(self, cloudtrail):
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_dashboard(DashboardId="nonexistent-dashboard-id")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudTrailEventConfigurationOperations:
+    """Tests for EventConfiguration operations."""
+
+    def test_get_event_configuration(self, cloudtrail):
+        resp = cloudtrail.get_event_configuration()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

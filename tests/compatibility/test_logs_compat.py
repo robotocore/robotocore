@@ -2020,3 +2020,67 @@ class TestLogsEventsCRUD:
             assert "recent-event" in messages
         finally:
             logs.delete_log_group(logGroupName=group)
+
+
+class TestLogsNewOps:
+    """Tests for newly verified Logs operations."""
+
+    @pytest.fixture
+    def logs(self):
+        return make_client("logs")
+
+    def test_describe_import_task_batches(self, logs):
+        """DescribeImportTaskBatches with fake importId returns empty batches."""
+        resp = logs.describe_import_task_batches(importId="fake-import-id")
+        assert "importBatches" in resp
+        assert isinstance(resp["importBatches"], list)
+
+    def test_get_data_protection_policy(self, logs):
+        """GetDataProtectionPolicy on a log group returns a response."""
+        group = f"/test/dp-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            resp = logs.get_data_protection_policy(logGroupIdentifier=group)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_get_integration_nonexistent(self, logs):
+        """GetIntegration with nonexistent name raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.get_integration(integrationName="fake-integration")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_log_group_fields(self, logs):
+        """GetLogGroupFields returns logGroupFields list."""
+        group = f"/test/fields-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            resp = logs.get_log_group_fields(logGroupName=group)
+            assert "logGroupFields" in resp
+            assert isinstance(resp["logGroupFields"], list)
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_get_log_record_nonexistent(self, logs):
+        """GetLogRecord with fake pointer raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.get_log_record(logRecordPointer="fake-pointer")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_transformer_nonexistent(self, logs):
+        """GetTransformer on group with no transformer raises ResourceNotFoundException."""
+        group = f"/test/trans-{uuid.uuid4().hex[:8]}"
+        logs.create_log_group(logGroupName=group)
+        try:
+            with pytest.raises(ClientError) as exc:
+                logs.get_transformer(logGroupIdentifier=group)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            logs.delete_log_group(logGroupName=group)
+
+    def test_list_log_groups_for_query_nonexistent(self, logs):
+        """ListLogGroupsForQuery with fake queryId raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            logs.list_log_groups_for_query(queryId="fake-query-id")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
