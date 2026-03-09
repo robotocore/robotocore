@@ -3562,3 +3562,462 @@ class TestSageMakerDescribeNotFoundAdditional:
         with pytest.raises(ClientError) as exc:
             sagemaker.delete_domain(DomainId="d-nonexistent999")
         assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestSageMakerStopOperations:
+    """Tests for Stop* operations."""
+
+    def test_stop_training_job(self, sagemaker):
+        """StopTrainingJob accepts a job name."""
+        resp = sagemaker.stop_training_job(TrainingJobName="fake-tj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_transform_job(self, sagemaker):
+        """StopTransformJob accepts a job name."""
+        resp = sagemaker.stop_transform_job(TransformJobName="fake-transform-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_processing_job(self, sagemaker):
+        """StopProcessingJob accepts a job name."""
+        resp = sagemaker.stop_processing_job(ProcessingJobName="fake-pj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_hyper_parameter_tuning_job(self, sagemaker):
+        """StopHyperParameterTuningJob accepts a job name."""
+        resp = sagemaker.stop_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName="fake-hpt-stop-zzz"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_compilation_job(self, sagemaker):
+        """StopCompilationJob accepts a job name."""
+        resp = sagemaker.stop_compilation_job(CompilationJobName="fake-cj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_labeling_job(self, sagemaker):
+        """StopLabelingJob accepts a job name."""
+        resp = sagemaker.stop_labeling_job(LabelingJobName="fake-lj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_monitoring_schedule(self, sagemaker):
+        """StopMonitoringSchedule accepts a schedule name."""
+        resp = sagemaker.stop_monitoring_schedule(MonitoringScheduleName="fake-ms-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_optimization_job(self, sagemaker):
+        """StopOptimizationJob accepts a job name."""
+        resp = sagemaker.stop_optimization_job(OptimizationJobName="fake-oj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_edge_packaging_job(self, sagemaker):
+        """StopEdgePackagingJob accepts a job name."""
+        resp = sagemaker.stop_edge_packaging_job(EdgePackagingJobName="fake-epj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_inference_recommendations_job(self, sagemaker):
+        """StopInferenceRecommendationsJob accepts a job name."""
+        resp = sagemaker.stop_inference_recommendations_job(JobName="fake-irj-stop-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_edge_deployment_stage(self, sagemaker):
+        """StopEdgeDeploymentStage accepts plan and stage names."""
+        resp = sagemaker.stop_edge_deployment_stage(
+            EdgeDeploymentPlanName="fake-edp-stop-zzz", StageName="fake-stage"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_mlflow_tracking_server(self, sagemaker):
+        """StopMlflowTrackingServer returns TrackingServerArn."""
+        resp = sagemaker.stop_mlflow_tracking_server(TrackingServerName="fake-mts-stop-zzz")
+        assert "TrackingServerArn" in resp
+
+    def test_stop_inference_experiment(self, sagemaker):
+        """StopInferenceExperiment returns InferenceExperimentArn."""
+        resp = sagemaker.stop_inference_experiment(
+            Name="fake-ie-stop-zzz",
+            ModelVariantActions={"variant1": "Retain"},
+            DesiredModelVariants=[
+                {
+                    "ModelName": "model1",
+                    "VariantName": "v1",
+                    "InfrastructureConfig": {
+                        "InfrastructureType": "RealTimeInference",
+                        "RealTimeInferenceConfig": {
+                            "InstanceType": "ml.m5.large",
+                            "InstanceCount": 1,
+                        },
+                    },
+                }
+            ],
+        )
+        assert "InferenceExperimentArn" in resp
+
+
+class TestSageMakerStartOperations:
+    """Tests for Start* operations."""
+
+    def test_start_edge_deployment_stage(self, sagemaker):
+        """StartEdgeDeploymentStage accepts plan and stage names."""
+        resp = sagemaker.start_edge_deployment_stage(
+            EdgeDeploymentPlanName="fake-edp-start-zzz", StageName="fake-stage"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_inference_experiment(self, sagemaker):
+        """StartInferenceExperiment returns InferenceExperimentArn."""
+        resp = sagemaker.start_inference_experiment(Name="fake-ie-start-zzz")
+        assert "InferenceExperimentArn" in resp
+
+    def test_start_mlflow_tracking_server(self, sagemaker):
+        """StartMlflowTrackingServer returns TrackingServerArn."""
+        resp = sagemaker.start_mlflow_tracking_server(TrackingServerName="fake-mts-start-zzz")
+        assert "TrackingServerArn" in resp
+
+    def test_start_monitoring_schedule(self, sagemaker):
+        """StartMonitoringSchedule accepts a schedule name."""
+        resp = sagemaker.start_monitoring_schedule(MonitoringScheduleName="fake-ms-start-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerUpdateOperationsNotFound:
+    """Tests for Update* operations that return errors for non-existent resources."""
+
+    def test_update_workforce_not_found(self, sagemaker):
+        """UpdateWorkforce returns ValidationException for non-existent workforce."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_workforce(WorkforceName="fake-wf-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_action_not_found(self, sagemaker):
+        """UpdateAction returns ValidationException for non-existent action."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_action(ActionName="fake-action-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_artifact_not_found(self, sagemaker):
+        """UpdateArtifact returns ValidationException for non-existent artifact."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_artifact(
+                ArtifactArn="arn:aws:sagemaker:us-east-1:123456789012:artifact/fake-zzz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_context_not_found(self, sagemaker):
+        """UpdateContext returns ValidationException for non-existent context."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_context(ContextName="fake-ctx-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_image_not_found(self, sagemaker):
+        """UpdateImage returns ValidationException for non-existent image."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_image(ImageName="fake-img-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_project_not_found(self, sagemaker):
+        """UpdateProject returns ValidationException for non-existent project."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_project(ProjectName="fake-proj-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_app_image_config_not_found(self, sagemaker):
+        """UpdateAppImageConfig returns ValidationException for non-existent config."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_app_image_config(AppImageConfigName="fake-aic-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_device_fleet_not_found(self, sagemaker):
+        """UpdateDeviceFleet returns ValidationException for non-existent fleet."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_device_fleet(
+                DeviceFleetName="fake-df-update-zzz",
+                OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_hub_not_found(self, sagemaker):
+        """UpdateHub returns ValidationException for non-existent hub."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_hub(HubName="fake-hub-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_inference_experiment_not_found(self, sagemaker):
+        """UpdateInferenceExperiment returns ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_inference_experiment(
+                Name="fake-ie-update-zzz",
+                Schedule={"StartTime": "2026-01-01T00:00:00Z"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_monitoring_schedule_not_found(self, sagemaker):
+        """UpdateMonitoringSchedule returns ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_monitoring_schedule(
+                MonitoringScheduleName="fake-ms-update-zzz",
+                MonitoringScheduleConfig={"MonitoringJobDefinitionName": "fake"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_space_not_found(self, sagemaker):
+        """UpdateSpace returns ValidationException for non-existent space."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_space(DomainId="d-fakeupdate999", SpaceName="fake-space-update")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_user_profile_not_found(self, sagemaker):
+        """UpdateUserProfile returns ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_user_profile(
+                DomainId="d-fakeupdate999", UserProfileName="fake-up-update"
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_inference_component_not_found(self, sagemaker):
+        """UpdateInferenceComponent returns ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_inference_component(InferenceComponentName="fake-ic-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_mlflow_tracking_server_not_found(self, sagemaker):
+        """UpdateMlflowTrackingServer returns ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_mlflow_tracking_server(TrackingServerName="fake-mts-update-zzz")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_update_partner_app_not_found(self, sagemaker):
+        """UpdatePartnerApp returns ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.update_partner_app(
+                Arn="arn:aws:sagemaker:us-east-1:123456789012:partner-app/fake-pa-zzz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestSageMakerUpdateOperationsSuccess:
+    """Tests for Update* operations that succeed even with non-existent resources."""
+
+    def test_update_experiment(self, sagemaker):
+        """UpdateExperiment accepts a non-existent experiment name."""
+        resp = sagemaker.update_experiment(ExperimentName="fake-exp-update-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_trial(self, sagemaker):
+        """UpdateTrial accepts a non-existent trial name."""
+        resp = sagemaker.update_trial(TrialName="fake-trial-update-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_notebook_instance(self, sagemaker):
+        """UpdateNotebookInstance accepts a non-existent instance name."""
+        resp = sagemaker.update_notebook_instance(NotebookInstanceName="fake-nb-update-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_notebook_instance_lifecycle_config(self, sagemaker):
+        """UpdateNotebookInstanceLifecycleConfig accepts non-existent config."""
+        resp = sagemaker.update_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName="fake-lc-update-zzz"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_domain(self, sagemaker):
+        """UpdateDomain returns DomainArn."""
+        resp = sagemaker.update_domain(DomainId="d-fakeupdate999")
+        assert "DomainArn" in resp
+
+    def test_update_image_version(self, sagemaker):
+        """UpdateImageVersion returns ImageVersionArn."""
+        resp = sagemaker.update_image_version(ImageName="fake-img-ver-zzz", Version=1)
+        assert "ImageVersionArn" in resp
+
+    def test_update_training_job(self, sagemaker):
+        """UpdateTrainingJob returns TrainingJobArn."""
+        resp = sagemaker.update_training_job(TrainingJobName="fake-tj-update-zzz")
+        assert "TrainingJobArn" in resp
+
+    def test_update_pipeline_execution(self, sagemaker):
+        """UpdatePipelineExecution returns PipelineExecutionArn."""
+        resp = sagemaker.update_pipeline_execution(
+            PipelineExecutionArn="arn:aws:sagemaker:us-east-1:123456789012:pipeline/fake/execution/fake"
+        )
+        assert "PipelineExecutionArn" in resp
+
+    def test_update_feature_group(self, sagemaker):
+        """UpdateFeatureGroup accepts a non-existent feature group name."""
+        resp = sagemaker.update_feature_group(FeatureGroupName="fake-fg-update-zzz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_feature_metadata(self, sagemaker):
+        """UpdateFeatureMetadata accepts non-existent feature group."""
+        resp = sagemaker.update_feature_metadata(
+            FeatureGroupName="fake-fg-meta-zzz", FeatureName="feat1"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_cluster(self, sagemaker):
+        """UpdateCluster returns ClusterArn."""
+        resp = sagemaker.update_cluster(
+            ClusterName="fake-cluster-update-zzz",
+            InstanceGroups=[
+                {
+                    "InstanceCount": 1,
+                    "InstanceGroupName": "grp1",
+                    "InstanceType": "ml.m5.large",
+                    "LifeCycleConfig": {
+                        "SourceS3Uri": "s3://bucket/path",
+                        "OnCreate": "script.sh",
+                    },
+                    "ExecutionRole": "arn:aws:iam::123456789012:role/Role",
+                }
+            ],
+        )
+        assert "ClusterArn" in resp
+
+    def test_update_cluster_software(self, sagemaker):
+        """UpdateClusterSoftware returns ClusterArn."""
+        resp = sagemaker.update_cluster_software(ClusterName="fake-cluster-sw-zzz")
+        assert "ClusterArn" in resp
+
+    def test_update_cluster_scheduler_config(self, sagemaker):
+        """UpdateClusterSchedulerConfig returns ClusterSchedulerConfigArn."""
+        resp = sagemaker.update_cluster_scheduler_config(
+            ClusterSchedulerConfigId="fake-csc-update-zzz",
+            TargetVersion=1,
+            SchedulerConfig={"PriorityClasses": [{"Name": "default", "Weight": 1}]},
+        )
+        assert "ClusterSchedulerConfigArn" in resp
+
+    def test_update_compute_quota(self, sagemaker):
+        """UpdateComputeQuota returns ComputeQuotaArn."""
+        resp = sagemaker.update_compute_quota(ComputeQuotaId="fake-cq-update-zzz", TargetVersion=1)
+        assert "ComputeQuotaArn" in resp
+
+    def test_update_devices(self, sagemaker):
+        """UpdateDevices accepts device fleet and devices."""
+        resp = sagemaker.update_devices(
+            DeviceFleetName="fake-df-update-zzz",
+            Devices=[{"DeviceName": "dev1"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_hub_content(self, sagemaker):
+        """UpdateHubContent returns HubArn and HubContentArn."""
+        resp = sagemaker.update_hub_content(
+            HubName="fake-hub-hc-zzz",
+            HubContentName="fake-hc",
+            HubContentType="Model",
+            HubContentVersion="1.0.0",
+        )
+        assert "HubArn" in resp
+        assert "HubContentArn" in resp
+
+    def test_update_inference_component_runtime_config(self, sagemaker):
+        """UpdateInferenceComponentRuntimeConfig accepts non-existent component."""
+        resp = sagemaker.update_inference_component_runtime_config(
+            InferenceComponentName="fake-icrc-update-zzz",
+            DesiredRuntimeConfig={"CopyCount": 1},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_monitoring_alert(self, sagemaker):
+        """UpdateMonitoringAlert returns MonitoringScheduleArn."""
+        resp = sagemaker.update_monitoring_alert(
+            MonitoringScheduleName="fake-ms-alert-zzz",
+            MonitoringAlertName="fake-alert",
+            DatapointsToAlert=1,
+            EvaluationPeriod=1,
+        )
+        assert "MonitoringScheduleArn" in resp
+
+
+class TestSageMakerBatchOperations:
+    """Tests for Batch* operations."""
+
+    def test_batch_delete_cluster_nodes(self, sagemaker):
+        """BatchDeleteClusterNodes accepts cluster name and node IDs."""
+        resp = sagemaker.batch_delete_cluster_nodes(
+            ClusterName="fake-cluster-bd-zzz", NodeIds=["mi-fake123"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_batch_reboot_cluster_nodes(self, sagemaker):
+        """BatchRebootClusterNodes accepts cluster name and node IDs."""
+        resp = sagemaker.batch_reboot_cluster_nodes(
+            ClusterName="fake-cluster-reboot-zzz", NodeIds=["mi-fake123"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_batch_replace_cluster_nodes(self, sagemaker):
+        """BatchReplaceClusterNodes accepts cluster name and node IDs."""
+        resp = sagemaker.batch_replace_cluster_nodes(
+            ClusterName="fake-cluster-replace-zzz", NodeIds=["mi-fake123"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerMiscOperations:
+    """Tests for Send*, Add*, Search*, Put*, Register*, Deregister*, Enable*, Disable*."""
+
+    def test_add_association(self, sagemaker):
+        """AddAssociation returns SourceArn and DestinationArn."""
+        resp = sagemaker.add_association(
+            SourceArn="arn:aws:sagemaker:us-east-1:123456789012:experiment/fake-src",
+            DestinationArn="arn:aws:sagemaker:us-east-1:123456789012:experiment/fake-dst",
+        )
+        assert "SourceArn" in resp
+        assert "DestinationArn" in resp
+
+    def test_put_model_package_group_policy(self, sagemaker):
+        """PutModelPackageGroupPolicy returns ModelPackageGroupArn."""
+        resp = sagemaker.put_model_package_group_policy(
+            ModelPackageGroupName="fake-mpg-policy-zzz",
+            ResourcePolicy='{"Version":"2012-10-17","Statement":[]}',
+        )
+        assert "ModelPackageGroupArn" in resp
+
+    def test_enable_sagemaker_servicecatalog_portfolio(self, sagemaker):
+        """EnableSagemakerServicecatalogPortfolio succeeds."""
+        resp = sagemaker.enable_sagemaker_servicecatalog_portfolio()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_sagemaker_servicecatalog_portfolio(self, sagemaker):
+        """DisableSagemakerServicecatalogPortfolio succeeds."""
+        resp = sagemaker.disable_sagemaker_servicecatalog_portfolio()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_register_devices(self, sagemaker):
+        """RegisterDevices accepts device fleet and devices."""
+        resp = sagemaker.register_devices(
+            DeviceFleetName="fake-df-reg-zzz",
+            Devices=[{"DeviceName": "dev1"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_deregister_devices(self, sagemaker):
+        """DeregisterDevices accepts device fleet and device names."""
+        resp = sagemaker.deregister_devices(
+            DeviceFleetName="fake-df-dereg-zzz",
+            DeviceNames=["dev1"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_send_pipeline_execution_step_failure(self, sagemaker):
+        """SendPipelineExecutionStepFailure returns PipelineExecutionArn."""
+        resp = sagemaker.send_pipeline_execution_step_failure(CallbackToken="fake-token-zzz")
+        assert "PipelineExecutionArn" in resp
+
+    def test_send_pipeline_execution_step_success(self, sagemaker):
+        """SendPipelineExecutionStepSuccess returns PipelineExecutionArn."""
+        resp = sagemaker.send_pipeline_execution_step_success(CallbackToken="fake-token-zzz")
+        assert "PipelineExecutionArn" in resp
+
+    def test_search_training_plan_offerings(self, sagemaker):
+        """SearchTrainingPlanOfferings returns TrainingPlanOfferings."""
+        resp = sagemaker.search_training_plan_offerings(
+            InstanceType="ml.p4d.24xlarge",
+            InstanceCount=1,
+            DurationHours=1,
+            StartTimeAfter="2026-01-01T00:00:00Z",
+            EndTimeBefore="2026-12-31T00:00:00Z",
+        )
+        assert "TrainingPlanOfferings" in resp
+        assert isinstance(resp["TrainingPlanOfferings"], list)
