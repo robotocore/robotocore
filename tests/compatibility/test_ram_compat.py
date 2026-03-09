@@ -243,3 +243,264 @@ class TestRAMErrorHandling:
         with pytest.raises(ClientError) as exc_info:
             ram.list_permission_versions(permissionArn=self.FAKE_PERMISSION_ARN)
         assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
+
+    def test_accept_resource_share_invitation_unknown(self, ram):
+        """AcceptResourceShareInvitation with fake ARN raises UnknownResourceException."""
+        fake_invitation_arn = (
+            "arn:aws:ram:us-east-1:123456789012:"
+            "resource-share-invitation/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            ram.accept_resource_share_invitation(resourceShareInvitationArn=fake_invitation_arn)
+        assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
+
+    def test_promote_permission_created_from_policy_unknown(self, ram):
+        """PromotePermissionCreatedFromPolicy with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            ram.promote_permission_created_from_policy(
+                permissionArn=self.FAKE_PERMISSION_ARN,
+                name="promoted-perm",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
+
+    def test_promote_resource_share_created_from_policy_unknown(self, ram):
+        """PromoteResourceShareCreatedFromPolicy with fake ARN raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            ram.promote_resource_share_created_from_policy(
+                resourceShareArn=self.FAKE_SHARE_ARN,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
+
+    def test_list_pending_invitation_resources_unknown(self, ram):
+        """ListPendingInvitationResources with fake ARN raises error."""
+        fake_invitation_arn = (
+            "arn:aws:ram:us-east-1:123456789012:"
+            "resource-share-invitation/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            ram.list_pending_invitation_resources(
+                resourceShareInvitationArn=fake_invitation_arn,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
+
+    def test_replace_permission_associations_unknown(self, ram):
+        """ReplacePermissionAssociations with fake ARNs raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            ram.replace_permission_associations(
+                fromPermissionArn=self.FAKE_PERMISSION_ARN,
+                toPermissionArn=self.FAKE_PERMISSION_ARN,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
+
+    def test_enable_sharing_with_aws_organization_error(self, ram):
+        """EnableSharingWithAwsOrganization raises OperationNotPermittedException."""
+        with pytest.raises(ClientError) as exc_info:
+            ram.enable_sharing_with_aws_organization()
+        assert exc_info.value.response["Error"]["Code"] == "OperationNotPermittedException"
+
+
+class TestRAMPermissionLifecycle:
+    """Tests for permission create, version, set default, delete lifecycle."""
+
+    def test_create_permission(self, ram):
+        """CreatePermission creates a customer-managed permission."""
+        import json
+
+        name = _unique("perm")
+        resp = ram.create_permission(
+            name=name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm = resp["permission"]
+        assert perm["name"] == name
+        assert perm["resourceType"] == "ec2:Subnet"
+        assert perm["version"] == "1"
+        assert perm["defaultVersion"] is True
+        assert perm["permissionType"] == "CUSTOMER_MANAGED"
+        assert "arn" in perm
+        ram.delete_permission(permissionArn=perm["arn"])
+
+    def test_create_permission_version(self, ram):
+        """CreatePermissionVersion adds a new version to a permission."""
+        import json
+
+        name = _unique("perm-ver")
+        create_resp = ram.create_permission(
+            name=name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm_arn = create_resp["permission"]["arn"]
+
+        ver_resp = ram.create_permission_version(
+            permissionArn=perm_arn,
+            policyTemplate=json.dumps(
+                {
+                    "Effect": "Allow",
+                    "Action": ["ec2:DescribeSubnets", "ec2:DescribeVpcs"],
+                    "Principal": "*",
+                }
+            ),
+        )
+        assert ver_resp["permission"]["version"] == "2"
+        assert ver_resp["permission"]["arn"] == perm_arn
+        ram.delete_permission(permissionArn=perm_arn)
+
+    def test_set_default_permission_version(self, ram):
+        """SetDefaultPermissionVersion changes the default version."""
+        import json
+
+        name = _unique("perm-def")
+        create_resp = ram.create_permission(
+            name=name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm_arn = create_resp["permission"]["arn"]
+
+        ram.create_permission_version(
+            permissionArn=perm_arn,
+            policyTemplate=json.dumps(
+                {
+                    "Effect": "Allow",
+                    "Action": ["ec2:DescribeSubnets", "ec2:DescribeVpcs"],
+                    "Principal": "*",
+                }
+            ),
+        )
+
+        resp = ram.set_default_permission_version(permissionArn=perm_arn, permissionVersion=2)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        ram.delete_permission(permissionArn=perm_arn)
+
+    def test_delete_permission_version(self, ram):
+        """DeletePermissionVersion removes a non-default version."""
+        import json
+
+        name = _unique("perm-delver")
+        create_resp = ram.create_permission(
+            name=name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm_arn = create_resp["permission"]["arn"]
+
+        ram.create_permission_version(
+            permissionArn=perm_arn,
+            policyTemplate=json.dumps(
+                {
+                    "Effect": "Allow",
+                    "Action": ["ec2:DescribeSubnets", "ec2:DescribeVpcs"],
+                    "Principal": "*",
+                }
+            ),
+        )
+
+        # Set version 2 as default, then delete version 1
+        ram.set_default_permission_version(permissionArn=perm_arn, permissionVersion=2)
+        resp = ram.delete_permission_version(permissionArn=perm_arn, permissionVersion=1)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        ram.delete_permission(permissionArn=perm_arn)
+
+    def test_delete_permission(self, ram):
+        """DeletePermission removes a customer-managed permission."""
+        import json
+
+        name = _unique("perm-del")
+        create_resp = ram.create_permission(
+            name=name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm_arn = create_resp["permission"]["arn"]
+        resp = ram.delete_permission(permissionArn=perm_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestRAMResourceShareAssociationLifecycle:
+    """Tests for associating/disassociating principals and permissions."""
+
+    def test_associate_resource_share_principal(self, ram, resource_share):
+        """AssociateResourceShare associates a principal with a share."""
+        resp = ram.associate_resource_share(
+            resourceShareArn=resource_share["resourceShareArn"],
+            principals=["123456789012"],
+        )
+        associations = resp["resourceShareAssociations"]
+        assert len(associations) >= 1
+        assoc = associations[0]
+        assert assoc["associationType"] == "PRINCIPAL"
+        assert assoc["status"] == "ASSOCIATED"
+        assert assoc["associatedEntity"] == "123456789012"
+
+    def test_disassociate_resource_share_principal(self, ram, resource_share):
+        """DisassociateResourceShare removes a principal from a share."""
+        arn = resource_share["resourceShareArn"]
+        ram.associate_resource_share(
+            resourceShareArn=arn,
+            principals=["123456789012"],
+        )
+        resp = ram.disassociate_resource_share(
+            resourceShareArn=arn,
+            principals=["123456789012"],
+        )
+        associations = resp["resourceShareAssociations"]
+        assert len(associations) >= 1
+        assert associations[0]["status"] == "DISASSOCIATED"
+
+    def test_associate_resource_share_permission(self, ram, resource_share):
+        """AssociateResourceSharePermission attaches a permission to a share."""
+        import json
+
+        perm_name = _unique("assoc-perm")
+        perm_resp = ram.create_permission(
+            name=perm_name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm_arn = perm_resp["permission"]["arn"]
+
+        resp = ram.associate_resource_share_permission(
+            resourceShareArn=resource_share["resourceShareArn"],
+            permissionArn=perm_arn,
+        )
+        assert resp["returnValue"] is True
+        ram.delete_permission(permissionArn=perm_arn)
+
+    def test_disassociate_resource_share_permission(self, ram, resource_share):
+        """DisassociateResourceSharePermission detaches a permission from a share."""
+        import json
+
+        perm_name = _unique("disassoc-perm")
+        perm_resp = ram.create_permission(
+            name=perm_name,
+            resourceType="ec2:Subnet",
+            policyTemplate=json.dumps(
+                {"Effect": "Allow", "Action": ["ec2:DescribeSubnets"], "Principal": "*"}
+            ),
+        )
+        perm_arn = perm_resp["permission"]["arn"]
+
+        ram.associate_resource_share_permission(
+            resourceShareArn=resource_share["resourceShareArn"],
+            permissionArn=perm_arn,
+        )
+        resp = ram.disassociate_resource_share_permission(
+            resourceShareArn=resource_share["resourceShareArn"],
+            permissionArn=perm_arn,
+        )
+        assert resp["returnValue"] is True
+        ram.delete_permission(permissionArn=perm_arn)

@@ -463,3 +463,143 @@ class TestAMPTagging:
         assert "a" not in resp.get("tags", {})
         assert "b" not in resp.get("tags", {})
         assert resp.get("tags", {}).get("c") == "3"
+
+
+class TestAMPWorkspaceConfiguration:
+    def test_describe_workspace_configuration(self, amp, workspace):
+        """DescribeWorkspaceConfiguration returns configuration details."""
+        ws_id, _ = workspace
+        resp = amp.describe_workspace_configuration(workspaceId=ws_id)
+        assert "workspaceConfiguration" in resp
+        config = resp["workspaceConfiguration"]
+        assert "status" in config
+
+    def test_update_workspace_configuration(self, amp, workspace):
+        """UpdateWorkspaceConfiguration changes retention period."""
+        ws_id, _ = workspace
+        resp = amp.update_workspace_configuration(workspaceId=ws_id, retentionPeriodInDays=30)
+        assert "status" in resp
+        # Verify the update took effect
+        desc = amp.describe_workspace_configuration(workspaceId=ws_id)
+        assert desc["workspaceConfiguration"]["retentionPeriodInDays"] == 30
+
+    def test_describe_workspace_configuration_not_found(self, amp):
+        """DescribeWorkspaceConfiguration with fake workspace returns error."""
+        with pytest.raises(ClientError) as exc_info:
+            amp.describe_workspace_configuration(workspaceId="ws-fake-00000000")
+        assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+
+
+class TestAMPResourcePolicy:
+    def test_put_and_describe_resource_policy(self, amp, workspace):
+        """PutResourcePolicy sets a policy, DescribeResourcePolicy retrieves it."""
+        ws_id, _ = workspace
+        policy_doc = '{"Version":"2012-10-17","Statement":[]}'
+        put_resp = amp.put_resource_policy(workspaceId=ws_id, policyDocument=policy_doc)
+        assert "revisionId" in put_resp
+
+        desc_resp = amp.describe_resource_policy(workspaceId=ws_id)
+        assert "policyDocument" in desc_resp
+        assert "revisionId" in desc_resp
+
+    def test_delete_resource_policy(self, amp, workspace):
+        """DeleteResourcePolicy removes the policy from the workspace."""
+        ws_id, _ = workspace
+        policy_doc = '{"Version":"2012-10-17","Statement":[]}'
+        amp.put_resource_policy(workspaceId=ws_id, policyDocument=policy_doc)
+        resp = amp.delete_resource_policy(workspaceId=ws_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
+
+class TestAMPAnomalyDetectors:
+    def test_list_anomaly_detectors_empty(self, amp, workspace):
+        """ListAnomalyDetectors returns a list (possibly empty)."""
+        ws_id, _ = workspace
+        resp = amp.list_anomaly_detectors(workspaceId=ws_id)
+        assert "anomalyDetectors" in resp
+        assert isinstance(resp["anomalyDetectors"], list)
+
+    def test_delete_anomaly_detector_fake_id(self, amp, workspace):
+        """DeleteAnomalyDetector with a fake ID completes without error."""
+        ws_id, _ = workspace
+        resp = amp.delete_anomaly_detector(workspaceId=ws_id, anomalyDetectorId="ad-fake")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+
+
+class TestAMPScraperExtended:
+    def test_update_scraper(self, amp, workspace):
+        """UpdateScraper changes scraper configuration."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-upd",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        try:
+            resp = amp.update_scraper(
+                scraperId=scraper_id,
+                scrapeConfiguration={
+                    "configurationBlob": base64.b64encode(b"scrape_configs: [updated]")
+                },
+            )
+            assert "scraperId" in resp
+            assert resp["scraperId"] == scraper_id
+            assert "status" in resp
+        finally:
+            amp.delete_scraper(scraperId=scraper_id)
+
+    def test_describe_scraper_logging_configuration(self, amp, workspace):
+        """DescribeScraperLoggingConfiguration returns scraper logging details."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-log",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        try:
+            resp = amp.describe_scraper_logging_configuration(scraperId=scraper_id)
+            assert "scraperId" in resp
+            assert resp["scraperId"] == scraper_id
+        finally:
+            amp.delete_scraper(scraperId=scraper_id)
+
+    def test_delete_scraper_logging_configuration(self, amp, workspace):
+        """DeleteScraperLoggingConfiguration succeeds."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-logdel",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        try:
+            resp = amp.delete_scraper_logging_configuration(scraperId=scraper_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+        finally:
+            amp.delete_scraper(scraperId=scraper_id)
+
+    def test_delete_query_logging_configuration(self, amp, workspace):
+        """DeleteQueryLoggingConfiguration succeeds."""
+        ws_id, _ = workspace
+        resp = amp.delete_query_logging_configuration(workspaceId=ws_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)

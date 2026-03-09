@@ -142,3 +142,146 @@ class TestIVSChannelOperations:
         finally:
             ivs.delete_channel(arn=arn1)
             ivs.delete_channel(arn=arn2)
+
+    def test_list_channels_filter_by_recording_config(self, ivs):
+        """list_channels with filterByRecordingConfigurationArn returns channels key."""
+        resp = ivs.list_channels(filterByRecordingConfigurationArn="")
+        assert "channels" in resp
+        assert isinstance(resp["channels"], list)
+
+
+class TestIVSStreamKeyOperations:
+    """Tests for IVS stream key CRUD operations."""
+
+    def test_create_stream_key(self, ivs):
+        """create_stream_key creates a new stream key for a channel."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            sk = ivs.create_stream_key(channelArn=ch_arn)
+            stream_key = sk["streamKey"]
+            assert "arn" in stream_key
+            assert stream_key["channelArn"] == ch_arn
+            assert "value" in stream_key
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
+    def test_get_stream_key(self, ivs):
+        """get_stream_key retrieves a stream key by ARN."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            sk = ivs.create_stream_key(channelArn=ch_arn)
+            sk_arn = sk["streamKey"]["arn"]
+            got = ivs.get_stream_key(arn=sk_arn)
+            assert got["streamKey"]["arn"] == sk_arn
+            assert got["streamKey"]["channelArn"] == ch_arn
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
+    def test_list_stream_keys(self, ivs):
+        """list_stream_keys returns stream keys for a channel."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            # Channel creation also creates a stream key
+            listed = ivs.list_stream_keys(channelArn=ch_arn)
+            assert "streamKeys" in listed
+            assert len(listed["streamKeys"]) >= 1
+            assert all(sk["channelArn"] == ch_arn for sk in listed["streamKeys"])
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
+    def test_delete_stream_key(self, ivs):
+        """delete_stream_key removes a stream key."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            sk = ivs.create_stream_key(channelArn=ch_arn)
+            sk_arn = sk["streamKey"]["arn"]
+            ivs.delete_stream_key(arn=sk_arn)
+            # Verify deleted
+            with pytest.raises(ClientError) as exc_info:
+                ivs.get_stream_key(arn=sk_arn)
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
+
+class TestIVSRecordingConfigurationOperations:
+    """Tests for IVS recording configuration operations."""
+
+    def test_create_recording_configuration(self, ivs):
+        """create_recording_configuration creates a config."""
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-bucket-ivs-001"}}
+        )
+        rc = resp["recordingConfiguration"]
+        try:
+            assert "arn" in rc
+            assert rc["arn"].startswith("arn:aws:ivs:")
+            assert "state" in rc
+            assert "destinationConfiguration" in rc
+        finally:
+            ivs.delete_recording_configuration(arn=rc["arn"])
+
+    def test_get_recording_configuration(self, ivs):
+        """get_recording_configuration retrieves a config by ARN."""
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-bucket-ivs-002"}}
+        )
+        rc_arn = resp["recordingConfiguration"]["arn"]
+        try:
+            got = ivs.get_recording_configuration(arn=rc_arn)
+            assert got["recordingConfiguration"]["arn"] == rc_arn
+            s3_cfg = got["recordingConfiguration"]["destinationConfiguration"]["s3"]
+            assert s3_cfg["bucketName"] == "test-bucket-ivs-002"
+        finally:
+            ivs.delete_recording_configuration(arn=rc_arn)
+
+    def test_list_recording_configurations(self, ivs):
+        """list_recording_configurations returns config list."""
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-bucket-ivs-003"}}
+        )
+        rc_arn = resp["recordingConfiguration"]["arn"]
+        try:
+            listed = ivs.list_recording_configurations()
+            assert "recordingConfigurations" in listed
+            arns = [rc["arn"] for rc in listed["recordingConfigurations"]]
+            assert rc_arn in arns
+        finally:
+            ivs.delete_recording_configuration(arn=rc_arn)
+
+    def test_delete_recording_configuration(self, ivs):
+        """delete_recording_configuration removes a config."""
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-bucket-ivs-004"}}
+        )
+        rc_arn = resp["recordingConfiguration"]["arn"]
+        ivs.delete_recording_configuration(arn=rc_arn)
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_recording_configuration(arn=rc_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIVSPlaybackKeyPairOperations:
+    """Tests for IVS playback key pair error handling."""
+
+    def test_get_playback_key_pair_not_found(self, ivs):
+        """get_playback_key_pair raises ResourceNotFoundException for missing ARN."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:playback-key/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_playback_key_pair(arn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_playback_key_pair_not_found(self, ivs):
+        """delete_playback_key_pair raises ResourceNotFoundException for missing ARN."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:playback-key/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.delete_playback_key_pair(arn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"

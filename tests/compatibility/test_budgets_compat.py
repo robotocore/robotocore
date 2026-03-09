@@ -300,6 +300,294 @@ class TestBudgetPerformanceHistory:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 
 
+class TestBudgetActionLifecycle:
+    """Tests for budget action CRUD operations."""
+
+    def _make_budget(self, budgets, name):
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+
+    def _create_action(self, budgets, budget_name):
+        resp = budgets.create_budget_action(
+            AccountId=ACCOUNT_ID,
+            BudgetName=budget_name,
+            NotificationType="ACTUAL",
+            ActionType="APPLY_IAM_POLICY",
+            ActionThreshold={
+                "ActionThresholdValue": 80.0,
+                "ActionThresholdType": "PERCENTAGE",
+            },
+            Definition={
+                "IamActionDefinition": {
+                    "PolicyArn": "arn:aws:iam::123456789012:policy/test",
+                    "Roles": ["test-role"],
+                }
+            },
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            ApprovalModel="AUTOMATIC",
+            Subscribers=[
+                {"SubscriptionType": "EMAIL", "Address": "test@example.com"},
+            ],
+        )
+        return resp["ActionId"]
+
+    def test_create_budget_action(self, budgets):
+        name = _unique("budget")
+        self._make_budget(budgets, name)
+        try:
+            action_id = self._create_action(budgets, name)
+            assert len(action_id) == 36  # UUID format
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_describe_budget_action(self, budgets):
+        name = _unique("budget")
+        self._make_budget(budgets, name)
+        try:
+            action_id = self._create_action(budgets, name)
+            resp = budgets.describe_budget_action(
+                AccountId=ACCOUNT_ID, BudgetName=name, ActionId=action_id
+            )
+            action = resp["Action"]
+            assert action["ActionId"] == action_id
+            assert action["BudgetName"] == name
+            assert action["NotificationType"] == "ACTUAL"
+            assert action["ActionType"] == "APPLY_IAM_POLICY"
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_update_budget_action(self, budgets):
+        name = _unique("budget")
+        self._make_budget(budgets, name)
+        try:
+            action_id = self._create_action(budgets, name)
+            resp = budgets.update_budget_action(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                ActionId=action_id,
+                NotificationType="FORECASTED",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            new_action = resp["NewAction"]
+            assert new_action["NotificationType"] == "FORECASTED"
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_execute_budget_action(self, budgets):
+        name = _unique("budget")
+        self._make_budget(budgets, name)
+        try:
+            action_id = self._create_action(budgets, name)
+            resp = budgets.execute_budget_action(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                ActionId=action_id,
+                ExecutionType="APPROVE_BUDGET_ACTION",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["AccountId"] == ACCOUNT_ID
+            assert resp["BudgetName"] == name
+            assert resp["ActionId"] == action_id
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_delete_budget_action(self, budgets):
+        name = _unique("budget")
+        self._make_budget(budgets, name)
+        try:
+            action_id = self._create_action(budgets, name)
+            resp = budgets.delete_budget_action(
+                AccountId=ACCOUNT_ID, BudgetName=name, ActionId=action_id
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify it's gone
+            actions_resp = budgets.describe_budget_actions_for_budget(
+                AccountId=ACCOUNT_ID, BudgetName=name
+            )
+            action_ids = [a["ActionId"] for a in actions_resp["Actions"]]
+            assert action_id not in action_ids
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_actions_appear_in_account_list(self, budgets):
+        name = _unique("budget")
+        self._make_budget(budgets, name)
+        try:
+            action_id = self._create_action(budgets, name)
+            resp = budgets.describe_budget_actions_for_account(AccountId=ACCOUNT_ID)
+            action_ids = [a["ActionId"] for a in resp["Actions"]]
+            assert action_id in action_ids
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+
+class TestBudgetSubscriberOperations:
+    """Tests for subscriber CRUD operations."""
+
+    def test_create_subscriber(self, budgets):
+        name = _unique("budget")
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+        notification = {
+            "NotificationType": "ACTUAL",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 80.0,
+            "ThresholdType": "PERCENTAGE",
+        }
+        try:
+            budgets.create_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                Subscribers=[
+                    {"SubscriptionType": "EMAIL", "Address": "orig@example.com"},
+                ],
+            )
+            resp = budgets.create_subscriber(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                Subscriber={"SubscriptionType": "EMAIL", "Address": "new@example.com"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_delete_subscriber(self, budgets):
+        name = _unique("budget")
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+        notification = {
+            "NotificationType": "ACTUAL",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 80.0,
+            "ThresholdType": "PERCENTAGE",
+        }
+        try:
+            budgets.create_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                Subscribers=[
+                    {"SubscriptionType": "EMAIL", "Address": "orig@example.com"},
+                    {"SubscriptionType": "EMAIL", "Address": "extra@example.com"},
+                ],
+            )
+            resp = budgets.delete_subscriber(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                Subscriber={"SubscriptionType": "EMAIL", "Address": "extra@example.com"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+
+class TestBudgetNotificationUpdateOperations:
+    """Tests for UpdateNotification and UpdateSubscriber."""
+
+    def test_update_notification(self, budgets):
+        name = _unique("budget")
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+        old_notification = {
+            "NotificationType": "ACTUAL",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 80.0,
+            "ThresholdType": "PERCENTAGE",
+        }
+        try:
+            budgets.create_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=old_notification,
+                Subscribers=[
+                    {"SubscriptionType": "EMAIL", "Address": "test@example.com"},
+                ],
+            )
+            new_notification = old_notification.copy()
+            new_notification["Threshold"] = 95.0
+            resp = budgets.update_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                OldNotification=old_notification,
+                NewNotification=new_notification,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify the update took effect
+            desc = budgets.describe_notifications_for_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+            thresholds = [n["Threshold"] for n in desc["Notifications"]]
+            assert 95.0 in thresholds
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+    def test_update_subscriber(self, budgets):
+        name = _unique("budget")
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+        notification = {
+            "NotificationType": "ACTUAL",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 80.0,
+            "ThresholdType": "PERCENTAGE",
+        }
+        try:
+            budgets.create_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                Subscribers=[
+                    {"SubscriptionType": "EMAIL", "Address": "old@example.com"},
+                ],
+            )
+            resp = budgets.update_subscriber(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                OldSubscriber={"SubscriptionType": "EMAIL", "Address": "old@example.com"},
+                NewSubscriber={"SubscriptionType": "EMAIL", "Address": "new@example.com"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+
 class TestBudgetTagOperations:
     """Tests for ListTagsForResource, TagResource, UntagResource."""
 

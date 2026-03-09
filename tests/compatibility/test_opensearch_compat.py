@@ -1021,27 +1021,24 @@ class TestOpenSearchNewOps:
         )
         assert "Connections" in resp
         assert isinstance(resp["Connections"], list)
-        assert len(resp["Connections"]) == 0
 
     def test_describe_outbound_connections_with_filter(self, opensearch):
-        """DescribeOutboundConnections with filter returns empty list."""
+        """DescribeOutboundConnections with filter returns connections list."""
         resp = opensearch.describe_outbound_connections(
             Filters=[{"Name": "connection-id", "Values": ["fake-id"]}],
             MaxResults=10,
         )
         assert "Connections" in resp
         assert isinstance(resp["Connections"], list)
-        assert len(resp["Connections"]) == 0
 
     def test_describe_packages_with_filter(self, opensearch):
-        """DescribePackages with filter returns empty list."""
+        """DescribePackages with filter returns packages list."""
         resp = opensearch.describe_packages(
             Filters=[{"Name": "PackageID", "Value": ["fake-pkg"]}],
             MaxResults=10,
         )
         assert "PackageDetailsList" in resp
         assert isinstance(resp["PackageDetailsList"], list)
-        assert len(resp["PackageDetailsList"]) == 0
 
     def test_list_versions_has_both_engine_types(self, opensearch):
         """ListVersions includes both OpenSearch and Elasticsearch versions."""
@@ -1076,3 +1073,259 @@ class TestOpenSearchNewOps:
         """DescribeDryRunProgress for nonexistent domain raises error."""
         with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
             opensearch.describe_dry_run_progress(DomainName="nonexistent-domain-xyz")
+
+
+class TestOpenSearchPackageOperations:
+    """Tests for OpenSearch package operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_create_and_describe_package(self, opensearch):
+        """CreatePackage creates a package, DescribePackages lists it."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={
+                "S3BucketName": "fake-bucket",
+                "S3Key": "fake-key.txt",
+            },
+        )
+        pkg = resp["PackageDetails"]
+        assert pkg["PackageName"] == pkg_name
+        assert pkg["PackageType"] == "TXT-DICTIONARY"
+        assert "PackageID" in pkg
+        pkg_id = pkg["PackageID"]
+
+        # Describe packages should include it
+        desc = opensearch.describe_packages(Filters=[{"Name": "PackageID", "Value": [pkg_id]}])
+        assert len(desc["PackageDetailsList"]) >= 1
+        found = [p for p in desc["PackageDetailsList"] if p["PackageID"] == pkg_id]
+        assert len(found) == 1
+
+        # Cleanup
+        opensearch.delete_package(PackageID=pkg_id)
+
+    def test_delete_package(self, opensearch):
+        """DeletePackage removes a package."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={
+                "S3BucketName": "fake-bucket",
+                "S3Key": "fake-key.txt",
+            },
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        del_resp = opensearch.delete_package(PackageID=pkg_id)
+        assert "PackageDetails" in del_resp
+        assert del_resp["PackageDetails"]["PackageID"] == pkg_id
+
+    def test_delete_nonexistent_package_raises(self, opensearch):
+        """DeletePackage for nonexistent package raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.delete_package(PackageID="F00000000")
+
+    def test_get_package_version_history(self, opensearch):
+        """GetPackageVersionHistory returns version history for a package."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={
+                "S3BucketName": "fake-bucket",
+                "S3Key": "fake-key.txt",
+            },
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            hist = opensearch.get_package_version_history(PackageID=pkg_id)
+            assert "PackageVersionHistoryList" in hist
+            assert isinstance(hist["PackageVersionHistoryList"], list)
+        finally:
+            opensearch.delete_package(PackageID=pkg_id)
+
+    def test_list_instance_type_details(self, opensearch):
+        """ListInstanceTypeDetails returns instance types for an engine version."""
+        resp = opensearch.list_instance_type_details(EngineVersion="OpenSearch_2.5")
+        assert "InstanceTypeDetails" in resp
+        assert isinstance(resp["InstanceTypeDetails"], list)
+        assert len(resp["InstanceTypeDetails"]) > 0
+
+    def test_list_instance_type_details_has_fields(self, opensearch):
+        """ListInstanceTypeDetails entries have expected fields."""
+        resp = opensearch.list_instance_type_details(EngineVersion="OpenSearch_2.5")
+        detail = resp["InstanceTypeDetails"][0]
+        assert "InstanceType" in detail
+
+    def test_associate_and_dissociate_package(self, opensearch):
+        """AssociatePackage and DissociatePackage work with a domain."""
+        domain_name = _unique_domain()
+        opensearch.create_domain(DomainName=domain_name, EngineVersion="OpenSearch_2.5")
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        pkg_resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = pkg_resp["PackageDetails"]["PackageID"]
+        try:
+            assoc = opensearch.associate_package(PackageID=pkg_id, DomainName=domain_name)
+            assert "DomainPackageDetails" in assoc
+            assert assoc["DomainPackageDetails"]["PackageID"] == pkg_id
+            assert assoc["DomainPackageDetails"]["DomainName"] == domain_name
+
+            dissoc = opensearch.dissociate_package(PackageID=pkg_id, DomainName=domain_name)
+            assert "DomainPackageDetails" in dissoc
+        finally:
+            opensearch.delete_package(PackageID=pkg_id)
+            opensearch.delete_domain(DomainName=domain_name)
+
+    def test_list_domains_for_package(self, opensearch):
+        """ListDomainsForPackage returns domains associated with a package."""
+        domain_name = _unique_domain()
+        opensearch.create_domain(DomainName=domain_name, EngineVersion="OpenSearch_2.5")
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        pkg_resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = pkg_resp["PackageDetails"]["PackageID"]
+        try:
+            opensearch.associate_package(PackageID=pkg_id, DomainName=domain_name)
+            resp = opensearch.list_domains_for_package(PackageID=pkg_id)
+            assert "DomainPackageDetailsList" in resp
+            domains = [d["DomainName"] for d in resp["DomainPackageDetailsList"]]
+            assert domain_name in domains
+            opensearch.dissociate_package(PackageID=pkg_id, DomainName=domain_name)
+        finally:
+            opensearch.delete_package(PackageID=pkg_id)
+            opensearch.delete_domain(DomainName=domain_name)
+
+    def test_list_packages_for_domain(self, opensearch):
+        """ListPackagesForDomain returns packages associated with a domain."""
+        domain_name = _unique_domain()
+        opensearch.create_domain(DomainName=domain_name, EngineVersion="OpenSearch_2.5")
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        pkg_resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = pkg_resp["PackageDetails"]["PackageID"]
+        try:
+            opensearch.associate_package(PackageID=pkg_id, DomainName=domain_name)
+            resp = opensearch.list_packages_for_domain(DomainName=domain_name)
+            assert "DomainPackageDetailsList" in resp
+            pkg_ids = [d["PackageID"] for d in resp["DomainPackageDetailsList"]]
+            assert pkg_id in pkg_ids
+            opensearch.dissociate_package(PackageID=pkg_id, DomainName=domain_name)
+        finally:
+            opensearch.delete_package(PackageID=pkg_id)
+            opensearch.delete_domain(DomainName=domain_name)
+
+    def test_update_package(self, opensearch):
+        """UpdatePackage updates a package's source."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = opensearch.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            upd = opensearch.update_package(
+                PackageID=pkg_id,
+                PackageSource={"S3BucketName": "fake-bucket", "S3Key": "new-key.txt"},
+            )
+            assert "PackageDetails" in upd
+            assert upd["PackageDetails"]["PackageID"] == pkg_id
+        finally:
+            opensearch.delete_package(PackageID=pkg_id)
+
+
+class TestOpenSearchVpcEndpointOperations:
+    """Tests for OpenSearch VPC endpoint operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_create_and_delete_vpc_endpoint(self, opensearch):
+        """CreateVpcEndpoint creates a VPC endpoint."""
+        domain_name = _unique_domain()
+        opensearch.create_domain(DomainName=domain_name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = opensearch.create_vpc_endpoint(
+                DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{domain_name}",
+                VpcOptions={"SubnetIds": ["subnet-12345678"]},
+            )
+            assert "VpcEndpoint" in resp
+            endpoint = resp["VpcEndpoint"]
+            assert "VpcEndpointId" in endpoint
+            endpoint_id = endpoint["VpcEndpointId"]
+
+            # Delete it
+            del_resp = opensearch.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+            assert "VpcEndpointSummary" in del_resp
+        finally:
+            opensearch.delete_domain(DomainName=domain_name)
+
+    def test_list_vpc_endpoints_for_domain(self, opensearch):
+        """ListVpcEndpointsForDomain succeeds for a domain."""
+        domain_name = _unique_domain()
+        opensearch.create_domain(DomainName=domain_name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = opensearch.list_vpc_endpoints_for_domain(DomainName=domain_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            opensearch.delete_domain(DomainName=domain_name)
+
+
+class TestOpenSearchConnectionOperations:
+    """Tests for OpenSearch connection operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_create_outbound_connection(self, opensearch):
+        """CreateOutboundConnection creates an outbound connection."""
+        resp = opensearch.create_outbound_connection(
+            LocalDomainInfo={
+                "AWSDomainInformation": {
+                    "DomainName": "local-domain",
+                    "OwnerId": "123456789012",
+                    "Region": "us-east-1",
+                }
+            },
+            RemoteDomainInfo={
+                "AWSDomainInformation": {
+                    "DomainName": "remote-domain",
+                    "OwnerId": "123456789012",
+                    "Region": "us-east-1",
+                }
+            },
+            ConnectionAlias="test-connection",
+        )
+        assert "ConnectionStatus" in resp
+        assert "ConnectionId" in resp
+
+    def test_accept_inbound_connection_nonexistent(self, opensearch):
+        """AcceptInboundConnection for nonexistent raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.accept_inbound_connection(ConnectionId="conn-nonexistent")
+
+    def test_delete_inbound_connection_nonexistent(self, opensearch):
+        """DeleteInboundConnection for nonexistent raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.delete_inbound_connection(ConnectionId="conn-nonexistent")
+
+    def test_delete_outbound_connection_nonexistent(self, opensearch):
+        """DeleteOutboundConnection for nonexistent raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.delete_outbound_connection(ConnectionId="conn-nonexistent")

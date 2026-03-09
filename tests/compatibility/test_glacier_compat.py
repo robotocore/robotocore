@@ -578,3 +578,88 @@ class TestGlacierMultipartUpload:
         resp = glacier.list_provisioned_capacity(accountId="-")
         assert "ProvisionedCapacityList" in resp
         assert isinstance(resp["ProvisionedCapacityList"], list)
+
+    def test_upload_multipart_part(self, glacier):
+        """upload_multipart_part uploads a part and returns checksum."""
+        name = f"ump-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            init = glacier.initiate_multipart_upload(
+                accountId="-", vaultName=name, partSize="1048576"
+            )
+            upload_id = init["uploadId"]
+            data = b"x" * 1048576
+            resp = glacier.upload_multipart_part(
+                accountId="-",
+                vaultName=name,
+                uploadId=upload_id,
+                range="bytes 0-1048575/*",
+                body=data,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+            assert "checksum" in resp
+            glacier.abort_multipart_upload(accountId="-", vaultName=name, uploadId=upload_id)
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_list_parts(self, glacier):
+        """list_parts returns parts for an in-progress multipart upload."""
+        name = f"lp-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            init = glacier.initiate_multipart_upload(
+                accountId="-", vaultName=name, partSize="1048576"
+            )
+            upload_id = init["uploadId"]
+            data = b"x" * 1048576
+            glacier.upload_multipart_part(
+                accountId="-",
+                vaultName=name,
+                uploadId=upload_id,
+                range="bytes 0-1048575/*",
+                body=data,
+            )
+            resp = glacier.list_parts(accountId="-", vaultName=name, uploadId=upload_id)
+            assert "Parts" in resp
+            assert len(resp["Parts"]) == 1
+            assert resp["PartSizeInBytes"] == 1048576
+            glacier.abort_multipart_upload(accountId="-", vaultName=name, uploadId=upload_id)
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_complete_multipart_upload(self, glacier):
+        """complete_multipart_upload finalizes a multipart upload."""
+        name = f"cmu-vault-{_uid()}"
+        glacier.create_vault(accountId="-", vaultName=name)
+        try:
+            init = glacier.initiate_multipart_upload(
+                accountId="-", vaultName=name, partSize="1048576"
+            )
+            upload_id = init["uploadId"]
+            data = b"x" * 1048576
+            part_resp = glacier.upload_multipart_part(
+                accountId="-",
+                vaultName=name,
+                uploadId=upload_id,
+                range="bytes 0-1048575/*",
+                body=data,
+            )
+            checksum = part_resp["checksum"]
+            resp = glacier.complete_multipart_upload(
+                accountId="-",
+                vaultName=name,
+                uploadId=upload_id,
+                archiveSize=str(1048576),
+                checksum=checksum,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 201
+            assert "archiveId" in resp
+            assert "checksum" in resp
+        finally:
+            glacier.delete_vault(accountId="-", vaultName=name)
+
+    def test_purchase_provisioned_capacity(self, glacier):
+        """purchase_provisioned_capacity returns a capacity ID."""
+        resp = glacier.purchase_provisioned_capacity(accountId="-")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 201
+        assert "capacityId" in resp

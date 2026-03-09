@@ -1746,3 +1746,45 @@ class TestConnectUserOps:
         assert len(resp["UserSummaryList"]) >= 1
         usernames = [u.get("Username") for u in resp["UserSummaryList"]]
         assert "listusr" in usernames
+
+
+class TestConnectAdditionalOps:
+    """Tests for additional Connect operations."""
+
+    @pytest.fixture
+    def connect(self):
+        return make_client("connect")
+
+    @pytest.fixture
+    def instance(self, connect):
+        iid, arn = _create_instance(connect)
+        yield iid, arn
+
+    def test_search_available_phone_numbers(self, connect, instance):
+        """SearchAvailablePhoneNumbers returns a list."""
+        _, arn = instance
+        resp = connect.search_available_phone_numbers(
+            TargetArn=arn,
+            PhoneNumberCountryCode="US",
+            PhoneNumberType="DID",
+        )
+        assert "AvailableNumbersList" in resp
+        assert isinstance(resp["AvailableNumbersList"], list)
+
+    def test_untag_resource(self, connect, instance):
+        """UntagResource removes tags from a resource."""
+        iid, arn = instance
+        # First tag the resource
+        connect.tag_resource(resourceArn=arn, tags={"env": "test", "team": "dev"})
+
+        # Verify tags exist
+        tags_before = connect.list_tags_for_resource(resourceArn=arn)
+        assert "env" in tags_before["tags"]
+
+        # Untag
+        connect.untag_resource(resourceArn=arn, tagKeys=["env"])
+
+        # Verify tag was removed
+        tags_after = connect.list_tags_for_resource(resourceArn=arn)
+        assert "env" not in tags_after["tags"]
+        assert "team" in tags_after["tags"]

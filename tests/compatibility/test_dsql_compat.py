@@ -35,6 +35,33 @@ class TestDSQLClusterOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestDSQLClusterDetails:
+    """Tests for Aurora DSQL cluster detail fields."""
+
+    def test_create_cluster_returns_status(self, dsql):
+        resp = dsql.create_cluster(deletionProtectionEnabled=False)
+        assert "status" in resp
+        assert "creationTime" in resp
+        cluster_id = resp["identifier"]
+        dsql.delete_cluster(identifier=cluster_id)
+
+    def test_get_cluster_returns_full_details(self, dsql):
+        create_resp = dsql.create_cluster(deletionProtectionEnabled=False)
+        cluster_id = create_resp["identifier"]
+        try:
+            resp = dsql.get_cluster(identifier=cluster_id)
+            assert resp["identifier"] == cluster_id
+            assert "arn" in resp
+            assert "status" in resp
+            assert "deletionProtectionEnabled" in resp
+        finally:
+            dsql.delete_cluster(identifier=cluster_id)
+
+    def test_delete_cluster_not_found(self, dsql):
+        with pytest.raises(dsql.exceptions.ResourceNotFoundException):
+            dsql.delete_cluster(identifier="nonexistent-cluster-id-12345")
+
+
 class TestDSQLGetClusterErrors:
     """Tests for Aurora DSQL get_cluster error handling."""
 

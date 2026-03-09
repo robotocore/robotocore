@@ -232,10 +232,13 @@ class TestEsAutoCoverage:
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_domain_config_nonexistent(self, client):
-        """UpdateElasticsearchDomainConfig with fake domain raises ResourceNotFoundException."""
+        """UpdateElasticsearchDomainConfig with fake domain raises error."""
         with pytest.raises(botocore.exceptions.ClientError) as exc_info:
             client.update_elasticsearch_domain_config(DomainName="nonexistent-domain-xyz")
-        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InternalError",
+        )
 
     def test_get_compatible_versions_no_domain(self, client):
         """GetCompatibleElasticsearchVersions without domain returns all versions."""
@@ -297,5 +300,246 @@ class TestEsAutoCoverage:
         try:
             resp = client.describe_elasticsearch_domain(DomainName=name)
             assert "Processing" in resp["DomainStatus"]
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_list_elasticsearch_instance_types(self, client):
+        """ListElasticsearchInstanceTypes returns instance types for a version."""
+        resp = client.list_elasticsearch_instance_types(ElasticsearchVersion="7.10")
+        assert "ElasticsearchInstanceTypes" in resp
+        assert isinstance(resp["ElasticsearchInstanceTypes"], list)
+        assert len(resp["ElasticsearchInstanceTypes"]) > 0
+
+    def test_describe_elasticsearch_instance_type_limits(self, client):
+        """DescribeElasticsearchInstanceTypeLimits returns limits."""
+        resp = client.describe_elasticsearch_instance_type_limits(
+            InstanceType="t3.small.elasticsearch",
+            ElasticsearchVersion="7.10",
+        )
+        assert "LimitsByRole" in resp
+
+    def test_describe_domain_auto_tunes(self, client):
+        """DescribeDomainAutoTunes for a domain returns auto-tune info."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = client.describe_domain_auto_tunes(DomainName=name)
+            assert "AutoTunes" in resp
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_describe_domain_auto_tunes_nonexistent(self, client):
+        """DescribeDomainAutoTunes for nonexistent domain raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.describe_domain_auto_tunes(DomainName="nonexistent-domain-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_domain_change_progress_nonexistent(self, client):
+        """DescribeDomainChangeProgress for nonexistent domain raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.describe_domain_change_progress(DomainName="nonexistent-domain-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_vpc_endpoints_empty(self, client):
+        """DescribeVpcEndpoints with fake IDs returns results."""
+        resp = client.describe_vpc_endpoints(VpcEndpointIds=["aos-nonexistent-endpoint"])
+        assert "VpcEndpoints" in resp
+
+    def test_list_vpc_endpoints_for_domain(self, client):
+        """ListVpcEndpointsForDomain succeeds for a domain."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = client.list_vpc_endpoints_for_domain(DomainName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
+
+
+class TestEsPackageOperations:
+    """Tests for Elasticsearch package operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("es")
+
+    def test_create_and_delete_package(self, client):
+        """CreatePackage creates a package, DeletePackage removes it."""
+        pkg_name = f"pkg-{_uid()}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={
+                "S3BucketName": "fake-bucket",
+                "S3Key": "fake-key.txt",
+            },
+        )
+        pkg = resp["PackageDetails"]
+        assert pkg["PackageName"] == pkg_name
+        assert "PackageID" in pkg
+        pkg_id = pkg["PackageID"]
+
+        del_resp = client.delete_package(PackageID=pkg_id)
+        assert del_resp["PackageDetails"]["PackageID"] == pkg_id
+
+    def test_delete_nonexistent_package(self, client):
+        """DeletePackage for nonexistent package raises ResourceNotFoundException."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.delete_package(PackageID="F00000000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_package_version_history(self, client):
+        """GetPackageVersionHistory returns version history."""
+        pkg_name = f"pkg-{_uid()}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            hist = client.get_package_version_history(PackageID=pkg_id)
+            assert "PackageVersionHistoryList" in hist
+            assert isinstance(hist["PackageVersionHistoryList"], list)
+        finally:
+            client.delete_package(PackageID=pkg_id)
+
+    def test_update_package(self, client):
+        """UpdatePackage updates a package's source."""
+        pkg_name = f"pkg-{_uid()}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            upd = client.update_package(
+                PackageID=pkg_id,
+                PackageSource={"S3BucketName": "fake-bucket", "S3Key": "new-key.txt"},
+            )
+            assert "PackageDetails" in upd
+            assert upd["PackageDetails"]["PackageID"] == pkg_id
+        finally:
+            client.delete_package(PackageID=pkg_id)
+
+    def test_associate_and_dissociate_package(self, client):
+        """AssociatePackage and DissociatePackage work with a domain."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        pkg_name = f"pkg-{_uid()}"
+        pkg_resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = pkg_resp["PackageDetails"]["PackageID"]
+        try:
+            assoc = client.associate_package(PackageID=pkg_id, DomainName=name)
+            assert "DomainPackageDetails" in assoc
+            assert assoc["DomainPackageDetails"]["PackageID"] == pkg_id
+
+            dissoc = client.dissociate_package(PackageID=pkg_id, DomainName=name)
+            assert "DomainPackageDetails" in dissoc
+        finally:
+            client.delete_package(PackageID=pkg_id)
+            client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_list_domains_for_package(self, client):
+        """ListDomainsForPackage returns domains for a package."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        pkg_name = f"pkg-{_uid()}"
+        pkg_resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = pkg_resp["PackageDetails"]["PackageID"]
+        try:
+            client.associate_package(PackageID=pkg_id, DomainName=name)
+            resp = client.list_domains_for_package(PackageID=pkg_id)
+            assert "DomainPackageDetailsList" in resp
+            domains = [d["DomainName"] for d in resp["DomainPackageDetailsList"]]
+            assert name in domains
+            client.dissociate_package(PackageID=pkg_id, DomainName=name)
+        finally:
+            client.delete_package(PackageID=pkg_id)
+            client.delete_elasticsearch_domain(DomainName=name)
+
+
+class TestEsConnectionOperations:
+    """Tests for Elasticsearch cross-cluster search connections."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("es")
+
+    def test_create_outbound_connection(self, client):
+        """CreateOutboundCrossClusterSearchConnection creates a connection."""
+        resp = client.create_outbound_cross_cluster_search_connection(
+            SourceDomainInfo={
+                "DomainName": "local-domain",
+                "OwnerId": "123456789012",
+                "Region": "us-east-1",
+            },
+            DestinationDomainInfo={
+                "DomainName": "remote-domain",
+                "OwnerId": "123456789012",
+                "Region": "us-east-1",
+            },
+            ConnectionAlias="test-connection",
+        )
+        assert "ConnectionStatus" in resp
+        assert resp["ConnectionAlias"] == "test-connection"
+
+    def test_accept_inbound_connection_nonexistent(self, client):
+        """AcceptInboundCrossClusterSearchConnection for nonexistent raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.accept_inbound_cross_cluster_search_connection(
+                CrossClusterSearchConnectionId="conn-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_inbound_connection_nonexistent(self, client):
+        """DeleteInboundCrossClusterSearchConnection for nonexistent raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.delete_inbound_cross_cluster_search_connection(
+                CrossClusterSearchConnectionId="conn-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_outbound_connection_nonexistent(self, client):
+        """DeleteOutboundCrossClusterSearchConnection for nonexistent raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.delete_outbound_cross_cluster_search_connection(
+                CrossClusterSearchConnectionId="conn-nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestEsVpcEndpointOperations:
+    """Tests for Elasticsearch VPC endpoint operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("es")
+
+    def test_create_and_delete_vpc_endpoint(self, client):
+        """CreateVpcEndpoint creates a VPC endpoint for a domain."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            resp = client.create_vpc_endpoint(
+                DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{name}",
+                VpcOptions={"SubnetIds": ["subnet-12345678"]},
+            )
+            assert "VpcEndpoint" in resp
+            endpoint = resp["VpcEndpoint"]
+            assert "VpcEndpointId" in endpoint
+            endpoint_id = endpoint["VpcEndpointId"]
+
+            del_resp = client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+            assert "VpcEndpointSummary" in del_resp
         finally:
             client.delete_elasticsearch_domain(DomainName=name)

@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from .conftest import make_client
 
@@ -111,3 +112,99 @@ class TestKinesisVideoCompat:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "DataEndpoint" in resp
         assert resp["DataEndpoint"].startswith("http")
+
+
+class TestKinesisVideoSignalingChannel:
+    """Tests for signaling channel CRUD operations."""
+
+    def test_create_signaling_channel(self, kinesisvideo_client):
+        name = f"test-sig-{uuid.uuid4().hex[:8]}"
+        resp = kinesisvideo_client.create_signaling_channel(ChannelName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ChannelARN" in resp
+        assert f"channel/{name}/" in resp["ChannelARN"]
+        # cleanup
+        kinesisvideo_client.delete_signaling_channel(ChannelARN=resp["ChannelARN"])
+
+    def test_describe_signaling_channel(self, kinesisvideo_client):
+        name = f"test-sig-{uuid.uuid4().hex[:8]}"
+        create_resp = kinesisvideo_client.create_signaling_channel(ChannelName=name)
+        sig_arn = create_resp["ChannelARN"]
+        try:
+            resp = kinesisvideo_client.describe_signaling_channel(ChannelARN=sig_arn)
+            info = resp["ChannelInfo"]
+            assert info["ChannelName"] == name
+            assert info["ChannelARN"] == sig_arn
+            assert info["ChannelStatus"] == "ACTIVE"
+            assert "ChannelType" in info
+            assert "CreationTime" in info
+            assert "Version" in info
+        finally:
+            kinesisvideo_client.delete_signaling_channel(ChannelARN=sig_arn)
+
+    def test_list_signaling_channels(self, kinesisvideo_client):
+        name = f"test-sig-{uuid.uuid4().hex[:8]}"
+        create_resp = kinesisvideo_client.create_signaling_channel(ChannelName=name)
+        sig_arn = create_resp["ChannelARN"]
+        try:
+            resp = kinesisvideo_client.list_signaling_channels()
+            assert "ChannelInfoList" in resp
+            arns = [ch["ChannelARN"] for ch in resp["ChannelInfoList"]]
+            assert sig_arn in arns
+        finally:
+            kinesisvideo_client.delete_signaling_channel(ChannelARN=sig_arn)
+
+    def test_delete_signaling_channel(self, kinesisvideo_client):
+        name = f"test-sig-{uuid.uuid4().hex[:8]}"
+        create_resp = kinesisvideo_client.create_signaling_channel(ChannelName=name)
+        sig_arn = create_resp["ChannelARN"]
+        del_resp = kinesisvideo_client.delete_signaling_channel(ChannelARN=sig_arn)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        listed = kinesisvideo_client.list_signaling_channels()
+        arns = [ch["ChannelARN"] for ch in listed["ChannelInfoList"]]
+        assert sig_arn not in arns
+
+    def test_describe_signaling_channel_not_found(self, kinesisvideo_client):
+        fake_arn = "arn:aws:kinesisvideo:us-east-1:123456789012:channel/nonexistent/0"
+        with pytest.raises(ClientError) as exc_info:
+            kinesisvideo_client.describe_signaling_channel(ChannelARN=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestKinesisVideoTagging:
+    """Tests for tagging operations on KinesisVideo resources."""
+
+    def test_tag_resource(self, kinesisvideo_client, created_stream):
+        resp = kinesisvideo_client.tag_resource(
+            ResourceARN=created_stream["StreamARN"],
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "dev"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_tags_for_resource(self, kinesisvideo_client, created_stream):
+        kinesisvideo_client.tag_resource(
+            ResourceARN=created_stream["StreamARN"],
+            Tags=[{"Key": "env", "Value": "staging"}],
+        )
+        resp = kinesisvideo_client.list_tags_for_resource(ResourceARN=created_stream["StreamARN"])
+        assert "Tags" in resp
+        assert resp["Tags"]["env"] == "staging"
+
+    def test_untag_resource(self, kinesisvideo_client, created_stream):
+        kinesisvideo_client.tag_resource(
+            ResourceARN=created_stream["StreamARN"],
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "dev"}],
+        )
+        kinesisvideo_client.untag_resource(
+            ResourceARN=created_stream["StreamARN"],
+            TagKeyList=["env"],
+        )
+        resp = kinesisvideo_client.list_tags_for_resource(ResourceARN=created_stream["StreamARN"])
+        assert "env" not in resp.get("Tags", {})
+        assert resp["Tags"]["team"] == "dev"
+
+    def test_list_tags_for_resource_empty(self, kinesisvideo_client, created_stream):
+        resp = kinesisvideo_client.list_tags_for_resource(ResourceARN=created_stream["StreamARN"])
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], dict)

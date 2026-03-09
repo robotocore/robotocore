@@ -1031,6 +1031,26 @@ class TestElastiCacheServerlessCacheSnapshots:
             elasticache.delete_serverless_cache(ServerlessCacheName=cache_name)
 
 
+class TestElastiCacheBatchUpdateActions:
+    """Tests for batch update action operations."""
+
+    def test_batch_apply_update_action(self, elasticache):
+        """BatchApplyUpdateAction returns processed and unprocessed items."""
+        resp = elasticache.batch_apply_update_action(
+            ServiceUpdateName="fake-update",
+            ReplicationGroupIds=["nonexistent-rg"],
+        )
+        assert "ProcessedUpdateActions" in resp or "UnprocessedUpdateActions" in resp
+
+    def test_batch_stop_update_action(self, elasticache):
+        """BatchStopUpdateAction returns processed and unprocessed items."""
+        resp = elasticache.batch_stop_update_action(
+            ServiceUpdateName="fake-update",
+            ReplicationGroupIds=["nonexistent-rg"],
+        )
+        assert "ProcessedUpdateActions" in resp or "UnprocessedUpdateActions" in resp
+
+
 class TestElastiCacheCopySnapshot:
     """Tests for copy snapshot operation."""
 

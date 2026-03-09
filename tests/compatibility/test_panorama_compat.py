@@ -1,8 +1,10 @@
 """Compatibility tests for AWS Panorama service."""
 
+import json
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -127,3 +129,125 @@ class TestPanoramaDeleteDevice:
         listed = panorama.list_devices()
         device_ids = [d["DeviceId"] for d in listed["Devices"]]
         assert device_id not in device_ids
+
+
+class TestPanoramaCreatePackage:
+    def test_create_package_returns_expected_fields(self, panorama):
+        pkg_name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+        resp = panorama.create_package(PackageName=pkg_name)
+        try:
+            assert "PackageId" in resp
+            assert "Arn" in resp
+            assert resp["Arn"].startswith("arn:aws:panorama:")
+            assert "StorageLocation" in resp
+            storage = resp["StorageLocation"]
+            assert "Bucket" in storage
+            assert "BinaryPrefixLocation" in storage
+        finally:
+            try:
+                panorama.delete_package(PackageId=resp["PackageId"])
+            except Exception:
+                pass
+
+    def test_create_package_unique_ids(self, panorama):
+        pkg1 = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg2 = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        try:
+            assert pkg1["PackageId"] != pkg2["PackageId"]
+            assert pkg1["Arn"] != pkg2["Arn"]
+        finally:
+            for pid in [pkg1["PackageId"], pkg2["PackageId"]]:
+                try:
+                    panorama.delete_package(PackageId=pid)
+                except Exception:
+                    pass
+
+
+class TestPanoramaDeletePackage:
+    def test_delete_package_succeeds(self, panorama):
+        resp = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_id = resp["PackageId"]
+        del_resp = panorama.delete_package(PackageId=pkg_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_package_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.delete_package(PackageId="package-nonexistent")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaDescribeNodeFromTemplateJob:
+    def test_describe_node_from_template_job_returns_details(self, panorama):
+        job = panorama.create_node_from_template_job(
+            NodeName="test-node-desc",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"key": "value"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = job["JobId"]
+        resp = panorama.describe_node_from_template_job(JobId=job_id)
+        assert resp["JobId"] == job_id
+        assert resp["NodeName"] == "test-node-desc"
+        assert resp["TemplateType"] == "RTSP_CAMERA_STREAM"
+        assert resp["OutputPackageName"] == "test-pkg"
+        assert "Status" in resp
+        assert "CreatedTime" in resp
+
+
+class TestPanoramaDescribeNode:
+    def test_describe_node_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_node(NodeId="node-nonexistent")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaCreateApplicationInstance:
+    def test_create_application_instance_returns_id(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            resp = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            assert "ApplicationInstanceId" in resp
+            assert isinstance(resp["ApplicationInstanceId"], str)
+            assert len(resp["ApplicationInstanceId"]) > 0
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass
+
+
+class TestPanoramaDescribeApplicationInstanceDetails:
+    def test_describe_application_instance_details(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            app = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            app_id = app["ApplicationInstanceId"]
+            resp = panorama.describe_application_instance_details(ApplicationInstanceId=app_id)
+            assert resp["ApplicationInstanceId"] == app_id
+            assert "ManifestPayload" in resp
+            assert resp["DefaultRuntimeContextDevice"] == device_id
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass
+
+    def test_describe_application_instance_details_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_application_instance_details(
+                ApplicationInstanceId="applicationInstance-nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"

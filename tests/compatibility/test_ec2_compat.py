@@ -6602,3 +6602,176 @@ class TestEC2MiscOperations:
         except ec2.exceptions.ClientError:
             # Already exists, that's fine
             pass
+
+
+class TestEC2CapacityReservationCrud:
+    """Capacity Reservation create/describe/cancel lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_and_describe_capacity_reservation(self, ec2):
+        """CreateCapacityReservation + DescribeCapacityReservations by ID."""
+        resp = ec2.create_capacity_reservation(
+            InstanceType="t2.micro",
+            InstancePlatform="Linux/UNIX",
+            InstanceCount=1,
+            AvailabilityZone="us-east-1a",
+        )
+        cr = resp["CapacityReservation"]
+        cr_id = cr["CapacityReservationId"]
+        assert cr_id.startswith("cr-")
+        assert cr["InstanceType"] == "t2.micro"
+        assert cr["InstancePlatform"] == "Linux/UNIX"
+        assert cr["TotalInstanceCount"] == 1
+
+        described = ec2.describe_capacity_reservations(CapacityReservationIds=[cr_id])
+        matching = [
+            c for c in described["CapacityReservations"] if c["CapacityReservationId"] == cr_id
+        ]
+        assert len(matching) == 1
+        assert matching[0]["State"] in ("active", "pending")
+
+        ec2.cancel_capacity_reservation(CapacityReservationId=cr_id)
+
+    def test_cancel_capacity_reservation(self, ec2):
+        """CancelCapacityReservation returns True."""
+        resp = ec2.create_capacity_reservation(
+            InstanceType="t2.micro",
+            InstancePlatform="Linux/UNIX",
+            InstanceCount=1,
+            AvailabilityZone="us-east-1a",
+        )
+        cr_id = resp["CapacityReservation"]["CapacityReservationId"]
+        cancel = ec2.cancel_capacity_reservation(CapacityReservationId=cr_id)
+        assert cancel["Return"] is True
+
+    def test_capacity_reservation_fields(self, ec2):
+        """Capacity reservation has expected fields."""
+        resp = ec2.create_capacity_reservation(
+            InstanceType="m5.large",
+            InstancePlatform="Linux/UNIX",
+            InstanceCount=2,
+            AvailabilityZone="us-east-1a",
+        )
+        cr = resp["CapacityReservation"]
+        assert cr["InstanceType"] == "m5.large"
+        assert cr["TotalInstanceCount"] == 2
+        assert "AvailabilityZone" in cr
+        ec2.cancel_capacity_reservation(CapacityReservationId=cr["CapacityReservationId"])
+
+
+class TestEC2TrafficMirrorFullLifecycle:
+    """Traffic Mirror filter + target + session full CRUD lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def vpc_resources(self, ec2):
+        """Create VPC, subnet, and two ENIs for traffic mirror tests."""
+        vpc = ec2.create_vpc(CidrBlock="10.60.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.60.1.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        eni1 = ec2.create_network_interface(SubnetId=subnet_id)
+        eni1_id = eni1["NetworkInterface"]["NetworkInterfaceId"]
+        eni2 = ec2.create_network_interface(SubnetId=subnet_id)
+        eni2_id = eni2["NetworkInterface"]["NetworkInterfaceId"]
+        yield vpc_id, subnet_id, eni1_id, eni2_id
+        ec2.delete_network_interface(NetworkInterfaceId=eni2_id)
+        ec2.delete_network_interface(NetworkInterfaceId=eni1_id)
+        ec2.delete_subnet(SubnetId=subnet_id)
+        ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_traffic_mirror_session_lifecycle(self, ec2, vpc_resources):
+        """Create filter, target, session; describe; then delete all in reverse."""
+        _, _, eni1_id, eni2_id = vpc_resources
+
+        # Create filter
+        f_resp = ec2.create_traffic_mirror_filter()
+        filt_id = f_resp["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        assert filt_id.startswith("tmf-")
+
+        # Create target
+        t_resp = ec2.create_traffic_mirror_target(NetworkInterfaceId=eni1_id)
+        target_id = t_resp["TrafficMirrorTarget"]["TrafficMirrorTargetId"]
+        assert target_id.startswith("tmt-")
+
+        # Create session
+        s_resp = ec2.create_traffic_mirror_session(
+            NetworkInterfaceId=eni2_id,
+            TrafficMirrorTargetId=target_id,
+            TrafficMirrorFilterId=filt_id,
+            SessionNumber=1,
+        )
+        session_id = s_resp["TrafficMirrorSession"]["TrafficMirrorSessionId"]
+        assert session_id.startswith("tms-")
+
+        # Describe all three
+        filters_desc = ec2.describe_traffic_mirror_filters(TrafficMirrorFilterIds=[filt_id])
+        assert any(
+            f["TrafficMirrorFilterId"] == filt_id for f in filters_desc["TrafficMirrorFilters"]
+        )
+
+        targets_desc = ec2.describe_traffic_mirror_targets(TrafficMirrorTargetIds=[target_id])
+        assert any(
+            t["TrafficMirrorTargetId"] == target_id for t in targets_desc["TrafficMirrorTargets"]
+        )
+
+        sessions_desc = ec2.describe_traffic_mirror_sessions(TrafficMirrorSessionIds=[session_id])
+        assert any(
+            s["TrafficMirrorSessionId"] == session_id
+            for s in sessions_desc["TrafficMirrorSessions"]
+        )
+
+        # Delete in reverse order
+        ec2.delete_traffic_mirror_session(TrafficMirrorSessionId=session_id)
+        ec2.delete_traffic_mirror_target(TrafficMirrorTargetId=target_id)
+        ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=filt_id)
+
+    def test_delete_traffic_mirror_filter(self, ec2):
+        """DeleteTrafficMirrorFilter removes the filter."""
+        f_resp = ec2.create_traffic_mirror_filter()
+        filt_id = f_resp["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        del_resp = ec2.delete_traffic_mirror_filter(TrafficMirrorFilterId=filt_id)
+        assert del_resp["TrafficMirrorFilterId"] == filt_id
+
+    def test_delete_traffic_mirror_target(self, ec2, vpc_resources):
+        """DeleteTrafficMirrorTarget removes the target."""
+        _, _, eni1_id, _ = vpc_resources
+        t_resp = ec2.create_traffic_mirror_target(NetworkInterfaceId=eni1_id)
+        target_id = t_resp["TrafficMirrorTarget"]["TrafficMirrorTargetId"]
+        del_resp = ec2.delete_traffic_mirror_target(TrafficMirrorTargetId=target_id)
+        assert del_resp["TrafficMirrorTargetId"] == target_id
+
+
+class TestEC2FastLaunchLifecycle:
+    """Fast Launch enable/describe/disable lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_enable_and_disable_fast_launch(self, ec2):
+        """EnableFastLaunch + DescribeFastLaunchImages + DisableFastLaunch."""
+        image_id = "ami-12345678"
+        enable_resp = ec2.enable_fast_launch(ImageId=image_id)
+        assert enable_resp["ImageId"] == image_id
+        assert "State" in enable_resp
+
+        desc_resp = ec2.describe_fast_launch_images()
+        assert "FastLaunchImages" in desc_resp
+
+        disable_resp = ec2.disable_fast_launch(ImageId=image_id)
+        assert disable_resp["ImageId"] == image_id
+
+    def test_enable_fast_launch_returns_state(self, ec2):
+        """EnableFastLaunch response includes State field."""
+        resp = ec2.enable_fast_launch(ImageId="ami-aabbccdd")
+        assert "State" in resp
+        assert resp["ImageId"] == "ami-aabbccdd"
+        # Clean up
+        ec2.disable_fast_launch(ImageId="ami-aabbccdd")

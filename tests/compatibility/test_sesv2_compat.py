@@ -1681,3 +1681,445 @@ class TestSESv2ConfigurationSetOptions:
                 CustomRedirectDomain="track.example.com",
             )
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestSESv2PutAccountVdmAttributes:
+    """Tests for PutAccountVdmAttributes."""
+
+    def test_put_account_vdm_attributes_enabled(self, sesv2):
+        """PutAccountVdmAttributes enables VDM."""
+        resp = sesv2.put_account_vdm_attributes(VdmAttributes={"VdmEnabled": "ENABLED"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_account_vdm_attributes_disabled(self, sesv2):
+        """PutAccountVdmAttributes disables VDM."""
+        resp = sesv2.put_account_vdm_attributes(VdmAttributes={"VdmEnabled": "DISABLED"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2PutConfigurationSetSuppressionOptions:
+    """Tests for PutConfigurationSetSuppressionOptions."""
+
+    def test_put_suppression_options_bounce(self, sesv2):
+        """PutConfigurationSetSuppressionOptions sets BOUNCE reason."""
+        cs = _uid("cs")
+        sesv2.create_configuration_set(ConfigurationSetName=cs)
+        try:
+            resp = sesv2.put_configuration_set_suppression_options(
+                ConfigurationSetName=cs, SuppressedReasons=["BOUNCE"]
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs)
+
+    def test_put_suppression_options_not_found(self, sesv2):
+        """PutConfigurationSetSuppressionOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_suppression_options(
+                ConfigurationSetName=_uid("nocs"), SuppressedReasons=["BOUNCE"]
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestSESv2PutConfigurationSetArchivingOptions:
+    """Tests for PutConfigurationSetArchivingOptions."""
+
+    def test_put_archiving_options(self, sesv2):
+        """PutConfigurationSetArchivingOptions succeeds."""
+        cs = _uid("cs")
+        sesv2.create_configuration_set(ConfigurationSetName=cs)
+        try:
+            resp = sesv2.put_configuration_set_archiving_options(ConfigurationSetName=cs)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs)
+
+    def test_put_archiving_options_not_found(self, sesv2):
+        """PutConfigurationSetArchivingOptions for fake set raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_configuration_set_archiving_options(ConfigurationSetName=_uid("nocs"))
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestSESv2PutEmailIdentityAttributes:
+    """Tests for PutEmailIdentityFeedbackAttributes, MailFromAttributes, DkimAttributes."""
+
+    def test_put_feedback_attributes(self, sesv2):
+        """PutEmailIdentityFeedbackAttributes enables email forwarding."""
+        email = f"{_uid('fb')}@example.com"
+        sesv2.create_email_identity(EmailIdentity=email)
+        try:
+            resp = sesv2.put_email_identity_feedback_attributes(
+                EmailIdentity=email, EmailForwardingEnabled=True
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+    def test_put_feedback_attributes_not_found(self, sesv2):
+        """PutEmailIdentityFeedbackAttributes for fake identity raises NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            sesv2.put_email_identity_feedback_attributes(
+                EmailIdentity=f"{_uid('noid')}@example.com",
+                EmailForwardingEnabled=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_put_mail_from_attributes(self, sesv2):
+        """PutEmailIdentityMailFromAttributes sets MAIL FROM domain."""
+        email = f"{_uid('mf')}@example.com"
+        sesv2.create_email_identity(EmailIdentity=email)
+        try:
+            resp = sesv2.put_email_identity_mail_from_attributes(
+                EmailIdentity=email,
+                MailFromDomain=f"mail.{_uid('mf')}.example.com",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+    def test_put_dkim_attributes(self, sesv2):
+        """PutEmailIdentityDkimAttributes enables DKIM signing."""
+        email = f"{_uid('dk')}@example.com"
+        sesv2.create_email_identity(EmailIdentity=email)
+        try:
+            resp = sesv2.put_email_identity_dkim_attributes(
+                EmailIdentity=email, SigningEnabled=True
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+
+class TestSESv2DedicatedIpPoolOperations:
+    """Tests for PutDedicatedIpInPool and PutDedicatedIpPoolScalingAttributes."""
+
+    def test_put_dedicated_ip_in_pool(self, sesv2):
+        """PutDedicatedIpInPool moves an IP to a pool."""
+        resp = sesv2.put_dedicated_ip_in_pool(Ip="192.0.2.1", DestinationPoolName="default")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_dedicated_ip_pool_scaling_attributes(self, sesv2):
+        """PutDedicatedIpPoolScalingAttributes sets scaling mode."""
+        pool = _uid("pool")
+        sesv2.create_dedicated_ip_pool(PoolName=pool)
+        try:
+            resp = sesv2.put_dedicated_ip_pool_scaling_attributes(
+                PoolName=pool, ScalingMode="STANDARD"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_dedicated_ip_pool(PoolName=pool)
+
+
+class TestSESv2DeliverabilityDashboardExtra:
+    """Tests for PutDeliverabilityDashboardOption and related list/get operations."""
+
+    def test_put_deliverability_dashboard_option(self, sesv2):
+        """PutDeliverabilityDashboardOption enables the dashboard."""
+        resp = sesv2.put_deliverability_dashboard_option(DashboardEnabled=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_deliverability_test_reports(self, sesv2):
+        """ListDeliverabilityTestReports returns a list."""
+        resp = sesv2.list_deliverability_test_reports()
+        assert "DeliverabilityTestReports" in resp
+        assert isinstance(resp["DeliverabilityTestReports"], list)
+
+    def test_get_domain_statistics_report(self, sesv2):
+        """GetDomainStatisticsReport returns stats for a domain."""
+        import datetime
+
+        resp = sesv2.get_domain_statistics_report(
+            Domain="example.com",
+            StartDate=datetime.datetime(2025, 1, 1),
+            EndDate=datetime.datetime(2025, 12, 31),
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_email_address_insights(self, sesv2):
+        """GetEmailAddressInsights returns insights for an email address."""
+        resp = sesv2.get_email_address_insights(EmailAddress=f"{_uid('ins')}@example.com")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2SendOperations:
+    """Tests for SendBulkEmail and SendCustomVerificationEmail."""
+
+    def test_send_bulk_email(self, sesv2):
+        """SendBulkEmail sends to multiple recipients via template."""
+        uid = _uid("bulk")
+        email = f"{uid}@example.com"
+        tpl = f"tpl-{uid}"
+        sesv2.create_email_identity(EmailIdentity=email)
+        sesv2.create_email_template(
+            TemplateName=tpl,
+            TemplateContent={
+                "Subject": "Hi {{name}}",
+                "Text": "Hello {{name}}",
+            },
+        )
+        try:
+            resp = sesv2.send_bulk_email(
+                FromEmailAddress=email,
+                DefaultContent={
+                    "Template": {
+                        "TemplateName": tpl,
+                        "TemplateData": '{"name": "Bulk"}',
+                    }
+                },
+                BulkEmailEntries=[{"Destination": {"ToAddresses": [f"to-{uid}@example.com"]}}],
+            )
+            assert "BulkEmailEntryResults" in resp
+            assert len(resp["BulkEmailEntryResults"]) == 1
+        finally:
+            sesv2.delete_email_template(TemplateName=tpl)
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+    def test_send_custom_verification_email(self, sesv2):
+        """SendCustomVerificationEmail sends a verification email."""
+        uid = _uid("cve")
+        email = f"{uid}@example.com"
+        tpl = f"cve-{uid}"
+        sesv2.create_email_identity(EmailIdentity=email)
+        sesv2.create_custom_verification_email_template(
+            TemplateName=tpl,
+            FromEmailAddress=email,
+            TemplateSubject="Verify",
+            TemplateContent='<a href="{VerificationLink}">Click</a>',
+            SuccessRedirectionURL="https://example.com/ok",
+            FailureRedirectionURL="https://example.com/fail",
+        )
+        try:
+            resp = sesv2.send_custom_verification_email(
+                EmailAddress=f"verify-{uid}@example.com", TemplateName=tpl
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_custom_verification_email_template(TemplateName=tpl)
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+
+class TestSESv2ExportJobs:
+    """Tests for CreateExportJob, GetExportJob, CancelExportJob, ListExportJobs."""
+
+    def test_list_export_jobs(self, sesv2):
+        """ListExportJobs returns a list."""
+        resp = sesv2.list_export_jobs()
+        assert "ExportJobs" in resp
+        assert isinstance(resp["ExportJobs"], list)
+
+    def test_create_and_get_export_job(self, sesv2):
+        """CreateExportJob creates a job; GetExportJob retrieves it."""
+        import datetime
+
+        resp = sesv2.create_export_job(
+            ExportDataSource={
+                "MetricsDataSource": {
+                    "Dimensions": {},
+                    "Namespace": "VDM",
+                    "Metrics": [{"Name": "SEND", "Aggregation": "VOLUME"}],
+                    "StartDate": datetime.datetime(2025, 1, 1),
+                    "EndDate": datetime.datetime(2025, 12, 31),
+                }
+            },
+            ExportDestination={"DataFormat": "CSV"},
+        )
+        assert "JobId" in resp
+        job_id = resp["JobId"]
+
+        got = sesv2.get_export_job(JobId=job_id)
+        assert "JobStatus" in got
+
+    def test_cancel_export_job(self, sesv2):
+        """CancelExportJob cancels an export job."""
+        import datetime
+
+        resp = sesv2.create_export_job(
+            ExportDataSource={
+                "MetricsDataSource": {
+                    "Dimensions": {},
+                    "Namespace": "VDM",
+                    "Metrics": [{"Name": "SEND", "Aggregation": "VOLUME"}],
+                    "StartDate": datetime.datetime(2025, 1, 1),
+                    "EndDate": datetime.datetime(2025, 12, 31),
+                }
+            },
+            ExportDestination={"DataFormat": "CSV"},
+        )
+        job_id = resp["JobId"]
+        cancel = sesv2.cancel_export_job(JobId=job_id)
+        assert cancel["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2ImportJobs:
+    """Tests for CreateImportJob, GetImportJob, ListImportJobs."""
+
+    def test_list_import_jobs(self, sesv2):
+        """ListImportJobs returns a list."""
+        resp = sesv2.list_import_jobs()
+        assert "ImportJobs" in resp
+        assert isinstance(resp["ImportJobs"], list)
+
+    def test_create_and_get_import_job(self, sesv2):
+        """CreateImportJob creates a job; GetImportJob retrieves it."""
+        resp = sesv2.create_import_job(
+            ImportDestination={
+                "SuppressionListDestination": {"SuppressionListImportAction": "PUT"}
+            },
+            ImportDataSource={
+                "S3Url": "s3://fake-bucket/fake-key",
+                "DataFormat": "CSV",
+            },
+        )
+        assert "JobId" in resp
+        job_id = resp["JobId"]
+
+        got = sesv2.get_import_job(JobId=job_id)
+        assert "ImportDestination" in got
+
+
+class TestSESv2DeliverabilityTestReport:
+    """Tests for CreateDeliverabilityTestReport and GetDeliverabilityTestReport."""
+
+    def test_create_and_get_deliverability_test_report(self, sesv2):
+        """CreateDeliverabilityTestReport creates; GetDeliverabilityTestReport retrieves."""
+        email = f"{_uid('dlv')}@example.com"
+        sesv2.create_email_identity(EmailIdentity=email)
+        try:
+            resp = sesv2.create_deliverability_test_report(
+                FromEmailAddress=email,
+                Content={
+                    "Simple": {
+                        "Subject": {"Data": "Test"},
+                        "Body": {"Text": {"Data": "Test body"}},
+                    }
+                },
+            )
+            assert "ReportId" in resp
+            report_id = resp["ReportId"]
+
+            got = sesv2.get_deliverability_test_report(ReportId=report_id)
+            assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_email_identity(EmailIdentity=email)
+
+
+class TestSESv2TenantCRUD:
+    """Tests for CreateTenant, GetTenant, DeleteTenant, ListTenants."""
+
+    def test_create_and_get_tenant(self, sesv2):
+        """CreateTenant creates; GetTenant retrieves by name."""
+        name = _uid("tenant")
+        resp = sesv2.create_tenant(TenantName=name)
+        assert "TenantId" in resp
+        try:
+            got = sesv2.get_tenant(TenantName=name)
+            assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            sesv2.delete_tenant(TenantName=name)
+
+    def test_list_tenants(self, sesv2):
+        """ListTenants returns a list."""
+        resp = sesv2.list_tenants()
+        assert "Tenants" in resp
+        assert isinstance(resp["Tenants"], list)
+
+    def test_delete_tenant(self, sesv2):
+        """DeleteTenant removes a tenant."""
+        name = _uid("tenant")
+        sesv2.create_tenant(TenantName=name)
+        resp = sesv2.delete_tenant(TenantName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2TenantResourceAssociation:
+    """Tests for tenant resource association operations."""
+
+    def test_create_and_list_tenant_resources(self, sesv2):
+        """CreateTenantResourceAssociation associates; ListTenantResources lists."""
+        uid = _uid("tra")
+        tenant = f"tenant-{uid}"
+        cs = f"cs-{uid}"
+        sesv2.create_tenant(TenantName=tenant)
+        sesv2.create_configuration_set(ConfigurationSetName=cs)
+        cs_arn = f"arn:aws:ses:us-east-1:123456789012:configuration-set/{cs}"
+        try:
+            resp = sesv2.create_tenant_resource_association(TenantName=tenant, ResourceArn=cs_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            resources = sesv2.list_tenant_resources(TenantName=tenant)
+            assert "TenantResources" in resources
+
+            tenants = sesv2.list_resource_tenants(ResourceArn=cs_arn)
+            assert "ResourceTenants" in tenants
+
+            sesv2.delete_tenant_resource_association(TenantName=tenant, ResourceArn=cs_arn)
+        finally:
+            sesv2.delete_configuration_set(ConfigurationSetName=cs)
+            sesv2.delete_tenant(TenantName=tenant)
+
+
+class TestSESv2MultiRegionEndpointCRUD:
+    """Tests for CreateMultiRegionEndpoint, GetMultiRegionEndpoint, DeleteMultiRegionEndpoint."""
+
+    def test_create_get_delete_multi_region_endpoint(self, sesv2):
+        """Full CRUD lifecycle for multi-region endpoint."""
+        name = _uid("ep")
+        resp = sesv2.create_multi_region_endpoint(
+            EndpointName=name,
+            Details={"RoutesDetails": [{"Region": "us-east-1"}]},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        got = sesv2.get_multi_region_endpoint(EndpointName=name)
+        assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        deleted = sesv2.delete_multi_region_endpoint(EndpointName=name)
+        assert deleted["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2ReputationEntities:
+    """Tests for reputation entity operations."""
+
+    def test_list_reputation_entities(self, sesv2):
+        """ListReputationEntities returns a list."""
+        resp = sesv2.list_reputation_entities()
+        assert "ReputationEntities" in resp
+        assert isinstance(resp["ReputationEntities"], list)
+
+    def test_get_reputation_entity(self, sesv2):
+        """GetReputationEntity returns details for an entity."""
+        resp = sesv2.get_reputation_entity(
+            ReputationEntityReference=_uid("ent"),
+            ReputationEntityType="ACCOUNT",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_reputation_entity_customer_managed_status(self, sesv2):
+        """UpdateReputationEntityCustomerManagedStatus sets sending status."""
+        resp = sesv2.update_reputation_entity_customer_managed_status(
+            ReputationEntityReference=_uid("ent"),
+            ReputationEntityType="ACCOUNT",
+            SendingStatus="ACTIVE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_reputation_entity_policy(self, sesv2):
+        """UpdateReputationEntityPolicy sets a policy on an entity."""
+        resp = sesv2.update_reputation_entity_policy(
+            ReputationEntityReference=_uid("ent"),
+            ReputationEntityType="ACCOUNT",
+            ReputationEntityPolicy='{"Version":"2012-10-17"}',
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2ListRecommendations:
+    """Tests for ListRecommendations."""
+
+    def test_list_recommendations(self, sesv2):
+        """ListRecommendations returns a list."""
+        resp = sesv2.list_recommendations()
+        assert "Recommendations" in resp
+        assert isinstance(resp["Recommendations"], list)

@@ -166,6 +166,48 @@ class TestConnectCampaignsOperations:
         finally:
             connectcampaigns.delete_campaign(id=campaign_id)
 
+    def test_create_and_delete_campaign(self, connectcampaigns):
+        """CreateCampaign and DeleteCampaign lifecycle."""
+        resp = _create_campaign(connectcampaigns, name="lifecycle-test")
+        campaign_id = resp["id"]
+        assert "arn" in resp
+        assert len(campaign_id) > 0
+        # Delete and verify describe fails
+        connectcampaigns.delete_campaign(id=campaign_id)
+        with pytest.raises(ClientError) as exc:
+            connectcampaigns.describe_campaign(id=campaign_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InvalidCampaignStateException",
+        )
+
+    def test_describe_campaign_returns_full_details(self, connectcampaigns):
+        """DescribeCampaign returns all expected fields."""
+        resp = _create_campaign(connectcampaigns, name="details-test")
+        campaign_id = resp["id"]
+        try:
+            result = connectcampaigns.describe_campaign(id=campaign_id)
+            campaign = result["campaign"]
+            assert campaign["id"] == campaign_id
+            assert "name" in campaign
+            assert "arn" in campaign
+            assert "connectInstanceId" in campaign
+            assert "dialerConfig" in campaign
+            assert "outboundCallConfig" in campaign
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
+    def test_list_campaigns_includes_created(self, connectcampaigns):
+        """ListCampaigns includes a newly created campaign."""
+        resp = _create_campaign(connectcampaigns, name="list-include-test")
+        campaign_id = resp["id"]
+        try:
+            result = connectcampaigns.list_campaigns()
+            campaign_ids = [c["id"] for c in result["campaignSummaryList"]]
+            assert campaign_id in campaign_ids
+        finally:
+            connectcampaigns.delete_campaign(id=campaign_id)
+
     def test_start_instance_onboarding_job(self, connectcampaigns):
         """StartInstanceOnboardingJob returns job status."""
         result = connectcampaigns.start_instance_onboarding_job(
