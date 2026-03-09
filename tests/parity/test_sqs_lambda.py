@@ -1,7 +1,7 @@
 """SQS -> Lambda event source mapping parity test.
 
 Tests the common pattern of SQS triggering Lambda via event source mapping,
-which is a fundamental LocalStack feature.
+which is a fundamental AWS emulator feature.
 
 Note: In robotocore, Lambda executes in-process and cannot make HTTP calls
 back to the server (deadlock). This test verifies that:

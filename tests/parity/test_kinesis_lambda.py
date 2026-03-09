@@ -1,7 +1,7 @@
 """Kinesis -> Lambda parity test.
 
-Derived from LocalStack's kinesis_firehose scenario:
-vendor/localstack/tests/aws/scenario/kinesis_firehose/test_kinesis_firehose.py
+Derived from the Kinesis/Firehose scenario pattern:
+Kinesis stream -> Lambda ESM -> DynamoDB.
 
 Tests Kinesis stream operations and ESM configuration.
 The original test puts records into Kinesis and verifies delivery.

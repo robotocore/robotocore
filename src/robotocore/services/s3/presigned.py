@@ -61,8 +61,7 @@ def validate_presigned_url(info: PresignedUrlInfo) -> bool:
     """Validate a presigned URL (check expiration).
 
     In a real implementation this would also verify the signature, but
-    for local emulation we only check expiration to match LocalStack
-    behavior.
+    for local emulation we only check expiration.
     """
     if info.is_expired:
         return False

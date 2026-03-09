@@ -13,7 +13,7 @@ class TestBanner:
         assert "Robotocore" in captured.out
         assert "4566" in captured.out
         assert "Ready." in captured.out
-        assert "localhost.localstack.cloud" in captured.out
+        assert "AWS_ENDPOINT_URL" in captured.out
 
     def test_print_banner_custom_port(self, capsys):
         print_banner(host="0.0.0.0", port=9999)

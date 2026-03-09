@@ -2,7 +2,7 @@
 Shared fixtures for application integration tests.
 
 These tests verify real-world application patterns against an AWS-compatible
-endpoint. They work with LocalStack, robotocore, or real AWS.
+endpoint. They work with robotocore or real AWS.
 
 Usage:
     AWS_ENDPOINT_URL=http://localhost:4566 pytest tests/apps/ -v

@@ -105,7 +105,7 @@ NATIVE_PROVIDERS = {
     "xray": handle_xray_request,
 }
 
-# Default account ID (matches LocalStack)
+# Default account ID
 DEFAULT_ACCOUNT_ID = "123456789012"
 
 # Regex to extract account ID from SigV4 Credential

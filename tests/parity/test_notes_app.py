@@ -1,7 +1,7 @@
 """Notes app parity test -- API Gateway + Lambda + DynamoDB.
 
-Derived from LocalStack's note_taking scenario test:
-vendor/localstack/tests/aws/scenario/note_taking/test_note_taking.py
+Derived from the note-taking scenario pattern:
+API Gateway REST API backed by Lambda with DynamoDB storage.
 
 The original uses CDK to provision an API Gateway REST API backed by Lambda
 functions that read/write to DynamoDB.

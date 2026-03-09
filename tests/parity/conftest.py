@@ -1,8 +1,8 @@
-"""Shared fixtures for LocalStack parity tests.
+"""Shared fixtures for AWS parity tests.
 
 These tests are designed to run against any AWS-compatible endpoint:
-robotocore, LocalStack, or real AWS. The endpoint is configured via
-the AWS_ENDPOINT_URL environment variable (default: http://localhost:4566).
+robotocore or real AWS. The endpoint is configured via the
+AWS_ENDPOINT_URL environment variable (default: http://localhost:4566).
 """
 
 import json

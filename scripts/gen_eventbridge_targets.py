@@ -2,7 +2,7 @@
 """Generate EventBridge target dispatcher stubs from target type list.
 
 Creates target handler functions for all 17 EventBridge target types matching
-Enterprise LocalStack feature parity.
+all 17 EventBridge target types for full AWS parity.
 
 Usage:
     uv run python scripts/gen_eventbridge_targets.py --list              # List all target types

@@ -1,0 +1,33 @@
+name: AWS Parity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  parity-tests:
+    name: "AWS parity tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+      - name: Run parity tests
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+        run: uv run pytest tests/parity/ -v --tb=short
