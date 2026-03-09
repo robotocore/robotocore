@@ -57,6 +57,14 @@ class TestMediaPackageChannels:
         describe_resp = mediapackage.describe_channel(Id=channel_id)
         assert create_resp["Arn"] == describe_resp["Arn"]
 
+    def test_describe_channel_nonexistent(self, mediapackage):
+        """DescribeChannel for nonexistent channel raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            mediapackage.describe_channel(Id="no-such-channel")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
 
 class TestMediaPackageOriginEndpoints:
     def test_list_origin_endpoints(self, mediapackage):
@@ -122,6 +130,14 @@ class TestMediaPackageOriginEndpoints:
         # Verify via describe
         desc = mediapackage.describe_origin_endpoint(Id=endpoint_id)
         assert desc["Description"] == "updated"
+
+    def test_describe_origin_endpoint_nonexistent(self, mediapackage):
+        """DescribeOriginEndpoint for nonexistent endpoint raises error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            mediapackage.describe_origin_endpoint(Id="no-such-endpoint")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
 
     def test_list_origin_endpoints_by_channel(self, mediapackage):
         channel_id = _unique_id("ch")

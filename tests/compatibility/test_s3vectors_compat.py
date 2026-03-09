@@ -74,3 +74,114 @@ class TestS3VectorsIndexOperations:
             client.get_index(vectorBucketName=vector_bucket, indexName="no-such-index")
         err = exc.value.response["Error"]["Code"]
         assert err in ("ResourceNotFoundException", "NotFoundException", "NoSuchEntity")
+
+    def test_delete_index(self, client, vector_bucket):
+        """DeleteIndex removes a vector index."""
+        client.create_index(
+            vectorBucketName=vector_bucket,
+            indexName="test-del-idx",
+            dataType="float32",
+            dimension=4,
+            distanceMetric="euclidean",
+        )
+        resp = client.delete_index(vectorBucketName=vector_bucket, indexName="test-del-idx")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_indexes(self, client, vector_bucket):
+        """ListIndexes returns indexes in a bucket."""
+        client.create_index(
+            vectorBucketName=vector_bucket,
+            indexName="test-list-idx",
+            dataType="float32",
+            dimension=4,
+            distanceMetric="euclidean",
+        )
+        resp = client.list_indexes(vectorBucketName=vector_bucket)
+        assert "indexes" in resp
+        names = [i["indexName"] for i in resp["indexes"]]
+        assert "test-list-idx" in names
+
+
+class TestS3VectorsBucketOperations:
+    """Tests for S3 Vectors Bucket CRUD operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("s3vectors")
+
+    def test_create_vector_bucket(self, client):
+        """CreateVectorBucket creates a bucket."""
+        name = "test-create-vb"
+        resp = client.create_vector_bucket(vectorBucketName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # cleanup
+        client.delete_vector_bucket(vectorBucketName=name)
+
+    def test_delete_vector_bucket(self, client):
+        """DeleteVectorBucket removes a bucket."""
+        name = "test-delete-vb"
+        client.create_vector_bucket(vectorBucketName=name)
+        resp = client.delete_vector_bucket(vectorBucketName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_vector_bucket(self, client):
+        """GetVectorBucket returns bucket details."""
+        name = "test-get-vb"
+        client.create_vector_bucket(vectorBucketName=name)
+        resp = client.get_vector_bucket(vectorBucketName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["vectorBucket"]["vectorBucketName"] == name
+        client.delete_vector_bucket(vectorBucketName=name)
+
+    def test_get_vector_bucket_nonexistent(self, client):
+        """GetVectorBucket for nonexistent bucket raises error."""
+        with pytest.raises(client.exceptions.ClientError) as exc:
+            client.get_vector_bucket(vectorBucketName="no-such-bucket-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
+
+    def test_delete_vector_bucket_policy_nonexistent(self, client):
+        """DeleteVectorBucketPolicy for nonexistent bucket raises error."""
+        with pytest.raises(client.exceptions.ClientError) as exc:
+            client.delete_vector_bucket_policy(vectorBucketName="no-such-bucket-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
+
+    def test_get_vector_bucket_policy_nonexistent(self, client):
+        """GetVectorBucketPolicy for nonexistent bucket raises error."""
+        with pytest.raises(client.exceptions.ClientError) as exc:
+            client.get_vector_bucket_policy(vectorBucketName="no-such-bucket-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "NotFoundException",
+        )
+
+    def test_put_and_get_vector_bucket_policy(self, client):
+        """PutVectorBucketPolicy sets a policy, GetVectorBucketPolicy reads it."""
+        name = "test-policy-vb"
+        client.create_vector_bucket(vectorBucketName=name)
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3vectors:*",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        resp = client.put_vector_bucket_policy(vectorBucketName=name, policy=policy)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        get_resp = client.get_vector_bucket_policy(vectorBucketName=name)
+        assert "policy" in get_resp
+        client.delete_vector_bucket(vectorBucketName=name)
