@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -413,3 +414,230 @@ class TestNetworkmanagerAutoCoverage:
         assert "TagList" in resp
         tag_map = {t["Key"]: t["Value"] for t in resp["TagList"]}
         assert tag_map.get("env") == "test"
+
+
+class TestNetworkManagerListOperations:
+    """Tests for NetworkManager list operations."""
+
+    def test_list_attachments(self, nm):
+        """ListAttachments returns empty list."""
+        resp = nm.list_attachments()
+        assert "Attachments" in resp
+        assert isinstance(resp["Attachments"], list)
+
+    def test_list_connect_peers(self, nm):
+        """ListConnectPeers returns empty list."""
+        resp = nm.list_connect_peers()
+        assert "ConnectPeers" in resp
+        assert isinstance(resp["ConnectPeers"], list)
+
+    def test_list_peerings(self, nm):
+        """ListPeerings returns empty list."""
+        resp = nm.list_peerings()
+        assert "Peerings" in resp
+        assert isinstance(resp["Peerings"], list)
+
+    def test_list_organization_service_access_status(self, nm):
+        """ListOrganizationServiceAccessStatus returns OrganizationStatus."""
+        resp = nm.list_organization_service_access_status()
+        assert "OrganizationStatus" in resp
+
+    def test_list_core_network_policy_versions(self, nm, global_network):
+        """ListCoreNetworkPolicyVersions returns list for a real core network."""
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        cn_id = cn["CoreNetworkId"]
+        try:
+            resp = nm.list_core_network_policy_versions(CoreNetworkId=cn_id)
+            assert "CoreNetworkPolicyVersions" in resp
+            assert isinstance(resp["CoreNetworkPolicyVersions"], list)
+        finally:
+            nm.delete_core_network(CoreNetworkId=cn_id)
+
+    def test_list_core_network_prefix_list_associations(self, nm, global_network):
+        """ListCoreNetworkPrefixListAssociations returns list."""
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        cn_id = cn["CoreNetworkId"]
+        try:
+            resp = nm.list_core_network_prefix_list_associations(CoreNetworkId=cn_id)
+            assert "PrefixListAssociations" in resp
+            assert isinstance(resp["PrefixListAssociations"], list)
+        finally:
+            nm.delete_core_network(CoreNetworkId=cn_id)
+
+
+class TestNetworkManagerGetWithGlobalNetwork:
+    """Tests for Get operations that take a GlobalNetworkId and return lists."""
+
+    def test_get_connections(self, nm, global_network):
+        """GetConnections returns empty Connections list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_connections(GlobalNetworkId=gn_id)
+        assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
+
+    def test_get_connect_peer_associations(self, nm, global_network):
+        """GetConnectPeerAssociations returns empty list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_connect_peer_associations(GlobalNetworkId=gn_id)
+        assert "ConnectPeerAssociations" in resp
+        assert isinstance(resp["ConnectPeerAssociations"], list)
+
+    def test_get_customer_gateway_associations(self, nm, global_network):
+        """GetCustomerGatewayAssociations returns empty list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_customer_gateway_associations(GlobalNetworkId=gn_id)
+        assert "CustomerGatewayAssociations" in resp
+        assert isinstance(resp["CustomerGatewayAssociations"], list)
+
+    def test_get_link_associations(self, nm, global_network):
+        """GetLinkAssociations returns empty list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_link_associations(GlobalNetworkId=gn_id)
+        assert "LinkAssociations" in resp
+        assert isinstance(resp["LinkAssociations"], list)
+
+    def test_get_network_resource_counts(self, nm, global_network):
+        """GetNetworkResourceCounts returns list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_network_resource_counts(GlobalNetworkId=gn_id)
+        assert "NetworkResourceCounts" in resp
+        assert isinstance(resp["NetworkResourceCounts"], list)
+
+    def test_get_network_resources(self, nm, global_network):
+        """GetNetworkResources returns list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_network_resources(GlobalNetworkId=gn_id)
+        assert "NetworkResources" in resp
+        assert isinstance(resp["NetworkResources"], list)
+
+    def test_get_network_resource_relationships(self, nm, global_network):
+        """GetNetworkResourceRelationships returns list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_network_resource_relationships(GlobalNetworkId=gn_id)
+        assert "Relationships" in resp
+        assert isinstance(resp["Relationships"], list)
+
+    def test_get_network_telemetry(self, nm, global_network):
+        """GetNetworkTelemetry returns list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_network_telemetry(GlobalNetworkId=gn_id)
+        assert "NetworkTelemetry" in resp
+        assert isinstance(resp["NetworkTelemetry"], list)
+
+    def test_get_transit_gateway_connect_peer_associations(self, nm, global_network):
+        """GetTransitGatewayConnectPeerAssociations returns empty list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_transit_gateway_connect_peer_associations(GlobalNetworkId=gn_id)
+        assert "TransitGatewayConnectPeerAssociations" in resp
+        assert isinstance(resp["TransitGatewayConnectPeerAssociations"], list)
+
+    def test_get_transit_gateway_registrations(self, nm, global_network):
+        """GetTransitGatewayRegistrations returns empty list."""
+        gn_id = global_network["GlobalNetworkId"]
+        resp = nm.get_transit_gateway_registrations(GlobalNetworkId=gn_id)
+        assert "TransitGatewayRegistrations" in resp
+        assert isinstance(resp["TransitGatewayRegistrations"], list)
+
+    def test_get_resource_policy(self, nm, global_network):
+        """GetResourcePolicy returns a response (possibly empty)."""
+        gn_arn = global_network["GlobalNetworkArn"]
+        resp = nm.get_resource_policy(ResourceArn=gn_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestNetworkManagerGetWithCoreNetwork:
+    """Tests for Get operations that need a core network."""
+
+    @pytest.fixture
+    def core_network(self, nm, global_network):
+        gn_id = global_network["GlobalNetworkId"]
+        cn = nm.create_core_network(GlobalNetworkId=gn_id)["CoreNetwork"]
+        yield cn
+        nm.delete_core_network(CoreNetworkId=cn["CoreNetworkId"])
+
+    def test_get_core_network_change_events(self, nm, core_network):
+        """GetCoreNetworkChangeEvents returns list."""
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.get_core_network_change_events(CoreNetworkId=cn_id, PolicyVersionId=1)
+        assert "CoreNetworkChangeEvents" in resp
+        assert isinstance(resp["CoreNetworkChangeEvents"], list)
+
+    def test_get_core_network_change_set(self, nm, core_network):
+        """GetCoreNetworkChangeSet returns list."""
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.get_core_network_change_set(CoreNetworkId=cn_id, PolicyVersionId=1)
+        assert "CoreNetworkChanges" in resp
+        assert isinstance(resp["CoreNetworkChanges"], list)
+
+    def test_get_network_routes(self, nm, global_network, core_network):
+        """GetNetworkRoutes returns route data."""
+        gn_id = global_network["GlobalNetworkId"]
+        cn_id = core_network["CoreNetworkId"]
+        resp = nm.get_network_routes(
+            GlobalNetworkId=gn_id,
+            RouteTableIdentifier={
+                "CoreNetworkSegmentEdge": {
+                    "CoreNetworkId": cn_id,
+                    "SegmentName": "seg1",
+                    "EdgeLocation": "us-east-1",
+                }
+            },
+        )
+        assert "NetworkRoutes" in resp
+        assert isinstance(resp["NetworkRoutes"], list)
+        assert "RouteTableArn" in resp
+
+
+class TestNetworkManagerGetWithFakeIds:
+    """Tests for Get operations that return NotFoundException on fake IDs."""
+
+    def test_get_connect_attachment_not_found(self, nm):
+        """GetConnectAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_connect_attachment(AttachmentId="attachment-fake123456")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_connect_peer_not_found(self, nm):
+        """GetConnectPeer with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_connect_peer(ConnectPeerId="cp-fake123456")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_direct_connect_gateway_attachment_not_found(self, nm):
+        """GetDirectConnectGatewayAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_direct_connect_gateway_attachment(AttachmentId="attachment-fake789")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_site_to_site_vpn_attachment_not_found(self, nm):
+        """GetSiteToSiteVpnAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_site_to_site_vpn_attachment(AttachmentId="attachment-fakevpn")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_transit_gateway_peering_not_found(self, nm):
+        """GetTransitGatewayPeering with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_transit_gateway_peering(PeeringId="peering-fake123")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_transit_gateway_route_table_attachment_not_found(self, nm):
+        """GetTransitGatewayRouteTableAttachment with fake ID."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_transit_gateway_route_table_attachment(AttachmentId="attachment-fakert")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_vpc_attachment_not_found(self, nm):
+        """GetVpcAttachment with fake ID returns NotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            nm.get_vpc_attachment(AttachmentId="attachment-fakevpc")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_route_analysis_not_found(self, nm, global_network):
+        """GetRouteAnalysis with fake ID returns NotFoundException."""
+        gn_id = global_network["GlobalNetworkId"]
+        with pytest.raises(ClientError) as exc:
+            nm.get_route_analysis(GlobalNetworkId=gn_id, RouteAnalysisId="ra-fake123")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
