@@ -641,3 +641,40 @@ class TestOpenSearchServerlessAccountSettings:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
                 pass
+
+
+class TestOpenSearchServerlessUpdates:
+    """Tests for update operations on OpenSearch Serverless."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_update_account_settings(self, client):
+        """UpdateAccountSettings modifies capacity limits."""
+        resp = client.update_account_settings(
+            capacityLimits={"maxIndexingCapacityInOCU": 10, "maxSearchCapacityInOCU": 10}
+        )
+        assert "accountSettingsDetail" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_vpc_endpoint(self, client):
+        """UpdateVpcEndpoint with a created VPC endpoint updates it."""
+        suffix = _uid()
+        create_resp = client.create_vpc_endpoint(
+            name=f"test-uvpce-{suffix}",
+            vpcId=f"vpc-{suffix}",
+            subnetIds=[f"subnet-{suffix}"],
+        )
+        vpce_id = create_resp["createVpcEndpointDetail"]["id"]
+        try:
+            resp = client.update_vpc_endpoint(
+                id=vpce_id,
+                addSubnetIds=[f"subnet-new-{suffix}"],
+            )
+            assert "UpdateVpcEndpointDetail" in resp
+        finally:
+            try:
+                client.delete_vpc_endpoint(id=vpce_id)
+            except ClientError:
+                pass

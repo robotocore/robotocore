@@ -943,6 +943,350 @@ class TestWAFv2CheckCapacity:
         assert resp["Capacity"] >= 1
 
 
+class TestWAFv2IPSetEdgeCases:
+    """Additional edge-case tests for WAFv2 IPSet operations."""
+
+    def test_create_ip_set_ipv6(self, wafv2):
+        """Create an IPV6 IP set."""
+        name = _unique("ipset-v6")
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV6",
+            Addresses=["2001:db8::/32"],
+        )
+        summary = resp["Summary"]
+        assert summary["Name"] == name
+        assert "ARN" in summary
+
+        get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert get_resp["IPSet"]["IPAddressVersion"] == "IPV6"
+        assert "2001:db8::/32" in get_resp["IPSet"]["Addresses"]
+
+        # Cleanup
+        wafv2.delete_ip_set(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_create_ip_set_empty_addresses(self, wafv2):
+        """Create an IP set with no addresses."""
+        name = _unique("ipset-empty")
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV4",
+            Addresses=[],
+        )
+        summary = resp["Summary"]
+        assert summary["Name"] == name
+
+        get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert get_resp["IPSet"]["Addresses"] == []
+
+        # Cleanup
+        wafv2.delete_ip_set(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_create_ip_set_multiple_cidrs(self, wafv2):
+        """Create an IP set with multiple CIDR ranges."""
+        name = _unique("ipset-multi")
+        addresses = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV4",
+            Addresses=addresses,
+        )
+        summary = resp["Summary"]
+
+        get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert sorted(get_resp["IPSet"]["Addresses"]) == sorted(addresses)
+
+        # Cleanup
+        wafv2.delete_ip_set(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_update_ip_set_to_empty(self, wafv2):
+        """Update an IP set to have zero addresses."""
+        name = _unique("ipset-clear")
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV4",
+            Addresses=["1.2.3.0/24"],
+        )
+        summary = resp["Summary"]
+
+        get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        update_resp = wafv2.update_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            Id=summary["Id"],
+            Addresses=[],
+            LockToken=get_resp["LockToken"],
+        )
+        assert "NextLockToken" in update_resp
+
+        get_resp2 = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert get_resp2["IPSet"]["Addresses"] == []
+
+        # Cleanup
+        wafv2.delete_ip_set(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp2["LockToken"]
+        )
+
+    def test_get_nonexistent_ip_set(self, wafv2):
+        """Getting a nonexistent IP set returns WAFNonexistentItemException."""
+        with pytest.raises(ClientError) as exc:
+            wafv2.get_ip_set(
+                Name="nonexistent",
+                Scope="REGIONAL",
+                Id="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "WAFNonexistentItemException"
+
+    def test_list_ip_sets_empty_scope(self, wafv2):
+        """ListIPSets returns a list (possibly empty) with CLOUDFRONT scope."""
+        resp = wafv2.list_ip_sets(Scope="CLOUDFRONT")
+        assert "IPSets" in resp
+        assert isinstance(resp["IPSets"], list)
+
+    def test_ip_set_arn_format(self, wafv2):
+        """Verify the ARN returned for an IP set has the expected format."""
+        name = _unique("ipset-arn")
+        resp = wafv2.create_ip_set(
+            Name=name,
+            Scope="REGIONAL",
+            IPAddressVersion="IPV4",
+            Addresses=[],
+        )
+        summary = resp["Summary"]
+        arn = summary["ARN"]
+        assert arn.startswith("arn:aws:wafv2:")
+        assert "regional/ipset/" in arn
+
+        # Cleanup
+        get_resp = wafv2.get_ip_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        wafv2.delete_ip_set(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+
+class TestWAFv2WebACLEdgeCases:
+    """Additional edge-case tests for WAFv2 WebACL operations."""
+
+    def test_create_web_acl_with_block_default(self, wafv2):
+        """Create a WebACL with Block as the default action."""
+        name = _unique("webacl-block")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Block": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        assert summary["Name"] == name
+
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert get_resp["WebACL"]["DefaultAction"] == {"Block": {}}
+
+        # Cleanup
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_create_web_acl_with_rules(self, wafv2):
+        """Create a WebACL with an inline rule."""
+        name = _unique("webacl-rules")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            Rules=[
+                {
+                    "Name": "rate-limit",
+                    "Priority": 1,
+                    "Statement": {
+                        "RateBasedStatement": {
+                            "Limit": 2000,
+                            "AggregateKeyType": "IP",
+                        }
+                    },
+                    "Action": {"Block": {}},
+                    "VisibilityConfig": {
+                        "SampledRequestsEnabled": True,
+                        "CloudWatchMetricsEnabled": True,
+                        "MetricName": "rate-limit",
+                    },
+                }
+            ],
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        acl = get_resp["WebACL"]
+        assert len(acl["Rules"]) == 1
+        assert acl["Rules"][0]["Name"] == "rate-limit"
+
+        # Cleanup
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_web_acl_arn_format(self, wafv2):
+        """Verify the ARN returned for a WebACL has the expected format."""
+        name = _unique("webacl-arn")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        arn = summary["ARN"]
+        assert arn.startswith("arn:aws:wafv2:")
+        assert "regional/webacl/" in arn
+
+        # Cleanup
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp["LockToken"]
+        )
+
+    def test_get_nonexistent_web_acl(self, wafv2):
+        """Getting a nonexistent WebACL returns WAFNonexistentItemException."""
+        with pytest.raises(ClientError) as exc:
+            wafv2.get_web_acl(
+                Name="nonexistent",
+                Scope="REGIONAL",
+                Id="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "WAFNonexistentItemException"
+
+    def test_update_web_acl_add_rule(self, wafv2):
+        """Update a WebACL to add a rule."""
+        name = _unique("webacl-addrule")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert get_resp["WebACL"]["Rules"] == []
+
+        update_resp = wafv2.update_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            Id=summary["Id"],
+            DefaultAction={"Allow": {}},
+            LockToken=get_resp["LockToken"],
+            Rules=[
+                {
+                    "Name": "geo-block",
+                    "Priority": 1,
+                    "Statement": {
+                        "GeoMatchStatement": {
+                            "CountryCodes": ["CN", "RU"],
+                        }
+                    },
+                    "Action": {"Block": {}},
+                    "VisibilityConfig": {
+                        "SampledRequestsEnabled": True,
+                        "CloudWatchMetricsEnabled": True,
+                        "MetricName": "geo-block",
+                    },
+                }
+            ],
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        assert "NextLockToken" in update_resp
+
+        get_resp2 = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+        assert len(get_resp2["WebACL"]["Rules"]) == 1
+        assert get_resp2["WebACL"]["Rules"][0]["Name"] == "geo-block"
+
+        # Cleanup
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=summary["Id"], LockToken=get_resp2["LockToken"]
+        )
+
+    def test_list_web_acls_regional(self, wafv2):
+        """ListWebACLs returns a list for REGIONAL scope."""
+        resp = wafv2.list_web_acls(Scope="REGIONAL")
+        assert "WebACLs" in resp
+        assert isinstance(resp["WebACLs"], list)
+
+
+class TestWAFv2WebACLAssociationEdgeCases:
+    """Additional tests for WebACL association operations."""
+
+    def _create_web_acl(self, wafv2):
+        name = _unique("webacl")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        return name, resp["Summary"]
+
+    def _delete_web_acl(self, wafv2, name, acl_id):
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=acl_id)
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=acl_id, LockToken=get_resp["LockToken"]
+        )
+
+    def test_get_web_acl_for_unassociated_resource(self, wafv2):
+        """GetWebACLForResource on a resource with no association returns empty WebACL."""
+        resource_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/app/no-acl-alb/1111111111111111"
+        )
+        resp = wafv2.get_web_acl_for_resource(ResourceArn=resource_arn)
+        # Should return 200 with no WebACL or an empty WebACL field
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_unassociated_resource(self, wafv2):
+        """Disassociating a resource with no association should succeed."""
+        resource_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/app/never-assoc/3333333333333333"
+        )
+        # Should succeed (idempotent) or raise a specific error
+        resp = wafv2.disassociate_web_acl(ResourceArn=resource_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestWAFv2AdditionalOperations:
     """Tests for DescribeManagedRuleGroup and GetPermissionPolicy."""
 

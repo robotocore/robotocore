@@ -208,3 +208,55 @@ class TestKinesisVideoTagging:
         resp = kinesisvideo_client.list_tags_for_resource(ResourceARN=created_stream["StreamARN"])
         assert "Tags" in resp
         assert isinstance(resp["Tags"], dict)
+
+
+class TestKinesisVideoUpdates:
+    """Tests for KinesisVideo update and tag_stream operations."""
+
+    def test_tag_stream(self, kinesisvideo_client):
+        name = f"test-stream-{uuid.uuid4().hex[:8]}"
+        resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)
+        arn = resp["StreamARN"]
+        try:
+            tag_resp = kinesisvideo_client.tag_stream(
+                StreamName=name, Tags={"env": "test", "team": "dev"}
+            )
+            assert tag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_update_stream(self, kinesisvideo_client):
+        name = f"test-stream-{uuid.uuid4().hex[:8]}"
+        resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)
+        arn = resp["StreamARN"]
+        try:
+            # Get current version
+            desc = kinesisvideo_client.describe_stream(StreamARN=arn)
+            version = desc["StreamInfo"]["Version"]
+            upd_resp = kinesisvideo_client.update_stream(
+                StreamARN=arn,
+                CurrentVersion=version,
+                MediaType="video/h264",
+            )
+            assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify updated
+            desc2 = kinesisvideo_client.describe_stream(StreamARN=arn)
+            assert desc2["StreamInfo"]["MediaType"] == "video/h264"
+        finally:
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_update_signaling_channel(self, kinesisvideo_client):
+        name = f"test-sig-{uuid.uuid4().hex[:8]}"
+        create_resp = kinesisvideo_client.create_signaling_channel(ChannelName=name)
+        sig_arn = create_resp["ChannelARN"]
+        try:
+            # Get current version
+            desc = kinesisvideo_client.describe_signaling_channel(ChannelARN=sig_arn)
+            version = desc["ChannelInfo"]["Version"]
+            upd_resp = kinesisvideo_client.update_signaling_channel(
+                ChannelARN=sig_arn,
+                CurrentVersion=version,
+            )
+            assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            kinesisvideo_client.delete_signaling_channel(ChannelARN=sig_arn)

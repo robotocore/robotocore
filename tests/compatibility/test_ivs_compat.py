@@ -285,3 +285,42 @@ class TestIVSPlaybackKeyPairOperations:
         with pytest.raises(ClientError) as exc_info:
             ivs.delete_playback_key_pair(arn=fake_arn)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIVSPlaybackKeys:
+    """Tests for IVS playback key pair list operations."""
+
+    def test_list_playback_key_pairs(self, ivs):
+        """list_playback_key_pairs returns the expected key."""
+        resp = ivs.list_playback_key_pairs()
+        assert "keyPairs" in resp
+        assert isinstance(resp["keyPairs"], list)
+
+
+class TestIVSTags:
+    """Tests for IVS tagging operations."""
+
+    def test_list_tags_for_channel(self, ivs):
+        """Create a channel and list its tags."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, tags={"env": "test"})
+        channel_arn = resp["channel"]["arn"]
+        try:
+            tags_resp = ivs.list_tags_for_resource(resourceArn=channel_arn)
+            assert "tags" in tags_resp
+            assert tags_resp["tags"]["env"] == "test"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_tag_resource_on_channel(self, ivs):
+        """Create a channel, then tag it with tag_resource."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            ivs.tag_resource(resourceArn=channel_arn, tags={"team": "dev", "stage": "qa"})
+            tags_resp = ivs.list_tags_for_resource(resourceArn=channel_arn)
+            assert tags_resp["tags"]["team"] == "dev"
+            assert tags_resp["tags"]["stage"] == "qa"
+        finally:
+            ivs.delete_channel(arn=channel_arn)

@@ -931,3 +931,16 @@ class TestOrganizationsEffectivePolicy:
         )
         assert "EffectivePolicy" in resp
         assert resp["EffectivePolicy"]["TargetId"] == master_id
+
+
+class TestOrganizationsEnableAllFeatures:
+    """Tests for EnableAllFeatures operation."""
+
+    def test_enable_all_features(self, orgs):
+        """EnableAllFeatures on an ALL-features org returns a handshake."""
+        orgs.create_organization(FeatureSet="ALL")
+        resp = orgs.enable_all_features()
+        assert "Handshake" in resp
+        handshake = resp["Handshake"]
+        assert "Id" in handshake
+        assert handshake["Action"] == "ENABLE_ALL_FEATURES"

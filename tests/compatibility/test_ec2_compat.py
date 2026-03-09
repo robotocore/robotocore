@@ -8622,3 +8622,790 @@ class TestEC2CapacityReservationFleetAllocationStrategy:
             assert fleets[0]["AllocationStrategy"] == "prioritized"
         finally:
             ec2.cancel_capacity_reservation_fleets(CapacityReservationFleetIds=[fleet_id])
+
+
+class TestEC2EbsDefaultKmsKey:
+    """Tests for GetEbsDefaultKmsKeyId."""
+
+    def test_get_ebs_default_kms_key_id_returns_200(self, ec2):
+        """GetEbsDefaultKmsKeyId returns 200."""
+        resp = ec2.get_ebs_default_kms_key_id()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_modify_and_reset_ebs_default_kms_key_id(self, ec2):
+        """ModifyEbsDefaultKmsKeyId and ResetEbsDefaultKmsKeyId succeed."""
+        mod_resp = ec2.modify_ebs_default_kms_key_id(KmsKeyId="alias/aws/ebs")
+        assert mod_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        reset_resp = ec2.reset_ebs_default_kms_key_id()
+        assert reset_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2RecycleBin:
+    """Tests for ListSnapshotsInRecycleBin and ListImagesInRecycleBin."""
+
+    def test_list_snapshots_in_recycle_bin_returns_200(self, ec2):
+        """ListSnapshotsInRecycleBin returns 200."""
+        resp = ec2.list_snapshots_in_recycle_bin()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_images_in_recycle_bin_returns_200(self, ec2):
+        """ListImagesInRecycleBin returns 200."""
+        resp = ec2.list_images_in_recycle_bin()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2IpamPoolCidrLifecycle:
+    """Tests for IPAM pool CIDR provisioning, allocation, and release."""
+
+    def _create_ipam_and_pool(self, ec2):
+        ipam = ec2.create_ipam(
+            Description="pool-cidr-test",
+            OperatingRegions=[{"RegionName": "us-east-1"}],
+        )
+        ipam_id = ipam["Ipam"]["IpamId"]
+        scope_id = ipam["Ipam"]["PrivateDefaultScopeId"]
+        pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+        pool_id = pool["IpamPool"]["IpamPoolId"]
+        return ipam_id, scope_id, pool_id
+
+    def test_provision_ipam_pool_cidr(self, ec2):
+        """ProvisionIpamPoolCidr provisions a CIDR in the pool."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            resp = ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            assert "IpamPoolCidr" in resp
+            assert resp["IpamPoolCidr"]["Cidr"] == "10.0.0.0/8"
+            assert resp["IpamPoolCidr"]["State"] == "provisioned"
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_get_ipam_pool_cidrs(self, ec2):
+        """GetIpamPoolCidrs returns provisioned CIDRs."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            resp = ec2.get_ipam_pool_cidrs(IpamPoolId=pool_id)
+            assert "IpamPoolCidrs" in resp
+            assert len(resp["IpamPoolCidrs"]) >= 1
+            cidrs = [c["Cidr"] for c in resp["IpamPoolCidrs"]]
+            assert "10.0.0.0/8" in cidrs
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_allocate_ipam_pool_cidr(self, ec2):
+        """AllocateIpamPoolCidr allocates a CIDR from the pool."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            alloc = ec2.allocate_ipam_pool_cidr(IpamPoolId=pool_id, NetmaskLength=24)
+            assert "IpamPoolAllocation" in alloc
+            assert "Cidr" in alloc["IpamPoolAllocation"]
+            assert "/24" in alloc["IpamPoolAllocation"]["Cidr"]
+            assert "IpamPoolAllocationId" in alloc["IpamPoolAllocation"]
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_get_ipam_pool_allocations(self, ec2):
+        """GetIpamPoolAllocations returns allocations after allocating."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            ec2.allocate_ipam_pool_cidr(IpamPoolId=pool_id, NetmaskLength=24)
+            allocs = ec2.get_ipam_pool_allocations(IpamPoolId=pool_id)
+            assert "IpamPoolAllocations" in allocs
+            assert len(allocs["IpamPoolAllocations"]) >= 1
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_release_ipam_pool_allocation(self, ec2):
+        """ReleaseIpamPoolAllocation removes an allocation."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            alloc = ec2.allocate_ipam_pool_cidr(IpamPoolId=pool_id, NetmaskLength=24)
+            alloc_id = alloc["IpamPoolAllocation"]["IpamPoolAllocationId"]
+            alloc_cidr = alloc["IpamPoolAllocation"]["Cidr"]
+
+            release = ec2.release_ipam_pool_allocation(
+                IpamPoolId=pool_id, Cidr=alloc_cidr, IpamPoolAllocationId=alloc_id
+            )
+            assert release["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            allocs_after = ec2.get_ipam_pool_allocations(IpamPoolId=pool_id)
+            assert len(allocs_after["IpamPoolAllocations"]) == 0
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_deprovision_ipam_pool_cidr(self, ec2):
+        """DeprovisionIpamPoolCidr removes a provisioned CIDR."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            deprov = ec2.deprovision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            assert "IpamPoolCidr" in deprov
+            assert deprov["IpamPoolCidr"]["State"] == "deprovisioned"
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_get_ipam_pool_cidrs_empty(self, ec2):
+        """GetIpamPoolCidrs on empty pool returns empty list."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            resp = ec2.get_ipam_pool_cidrs(IpamPoolId=pool_id)
+            assert "IpamPoolCidrs" in resp
+            assert resp["IpamPoolCidrs"] == []
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_get_ipam_pool_allocations_empty(self, ec2):
+        """GetIpamPoolAllocations on empty pool returns empty list."""
+        ipam_id, scope_id, pool_id = self._create_ipam_and_pool(ec2)
+        try:
+            resp = ec2.get_ipam_pool_allocations(IpamPoolId=pool_id)
+            assert "IpamPoolAllocations" in resp
+            assert resp["IpamPoolAllocations"] == []
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2ModifyIpam:
+    """Tests for ModifyIpam."""
+
+    def test_modify_ipam_description(self, ec2):
+        """ModifyIpam updates the IPAM description."""
+        ipam = ec2.create_ipam(
+            Description="original",
+            OperatingRegions=[{"RegionName": "us-east-1"}],
+        )
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            resp = ec2.modify_ipam(IpamId=ipam_id, Description="modified")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_modify_ipam_returns_ipam(self, ec2):
+        """ModifyIpam returns the updated IPAM object."""
+        ipam = ec2.create_ipam(
+            Description="before-modify",
+            OperatingRegions=[{"RegionName": "us-east-1"}],
+        )
+        ipam_id = ipam["Ipam"]["IpamId"]
+        try:
+            resp = ec2.modify_ipam(IpamId=ipam_id, Description="after-modify")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2GetIpamResourceCidrs:
+    """Tests for GetIpamResourceCidrs."""
+
+    def test_get_ipam_resource_cidrs_empty(self, ec2):
+        """GetIpamResourceCidrs on fresh IPAM returns empty list."""
+        ipam = ec2.create_ipam(
+            Description="resource-cidrs-test",
+            OperatingRegions=[{"RegionName": "us-east-1"}],
+        )
+        ipam_id = ipam["Ipam"]["IpamId"]
+        scope_id = ipam["Ipam"]["PrivateDefaultScopeId"]
+        try:
+            resp = ec2.get_ipam_resource_cidrs(IpamScopeId=scope_id)
+            assert "IpamResourceCidrs" in resp
+            assert isinstance(resp["IpamResourceCidrs"], list)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2LocalGatewayRoutes:
+    """Tests for CreateLocalGatewayRoute and SearchLocalGatewayRoutes."""
+
+    def test_search_local_gateway_routes_empty(self, ec2):
+        """SearchLocalGatewayRoutes on new route table returns empty list."""
+        rtb = ec2.create_local_gateway_route_table(LocalGatewayId="lgw-00000000000000020")
+        rtb_id = rtb["LocalGatewayRouteTable"]["LocalGatewayRouteTableId"]
+        try:
+            resp = ec2.search_local_gateway_routes(
+                LocalGatewayRouteTableId=rtb_id,
+                Filters=[{"Name": "type", "Values": ["static"]}],
+            )
+            assert "Routes" in resp
+            assert isinstance(resp["Routes"], list)
+        finally:
+            ec2.delete_local_gateway_route_table(LocalGatewayRouteTableId=rtb_id)
+
+    def test_create_local_gateway_route(self, ec2):
+        """CreateLocalGatewayRoute adds a static route."""
+        rtb = ec2.create_local_gateway_route_table(LocalGatewayId="lgw-00000000000000021")
+        rtb_id = rtb["LocalGatewayRouteTable"]["LocalGatewayRouteTableId"]
+        try:
+            resp = ec2.create_local_gateway_route(
+                DestinationCidrBlock="10.50.0.0/16",
+                LocalGatewayRouteTableId=rtb_id,
+                LocalGatewayVirtualInterfaceGroupId="lgw-vif-grp-00000000000000000",
+            )
+            assert "Route" in resp
+            assert resp["Route"]["DestinationCidrBlock"] == "10.50.0.0/16"
+            assert resp["Route"]["Type"] == "static"
+        finally:
+            ec2.delete_local_gateway_route_table(LocalGatewayRouteTableId=rtb_id)
+
+    def test_search_local_gateway_routes_after_create(self, ec2):
+        """SearchLocalGatewayRoutes finds a route after creation."""
+        rtb = ec2.create_local_gateway_route_table(LocalGatewayId="lgw-00000000000000022")
+        rtb_id = rtb["LocalGatewayRouteTable"]["LocalGatewayRouteTableId"]
+        try:
+            ec2.create_local_gateway_route(
+                DestinationCidrBlock="10.60.0.0/16",
+                LocalGatewayRouteTableId=rtb_id,
+                LocalGatewayVirtualInterfaceGroupId="lgw-vif-grp-00000000000000000",
+            )
+            resp = ec2.search_local_gateway_routes(
+                LocalGatewayRouteTableId=rtb_id,
+                Filters=[{"Name": "type", "Values": ["static"]}],
+            )
+            assert "Routes" in resp
+            assert len(resp["Routes"]) >= 1
+            cidrs = [r["DestinationCidrBlock"] for r in resp["Routes"]]
+            assert "10.60.0.0/16" in cidrs
+        finally:
+            ec2.delete_local_gateway_route_table(LocalGatewayRouteTableId=rtb_id)
+
+
+class TestEC2VpnGatewayWithTags:
+    """Tests for CreateVpnGateway with TagSpecifications."""
+
+    def test_create_vpn_gateway_with_tags(self, ec2):
+        """CreateVpnGateway with tags propagates them."""
+        resp = ec2.create_vpn_gateway(
+            Type="ipsec.1",
+            TagSpecifications=[
+                {
+                    "ResourceType": "vpn-gateway",
+                    "Tags": [{"Key": "Env", "Value": "test"}],
+                }
+            ],
+        )
+        vgw_id = resp["VpnGateway"]["VpnGatewayId"]
+        try:
+            tags = resp["VpnGateway"].get("Tags", [])
+            assert any(t["Key"] == "Env" and t["Value"] == "test" for t in tags)
+        finally:
+            ec2.delete_vpn_gateway(VpnGatewayId=vgw_id)
+
+
+class TestEC2CustomerGatewayWithTags:
+    """Tests for CreateCustomerGateway with TagSpecifications."""
+
+    def test_create_customer_gateway_with_tags(self, ec2):
+        """CreateCustomerGateway with tags propagates them."""
+        resp = ec2.create_customer_gateway(
+            BgpAsn=65000,
+            Type="ipsec.1",
+            IpAddress="198.51.100.60",
+            TagSpecifications=[
+                {
+                    "ResourceType": "customer-gateway",
+                    "Tags": [{"Key": "Env", "Value": "test"}],
+                }
+            ],
+        )
+        cgw_id = resp["CustomerGateway"]["CustomerGatewayId"]
+        try:
+            tags = resp["CustomerGateway"].get("Tags", [])
+            assert any(t["Key"] == "Env" and t["Value"] == "test" for t in tags)
+        finally:
+            ec2.delete_customer_gateway(CustomerGatewayId=cgw_id)
+
+
+class TestEC2TransitGatewayWithOptions:
+    """Tests for CreateTransitGateway with Options."""
+
+    def test_create_transit_gateway_with_amazon_side_asn(self, ec2):
+        """CreateTransitGateway with AmazonSideAsn sets it in Options."""
+        resp = ec2.create_transit_gateway(
+            Description="asn-test",
+            Options={"AmazonSideAsn": 64512},
+        )
+        tgw_id = resp["TransitGateway"]["TransitGatewayId"]
+        try:
+            options = resp["TransitGateway"]["Options"]
+            assert options["AmazonSideAsn"] == 64512
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_create_transit_gateway_auto_accept(self, ec2):
+        """CreateTransitGateway with AutoAcceptSharedAttachments."""
+        resp = ec2.create_transit_gateway(
+            Description="auto-accept-test",
+            Options={"AutoAcceptSharedAttachments": "enable"},
+        )
+        tgw_id = resp["TransitGateway"]["TransitGatewayId"]
+        try:
+            options = resp["TransitGateway"]["Options"]
+            assert options["AutoAcceptSharedAttachments"] == "enable"
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_create_transit_gateway_dns_support(self, ec2):
+        """CreateTransitGateway with DnsSupport option."""
+        resp = ec2.create_transit_gateway(
+            Description="dns-test",
+            Options={"DnsSupport": "disable"},
+        )
+        tgw_id = resp["TransitGateway"]["TransitGatewayId"]
+        try:
+            options = resp["TransitGateway"]["Options"]
+            assert options["DnsSupport"] == "disable"
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_transit_gateway_default_route_tables(self, ec2):
+        """CreateTransitGateway creates default route table IDs."""
+        resp = ec2.create_transit_gateway(Description="default-rtb-test")
+        tgw_id = resp["TransitGateway"]["TransitGatewayId"]
+        try:
+            options = resp["TransitGateway"]["Options"]
+            assert "AssociationDefaultRouteTableId" in options
+            assert options["AssociationDefaultRouteTableId"].startswith("tgw-rtb-")
+            assert "PropagationDefaultRouteTableId" in options
+            assert options["PropagationDefaultRouteTableId"].startswith("tgw-rtb-")
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2CapacityReservationWithTags:
+    """Tests for CreateCapacityReservation with TagSpecifications."""
+
+    def test_create_capacity_reservation_with_tags(self, ec2):
+        """CreateCapacityReservation with tags propagates them."""
+        resp = ec2.create_capacity_reservation(
+            InstanceType="t2.micro",
+            InstancePlatform="Linux/UNIX",
+            AvailabilityZone="us-east-1a",
+            InstanceCount=1,
+            TagSpecifications=[
+                {
+                    "ResourceType": "capacity-reservation",
+                    "Tags": [{"Key": "Env", "Value": "staging"}],
+                }
+            ],
+        )
+        cr_id = resp["CapacityReservation"]["CapacityReservationId"]
+        try:
+            tags = resp["CapacityReservation"].get("Tags", [])
+            assert any(t["Key"] == "Env" and t["Value"] == "staging" for t in tags)
+        finally:
+            ec2.cancel_capacity_reservation(CapacityReservationId=cr_id)
+
+
+class TestEC2VpnConnectionWithOptions:
+    """Tests for CreateVpnConnection with StaticRoutesOnly."""
+
+    def test_create_vpn_connection_static_routes_only(self, ec2):
+        """CreateVpnConnection with StaticRoutesOnly option."""
+        cgw = ec2.create_customer_gateway(BgpAsn=65000, Type="ipsec.1", IpAddress="198.51.100.70")
+        cgw_id = cgw["CustomerGateway"]["CustomerGatewayId"]
+        vgw = ec2.create_vpn_gateway(Type="ipsec.1")
+        vgw_id = vgw["VpnGateway"]["VpnGatewayId"]
+        try:
+            vpn = ec2.create_vpn_connection(
+                Type="ipsec.1",
+                CustomerGatewayId=cgw_id,
+                VpnGatewayId=vgw_id,
+                Options={"StaticRoutesOnly": True},
+            )
+            vpn_id = vpn["VpnConnection"]["VpnConnectionId"]
+            assert vpn["VpnConnection"]["Type"] == "ipsec.1"
+            assert vpn_id.startswith("vpn-")
+            ec2.delete_vpn_connection(VpnConnectionId=vpn_id)
+        finally:
+            ec2.delete_vpn_gateway(VpnGatewayId=vgw_id)
+            ec2.delete_customer_gateway(CustomerGatewayId=cgw_id)
+
+    def test_create_vpn_connection_with_transit_gateway(self, ec2):
+        """CreateVpnConnection with TransitGatewayId."""
+        cgw = ec2.create_customer_gateway(BgpAsn=65000, Type="ipsec.1", IpAddress="198.51.100.71")
+        cgw_id = cgw["CustomerGateway"]["CustomerGatewayId"]
+        tgw = ec2.create_transit_gateway(Description="vpn-tgw-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            vpn = ec2.create_vpn_connection(
+                Type="ipsec.1",
+                CustomerGatewayId=cgw_id,
+                TransitGatewayId=tgw_id,
+            )
+            vpn_id = vpn["VpnConnection"]["VpnConnectionId"]
+            assert vpn_id.startswith("vpn-")
+            assert vpn["VpnConnection"]["TransitGatewayId"] == tgw_id
+            ec2.delete_vpn_connection(VpnConnectionId=vpn_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+            ec2.delete_customer_gateway(CustomerGatewayId=cgw_id)
+
+
+class TestEC2VpnConnectionFilters:
+    """Tests for DescribeVpnConnections with Filters."""
+
+    def test_describe_vpn_connections_filter_by_type(self, ec2):
+        """DescribeVpnConnections with type filter returns matching VPNs."""
+        cgw = ec2.create_customer_gateway(BgpAsn=65000, Type="ipsec.1", IpAddress="198.51.100.90")
+        cgw_id = cgw["CustomerGateway"]["CustomerGatewayId"]
+        vgw = ec2.create_vpn_gateway(Type="ipsec.1")
+        vgw_id = vgw["VpnGateway"]["VpnGatewayId"]
+        try:
+            vpn = ec2.create_vpn_connection(
+                Type="ipsec.1", CustomerGatewayId=cgw_id, VpnGatewayId=vgw_id
+            )
+            vpn_id = vpn["VpnConnection"]["VpnConnectionId"]
+            resp = ec2.describe_vpn_connections(Filters=[{"Name": "type", "Values": ["ipsec.1"]}])
+            assert "VpnConnections" in resp
+            ids = [v["VpnConnectionId"] for v in resp["VpnConnections"]]
+            assert vpn_id in ids
+            ec2.delete_vpn_connection(VpnConnectionId=vpn_id)
+        finally:
+            ec2.delete_vpn_gateway(VpnGatewayId=vgw_id)
+            ec2.delete_customer_gateway(CustomerGatewayId=cgw_id)
+
+    def test_describe_vpn_connections_filter_by_state(self, ec2):
+        """DescribeVpnConnections with state filter."""
+        cgw = ec2.create_customer_gateway(BgpAsn=65000, Type="ipsec.1", IpAddress="198.51.100.91")
+        cgw_id = cgw["CustomerGateway"]["CustomerGatewayId"]
+        vgw = ec2.create_vpn_gateway(Type="ipsec.1")
+        vgw_id = vgw["VpnGateway"]["VpnGatewayId"]
+        try:
+            vpn = ec2.create_vpn_connection(
+                Type="ipsec.1", CustomerGatewayId=cgw_id, VpnGatewayId=vgw_id
+            )
+            vpn_id = vpn["VpnConnection"]["VpnConnectionId"]
+            resp = ec2.describe_vpn_connections(
+                Filters=[{"Name": "state", "Values": ["available"]}]
+            )
+            assert "VpnConnections" in resp
+            ids = [v["VpnConnectionId"] for v in resp["VpnConnections"]]
+            assert vpn_id in ids
+            ec2.delete_vpn_connection(VpnConnectionId=vpn_id)
+        finally:
+            ec2.delete_vpn_gateway(VpnGatewayId=vgw_id)
+            ec2.delete_customer_gateway(CustomerGatewayId=cgw_id)
+
+
+class TestEC2IpamPoolMultipleCidrs:
+    """Tests for provisioning multiple CIDRs in an IPAM pool."""
+
+    def test_provision_two_cidrs_in_pool(self, ec2):
+        """ProvisionIpamPoolCidr with two CIDRs shows both in GetIpamPoolCidrs."""
+        ipam = ec2.create_ipam(
+            Description="multi-cidr-test",
+            OperatingRegions=[{"RegionName": "us-east-1"}],
+        )
+        ipam_id = ipam["Ipam"]["IpamId"]
+        scope_id = ipam["Ipam"]["PrivateDefaultScopeId"]
+        pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+        pool_id = pool["IpamPool"]["IpamPoolId"]
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="172.16.0.0/12")
+            resp = ec2.get_ipam_pool_cidrs(IpamPoolId=pool_id)
+            cidrs = sorted(c["Cidr"] for c in resp["IpamPoolCidrs"])
+            assert "10.0.0.0/8" in cidrs
+            assert "172.16.0.0/12" in cidrs
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+    def test_allocate_multiple_cidrs_from_pool(self, ec2):
+        """AllocateIpamPoolCidr allocates non-overlapping CIDRs."""
+        ipam = ec2.create_ipam(
+            Description="multi-alloc-test",
+            OperatingRegions=[{"RegionName": "us-east-1"}],
+        )
+        ipam_id = ipam["Ipam"]["IpamId"]
+        scope_id = ipam["Ipam"]["PrivateDefaultScopeId"]
+        pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+        pool_id = pool["IpamPool"]["IpamPoolId"]
+        try:
+            ec2.provision_ipam_pool_cidr(IpamPoolId=pool_id, Cidr="10.0.0.0/8")
+            a1 = ec2.allocate_ipam_pool_cidr(IpamPoolId=pool_id, NetmaskLength=24)
+            a2 = ec2.allocate_ipam_pool_cidr(IpamPoolId=pool_id, NetmaskLength=24)
+            cidr1 = a1["IpamPoolAllocation"]["Cidr"]
+            cidr2 = a2["IpamPoolAllocation"]["Cidr"]
+            assert cidr1 != cidr2
+            allocs = ec2.get_ipam_pool_allocations(IpamPoolId=pool_id)
+            assert len(allocs["IpamPoolAllocations"]) == 2
+            ec2.delete_ipam_pool(IpamPoolId=pool_id)
+        finally:
+            ec2.delete_ipam(IpamId=ipam_id)
+
+
+class TestEC2VpnGatewayFilters:
+    """Tests for DescribeVpnGateways with Filters."""
+
+    def test_describe_vpn_gateways_filter_by_type(self, ec2):
+        """DescribeVpnGateways with type filter."""
+        vgw = ec2.create_vpn_gateway(Type="ipsec.1")
+        vgw_id = vgw["VpnGateway"]["VpnGatewayId"]
+        try:
+            resp = ec2.describe_vpn_gateways(Filters=[{"Name": "type", "Values": ["ipsec.1"]}])
+            assert "VpnGateways" in resp
+            ids = [g["VpnGatewayId"] for g in resp["VpnGateways"]]
+            assert vgw_id in ids
+        finally:
+            ec2.delete_vpn_gateway(VpnGatewayId=vgw_id)
+
+
+class TestEC2CustomerGatewayFilters:
+    """Tests for DescribeCustomerGateways with Filters."""
+
+    def test_describe_customer_gateways_filter_by_type(self, ec2):
+        """DescribeCustomerGateways with type filter."""
+        cgw = ec2.create_customer_gateway(BgpAsn=65000, Type="ipsec.1", IpAddress="198.51.100.80")
+        cgw_id = cgw["CustomerGateway"]["CustomerGatewayId"]
+        try:
+            resp = ec2.describe_customer_gateways(Filters=[{"Name": "type", "Values": ["ipsec.1"]}])
+            assert "CustomerGateways" in resp
+            ids = [g["CustomerGatewayId"] for g in resp["CustomerGateways"]]
+            assert cgw_id in ids
+        finally:
+            ec2.delete_customer_gateway(CustomerGatewayId=cgw_id)
+
+
+class TestEC2TransitGatewayFilters:
+    """Tests for DescribeTransitGateways with Filters."""
+
+    def test_describe_transit_gateways_filter_by_state(self, ec2):
+        """DescribeTransitGateways with state filter."""
+        tgw = ec2.create_transit_gateway(Description="filter-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            resp = ec2.describe_transit_gateways(
+                Filters=[{"Name": "state", "Values": ["available"]}]
+            )
+            assert "TransitGateways" in resp
+            ids = [g["TransitGatewayId"] for g in resp["TransitGateways"]]
+            assert tgw_id in ids
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2GetTransitGatewayPrefixListReferences:
+    """Tests for GetTransitGatewayPrefixListReferences."""
+
+    def test_get_prefix_list_references_empty(self, ec2):
+        """GetTransitGatewayPrefixListReferences returns empty list for new route table."""
+        tgw = ec2.create_transit_gateway(Description="plr-get-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rts = ec2.describe_transit_gateway_route_tables(
+                Filters=[{"Name": "transit-gateway-id", "Values": [tgw_id]}]
+            )
+            rt_id = rts["TransitGatewayRouteTables"][0]["TransitGatewayRouteTableId"]
+            resp = ec2.get_transit_gateway_prefix_list_references(TransitGatewayRouteTableId=rt_id)
+            assert "TransitGatewayPrefixListReferences" in resp
+            assert isinstance(resp["TransitGatewayPrefixListReferences"], list)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_get_prefix_list_references_after_create(self, ec2):
+        """GetTransitGatewayPrefixListReferences returns created reference."""
+        tgw = ec2.create_transit_gateway(Description="plr-get-created")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rt = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rt_id = rt["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            try:
+                pl = ec2.create_managed_prefix_list(
+                    PrefixListName=_unique("plr-get"),
+                    MaxEntries=5,
+                    AddressFamily="IPv4",
+                )
+                pl_id = pl["PrefixList"]["PrefixListId"]
+                try:
+                    ec2.create_transit_gateway_prefix_list_reference(
+                        TransitGatewayRouteTableId=rt_id,
+                        PrefixListId=pl_id,
+                        Blackhole=True,
+                    )
+                    resp = ec2.get_transit_gateway_prefix_list_references(
+                        TransitGatewayRouteTableId=rt_id
+                    )
+                    refs = resp["TransitGatewayPrefixListReferences"]
+                    assert len(refs) >= 1
+                    pl_ids = [r["PrefixListId"] for r in refs]
+                    assert pl_id in pl_ids
+                    ec2.delete_transit_gateway_prefix_list_reference(
+                        TransitGatewayRouteTableId=rt_id, PrefixListId=pl_id
+                    )
+                finally:
+                    ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+            finally:
+                ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rt_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2ClientVpnEndpointCRUD:
+    """Tests for Client VPN endpoint create/modify/delete."""
+
+    def test_create_client_vpn_endpoint(self, ec2):
+        """CreateClientVpnEndpoint returns endpoint ID and status."""
+        resp = ec2.create_client_vpn_endpoint(
+            ClientCidrBlock="10.0.0.0/22",
+            ServerCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake-cert",
+            AuthenticationOptions=[
+                {
+                    "Type": "certificate-authentication",
+                    "MutualAuthentication": {
+                        "ClientRootCertificateChainArn": (
+                            "arn:aws:acm:us-east-1:123456789012:certificate/fake-root"
+                        )
+                    },
+                }
+            ],
+            ConnectionLogOptions={"Enabled": False},
+        )
+        eid = resp["ClientVpnEndpointId"]
+        try:
+            assert eid.startswith("cvpn-endpoint-")
+            assert "Status" in resp
+            assert resp["Status"]["Code"] == "pending-associate"
+        finally:
+            ec2.delete_client_vpn_endpoint(ClientVpnEndpointId=eid)
+
+    def test_describe_client_vpn_endpoints_after_create(self, ec2):
+        """DescribeClientVpnEndpoints includes created endpoint."""
+        resp = ec2.create_client_vpn_endpoint(
+            ClientCidrBlock="10.1.0.0/22",
+            ServerCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-2",
+            AuthenticationOptions=[
+                {
+                    "Type": "certificate-authentication",
+                    "MutualAuthentication": {
+                        "ClientRootCertificateChainArn": (
+                            "arn:aws:acm:us-east-1:123456789012:certificate/fr2"
+                        )
+                    },
+                }
+            ],
+            ConnectionLogOptions={"Enabled": False},
+        )
+        eid = resp["ClientVpnEndpointId"]
+        try:
+            desc = ec2.describe_client_vpn_endpoints(ClientVpnEndpointIds=[eid])
+            assert "ClientVpnEndpoints" in desc
+            assert len(desc["ClientVpnEndpoints"]) == 1
+            assert desc["ClientVpnEndpoints"][0]["ClientVpnEndpointId"] == eid
+        finally:
+            ec2.delete_client_vpn_endpoint(ClientVpnEndpointId=eid)
+
+    def test_modify_client_vpn_endpoint(self, ec2):
+        """ModifyClientVpnEndpoint returns True."""
+        resp = ec2.create_client_vpn_endpoint(
+            ClientCidrBlock="10.2.0.0/22",
+            ServerCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-3",
+            AuthenticationOptions=[
+                {
+                    "Type": "certificate-authentication",
+                    "MutualAuthentication": {
+                        "ClientRootCertificateChainArn": (
+                            "arn:aws:acm:us-east-1:123456789012:certificate/fr3"
+                        )
+                    },
+                }
+            ],
+            ConnectionLogOptions={"Enabled": False},
+        )
+        eid = resp["ClientVpnEndpointId"]
+        try:
+            mod = ec2.modify_client_vpn_endpoint(
+                ClientVpnEndpointId=eid, Description="modified-description"
+            )
+            assert mod["Return"] is True
+        finally:
+            ec2.delete_client_vpn_endpoint(ClientVpnEndpointId=eid)
+
+    def test_delete_client_vpn_endpoint(self, ec2):
+        """DeleteClientVpnEndpoint returns deleting status."""
+        resp = ec2.create_client_vpn_endpoint(
+            ClientCidrBlock="10.3.0.0/22",
+            ServerCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-4",
+            AuthenticationOptions=[
+                {
+                    "Type": "certificate-authentication",
+                    "MutualAuthentication": {
+                        "ClientRootCertificateChainArn": (
+                            "arn:aws:acm:us-east-1:123456789012:certificate/fr4"
+                        )
+                    },
+                }
+            ],
+            ConnectionLogOptions={"Enabled": False},
+        )
+        eid = resp["ClientVpnEndpointId"]
+        del_resp = ec2.delete_client_vpn_endpoint(ClientVpnEndpointId=eid)
+        assert "Status" in del_resp
+        assert del_resp["Status"]["Code"] == "deleting"
+
+
+class TestEC2ModifyFleet:
+    """Tests for ModifyFleet operation."""
+
+    def test_modify_fleet_target_capacity(self, ec2):
+        """ModifyFleet updates target capacity."""
+        lt_name = _unique("fleet-lt")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=lt_name,
+            LaunchTemplateData={"InstanceType": "t2.micro", "ImageId": "ami-12345678"},
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            fleet = ec2.create_fleet(
+                LaunchTemplateConfigs=[
+                    {
+                        "LaunchTemplateSpecification": {
+                            "LaunchTemplateId": lt_id,
+                            "Version": "$Default",
+                        },
+                        "Overrides": [{"InstanceType": "t2.micro"}],
+                    }
+                ],
+                TargetCapacitySpecification={
+                    "TotalTargetCapacity": 1,
+                    "DefaultTargetCapacityType": "on-demand",
+                },
+                Type="maintain",
+            )
+            fleet_id = fleet["FleetId"]
+            try:
+                mod = ec2.modify_fleet(
+                    FleetId=fleet_id,
+                    TargetCapacitySpecification={
+                        "TotalTargetCapacity": 2,
+                        "DefaultTargetCapacityType": "on-demand",
+                    },
+                )
+                assert mod["Return"] is True
+            finally:
+                ec2.delete_fleets(FleetIds=[fleet_id], TerminateInstances=True)
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+    def test_modify_fleet_not_found(self, ec2):
+        """ModifyFleet with invalid fleet ID raises error."""
+        with pytest.raises(ec2.exceptions.ClientError) as exc_info:
+            ec2.modify_fleet(
+                FleetId="fleet-00000000000000000",
+                TargetCapacitySpecification={
+                    "TotalTargetCapacity": 1,
+                    "DefaultTargetCapacityType": "on-demand",
+                },
+            )
+        assert "InvalidFleetId.NotFound" in str(exc_info.value)

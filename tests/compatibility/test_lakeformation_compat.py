@@ -729,3 +729,61 @@ class TestLakeFormationDataCellsFilterCRUD:
                 }
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestLakeFormationLFTags:
+    """Tests for LF Tag full lifecycle and resource tagging."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_lf_tag_crud_cycle(self, client):
+        """CreateLFTag -> GetLFTag -> ListLFTags -> DeleteLFTag full cycle."""
+        tag_key = f"cycle-{uuid.uuid4().hex[:8]}"
+        # Create
+        create_resp = client.create_lf_tag(TagKey=tag_key, TagValues=["alpha", "beta"])
+        assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Get
+        get_resp = client.get_lf_tag(TagKey=tag_key)
+        assert get_resp["TagKey"] == tag_key
+        assert set(get_resp["TagValues"]) == {"alpha", "beta"}
+        # List
+        list_resp = client.list_lf_tags()
+        tag_keys = [t["TagKey"] for t in list_resp.get("LFTags", [])]
+        assert tag_key in tag_keys
+        # Delete
+        del_resp = client.delete_lf_tag(TagKey=tag_key)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify gone
+        list_after = client.list_lf_tags()
+        tag_keys_after = [t["TagKey"] for t in list_after.get("LFTags", [])]
+        assert tag_key not in tag_keys_after
+
+    def test_search_databases_by_lf_tags_empty(self, client):
+        """SearchDatabasesByLFTags with a new tag returns empty DatabaseList."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"srchdb-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["x"])
+        try:
+            resp = client.search_databases_by_lf_tags(
+                Expression=[{"TagKey": tag_key, "TagValues": ["x"]}],
+            )
+            assert "DatabaseList" in resp
+            assert isinstance(resp["DatabaseList"], list)
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_search_tables_by_lf_tags_empty(self, client):
+        """SearchTablesByLFTags with a new tag returns empty TableList."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"srchtbl-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["y"])
+        try:
+            resp = client.search_tables_by_lf_tags(
+                Expression=[{"TagKey": tag_key, "TagValues": ["y"]}],
+            )
+            assert "TableList" in resp
+            assert isinstance(resp["TableList"], list)
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)

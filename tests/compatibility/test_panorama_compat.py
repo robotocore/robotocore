@@ -251,3 +251,69 @@ class TestPanoramaDescribeApplicationInstanceDetails:
                 ApplicationInstanceId="applicationInstance-nonexistent"
             )
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaAdditionalOps:
+    """Additional Panorama operation tests."""
+
+    def test_list_packages(self, panorama):
+        resp = panorama.list_packages()
+        assert "Packages" in resp
+        assert isinstance(resp["Packages"], list)
+
+    def test_list_package_import_jobs(self, panorama):
+        resp = panorama.list_package_import_jobs()
+        assert "PackageImportJobs" in resp
+        assert isinstance(resp["PackageImportJobs"], list)
+
+    def test_list_node_from_template_jobs(self, panorama):
+        resp = panorama.list_node_from_template_jobs()
+        assert "NodeFromTemplateJobs" in resp
+        assert isinstance(resp["NodeFromTemplateJobs"], list)
+
+    def test_describe_application_instance_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_application_instance(
+                ApplicationInstanceId="applicationInstance-nonexistent"
+            )
+        err = exc_info.value.response["Error"]["Code"]
+        assert err == "ResourceNotFoundException" or "not found" in str(exc_info.value).lower()
+
+    def test_describe_package_import_job_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_package_import_job(JobId="job-nonexistent")
+        err = exc_info.value.response["Error"]["Code"]
+        assert err == "ResourceNotFoundException" or "not found" in str(exc_info.value).lower()
+
+    def test_remove_application_instance_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.remove_application_instance(
+                ApplicationInstanceId="applicationInstance-nonexistent"
+            )
+        err = exc_info.value.response["Error"]["Code"]
+        assert err == "ResourceNotFoundException" or "not found" in str(exc_info.value).lower()
+
+    def test_create_package_import_job(self, panorama):
+        token = f"token-{uuid.uuid4().hex[:8]}"
+        resp = panorama.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "test-bucket",
+                        "Region": "us-east-1",
+                        "ObjectKey": "test-key",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": f"test-pkg-{uuid.uuid4().hex[:8]}",
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=token,
+        )
+        assert "JobId" in resp
+        assert isinstance(resp["JobId"], str)
+        assert len(resp["JobId"]) > 0

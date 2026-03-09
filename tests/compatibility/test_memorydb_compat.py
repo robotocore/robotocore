@@ -283,3 +283,84 @@ class TestMemoryDBListOperations:
         resp = memorydb.describe_reserved_nodes_offerings()
         assert "ReservedNodesOfferings" in resp
         assert isinstance(resp["ReservedNodesOfferings"], list)
+
+
+class TestMemoryDBACLOperations:
+    """Tests for MemoryDB ACL create, update, and delete operations."""
+
+    def test_create_acl_no_users(self, memorydb):
+        """CreateACL without UserNames creates an ACL."""
+        name = f"acl-op-{_uid()}"
+        resp = memorydb.create_acl(ACLName=name)
+        assert resp["ACL"]["Name"] == name
+        assert resp["ACL"]["Status"] == "active"
+        memorydb.delete_acl(ACLName=name)
+
+    def test_create_and_delete_acl_roundtrip(self, memorydb):
+        """CreateACL then DeleteACL removes the ACL."""
+        name = f"acl-del-{_uid()}"
+        memorydb.create_acl(ACLName=name)
+        del_resp = memorydb.delete_acl(ACLName=name)
+        assert del_resp["ACL"]["Name"] == name
+        # Verify it's gone
+        resp = memorydb.describe_acls()
+        names = [a["Name"] for a in resp["ACLs"]]
+        assert name not in names
+
+    def test_update_acl_add_user(self, memorydb):
+        """UpdateACL adds a user to an existing ACL."""
+        acl_name = f"acl-upd-{_uid()}"
+        user_name = f"user-upd-{_uid()}"
+        # Create user and ACL
+        memorydb.create_user(
+            UserName=user_name,
+            AccessString="on ~* +@all",
+            AuthenticationMode={"Type": "no-password"},
+        )
+        memorydb.create_acl(ACLName=acl_name)
+        try:
+            resp = memorydb.update_acl(ACLName=acl_name, UserNamesToAdd=[user_name])
+            assert resp["ACL"]["Name"] == acl_name
+        finally:
+            memorydb.delete_acl(ACLName=acl_name)
+            memorydb.delete_user(UserName=user_name)
+
+
+class TestMemoryDBUpdates:
+    """Tests for MemoryDB update operations on parameter groups and users."""
+
+    def test_update_parameter_group(self, memorydb):
+        """UpdateParameterGroup updates parameters on a group."""
+        pg_name = f"pg-upd-{_uid()}"
+        memorydb.create_parameter_group(
+            ParameterGroupName=pg_name,
+            Family="memorydb_redis7",
+            Description="test pg for update",
+        )
+        try:
+            resp = memorydb.update_parameter_group(
+                ParameterGroupName=pg_name,
+                ParameterNameValues=[
+                    {"ParameterName": "activedefrag", "ParameterValue": "yes"},
+                ],
+            )
+            assert resp["ParameterGroup"]["Name"] == pg_name
+        finally:
+            memorydb.delete_parameter_group(ParameterGroupName=pg_name)
+
+    def test_update_user(self, memorydb):
+        """UpdateUser modifies user access string."""
+        user_name = f"user-upd2-{_uid()}"
+        memorydb.create_user(
+            UserName=user_name,
+            AccessString="on ~* +@all",
+            AuthenticationMode={"Type": "no-password"},
+        )
+        try:
+            resp = memorydb.update_user(
+                UserName=user_name,
+                AccessString="on ~app* +@read",
+            )
+            assert resp["User"]["Name"] == user_name
+        finally:
+            memorydb.delete_user(UserName=user_name)

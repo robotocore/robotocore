@@ -999,3 +999,25 @@ class TestEMRAdditionalOps:
         resp = emr.list_notebook_executions()
         assert "NotebookExecutions" in resp
         assert isinstance(resp["NotebookExecutions"], list)
+
+
+class TestEMRNotebookErrors:
+    """Tests for EMR notebook execution error handling."""
+
+    def test_describe_notebook_execution_not_found(self, emr):
+        """DescribeNotebookExecution with fake ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_notebook_execution(NotebookExecutionId="ne-FAKE12345678")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_stop_notebook_execution_not_found(self, emr):
+        """StopNotebookExecution with fake ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.stop_notebook_execution(NotebookExecutionId="ne-FAKE12345678")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )

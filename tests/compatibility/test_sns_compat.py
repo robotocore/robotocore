@@ -1449,3 +1449,38 @@ class TestSNSFilterPolicyScope:
         finally:
             sns.delete_topic(TopicArn=topic_arn)
             sqs.delete_queue(QueueUrl=qurl)
+
+
+class TestSNSSMSOperations:
+    """Tests for SNS SMS-related operations."""
+
+    def test_get_sms_attributes(self, sns):
+        """GetSMSAttributes returns attributes dict."""
+        resp = sns.get_sms_attributes()
+        assert "attributes" in resp
+        assert isinstance(resp["attributes"], dict)
+
+    def test_set_sms_attributes(self, sns):
+        """SetSMSAttributes sets the default SMS type."""
+        resp = sns.set_sms_attributes(attributes={"DefaultSMSType": "Transactional"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it was set
+        get_resp = sns.get_sms_attributes()
+        assert get_resp["attributes"].get("DefaultSMSType") == "Transactional"
+
+    def test_list_phone_numbers_opted_out(self, sns):
+        """ListPhoneNumbersOptedOut returns a phone numbers list."""
+        resp = sns.list_phone_numbers_opted_out()
+        assert "phoneNumbers" in resp
+        assert isinstance(resp["phoneNumbers"], list)
+
+    def test_get_sms_sandbox_account_status(self, sns):
+        """GetSMSSandboxAccountStatus returns sandbox status."""
+        resp = sns.get_sms_sandbox_account_status()
+        assert "IsInSandbox" in resp
+
+    def test_list_sms_sandbox_phone_numbers(self, sns):
+        """ListSMSSandboxPhoneNumbers returns a phone numbers list."""
+        resp = sns.list_sms_sandbox_phone_numbers()
+        assert "PhoneNumbers" in resp
+        assert isinstance(resp["PhoneNumbers"], list)

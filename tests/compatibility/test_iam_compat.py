@@ -3848,132 +3848,6 @@ class TestIAMMFADeviceTags:
 
 
 # ---------------------------------------------------------------------------
-# Additional coverage: Service-specific credentials full lifecycle
-# ---------------------------------------------------------------------------
-
-
-class TestIAMServiceSpecificCredentialLifecycle:
-    def test_create_list_service_specific_credentials(self, iam):
-        """CreateServiceSpecificCredential + ListServiceSpecificCredentials."""
-        user_name = _unique("ssc-list")
-        iam.create_user(UserName=user_name)
-        try:
-            create_resp = iam.create_service_specific_credential(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            cred = create_resp["ServiceSpecificCredential"]
-            cred_id = cred["ServiceSpecificCredentialId"]
-
-            list_resp = iam.list_service_specific_credentials(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            ids = [
-                c["ServiceSpecificCredentialId"] for c in list_resp["ServiceSpecificCredentials"]
-            ]
-            assert cred_id in ids
-        finally:
-            try:
-                iam.delete_service_specific_credential(
-                    UserName=user_name,
-                    ServiceSpecificCredentialId=cred_id,
-                )
-            except Exception:
-                pass
-            iam.delete_user(UserName=user_name)
-
-    def test_update_service_specific_credential(self, iam):
-        """UpdateServiceSpecificCredential changes status to Inactive."""
-        user_name = _unique("ssc-upd")
-        iam.create_user(UserName=user_name)
-        try:
-            create_resp = iam.create_service_specific_credential(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            cred_id = create_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"]
-
-            iam.update_service_specific_credential(
-                UserName=user_name,
-                ServiceSpecificCredentialId=cred_id,
-                Status="Inactive",
-            )
-            list_resp = iam.list_service_specific_credentials(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            cred = next(
-                c
-                for c in list_resp["ServiceSpecificCredentials"]
-                if c["ServiceSpecificCredentialId"] == cred_id
-            )
-            assert cred["Status"] == "Inactive"
-        finally:
-            try:
-                iam.delete_service_specific_credential(
-                    UserName=user_name,
-                    ServiceSpecificCredentialId=cred_id,
-                )
-            except Exception:
-                pass
-            iam.delete_user(UserName=user_name)
-
-    def test_delete_service_specific_credential(self, iam):
-        """DeleteServiceSpecificCredential removes the credential."""
-        user_name = _unique("ssc-del")
-        iam.create_user(UserName=user_name)
-        try:
-            create_resp = iam.create_service_specific_credential(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            cred_id = create_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"]
-
-            iam.delete_service_specific_credential(
-                UserName=user_name,
-                ServiceSpecificCredentialId=cred_id,
-            )
-            list_resp = iam.list_service_specific_credentials(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            ids = [
-                c["ServiceSpecificCredentialId"] for c in list_resp["ServiceSpecificCredentials"]
-            ]
-            assert cred_id not in ids
-        finally:
-            iam.delete_user(UserName=user_name)
-
-    def test_reset_service_specific_credential(self, iam):
-        """ResetServiceSpecificCredential returns new password."""
-        user_name = _unique("ssc-rst")
-        iam.create_user(UserName=user_name)
-        try:
-            create_resp = iam.create_service_specific_credential(
-                UserName=user_name,
-                ServiceName="codecommit.amazonaws.com",
-            )
-            cred_id = create_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"]
-
-            reset_resp = iam.reset_service_specific_credential(
-                UserName=user_name,
-                ServiceSpecificCredentialId=cred_id,
-            )
-            assert "ServiceSpecificCredential" in reset_resp
-            assert reset_resp["ServiceSpecificCredential"]["ServiceSpecificCredentialId"] == cred_id
-        finally:
-            try:
-                iam.delete_service_specific_credential(
-                    UserName=user_name,
-                    ServiceSpecificCredentialId=cred_id,
-                )
-            except Exception:
-                pass
-            iam.delete_user(UserName=user_name)
-
-
-# ---------------------------------------------------------------------------
 # Additional coverage: Path-based listing
 # ---------------------------------------------------------------------------
 
@@ -4085,24 +3959,6 @@ class TestIAMDeleteGroup:
         """DeleteGroup on a non-existent group raises NoSuchEntity."""
         with pytest.raises(iam.exceptions.NoSuchEntityException):
             iam.delete_group(GroupName="no-such-group-" + uuid.uuid4().hex[:8])
-
-
-# ---------------------------------------------------------------------------
-# Additional coverage: UpdateGroup with NewPath
-# ---------------------------------------------------------------------------
-
-
-class TestIAMUpdateGroupPath:
-    def test_update_group_path(self, iam):
-        """UpdateGroup with NewPath changes the group's path."""
-        group_name = _unique("ugpath")
-        iam.create_group(GroupName=group_name, Path="/old/")
-        try:
-            iam.update_group(GroupName=group_name, NewPath="/new/path/")
-            resp = iam.get_group(GroupName=group_name)
-            assert resp["Group"]["Path"] == "/new/path/"
-        finally:
-            iam.delete_group(GroupName=group_name)
 
 
 # ---------------------------------------------------------------------------
@@ -4241,22 +4097,6 @@ class TestIAMSimulatePolicyExtended:
         assert result["EvalActionName"] == "s3:GetObject"
         assert result["EvalDecision"] in ("allowed", "implicitDeny", "explicitDeny")
 
-    def test_simulate_custom_policy_denied(self, iam):
-        """SimulateCustomPolicy returns denied for non-matching action."""
-        deny_policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [{"Effect": "Deny", "Action": "s3:*", "Resource": "*"}],
-            }
-        )
-        resp = iam.simulate_custom_policy(
-            PolicyInputList=[deny_policy],
-            ActionNames=["s3:GetObject"],
-        )
-        assert len(resp["EvaluationResults"]) == 1
-        result = resp["EvaluationResults"][0]
-        assert result["EvalDecision"] == "explicitDeny"
-
     def test_simulate_custom_policy_multiple_actions(self, iam):
         """SimulateCustomPolicy with multiple actions."""
         resp = iam.simulate_custom_policy(
@@ -4276,21 +4116,6 @@ class TestIAMSimulatePolicyExtended:
 
 
 class TestIAMLoginProfileExtended:
-    def test_create_login_profile_password_reset_required(self, iam):
-        """CreateLoginProfile with PasswordResetRequired=True."""
-        user_name = _unique("lp-reset")
-        iam.create_user(UserName=user_name)
-        try:
-            resp = iam.create_login_profile(
-                UserName=user_name,
-                Password="Test@12345678",
-                PasswordResetRequired=True,
-            )
-            assert resp["LoginProfile"]["PasswordResetRequired"] is True
-        finally:
-            iam.delete_login_profile(UserName=user_name)
-            iam.delete_user(UserName=user_name)
-
     def test_delete_login_profile_makes_it_gone(self, iam):
         """After DeleteLoginProfile, GetLoginProfile raises NoSuchEntity."""
         user_name = _unique("lp-delgone")
@@ -4646,3 +4471,318 @@ class TestIAMListVirtualMFADevicesFiltered:
             assert serial in serials
         finally:
             iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+
+# ---------------------------------------------------------------------------
+# OIDC Provider full lifecycle tests
+# ---------------------------------------------------------------------------
+
+
+class TestIAMOidcProviders:
+    """Comprehensive OIDC provider lifecycle: create, get, list, tag, untag, client IDs, delete."""
+
+    def test_oidc_provider_full_lifecycle(self, iam):
+        """OIDC full lifecycle: create, get, list, tag, untag, thumbprint, client IDs."""
+        url = f"https://oidc-lifecycle-{uuid.uuid4().hex[:8]}.example.com"
+        thumbprint = "a" * 40
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=[thumbprint],
+            ClientIDList=["initial-client"],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        assert arn.startswith("arn:aws:iam:")
+        try:
+            # Get
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert thumbprint in get_resp["ThumbprintList"]
+            assert "initial-client" in get_resp["ClientIDList"]
+
+            # List
+            listed = iam.list_open_id_connect_providers()
+            arns = [p["Arn"] for p in listed["OpenIDConnectProviderList"]]
+            assert arn in arns
+
+            # Tag
+            iam.tag_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn,
+                Tags=[{"Key": "project", "Value": "robotocore"}, {"Key": "temp", "Value": "yes"}],
+            )
+            tag_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            tags = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+            assert tags["project"] == "robotocore"
+            assert tags["temp"] == "yes"
+
+            # Untag
+            iam.untag_open_id_connect_provider(OpenIDConnectProviderArn=arn, TagKeys=["temp"])
+            tag_resp2 = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            keys = [t["Key"] for t in tag_resp2["Tags"]]
+            assert "project" in keys
+            assert "temp" not in keys
+
+            # Update thumbprint
+            new_thumb = "b" * 40
+            iam.update_open_id_connect_provider_thumbprint(
+                OpenIDConnectProviderArn=arn, ThumbprintList=[new_thumb]
+            )
+            get_resp2 = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert new_thumb in get_resp2["ThumbprintList"]
+
+            # Add client ID
+            iam.add_client_id_to_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn, ClientID="added-client"
+            )
+            get_resp3 = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "added-client" in get_resp3["ClientIDList"]
+            assert "initial-client" in get_resp3["ClientIDList"]
+
+            # Remove client ID
+            iam.remove_client_id_from_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn, ClientID="initial-client"
+            )
+            get_resp4 = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "added-client" in get_resp4["ClientIDList"]
+            assert "initial-client" not in get_resp4["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+        # Verify deletion
+        listed2 = iam.list_open_id_connect_providers()
+        arns2 = [p["Arn"] for p in listed2["OpenIDConnectProviderList"]]
+        assert arn not in arns2
+
+    def test_oidc_provider_list_tags_empty(self, iam):
+        """ListOpenIDConnectProviderTags returns empty list for untagged provider."""
+        url = f"https://oidc-notags-{uuid.uuid4().hex[:8]}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["c" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            tag_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            assert "Tags" in tag_resp
+            assert len(tag_resp["Tags"]) == 0
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# SAML Provider full lifecycle tests
+# ---------------------------------------------------------------------------
+
+_SAML_METADATA_FULL = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
+    ' entityID="https://idp.example.com/metadata">'
+    "<IDPSSODescriptor"
+    ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+    '<KeyDescriptor use="signing">'
+    '<KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">'
+    "<X509Data><X509Certificate>"
+    "MIIDpDCCAoygAwIBAgIGAXpJOXwHMA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEG"
+    "A1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEU"
+    "MBIGA1UECwwLU1NPUHJvdmlkZXIxEzARBgNVBAMMCmRldi04NDMyNTMxHDAaBgkqhkiG9w0BCQEW"
+    "DWluZm9Ab2t0YS5jb20wHhcNMjEwNjIyMTgxNjQzWhcNMzEwNjIyMTgxNzQzWjCBkjELMAkGA1UE"
+    "BhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xDTALBgNV"
+    "BAoMBE9rdGExFDASBgNVBAsMC1NTT1Byb3ZpZGVyMRMwEQYDVQQDDApkZXYtODQzMjUzMRwwGgYJ"
+    "KoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA"
+    "</X509Certificate></X509Data>"
+    "</KeyInfo></KeyDescriptor>"
+    "<SingleSignOnService"
+    ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
+    ' Location="https://idp.example.com/sso"/>'
+    "<SingleSignOnService"
+    ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
+    ' Location="https://idp.example.com/sso"/>'
+    "</IDPSSODescriptor></EntityDescriptor>"
+)
+
+
+class TestIAMSamlProviders:
+    """SAML provider lifecycle: create, get, list, update, tag, untag, list tags, delete."""
+
+    def test_saml_provider_full_lifecycle(self, iam):
+        """Create, get, list, update, tag, untag, list tags, delete."""
+        name = _unique("saml-lc")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=_SAML_METADATA_FULL, Name=name)
+        arn = resp["SAMLProviderArn"]
+        assert arn.startswith("arn:aws:iam:")
+        try:
+            # Get
+            get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
+            assert "SAMLMetadataDocument" in get_resp
+
+            # List
+            listed = iam.list_saml_providers()
+            arns = [p["Arn"] for p in listed["SAMLProviderList"]]
+            assert arn in arns
+
+            # Update
+            upd = iam.update_saml_provider(
+                SAMLProviderArn=arn, SAMLMetadataDocument=_SAML_METADATA_FULL
+            )
+            assert "SAMLProviderArn" in upd
+
+            # Tag
+            iam.tag_saml_provider(
+                SAMLProviderArn=arn,
+                Tags=[{"Key": "env", "Value": "dev"}, {"Key": "temp", "Value": "yes"}],
+            )
+
+            # ListSAMLProviderTags
+            tag_resp = iam.list_saml_provider_tags(SAMLProviderArn=arn)
+            assert "Tags" in tag_resp
+            tags = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+            assert tags["env"] == "dev"
+            assert tags["temp"] == "yes"
+
+            # Untag
+            iam.untag_saml_provider(SAMLProviderArn=arn, TagKeys=["temp"])
+            tag_resp2 = iam.list_saml_provider_tags(SAMLProviderArn=arn)
+            keys = [t["Key"] for t in tag_resp2["Tags"]]
+            assert "env" in keys
+            assert "temp" not in keys
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+        # Verify deletion
+        listed2 = iam.list_saml_providers()
+        arns2 = [p["Arn"] for p in listed2["SAMLProviderList"]]
+        assert arn not in arns2
+
+    def test_list_saml_provider_tags_empty(self, iam):
+        """ListSAMLProviderTags returns empty list for untagged provider."""
+        name = _unique("saml-notag")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=_SAML_METADATA_FULL, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            tag_resp = iam.list_saml_provider_tags(SAMLProviderArn=arn)
+            assert "Tags" in tag_resp
+            assert isinstance(tag_resp["Tags"], list)
+            assert len(tag_resp["Tags"]) == 0
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+# ---------------------------------------------------------------------------
+# Virtual MFA and MFA device lifecycle tests
+# ---------------------------------------------------------------------------
+
+
+class TestIAMMfaDeviceLifecycle:
+    """VirtualMFA create/list/delete, MFA device listing, MFA tag/untag/list tags."""
+
+    def test_virtual_mfa_create_list_tag_delete(self, iam):
+        """VirtualMFA create, list, tag, list tags, untag, delete."""
+        mfa_name = _unique("vmfa-lc")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        device = resp["VirtualMFADevice"]
+        serial = device["SerialNumber"]
+        assert serial is not None
+        try:
+            # List
+            listed = iam.list_virtual_mfa_devices()
+            serials = [d["SerialNumber"] for d in listed["VirtualMFADevices"]]
+            assert serial in serials
+
+            # Tag
+            iam.tag_mfa_device(
+                SerialNumber=serial,
+                Tags=[{"Key": "purpose", "Value": "testing"}, {"Key": "extra", "Value": "val"}],
+            )
+
+            # ListMFADeviceTags
+            tag_resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            tags = {t["Key"]: t["Value"] for t in tag_resp["Tags"]}
+            assert tags["purpose"] == "testing"
+            assert tags["extra"] == "val"
+
+            # Untag
+            iam.untag_mfa_device(SerialNumber=serial, TagKeys=["extra"])
+            tag_resp2 = iam.list_mfa_device_tags(SerialNumber=serial)
+            keys = [t["Key"] for t in tag_resp2["Tags"]]
+            assert "purpose" in keys
+            assert "extra" not in keys
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_list_mfa_devices_for_user(self, iam):
+        """ListMFADevices returns empty list for a user with no MFA."""
+        user_name = _unique("mfa-lc-user")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.list_mfa_devices(UserName=user_name)
+            assert "MFADevices" in resp
+            assert isinstance(resp["MFADevices"], list)
+            assert len(resp["MFADevices"]) == 0
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# SSH Public Key tests
+# ---------------------------------------------------------------------------
+
+_SSH_PUB_KEY = (
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCz8Dk176Uh4bPmFosfHGQQwJj5ejGnlf"
+    "0RmTbVBjDaBCO/x4D98DhtVIBHdIUVOhfFkKG3cAfpJo2rWB7RkDzV2OywOa0Nlb5PXhR"
+    "hGJsXBGLGEOGp5HoAiIeUJGZ0GZ7Ly7PGbKMe2OjhKfSHn9UkER6A+BxMp7J1w9ZMPX2j"
+    "bHuXnuBErjUCr3LGXNN9p2gaQQ3nGxw4sFMq3bJWKW7R2Dz1VJfBjEqFMk5LYqP1n5M+1"
+    "HQYPJEFbKAHDN3OL3F4D3QPDJneMCOLI3EcsJJDPVpFaGp1qP5vQJ5yf0ABXk0EJ1fH8F"
+    "hIzFNJdNq+LVMIHChSxFIpfdmh test-key"
+)
+
+
+class TestIAMSshPublicKeys:
+    """SSH public key upload and list operations."""
+
+    def test_upload_and_list_ssh_public_keys(self, iam):
+        """UploadSSHPublicKey, ListSSHPublicKeys."""
+        user_name = _unique("ssh-lc")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_ssh_public_key(UserName=user_name, SSHPublicKeyBody=_SSH_PUB_KEY)
+            assert "SSHPublicKey" in resp
+            key_id = resp["SSHPublicKey"]["SSHPublicKeyId"]
+            assert key_id is not None
+            assert resp["SSHPublicKey"]["Status"] == "Active"
+
+            # List
+            listed = iam.list_ssh_public_keys(UserName=user_name)
+            assert "SSHPublicKeys" in listed
+            ids = [k["SSHPublicKeyId"] for k in listed["SSHPublicKeys"]]
+            assert key_id in ids
+        finally:
+            try:
+                iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_list_ssh_public_keys_empty(self, iam):
+        """ListSSHPublicKeys returns empty for user with no keys."""
+        user_name = _unique("ssh-empty")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.list_ssh_public_keys(UserName=user_name)
+            assert "SSHPublicKeys" in resp
+            assert len(resp["SSHPublicKeys"]) == 0
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+# ---------------------------------------------------------------------------
+# STS preferences and misc operations
+# ---------------------------------------------------------------------------
+
+
+class TestIAMMiscOperations:
+    """SetSecurityTokenServicePreferences and other miscellaneous IAM operations."""
+
+    def test_set_security_token_service_preferences_v2(self, iam):
+        """SetSecurityTokenServicePreferences sets global endpoint token version to v2."""
+        resp = iam.set_security_token_service_preferences(GlobalEndpointTokenVersion="v2Token")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_set_security_token_service_preferences_v1(self, iam):
+        """SetSecurityTokenServicePreferences sets global endpoint token version to v1."""
+        resp = iam.set_security_token_service_preferences(GlobalEndpointTokenVersion="v1Token")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

@@ -1021,3 +1021,21 @@ class TestAthenaSessionLifecycle:
         # Terminate
         term_resp = athena.terminate_session(SessionId=session_id)
         assert term_resp["State"] in ("TERMINATING", "TERMINATED")
+
+
+class TestAthenaAdditional:
+    """Tests for additional Athena operations."""
+
+    def test_list_sessions(self, athena):
+        """ListSessions returns SessionsList for a given workgroup."""
+        wg_name = _unique("wg")
+        athena.create_work_group(
+            Name=wg_name,
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+        )
+        try:
+            resp = athena.list_sessions(WorkGroup=wg_name)
+            assert "Sessions" in resp
+            assert isinstance(resp["Sessions"], list)
+        finally:
+            athena.delete_work_group(WorkGroup=wg_name)

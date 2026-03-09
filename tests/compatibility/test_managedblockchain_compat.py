@@ -430,3 +430,96 @@ class TestManagedBlockchainNodeOps:
             NodeId=node_id,
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestManagedBlockchainAdditional:
+    """Additional tests for Managed Blockchain operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("managedblockchain")
+
+    @pytest.fixture
+    def network(self, client):
+        token = f"token-{uuid.uuid4().hex[:8]}"
+        resp = client.create_network(
+            ClientRequestToken=token,
+            Name=f"net-{uuid.uuid4().hex[:8]}",
+            Framework="HYPERLEDGER_FABRIC",
+            FrameworkVersion="1.2",
+            FrameworkConfiguration={"Fabric": {"Edition": "STARTER"}},
+            VotingPolicy={
+                "ApprovalThresholdPolicy": {
+                    "ThresholdPercentage": 50,
+                    "ProposalDurationInHours": 24,
+                    "ThresholdComparator": "GREATER_THAN",
+                }
+            },
+            MemberConfiguration={
+                "Name": f"member-{uuid.uuid4().hex[:8]}",
+                "Description": "Test",
+                "FrameworkConfiguration": {
+                    "Fabric": {
+                        "AdminUsername": "admin",
+                        "AdminPassword": "Password123!",
+                    }
+                },
+                "LogPublishingConfiguration": {
+                    "Fabric": {"CaLogs": {"Cloudwatch": {"Enabled": False}}}
+                },
+            },
+        )
+        return {"NetworkId": resp["NetworkId"], "MemberId": resp["MemberId"]}
+
+    def test_create_member(self, client, network):
+        """CreateMember adds a new member to an existing network via proposal invitation."""
+        # Create a proposal to invite a new member
+        prop_resp = client.create_proposal(
+            ClientRequestToken=f"prop-{uuid.uuid4().hex[:8]}",
+            NetworkId=network["NetworkId"],
+            MemberId=network["MemberId"],
+            Actions={"Invitations": [{"Principal": "123456789012"}]},
+        )
+        proposal_id = prop_resp["ProposalId"]
+        # Vote YES to approve
+        client.vote_on_proposal(
+            NetworkId=network["NetworkId"],
+            ProposalId=proposal_id,
+            VoterMemberId=network["MemberId"],
+            Vote="YES",
+        )
+        # Now create the member using the invitation
+        invitations = client.list_invitations()["Invitations"]
+        # Find the invitation for our network
+        invitation_id = None
+        for inv in invitations:
+            if inv["NetworkSummary"]["Id"] == network["NetworkId"]:
+                invitation_id = inv["InvitationId"]
+                break
+        assert invitation_id is not None, "Expected an invitation for the network"
+        # Create a member on the network
+        resp = client.create_member(
+            ClientRequestToken=f"mem-{uuid.uuid4().hex[:8]}",
+            InvitationId=invitation_id,
+            NetworkId=network["NetworkId"],
+            MemberConfiguration={
+                "Name": f"new-member-{uuid.uuid4().hex[:8]}",
+                "Description": "New member via invitation",
+                "FrameworkConfiguration": {
+                    "Fabric": {
+                        "AdminUsername": "admin2",
+                        "AdminPassword": "Password456!",
+                    }
+                },
+                "LogPublishingConfiguration": {
+                    "Fabric": {"CaLogs": {"Cloudwatch": {"Enabled": False}}}
+                },
+            },
+        )
+        assert "MemberId" in resp
+        assert resp["MemberId"]
+
+    def test_reject_invitation_nonexistent(self, client):
+        """RejectInvitation with a nonexistent invitation ID raises error."""
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.reject_invitation(InvitationId="inv-doesnotexist12345")
