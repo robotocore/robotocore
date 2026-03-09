@@ -875,3 +875,230 @@ class TestMSKScramSecrets:
         )
         assert "ClusterArn" in resp
         assert "UnprocessedScramSecrets" in resp
+
+
+class TestMSKReplicatorOperations:
+    """Tests for MSK replicator create/delete operations."""
+
+    @pytest.fixture
+    def two_clusters(self, kafka):
+        src = kafka.create_cluster(
+            ClusterName=_unique("repl-src"),
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        tgt = kafka.create_cluster(
+            ClusterName=_unique("repl-tgt"),
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-4", "subnet-5", "subnet-6"],
+            },
+        )
+        return src["ClusterArn"], tgt["ClusterArn"]
+
+    def test_create_replicator(self, kafka, two_clusters):
+        src_arn, tgt_arn = two_clusters
+        resp = kafka.create_replicator(
+            ReplicatorName=_unique("replicator"),
+            KafkaClusters=[
+                {
+                    "AmazonMskCluster": {"MskClusterArn": src_arn},
+                    "VpcConfig": {
+                        "SubnetIds": ["subnet-1", "subnet-2"],
+                        "SecurityGroupIds": ["sg-12345"],
+                    },
+                },
+                {
+                    "AmazonMskCluster": {"MskClusterArn": tgt_arn},
+                    "VpcConfig": {
+                        "SubnetIds": ["subnet-3", "subnet-4"],
+                        "SecurityGroupIds": ["sg-67890"],
+                    },
+                },
+            ],
+            ReplicationInfoList=[
+                {
+                    "SourceKafkaClusterArn": src_arn,
+                    "TargetKafkaClusterArn": tgt_arn,
+                    "TargetCompressionType": "NONE",
+                    "TopicReplication": {
+                        "TopicsToReplicate": [".*"],
+                        "CopyTopicConfigurations": True,
+                        "CopyAccessControlListsForTopics": True,
+                        "DetectAndCopyNewTopics": True,
+                    },
+                    "ConsumerGroupReplication": {
+                        "ConsumerGroupsToReplicate": [".*"],
+                    },
+                },
+            ],
+            ServiceExecutionRoleArn="arn:aws:iam::123456789012:role/kafka-replication-role",
+        )
+        assert "ReplicatorArn" in resp
+        assert resp["ReplicatorName"] == resp["ReplicatorName"]
+        assert resp["ReplicatorState"] == "RUNNING"
+
+    def test_delete_replicator(self, kafka, two_clusters):
+        src_arn, tgt_arn = two_clusters
+        create_resp = kafka.create_replicator(
+            ReplicatorName=_unique("del-repl"),
+            KafkaClusters=[
+                {
+                    "AmazonMskCluster": {"MskClusterArn": src_arn},
+                    "VpcConfig": {
+                        "SubnetIds": ["subnet-1", "subnet-2"],
+                        "SecurityGroupIds": ["sg-12345"],
+                    },
+                },
+                {
+                    "AmazonMskCluster": {"MskClusterArn": tgt_arn},
+                    "VpcConfig": {
+                        "SubnetIds": ["subnet-3", "subnet-4"],
+                        "SecurityGroupIds": ["sg-67890"],
+                    },
+                },
+            ],
+            ReplicationInfoList=[
+                {
+                    "SourceKafkaClusterArn": src_arn,
+                    "TargetKafkaClusterArn": tgt_arn,
+                    "TargetCompressionType": "NONE",
+                    "TopicReplication": {
+                        "TopicsToReplicate": [".*"],
+                        "CopyTopicConfigurations": True,
+                        "CopyAccessControlListsForTopics": True,
+                        "DetectAndCopyNewTopics": True,
+                    },
+                    "ConsumerGroupReplication": {
+                        "ConsumerGroupsToReplicate": [".*"],
+                    },
+                },
+            ],
+            ServiceExecutionRoleArn="arn:aws:iam::123456789012:role/kafka-replication-role",
+        )
+        repl_arn = create_resp["ReplicatorArn"]
+        del_resp = kafka.delete_replicator(ReplicatorArn=repl_arn)
+        assert del_resp["ReplicatorArn"] == repl_arn
+        assert "ReplicatorState" in del_resp
+
+    def test_update_replication_info_fake_arn(self, kafka):
+        fake_repl = "arn:aws:kafka:us-east-1:123456789012:replicator/fake/fake-uuid"
+        fake_src = "arn:aws:kafka:us-east-1:123456789012:cluster/fake-src/fake-uuid"
+        fake_tgt = "arn:aws:kafka:us-east-1:123456789012:cluster/fake-tgt/fake-uuid"
+        with pytest.raises(kafka.exceptions.NotFoundException):
+            kafka.update_replication_info(
+                ReplicatorArn=fake_repl,
+                SourceKafkaClusterArn=fake_src,
+                TargetKafkaClusterArn=fake_tgt,
+                CurrentVersion="KAAAAAAAAAAAAAA",
+                TopicReplication={
+                    "TopicsToReplicate": [".*"],
+                    "TopicsToExclude": [],
+                    "CopyTopicConfigurations": True,
+                    "CopyAccessControlListsForTopics": True,
+                    "DetectAndCopyNewTopics": True,
+                },
+            )
+
+
+class TestMSKVpcConnectionOperations:
+    """Tests for MSK VPC connection create/delete/reject operations."""
+
+    def test_create_vpc_connection(self, kafka):
+        resp = kafka.create_vpc_connection(
+            TargetClusterArn="arn:aws:kafka:us-east-1:123456789012:cluster/test/test-uuid",
+            Authentication="SASL_IAM",
+            VpcId="vpc-12345",
+            ClientSubnets=["subnet-1", "subnet-2"],
+            SecurityGroups=["sg-12345"],
+        )
+        assert "VpcConnectionArn" in resp
+        assert resp["State"] == "AVAILABLE"
+        assert resp["Authentication"] == "SASL_IAM"
+        assert resp["VpcId"] == "vpc-12345"
+
+    def test_delete_vpc_connection(self, kafka):
+        create_resp = kafka.create_vpc_connection(
+            TargetClusterArn="arn:aws:kafka:us-east-1:123456789012:cluster/test/test-uuid",
+            Authentication="SASL_IAM",
+            VpcId="vpc-12345",
+            ClientSubnets=["subnet-1", "subnet-2"],
+            SecurityGroups=["sg-12345"],
+        )
+        vpc_arn = create_resp["VpcConnectionArn"]
+        del_resp = kafka.delete_vpc_connection(Arn=vpc_arn)
+        assert del_resp["VpcConnectionArn"] == vpc_arn
+        assert "State" in del_resp
+
+    def test_reject_client_vpc_connection_fake_arn(self, kafka):
+        fake_cluster = "arn:aws:kafka:us-east-1:123456789012:cluster/fake/fake-uuid"
+        fake_vpc = "arn:aws:kafka:us-east-1:123456789012:vpc-connection/fake-uuid"
+        with pytest.raises(kafka.exceptions.NotFoundException):
+            kafka.reject_client_vpc_connection(
+                ClusterArn=fake_cluster,
+                VpcConnectionArn=fake_vpc,
+            )
+
+
+class TestMSKTopicCrudOperations:
+    """Tests for MSK topic create/update/delete operations."""
+
+    FAKE_CLUSTER_ARN = "arn:aws:kafka:us-east-1:123456789012:cluster/fake/fake-uuid"
+
+    def test_create_topic_fake_cluster(self, kafka):
+        with pytest.raises(kafka.exceptions.NotFoundException):
+            kafka.create_topic(
+                ClusterArn=self.FAKE_CLUSTER_ARN,
+                TopicName="test-topic",
+                PartitionCount=3,
+                ReplicationFactor=1,
+            )
+
+    def test_update_topic_fake_cluster(self, kafka):
+        with pytest.raises(kafka.exceptions.NotFoundException):
+            kafka.update_topic(
+                ClusterArn=self.FAKE_CLUSTER_ARN,
+                TopicName="test-topic",
+                PartitionCount=6,
+            )
+
+    def test_delete_topic_fake_cluster(self, kafka):
+        with pytest.raises(kafka.exceptions.NotFoundException):
+            kafka.delete_topic(
+                ClusterArn=self.FAKE_CLUSTER_ARN,
+                TopicName="test-topic",
+            )
+
+
+class TestMSKUpdateRebalancing:
+    """Tests for MSK update rebalancing operation."""
+
+    @pytest.fixture
+    def cluster_arn(self, kafka):
+        name = _unique("rebal-cluster")
+        resp = kafka.create_cluster(
+            ClusterName=name,
+            KafkaVersion="2.8.1",
+            NumberOfBrokerNodes=3,
+            BrokerNodeGroupInfo={
+                "InstanceType": "kafka.m5.large",
+                "ClientSubnets": ["subnet-1", "subnet-2", "subnet-3"],
+            },
+        )
+        return resp["ClusterArn"]
+
+    def test_update_rebalancing(self, kafka, cluster_arn):
+        version = kafka.describe_cluster(ClusterArn=cluster_arn)["ClusterInfo"]["CurrentVersion"]
+        resp = kafka.update_rebalancing(
+            ClusterArn=cluster_arn,
+            CurrentVersion=version,
+            Rebalancing={"Status": "IN_PROGRESS"},
+        )
+        assert "ClusterArn" in resp
+        assert "ClusterOperationArn" in resp
