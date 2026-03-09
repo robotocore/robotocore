@@ -2315,3 +2315,347 @@ class TestDMSModifyReplicationInstance:
             dms.delete_replication_task(ReplicationTaskArn=task_arn)
             dms.delete_endpoint(EndpointArn=ep1["Endpoint"]["EndpointArn"])
             dms.delete_endpoint(EndpointArn=ep2["Endpoint"]["EndpointArn"])
+
+
+class TestDMSFleetAdvisorOperations:
+    """Tests for Fleet Advisor operations."""
+
+    def test_run_fleet_advisor_lsa_analysis(self, dms):
+        """RunFleetAdvisorLsaAnalysis returns a response."""
+        resp = dms.run_fleet_advisor_lsa_analysis()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_fleet_advisor_collector(self, dms):
+        """CreateFleetAdvisorCollector returns collector reference id."""
+        resp = dms.create_fleet_advisor_collector(
+            CollectorName=_unique("collector"),
+            ServiceAccessRoleArn="arn:aws:iam::123456789012:role/test",
+            S3BucketName="test-bucket",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_fleet_advisor_databases(self, dms):
+        """DeleteFleetAdvisorDatabases accepts database IDs."""
+        resp = dms.delete_fleet_advisor_databases(DatabaseIds=["fake-db-id"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_batch_start_recommendations(self, dms):
+        """BatchStartRecommendations with empty data returns 200."""
+        resp = dms.batch_start_recommendations(Data=[])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_recommendations(self, dms):
+        """StartRecommendations accepts database ID and settings."""
+        resp = dms.start_recommendations(
+            DatabaseId="fake-db-id",
+            Settings={"InstanceSizingType": "equal", "WorkloadType": "mixed"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDMSEventBridgeSubscription:
+    """Tests for UpdateSubscriptionsToEventBridge."""
+
+    def test_update_subscriptions_to_event_bridge(self, dms):
+        """UpdateSubscriptionsToEventBridge returns a result."""
+        resp = dms.update_subscriptions_to_event_bridge()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Result" in resp
+
+
+class TestDMSConnectionOperations:
+    """Tests for DeleteConnection."""
+
+    def test_delete_connection_nonexistent(self, dms):
+        """DeleteConnection raises ResourceNotFoundFault for unknown connection."""
+        with pytest.raises(ClientError) as exc:
+            dms.delete_connection(
+                EndpointArn="arn:aws:dms:us-east-1:123456789012:endpoint:fake",
+                ReplicationInstanceArn="arn:aws:dms:us-east-1:123456789012:rep:fake",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+
+class TestDMSTaskAssessmentOperations:
+    """Tests for replication task assessment operations."""
+
+    def _make_task(self, dms):
+        uid = uuid.uuid4().hex[:8]
+        src = dms.create_endpoint(
+            EndpointIdentifier=f"src-{uid}",
+            EndpointType="source",
+            EngineName="mysql",
+            ServerName="localhost",
+            Port=3306,
+            Username="admin",
+            Password="password",
+        )
+        tgt = dms.create_endpoint(
+            EndpointIdentifier=f"tgt-{uid}",
+            EndpointType="target",
+            EngineName="postgres",
+            ServerName="localhost",
+            Port=5432,
+            Username="admin",
+            Password="password",
+        )
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=f"ri-{uid}",
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        task = dms.create_replication_task(
+            ReplicationTaskIdentifier=f"task-{uid}",
+            SourceEndpointArn=src["Endpoint"]["EndpointArn"],
+            TargetEndpointArn=tgt["Endpoint"]["EndpointArn"],
+            ReplicationInstanceArn=ri["ReplicationInstance"]["ReplicationInstanceArn"],
+            MigrationType="full-load",
+            TableMappings='{"rules":[]}',
+        )
+        return {
+            "task_arn": task["ReplicationTask"]["ReplicationTaskArn"],
+            "src_arn": src["Endpoint"]["EndpointArn"],
+            "tgt_arn": tgt["Endpoint"]["EndpointArn"],
+            "ri_arn": ri["ReplicationInstance"]["ReplicationInstanceArn"],
+        }
+
+    def _cleanup(self, dms, info):
+        dms.delete_replication_task(ReplicationTaskArn=info["task_arn"])
+        dms.delete_endpoint(EndpointArn=info["src_arn"])
+        dms.delete_endpoint(EndpointArn=info["tgt_arn"])
+        dms.delete_replication_instance(ReplicationInstanceArn=info["ri_arn"])
+
+    def test_start_replication_task_assessment(self, dms):
+        """StartReplicationTaskAssessment returns task details."""
+        info = self._make_task(dms)
+        try:
+            resp = dms.start_replication_task_assessment(
+                ReplicationTaskArn=info["task_arn"],
+            )
+            assert "ReplicationTask" in resp
+            assert resp["ReplicationTask"]["ReplicationTaskArn"] == info["task_arn"]
+        finally:
+            self._cleanup(dms, info)
+
+    def test_start_replication_task_assessment_run(self, dms):
+        """StartReplicationTaskAssessmentRun creates an assessment run."""
+        info = self._make_task(dms)
+        try:
+            resp = dms.start_replication_task_assessment_run(
+                ReplicationTaskArn=info["task_arn"],
+                ServiceAccessRoleArn="arn:aws:iam::123456789012:role/test",
+                ResultLocationBucket="test-bucket",
+                AssessmentRunName=_unique("run"),
+            )
+            run = resp["ReplicationTaskAssessmentRun"]
+            assert "ReplicationTaskAssessmentRunArn" in run
+            assert run["Status"] == "starting"
+            assert run["ReplicationTaskArn"] == info["task_arn"]
+        finally:
+            self._cleanup(dms, info)
+
+    def test_cancel_replication_task_assessment_run(self, dms):
+        """CancelReplicationTaskAssessmentRun returns a response for fake ARN."""
+        resp = dms.cancel_replication_task_assessment_run(
+            ReplicationTaskAssessmentRunArn=(
+                "arn:aws:dms:us-east-1:123456789012:assessment-run:fake"
+            ),
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_replication_task_assessment_run(self, dms):
+        """DeleteReplicationTaskAssessmentRun returns a response for fake ARN."""
+        resp = dms.delete_replication_task_assessment_run(
+            ReplicationTaskAssessmentRunArn=(
+                "arn:aws:dms:us-east-1:123456789012:assessment-run:fake"
+            ),
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_move_replication_task(self, dms):
+        """MoveReplicationTask returns task details."""
+        info = self._make_task(dms)
+        try:
+            resp = dms.move_replication_task(
+                ReplicationTaskArn=info["task_arn"],
+                TargetReplicationInstanceArn=info["ri_arn"],
+            )
+            assert "ReplicationTask" in resp
+        finally:
+            self._cleanup(dms, info)
+
+    def test_reload_tables(self, dms):
+        """ReloadTables accepts a replication task ARN and table list."""
+        info = self._make_task(dms)
+        try:
+            resp = dms.reload_tables(
+                ReplicationTaskArn=info["task_arn"],
+                TablesToReload=[{"SchemaName": "public", "TableName": "test"}],
+            )
+            assert "ReplicationTaskArn" in resp
+        finally:
+            self._cleanup(dms, info)
+
+    def test_refresh_schemas(self, dms):
+        """RefreshSchemas returns a RefreshSchemasStatus."""
+        info = self._make_task(dms)
+        try:
+            resp = dms.refresh_schemas(
+                EndpointArn=info["src_arn"],
+                ReplicationInstanceArn=info["ri_arn"],
+            )
+            assert "RefreshSchemasStatus" in resp
+        finally:
+            self._cleanup(dms, info)
+
+
+class TestDMSReloadReplicationTables:
+    """Tests for ReloadReplicationTables."""
+
+    def test_reload_replication_tables(self, dms):
+        """ReloadReplicationTables accepts a config ARN and table list."""
+        resp = dms.reload_replication_tables(
+            ReplicationConfigArn=("arn:aws:dms:us-east-1:123456789012:replication-config:fake"),
+            TablesToReload=[{"SchemaName": "public", "TableName": "test"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDMSMaintenanceAction:
+    """Tests for ApplyPendingMaintenanceAction."""
+
+    def test_apply_pending_maintenance_action(self, dms):
+        """ApplyPendingMaintenanceAction returns a ResourcePendingMaintenanceActions."""
+        ri_id = _unique("ri")
+        ri = dms.create_replication_instance(
+            ReplicationInstanceIdentifier=ri_id,
+            ReplicationInstanceClass="dms.t3.micro",
+        )
+        ri_arn = ri["ReplicationInstance"]["ReplicationInstanceArn"]
+        try:
+            resp = dms.apply_pending_maintenance_action(
+                ReplicationInstanceArn=ri_arn,
+                ApplyAction="os-upgrade",
+                OptInType="immediate",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
+
+
+class TestDMSDataMigrationOperations:
+    """Tests for data migration operations."""
+
+    def test_delete_data_migration_nonexistent(self, dms):
+        """DeleteDataMigration raises ResourceNotFoundFault for unknown migration."""
+        with pytest.raises(ClientError) as exc:
+            dms.delete_data_migration(DataMigrationIdentifier="fake-dm")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_modify_data_migration_nonexistent(self, dms):
+        """ModifyDataMigration raises ResourceNotFoundFault for unknown migration."""
+        with pytest.raises(ClientError) as exc:
+            dms.modify_data_migration(
+                DataMigrationIdentifier="fake-dm",
+                DataMigrationType="full-load",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_start_data_migration_nonexistent(self, dms):
+        """StartDataMigration raises ResourceNotFoundFault for unknown migration."""
+        with pytest.raises(ClientError) as exc:
+            dms.start_data_migration(
+                DataMigrationIdentifier="fake-dm",
+                StartType="reload-target",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_stop_data_migration_nonexistent(self, dms):
+        """StopDataMigration raises ResourceNotFoundFault for unknown migration."""
+        with pytest.raises(ClientError) as exc:
+            dms.stop_data_migration(DataMigrationIdentifier="fake-dm")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+
+class TestDMSMetadataModelOperations:
+    """Tests for metadata model operations."""
+
+    def test_export_metadata_model_assessment(self, dms):
+        """ExportMetadataModelAssessment returns a response."""
+        resp = dms.export_metadata_model_assessment(
+            MigrationProjectIdentifier="fake-proj",
+            SelectionRules='{"rules":[]}',
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_modify_conversion_configuration(self, dms):
+        """ModifyConversionConfiguration returns a migration project identifier."""
+        resp = dms.modify_conversion_configuration(
+            MigrationProjectIdentifier="fake-proj",
+            ConversionConfiguration="{}",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_extension_pack_association(self, dms):
+        """StartExtensionPackAssociation returns a request identifier."""
+        resp = dms.start_extension_pack_association(
+            MigrationProjectIdentifier="fake-proj",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_metadata_model_assessment(self, dms):
+        """StartMetadataModelAssessment returns a request identifier."""
+        resp = dms.start_metadata_model_assessment(
+            MigrationProjectIdentifier="fake-proj",
+            SelectionRules='{"rules":[]}',
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_metadata_model_conversion(self, dms):
+        """StartMetadataModelConversion returns a request identifier."""
+        resp = dms.start_metadata_model_conversion(
+            MigrationProjectIdentifier="fake-proj",
+            SelectionRules='{"rules":[]}',
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_metadata_model_export_as_script(self, dms):
+        """StartMetadataModelExportAsScript returns a request identifier."""
+        resp = dms.start_metadata_model_export_as_script(
+            MigrationProjectIdentifier="fake-proj",
+            SelectionRules='{"rules":[]}',
+            Origin="SOURCE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_metadata_model_export_to_target(self, dms):
+        """StartMetadataModelExportToTarget returns a request identifier."""
+        resp = dms.start_metadata_model_export_to_target(
+            MigrationProjectIdentifier="fake-proj",
+            SelectionRules='{"rules":[]}',
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_metadata_model_import(self, dms):
+        """StartMetadataModelImport returns a request identifier."""
+        resp = dms.start_metadata_model_import(
+            MigrationProjectIdentifier="fake-proj",
+            SelectionRules='{"rules":[]}',
+            Origin="SOURCE",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_metadata_model_conversion(self, dms):
+        """CancelMetadataModelConversion returns a request identifier."""
+        resp = dms.cancel_metadata_model_conversion(
+            MigrationProjectIdentifier="fake-proj",
+            RequestIdentifier="fake-req",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_metadata_model_creation(self, dms):
+        """CancelMetadataModelCreation returns a request identifier."""
+        resp = dms.cancel_metadata_model_creation(
+            MigrationProjectIdentifier="fake-proj",
+            RequestIdentifier="fake-req",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
