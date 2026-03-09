@@ -5739,3 +5739,231 @@ class TestEC2CreateDefaultVpc:
         for sub in subs["Subnets"]:
             assert sub["DefaultForAz"] is True
             assert sub["MapPublicIpOnLaunch"] is True
+
+
+class TestEC2ModifySpotFleetRequest:
+    """ModifySpotFleetRequest to change TargetCapacity."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_spot_fleet_target_capacity(self, ec2):
+        """ModifySpotFleetRequest updates TargetCapacity."""
+        fr = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 1,
+                "SpotPrice": "0.05",
+                "AllocationStrategy": "lowestPrice",
+                "LaunchSpecifications": [{"ImageId": "ami-12345678", "InstanceType": "t2.micro"}],
+            }
+        )
+        fleet_id = fr["SpotFleetRequestId"]
+        try:
+            mr = ec2.modify_spot_fleet_request(SpotFleetRequestId=fleet_id, TargetCapacity=5)
+            assert mr["Return"] is True
+
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            config = described["SpotFleetRequestConfigs"][0]
+            assert config["SpotFleetRequestConfig"]["TargetCapacity"] == 5
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_modify_spot_fleet_decrease_capacity(self, ec2):
+        """ModifySpotFleetRequest can decrease TargetCapacity."""
+        fr = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 10,
+                "SpotPrice": "0.05",
+                "AllocationStrategy": "lowestPrice",
+                "LaunchSpecifications": [{"ImageId": "ami-12345678", "InstanceType": "t2.micro"}],
+            }
+        )
+        fleet_id = fr["SpotFleetRequestId"]
+        try:
+            mr = ec2.modify_spot_fleet_request(SpotFleetRequestId=fleet_id, TargetCapacity=2)
+            assert mr["Return"] is True
+
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            config = described["SpotFleetRequestConfigs"][0]
+            assert config["SpotFleetRequestConfig"]["TargetCapacity"] == 2
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+
+class TestEC2SpotFleetMultiCancel:
+    """Cancel multiple spot fleet requests at once."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_cancel_multiple_spot_fleets(self, ec2):
+        """CancelSpotFleetRequests with multiple fleet IDs."""
+        fleet_ids = []
+        for _ in range(2):
+            fr = ec2.request_spot_fleet(
+                SpotFleetRequestConfig={
+                    "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                    "TargetCapacity": 1,
+                    "SpotPrice": "0.05",
+                    "AllocationStrategy": "lowestPrice",
+                    "LaunchSpecifications": [
+                        {"ImageId": "ami-12345678", "InstanceType": "t2.micro"}
+                    ],
+                }
+            )
+            fleet_ids.append(fr["SpotFleetRequestId"])
+
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=fleet_ids, TerminateInstances=True
+        )
+        assert len(cancel["SuccessfulFleetRequests"]) == 2
+        cancelled_ids = {r["SpotFleetRequestId"] for r in cancel["SuccessfulFleetRequests"]}
+        assert set(fleet_ids) == cancelled_ids
+
+
+class TestEC2SpotPriceHistory:
+    """DescribeSpotPriceHistory returns spot price data."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_spot_price_history(self, ec2):
+        """DescribeSpotPriceHistory returns SpotPriceHistory list."""
+        resp = ec2.describe_spot_price_history(InstanceTypes=["t2.micro"], MaxResults=5)
+        assert "SpotPriceHistory" in resp
+        assert isinstance(resp["SpotPriceHistory"], list)
+
+    def test_describe_spot_price_history_has_fields(self, ec2):
+        """DescribeSpotPriceHistory entries have expected fields."""
+        resp = ec2.describe_spot_price_history(InstanceTypes=["m5.large"], MaxResults=5)
+        assert "SpotPriceHistory" in resp
+        if resp["SpotPriceHistory"]:
+            entry = resp["SpotPriceHistory"][0]
+            assert "InstanceType" in entry
+            assert "SpotPrice" in entry
+            assert "AvailabilityZone" in entry
+
+
+class TestEC2DescribeFleetInstances:
+    """DescribeFleetInstances for EC2 Fleets."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_fleet_instances(self, ec2):
+        """DescribeFleetInstances returns ActiveInstances for a fleet."""
+        lt_name = _unique("fi-lt")
+        lt = ec2.create_launch_template(
+            LaunchTemplateName=lt_name,
+            LaunchTemplateData={
+                "InstanceType": "t2.micro",
+                "ImageId": "ami-12345678",
+            },
+        )
+        lt_id = lt["LaunchTemplate"]["LaunchTemplateId"]
+        try:
+            r = ec2.create_fleet(
+                LaunchTemplateConfigs=[
+                    {
+                        "LaunchTemplateSpecification": {
+                            "LaunchTemplateId": lt_id,
+                            "Version": "$Latest",
+                        },
+                        "Overrides": [{"InstanceType": "t2.micro"}],
+                    }
+                ],
+                TargetCapacitySpecification={
+                    "TotalTargetCapacity": 1,
+                    "DefaultTargetCapacityType": "on-demand",
+                },
+                Type="instant",
+            )
+            fleet_id = r["FleetId"]
+            assert fleet_id.startswith("fleet-")
+
+            instances = ec2.describe_fleet_instances(FleetId=fleet_id)
+            assert "ActiveInstances" in instances
+            assert instances["FleetId"] == fleet_id
+            assert isinstance(instances["ActiveInstances"], list)
+
+            ec2.delete_fleets(FleetIds=[fleet_id], TerminateInstances=True)
+        finally:
+            ec2.delete_launch_template(LaunchTemplateId=lt_id)
+
+
+class TestEC2SpotFleetAllocationStrategies:
+    """Spot fleet with different allocation strategies."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_spot_fleet_diversified_strategy(self, ec2):
+        """RequestSpotFleet with diversified allocation strategy."""
+        fr = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 1,
+                "SpotPrice": "0.10",
+                "AllocationStrategy": "diversified",
+                "LaunchSpecifications": [
+                    {"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+                    {"ImageId": "ami-12345678", "InstanceType": "t2.small"},
+                ],
+            }
+        )
+        fleet_id = fr["SpotFleetRequestId"]
+        try:
+            assert fleet_id.startswith("sfr-")
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            config = described["SpotFleetRequestConfigs"][0]["SpotFleetRequestConfig"]
+            assert config["AllocationStrategy"] == "diversified"
+            assert len(config["LaunchSpecifications"]) == 2
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_spot_fleet_state_after_creation(self, ec2):
+        """Spot fleet has active state after creation."""
+        fr = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 1,
+                "SpotPrice": "0.05",
+                "AllocationStrategy": "lowestPrice",
+                "LaunchSpecifications": [{"ImageId": "ami-12345678", "InstanceType": "t2.micro"}],
+            }
+        )
+        fleet_id = fr["SpotFleetRequestId"]
+        try:
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            fleet = described["SpotFleetRequestConfigs"][0]
+            assert fleet["SpotFleetRequestState"] == "active"
+            assert fleet["SpotFleetRequestId"] == fleet_id
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_spot_fleet_state_after_cancel(self, ec2):
+        """Spot fleet state changes after cancellation."""
+        fr = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+                "TargetCapacity": 1,
+                "SpotPrice": "0.05",
+                "AllocationStrategy": "lowestPrice",
+                "LaunchSpecifications": [{"ImageId": "ami-12345678", "InstanceType": "t2.micro"}],
+            }
+        )
+        fleet_id = fr["SpotFleetRequestId"]
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        assert cancel["SuccessfulFleetRequests"][0]["CurrentSpotFleetRequestState"] in (
+            "cancelled_running",
+            "cancelled_terminating",
+        )
