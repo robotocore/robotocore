@@ -1345,3 +1345,25 @@ class TestKinesisStreamManagement:
         )
         assert resp["StreamName"] == stream
         assert resp["DesiredShardLevelMetrics"] == []
+
+
+class TestKinesisRetentionNoOp:
+    def test_increase_retention_same_value_succeeds(self):
+        client = make_client("kinesis")
+        suffix = uuid.uuid4().hex[:8]
+        stream_name = f"ret-stream-{suffix}"
+
+        client.create_stream(StreamName=stream_name, ShardCount=1)
+        time.sleep(1)
+
+        # Should not raise — setting to same value is a no-op
+        client.increase_stream_retention_period(
+            StreamName=stream_name,
+            RetentionPeriodHours=24,
+        )
+
+        desc = client.describe_stream(StreamName=stream_name)
+        retention = desc["StreamDescription"]["RetentionPeriodHours"]
+        assert retention == 24
+
+        client.delete_stream(StreamName=stream_name)
