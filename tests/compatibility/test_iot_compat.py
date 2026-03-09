@@ -175,6 +175,41 @@ class TestIoTThingTypeOperations:
         iot.delete_thing_type(thingTypeName=tt_name)
 
 
+class TestIoTThingFilterOperations:
+    def test_list_things_by_thing_type(self, iot):
+        tt = _unique("type")
+        iot.create_thing_type(thingTypeName=tt)
+        t1 = _unique("thing")
+        t2 = _unique("thing")
+        iot.create_thing(thingName=t1, thingTypeName=tt)
+        iot.create_thing(thingName=t2)
+        resp = iot.list_things(thingTypeName=tt)
+        names = [t["thingName"] for t in resp["things"]]
+        assert t1 in names
+        assert t2 not in names
+        iot.delete_thing(thingName=t1)
+        iot.delete_thing(thingName=t2)
+        iot.deprecate_thing_type(thingTypeName=tt)
+        iot.delete_thing_type(thingTypeName=tt)
+
+    def test_list_things_by_attribute(self, iot):
+        t1 = _unique("thing")
+        iot.create_thing(thingName=t1)
+        iot.update_thing(
+            thingName=t1,
+            attributePayload={"attributes": {"env": "staging"}},
+        )
+        resp = iot.list_things(attributeName="env", attributeValue="staging")
+        names = [t["thingName"] for t in resp["things"]]
+        assert t1 in names
+        iot.delete_thing(thingName=t1)
+
+    def test_describe_thing_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_thing(thingName="nonexistent-thing-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestIoTThingGroupOperations:
     def test_create_thing_group(self, iot):
         name = _unique("grp")
@@ -439,6 +474,16 @@ class TestIoTEndpointAndConfigOperations:
         resp = iot.describe_endpoint(endpointType="iot:Data-ATS")
         assert "endpointAddress" in resp
 
+    def test_describe_endpoint_credential_provider(self, iot):
+        resp = iot.describe_endpoint(endpointType="iot:CredentialProvider")
+        assert "endpointAddress" in resp
+        assert "credentials" in resp["endpointAddress"]
+
+    def test_describe_endpoint_jobs(self, iot):
+        resp = iot.describe_endpoint(endpointType="iot:Jobs")
+        assert "endpointAddress" in resp
+        assert "jobs" in resp["endpointAddress"]
+
     def test_get_indexing_configuration(self, iot):
         resp = iot.get_indexing_configuration()
         assert "thingIndexingConfiguration" in resp
@@ -515,6 +560,22 @@ class TestIoTBillingGroupOperations:
         assert desc["billingGroupProperties"]["billingGroupDescription"] == "updated"
         iot.delete_billing_group(billingGroupName=name)
 
+    def test_create_billing_group_with_properties(self, iot):
+        name = _unique("bg")
+        resp = iot.create_billing_group(
+            billingGroupName=name,
+            billingGroupProperties={"billingGroupDescription": "with props"},
+        )
+        assert resp["billingGroupName"] == name
+        desc = iot.describe_billing_group(billingGroupName=name)
+        assert desc["billingGroupProperties"]["billingGroupDescription"] == "with props"
+        iot.delete_billing_group(billingGroupName=name)
+
+    def test_describe_billing_group_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_billing_group(billingGroupName="nonexistent-bg-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_delete_billing_group(self, iot):
         name = _unique("bg")
         iot.create_billing_group(billingGroupName=name)
@@ -550,6 +611,32 @@ class TestIoTDomainConfigurationOperations:
         assert resp["domainConfigurationName"] == name
         iot.delete_domain_configuration(domainConfigurationName=name)
 
+    def test_create_domain_configuration_with_domain_name(self, iot):
+        name = _unique("dc")
+        resp = iot.create_domain_configuration(
+            domainConfigurationName=name, domainName="test.example.com"
+        )
+        assert resp["domainConfigurationName"] == name
+        desc = iot.describe_domain_configuration(domainConfigurationName=name)
+        assert desc["domainName"] == "test.example.com"
+        iot.delete_domain_configuration(domainConfigurationName=name)
+
+    def test_update_domain_configuration_authorizer_config(self, iot):
+        name = _unique("dc")
+        iot.create_domain_configuration(domainConfigurationName=name)
+        iot.update_domain_configuration(
+            domainConfigurationName=name,
+            authorizerConfig={"allowAuthorizerOverride": True},
+        )
+        desc = iot.describe_domain_configuration(domainConfigurationName=name)
+        assert desc["authorizerConfig"]["allowAuthorizerOverride"] is True
+        iot.delete_domain_configuration(domainConfigurationName=name)
+
+    def test_describe_domain_configuration_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_domain_configuration(domainConfigurationName="nonexistent-dc-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_delete_domain_configuration(self, iot):
         name = _unique("dc")
         iot.create_domain_configuration(domainConfigurationName=name)
@@ -570,6 +657,18 @@ class TestIoTRoleAliasOperations:
         assert "roleAliasArn" in resp
         iot.delete_role_alias(roleAlias=name)
 
+    def test_create_role_alias_with_duration(self, iot):
+        name = _unique("ra")
+        resp = iot.create_role_alias(
+            roleAlias=name,
+            roleArn="arn:aws:iam::123456789012:role/test-role",
+            credentialDurationSeconds=1800,
+        )
+        assert resp["roleAlias"] == name
+        desc = iot.describe_role_alias(roleAlias=name)
+        assert desc["roleAliasDescription"]["credentialDurationSeconds"] == 1800
+        iot.delete_role_alias(roleAlias=name)
+
     def test_describe_role_alias(self, iot):
         name = _unique("ra")
         iot.create_role_alias(
@@ -579,6 +678,11 @@ class TestIoTRoleAliasOperations:
         resp = iot.describe_role_alias(roleAlias=name)
         assert resp["roleAliasDescription"]["roleAlias"] == name
         iot.delete_role_alias(roleAlias=name)
+
+    def test_describe_role_alias_nonexistent(self, iot):
+        with pytest.raises(ClientError) as exc:
+            iot.describe_role_alias(roleAlias="nonexistent-ra-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_role_alias(self, iot):
         name = _unique("ra")
@@ -591,6 +695,18 @@ class TestIoTRoleAliasOperations:
             roleArn="arn:aws:iam::123456789012:role/updated-role",
         )
         assert resp["roleAlias"] == name
+        iot.delete_role_alias(roleAlias=name)
+
+    def test_update_role_alias_credential_duration(self, iot):
+        name = _unique("ra")
+        iot.create_role_alias(
+            roleAlias=name,
+            roleArn="arn:aws:iam::123456789012:role/test-role",
+            credentialDurationSeconds=3600,
+        )
+        iot.update_role_alias(roleAlias=name, credentialDurationSeconds=900)
+        desc = iot.describe_role_alias(roleAlias=name)
+        assert desc["roleAliasDescription"]["credentialDurationSeconds"] == 900
         iot.delete_role_alias(roleAlias=name)
 
     def test_delete_role_alias(self, iot):
@@ -718,6 +834,32 @@ class TestIoTPolicyVersionOperations:
         resp = iot.get_policy(policyName=name)
         assert resp["defaultVersionId"] == vid
         # Cleanup: delete old default version, then new default + policy
+        iot.delete_policy_version(policyName=name, policyVersionId="1")
+        iot.delete_policy(policyName=name)
+
+
+class TestIoTPolicyVersionSetDefaultOperations:
+    def _policy_doc(self, action="iot:Connect"):
+        return json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": action, "Resource": "*"}],
+            }
+        )
+
+    def test_create_policy_version_set_as_default(self, iot):
+        name = _unique("pol")
+        iot.create_policy(policyName=name, policyDocument=self._policy_doc())
+        resp = iot.create_policy_version(
+            policyName=name,
+            policyDocument=self._policy_doc("iot:Publish"),
+            setAsDefault=True,
+        )
+        assert resp["isDefaultVersion"] is True
+        assert resp["policyVersionId"] == "2"
+        pol = iot.get_policy(policyName=name)
+        assert pol["defaultVersionId"] == "2"
+        # Cleanup
         iot.delete_policy_version(policyName=name, policyVersionId="1")
         iot.delete_policy(policyName=name)
 
@@ -975,6 +1117,26 @@ class TestIoTThingGroupExtendedOperations:
         iot.delete_thing(thingName=thing)
         iot.delete_thing_group(thingGroupName=grp)
 
+    def test_list_thing_groups_by_parent(self, iot):
+        parent = _unique("parent")
+        child = _unique("child")
+        iot.create_thing_group(thingGroupName=parent)
+        iot.create_thing_group(thingGroupName=child, parentGroupName=parent)
+        resp = iot.list_thing_groups(parentGroup=parent)
+        names = [g["groupName"] for g in resp["thingGroups"]]
+        assert child in names
+        iot.delete_thing_group(thingGroupName=child)
+        iot.delete_thing_group(thingGroupName=parent)
+
+    def test_list_thing_groups_by_name_prefix(self, iot):
+        prefix = _unique("pfx")
+        grp = f"{prefix}-grp"
+        iot.create_thing_group(thingGroupName=grp)
+        resp = iot.list_thing_groups(namePrefixFilter=prefix)
+        names = [g["groupName"] for g in resp["thingGroups"]]
+        assert grp in names
+        iot.delete_thing_group(thingGroupName=grp)
+
     def test_add_thing_to_billing_group(self, iot):
         bg = _unique("bg")
         thing = _unique("thing")
@@ -1033,6 +1195,30 @@ class TestIoTCertificateRegistrationOperations:
         new_id = resp["certificateId"]
         iot.update_certificate(certificateId=new_id, newStatus="INACTIVE")
         iot.delete_certificate(certificateId=new_id)
+
+    def test_create_certificate_from_csr(self, iot):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        csr = (
+            x509.CertificateSigningRequestBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test-device")]))
+            .sign(key, hashes.SHA256())
+        )
+        csr_pem = csr.public_bytes(serialization.Encoding.PEM).decode()
+        resp = iot.create_certificate_from_csr(certificateSigningRequest=csr_pem, setAsActive=True)
+        assert "certificateId" in resp
+        assert "certificateArn" in resp
+        assert "certificatePem" in resp
+        cert_id = resp["certificateId"]
+        iot.update_certificate(certificateId=cert_id, newStatus="INACTIVE")
+        iot.delete_certificate(certificateId=cert_id)
+
+    def test_update_certificate_to_revoked(self, iot):
+        cert = iot.create_keys_and_certificate(setAsActive=True)
+        cert_id = cert["certificateId"]
+        iot.update_certificate(certificateId=cert_id, newStatus="REVOKED")
+        resp = iot.describe_certificate(certificateId=cert_id)
+        assert resp["certificateDescription"]["status"] == "REVOKED"
+        iot.delete_certificate(certificateId=cert_id)
 
 
 class TestIoTJobOperations:
@@ -1147,6 +1333,37 @@ class TestIoTJobOperations:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
         iot.delete_thing(thingName=thing)
 
+    def test_get_job_document(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        doc = json.dumps({"action": "firmware_update", "version": "2.0"})
+        iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=doc,
+        )
+        resp = iot.get_job_document(jobId=job_id)
+        assert json.loads(resp["document"]) == {"action": "firmware_update", "version": "2.0"}
+        iot.delete_job(jobId=job_id, force=True)
+        iot.delete_thing(thingName=thing)
+
+    def test_cancel_job_execution(self, iot):
+        thing = _unique("thing")
+        iot.create_thing(thingName=thing)
+        thing_arn = iot.describe_thing(thingName=thing)["thingArn"]
+        job_id = _unique("job")
+        iot.create_job(
+            jobId=job_id,
+            targets=[thing_arn],
+            document=json.dumps({"action": "cancel_exec"}),
+        )
+        resp = iot.cancel_job_execution(jobId=job_id, thingName=thing, force=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        iot.delete_job(jobId=job_id, force=True)
+        iot.delete_thing(thingName=thing)
+
 
 class TestIoTThingPrincipalsV2Operations:
     def test_list_thing_principals_v2(self, iot):
@@ -1228,6 +1445,40 @@ class TestIoTCACertificateErrorOperations:
 
 
 class TestIoTCACertificateOperations:
+    def test_describe_ca_certificate_after_registration(self, iot):
+        """Describe a CA certificate that was successfully registered."""
+        reg_code = iot.get_registration_code()["registrationCode"]
+        ca_key, ca_pem = _make_ca_cert()
+        verification_pem = _make_verification_cert(ca_key, reg_code)
+        resp = iot.register_ca_certificate(
+            caCertificate=ca_pem,
+            verificationCertificate=verification_pem,
+            setAsActive=True,
+        )
+        ca_id = resp["certificateId"]
+        desc = iot.describe_ca_certificate(certificateId=ca_id)
+        assert desc["certificateDescription"]["certificateId"] == ca_id
+        assert desc["certificateDescription"]["status"] == "ACTIVE"
+        assert "certificateArn" in desc["certificateDescription"]
+        iot.update_ca_certificate(certificateId=ca_id, newStatus="INACTIVE")
+        iot.delete_ca_certificate(certificateId=ca_id)
+
+    def test_update_ca_certificate_status(self, iot):
+        """Update CA certificate status from ACTIVE to INACTIVE."""
+        reg_code = iot.get_registration_code()["registrationCode"]
+        ca_key, ca_pem = _make_ca_cert()
+        verification_pem = _make_verification_cert(ca_key, reg_code)
+        resp = iot.register_ca_certificate(
+            caCertificate=ca_pem,
+            verificationCertificate=verification_pem,
+            setAsActive=True,
+        )
+        ca_id = resp["certificateId"]
+        iot.update_ca_certificate(certificateId=ca_id, newStatus="INACTIVE")
+        desc = iot.describe_ca_certificate(certificateId=ca_id)
+        assert desc["certificateDescription"]["status"] == "INACTIVE"
+        iot.delete_ca_certificate(certificateId=ca_id)
+
     def test_register_ca_certificate(self, iot):
         """RegisterCACertificate registers a CA cert using the registration code."""
         reg_code_resp = iot.get_registration_code()

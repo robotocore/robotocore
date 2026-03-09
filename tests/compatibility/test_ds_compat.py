@@ -550,6 +550,161 @@ class TestDsSsoWithAlias:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestDsConnectDirectory:
+    """Test AD Connector directory lifecycle."""
+
+    def test_create_connect_directory(self, ds, ec2):
+        """connect_directory creates an ADConnector type directory."""
+        vpc = ec2.create_vpc(CidrBlock="10.83.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.83.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.83.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.connect_directory(
+            Name="conn.example.com",
+            Password="P@ssw0rd!",
+            Size="Small",
+            ConnectSettings={
+                "VpcId": vpc_id,
+                "SubnetIds": [sid1, sid2],
+                "CustomerDnsIps": ["10.0.0.1"],
+                "CustomerUserName": "admin",
+            },
+        )
+        dir_id = resp["DirectoryId"]
+        assert dir_id.startswith("d-")
+        try:
+            desc = ds.describe_directories(DirectoryIds=[dir_id])
+            d = desc["DirectoryDescriptions"][0]
+            assert d["DirectoryId"] == dir_id
+            assert d["Type"] == "ADConnector"
+            assert d["Name"] == "conn.example.com"
+            assert d["Size"] == "Small"
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass
+
+    def test_delete_connect_directory(self, ds, ec2):
+        """delete_directory removes an ADConnector directory."""
+        vpc = ec2.create_vpc(CidrBlock="10.84.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.84.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.84.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.connect_directory(
+            Name="delconn.example.com",
+            Password="P@ssw0rd!",
+            Size="Small",
+            ConnectSettings={
+                "VpcId": vpc_id,
+                "SubnetIds": [sid1, sid2],
+                "CustomerDnsIps": ["10.0.0.1"],
+                "CustomerUserName": "admin",
+            },
+        )
+        dir_id = resp["DirectoryId"]
+        del_resp = ds.delete_directory(DirectoryId=dir_id)
+        assert del_resp["DirectoryId"] == dir_id
+
+        with pytest.raises(ClientError) as exc_info:
+            ds.describe_directories(DirectoryIds=[dir_id])
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+        for sid in [sid1, sid2]:
+            try:
+                ec2.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass
+        try:
+            ec2.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass
+
+
+class TestDsTagErrors:
+    """Test tag operation error handling."""
+
+    def test_add_tags_nonexistent_directory(self, ds):
+        """add_tags_to_resource on nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.add_tags_to_resource(
+                ResourceId="d-0000000000",
+                Tags=[{"Key": "a", "Value": "b"}],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_list_tags_nonexistent_directory(self, ds):
+        """list_tags_for_resource on nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.list_tags_for_resource(ResourceId="d-0000000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_remove_tags_nonexistent_directory(self, ds):
+        """remove_tags_from_resource on nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.remove_tags_from_resource(ResourceId="d-0000000000", TagKeys=["a"])
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsTagOverwrite:
+    """Test tag overwrite behavior."""
+
+    def test_overwrite_tag_value(self, ds, directory):
+        """add_tags_to_resource overwrites existing tag values."""
+        ds.add_tags_to_resource(
+            ResourceId=directory,
+            Tags=[{"Key": "env", "Value": "dev"}],
+        )
+        ds.add_tags_to_resource(
+            ResourceId=directory,
+            Tags=[{"Key": "env", "Value": "prod"}],
+        )
+        resp = ds.list_tags_for_resource(ResourceId=directory)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["env"] == "prod"
+
+    def test_add_multiple_tags_incremental(self, ds, directory):
+        """Multiple add_tags_to_resource calls accumulate tags."""
+        ds.add_tags_to_resource(
+            ResourceId=directory,
+            Tags=[{"Key": "key1", "Value": "val1"}],
+        )
+        ds.add_tags_to_resource(
+            ResourceId=directory,
+            Tags=[{"Key": "key2", "Value": "val2"}],
+        )
+        resp = ds.list_tags_for_resource(ResourceId=directory)
+        tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+        assert tags["key1"] == "val1"
+        assert tags["key2"] == "val2"
+
+
+class TestDsDeleteErrors:
+    """Test delete operation errors."""
+
+    def test_delete_nonexistent_directory(self, ds):
+        """delete_directory on nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.delete_directory(DirectoryId="d-0000000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
 class TestDsGetDirectoryLimitsDetail:
     """Test GetDirectoryLimits returns detailed limit fields."""
 

@@ -1999,3 +1999,261 @@ class TestGlueBatchUpdatePartition:
         finally:
             glue.delete_table(DatabaseName=db_name, Name=tbl_name)
             glue.delete_database(Name=db_name)
+
+
+class TestGlueTagOnCrawler:
+    """Tests for tagging and untagging crawler resources."""
+
+    def test_tag_and_get_tags_on_crawler(self, glue):
+        cr_name = _unique("cr")
+        glue.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Targets={"S3Targets": [{"Path": "s3://bucket/path"}]},
+            DatabaseName="default",
+        )
+        try:
+            cr_arn = f"arn:aws:glue:us-east-1:123456789012:crawler/{cr_name}"
+            glue.tag_resource(ResourceArn=cr_arn, TagsToAdd={"env": "test", "team": "data"})
+            resp = glue.get_tags(ResourceArn=cr_arn)
+            assert resp["Tags"]["env"] == "test"
+            assert resp["Tags"]["team"] == "data"
+        finally:
+            glue.delete_crawler(Name=cr_name)
+
+    def test_untag_crawler(self, glue):
+        cr_name = _unique("cr")
+        glue.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Targets={"S3Targets": [{"Path": "s3://bucket/path"}]},
+            DatabaseName="default",
+        )
+        try:
+            cr_arn = f"arn:aws:glue:us-east-1:123456789012:crawler/{cr_name}"
+            glue.tag_resource(ResourceArn=cr_arn, TagsToAdd={"env": "test", "team": "data"})
+            glue.untag_resource(ResourceArn=cr_arn, TagsToRemove=["env"])
+            resp = glue.get_tags(ResourceArn=cr_arn)
+            assert "env" not in resp["Tags"]
+            assert resp["Tags"]["team"] == "data"
+        finally:
+            glue.delete_crawler(Name=cr_name)
+
+
+class TestGlueTagOnWorkflow:
+    """Tests for tagging workflow resources."""
+
+    def test_tag_and_get_tags_on_workflow(self, glue):
+        wf_name = _unique("wf")
+        glue.create_workflow(Name=wf_name)
+        try:
+            wf_arn = f"arn:aws:glue:us-east-1:123456789012:workflow/{wf_name}"
+            glue.tag_resource(ResourceArn=wf_arn, TagsToAdd={"team": "data"})
+            resp = glue.get_tags(ResourceArn=wf_arn)
+            assert resp["Tags"]["team"] == "data"
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+    def test_untag_workflow(self, glue):
+        wf_name = _unique("wf")
+        glue.create_workflow(Name=wf_name)
+        try:
+            wf_arn = f"arn:aws:glue:us-east-1:123456789012:workflow/{wf_name}"
+            glue.tag_resource(ResourceArn=wf_arn, TagsToAdd={"a": "1", "b": "2"})
+            glue.untag_resource(ResourceArn=wf_arn, TagsToRemove=["a"])
+            resp = glue.get_tags(ResourceArn=wf_arn)
+            assert "a" not in resp["Tags"]
+            assert resp["Tags"]["b"] == "2"
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+
+class TestGlueTagOnTrigger:
+    """Tests for tagging trigger resources."""
+
+    def test_tag_trigger_at_creation(self, glue):
+        job_name = _unique("job")
+        trig_name = _unique("trig")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            glue.create_trigger(
+                Name=trig_name,
+                Type="ON_DEMAND",
+                Actions=[{"JobName": job_name}],
+                Tags={"stage": "dev"},
+            )
+            trig_arn = f"arn:aws:glue:us-east-1:123456789012:trigger/{trig_name}"
+            resp = glue.get_tags(ResourceArn=trig_arn)
+            assert resp["Tags"]["stage"] == "dev"
+        finally:
+            glue.delete_trigger(Name=trig_name)
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueTablesWithExpression:
+    """Tests for get_tables with Expression filter."""
+
+    def _sd(self):
+        return {
+            "Columns": [{"Name": "col1", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_get_tables_with_expression(self, glue):
+        db_name = _unique("db")
+        prefix = _unique("pfx")
+        tbl_a = f"{prefix}-alpha"
+        tbl_b = f"{prefix}-beta"
+        tbl_c = _unique("other")
+
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name, TableInput={"Name": tbl_a, "StorageDescriptor": self._sd()}
+        )
+        glue.create_table(
+            DatabaseName=db_name, TableInput={"Name": tbl_b, "StorageDescriptor": self._sd()}
+        )
+        glue.create_table(
+            DatabaseName=db_name, TableInput={"Name": tbl_c, "StorageDescriptor": self._sd()}
+        )
+        try:
+            resp = glue.get_tables(DatabaseName=db_name, Expression=f"{prefix}*")
+            names = [t["Name"] for t in resp["TableList"]]
+            assert tbl_a in names
+            assert tbl_b in names
+            assert tbl_c not in names
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_a)
+            glue.delete_table(DatabaseName=db_name, Name=tbl_b)
+            glue.delete_table(DatabaseName=db_name, Name=tbl_c)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueCrawlerDetails:
+    """Tests for crawler creation with description and table prefix."""
+
+    def test_create_crawler_with_description_and_prefix(self, glue):
+        cr_name = _unique("cr")
+        glue.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+            DatabaseName="default",
+            Description="crawls data lake",
+            TablePrefix="dl_",
+        )
+        try:
+            resp = glue.get_crawler(Name=cr_name)
+            crawler = resp["Crawler"]
+            assert crawler["Name"] == cr_name
+            assert crawler["Description"] == "crawls data lake"
+            assert crawler["TablePrefix"] == "dl_"
+            assert crawler["State"] == "READY"
+            assert "CreationTime" in crawler
+        finally:
+            glue.delete_crawler(Name=cr_name)
+
+
+class TestGlueJobDetails:
+    """Tests for job creation with extra parameters."""
+
+    def test_create_job_with_config(self, glue):
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            MaxRetries=3,
+            Timeout=120,
+            MaxCapacity=10.0,
+        )
+        try:
+            resp = glue.get_job(JobName=job_name)
+            job = resp["Job"]
+            assert job["Name"] == job_name
+            assert job["MaxRetries"] == 3
+            assert job["Timeout"] == 120
+            assert job["MaxCapacity"] == 10.0
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_create_job_with_default_arguments(self, glue):
+        job_name = _unique("job")
+        default_args = {
+            "--extra-py-files": "s3://bucket/extra.zip",
+            "--TempDir": "s3://bucket/tmp",
+        }
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            DefaultArguments=default_args,
+        )
+        try:
+            resp = glue.get_job(JobName=job_name)
+            job = resp["Job"]
+            assert job["DefaultArguments"]["--extra-py-files"] == "s3://bucket/extra.zip"
+            assert job["DefaultArguments"]["--TempDir"] == "s3://bucket/tmp"
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueScheduledTrigger:
+    """Tests for scheduled trigger creation."""
+
+    def test_create_scheduled_trigger(self, glue):
+        job_name = _unique("job")
+        trig_name = _unique("trig")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            glue.create_trigger(
+                Name=trig_name,
+                Type="SCHEDULED",
+                Schedule="cron(0 12 * * ? *)",
+                Actions=[{"JobName": job_name}],
+            )
+            resp = glue.get_trigger(Name=trig_name)
+            trigger = resp["Trigger"]
+            assert trigger["Name"] == trig_name
+            assert trigger["Type"] == "SCHEDULED"
+            assert trigger["Schedule"] == "cron(0 12 * * ? *)"
+            assert trigger["Actions"][0]["JobName"] == job_name
+        finally:
+            glue.delete_trigger(Name=trig_name)
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueDatabaseWithCatalogId:
+    """Tests for database operations with CatalogId."""
+
+    def test_get_databases_with_catalog_id(self, glue):
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        try:
+            resp = glue.get_databases(CatalogId="123456789012")
+            db_names = [db["Name"] for db in resp["DatabaseList"]]
+            assert db_name in db_names
+        finally:
+            glue.delete_database(Name=db_name)
+
+    def test_get_database_with_catalog_id(self, glue):
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        try:
+            resp = glue.get_database(Name=db_name, CatalogId="123456789012")
+            assert resp["Database"]["Name"] == db_name
+        finally:
+            glue.delete_database(Name=db_name)
