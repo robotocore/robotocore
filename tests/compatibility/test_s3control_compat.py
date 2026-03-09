@@ -1627,18 +1627,21 @@ class TestS3ControlAccessGrants:
         assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrant"
 
     def test_get_access_grants_instance(self, s3control):
-        resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
-        assert "ResponseMetadata" in resp
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
 
     def test_get_access_grants_instance_for_prefix(self, s3control):
-        resp = s3control.get_access_grants_instance_for_prefix(
-            AccountId=ACCOUNT_ID, S3Prefix="s3://my-bucket/prefix"
-        )
-        assert "ResponseMetadata" in resp
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_instance_for_prefix(
+                AccountId=ACCOUNT_ID, S3Prefix="s3://my-bucket/prefix"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
 
     def test_get_access_grants_instance_resource_policy(self, s3control):
-        resp = s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
-        assert "ResponseMetadata" in resp
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsInstance"
 
     def test_get_access_grants_location_nonexistent(self, s3control):
         with pytest.raises(ClientError) as exc_info:
