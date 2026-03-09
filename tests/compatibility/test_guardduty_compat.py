@@ -576,3 +576,103 @@ class TestGuardDutyUpdateOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         get_resp = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
         assert get_resp["Name"] == "updated-ti"
+
+    def test_update_ip_set_location(self, guardduty, detector_and_ipset):
+        """UpdateIPSet updates the location of an IP set."""
+        det_id, ip_set_id = detector_and_ipset
+        resp = guardduty.update_ip_set(
+            DetectorId=det_id, IpSetId=ip_set_id, Location="s3://new-bucket/ipset2.txt"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        get_resp = guardduty.get_ip_set(DetectorId=det_id, IpSetId=ip_set_id)
+        assert get_resp["Location"] == "s3://new-bucket/ipset2.txt"
+
+    def test_update_ip_set_activate(self, guardduty):
+        """UpdateIPSet can deactivate and reactivate an IP set."""
+        det = guardduty.create_detector(Enable=True)
+        det_id = det["DetectorId"]
+        ip = guardduty.create_ip_set(
+            DetectorId=det_id,
+            Name="act-ipset",
+            Format="TXT",
+            Location="s3://test-bucket/ip.txt",
+            Activate=True,
+        )
+        ip_set_id = ip["IpSetId"]
+        try:
+            guardduty.update_ip_set(DetectorId=det_id, IpSetId=ip_set_id, Activate=False)
+            detail = guardduty.get_ip_set(DetectorId=det_id, IpSetId=ip_set_id)
+            assert detail["Status"] in ("INACTIVE", "DEACTIVATING")
+
+            guardduty.update_ip_set(DetectorId=det_id, IpSetId=ip_set_id, Activate=True)
+            detail = guardduty.get_ip_set(DetectorId=det_id, IpSetId=ip_set_id)
+            assert detail["Status"] in ("ACTIVE", "ACTIVATING")
+        finally:
+            guardduty.delete_ip_set(DetectorId=det_id, IpSetId=ip_set_id)
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_update_threat_intel_set_location(self, guardduty, detector_and_tiset):
+        """UpdateThreatIntelSet updates the location."""
+        det_id, ti_id = detector_and_tiset
+        resp = guardduty.update_threat_intel_set(
+            DetectorId=det_id, ThreatIntelSetId=ti_id, Location="s3://new-bucket/ti2.txt"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        get_resp = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
+        assert get_resp["Location"] == "s3://new-bucket/ti2.txt"
+
+    def test_update_threat_intel_set_activate(self, guardduty):
+        """UpdateThreatIntelSet can deactivate and reactivate."""
+        det = guardduty.create_detector(Enable=True)
+        det_id = det["DetectorId"]
+        ti = guardduty.create_threat_intel_set(
+            DetectorId=det_id,
+            Name="act-ti",
+            Format="TXT",
+            Location="s3://test-bucket/ti.txt",
+            Activate=True,
+        )
+        ti_id = ti["ThreatIntelSetId"]
+        try:
+            guardduty.update_threat_intel_set(
+                DetectorId=det_id, ThreatIntelSetId=ti_id, Activate=False
+            )
+            detail = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
+            assert detail["Status"] in ("INACTIVE", "DEACTIVATING")
+
+            guardduty.update_threat_intel_set(
+                DetectorId=det_id, ThreatIntelSetId=ti_id, Activate=True
+            )
+            detail = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
+            assert detail["Status"] in ("ACTIVE", "ACTIVATING")
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_update_ip_set_multiple_fields(self, guardduty, detector_and_ipset):
+        """UpdateIPSet can update name and location together."""
+        det_id, ip_set_id = detector_and_ipset
+        resp = guardduty.update_ip_set(
+            DetectorId=det_id,
+            IpSetId=ip_set_id,
+            Name="multi-update-ipset",
+            Location="s3://multi-bucket/ipset.txt",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        get_resp = guardduty.get_ip_set(DetectorId=det_id, IpSetId=ip_set_id)
+        assert get_resp["Name"] == "multi-update-ipset"
+        assert get_resp["Location"] == "s3://multi-bucket/ipset.txt"
+
+    def test_update_threat_intel_set_multiple_fields(self, guardduty, detector_and_tiset):
+        """UpdateThreatIntelSet can update name and location together."""
+        det_id, ti_id = detector_and_tiset
+        resp = guardduty.update_threat_intel_set(
+            DetectorId=det_id,
+            ThreatIntelSetId=ti_id,
+            Name="multi-update-ti",
+            Location="s3://multi-bucket/ti.txt",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        get_resp = guardduty.get_threat_intel_set(DetectorId=det_id, ThreatIntelSetId=ti_id)
+        assert get_resp["Name"] == "multi-update-ti"
+        assert get_resp["Location"] == "s3://multi-bucket/ti.txt"
