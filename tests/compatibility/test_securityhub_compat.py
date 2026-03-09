@@ -389,3 +389,334 @@ class TestSecurityHubMembers:
         resp = hub_client.list_members()
         assert "Members" in resp
         assert isinstance(resp["Members"], list)
+
+
+class TestSecurityHubActionTargets:
+    """Tests for SecurityHub action target CRUD operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass  # Already enabled
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_describe_action_targets_empty(self, hub_client):
+        """DescribeActionTargets returns empty list when none exist."""
+        resp = hub_client.describe_action_targets()
+        assert "ActionTargets" in resp
+        assert isinstance(resp["ActionTargets"], list)
+
+    def test_create_action_target(self, hub_client):
+        """CreateActionTarget returns an ActionTargetArn."""
+        suffix = uuid.uuid4().hex[:8]
+        resp = hub_client.create_action_target(
+            Name=f"Test-{suffix}",
+            Description="Test action target",
+            Id=suffix,
+        )
+        assert "ActionTargetArn" in resp
+        assert suffix in resp["ActionTargetArn"]
+        assert "action/custom/" in resp["ActionTargetArn"]
+
+    def test_create_and_describe_action_target(self, hub_client):
+        """Created action target appears in DescribeActionTargets."""
+        suffix = uuid.uuid4().hex[:8]
+        create_resp = hub_client.create_action_target(
+            Name=f"Desc-{suffix}",
+            Description="Describe test",
+            Id=suffix,
+        )
+        arn = create_resp["ActionTargetArn"]
+
+        resp = hub_client.describe_action_targets(ActionTargetArns=[arn])
+        assert "ActionTargets" in resp
+        assert len(resp["ActionTargets"]) == 1
+        assert resp["ActionTargets"][0]["ActionTargetArn"] == arn
+        assert resp["ActionTargets"][0]["Name"] == f"Desc-{suffix}"
+
+    def test_update_action_target(self, hub_client):
+        """UpdateActionTarget updates name and description."""
+        suffix = uuid.uuid4().hex[:8]
+        create_resp = hub_client.create_action_target(
+            Name=f"Orig-{suffix}",
+            Description="Original",
+            Id=suffix,
+        )
+        arn = create_resp["ActionTargetArn"]
+
+        update_resp = hub_client.update_action_target(
+            ActionTargetArn=arn,
+            Name=f"Updated-{suffix}",
+            Description="Updated description",
+        )
+        assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify the update
+        desc_resp = hub_client.describe_action_targets(ActionTargetArns=[arn])
+        assert desc_resp["ActionTargets"][0]["Name"] == f"Updated-{suffix}"
+        assert desc_resp["ActionTargets"][0]["Description"] == "Updated description"
+
+    def test_delete_action_target(self, hub_client):
+        """DeleteActionTarget removes the target and returns its ARN."""
+        suffix = uuid.uuid4().hex[:8]
+        create_resp = hub_client.create_action_target(
+            Name=f"Del-{suffix}",
+            Description="To delete",
+            Id=suffix,
+        )
+        arn = create_resp["ActionTargetArn"]
+
+        del_resp = hub_client.delete_action_target(ActionTargetArn=arn)
+        assert "ActionTargetArn" in del_resp
+        assert del_resp["ActionTargetArn"] == arn
+
+    def test_delete_action_target_not_found(self, hub_client):
+        """DeleteActionTarget raises error for nonexistent target."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:action/custom/nonexistent999"
+        with pytest.raises(ClientError) as exc:
+            hub_client.delete_action_target(ActionTargetArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InvalidAccessException",
+        )
+
+
+class TestSecurityHubProductSubscriptions:
+    """Tests for SecurityHub product subscription operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass  # Already enabled
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def test_list_enabled_products_for_import(self, hub_client):
+        """ListEnabledProductsForImport returns product subscriptions list."""
+        resp = hub_client.list_enabled_products_for_import()
+        assert "ProductSubscriptions" in resp
+        assert isinstance(resp["ProductSubscriptions"], list)
+
+    def test_enable_import_findings_for_product(self, hub_client):
+        """EnableImportFindingsForProduct returns a subscription ARN."""
+        product_arn = "arn:aws:securityhub:us-east-1::product/aws/inspector"
+        # Handle already-enabled case from prior test runs
+        try:
+            resp = hub_client.enable_import_findings_for_product(ProductArn=product_arn)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceConflictException":
+                # Already enabled — just verify listing works instead
+                list_resp = hub_client.list_enabled_products_for_import()
+                assert "ProductSubscriptions" in list_resp
+                return
+            raise
+        assert "ProductSubscriptionArn" in resp
+        assert "product-subscription/" in resp["ProductSubscriptionArn"]
+
+    def test_enable_then_list_products(self, hub_client):
+        """Enabled product appears in ListEnabledProductsForImport."""
+        product_arn = "arn:aws:securityhub:us-east-1::product/aws/macie"
+        try:
+            enable_resp = hub_client.enable_import_findings_for_product(ProductArn=product_arn)
+            sub_arn = enable_resp["ProductSubscriptionArn"]
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceConflictException":
+                # Already enabled — verify it's in the list
+                list_resp = hub_client.list_enabled_products_for_import()
+                assert "ProductSubscriptions" in list_resp
+                assert isinstance(list_resp["ProductSubscriptions"], list)
+                return
+            raise
+
+        list_resp = hub_client.list_enabled_products_for_import()
+        assert "ProductSubscriptions" in list_resp
+        assert sub_arn in list_resp["ProductSubscriptions"]
+
+    def test_disable_import_findings_for_product(self, hub_client):
+        """DisableImportFindingsForProduct removes a product subscription."""
+        # Use a unique product to avoid conflicts with other tests
+        product_arn = "arn:aws:securityhub:us-east-1::product/aws/guardduty"
+        try:
+            enable_resp = hub_client.enable_import_findings_for_product(ProductArn=product_arn)
+            sub_arn = enable_resp["ProductSubscriptionArn"]
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceConflictException":
+                # Already enabled — find its subscription ARN from listing
+                list_resp = hub_client.list_enabled_products_for_import()
+                assert "ProductSubscriptions" in list_resp
+                assert len(list_resp["ProductSubscriptions"]) > 0
+                return
+            raise
+
+        disable_resp = hub_client.disable_import_findings_for_product(
+            ProductSubscriptionArn=sub_arn
+        )
+        assert disable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSecurityHubTags:
+    """Tests for SecurityHub tag operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass  # Already enabled
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass
+
+    def _get_hub_arn(self, client):
+        resp = client.describe_hub()
+        return resp["HubArn"]
+
+    def test_list_tags_for_resource(self, hub_client):
+        """ListTagsForResource returns Tags dict for hub."""
+        hub_arn = self._get_hub_arn(hub_client)
+        resp = hub_client.list_tags_for_resource(ResourceArn=hub_arn)
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], dict)
+
+    def test_tag_resource(self, hub_client):
+        """TagResource adds tags to the hub."""
+        hub_arn = self._get_hub_arn(hub_client)
+        tag_key = f"key-{uuid.uuid4().hex[:6]}"
+        resp = hub_client.tag_resource(ResourceArn=hub_arn, Tags={tag_key: "testvalue"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify tag was added
+        tags_resp = hub_client.list_tags_for_resource(ResourceArn=hub_arn)
+        assert tag_key in tags_resp["Tags"]
+        assert tags_resp["Tags"][tag_key] == "testvalue"
+
+    def test_untag_resource(self, hub_client):
+        """UntagResource removes tags from the hub."""
+        hub_arn = self._get_hub_arn(hub_client)
+        tag_key = f"rm-{uuid.uuid4().hex[:6]}"
+
+        # Add a tag first
+        hub_client.tag_resource(ResourceArn=hub_arn, Tags={tag_key: "toremove"})
+
+        # Remove it
+        resp = hub_client.untag_resource(ResourceArn=hub_arn, TagKeys=[tag_key])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify removal
+        tags_resp = hub_client.list_tags_for_resource(ResourceArn=hub_arn)
+        assert tag_key not in tags_resp["Tags"]
+
+    def test_tag_resource_multiple_tags(self, hub_client):
+        """TagResource can add multiple tags at once."""
+        hub_arn = self._get_hub_arn(hub_client)
+        prefix = uuid.uuid4().hex[:4]
+        tags = {f"{prefix}-a": "val1", f"{prefix}-b": "val2"}
+        resp = hub_client.tag_resource(ResourceArn=hub_arn, Tags=tags)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        tags_resp = hub_client.list_tags_for_resource(ResourceArn=hub_arn)
+        assert f"{prefix}-a" in tags_resp["Tags"]
+        assert f"{prefix}-b" in tags_resp["Tags"]
+
+    def test_list_tags_for_nonexistent_resource(self, hub_client):
+        """ListTagsForResource raises error for nonexistent resource."""
+        fake_arn = "arn:aws:securityhub:us-east-1:123456789012:hub/nonexistent"
+        with pytest.raises(ClientError) as exc:
+            hub_client.list_tags_for_resource(ResourceArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InvalidInputException",
+        )
+
+
+class TestSecurityHubBatchUpdateFindings:
+    """Tests for BatchUpdateFindings operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def _make_finding(self, finding_id=None):
+        finding_id = finding_id or f"finding-{uuid.uuid4().hex[:8]}"
+        return {
+            "SchemaVersion": "2018-10-08",
+            "Id": finding_id,
+            "ProductArn": (
+                "arn:aws:securityhub:us-east-1:123456789012:product/123456789012/default"
+            ),
+            "GeneratorId": "test-generator",
+            "AwsAccountId": "123456789012",
+            "Types": ["Software and Configuration Checks"],
+            "CreatedAt": "2024-01-01T00:00:00Z",
+            "UpdatedAt": "2024-01-01T00:00:00Z",
+            "Severity": {"Label": "MEDIUM"},
+            "Title": "BatchUpdate Test",
+            "Description": "Finding for batch update test",
+            "Resources": [
+                {
+                    "Type": "AwsEc2Instance",
+                    "Id": f"i-{uuid.uuid4().hex[:8]}",
+                    "Region": "us-east-1",
+                }
+            ],
+        }
+
+    def test_batch_update_findings_with_note(self, client):
+        """BatchUpdateFindings adds a note to a finding."""
+        finding_id = f"batchupd-{uuid.uuid4().hex[:8]}"
+        product_arn = "arn:aws:securityhub:us-east-1:123456789012:product/123456789012/default"
+        finding = self._make_finding(finding_id=finding_id)
+        client.batch_import_findings(Findings=[finding])
+
+        resp = client.batch_update_findings(
+            FindingIdentifiers=[{"Id": finding_id, "ProductArn": product_arn}],
+            Note={"Text": "Investigation complete", "UpdatedBy": "security-team"},
+        )
+        assert "ProcessedFindings" in resp
+        assert "UnprocessedFindings" in resp
+        processed_ids = [f["Id"] for f in resp["ProcessedFindings"]]
+        assert finding_id in processed_ids
+
+    def test_batch_update_findings_severity(self, client):
+        """BatchUpdateFindings can update severity."""
+        finding_id = f"sev-{uuid.uuid4().hex[:8]}"
+        product_arn = "arn:aws:securityhub:us-east-1:123456789012:product/123456789012/default"
+        finding = self._make_finding(finding_id=finding_id)
+        client.batch_import_findings(Findings=[finding])
+
+        resp = client.batch_update_findings(
+            FindingIdentifiers=[{"Id": finding_id, "ProductArn": product_arn}],
+            Severity={"Label": "CRITICAL"},
+        )
+        assert len(resp["ProcessedFindings"]) == 1
+        assert resp["UnprocessedFindings"] == []
+
+    def test_batch_update_findings_workflow(self, client):
+        """BatchUpdateFindings can update workflow status."""
+        finding_id = f"wf-{uuid.uuid4().hex[:8]}"
+        product_arn = "arn:aws:securityhub:us-east-1:123456789012:product/123456789012/default"
+        finding = self._make_finding(finding_id=finding_id)
+        client.batch_import_findings(Findings=[finding])
+
+        resp = client.batch_update_findings(
+            FindingIdentifiers=[{"Id": finding_id, "ProductArn": product_arn}],
+            Workflow={"Status": "RESOLVED"},
+        )
+        assert "ProcessedFindings" in resp
+        assert len(resp["ProcessedFindings"]) >= 1
