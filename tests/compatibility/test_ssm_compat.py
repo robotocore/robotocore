@@ -2281,3 +2281,69 @@ class TestSSMGetParametersExtended:
             assert resp["Parameters"][0]["DataType"] == "text"
         finally:
             ssm.delete_parameter(Name=name)
+
+
+class TestSSMMaintenanceWindowDescribe:
+    """Tests for DescribeMaintenanceWindowTasks and DescribeMaintenanceWindowTargets."""
+
+    def test_describe_maintenance_window_tasks_empty(self, ssm):
+        """DescribeMaintenanceWindowTasks returns empty list for new window."""
+        name = _unique("mw-tasks")
+        resp = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="cron(0 0 ? * SUN *)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        win_id = resp["WindowId"]
+        try:
+            tasks_resp = ssm.describe_maintenance_window_tasks(WindowId=win_id)
+            assert "Tasks" in tasks_resp
+            assert isinstance(tasks_resp["Tasks"], list)
+            assert len(tasks_resp["Tasks"]) == 0
+        finally:
+            ssm.delete_maintenance_window(WindowId=win_id)
+
+    def test_describe_maintenance_window_targets_empty(self, ssm):
+        """DescribeMaintenanceWindowTargets returns empty list for new window."""
+        name = _unique("mw-targets")
+        resp = ssm.create_maintenance_window(
+            Name=name,
+            Schedule="cron(0 0 ? * SUN *)",
+            Duration=2,
+            Cutoff=1,
+            AllowUnassociatedTargets=True,
+        )
+        win_id = resp["WindowId"]
+        try:
+            targets_resp = ssm.describe_maintenance_window_targets(WindowId=win_id)
+            assert "Targets" in targets_resp
+            assert isinstance(targets_resp["Targets"], list)
+            assert len(targets_resp["Targets"]) == 0
+        finally:
+            ssm.delete_maintenance_window(WindowId=win_id)
+
+
+class TestSSMGetParametersMultiple:
+    """Tests for GetParameters with multiple names including invalid ones."""
+
+    def test_get_parameters_with_invalid_names(self, ssm):
+        """GetParameters returns InvalidParameters for nonexistent names."""
+        name1 = _unique("/test/gpmulti1")
+        name2 = _unique("/test/gpmulti2")
+        fake = _unique("/test/gpfake")
+        ssm.put_parameter(Name=name1, Value="val1", Type="String")
+        ssm.put_parameter(Name=name2, Value="val2", Type="String")
+        try:
+            resp = ssm.get_parameters(Names=[name1, name2, fake])
+            assert "Parameters" in resp
+            assert "InvalidParameters" in resp
+            found_names = {p["Name"] for p in resp["Parameters"]}
+            assert name1 in found_names
+            assert name2 in found_names
+            assert fake in resp["InvalidParameters"]
+            assert len(resp["Parameters"]) == 2
+        finally:
+            ssm.delete_parameter(Name=name1)
+            ssm.delete_parameter(Name=name2)
