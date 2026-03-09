@@ -11,7 +11,7 @@ robotocore runs as a Docker container on port 4566 and responds to real AWS SDK 
 ### Option A: start it per-session (local dev)
 
 ```bash
-docker run -d -p 4566:4566 --name robotocore jackdanger/robotocore:latest
+docker run -d -p 4566:4566 --name robotocore robotocore/robotocore:latest
 ```
 
 ### Option B: docker-compose (team standard)
@@ -21,7 +21,7 @@ Add to `docker-compose.yml`:
 ```yaml
 services:
   aws:
-    image: jackdanger/robotocore:latest
+    image: robotocore/robotocore:latest
     ports:
       - "4566:4566"
     healthcheck:
@@ -35,7 +35,7 @@ services:
 ```yaml
 services:
   robotocore:
-    image: jackdanger/robotocore:latest
+    image: robotocore/robotocore:latest
     ports:
       - 4566:4566
     options: >-
@@ -195,7 +195,7 @@ AWS_ENDPOINT_URL="" pytest tests/
 ```toml
 # pyproject.toml — no Python package needed, just document the Docker image
 [tool.robotocore]
-image = "jackdanger/robotocore:latest"
+image = "robotocore/robotocore:latest"
 port  = 4566
 ```
 
@@ -206,6 +206,6 @@ Or just document it in `README.md` or `CONTRIBUTING.md`:
 
 Start robotocore before running tests:
 
-    docker run -d -p 4566:4566 jackdanger/robotocore:latest
+    docker run -d -p 4566:4566 robotocore/robotocore:latest
     pytest tests/
 ```

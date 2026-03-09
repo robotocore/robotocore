@@ -52,8 +52,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            jackdanger/robotocore:${{ steps.version.outputs.VERSION }}
-            jackdanger/robotocore:latest
+            robotocore/robotocore:${{ steps.version.outputs.VERSION }}
+            robotocore/robotocore:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
             ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha

@@ -31,13 +31,13 @@ curl -sf http://localhost:4566/_localstack/health > /dev/null && echo "already r
 
 ```bash
 docker rm -f robotocore 2>/dev/null || true
-docker run -d -p 4566:4566 --name robotocore jackdanger/robotocore:latest
+docker run -d -p 4566:4566 --name robotocore robotocore/robotocore:latest
 ```
 
 Also available from GHCR:
 
 ```bash
-docker run -d -p 4566:4566 --name robotocore ghcr.io/jackdanger/robotocore:latest
+docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
 ```
 
 ### Verify it's ready
@@ -170,20 +170,11 @@ Non-numeric access keys (e.g. `"test"`) route to the default account `1234567890
 
 ---
 
-## Supported services (42)
+## Supported services (147)
 
-ACM, API Gateway v1, API Gateway v2, AppSync, Batch, CloudFormation, CloudWatch,
-CloudWatch Logs, Cognito, Config, DynamoDB, DynamoDB Streams, EC2, ECS,
-Elasticsearch, EventBridge, EventBridge Scheduler, Firehose, IAM, Kinesis, KMS,
-Lambda, OpenSearch, Redshift, Resource Groups, Resource Groups Tagging, Route 53,
-Route 53 Resolver, S3, S3 Control, Scheduler, Secrets Manager, SES, SES v2, SNS,
-SQS, SSM, Step Functions, STS, Support, SWF, Transcribe
+**38 native providers** (full behavioral fidelity): ACM, API Gateway v1, API Gateway v2, AppSync, Batch, CloudFormation, CloudWatch, CloudWatch Logs, Cognito User Pools, Config, DynamoDB, DynamoDB Streams, EC2, ECR, ECS, Elasticsearch, EventBridge, Firehose, IAM, Kinesis, Lambda, OpenSearch, Rekognition, Resource Groups, Resource Groups Tagging, Route 53, S3, Scheduler, Secrets Manager, SES, SES v2, SNS, SQS, SSM, Step Functions, STS, Support, X-Ray.
 
-Services with **native** implementations (full behavioral fidelity beyond Moto):
-API Gateway v1/v2, AppSync, Batch, CloudFormation, CloudWatch, CloudWatch Logs,
-Cognito, Config, DynamoDB, DynamoDB Streams, ECS, EventBridge, Firehose, IAM,
-Kinesis, Lambda, S3, Scheduler, SES, SES v2, SNS, SQS, Step Functions, STS,
-Resource Groups Tagging.
+**109 Moto-backed services**: Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, EKS, ElastiCache, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IoT, IoT Data, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, Organizations, OSIS, Panorama, Pinpoint, Pipes, Polly, QuickSight, RAM, RDS, RDS Data, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Synthetics, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web.
 
 ---
 
@@ -389,7 +380,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       robotocore:
-        image: jackdanger/robotocore:latest
+        image: robotocore/robotocore:latest
         ports:
           - 4566:4566
         options: >-
@@ -411,7 +402,7 @@ jobs:
 # docker-compose
 services:
   aws:
-    image: jackdanger/robotocore:latest
+    image: robotocore/robotocore:latest
     ports:
       - "4566:4566"
     healthcheck:
@@ -424,8 +415,8 @@ services:
 
 ## Source & contributing
 
-- **Repository**: https://github.com/jackdanger/robotocore
-- **Issues**: https://github.com/jackdanger/robotocore/issues
+- **Repository**: https://github.com/robotocore/robotocore
+- **Issues**: https://github.com/robotocore/robotocore/issues
 - **Built on**: [Moto](https://github.com/getmoto/moto) (~195 AWS service implementations)
 - **Author**: Jack Danger, a Moto maintainer
 
