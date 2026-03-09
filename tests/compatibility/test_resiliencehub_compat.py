@@ -613,3 +613,219 @@ class TestResiliencehubAutoCoverage:
         """ListAppAssessments returns a response."""
         resp = client.list_app_assessments()
         assert "assessmentSummaries" in resp
+
+
+class TestResilienceHubSuggestedPolicies:
+    """Tests for ListSuggestedResiliencyPolicies."""
+
+    def test_list_suggested_resiliency_policies(self, resiliencehub):
+        """ListSuggestedResiliencyPolicies returns policies without needing an app."""
+        resp = resiliencehub.list_suggested_resiliency_policies()
+        assert "resiliencyPolicies" in resp
+        assert isinstance(resp["resiliencyPolicies"], list)
+
+
+class TestResilienceHubAppVersionDescribe:
+    """Tests for Describe*AppVersion* operations."""
+
+    def _create_app_with_resources(self, client):
+        app_arn = client.create_app(name=_unique_name())["app"]["appArn"]
+        client.create_app_version_app_component(
+            appArn=app_arn, name="comp1", type="AWS::EC2::Instance"
+        )
+        client.create_app_version_resource(
+            appArn=app_arn,
+            appComponents=["comp1"],
+            logicalResourceId={"identifier": "res1"},
+            physicalResourceId="i-abc123",
+            resourceType="AWS::EC2::Instance",
+        )
+        return app_arn
+
+    def test_describe_app_version(self, resiliencehub):
+        """DescribeAppVersion returns appArn and appVersion."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.describe_app_version(appArn=app_arn, appVersion="draft")
+        assert resp["appArn"] == app_arn
+        assert resp["appVersion"] == "draft"
+
+    def test_describe_app_version_template(self, resiliencehub):
+        """DescribeAppVersionTemplate returns template body."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.describe_app_version_template(appArn=app_arn, appVersion="draft")
+        assert resp["appArn"] == app_arn
+        assert "appTemplateBody" in resp
+
+    def test_describe_app_version_app_component(self, resiliencehub):
+        """DescribeAppVersionAppComponent returns component details."""
+        app_arn = self._create_app_with_resources(resiliencehub)
+        resp = resiliencehub.describe_app_version_app_component(
+            appArn=app_arn, appVersion="draft", id="comp1"
+        )
+        assert resp["appArn"] == app_arn
+        assert "appComponent" in resp
+        assert resp["appComponent"]["name"] == "comp1"
+
+    def test_describe_app_version_resource(self, resiliencehub):
+        """DescribeAppVersionResource returns resource details."""
+        app_arn = self._create_app_with_resources(resiliencehub)
+        resp = resiliencehub.describe_app_version_resource(
+            appArn=app_arn,
+            appVersion="draft",
+            logicalResourceId={"identifier": "res1"},
+        )
+        assert resp["appArn"] == app_arn
+        assert "physicalResource" in resp
+
+    def test_describe_app_version_resources_resolution_status(self, resiliencehub):
+        """DescribeAppVersionResourcesResolutionStatus returns status."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.describe_app_version_resources_resolution_status(
+            appArn=app_arn, appVersion="draft"
+        )
+        assert resp["appArn"] == app_arn
+        assert "status" in resp
+
+    def test_describe_draft_app_version_resources_import_status(self, resiliencehub):
+        """DescribeDraftAppVersionResourcesImportStatus returns import status."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.describe_draft_app_version_resources_import_status(appArn=app_arn)
+        assert resp["appArn"] == app_arn
+        assert "status" in resp
+        assert "statusChangeTime" in resp
+
+
+class TestResilienceHubAppVersionLists:
+    """Tests for List*AppVersion* operations."""
+
+    def _create_app_with_resources(self, client):
+        app_arn = client.create_app(name=_unique_name())["app"]["appArn"]
+        client.create_app_version_app_component(
+            appArn=app_arn, name="comp1", type="AWS::EC2::Instance"
+        )
+        client.create_app_version_resource(
+            appArn=app_arn,
+            appComponents=["comp1"],
+            logicalResourceId={"identifier": "res1"},
+            physicalResourceId="i-abc123",
+            resourceType="AWS::EC2::Instance",
+        )
+        return app_arn
+
+    def test_list_app_version_resource_mappings(self, resiliencehub):
+        """ListAppVersionResourceMappings returns resource mappings."""
+        app_arn = self._create_app_with_resources(resiliencehub)
+        resp = resiliencehub.list_app_version_resource_mappings(appArn=app_arn, appVersion="draft")
+        assert "resourceMappings" in resp
+        assert isinstance(resp["resourceMappings"], list)
+
+    def test_list_app_input_sources(self, resiliencehub):
+        """ListAppInputSources returns input sources list."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.list_app_input_sources(appArn=app_arn, appVersion="draft")
+        assert "appInputSources" in resp
+        assert isinstance(resp["appInputSources"], list)
+
+    def test_list_unsupported_app_version_resources(self, resiliencehub):
+        """ListUnsupportedAppVersionResources returns unsupported resources."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.list_unsupported_app_version_resources(
+            appArn=app_arn, appVersion="draft"
+        )
+        assert "unsupportedResources" in resp
+        assert isinstance(resp["unsupportedResources"], list)
+
+
+class TestResilienceHubAssessmentOps:
+    """Tests for assessment-related operations using fake ARN."""
+
+    FAKE_ASSESSMENT_ARN = "arn:aws:resiliencehub:us-east-1:123456789012:app-assessment/nonexistent"
+
+    def test_describe_app_assessment_not_found(self, resiliencehub):
+        """DescribeAppAssessment with fake ARN raises ResourceNotFoundException."""
+        with pytest.raises(resiliencehub.exceptions.ClientError) as exc_info:
+            resiliencehub.describe_app_assessment(assessmentArn=self.FAKE_ASSESSMENT_ARN)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_alarm_recommendations(self, resiliencehub):
+        """ListAlarmRecommendations returns alarmRecommendations key."""
+        resp = resiliencehub.list_alarm_recommendations(assessmentArn=self.FAKE_ASSESSMENT_ARN)
+        assert "alarmRecommendations" in resp
+        assert isinstance(resp["alarmRecommendations"], list)
+
+    def test_list_app_assessment_compliance_drifts(self, resiliencehub):
+        """ListAppAssessmentComplianceDrifts returns complianceDrifts."""
+        resp = resiliencehub.list_app_assessment_compliance_drifts(
+            assessmentArn=self.FAKE_ASSESSMENT_ARN
+        )
+        assert "complianceDrifts" in resp
+        assert isinstance(resp["complianceDrifts"], list)
+
+    def test_list_app_assessment_resource_drifts(self, resiliencehub):
+        """ListAppAssessmentResourceDrifts returns resourceDrifts."""
+        resp = resiliencehub.list_app_assessment_resource_drifts(
+            assessmentArn=self.FAKE_ASSESSMENT_ARN
+        )
+        assert "resourceDrifts" in resp
+        assert isinstance(resp["resourceDrifts"], list)
+
+    def test_list_app_component_compliances(self, resiliencehub):
+        """ListAppComponentCompliances returns componentCompliances."""
+        resp = resiliencehub.list_app_component_compliances(assessmentArn=self.FAKE_ASSESSMENT_ARN)
+        assert "componentCompliances" in resp
+        assert isinstance(resp["componentCompliances"], list)
+
+    def test_list_app_component_recommendations(self, resiliencehub):
+        """ListAppComponentRecommendations returns componentRecommendations."""
+        resp = resiliencehub.list_app_component_recommendations(
+            assessmentArn=self.FAKE_ASSESSMENT_ARN
+        )
+        assert "componentRecommendations" in resp
+        assert isinstance(resp["componentRecommendations"], list)
+
+    def test_list_sop_recommendations(self, resiliencehub):
+        """ListSopRecommendations returns sopRecommendations."""
+        resp = resiliencehub.list_sop_recommendations(assessmentArn=self.FAKE_ASSESSMENT_ARN)
+        assert "sopRecommendations" in resp
+        assert isinstance(resp["sopRecommendations"], list)
+
+    def test_list_test_recommendations(self, resiliencehub):
+        """ListTestRecommendations returns testRecommendations."""
+        resp = resiliencehub.list_test_recommendations(assessmentArn=self.FAKE_ASSESSMENT_ARN)
+        assert "testRecommendations" in resp
+        assert isinstance(resp["testRecommendations"], list)
+
+    def test_list_recommendation_templates(self, resiliencehub):
+        """ListRecommendationTemplates returns recommendationTemplates."""
+        resp = resiliencehub.list_recommendation_templates(assessmentArn=self.FAKE_ASSESSMENT_ARN)
+        assert "recommendationTemplates" in resp
+        assert isinstance(resp["recommendationTemplates"], list)
+
+
+class TestResilienceHubMetricsAndGrouping:
+    """Tests for metrics and resource grouping operations."""
+
+    def test_describe_metrics_export(self, resiliencehub):
+        """DescribeMetricsExport returns status for a fake export ID."""
+        resp = resiliencehub.describe_metrics_export(metricsExportId="fake-export-id")
+        assert "metricsExportId" in resp
+        assert "status" in resp
+
+    def test_describe_resource_grouping_recommendation_task(self, resiliencehub):
+        """DescribeResourceGroupingRecommendationTask returns task status."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.describe_resource_grouping_recommendation_task(appArn=app_arn)
+        assert "status" in resp
+
+    def test_list_resource_grouping_recommendations(self, resiliencehub):
+        """ListResourceGroupingRecommendations returns grouping recommendations."""
+        app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
+        resp = resiliencehub.list_resource_grouping_recommendations(appArn=app_arn)
+        assert "groupingRecommendations" in resp
+        assert isinstance(resp["groupingRecommendations"], list)
+
+    def test_list_metrics(self, resiliencehub):
+        """ListMetrics returns rows key."""
+        resp = resiliencehub.list_metrics()
+        assert "rows" in resp
+        assert isinstance(resp["rows"], list)

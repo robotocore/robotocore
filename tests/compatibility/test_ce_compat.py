@@ -277,3 +277,244 @@ class TestCETagOperations:
             assert tag_map["env"] == "prod"
         finally:
             ce.delete_cost_category_definition(CostCategoryArn=arn)
+
+
+class TestCEAnomalies:
+    """Tests for CE anomaly monitoring operations."""
+
+    def test_get_anomaly_monitors_empty(self, ce):
+        """GetAnomalyMonitors returns AnomalyMonitors key."""
+        resp = ce.get_anomaly_monitors()
+        assert "AnomalyMonitors" in resp
+        assert isinstance(resp["AnomalyMonitors"], list)
+
+    def test_get_anomaly_subscriptions_empty(self, ce):
+        """GetAnomalySubscriptions returns AnomalySubscriptions key."""
+        resp = ce.get_anomaly_subscriptions()
+        assert "AnomalySubscriptions" in resp
+        assert isinstance(resp["AnomalySubscriptions"], list)
+
+    def test_get_anomalies(self, ce):
+        """GetAnomalies returns Anomalies key."""
+        resp = ce.get_anomalies(
+            DateInterval={"StartDate": "2024-01-01", "EndDate": "2024-01-31"},
+        )
+        assert "Anomalies" in resp
+        assert isinstance(resp["Anomalies"], list)
+
+
+class TestCECostQueries:
+    """Tests for CE cost query operations."""
+
+    def test_get_cost_categories(self, ce):
+        """GetCostCategories returns expected keys."""
+        resp = ce.get_cost_categories(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "CostCategoryNames" in resp
+        assert "ReturnSize" in resp
+        assert "TotalSize" in resp
+
+    def test_get_tags(self, ce):
+        """GetTags returns tags list and size info."""
+        resp = ce.get_tags(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], list)
+        assert "ReturnSize" in resp
+        assert "TotalSize" in resp
+
+    def test_get_dimension_values(self, ce):
+        """GetDimensionValues returns dimension values for SERVICE."""
+        resp = ce.get_dimension_values(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+            Dimension="SERVICE",
+        )
+        assert "DimensionValues" in resp
+        assert isinstance(resp["DimensionValues"], list)
+        assert "ReturnSize" in resp
+
+    def test_get_cost_forecast(self, ce):
+        """GetCostForecast returns Total and ForecastResultsByTime."""
+        resp = ce.get_cost_forecast(
+            TimePeriod={"Start": "2025-01-01", "End": "2025-01-31"},
+            Metric="BLENDED_COST",
+            Granularity="MONTHLY",
+        )
+        assert "Total" in resp
+        assert "ForecastResultsByTime" in resp
+        assert isinstance(resp["ForecastResultsByTime"], list)
+
+    def test_get_usage_forecast(self, ce):
+        """GetUsageForecast returns Total and ForecastResultsByTime."""
+        resp = ce.get_usage_forecast(
+            TimePeriod={"Start": "2025-01-01", "End": "2025-01-31"},
+            Metric="USAGE_QUANTITY",
+            Granularity="MONTHLY",
+        )
+        assert "Total" in resp
+        assert "ForecastResultsByTime" in resp
+
+    def test_get_cost_and_usage_with_resources(self, ce):
+        """GetCostAndUsageWithResources returns ResultsByTime."""
+        resp = ce.get_cost_and_usage_with_resources(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+            Granularity="MONTHLY",
+            Filter={"Dimensions": {"Key": "SERVICE", "Values": ["Amazon S3"]}},
+        )
+        assert "ResultsByTime" in resp
+        assert isinstance(resp["ResultsByTime"], list)
+
+    def test_get_cost_and_usage_comparisons(self, ce):
+        """GetCostAndUsageComparisons returns comparison data."""
+        resp = ce.get_cost_and_usage_comparisons(
+            BaselineTimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+            ComparisonTimePeriod={"Start": "2024-02-01", "End": "2024-02-28"},
+            MetricForComparison="UNBLENDED_COST",
+        )
+        assert "CostAndUsageComparisons" in resp
+
+    def test_get_cost_comparison_drivers(self, ce):
+        """GetCostComparisonDrivers returns driver data."""
+        resp = ce.get_cost_comparison_drivers(
+            BaselineTimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+            ComparisonTimePeriod={"Start": "2024-02-01", "End": "2024-02-28"},
+            MetricForComparison="UNBLENDED_COST",
+        )
+        assert "CostComparisonDrivers" in resp
+
+    def test_get_approximate_usage_records(self, ce):
+        """GetApproximateUsageRecords returns service-level usage."""
+        resp = ce.get_approximate_usage_records(
+            Granularity="MONTHLY",
+            ApproximationDimension="SERVICE",
+        )
+        assert "TotalRecords" in resp
+        assert "LookbackPeriod" in resp
+
+
+class TestCEReservations:
+    """Tests for CE reservation-related operations."""
+
+    def test_get_reservation_coverage(self, ce):
+        """GetReservationCoverage returns coverage data."""
+        resp = ce.get_reservation_coverage(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "CoveragesByTime" in resp
+        assert isinstance(resp["CoveragesByTime"], list)
+        assert "Total" in resp
+
+    def test_get_reservation_utilization(self, ce):
+        """GetReservationUtilization returns utilization data."""
+        resp = ce.get_reservation_utilization(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "UtilizationsByTime" in resp
+        assert isinstance(resp["UtilizationsByTime"], list)
+        assert "Total" in resp
+
+    def test_get_reservation_purchase_recommendation(self, ce):
+        """GetReservationPurchaseRecommendation returns recommendations."""
+        resp = ce.get_reservation_purchase_recommendation(Service="Amazon EC2")
+        assert "Recommendations" in resp
+        assert isinstance(resp["Recommendations"], list)
+
+    def test_get_rightsizing_recommendation(self, ce):
+        """GetRightsizingRecommendation returns recommendations."""
+        resp = ce.get_rightsizing_recommendation(Service="Amazon EC2")
+        assert "RightsizingRecommendations" in resp
+        assert isinstance(resp["RightsizingRecommendations"], list)
+
+
+class TestCESavingsPlans:
+    """Tests for CE Savings Plans operations."""
+
+    def test_get_savings_plans_coverage(self, ce):
+        """GetSavingsPlansCoverage returns coverage data."""
+        resp = ce.get_savings_plans_coverage(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "SavingsPlansCoverages" in resp
+        assert isinstance(resp["SavingsPlansCoverages"], list)
+
+    def test_get_savings_plans_utilization(self, ce):
+        """GetSavingsPlansUtilization returns utilization Total."""
+        resp = ce.get_savings_plans_utilization(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "Total" in resp
+
+    def test_get_savings_plans_utilization_details(self, ce):
+        """GetSavingsPlansUtilizationDetails returns detail list."""
+        resp = ce.get_savings_plans_utilization_details(
+            TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
+        )
+        assert "SavingsPlansUtilizationDetails" in resp
+        assert isinstance(resp["SavingsPlansUtilizationDetails"], list)
+
+    def test_get_savings_plans_purchase_recommendation(self, ce):
+        """GetSavingsPlansPurchaseRecommendation returns a response."""
+        resp = ce.get_savings_plans_purchase_recommendation(
+            SavingsPlansType="COMPUTE_SP",
+            TermInYears="ONE_YEAR",
+            PaymentOption="NO_UPFRONT",
+            LookbackPeriodInDays="THIRTY_DAYS",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCEListOperations:
+    """Tests for CE list operations."""
+
+    def test_list_cost_category_definitions(self, ce):
+        """ListCostCategoryDefinitions returns references list."""
+        resp = ce.list_cost_category_definitions()
+        assert "CostCategoryReferences" in resp
+        assert isinstance(resp["CostCategoryReferences"], list)
+
+    def test_list_cost_allocation_tags(self, ce):
+        """ListCostAllocationTags returns tags list."""
+        resp = ce.list_cost_allocation_tags()
+        assert "CostAllocationTags" in resp
+        assert isinstance(resp["CostAllocationTags"], list)
+
+    def test_list_cost_allocation_tag_backfill_history(self, ce):
+        """ListCostAllocationTagBackfillHistory returns backfill requests."""
+        resp = ce.list_cost_allocation_tag_backfill_history()
+        assert "BackfillRequests" in resp
+        assert isinstance(resp["BackfillRequests"], list)
+
+    def test_list_savings_plans_purchase_recommendation_generation(self, ce):
+        """ListSavingsPlansPurchaseRecommendationGeneration returns generation list."""
+        resp = ce.list_savings_plans_purchase_recommendation_generation()
+        assert "GenerationSummaryList" in resp
+        assert isinstance(resp["GenerationSummaryList"], list)
+
+    def test_list_commitment_purchase_analyses(self, ce):
+        """ListCommitmentPurchaseAnalyses returns analysis list."""
+        resp = ce.list_commitment_purchase_analyses()
+        assert "AnalysisSummaryList" in resp
+        assert isinstance(resp["AnalysisSummaryList"], list)
+
+    def test_list_cost_category_resource_associations(self, ce):
+        """ListCostCategoryResourceAssociations with a cost category ARN."""
+        # Create a cost category first
+        name = _unique("cat")
+        create_resp = ce.create_cost_category_definition(
+            Name=name,
+            RuleVersion="CostCategoryExpression.v1",
+            Rules=[
+                {
+                    "Value": "v1",
+                    "Rule": {"Dimensions": {"Key": "SERVICE", "Values": ["Amazon S3"]}},
+                }
+            ],
+        )
+        arn = create_resp["CostCategoryArn"]
+        try:
+            resp = ce.list_cost_category_resource_associations(CostCategoryArn=arn)
+            assert "CostCategoryResourceAssociations" in resp
+        finally:
+            ce.delete_cost_category_definition(CostCategoryArn=arn)
