@@ -226,11 +226,31 @@ def _create_iam_policy(resource: CfnResource, region: str, account_id: str) -> N
     doc = resource.properties.get("PolicyDocument", {})
     if isinstance(doc, dict):
         doc = json.dumps(doc)
-    path = resource.properties.get("Path", "/")
-    desc = resource.properties.get("Description", "")
-    policy = iam.create_policy(desc, path, doc, name, [])
-    resource.physical_id = policy.arn
-    resource.attributes["Arn"] = policy.arn
+
+    # AWS::IAM::Policy creates inline policies attached to roles/users/groups
+    roles = resource.properties.get("Roles", [])
+    for role_name in roles:
+        try:
+            iam.put_role_policy(role_name, name, doc)
+        except Exception:
+            pass
+
+    users = resource.properties.get("Users", [])
+    for user_name in users:
+        try:
+            iam.put_user_policy(user_name, name, doc)
+        except Exception:
+            pass
+
+    groups = resource.properties.get("Groups", [])
+    for group_name in groups:
+        try:
+            iam.put_group_policy(group_name, name, doc)
+        except Exception:
+            pass
+
+    resource.physical_id = name
+    resource.attributes["PolicyName"] = name
     resource.status = "CREATE_COMPLETE"
 
 
@@ -250,6 +270,13 @@ def _create_log_group(resource: CfnResource, region: str, account_id: str) -> No
     logs = _moto_backend("logs", account_id, region)
     name = resource.properties.get("LogGroupName", f"/cfn/{resource.logical_id}")
     logs.create_log_group(name, {})
+    # Apply retention policy if specified
+    retention = resource.properties.get("RetentionInDays")
+    if retention:
+        try:
+            logs.put_retention_policy(name, int(retention))
+        except Exception:
+            pass
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:logs:{region}:{account_id}:log-group:{name}"
     resource.status = "CREATE_COMPLETE"
@@ -678,22 +705,33 @@ def _delete_lambda_alias(resource: CfnResource, region: str, account_id: str) ->
 def _create_lambda_event_source_mapping(
     resource: CfnResource, region: str, account_id: str
 ) -> None:
-    try:
-        lmbda = _moto_backend("lambda", account_id, region)
-        spec = {
-            "FunctionName": resource.properties.get("FunctionName", ""),
-            "EventSourceArn": resource.properties.get("EventSourceArn", ""),
-            "BatchSize": resource.properties.get("BatchSize", 10),
-            "Enabled": resource.properties.get("Enabled", True),
-            "StartingPosition": resource.properties.get("StartingPosition", "LATEST"),
-        }
-        mapping = lmbda.create_event_source_mapping(spec)
-        resource.physical_id = mapping.uuid
-        resource.attributes["EventSourceMappingId"] = mapping.uuid
-    except Exception:
-        uid = str(uuid.uuid4())
-        resource.physical_id = uid
-        resource.attributes["EventSourceMappingId"] = uid
+    # Use native Lambda provider's ESM store
+    from robotocore.services.lambda_.provider import _esm_lock, _esm_store
+
+    func_name = resource.properties.get("FunctionName", "")
+    source_arn = resource.properties.get("EventSourceArn", "")
+    uid = str(uuid.uuid4())
+    import time as _time
+
+    # Resolve function ARN
+    func_arn = func_name
+    if not func_arn.startswith("arn:"):
+        func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
+
+    config = {
+        "UUID": uid,
+        "FunctionArn": func_arn,
+        "EventSourceArn": source_arn,
+        "BatchSize": resource.properties.get("BatchSize", 10),
+        "State": "Enabled" if resource.properties.get("Enabled", True) else "Disabled",
+        "StartingPosition": resource.properties.get("StartingPosition", "LATEST"),
+        "LastModified": _time.time(),
+        "MaximumBatchingWindowInSeconds": 0,
+    }
+    with _esm_lock:
+        _esm_store[uid] = config
+    resource.physical_id = uid
+    resource.attributes["EventSourceMappingId"] = uid
     resource.status = "CREATE_COMPLETE"
 
 
@@ -833,16 +871,27 @@ def _create_ec2_security_group(resource: CfnResource, region: str, account_id: s
     )
     desc = resource.properties.get("GroupDescription", name)
     vpc_id = resource.properties.get("VpcId", "")
-    try:
-        sg = ec2.create_security_group(name, desc, vpc_id or None)
-        resource.physical_id = sg.id
-        resource.attributes["GroupId"] = sg.id
-        resource.attributes["VpcId"] = vpc_id
-    except Exception:
-        gid = f"sg-{uuid.uuid4().hex[:8]}"
-        resource.physical_id = gid
-        resource.attributes["GroupId"] = gid
-        resource.attributes["VpcId"] = vpc_id
+    sg = ec2.create_security_group(name, desc, vpc_id or None)
+    resource.physical_id = sg.id
+    resource.attributes["GroupId"] = sg.id
+    resource.attributes["VpcId"] = vpc_id
+
+    # Apply ingress rules
+    for rule in resource.properties.get("SecurityGroupIngress", []):
+        ip_ranges = []
+        if "CidrIp" in rule:
+            ip_ranges.append({"CidrIp": rule["CidrIp"]})
+        try:
+            ec2.authorize_security_group_ingress(
+                sg.id,
+                rule.get("IpProtocol", "tcp"),
+                str(rule.get("FromPort", 0)),
+                str(rule.get("ToPort", 0)),
+                ip_ranges,
+            )
+        except Exception:
+            pass  # Duplicate rules are OK
+
     resource.status = "CREATE_COMPLETE"
 
 
@@ -1266,10 +1315,19 @@ def _create_apigw_method(resource: CfnResource, region: str, account_id: str) ->
     resource_id = resource.properties.get("ResourceId", "")
     http_method = resource.properties.get("HttpMethod", "GET")
     auth_type = resource.properties.get("AuthorizationType", "NONE")
-    try:
-        apigw.create_method(rest_api_id, resource_id, http_method, auth_type)
-    except Exception:
-        pass
+    apigw.put_method(rest_api_id, resource_id, http_method, auth_type)
+
+    # Set up integration if specified
+    integration = resource.properties.get("Integration")
+    if integration:
+        int_type = integration.get("Type", "HTTP")
+        uri = integration.get("Uri", "")
+        int_method = integration.get("IntegrationHttpMethod", "POST")
+        try:
+            apigw.put_integration(rest_api_id, resource_id, http_method, int_type, uri, int_method)
+        except Exception:
+            pass  # Integration setup is best-effort
+
     pid = f"{rest_api_id}/{resource_id}/{http_method}"
     resource.physical_id = pid
     resource.status = "CREATE_COMPLETE"
@@ -1373,24 +1431,19 @@ def _create_cloudwatch_alarm(resource: CfnResource, region: str, account_id: str
         namespace=resource.properties.get("Namespace", "AWS/Custom"),
         metric_name=resource.properties.get("MetricName", ""),
         comparison_operator=resource.properties.get("ComparisonOperator", "GreaterThanThreshold"),
-        evaluation_periods=resource.properties.get("EvaluationPeriods", 1),
-        period=resource.properties.get("Period", 300),
-        threshold=resource.properties.get("Threshold", 0),
+        evaluation_periods=int(resource.properties.get("EvaluationPeriods", 1)),
+        period=int(resource.properties.get("Period", 300)),
+        threshold=float(resource.properties.get("Threshold", 0)),
         statistic=resource.properties.get("Statistic", "Average"),
         description=resource.properties.get("AlarmDescription", ""),
-        actions_enabled=resource.properties.get("ActionsEnabled", True),
-        ok_actions=resource.properties.get("OKActions", []),
-        alarm_actions=resource.properties.get("AlarmActions", []),
-        insufficient_data_actions=resource.properties.get("InsufficientDataActions", []),
         dimensions=dims,
-        unit="",
-        treat_missing_data="missing",
+        alarm_actions=resource.properties.get("AlarmActions", []),
+        ok_actions=resource.properties.get("OKActions", []),
+        insufficient_data_actions=resource.properties.get("InsufficientDataActions", []),
+        actions_enabled=resource.properties.get("ActionsEnabled", True),
+        treat_missing_data=resource.properties.get("TreatMissingData", "missing"),
         datapoints_to_alarm=resource.properties.get("DatapointsToAlarm", None),
-        evaluate_low_sample_count_percentile="",
-        extended_statistic="",
         tags=[],
-        rule=None,
-        metrics=None,
     )
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:cloudwatch:{region}:{account_id}:alarm:{name}"
@@ -1646,7 +1699,10 @@ def _delete_ssm_document(resource: CfnResource, region: str, account_id: str) ->
 
 
 def _create_kinesis_stream(resource: CfnResource, region: str, account_id: str) -> None:
-    kinesis = _moto_backend("kinesis", account_id, region)
+    # Use native Kinesis provider store (not Moto) since the API routes through it
+    from robotocore.services.kinesis.models import _get_store as _get_kinesis_store
+
+    store = _get_kinesis_store(region)
     name = resource.properties.get(
         "Name",
         resource.properties.get(
@@ -1655,7 +1711,7 @@ def _create_kinesis_stream(resource: CfnResource, region: str, account_id: str) 
         ),
     )
     shard_count = resource.properties.get("ShardCount", 1)
-    kinesis.create_stream(name, shard_count)
+    store.create_stream(name, shard_count, region, account_id)
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:kinesis:{region}:{account_id}:stream/{name}"
     resource.status = "CREATE_COMPLETE"
@@ -1965,31 +2021,35 @@ def _create_cognito_user_pool(resource: CfnResource, region: str, account_id: st
         "UserPoolName",
         f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}",
     )
-    cognito = _moto_backend("cognitoidp", account_id, region)
-    # Build extended config from CFN properties
-    extended_config = {}
-    for key in (
-        "Policies",
-        "AutoVerifiedAttributes",
-        "Schema",
-        "MfaConfiguration",
-        "LambdaConfig",
-        "UsernameAttributes",
-        "AliasAttributes",
-    ):
-        if key in resource.properties:
-            extended_config[key] = resource.properties[key]
-    pool = cognito.create_user_pool(name, extended_config)
-    pool_id = getattr(pool, "id", None) or getattr(pool, "user_pool_id", None)
-    if not pool_id:
-        pool_id = f"{region}_{uuid.uuid4().hex[:9]}"
+    # Use native Cognito provider store (not Moto) since the API routes through it
+    from robotocore.services.cognito.provider import _get_store as _get_cognito_store
+
+    store = _get_cognito_store(region)
+    pool_id = f"{region}_{uuid.uuid4().hex[:8]}"
+    import time as _time
+
+    pool = {
+        "Id": pool_id,
+        "Name": name,
+        "Arn": f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}",
+        "CreationDate": _time.time(),
+        "LastModifiedDate": _time.time(),
+        "Status": "Enabled",
+        "Policies": resource.properties.get("Policies", {}),
+        "LambdaConfig": resource.properties.get("LambdaConfig", {}),
+        "AutoVerifiedAttributes": resource.properties.get("AutoVerifiedAttributes", []),
+        "Schema": resource.properties.get("Schema", []),
+        "MfaConfiguration": resource.properties.get("MfaConfiguration", "OFF"),
+    }
+    with store.lock:
+        store.pools[pool_id] = pool
+        store.users[pool_id] = {}
+        store.clients[pool_id] = {}
+        store.groups[pool_id] = {}
+        store.user_groups[pool_id] = {}
     resource.physical_id = pool_id
     resource.attributes["UserPoolId"] = pool_id
-    arn = (
-        getattr(pool, "arn", None)
-        or f"arn:aws:cognito-idp:{region}:{account_id}:userpool/{pool_id}"
-    )
-    resource.attributes["Arn"] = arn
+    resource.attributes["Arn"] = pool["Arn"]
     resource.attributes["ProviderName"] = f"cognito-idp.{region}.amazonaws.com/{pool_id}"
     resource.status = "CREATE_COMPLETE"
 
@@ -2396,16 +2456,29 @@ def _delete_cfn_stack(resource: CfnResource, region: str, account_id: str) -> No
 
 
 def _create_cognito_user_pool_client(resource: CfnResource, region: str, account_id: str) -> None:
-    cognito = _moto_backend("cognitoidp", account_id, region)
+    # Use native Cognito provider store (not Moto)
+    from robotocore.services.cognito.provider import _get_store as _get_cognito_store
+
+    store = _get_cognito_store(region)
     pool_id = resource.properties.get("UserPoolId", "")
-    generate_secret = resource.properties.get("GenerateSecret", False)
     client_name = resource.properties.get("ClientName", resource.logical_id)
-    extended_config = {"ClientName": client_name}
-    for key in ("ExplicitAuthFlows", "AllowedOAuthFlows", "CallbackURLs", "LogoutURLs"):
-        if key in resource.properties:
-            extended_config[key] = resource.properties[key]
-    client = cognito.create_user_pool_client(pool_id, generate_secret, extended_config)
-    cid = getattr(client, "id", None) or uuid.uuid4().hex[:26]
+    cid = uuid.uuid4().hex[:26]
+    import time as _time
+
+    client_data = {
+        "ClientId": cid,
+        "ClientName": client_name,
+        "UserPoolId": pool_id,
+        "CreationDate": _time.time(),
+        "LastModifiedDate": _time.time(),
+        "ExplicitAuthFlows": resource.properties.get("ExplicitAuthFlows", []),
+        "AllowedOAuthFlows": resource.properties.get("AllowedOAuthFlows", []),
+    }
+    if resource.properties.get("GenerateSecret"):
+        client_data["ClientSecret"] = uuid.uuid4().hex
+    with store.lock:
+        if pool_id in store.clients:
+            store.clients[pool_id][cid] = client_data
     resource.physical_id = cid
     resource.attributes["ClientId"] = cid
     resource.attributes["Name"] = client_name

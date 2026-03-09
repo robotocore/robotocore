@@ -169,6 +169,31 @@ jobs:
           uv run pytest tests/compatibility/
           -n4 --dist=loadfile -q --tb=short
 
+  iac-tests:
+    name: "iac: CloudFormation + SAM + Serverless"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-extras
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main &
+          sleep 3
+          curl -f http://localhost:4566/_robotocore/health
+      - name: Run IaC tests (CFN, SAM, Serverless)
+        run: >
+          ENDPOINT_URL=http://localhost:4566
+          uv run pytest
+          tests/iac/cloudformation/
+          tests/iac/sam/
+          tests/iac/serverless/
+          -v --tb=short
+
   # ── Security ───────────────────────────────────────────────────────────────
 
   security-scan:
@@ -200,6 +225,7 @@ jobs:
       - unit-infra
       - integration-tests
       - compatibility-tests
+      - iac-tests
     steps:
       - uses: actions/checkout@v4
         with:
