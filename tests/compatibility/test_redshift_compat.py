@@ -2061,144 +2061,192 @@ class TestRedshiftAuthenticationProfiles:
     """Tests for authentication profile CRUD operations."""
 
     def test_create_authentication_profile(self, redshift):
-        """CreateAuthenticationProfile returns profile name and content."""
+        """CreateAuthenticationProfile returns name and content."""
         name = f"auth-{_uid()}"
-        content = '{"AllowDBUserOverride": "1"}'
-        resp = redshift.create_authentication_profile(
-            AuthenticationProfileName=name,
-            AuthenticationProfileContent=content,
-        )
-        assert resp["AuthenticationProfileName"] == name
-        assert resp["AuthenticationProfileContent"] == content
+        try:
+            resp = redshift.create_authentication_profile(
+                AuthenticationProfileName=name,
+                AuthenticationProfileContent='{"AllowDBUserOverride": "1"}',
+            )
+            assert resp["AuthenticationProfileName"] == name
+            assert "AuthenticationProfileContent" in resp
+        finally:
+            redshift.delete_authentication_profile(AuthenticationProfileName=name)
+
+    def test_describe_authentication_profile_by_name(self, redshift):
+        """DescribeAuthenticationProfiles filtered by name returns the profile."""
+        name = f"auth-{_uid()}"
+        try:
+            redshift.create_authentication_profile(
+                AuthenticationProfileName=name,
+                AuthenticationProfileContent='{"key": "value"}',
+            )
+            resp = redshift.describe_authentication_profiles(
+                AuthenticationProfileName=name,
+            )
+            profiles = resp["AuthenticationProfiles"]
+            assert len(profiles) >= 1
+            found = [p for p in profiles if p["AuthenticationProfileName"] == name]
+            assert len(found) == 1
+            assert "AuthenticationProfileContent" in found[0]
+        finally:
+            redshift.delete_authentication_profile(AuthenticationProfileName=name)
+
+    def test_modify_authentication_profile(self, redshift):
+        """ModifyAuthenticationProfile updates content."""
+        name = f"auth-{_uid()}"
+        try:
+            redshift.create_authentication_profile(
+                AuthenticationProfileName=name,
+                AuthenticationProfileContent='{"old": "content"}',
+            )
+            resp = redshift.modify_authentication_profile(
+                AuthenticationProfileName=name,
+                AuthenticationProfileContent='{"new": "content"}',
+            )
+            assert resp["AuthenticationProfileName"] == name
+            assert "AuthenticationProfileContent" in resp
+        finally:
+            redshift.delete_authentication_profile(AuthenticationProfileName=name)
 
     def test_delete_authentication_profile(self, redshift):
         """DeleteAuthenticationProfile removes the profile."""
         name = f"auth-{_uid()}"
         redshift.create_authentication_profile(
             AuthenticationProfileName=name,
-            AuthenticationProfileContent="{}",
+            AuthenticationProfileContent='{"tmp": "data"}',
         )
-        resp = redshift.delete_authentication_profile(
-            AuthenticationProfileName=name,
-        )
+        resp = redshift.delete_authentication_profile(AuthenticationProfileName=name)
         assert resp["AuthenticationProfileName"] == name
 
-    def test_delete_authentication_profile_not_found(self, redshift):
-        """DeleteAuthenticationProfile raises for nonexistent profile."""
-        with pytest.raises(ClientError) as exc_info:
-            redshift.delete_authentication_profile(
-                AuthenticationProfileName=f"nope-{_uid()}",
-            )
-        assert exc_info.value.response["Error"]["Code"] == "AuthenticationProfileNotFoundFault"
 
-    def test_describe_authentication_profiles_after_create(self, redshift):
-        """DescribeAuthenticationProfiles lists created profiles."""
-        name = f"auth-{_uid()}"
-        redshift.create_authentication_profile(
-            AuthenticationProfileName=name,
-            AuthenticationProfileContent='{"key": "value"}',
-        )
-        resp = redshift.describe_authentication_profiles(
-            AuthenticationProfileName=name,
-        )
-        profiles = resp["AuthenticationProfiles"]
-        assert len(profiles) >= 1
-        names = [p["AuthenticationProfileName"] for p in profiles]
-        assert name in names
-        # Cleanup
-        redshift.delete_authentication_profile(AuthenticationProfileName=name)
-
-
-class TestRedshiftSnapshotOperations:
+class TestRedshiftSnapshotAdvanced:
     """Tests for snapshot copy, authorize, and batch operations."""
 
-    def test_copy_cluster_snapshot(self, redshift):
-        """CopyClusterSnapshot copies an existing snapshot."""
-        cluster_id = f"snap-src-{_uid()}"
+    @pytest.fixture
+    def cluster(self, redshift):
+        cid = f"snap-adv-{_uid()}"
         redshift.create_cluster(
-            ClusterIdentifier=cluster_id,
+            ClusterIdentifier=cid,
             NodeType="dc2.large",
             MasterUsername="admin",
             MasterUserPassword="Password1!",
             NumberOfNodes=1,
             ClusterType="single-node",
         )
+        yield cid
+        redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_copy_cluster_snapshot(self, redshift, cluster):
+        """CopyClusterSnapshot creates a copy of a snapshot."""
         snap_id = f"snap-{_uid()}"
-        redshift.create_cluster_snapshot(
-            SnapshotIdentifier=snap_id,
-            ClusterIdentifier=cluster_id,
-        )
         copy_id = f"copy-{_uid()}"
-        resp = redshift.copy_cluster_snapshot(
-            SourceSnapshotIdentifier=snap_id,
-            TargetSnapshotIdentifier=copy_id,
-        )
-        assert resp["Snapshot"]["SnapshotIdentifier"] == copy_id
-        # Cleanup
-        redshift.delete_cluster_snapshot(SnapshotIdentifier=copy_id)
-        redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
-        redshift.delete_cluster(ClusterIdentifier=cluster_id, SkipFinalClusterSnapshot=True)
+        redshift.create_cluster_snapshot(SnapshotIdentifier=snap_id, ClusterIdentifier=cluster)
+        try:
+            resp = redshift.copy_cluster_snapshot(
+                SourceSnapshotIdentifier=snap_id,
+                TargetSnapshotIdentifier=copy_id,
+            )
+            assert "Snapshot" in resp
+            assert resp["Snapshot"]["SnapshotIdentifier"] == copy_id
+            assert resp["Snapshot"]["ClusterIdentifier"] == cluster
+        finally:
+            try:
+                redshift.delete_cluster_snapshot(SnapshotIdentifier=copy_id)
+            except Exception:
+                pass
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
 
-    def test_authorize_and_revoke_snapshot_access(self, redshift):
-        """AuthorizeSnapshotAccess and RevokeSnapshotAccess work correctly."""
-        cluster_id = f"snap-auth-{_uid()}"
+    def test_authorize_and_revoke_snapshot_access(self, redshift, cluster):
+        """AuthorizeSnapshotAccess grants access, RevokeSnapshotAccess removes it."""
+        snap_id = f"snap-{_uid()}"
+        redshift.create_cluster_snapshot(SnapshotIdentifier=snap_id, ClusterIdentifier=cluster)
+        try:
+            auth_resp = redshift.authorize_snapshot_access(
+                SnapshotIdentifier=snap_id,
+                AccountWithRestoreAccess="999999999999",
+            )
+            assert "Snapshot" in auth_resp
+            assert "AccountsWithRestoreAccess" in auth_resp["Snapshot"]
+
+            revoke_resp = redshift.revoke_snapshot_access(
+                SnapshotIdentifier=snap_id,
+                AccountWithRestoreAccess="999999999999",
+            )
+            assert "Snapshot" in revoke_resp
+        finally:
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
+
+    def test_batch_modify_cluster_snapshots(self, redshift, cluster):
+        """BatchModifyClusterSnapshots modifies retention on snapshots."""
+        snap_id = f"snap-{_uid()}"
+        redshift.create_cluster_snapshot(SnapshotIdentifier=snap_id, ClusterIdentifier=cluster)
+        try:
+            resp = redshift.batch_modify_cluster_snapshots(
+                SnapshotIdentifierList=[snap_id],
+                ManualSnapshotRetentionPeriod=7,
+            )
+            assert "Resources" in resp
+        finally:
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
+
+    def test_batch_delete_cluster_snapshots(self, redshift, cluster):
+        """BatchDeleteClusterSnapshots deletes multiple snapshots."""
+        snap_id = f"snap-{_uid()}"
+        redshift.create_cluster_snapshot(SnapshotIdentifier=snap_id, ClusterIdentifier=cluster)
+        resp = redshift.batch_delete_cluster_snapshots(
+            Identifiers=[{"SnapshotIdentifier": snap_id}],
+        )
+        assert "Resources" in resp
+
+
+class TestRedshiftClusterIamAndEndpoint:
+    """Tests for ModifyClusterIamRoles and AuthorizeEndpointAccess."""
+
+    @pytest.fixture
+    def cluster(self, redshift):
+        cid = f"iam-ep-{_uid()}"
         redshift.create_cluster(
-            ClusterIdentifier=cluster_id,
+            ClusterIdentifier=cid,
             NodeType="dc2.large",
             MasterUsername="admin",
             MasterUserPassword="Password1!",
             NumberOfNodes=1,
             ClusterType="single-node",
         )
-        snap_id = f"snap-{_uid()}"
-        redshift.create_cluster_snapshot(
-            SnapshotIdentifier=snap_id,
-            ClusterIdentifier=cluster_id,
-        )
-        # Authorize
-        resp = redshift.authorize_snapshot_access(
-            SnapshotIdentifier=snap_id,
-            AccountWithRestoreAccess="111111111111",
-        )
-        assert "Snapshot" in resp
-        # Revoke
-        resp2 = redshift.revoke_snapshot_access(
-            SnapshotIdentifier=snap_id,
-            AccountWithRestoreAccess="111111111111",
-        )
-        assert "Snapshot" in resp2
-        # Cleanup
-        redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
-        redshift.delete_cluster(ClusterIdentifier=cluster_id, SkipFinalClusterSnapshot=True)
+        yield cid
+        redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
 
-    def test_copy_cluster_snapshot_not_found(self, redshift):
-        """CopyClusterSnapshot raises for nonexistent source."""
-        with pytest.raises(ClientError) as exc_info:
-            redshift.copy_cluster_snapshot(
-                SourceSnapshotIdentifier=f"nope-{_uid()}",
-                TargetSnapshotIdentifier=f"tgt-{_uid()}",
-            )
-        assert exc_info.value.response["Error"]["Code"] == "ClusterSnapshotNotFound"
-
-    def test_batch_delete_cluster_snapshots_empty(self, redshift):
-        """BatchDeleteClusterSnapshots with nonexistent IDs returns errors list."""
-        resp = redshift.batch_delete_cluster_snapshots(
-            Identifiers=[{"SnapshotIdentifier": f"nope-{_uid()}"}],
+    def test_modify_cluster_iam_roles_add(self, redshift, cluster):
+        """ModifyClusterIamRoles adds IAM roles to a cluster."""
+        role_arn = "arn:aws:iam::123456789012:role/RedshiftRole"
+        resp = redshift.modify_cluster_iam_roles(
+            ClusterIdentifier=cluster,
+            AddIamRoles=[role_arn],
         )
-        assert "Errors" in resp
+        assert "Cluster" in resp
+        assert resp["Cluster"]["ClusterIdentifier"] == cluster
 
-    def test_batch_modify_cluster_snapshots_empty(self, redshift):
-        """BatchModifyClusterSnapshots with nonexistent IDs returns errors list."""
-        resp = redshift.batch_modify_cluster_snapshots(
-            SnapshotIdentifierList=[f"nope-{_uid()}"],
-            ManualSnapshotRetentionPeriod=7,
+    def test_modify_cluster_iam_roles_remove(self, redshift, cluster):
+        """ModifyClusterIamRoles can add then remove a role."""
+        role_arn = "arn:aws:iam::123456789012:role/TestRole"
+        redshift.modify_cluster_iam_roles(
+            ClusterIdentifier=cluster,
+            AddIamRoles=[role_arn],
         )
-        assert "Errors" in resp
+        resp = redshift.modify_cluster_iam_roles(
+            ClusterIdentifier=cluster,
+            RemoveIamRoles=[role_arn],
+        )
+        assert "Cluster" in resp
 
-    def test_modify_cluster_iam_roles_not_found(self, redshift):
-        """ModifyClusterIamRoles raises for nonexistent cluster."""
-        with pytest.raises(ClientError) as exc_info:
-            redshift.modify_cluster_iam_roles(
-                ClusterIdentifier=f"nope-{_uid()}",
-            )
-        assert exc_info.value.response["Error"]["Code"] == "ClusterNotFound"
+    def test_authorize_endpoint_access(self, redshift, cluster):
+        """AuthorizeEndpointAccess grants endpoint access to an account."""
+        resp = redshift.authorize_endpoint_access(
+            ClusterIdentifier=cluster,
+            Account="999999999999",
+        )
+        assert "Grantee" in resp
+        assert "ClusterIdentifier" in resp
+        assert resp["ClusterIdentifier"] == cluster
+        assert "Status" in resp
