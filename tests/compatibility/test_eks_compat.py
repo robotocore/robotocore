@@ -1466,3 +1466,118 @@ class TestEKSAdditionalOperations:
             assert "subscription" in upd
         finally:
             eks.delete_eks_anywhere_subscription(id=sub_id)
+
+
+class TestEKSCapabilityOperations:
+    """Tests for EKS capability create, describe, update, list, and delete."""
+
+    def test_create_and_describe_capability(self, eks):
+        """CreateCapability and DescribeCapability lifecycle."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            cap_name = _unique("cap")
+            resp = eks.create_capability(
+                clusterName=cluster_name,
+                capabilityName=cap_name,
+                type="ACK",
+                roleArn="arn:aws:iam::123456789012:role/cap-role",
+                deletePropagationPolicy="RETAIN",
+            )
+            cap = resp["capability"]
+            assert cap["capabilityName"] == cap_name
+            assert cap["clusterName"] == cluster_name
+            assert cap["type"] == "ACK"
+            assert cap["roleArn"] == "arn:aws:iam::123456789012:role/cap-role"
+            assert cap["status"] == "ACTIVE"
+            assert "arn" in cap
+            assert cap["deletePropagationPolicy"] == "RETAIN"
+
+            # Describe should return same info
+            desc = eks.describe_capability(
+                clusterName=cluster_name,
+                capabilityName=cap_name,
+            )
+            desc_cap = desc["capability"]
+            assert desc_cap["capabilityName"] == cap_name
+            assert desc_cap["arn"] == cap["arn"]
+            assert desc_cap["type"] == "ACK"
+
+            eks.delete_capability(clusterName=cluster_name, capabilityName=cap_name)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_delete_capability(self, eks):
+        """DeleteCapability removes a capability from the cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            cap_name = _unique("cap")
+            eks.create_capability(
+                clusterName=cluster_name,
+                capabilityName=cap_name,
+                type="ACK",
+                roleArn="arn:aws:iam::123456789012:role/cap-role",
+                deletePropagationPolicy="RETAIN",
+            )
+            resp = eks.delete_capability(
+                clusterName=cluster_name,
+                capabilityName=cap_name,
+            )
+            assert "capability" in resp
+            assert resp["capability"]["capabilityName"] == cap_name
+
+            # After deletion, list should not include it
+            caps = eks.list_capabilities(clusterName=cluster_name)
+            assert cap_name not in [c["capabilityName"] for c in caps.get("capabilities", [])]
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_update_capability(self, eks):
+        """UpdateCapability changes capability configuration."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            cap_name = _unique("cap")
+            eks.create_capability(
+                clusterName=cluster_name,
+                capabilityName=cap_name,
+                type="ACK",
+                roleArn="arn:aws:iam::123456789012:role/cap-role",
+                deletePropagationPolicy="RETAIN",
+            )
+            resp = eks.update_capability(
+                clusterName=cluster_name,
+                capabilityName=cap_name,
+                roleArn="arn:aws:iam::123456789012:role/new-cap-role",
+            )
+            assert "update" in resp
+            update = resp["update"]
+            assert "id" in update
+            assert update["type"] == "CapabilityUpdate"
+            assert update["status"] == "Successful"
+
+            eks.delete_capability(clusterName=cluster_name, capabilityName=cap_name)
+        finally:
+            eks.delete_cluster(name=cluster_name)

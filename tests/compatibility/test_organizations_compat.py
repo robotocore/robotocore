@@ -774,6 +774,28 @@ class TestOrganizationsPolicyCRUD:
         assert "env" not in tag_keys
 
 
+class TestOrganizationsRemoveAccount:
+    """Tests for removing accounts from an organization."""
+
+    def test_remove_account_from_organization(self, orgs):
+        orgs.create_organization(FeatureSet="ALL")
+        email = f"{_unique('rem')}@example.com"
+        acct = orgs.create_account(Email=email, AccountName=_unique("RemAcct"))
+        acct_id = acct["CreateAccountStatus"]["AccountId"]
+
+        # Verify account exists
+        accounts_before = orgs.list_accounts()["Accounts"]
+        acct_ids_before = [a["Id"] for a in accounts_before]
+        assert acct_id in acct_ids_before
+
+        orgs.remove_account_from_organization(AccountId=acct_id)
+
+        # Verify account is removed
+        accounts_after = orgs.list_accounts()["Accounts"]
+        acct_ids_after = [a["Id"] for a in accounts_after]
+        assert acct_id not in acct_ids_after
+
+
 class TestOrganizationsPolicyExtra:
     """Tests for additional policy operations."""
 
