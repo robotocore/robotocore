@@ -661,3 +661,209 @@ class TestCloudFrontDistributionAdvanced:
         update_resp = cf.update_distribution(DistributionConfig=config, Id=dist_id, IfMatch=etag)
         updated_origins = update_resp["Distribution"]["DistributionConfig"]["Origins"]
         assert updated_origins["Quantity"] == 2
+
+
+class TestCloudFrontKeyGroupUpdateDelete:
+    def _create_public_key(self, cf):
+        name = _unique("pk")
+        pub_pem = _generate_public_key_pem()
+        resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": name,
+                "EncodedKey": pub_pem,
+            }
+        )
+        return resp["PublicKey"]["Id"]
+
+    def test_update_key_group(self, cf):
+        pk_id = self._create_public_key(cf)
+        name = _unique("kg")
+        create_resp = cf.create_key_group(KeyGroupConfig={"Name": name, "Items": [pk_id]})
+        kg_id = create_resp["KeyGroup"]["Id"]
+        etag = create_resp["ETag"]
+
+        new_name = name + "-updated"
+        update_resp = cf.update_key_group(
+            Id=kg_id, IfMatch=etag, KeyGroupConfig={"Name": new_name, "Items": [pk_id]}
+        )
+        assert update_resp["KeyGroup"]["KeyGroupConfig"]["Name"] == new_name
+        assert "ETag" in update_resp
+
+    def test_delete_key_group(self, cf):
+        pk_id = self._create_public_key(cf)
+        name = _unique("kg")
+        create_resp = cf.create_key_group(KeyGroupConfig={"Name": name, "Items": [pk_id]})
+        kg_id = create_resp["KeyGroup"]["Id"]
+        etag = create_resp["ETag"]
+
+        cf.delete_key_group(Id=kg_id, IfMatch=etag)
+
+        # Verify deleted - should not appear in list
+        resp = cf.list_key_groups()
+        kg_list = resp.get("KeyGroupList", {})
+        items = kg_list.get("Items", [])
+        ids = [item["KeyGroup"]["Id"] for item in items] if items else []
+        assert kg_id not in ids
+
+
+class TestCloudFrontCachePolicyUpdate:
+    def test_update_cache_policy(self, cf):
+        name = _unique("cpol")
+        create_resp = cf.create_cache_policy(
+            CachePolicyConfig={
+                "Name": name,
+                "MinTTL": 60,
+                "DefaultTTL": 86400,
+                "MaxTTL": 31536000,
+                "ParametersInCacheKeyAndForwardedToOrigin": {
+                    "EnableAcceptEncodingGzip": True,
+                    "HeadersConfig": {"HeaderBehavior": "none"},
+                    "CookiesConfig": {"CookieBehavior": "none"},
+                    "QueryStringsConfig": {"QueryStringBehavior": "none"},
+                },
+            }
+        )
+        policy_id = create_resp["CachePolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        updated_name = name + "-updated"
+        update_resp = cf.update_cache_policy(
+            Id=policy_id,
+            IfMatch=etag,
+            CachePolicyConfig={
+                "Name": updated_name,
+                "MinTTL": 30,
+                "DefaultTTL": 43200,
+                "MaxTTL": 31536000,
+                "ParametersInCacheKeyAndForwardedToOrigin": {
+                    "EnableAcceptEncodingGzip": True,
+                    "HeadersConfig": {"HeaderBehavior": "none"},
+                    "CookiesConfig": {"CookieBehavior": "none"},
+                    "QueryStringsConfig": {"QueryStringBehavior": "none"},
+                },
+            },
+        )
+        assert update_resp["CachePolicy"]["CachePolicyConfig"]["Name"] == updated_name
+        assert update_resp["CachePolicy"]["CachePolicyConfig"]["MinTTL"] == 30
+        assert "ETag" in update_resp
+
+        # Cleanup
+        cf.delete_cache_policy(Id=policy_id, IfMatch=update_resp["ETag"])
+
+
+class TestCloudFrontResponseHeadersPolicyUpdate:
+    def test_update_response_headers_policy(self, cf):
+        name = _unique("rhpol")
+        create_resp = cf.create_response_headers_policy(
+            ResponseHeadersPolicyConfig={
+                "Name": name,
+                "Comment": "original",
+                "SecurityHeadersConfig": {
+                    "XSSProtection": {"Override": True, "Protection": True},
+                },
+            }
+        )
+        policy_id = create_resp["ResponseHeadersPolicy"]["Id"]
+        etag = create_resp["ETag"]
+
+        update_resp = cf.update_response_headers_policy(
+            Id=policy_id,
+            IfMatch=etag,
+            ResponseHeadersPolicyConfig={
+                "Name": name,
+                "Comment": "updated",
+                "SecurityHeadersConfig": {
+                    "XSSProtection": {"Override": True, "Protection": True},
+                },
+            },
+        )
+        config = update_resp["ResponseHeadersPolicy"]["ResponseHeadersPolicyConfig"]
+        assert config["Comment"] == "updated"
+        assert "ETag" in update_resp
+
+        # Cleanup
+        cf.delete_response_headers_policy(Id=policy_id, IfMatch=update_resp["ETag"])
+
+
+class TestCloudFrontFunctionUpdatePublish:
+    def test_update_function(self, cf):
+        name = _unique("func")
+        create_resp = cf.create_function(
+            Name=name,
+            FunctionConfig={"Comment": "original", "Runtime": "cloudfront-js-2.0"},
+            FunctionCode=b"function handler(event) { return event.request; }",
+        )
+        etag = create_resp["ETag"]
+
+        update_resp = cf.update_function(
+            Name=name,
+            IfMatch=etag,
+            FunctionConfig={"Comment": "updated", "Runtime": "cloudfront-js-2.0"},
+            FunctionCode=b"function handler(event) { return event.response; }",
+        )
+        assert update_resp["FunctionSummary"]["FunctionConfig"]["Comment"] == "updated"
+        assert "ETag" in update_resp
+
+        # Cleanup
+        cf.delete_function(Name=name, IfMatch=update_resp["ETag"])
+
+    def test_publish_function(self, cf):
+        name = _unique("func")
+        create_resp = cf.create_function(
+            Name=name,
+            FunctionConfig={"Comment": "to-publish", "Runtime": "cloudfront-js-2.0"},
+            FunctionCode=b"function handler(event) { return event.request; }",
+        )
+        etag = create_resp["ETag"]
+
+        pub_resp = cf.publish_function(Name=name, IfMatch=etag)
+        assert pub_resp["FunctionSummary"]["Name"] == name
+        assert pub_resp["FunctionSummary"]["FunctionMetadata"]["Stage"] == "LIVE"
+
+        # Cleanup - get etag from describe since publish may not return it
+        desc = cf.describe_function(Name=name)
+        cf.delete_function(Name=name, IfMatch=desc["ETag"])
+
+
+class TestCloudFrontKeyGroupErrors:
+    def test_get_nonexistent_key_group(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_key_group(Id="KGNONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+    def test_delete_nonexistent_key_group(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.delete_key_group(Id="KGNONEXISTENT123", IfMatch="fake-etag")
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+
+class TestCloudFrontPublicKeyErrors:
+    def test_get_nonexistent_public_key(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_public_key(Id="PKNONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+    def test_delete_nonexistent_public_key_no_error(self, cf):
+        # Moto silently accepts delete of nonexistent public keys
+        resp = cf.delete_public_key(Id="PKNONEXISTENT123", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontCachePolicyErrors:
+    def test_get_nonexistent_cache_policy(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_cache_policy(Id="CPNONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+
+class TestCloudFrontFunctionErrors:
+    def test_describe_nonexistent_function(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.describe_function(Name="nonexistent-func-12345")
+        assert exc_info.value.response["Error"]["Code"] is not None
+
+    def test_get_nonexistent_function(self, cf):
+        with pytest.raises(cf.exceptions.ClientError) as exc_info:
+            cf.get_function(Name="nonexistent-func-12345")
+        assert exc_info.value.response["Error"]["Code"] is not None
