@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from tests.iac.conftest import make_client
+from tests.iac.helpers.stack_deployer import delete_stack, deploy_and_yield, get_stack_outputs
 
 pytestmark = pytest.mark.iac
 
@@ -19,7 +18,7 @@ Resources:
   HelloFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: sls-rest-api-hello-role
+      RoleName: !Sub "${AWS::StackName}-hello-role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -33,7 +32,7 @@ Resources:
   HelloFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: sls-rest-api-hello
+      FunctionName: !Sub "${AWS::StackName}-hello"
       Runtime: python3.12
       Handler: index.handler
       Role: !GetAtt HelloFunctionRole.Arn
@@ -46,7 +45,7 @@ Resources:
   RestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: sls-rest-api
+      Name: !Sub "${AWS::StackName}-api"
 
   HelloResource:
     Type: AWS::ApiGateway::Resource
@@ -79,31 +78,12 @@ Outputs:
 """
 
 
-def _get_outputs(stack: dict) -> dict[str, str]:
-    return {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
-
-
 @pytest.fixture(scope="module")
 def deployed_stack(ensure_server, test_run_id):
-    cfn = make_client("cloudformation")
     stack_name = f"{test_run_id}-sls-rest-api"
-    cfn.create_stack(
-        StackName=stack_name,
-        TemplateBody=TEMPLATE,
-        Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
-    )
-    for _ in range(60):
-        resp = cfn.describe_stacks(StackName=stack_name)
-        status = resp["Stacks"][0]["StackStatus"]
-        if status == "CREATE_COMPLETE":
-            yield resp["Stacks"][0]
-            cfn.delete_stack(StackName=stack_name)
-            return
-        if "FAILED" in status or "ROLLBACK" in status:
-            pytest.skip(f"Stack deploy failed: {status}")
-            return
-        time.sleep(1)
-    pytest.skip("Stack deploy timed out")
+    stack = deploy_and_yield(stack_name, TEMPLATE)
+    yield stack
+    delete_stack(stack_name)
 
 
 class TestRestApi:
@@ -111,20 +91,20 @@ class TestRestApi:
         assert deployed_stack["StackStatus"] == "CREATE_COMPLETE"
 
     def test_lambda_function_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         lam = make_client("lambda")
         config = lam.get_function_configuration(FunctionName=outputs["FunctionName"])
         assert config["Runtime"] == "python3.12"
         assert config["Handler"] == "index.handler"
 
     def test_iam_role_exists(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         iam = make_client("iam")
         role = iam.get_role(RoleName=outputs["RoleName"])
         assert "lambda.amazonaws.com" in str(role["Role"]["AssumeRolePolicyDocument"])
 
     def test_api_gateway_has_hello_resource(self, deployed_stack):
-        outputs = _get_outputs(deployed_stack)
+        outputs = get_stack_outputs(deployed_stack)
         apigw = make_client("apigateway")
         resources = apigw.get_resources(restApiId=outputs["RestApiId"])
         paths = [r.get("pathPart", "") for r in resources["items"]]
