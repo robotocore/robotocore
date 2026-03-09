@@ -1308,3 +1308,412 @@ class TestKinesisLambdaEventSourceMapping:
         lam.delete_function(FunctionName=func_name)
         kinesis.delete_stream(StreamName=stream_name)
         iam.delete_role(RoleName=role_name)
+
+
+class TestS3ToLambdaNotification:
+    """S3 bucket notification -> Lambda real invocation.
+
+    Lambda writes to SQS for verification.
+    """
+
+    _LAMBDA_CODE = (
+        "import json, boto3, os\n"
+        "def handler(event, ctx):\n"
+        "    sqs = boto3.client(\n"
+        '        "sqs",\n'
+        "        endpoint_url=os.environ.get(\n"
+        '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+        '        region_name="us-east-1",\n'
+        '        aws_access_key_id="testing",\n'
+        '        aws_secret_access_key="testing")\n'
+        '    queue_url = os.environ["VERIFY_QUEUE_URL"]\n'
+        "    sqs.send_message(\n"
+        "        QueueUrl=queue_url,\n"
+        "        MessageBody=json.dumps(event))\n"
+        '    return {"statusCode": 200}\n'
+    )
+
+    def _setup(self, suffix, events, filter_rules=None):
+        """Shared setup: IAM role, SQS queue, Lambda, S3 bucket
+        with notification config. Returns dict of clients/names."""
+        iam, role_name, role_arn = _create_lambda_role()
+
+        sqs = make_client("sqs")
+        queue_name = f"verify-s3-{suffix}"
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+
+        lam = make_client("lambda")
+        func_name = f"s3notif-fn-{suffix}"
+        code = _make_lambda_zip(self._LAMBDA_CODE)
+        func_resp = lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+        func_arn = func_resp["FunctionArn"]
+
+        s3 = make_client("s3")
+        bucket_name = f"s3notif-{suffix}"
+        s3.create_bucket(Bucket=bucket_name)
+
+        lambda_config = {
+            "LambdaFunctionArn": func_arn,
+            "Events": events,
+        }
+        if filter_rules is not None:
+            lambda_config["Filter"] = {"Key": {"FilterRules": filter_rules}}
+
+        s3.put_bucket_notification_configuration(
+            Bucket=bucket_name,
+            NotificationConfiguration={"LambdaFunctionConfigurations": [lambda_config]},
+        )
+
+        return {
+            "iam": iam,
+            "sqs": sqs,
+            "lam": lam,
+            "s3": s3,
+            "role_name": role_name,
+            "queue_url": queue_url,
+            "queue_name": queue_name,
+            "func_name": func_name,
+            "func_arn": func_arn,
+            "bucket_name": bucket_name,
+        }
+
+    def _cleanup(self, ctx):
+        ctx["s3"].delete_bucket(Bucket=ctx["bucket_name"])
+        ctx["lam"].delete_function(FunctionName=ctx["func_name"])
+        ctx["sqs"].delete_queue(QueueUrl=ctx["queue_url"])
+        ctx["iam"].delete_role(RoleName=ctx["role_name"])
+
+    def test_put_object_invokes_lambda(self):
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup(suffix, events=["s3:ObjectCreated:*"])
+
+        ctx["s3"].put_object(
+            Bucket=ctx["bucket_name"],
+            Key="hello.txt",
+            Body=b"world",
+        )
+
+        time.sleep(3)
+
+        recv = ctx["sqs"].receive_message(
+            QueueUrl=ctx["queue_url"],
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        event = json.loads(msgs[0]["Body"])
+        assert "Records" in event
+        rec = event["Records"][0]
+        assert rec["eventSource"] == "aws:s3"
+        assert rec["eventName"].startswith("ObjectCreated")
+        assert rec["s3"]["bucket"]["name"] == ctx["bucket_name"]
+        assert rec["s3"]["object"]["key"] == "hello.txt"
+
+        # Clean up
+        ctx["s3"].delete_object(Bucket=ctx["bucket_name"], Key="hello.txt")
+        self._cleanup(ctx)
+
+    def test_delete_object_invokes_lambda(self):
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup(suffix, events=["s3:ObjectRemoved:*"])
+
+        # Put then delete to trigger the removal event
+        ctx["s3"].put_object(
+            Bucket=ctx["bucket_name"],
+            Key="bye.txt",
+            Body=b"gone",
+        )
+        ctx["s3"].delete_object(Bucket=ctx["bucket_name"], Key="bye.txt")
+
+        time.sleep(3)
+
+        recv = ctx["sqs"].receive_message(
+            QueueUrl=ctx["queue_url"],
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        event = json.loads(msgs[0]["Body"])
+        assert "Records" in event
+        rec = event["Records"][0]
+        assert rec["eventSource"] == "aws:s3"
+        assert rec["eventName"].startswith("ObjectRemoved")
+        assert rec["s3"]["bucket"]["name"] == ctx["bucket_name"]
+        assert rec["s3"]["object"]["key"] == "bye.txt"
+
+        self._cleanup(ctx)
+
+    def test_filter_prefix(self):
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup(
+            suffix,
+            events=["s3:ObjectCreated:*"],
+            filter_rules=[{"Name": "prefix", "Value": "data/"}],
+        )
+
+        # Put object with matching prefix -> should invoke
+        ctx["s3"].put_object(
+            Bucket=ctx["bucket_name"],
+            Key="data/file.csv",
+            Body=b"matched",
+        )
+        # Put object without prefix -> should NOT invoke
+        ctx["s3"].put_object(
+            Bucket=ctx["bucket_name"],
+            Key="other/file.csv",
+            Body=b"no-match",
+        )
+
+        time.sleep(3)
+
+        recv = ctx["sqs"].receive_message(
+            QueueUrl=ctx["queue_url"],
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        # Should have exactly 1 message (the data/ prefixed one)
+        assert len(msgs) == 1
+        event = json.loads(msgs[0]["Body"])
+        assert "Records" in event
+        rec = event["Records"][0]
+        assert rec["s3"]["object"]["key"] == "data/file.csv"
+
+        # Clean up
+        ctx["s3"].delete_object(Bucket=ctx["bucket_name"], Key="data/file.csv")
+        ctx["s3"].delete_object(Bucket=ctx["bucket_name"], Key="other/file.csv")
+        self._cleanup(ctx)
+
+
+class TestDynamoDBStreamsToLambdaESM:
+    """DynamoDB Streams -> Lambda via Event Source Mapping.
+
+    Lambda writes to SQS for verification.
+    """
+
+    _LAMBDA_CODE = (
+        "import json, boto3, os\n"
+        "def handler(event, ctx):\n"
+        "    sqs = boto3.client(\n"
+        '        "sqs",\n'
+        "        endpoint_url=os.environ.get(\n"
+        '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+        '        region_name="us-east-1",\n'
+        '        aws_access_key_id="testing",\n'
+        '        aws_secret_access_key="testing")\n'
+        '    queue_url = os.environ["VERIFY_QUEUE_URL"]\n'
+        "    sqs.send_message(\n"
+        "        QueueUrl=queue_url,\n"
+        "        MessageBody=json.dumps(event))\n"
+        '    return {"statusCode": 200}\n'
+    )
+
+    def _create_table_with_stream(self, suffix):
+        """Create a DDB table with streams enabled."""
+        ddb = make_client("dynamodb")
+        table_name = f"ddb-stream-{suffix}"
+        ddb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[
+                {
+                    "AttributeName": "pk",
+                    "AttributeType": "S",
+                }
+            ],
+            BillingMode="PAY_PER_REQUEST",
+            StreamSpecification={
+                "StreamEnabled": True,
+                "StreamViewType": "NEW_AND_OLD_IMAGES",
+            },
+        )
+        desc = ddb.describe_table(TableName=table_name)
+        stream_arn = desc["Table"]["LatestStreamArn"]
+        return ddb, table_name, stream_arn
+
+    def _setup(self, suffix, batch_size=10):
+        """Shared setup: IAM role, SQS queue, Lambda, DDB table
+        with stream, ESM. Returns dict of clients/names."""
+        iam, role_name, role_arn = _create_lambda_role()
+
+        sqs = make_client("sqs")
+        queue_name = f"verify-ddb-{suffix}"
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+
+        lam = make_client("lambda")
+        func_name = f"ddb-fn-{suffix}"
+        code = _make_lambda_zip(self._LAMBDA_CODE)
+        func_resp = lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": "http://localhost:4566",
+                }
+            },
+        )
+        func_arn = func_resp["FunctionArn"]
+
+        ddb, table_name, stream_arn = self._create_table_with_stream(suffix)
+
+        esm_resp = lam.create_event_source_mapping(
+            EventSourceArn=stream_arn,
+            FunctionName=func_name,
+            StartingPosition="LATEST",
+            BatchSize=batch_size,
+        )
+        esm_uuid = esm_resp["UUID"]
+
+        return {
+            "iam": iam,
+            "sqs": sqs,
+            "lam": lam,
+            "ddb": ddb,
+            "role_name": role_name,
+            "queue_url": queue_url,
+            "queue_name": queue_name,
+            "func_name": func_name,
+            "func_arn": func_arn,
+            "table_name": table_name,
+            "stream_arn": stream_arn,
+            "esm_uuid": esm_uuid,
+        }
+
+    def _cleanup(self, ctx):
+        ctx["lam"].delete_event_source_mapping(UUID=ctx["esm_uuid"])
+        ctx["lam"].delete_function(FunctionName=ctx["func_name"])
+        ctx["ddb"].delete_table(TableName=ctx["table_name"])
+        ctx["sqs"].delete_queue(QueueUrl=ctx["queue_url"])
+        ctx["iam"].delete_role(RoleName=ctx["role_name"])
+
+    def test_put_item_triggers_lambda(self):
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup(suffix)
+
+        ctx["ddb"].put_item(
+            TableName=ctx["table_name"],
+            Item={"pk": {"S": "item-1"}, "val": {"S": "a"}},
+        )
+
+        time.sleep(5)
+
+        recv = ctx["sqs"].receive_message(
+            QueueUrl=ctx["queue_url"],
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        event = json.loads(msgs[0]["Body"])
+        assert "Records" in event
+        rec = event["Records"][0]
+        assert rec["eventSource"] == "aws:dynamodb"
+        assert rec["eventName"] == "INSERT"
+        assert "dynamodb" in rec
+        new_img = rec["dynamodb"].get("NewImage", {})
+        assert "pk" in new_img
+
+        self._cleanup(ctx)
+
+    def test_update_item_triggers_lambda(self):
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup(suffix)
+
+        # Insert first
+        ctx["ddb"].put_item(
+            TableName=ctx["table_name"],
+            Item={"pk": {"S": "upd-1"}, "val": {"S": "v1"}},
+        )
+        time.sleep(5)
+
+        # Drain INSERT message
+        ctx["sqs"].receive_message(
+            QueueUrl=ctx["queue_url"],
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+
+        # Now update the item
+        ctx["ddb"].update_item(
+            TableName=ctx["table_name"],
+            Key={"pk": {"S": "upd-1"}},
+            UpdateExpression="SET val = :v",
+            ExpressionAttributeValues={":v": {"S": "v2"}},
+        )
+
+        time.sleep(5)
+
+        recv = ctx["sqs"].receive_message(
+            QueueUrl=ctx["queue_url"],
+            WaitTimeSeconds=5,
+            MaxNumberOfMessages=10,
+        )
+        msgs = recv.get("Messages", [])
+        assert len(msgs) >= 1
+        event = json.loads(msgs[0]["Body"])
+        assert "Records" in event
+        rec = event["Records"][0]
+        assert rec["eventSource"] == "aws:dynamodb"
+        assert rec["eventName"] == "MODIFY"
+
+        self._cleanup(ctx)
+
+    def test_batch_size(self):
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup(suffix, batch_size=1)
+
+        # Put 3 items
+        for i in range(3):
+            ctx["ddb"].put_item(
+                TableName=ctx["table_name"],
+                Item={
+                    "pk": {"S": f"batch-{i}"},
+                    "val": {"S": str(i)},
+                },
+            )
+
+        time.sleep(5)
+
+        # With BatchSize=1, each item should trigger a
+        # separate Lambda invocation -> 3 SQS messages
+        all_msgs = []
+        for _ in range(3):
+            recv = ctx["sqs"].receive_message(
+                QueueUrl=ctx["queue_url"],
+                WaitTimeSeconds=5,
+                MaxNumberOfMessages=10,
+            )
+            batch = recv.get("Messages", [])
+            all_msgs.extend(batch)
+            if len(all_msgs) >= 3:
+                break
+
+        assert len(all_msgs) >= 3
+        # Each message should have exactly 1 record
+        for msg in all_msgs[:3]:
+            event = json.loads(msg["Body"])
+            assert "Records" in event
+            assert len(event["Records"]) == 1
+            assert event["Records"][0]["eventSource"] == "aws:dynamodb"
+
+        self._cleanup(ctx)
