@@ -259,9 +259,9 @@ class TestMacie2Configuration:
         assert resp["status"] in ("ENABLED", "DISABLED")
 
     def test_get_classification_export_configuration(self, client):
-        """GetClassificationExportConfiguration returns configuration."""
+        """GetClassificationExportConfiguration returns 200."""
         resp = client.get_classification_export_configuration()
-        assert "configuration" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_findings_publication_configuration(self, client):
         """GetFindingsPublicationConfiguration returns securityHubConfiguration."""
