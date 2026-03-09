@@ -100,6 +100,35 @@ class CloudFormationRunner:
         self._client.delete_stack(StackName=stack_name)
         self.wait_for_stack(stack_name, "DELETE_COMPLETE", timeout)
 
+    def update_stack(
+        self,
+        stack_name: str,
+        template_body: str,
+        params: dict | None = None,
+        timeout: int = 300,
+    ) -> dict:
+        """Update an existing stack and wait for UPDATE_COMPLETE."""
+        kwargs: dict = {
+            "StackName": stack_name,
+            "TemplateBody": template_body,
+            "Capabilities": ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"],
+        }
+        if params:
+            kwargs["Parameters"] = [
+                {"ParameterKey": k, "ParameterValue": v} for k, v in params.items()
+            ]
+        self._client.update_stack(**kwargs)
+        return self.wait_for_stack(stack_name, "UPDATE_COMPLETE", timeout)
+
+    def get_stack_outputs(self, stack_name: str) -> dict:
+        """Return stack outputs as a {key: value} dict."""
+        resp = self._client.describe_stacks(StackName=stack_name)
+        stacks = resp.get("Stacks", [])
+        if not stacks:
+            raise RuntimeError(f"Stack {stack_name} not found")
+        outputs = stacks[0].get("Outputs", [])
+        return {o["OutputKey"]: o["OutputValue"] for o in outputs}
+
     def wait_for_stack(self, stack_name: str, target_status: str, timeout: int = 300) -> dict:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
