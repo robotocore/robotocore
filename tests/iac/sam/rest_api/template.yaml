@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SAM REST API with Lambda
+
+Resources:
+  HelloFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-hello"
+      Runtime: python3.12
+      Handler: index.handler
+      InlineCode: |
+        import json
+        def handler(event, context):
+            return {"statusCode": 200, "body": json.dumps({"message": "hello from sam"})}
+      Events:
+        GetHello:
+          Type: Api
+          Properties:
+            Path: /hello
+            Method: get
+
+Outputs:
+  FunctionName:
+    Value: !Ref HelloFunction
