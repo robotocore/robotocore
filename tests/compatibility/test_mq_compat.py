@@ -205,3 +205,39 @@ class TestMQUserOperations:
         # The broker was created with an "admin" user
         usernames = [u["Username"] for u in resp["Users"]]
         assert "admin" in usernames
+
+
+class TestMQErrors:
+    """Tests for MQ error handling."""
+
+    def test_describe_broker_nonexistent(self, mq):
+        """DescribeBroker for nonexistent broker raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            mq.describe_broker(BrokerId="nonexistent-broker-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_describe_configuration_nonexistent(self, mq):
+        """DescribeConfiguration for nonexistent config raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            mq.describe_configuration(ConfigurationId="nonexistent-config-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_describe_user_nonexistent_broker(self, mq):
+        """DescribeUser on nonexistent broker raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            mq.describe_user(BrokerId="nonexistent-broker-id", Username="admin")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_list_users_nonexistent_broker(self, mq):
+        """ListUsers on nonexistent broker raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            mq.list_users(BrokerId="nonexistent-broker-id")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"

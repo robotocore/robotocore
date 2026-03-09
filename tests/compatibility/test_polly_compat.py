@@ -118,3 +118,23 @@ class TestLexicons:
         resp = polly_client.list_lexicons()
         assert "Lexicons" in resp
         assert isinstance(resp["Lexicons"], list)
+
+
+class TestPollyErrors:
+    """Tests for Polly error handling."""
+
+    def test_get_lexicon_nonexistent(self, polly_client):
+        """GetLexicon for nonexistent lexicon raises LexiconNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            polly_client.get_lexicon(Name="nonexistent-lexicon-xyz")
+        assert exc.value.response["Error"]["Code"] == "LexiconNotFoundException"
+
+    def test_delete_lexicon_nonexistent(self, polly_client):
+        """DeleteLexicon for nonexistent lexicon raises LexiconNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            polly_client.delete_lexicon(Name="nonexistent-lexicon-xyz")
+        assert exc.value.response["Error"]["Code"] == "LexiconNotFoundException"
