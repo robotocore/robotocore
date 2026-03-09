@@ -195,6 +195,73 @@ class TestOpensearchserverlessAutoCoverage:
             except ClientError:
                 pass
 
+    def test_update_security_policy(self, client):
+        """UpdateSecurityPolicy modifies a policy's description."""
+        suffix = _uid()
+        pol_name = f"enc-usp-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/test-usp-{suffix}"],
+                    }
+                ],
+                "AWSOwnedKey": True,
+            }
+        )
+        create_resp = client.create_security_policy(name=pol_name, type="encryption", policy=policy)
+        version = create_resp["securityPolicyDetail"]["policyVersion"]
+        try:
+            resp = client.update_security_policy(
+                name=pol_name,
+                type="encryption",
+                policyVersion=version,
+                description="Updated description",
+                policy=policy,
+            )
+            detail = resp["securityPolicyDetail"]
+            assert detail["name"] == pol_name
+            assert detail["description"] == "Updated description"
+        finally:
+            try:
+                client.delete_security_policy(name=pol_name, type="encryption")
+            except ClientError:
+                pass
+
+    def test_batch_get_collection_with_ids(self, client):
+        """BatchGetCollection with specific IDs returns matching collections."""
+        suffix = _uid()
+        coll_name = f"test-bgc-{suffix}"
+        pol_name = f"enc-bgc-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/{coll_name}"],
+                    }
+                ],
+                "AWSOwnedKey": True,
+            }
+        )
+        client.create_security_policy(name=pol_name, type="encryption", policy=policy)
+        try:
+            resp = client.create_collection(name=coll_name, type="SEARCH")
+            coll_id = resp["createCollectionDetail"]["id"]
+            try:
+                batch_resp = client.batch_get_collection(ids=[coll_id])
+                assert "collectionDetails" in batch_resp
+                found_ids = [c["id"] for c in batch_resp["collectionDetails"]]
+                assert coll_id in found_ids
+            finally:
+                client.delete_collection(id=coll_id)
+        finally:
+            try:
+                client.delete_security_policy(name=pol_name, type="encryption")
+            except ClientError:
+                pass
+
     def test_list_tags_for_resource(self, client):
         """ListTagsForResource returns tags for a collection."""
         suffix = _uid()

@@ -198,3 +198,60 @@ class TestCodeBuildListOperations:
             assert len(resp["ids"]) >= 1
         finally:
             codebuild.delete_project(name=name)
+
+
+class TestCodeBuildBatchGetBuilds:
+    """Tests for BatchGetBuilds operation."""
+
+    def _create_project(self, codebuild):
+        name = _unique("project")
+        codebuild.create_project(
+            name=name,
+            source={"type": "S3", "location": "my-bucket/source.zip"},
+            artifacts={"type": "NO_ARTIFACTS"},
+            environment={
+                "type": "LINUX_CONTAINER",
+                "image": "aws/codebuild/standard:5.0",
+                "computeType": "BUILD_GENERAL1_SMALL",
+            },
+            serviceRole="arn:aws:iam::123456789012:role/codebuild-role",
+        )
+        return name
+
+    def test_batch_get_builds(self, codebuild):
+        """BatchGetBuilds returns build details."""
+        name = self._create_project(codebuild)
+        try:
+            start_resp = codebuild.start_build(projectName=name)
+            build_id = start_resp["build"]["id"]
+            resp = codebuild.batch_get_builds(ids=[build_id])
+            assert len(resp["builds"]) == 1
+            assert resp["builds"][0]["id"] == build_id
+            assert resp["builds"][0]["projectName"] == name
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_batch_get_builds_multiple(self, codebuild):
+        """BatchGetBuilds returns multiple builds."""
+        name = self._create_project(codebuild)
+        try:
+            b1 = codebuild.start_build(projectName=name)["build"]["id"]
+            b2 = codebuild.start_build(projectName=name)["build"]["id"]
+            resp = codebuild.batch_get_builds(ids=[b1, b2])
+            assert len(resp["builds"]) == 2
+            returned_ids = {b["id"] for b in resp["builds"]}
+            assert b1 in returned_ids
+            assert b2 in returned_ids
+        finally:
+            codebuild.delete_project(name=name)
+
+    def test_list_builds_after_start(self, codebuild):
+        """ListBuilds includes a build after it's started."""
+        name = self._create_project(codebuild)
+        try:
+            start_resp = codebuild.start_build(projectName=name)
+            build_id = start_resp["build"]["id"]
+            resp = codebuild.list_builds()
+            assert build_id in resp.get("ids", [])
+        finally:
+            codebuild.delete_project(name=name)

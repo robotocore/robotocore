@@ -4794,3 +4794,558 @@ class TestEC2DHCPOptionsDetailed:
             assert "domain-name-servers" in config_keys
         finally:
             ec2.delete_dhcp_options(DhcpOptionsId=dopt_id)
+
+
+class TestEC2VpcCidrBlockOperations:
+    """VPC CIDR block associate/disassociate operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_disassociate_vpc_cidr_block(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            assoc = ec2.associate_vpc_cidr_block(VpcId=vpc_id, CidrBlock="10.1.0.0/16")
+            assoc_id = assoc["CidrBlockAssociation"]["AssociationId"]
+            assert assoc_id.startswith("vpc-cidr-assoc-")
+            assert assoc["CidrBlockAssociation"]["CidrBlock"] == "10.1.0.0/16"
+
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            cidr_blocks = [a["CidrBlock"] for a in described["Vpcs"][0]["CidrBlockAssociationSet"]]
+            assert "10.1.0.0/16" in cidr_blocks
+
+            ec2.disassociate_vpc_cidr_block(AssociationId=assoc_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_associate_vpc_cidr_block_multiple(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            a1 = ec2.associate_vpc_cidr_block(VpcId=vpc_id, CidrBlock="10.1.0.0/16")
+            a2 = ec2.associate_vpc_cidr_block(VpcId=vpc_id, CidrBlock="10.2.0.0/16")
+            assert a1["CidrBlockAssociation"]["CidrBlock"] == "10.1.0.0/16"
+            assert a2["CidrBlockAssociation"]["CidrBlock"] == "10.2.0.0/16"
+
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            cidrs = {a["CidrBlock"] for a in described["Vpcs"][0]["CidrBlockAssociationSet"]}
+            assert "10.0.0.0/16" in cidrs
+            assert "10.1.0.0/16" in cidrs
+            assert "10.2.0.0/16" in cidrs
+
+            ec2.disassociate_vpc_cidr_block(
+                AssociationId=a2["CidrBlockAssociation"]["AssociationId"]
+            )
+            ec2.disassociate_vpc_cidr_block(
+                AssociationId=a1["CidrBlockAssociation"]["AssociationId"]
+            )
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2SubnetCidrReservation:
+    """Subnet CIDR reservation operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_get_delete_subnet_cidr_reservation(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                res = ec2.create_subnet_cidr_reservation(
+                    SubnetId=subnet_id,
+                    Cidr="10.0.1.0/28",
+                    ReservationType="prefix",
+                )
+                scr_id = res["SubnetCidrReservation"]["SubnetCidrReservationId"]
+                assert scr_id.startswith("scr-")
+                assert res["SubnetCidrReservation"]["Cidr"] == "10.0.1.0/28"
+
+                got = ec2.get_subnet_cidr_reservations(SubnetId=subnet_id)
+                prefix_reservations = got.get("SubnetIpv4CidrReservations", [])
+                assert any(r["SubnetCidrReservationId"] == scr_id for r in prefix_reservations)
+
+                ec2.delete_subnet_cidr_reservation(SubnetCidrReservationId=scr_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2RegisterImageOperations:
+    """RegisterImage and related operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_register_describe_deregister_image(self, ec2):
+        resp = ec2.register_image(
+            Name=_unique("test-ami"),
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"VolumeSize": 8, "VolumeType": "gp2"},
+                }
+            ],
+        )
+        ami_id = resp["ImageId"]
+        assert ami_id.startswith("ami-")
+        try:
+            described = ec2.describe_images(ImageIds=[ami_id])
+            assert len(described["Images"]) == 1
+            assert described["Images"][0]["RootDeviceName"] == "/dev/sda1"
+        finally:
+            ec2.deregister_image(ImageId=ami_id)
+
+    def test_register_image_with_description(self, ec2):
+        resp = ec2.register_image(
+            Name=_unique("test-ami-desc"),
+            Description="Test image description",
+            RootDeviceName="/dev/sda1",
+        )
+        ami_id = resp["ImageId"]
+        try:
+            described = ec2.describe_images(ImageIds=[ami_id])
+            assert described["Images"][0]["Description"] == "Test image description"
+        finally:
+            ec2.deregister_image(ImageId=ami_id)
+
+
+class TestEC2PlacementGroupStrategies:
+    """Placement group with different strategies."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_placement_group_partition_strategy(self, ec2):
+        name = _unique("pg-partition")
+        ec2.create_placement_group(GroupName=name, Strategy="partition", PartitionCount=3)
+        try:
+            described = ec2.describe_placement_groups(GroupNames=[name])
+            pg = described["PlacementGroups"][0]
+            assert pg["Strategy"] == "partition"
+        finally:
+            ec2.delete_placement_group(GroupName=name)
+
+    def test_placement_group_spread_strategy(self, ec2):
+        name = _unique("pg-spread")
+        ec2.create_placement_group(GroupName=name, Strategy="spread")
+        try:
+            described = ec2.describe_placement_groups(GroupNames=[name])
+            pg = described["PlacementGroups"][0]
+            assert pg["Strategy"] == "spread"
+        finally:
+            ec2.delete_placement_group(GroupName=name)
+
+    def test_describe_placement_groups_by_filter(self, ec2):
+        name = _unique("pg-filter")
+        ec2.create_placement_group(GroupName=name, Strategy="cluster")
+        try:
+            described = ec2.describe_placement_groups(
+                Filters=[{"Name": "group-name", "Values": [name]}]
+            )
+            assert len(described["PlacementGroups"]) == 1
+            assert described["PlacementGroups"][0]["GroupName"] == name
+        finally:
+            ec2.delete_placement_group(GroupName=name)
+
+
+class TestEC2KeyPairTypes:
+    """Key pair with different types and tags."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_ed25519_key_pair(self, ec2):
+        name = _unique("kp-ed25519")
+        resp = ec2.create_key_pair(KeyName=name, KeyType="ed25519")
+        try:
+            assert resp["KeyName"] == name
+            assert "KeyMaterial" in resp
+
+            described = ec2.describe_key_pairs(KeyNames=[name])
+            assert described["KeyPairs"][0]["KeyType"] == "ed25519"
+        finally:
+            ec2.delete_key_pair(KeyName=name)
+
+    def test_create_key_pair_with_tags(self, ec2):
+        name = _unique("kp-tagged")
+        resp = ec2.create_key_pair(
+            KeyName=name,
+            TagSpecifications=[
+                {
+                    "ResourceType": "key-pair",
+                    "Tags": [{"Key": "env", "Value": "test"}],
+                }
+            ],
+        )
+        try:
+            assert resp["KeyName"] == name
+            described = ec2.describe_key_pairs(KeyNames=[name])
+            tags = described["KeyPairs"][0].get("Tags", [])
+            assert any(t["Key"] == "env" and t["Value"] == "test" for t in tags)
+        finally:
+            ec2.delete_key_pair(KeyName=name)
+
+
+class TestEC2VolumeTypeOperations:
+    """Volume operations with different types."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_gp3_volume(self, ec2):
+        resp = ec2.create_volume(AvailabilityZone="us-east-1a", Size=10, VolumeType="gp3")
+        vol_id = resp["VolumeId"]
+        try:
+            assert resp["VolumeType"] == "gp3"
+            assert resp["Size"] == 10
+            described = ec2.describe_volumes(VolumeIds=[vol_id])
+            assert described["Volumes"][0]["VolumeType"] == "gp3"
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_io1_volume(self, ec2):
+        resp = ec2.create_volume(AvailabilityZone="us-east-1a", Size=10, VolumeType="io1", Iops=100)
+        vol_id = resp["VolumeId"]
+        try:
+            assert resp["VolumeType"] == "io1"
+            assert resp["Iops"] == 100
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_volume_with_tags(self, ec2):
+        resp = ec2.create_volume(
+            AvailabilityZone="us-east-1a",
+            Size=10,
+            VolumeType="gp2",
+            TagSpecifications=[
+                {
+                    "ResourceType": "volume",
+                    "Tags": [{"Key": "Name", "Value": "test-vol"}],
+                }
+            ],
+        )
+        vol_id = resp["VolumeId"]
+        try:
+            tags = resp.get("Tags", [])
+            assert any(t["Key"] == "Name" and t["Value"] == "test-vol" for t in tags)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_create_volume_encrypted(self, ec2):
+        resp = ec2.create_volume(
+            AvailabilityZone="us-east-1a", Size=10, VolumeType="gp2", Encrypted=True
+        )
+        vol_id = resp["VolumeId"]
+        try:
+            assert resp["Encrypted"] is True
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+
+class TestEC2NetworkInterfaceAttachDetach:
+    """Network interface attach/detach and security group operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_attach_detach_network_interface(self, ec2):
+        """Create ENI, run instance, attach ENI, detach ENI."""
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id)
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    instances = ec2.run_instances(
+                        ImageId="ami-12345678",
+                        InstanceType="t2.micro",
+                        MinCount=1,
+                        MaxCount=1,
+                        SubnetId=subnet_id,
+                    )
+                    instance_id = instances["Instances"][0]["InstanceId"]
+                    try:
+                        attach = ec2.attach_network_interface(
+                            NetworkInterfaceId=eni_id,
+                            InstanceId=instance_id,
+                            DeviceIndex=1,
+                        )
+                        attach_id = attach["AttachmentId"]
+                        assert attach_id.startswith("eni-attach-")
+
+                        ec2.detach_network_interface(AttachmentId=attach_id)
+                    finally:
+                        ec2.terminate_instances(InstanceIds=[instance_id])
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_create_network_interface_with_security_group(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            sg = ec2.create_security_group(
+                GroupName=_unique("eni-sg"),
+                Description="ENI test SG",
+                VpcId=vpc_id,
+            )
+            sg_id = sg["GroupId"]
+            try:
+                eni = ec2.create_network_interface(SubnetId=subnet_id, Groups=[sg_id])
+                eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+                try:
+                    groups = eni["NetworkInterface"]["Groups"]
+                    assert any(g["GroupId"] == sg_id for g in groups)
+                finally:
+                    ec2.delete_network_interface(NetworkInterfaceId=eni_id)
+            finally:
+                ec2.delete_security_group(GroupId=sg_id)
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2InstanceImageOperations:
+    """Instance-based image and metadata operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_image_from_instance(self, ec2):
+        instances = ec2.run_instances(
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+        )
+        instance_id = instances["Instances"][0]["InstanceId"]
+        try:
+            resp = ec2.create_image(InstanceId=instance_id, Name=_unique("test-image"))
+            ami_id = resp["ImageId"]
+            assert ami_id.startswith("ami-")
+
+            described = ec2.describe_images(ImageIds=[ami_id])
+            assert len(described["Images"]) == 1
+            ec2.deregister_image(ImageId=ami_id)
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_get_launch_template_data(self, ec2):
+        instances = ec2.run_instances(
+            ImageId="ami-12345678",
+            InstanceType="t2.micro",
+            MinCount=1,
+            MaxCount=1,
+        )
+        instance_id = instances["Instances"][0]["InstanceId"]
+        try:
+            resp = ec2.get_launch_template_data(InstanceId=instance_id)
+            lt_data = resp["LaunchTemplateData"]
+            assert "ImageId" in lt_data
+            assert "InstanceType" in lt_data
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+
+class TestEC2ModifySecurityGroupRules:
+    """Modify security group rules operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_security_group_rules(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            sg = ec2.create_security_group(
+                GroupName=_unique("mod-sg"),
+                Description="Test modify SG rules",
+                VpcId=vpc_id,
+            )
+            sg_id = sg["GroupId"]
+            try:
+                ec2.authorize_security_group_ingress(
+                    GroupId=sg_id,
+                    IpPermissions=[
+                        {
+                            "IpProtocol": "tcp",
+                            "FromPort": 80,
+                            "ToPort": 80,
+                            "IpRanges": [{"CidrIp": "10.0.0.0/8"}],
+                        }
+                    ],
+                )
+                rules = ec2.describe_security_group_rules(
+                    Filters=[{"Name": "group-id", "Values": [sg_id]}]
+                )
+                ingress_rules = [
+                    r
+                    for r in rules["SecurityGroupRules"]
+                    if not r["IsEgress"] and r["IpProtocol"] == "tcp"
+                ]
+                assert len(ingress_rules) >= 1
+                rule_id = ingress_rules[0]["SecurityGroupRuleId"]
+
+                ec2.modify_security_group_rules(
+                    GroupId=sg_id,
+                    SecurityGroupRules=[
+                        {
+                            "SecurityGroupRuleId": rule_id,
+                            "SecurityGroupRule": {
+                                "IpProtocol": "tcp",
+                                "FromPort": 443,
+                                "ToPort": 443,
+                                "CidrIpv4": "10.0.0.0/8",
+                            },
+                        }
+                    ],
+                )
+
+                updated = ec2.describe_security_group_rules(
+                    Filters=[{"Name": "group-id", "Values": [sg_id]}]
+                )
+                updated_rule = [
+                    r for r in updated["SecurityGroupRules"] if r["SecurityGroupRuleId"] == rule_id
+                ][0]
+                assert updated_rule["FromPort"] == 443
+                assert updated_rule["ToPort"] == 443
+            finally:
+                ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2VpcPeeringAdvanced:
+    """Advanced VPC peering operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_reject_vpc_peering_connection(self, ec2):
+        vpc1 = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc1_id = vpc1["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.1.0.0/16")
+        vpc2_id = vpc2["Vpc"]["VpcId"]
+        try:
+            pcx = ec2.create_vpc_peering_connection(VpcId=vpc1_id, PeerVpcId=vpc2_id)
+            pcx_id = pcx["VpcPeeringConnection"]["VpcPeeringConnectionId"]
+
+            resp = ec2.reject_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+            assert resp["Return"] is True
+
+            described = ec2.describe_vpc_peering_connections(VpcPeeringConnectionIds=[pcx_id])
+            status = described["VpcPeeringConnections"][0]["Status"]["Code"]
+            assert status in ("rejected", "deleted")
+        finally:
+            ec2.delete_vpc(VpcId=vpc2_id)
+            ec2.delete_vpc(VpcId=vpc1_id)
+
+    def test_vpc_peering_has_requester_accepter_info(self, ec2):
+        vpc1 = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc1_id = vpc1["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.1.0.0/16")
+        vpc2_id = vpc2["Vpc"]["VpcId"]
+        try:
+            pcx = ec2.create_vpc_peering_connection(VpcId=vpc1_id, PeerVpcId=vpc2_id)
+            pcx_id = pcx["VpcPeeringConnection"]["VpcPeeringConnectionId"]
+            try:
+                req_info = pcx["VpcPeeringConnection"]["RequesterVpcInfo"]
+                acc_info = pcx["VpcPeeringConnection"]["AccepterVpcInfo"]
+                assert req_info["VpcId"] == vpc1_id
+                assert acc_info["VpcId"] == vpc2_id
+            finally:
+                ec2.delete_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc2_id)
+            ec2.delete_vpc(VpcId=vpc1_id)
+
+
+class TestEC2ReplaceRouteTableAssociation:
+    """Replace route table association operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_route_table_association(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24")
+            subnet_id = subnet["Subnet"]["SubnetId"]
+            rtb1 = ec2.create_route_table(VpcId=vpc_id)
+            rtb1_id = rtb1["RouteTable"]["RouteTableId"]
+            rtb2 = ec2.create_route_table(VpcId=vpc_id)
+            rtb2_id = rtb2["RouteTable"]["RouteTableId"]
+            try:
+                assoc = ec2.associate_route_table(SubnetId=subnet_id, RouteTableId=rtb1_id)
+                assoc_id = assoc["AssociationId"]
+
+                new_assoc = ec2.replace_route_table_association(
+                    AssociationId=assoc_id, RouteTableId=rtb2_id
+                )
+                new_assoc_id = new_assoc["NewAssociationId"]
+                assert new_assoc_id != assoc_id
+
+                ec2.disassociate_route_table(AssociationId=new_assoc_id)
+            finally:
+                ec2.delete_route_table(RouteTableId=rtb2_id)
+                ec2.delete_route_table(RouteTableId=rtb1_id)
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2DescribeListOperations:
+    """Various describe/list operations that return empty lists."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_iam_instance_profile_associations(self, ec2):
+        resp = ec2.describe_iam_instance_profile_associations()
+        assert "IamInstanceProfileAssociations" in resp
+        assert isinstance(resp["IamInstanceProfileAssociations"], list)
+
+    def test_describe_fleet_instances_empty(self, ec2):
+        # Fleet ID doesn't exist but API returns empty active instances
+        resp = ec2.describe_fleet_instances(FleetId="fleet-00000000000000000")
+        assert "ActiveInstances" in resp
+        assert isinstance(resp["ActiveInstances"], list)
+
+    def test_describe_hosts_list(self, ec2):
+        resp = ec2.describe_hosts()
+        assert "Hosts" in resp
+        assert isinstance(resp["Hosts"], list)
+
+    def test_describe_instance_credit_specifications_list(self, ec2):
+        resp = ec2.describe_instance_credit_specifications()
+        assert "InstanceCreditSpecifications" in resp
+        assert isinstance(resp["InstanceCreditSpecifications"], list)

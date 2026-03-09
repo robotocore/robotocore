@@ -211,6 +211,29 @@ class TestResilienceHubTags:
         assert "tags" in resp
         assert resp["tags"].get("env") == "test"
 
+    def test_untag_resource(self, resiliencehub):
+        """UntagResource removes tags from an app."""
+        name = _unique_name()
+        app_arn = resiliencehub.create_app(name=name)["app"]["appArn"]
+        resiliencehub.tag_resource(resourceArn=app_arn, tags={"env": "test", "keep": "yes"})
+        resiliencehub.untag_resource(resourceArn=app_arn, tagKeys=["env"])
+        resp = resiliencehub.list_tags_for_resource(resourceArn=app_arn)
+        assert "env" not in resp.get("tags", {})
+        assert resp["tags"].get("keep") == "yes"
+
+    def test_tag_multiple_keys(self, resiliencehub):
+        """TagResource with multiple keys stores all of them."""
+        name = _unique_name()
+        app_arn = resiliencehub.create_app(name=name)["app"]["appArn"]
+        resiliencehub.tag_resource(
+            resourceArn=app_arn,
+            tags={"env": "prod", "team": "platform", "project": "roboto"},
+        )
+        resp = resiliencehub.list_tags_for_resource(resourceArn=app_arn)
+        assert resp["tags"]["env"] == "prod"
+        assert resp["tags"]["team"] == "platform"
+        assert resp["tags"]["project"] == "roboto"
+
 
 class TestResilienceHubDescribePolicy:
     """Tests for DescribeResiliencyPolicy."""

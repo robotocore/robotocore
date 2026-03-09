@@ -165,3 +165,157 @@ class TestLakeformationAutoCoverage:
         resp = client.list_lf_tags()
         tag_keys = [t["TagKey"] for t in resp.get("LFTags", [])]
         assert tag_key not in tag_keys
+
+    def test_create_lf_tag(self, client):
+        """CreateLFTag creates a new LF tag."""
+        tag_key = f"tag-{uuid.uuid4().hex[:8]}"
+        resp = client.create_lf_tag(TagKey=tag_key, TagValues=["val1", "val2", "val3"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify via list
+        list_resp = client.list_lf_tags()
+        found = [t for t in list_resp.get("LFTags", []) if t["TagKey"] == tag_key]
+        assert len(found) == 1
+        assert set(found[0]["TagValues"]) == {"val1", "val2", "val3"}
+        client.delete_lf_tag(TagKey=tag_key)
+
+    def test_update_lf_tag(self, client):
+        """UpdateLFTag adds and removes tag values."""
+        tag_key = f"tag-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["a", "b", "c"])
+        try:
+            resp = client.update_lf_tag(
+                TagKey=tag_key,
+                TagValuesToDelete=["b"],
+                TagValuesToAdd=["d"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            get_resp = client.get_lf_tag(TagKey=tag_key)
+            assert set(get_resp["TagValues"]) == {"a", "c", "d"}
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_create_lf_tag_appears_in_list(self, client):
+        """Created LF tags appear in ListLFTags."""
+        tag_key = f"tag-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["x"])
+        try:
+            resp = client.list_lf_tags()
+            tag_keys = [t["TagKey"] for t in resp.get("LFTags", [])]
+            assert tag_key in tag_keys
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+
+class TestLakeFormationBatchPermissions:
+    """Tests for BatchGrantPermissions and BatchRevokePermissions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_batch_grant_permissions(self, client):
+        """BatchGrantPermissions grants multiple permissions at once."""
+        suffix = uuid.uuid4().hex[:8]
+        principal_arn = f"arn:aws:iam::123456789012:user/user-{suffix}"
+        resp = client.batch_grant_permissions(
+            Entries=[
+                {
+                    "Id": f"entry-{suffix}-1",
+                    "Principal": {"DataLakePrincipalIdentifier": principal_arn},
+                    "Resource": {"Database": {"Name": f"db1-{suffix}"}},
+                    "Permissions": ["ALL"],
+                },
+                {
+                    "Id": f"entry-{suffix}-2",
+                    "Principal": {"DataLakePrincipalIdentifier": principal_arn},
+                    "Resource": {"Database": {"Name": f"db2-{suffix}"}},
+                    "Permissions": ["SELECT"],
+                },
+            ]
+        )
+        assert "Failures" in resp
+
+    def test_batch_revoke_permissions(self, client):
+        """BatchRevokePermissions revokes previously granted permissions."""
+        suffix = uuid.uuid4().hex[:8]
+        principal_arn = f"arn:aws:iam::123456789012:user/user-{suffix}"
+        # Grant first
+        client.batch_grant_permissions(
+            Entries=[
+                {
+                    "Id": f"entry-{suffix}",
+                    "Principal": {"DataLakePrincipalIdentifier": principal_arn},
+                    "Resource": {"Database": {"Name": f"db-{suffix}"}},
+                    "Permissions": ["ALL"],
+                },
+            ]
+        )
+        # Revoke
+        resp = client.batch_revoke_permissions(
+            Entries=[
+                {
+                    "Id": f"entry-{suffix}",
+                    "Principal": {"DataLakePrincipalIdentifier": principal_arn},
+                    "Resource": {"Database": {"Name": f"db-{suffix}"}},
+                    "Permissions": ["ALL"],
+                },
+            ]
+        )
+        assert "Failures" in resp
+
+
+class TestLakeFormationResourceLFTags:
+    """Tests for AddLFTagsToResource, RemoveLFTagsFromResource, GetResourceLFTags."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_add_lf_tags_to_resource(self, client):
+        """AddLFTagsToResource assigns LF tags to a database resource."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"tag-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1", "v2"])
+        try:
+            resp = client.add_lf_tags_to_resource(
+                Resource={"Database": {"Name": f"db-{suffix}"}},
+                LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
+            )
+            assert "Failures" in resp
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_remove_lf_tags_from_resource(self, client):
+        """RemoveLFTagsFromResource removes LF tags from a resource."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"tag-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1"])
+        try:
+            # Add tags to a catalog resource (no database needed)
+            resp = client.remove_lf_tags_from_resource(
+                Resource={"Catalog": {}},
+                LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+
+class TestLakeFormationDescribeResource:
+    """Tests for DescribeResource."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_describe_registered_resource(self, client):
+        """DescribeResource returns info for a registered resource."""
+        suffix = uuid.uuid4().hex[:8]
+        resource_arn = f"arn:aws:s3:::test-bucket-{suffix}"
+        client.register_resource(ResourceArn=resource_arn)
+        try:
+            resp = client.describe_resource(ResourceArn=resource_arn)
+            assert "ResourceInfo" in resp
+            assert resp["ResourceInfo"]["ResourceArn"] == resource_arn
+        finally:
+            client.deregister_resource(ResourceArn=resource_arn)

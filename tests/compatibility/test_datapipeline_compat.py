@@ -1,5 +1,7 @@
 """Data Pipeline compatibility tests."""
 
+import uuid
+
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -67,5 +69,107 @@ class TestDataPipelineOperations:
             assert len(descriptions) == 1
             assert descriptions[0]["pipelineId"] == pipeline_id
             assert descriptions[0]["name"] == "test-pipeline-describe"
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+
+class TestDataPipelineDefinition:
+    """Tests for put/get pipeline definition."""
+
+    def _create_pipeline(self, datapipeline):
+        uid = uuid.uuid4().hex[:8]
+        resp = datapipeline.create_pipeline(
+            name=f"test-pipeline-{uid}",
+            uniqueId=f"test-unique-{uid}",
+        )
+        return resp["pipelineId"]
+
+    def test_put_pipeline_definition(self, datapipeline):
+        """PutPipelineDefinition stores a pipeline definition."""
+        pipeline_id = self._create_pipeline(datapipeline)
+        try:
+            resp = datapipeline.put_pipeline_definition(
+                pipelineId=pipeline_id,
+                pipelineObjects=[
+                    {
+                        "id": "Default",
+                        "name": "Default",
+                        "fields": [{"key": "type", "stringValue": "Default"}],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "errored" in resp
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_get_pipeline_definition(self, datapipeline):
+        """GetPipelineDefinition retrieves a stored definition."""
+        pipeline_id = self._create_pipeline(datapipeline)
+        try:
+            datapipeline.put_pipeline_definition(
+                pipelineId=pipeline_id,
+                pipelineObjects=[
+                    {
+                        "id": "Default",
+                        "name": "Default",
+                        "fields": [{"key": "type", "stringValue": "Default"}],
+                    }
+                ],
+            )
+            resp = datapipeline.get_pipeline_definition(pipelineId=pipeline_id)
+            assert "pipelineObjects" in resp
+            assert len(resp["pipelineObjects"]) >= 1
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_activate_pipeline(self, datapipeline):
+        """ActivatePipeline activates a pipeline."""
+        pipeline_id = self._create_pipeline(datapipeline)
+        try:
+            datapipeline.put_pipeline_definition(
+                pipelineId=pipeline_id,
+                pipelineObjects=[
+                    {
+                        "id": "Default",
+                        "name": "Default",
+                        "fields": [{"key": "type", "stringValue": "Default"}],
+                    }
+                ],
+            )
+            resp = datapipeline.activate_pipeline(pipelineId=pipeline_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_created_pipeline_in_list(self, datapipeline):
+        """A created pipeline appears in list_pipelines."""
+        pipeline_id = self._create_pipeline(datapipeline)
+        try:
+            resp = datapipeline.list_pipelines()
+            ids = [p["id"] for p in resp["pipelineIdList"]]
+            assert pipeline_id in ids
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_describe_objects(self, datapipeline):
+        """DescribeObjects returns objects for a pipeline."""
+        pipeline_id = self._create_pipeline(datapipeline)
+        try:
+            datapipeline.put_pipeline_definition(
+                pipelineId=pipeline_id,
+                pipelineObjects=[
+                    {
+                        "id": "Default",
+                        "name": "Default",
+                        "fields": [{"key": "type", "stringValue": "Default"}],
+                    }
+                ],
+            )
+            resp = datapipeline.describe_objects(
+                pipelineId=pipeline_id,
+                objectIds=["Default"],
+            )
+            assert "pipelineObjects" in resp
         finally:
             datapipeline.delete_pipeline(pipelineId=pipeline_id)

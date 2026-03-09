@@ -255,7 +255,7 @@ class TestAppConfigHostedConfigVersionOperations:
 
 
 class TestAppConfigTagOperations:
-    """Tests for ListTagsForResource on AppConfig."""
+    """Tests for ListTagsForResource, TagResource, UntagResource on AppConfig."""
 
     def test_list_tags_for_resource(self, appconfig):
         """ListTagsForResource returns tags on an application."""
@@ -263,11 +263,155 @@ class TestAppConfigTagOperations:
         resp = appconfig.create_application(Name=name)
         app_id = resp["Id"]
         try:
-            # The create response should contain an ARN-like identifier
-            # Use the application ARN for tagging
             app_arn = f"arn:aws:appconfig:us-east-1:123456789012:application/{app_id}"
             tags_resp = appconfig.list_tags_for_resource(ResourceArn=app_arn)
             assert "Tags" in tags_resp
             assert isinstance(tags_resp["Tags"], dict)
+        finally:
+            appconfig.delete_application(ApplicationId=app_id)
+
+    def test_tag_resource(self, appconfig):
+        """TagResource adds tags to an application."""
+        name = _unique("app")
+        resp = appconfig.create_application(Name=name)
+        app_id = resp["Id"]
+        try:
+            app_arn = f"arn:aws:appconfig:us-east-1:123456789012:application/{app_id}"
+            appconfig.tag_resource(
+                ResourceArn=app_arn,
+                Tags={"env": "test", "project": "roboto"},
+            )
+            tags_resp = appconfig.list_tags_for_resource(ResourceArn=app_arn)
+            assert tags_resp["Tags"]["env"] == "test"
+            assert tags_resp["Tags"]["project"] == "roboto"
+        finally:
+            appconfig.delete_application(ApplicationId=app_id)
+
+    def test_untag_resource(self, appconfig):
+        """UntagResource removes tags from an application."""
+        name = _unique("app")
+        resp = appconfig.create_application(Name=name)
+        app_id = resp["Id"]
+        try:
+            app_arn = f"arn:aws:appconfig:us-east-1:123456789012:application/{app_id}"
+            appconfig.tag_resource(
+                ResourceArn=app_arn,
+                Tags={"env": "test", "keep": "yes"},
+            )
+            appconfig.untag_resource(ResourceArn=app_arn, TagKeys=["env"])
+            tags_resp = appconfig.list_tags_for_resource(ResourceArn=app_arn)
+            assert "env" not in tags_resp["Tags"]
+            assert tags_resp["Tags"]["keep"] == "yes"
+        finally:
+            appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigUpdateConfigProfile:
+    """Tests for UpdateConfigurationProfile."""
+
+    def test_update_configuration_profile(self, appconfig):
+        """UpdateConfigurationProfile changes the profile name."""
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        prof_resp = appconfig.create_configuration_profile(
+            ApplicationId=app_id,
+            Name=_unique("profile"),
+            LocationUri="hosted",
+        )
+        prof_id = prof_resp["Id"]
+        try:
+            new_name = _unique("updated-profile")
+            resp = appconfig.update_configuration_profile(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Name=new_name,
+            )
+            assert resp["Name"] == new_name
+            # Verify via get
+            get_resp = appconfig.get_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            assert get_resp["Name"] == new_name
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_application(ApplicationId=app_id)
+
+    def test_update_configuration_profile_description(self, appconfig):
+        """UpdateConfigurationProfile can set a description."""
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        prof_resp = appconfig.create_configuration_profile(
+            ApplicationId=app_id,
+            Name=_unique("profile"),
+            LocationUri="hosted",
+        )
+        prof_id = prof_resp["Id"]
+        try:
+            resp = appconfig.update_configuration_profile(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Description="Updated description",
+            )
+            assert resp["Description"] == "Updated description"
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigMultipleVersions:
+    """Tests for multiple hosted configuration versions."""
+
+    def test_multiple_versions_increment(self, appconfig):
+        """Each new hosted config version increments the version number."""
+        app_resp = appconfig.create_application(Name=_unique("app"))
+        app_id = app_resp["Id"]
+        prof_resp = appconfig.create_configuration_profile(
+            ApplicationId=app_id,
+            Name=_unique("profile"),
+            LocationUri="hosted",
+        )
+        prof_id = prof_resp["Id"]
+        try:
+            v1 = appconfig.create_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Content=b'{"version": 1}',
+                ContentType="application/json",
+            )
+            v2 = appconfig.create_hosted_configuration_version(
+                ApplicationId=app_id,
+                ConfigurationProfileId=prof_id,
+                Content=b'{"version": 2}',
+                ContentType="application/json",
+            )
+            assert v1["VersionNumber"] == 1
+            assert v2["VersionNumber"] == 2
+        finally:
+            appconfig.delete_configuration_profile(
+                ApplicationId=app_id, ConfigurationProfileId=prof_id
+            )
+            appconfig.delete_application(ApplicationId=app_id)
+
+
+class TestAppConfigCreateApplicationWithTags:
+    """Tests for creating applications with initial tags."""
+
+    def test_create_application_with_tags(self, appconfig):
+        """CreateApplication with Tags stores them."""
+        name = _unique("app")
+        resp = appconfig.create_application(
+            Name=name,
+            Tags={"env": "dev", "team": "platform"},
+        )
+        app_id = resp["Id"]
+        try:
+            app_arn = f"arn:aws:appconfig:us-east-1:123456789012:application/{app_id}"
+            tags_resp = appconfig.list_tags_for_resource(ResourceArn=app_arn)
+            assert tags_resp["Tags"].get("env") == "dev"
+            assert tags_resp["Tags"].get("team") == "platform"
         finally:
             appconfig.delete_application(ApplicationId=app_id)
