@@ -697,6 +697,15 @@ def _create_change_set(store: CfnStore, params: dict, region: str, account_id: s
     if not cs_name:
         raise CfnError("ValidationError", "ChangeSetName is required")
 
+    # Parse parameters
+    cfn_params = {}
+    i = 1
+    while f"Parameters.member.{i}.ParameterKey" in params:
+        key = params[f"Parameters.member.{i}.ParameterKey"]
+        value = params.get(f"Parameters.member.{i}.ParameterValue", "")
+        cfn_params[key] = value
+        i += 1
+
     cs_id = f"arn:aws:cloudformation:{region}:{account_id}:changeSet/{cs_name}/{_new_id()}"
 
     # For CREATE type, also create a stub stack if it doesn't exist
@@ -722,6 +731,7 @@ def _create_change_set(store: CfnStore, params: dict, region: str, account_id: s
         stack_id=stack_id,
         template_body=template_body,
         change_set_type=cs_type,
+        parameters=cfn_params,
         status="CREATE_COMPLETE",
     )
     with store.mutex:
@@ -783,7 +793,130 @@ def _delete_change_set(store: CfnStore, params: dict, region: str, account_id: s
 
 
 def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
-    # Just return success - full execution would require template processing
+    cs_name = params.get("ChangeSetName", "")
+    stack_name = params.get("StackName", "")
+
+    # Look up the change set
+    cs = None
+    with store.mutex:
+        if cs_name in store.change_sets:
+            cs = store.change_sets[cs_name]
+        else:
+            for c in store.change_sets.values():
+                if c.change_set_name == cs_name and (not stack_name or c.stack_name == stack_name):
+                    cs = c
+                    break
+
+    if not cs:
+        raise CfnError(
+            "ChangeSetNotFoundException",
+            f"ChangeSet [{cs_name}] does not exist",
+            404,
+        )
+
+    if cs.status == "EXECUTE_COMPLETE":
+        raise CfnError(
+            "InvalidChangeSetStatusException",
+            f"ChangeSet [{cs.change_set_id}] is in EXECUTE_COMPLETE state and cannot be executed.",
+        )
+
+    # Look up the stack
+    stack = store.get_stack(cs.stack_name)
+
+    if cs.change_set_type == "CREATE":
+        # For CREATE type, the stub stack was created in _create_change_set with
+        # REVIEW_IN_PROGRESS status. Update it with template + params and deploy.
+        if not stack:
+            raise CfnError("ValidationError", f"Stack [{cs.stack_name}] does not exist")
+
+        stack.template_body = cs.template_body
+        stack.parameters = dict(cs.parameters)
+        stack.status = "CREATE_IN_PROGRESS"
+        _add_event(
+            stack,
+            stack.stack_name,
+            "AWS::CloudFormation::Stack",
+            stack.stack_id,
+            "CREATE_IN_PROGRESS",
+        )
+
+        try:
+            _deploy_stack(stack, region, account_id, store)
+            stack.status = "CREATE_COMPLETE"
+            _add_event(
+                stack,
+                stack.stack_name,
+                "AWS::CloudFormation::Stack",
+                stack.stack_id,
+                "CREATE_COMPLETE",
+            )
+        except Exception as e:
+            for logical_id in reversed(list(stack.resources.keys())):
+                try:
+                    delete_resource(stack.resources[logical_id], region, account_id)
+                except Exception:
+                    pass
+            stack.status = "ROLLBACK_COMPLETE"
+            stack.status_reason = str(e)
+            _add_event(
+                stack,
+                stack.stack_name,
+                "AWS::CloudFormation::Stack",
+                stack.stack_id,
+                "ROLLBACK_COMPLETE",
+                str(e),
+            )
+
+    else:
+        # UPDATE type: update existing stack with new template + params
+        if not stack:
+            raise CfnError("ValidationError", f"Stack [{cs.stack_name}] does not exist")
+
+        stack.status = "UPDATE_IN_PROGRESS"
+        _add_event(
+            stack,
+            stack.stack_name,
+            "AWS::CloudFormation::Stack",
+            stack.stack_id,
+            "UPDATE_IN_PROGRESS",
+        )
+
+        try:
+            # Delete old resources in reverse order
+            for logical_id in reversed(list(stack.resources.keys())):
+                try:
+                    delete_resource(stack.resources[logical_id], region, account_id)
+                except Exception:
+                    pass
+
+            stack.resources = OrderedDict()
+            stack.outputs = {}
+            stack.template_body = cs.template_body
+            stack.parameters = dict(cs.parameters)
+
+            _deploy_stack(stack, region, account_id, store)
+            stack.status = "UPDATE_COMPLETE"
+            _add_event(
+                stack,
+                stack.stack_name,
+                "AWS::CloudFormation::Stack",
+                stack.stack_id,
+                "UPDATE_COMPLETE",
+            )
+        except Exception as e:
+            stack.status = "UPDATE_FAILED"
+            stack.status_reason = str(e)
+            _add_event(
+                stack,
+                stack.stack_name,
+                "AWS::CloudFormation::Stack",
+                stack.stack_id,
+                "UPDATE_FAILED",
+                str(e),
+            )
+
+    store.put_stack(stack)
+    cs.status = "EXECUTE_COMPLETE"
     return {}
 
 
