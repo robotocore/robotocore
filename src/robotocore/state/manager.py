@@ -5,15 +5,18 @@ and restoring it on startup. This enables "Cloud Pods"-like functionality
 where you can snapshot and share emulator state.
 
 Configuration via environment variables:
-    ROBOTOCORE_STATE_DIR=/path/to/state    Save/load state directory
-    ROBOTOCORE_PERSIST=1                   Enable auto-save on shutdown
-    PERSISTENCE=1                          Enable auto-save after mutations
+    ROBOTOCORE_STATE_DIR=/path/to/state         Save/load state directory
+    ROBOTOCORE_PERSIST=1                        Enable auto-save on shutdown
+    PERSISTENCE=1                               Enable auto-save after mutations
+    ROBOTOCORE_RESTORE_SNAPSHOT=<name|latest>    Auto-restore snapshot on startup
 """
 
+import io
 import json
 import logging
 import os
 import pickle
+import tarfile
 import threading
 import time
 from pathlib import Path
@@ -45,6 +48,7 @@ class StateManager:
         path: str | Path | None = None,
         name: str | None = None,
         services: list[str] | None = None,
+        compress: bool = False,
     ) -> str:
         """Save all state to disk. Returns the path used.
 
@@ -52,6 +56,7 @@ class StateManager:
             path: Directory to save to (defaults to state_dir).
             name: Named snapshot — saves under state_dir/snapshots/{name}/.
             services: If provided, only save these services.
+            compress: If True, create a .tar.gz archive instead of a directory.
         """
         if name:
             base = Path(path) if path else self.state_dir
@@ -89,9 +94,23 @@ class StateManager:
                 else list(self._native_handlers.keys())
             ),
             "name": name,
+            "compressed": compress,
         }
         meta_path = save_dir / "metadata.json"
         meta_path.write_text(json.dumps(meta, indent=2))
+
+        if compress:
+            archive_path = save_dir.with_suffix(".tar.gz")
+            with tarfile.open(archive_path, "w:gz") as tar:
+                for file_path in save_dir.iterdir():
+                    tar.add(file_path, arcname=file_path.name)
+            # Clean up the uncompressed directory
+            import shutil
+
+            shutil.rmtree(save_dir)
+            self._last_save_time = time.monotonic()
+            logger.info("State saved (compressed) to %s", archive_path)
+            return str(archive_path)
 
         self._last_save_time = time.monotonic()
         logger.info("State saved to %s", save_dir)
@@ -114,13 +133,14 @@ class StateManager:
             return True
 
     def list_snapshots(self) -> list[dict]:
-        """List all named snapshots."""
+        """List all named snapshots (both directory and compressed formats)."""
         if not self.state_dir:
             return []
         snap_dir = self.state_dir / "snapshots"
         if not snap_dir.exists():
             return []
         snapshots = []
+        seen_names: set[str] = set()
         for entry in sorted(snap_dir.iterdir()):
             if entry.is_dir():
                 meta_path = entry / "metadata.json"
@@ -133,10 +153,26 @@ class StateManager:
                             "saved_at": meta.get("saved_at"),
                             "services": meta.get("moto_services", []),
                             "native_services": meta.get("native_services", []),
+                            "compressed": False,
                         }
                     )
                 else:
-                    snapshots.append({"name": entry.name})
+                    snapshots.append({"name": entry.name, "compressed": False})
+                seen_names.add(entry.name)
+            elif entry.name.endswith(".tar.gz"):
+                snap_name = entry.name.removesuffix(".tar.gz")
+                if snap_name in seen_names:
+                    continue
+                # Read metadata from the archive
+                meta_info = self._read_compressed_metadata(entry)
+                info: dict = {"name": snap_name, "compressed": True}
+                if meta_info:
+                    info["timestamp"] = meta_info.get("timestamp")
+                    info["saved_at"] = meta_info.get("saved_at")
+                    info["services"] = meta_info.get("moto_services", [])
+                    info["native_services"] = meta_info.get("native_services", [])
+                snapshots.append(info)
+                seen_names.add(snap_name)
         return snapshots
 
     def load(
@@ -150,16 +186,32 @@ class StateManager:
         Args:
             path: Directory to load from (defaults to state_dir).
             name: Named snapshot — loads from state_dir/snapshots/{name}/.
+                  Use "latest" to load the most recently saved snapshot.
             services: If provided, only load these services.
         """
         if name:
             base = Path(path) if path else self.state_dir
             if not base:
                 return False
+
+            # Handle "latest" — find the most recently saved snapshot
+            if name == "latest":
+                resolved_name = self._find_latest_snapshot()
+                if not resolved_name:
+                    logger.warning("No snapshots found for 'latest' restore")
+                    return False
+                name = resolved_name
+                logger.info("Resolved 'latest' snapshot to '%s'", name)
+
             load_dir = base / "snapshots" / name
             # Prevent path traversal
             if not load_dir.resolve().is_relative_to((base / "snapshots").resolve()):
                 raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
+
+            # Check for compressed format
+            archive_path = load_dir.with_suffix(".tar.gz")
+            if not load_dir.exists() and archive_path.exists():
+                return self._load_compressed(archive_path, services=services)
         else:
             load_dir = Path(path) if path else self.state_dir
         if not load_dir or not load_dir.exists():
@@ -229,6 +281,181 @@ class StateManager:
                         exc_info=True,
                     )
         logger.info("State imported from JSON")
+
+    def export_snapshot_bytes(self, name: str | None = None) -> bytes:
+        """Export a snapshot as a compressed tar.gz byte stream.
+
+        If *name* is given, exports that named snapshot. Otherwise exports the
+        current live state by performing a temporary save.
+        """
+        import tempfile
+
+        if name:
+            # Check if the snapshot already exists as a compressed archive
+            if self.state_dir:
+                archive_path = self.state_dir / "snapshots" / f"{name}.tar.gz"
+                if archive_path.exists():
+                    return archive_path.read_bytes()
+
+            # Check if it exists as a directory, and compress it on the fly
+            if self.state_dir:
+                snap_dir = self.state_dir / "snapshots" / name
+                if snap_dir.exists():
+                    return self._compress_directory(snap_dir)
+
+            raise ValueError(f"Snapshot '{name}' not found")
+
+        # No name — save current state to a temp dir and compress it
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.save(path=tmpdir)
+            return self._compress_directory(Path(tmpdir))
+
+    def import_snapshot_bytes(
+        self,
+        data: bytes,
+        name: str | None = None,
+        load_after_import: bool = True,
+        services: list[str] | None = None,
+    ) -> str:
+        """Import a snapshot from compressed tar.gz bytes.
+
+        Args:
+            data: The tar.gz archive bytes.
+            name: Name to assign to the imported snapshot. If None, uses the
+                  name from the archive metadata (or 'imported-<timestamp>').
+            load_after_import: If True, immediately load the snapshot state.
+            services: If provided, only load these services after import.
+
+        Returns:
+            The name of the imported snapshot.
+        """
+        if not self.state_dir:
+            raise ValueError("No state directory configured")
+
+        # Extract to a temp dir first to read metadata
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+                tar.extractall(tmpdir)  # noqa: S202
+
+            tmp_path = Path(tmpdir)
+            meta_path = tmp_path / "metadata.json"
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text())
+                resolved_name = name or meta.get("name") or f"imported-{int(time.time())}"
+            else:
+                resolved_name = name or f"imported-{int(time.time())}"
+
+            # Move to snapshots directory
+            snap_dir = self.state_dir / "snapshots" / resolved_name
+            snap_dir.mkdir(parents=True, exist_ok=True)
+            for item in tmp_path.iterdir():
+                dest = snap_dir / item.name
+                if dest.exists():
+                    if dest.is_dir():
+                        import shutil
+
+                        shutil.rmtree(dest)
+                    else:
+                        dest.unlink()
+                item.rename(dest)
+
+        logger.info("Imported snapshot as '%s'", resolved_name)
+
+        if load_after_import:
+            self.load(name=resolved_name, services=services)
+
+        return resolved_name
+
+    def restore_on_startup(self) -> bool:
+        """Check ROBOTOCORE_RESTORE_SNAPSHOT env var and restore if set.
+
+        Returns True if a snapshot was restored.
+        """
+        snapshot_name = os.environ.get("ROBOTOCORE_RESTORE_SNAPSHOT")
+        if not snapshot_name:
+            return False
+
+        logger.info("Auto-restoring snapshot: %s", snapshot_name)
+        success = self.load(name=snapshot_name)
+        if success:
+            logger.info("Successfully restored snapshot '%s' on startup", snapshot_name)
+        else:
+            logger.warning("Failed to restore snapshot '%s' on startup", snapshot_name)
+        return success
+
+    def _find_latest_snapshot(self) -> str | None:
+        """Find the most recently saved snapshot by saved_at timestamp."""
+        snapshots = self.list_snapshots()
+        if not snapshots:
+            return None
+        # Sort by saved_at (most recent first), falling back to name
+        snapshots_with_time = [s for s in snapshots if s.get("saved_at")]
+        if snapshots_with_time:
+            snapshots_with_time.sort(key=lambda s: s["saved_at"], reverse=True)
+            return snapshots_with_time[0]["name"]
+        # No timestamps — just return last alphabetically
+        return snapshots[-1]["name"]
+
+    def _load_compressed(self, archive_path: Path, services: list[str] | None = None) -> bool:
+        """Load state from a compressed tar.gz archive."""
+        import tempfile
+
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with tarfile.open(archive_path, "r:gz") as tar:
+                    tar.extractall(tmpdir)  # noqa: S202
+
+                tmp_path = Path(tmpdir)
+                meta_path = tmp_path / "metadata.json"
+                if not meta_path.exists():
+                    logger.warning("No metadata.json in compressed snapshot %s", archive_path)
+                    return False
+
+                meta = json.loads(meta_path.read_text())
+                logger.info(
+                    "Loading compressed state from %s (saved at %s)",
+                    archive_path,
+                    meta.get("timestamp", "unknown"),
+                )
+
+                moto_path = tmp_path / "moto_state.pkl"
+                if moto_path.exists():
+                    self._load_moto_state(moto_path, services=services)
+
+                native_path = tmp_path / "native_state.json"
+                if native_path.exists():
+                    self._load_native_state(native_path, services=services)
+
+            logger.info("Compressed state loaded successfully from %s", archive_path)
+            return True
+        except Exception:
+            logger.warning("Failed to load compressed state from %s", archive_path, exc_info=True)
+            return False
+
+    def _compress_directory(self, directory: Path) -> bytes:
+        """Compress a directory into tar.gz bytes."""
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for file_path in directory.iterdir():
+                tar.add(file_path, arcname=file_path.name)
+        return buf.getvalue()
+
+    def _read_compressed_metadata(self, archive_path: Path) -> dict | None:
+        """Read metadata.json from a compressed tar.gz archive without full extraction."""
+        try:
+            with tarfile.open(archive_path, "r:gz") as tar:
+                try:
+                    member = tar.getmember("metadata.json")
+                    f = tar.extractfile(member)
+                    if f:
+                        return json.loads(f.read())
+                except KeyError:
+                    pass
+        except Exception:
+            logger.debug("Could not read metadata from %s", archive_path, exc_info=True)
+        return None
 
     def _save_moto_state(self, path: Path, services: list[str] | None = None) -> None:
         """Pickle all Moto backends."""
