@@ -8,6 +8,7 @@ S3 templates, DynamoDB delivery tracking, and CloudWatch metrics/logs.
 
 import json
 import time
+from datetime import UTC, datetime
 
 import pytest
 
@@ -483,12 +484,15 @@ class TestDeliveryMetrics:
             ],
         )
 
+        from datetime import timedelta
+
+        now = datetime.now(UTC)
         resp = cloudwatch.get_metric_statistics(
             Namespace=delivery_namespace,
             MetricName="NotificationsSent",
-            StartTime="2026-03-08T00:00:00Z",
-            EndTime="2026-03-09T00:00:00Z",
-            Period=86400,
+            StartTime=(now - timedelta(hours=1)).isoformat(),
+            EndTime=(now + timedelta(hours=1)).isoformat(),
+            Period=3600,
             Statistics=["Sum"],
             Dimensions=[{"Name": "Channel", "Value": "email"}],
         )
@@ -752,12 +756,15 @@ class TestNotificationEndToEnd:
             assert resp["Item"]["recipient"]["S"] == "eve@example.com"
 
         # 9. Verify metrics
+        from datetime import timedelta
+
+        now = datetime.now(UTC)
         resp = cloudwatch.get_metric_statistics(
             Namespace=delivery_namespace,
             MetricName="NotificationsSent",
-            StartTime="2026-03-08T00:00:00Z",
-            EndTime="2026-03-09T00:00:00Z",
-            Period=86400,
+            StartTime=(now - timedelta(hours=1)).isoformat(),
+            EndTime=(now + timedelta(hours=1)).isoformat(),
+            Period=3600,
             Statistics=["Sum"],
             Dimensions=[{"Name": "NotificationId", "Value": notification_id}],
         )
