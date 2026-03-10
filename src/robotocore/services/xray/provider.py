@@ -1,11 +1,13 @@
 """Native X-Ray provider.
 
-Implements sampling rules, groups, encryption config, and tagging
-that Moto's X-Ray backend does not support. Falls back to Moto for
-trace/telemetry operations.
+Implements sampling rules, groups, encryption config, tagging,
+service graph construction, trace summaries, and anomaly-based insights.
+Falls back to Moto for trace/telemetry storage operations.
 """
 
+import datetime
 import json
+import logging
 import uuid
 from typing import Any
 
@@ -13,6 +15,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.services.xray.trace_correlation import get_engine
+
+logger = logging.getLogger(__name__)
 
 # In-memory stores (per-account not needed for local dev)
 _sampling_rules: dict[str, dict[str, Any]] = {}
@@ -272,12 +277,22 @@ def _delete_resource_policy(params: dict, region: str, account_id: str) -> dict:
 
 
 def _get_insight_summaries(params: dict, region: str, account_id: str) -> dict:
-    return {"InsightSummaries": []}
+    start_time = params.get("StartTime", 0)
+    end_time = params.get("EndTime", 0)
+    engine = get_engine()
+    insights = engine.detect_anomalies(start_time, end_time)
+    group_arn = params.get("GroupARN")
+    group_name = params.get("GroupName")
+    # Attach group info if provided
+    for insight in insights:
+        if group_arn:
+            insight["GroupARN"] = group_arn
+        if group_name:
+            insight["GroupName"] = group_name
+    return {"InsightSummaries": insights}
 
 
 def _get_sampling_targets(params: dict, region: str, account_id: str) -> dict:
-    import datetime
-
     return {
         "SamplingTargetDocuments": [],
         "LastRuleModification": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -285,15 +300,48 @@ def _get_sampling_targets(params: dict, region: str, account_id: str) -> dict:
     }
 
 
+def _get_service_graph(params: dict, region: str, account_id: str) -> dict:
+    start_time = params.get("StartTime", 0)
+    end_time = params.get("EndTime", 0)
+    engine = get_engine()
+    services = engine.build_service_graph(start_time, end_time)
+    return {
+        "Services": services,
+        "StartTime": start_time,
+        "EndTime": end_time,
+        "ContainsOldGroupVersions": False,
+    }
+
+
+def _put_trace_segments(params: dict, region: str, account_id: str) -> dict:
+    """Intercept PutTraceSegments to feed segments into the correlation engine."""
+    docs = params.get("TraceSegmentDocuments", [])
+    engine = get_engine()
+    unprocessed: list[dict[str, Any]] = []
+
+    for doc in docs:
+        try:
+            segment = json.loads(doc) if isinstance(doc, str) else doc
+            engine.add_segment(segment)
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.debug("Failed to parse trace segment: %s", exc)
+            unprocessed.append({"Id": None, "ErrorCode": "INVALID_DOCUMENT", "Message": str(exc)})
+
+    return {"UnprocessedTraceSegments": unprocessed}
+
+
 def _get_time_series_service_statistics(params: dict, region: str, account_id: str) -> dict:
     return {"TimeSeriesServiceStatistics": [], "ContainsOldGroupVersions": False}
 
 
 def _get_trace_summaries(params: dict, region: str, account_id: str) -> dict:
-    import datetime
-
+    start_time = params.get("StartTime", 0)
+    end_time = params.get("EndTime", 0)
+    filter_expression = params.get("FilterExpression", "")
+    engine = get_engine()
+    summaries = engine.get_trace_summaries(start_time, end_time, filter_expression)
     return {
-        "TraceSummaries": [],
+        "TraceSummaries": summaries,
         "ApproximateTime": datetime.datetime.now(datetime.UTC).timestamp(),
     }
 
@@ -324,4 +372,6 @@ _PATH_MAP = {
     "/SamplingTargets": _get_sampling_targets,
     "/TimeSeriesServiceStatistics": _get_time_series_service_statistics,
     "/TraceSummaries": _get_trace_summaries,
+    "/ServiceGraph": _get_service_graph,
+    "/TraceSegments": _put_trace_segments,
 }
