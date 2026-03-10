@@ -3,7 +3,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/coverage.svg" alt="AWS service coverage — 147 services, 84% of operations implemented" width="640">
+  <a href="https://robotocore.github.io/robotocore/">
+    <img src="docs/coverage.svg" alt="AWS service coverage — 147 services, 84% of operations implemented" width="640">
+  </a>
 </p>
 
 <p align="center">
