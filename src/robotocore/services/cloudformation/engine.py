@@ -51,6 +51,7 @@ class CfnChangeSet:
     status: str = "CREATE_COMPLETE"
     status_reason: str = ""
     change_set_type: str = "CREATE"
+    parameters: dict = field(default_factory=dict)
     changes: list = field(default_factory=list)
     created: float = field(default_factory=time.time)
 
