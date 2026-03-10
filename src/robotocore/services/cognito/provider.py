@@ -1502,6 +1502,30 @@ def _describe_user_pool_domain(
     }
 
 
+def _update_user_pool_domain(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    domain = params.get("Domain", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        if domain not in store.domains:
+            raise CognitoError(
+                "ResourceNotFoundException",
+                f"{domain}",
+                404,
+            )
+        # Update custom domain config (CertificateArn, etc.) — stored on the pool
+        custom_domain_config = params.get("CustomDomainConfig", {})
+        pool = store.pools.get(pool_id, {})
+        pool["CustomDomainConfig"] = custom_domain_config
+
+    return {
+        "CloudFrontDomain": f"d{_new_id()[:13]}.cloudfront.net",
+    }
+
+
 def _delete_user_pool_domain(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -1587,5 +1611,6 @@ _ACTION_MAP: dict[str, Callable] = {
     "UpdateUserAttributes": _update_user_attributes,
     "CreateUserPoolDomain": _create_user_pool_domain,
     "DescribeUserPoolDomain": _describe_user_pool_domain,
+    "UpdateUserPoolDomain": _update_user_pool_domain,
     "DeleteUserPoolDomain": _delete_user_pool_domain,
 }
