@@ -1852,7 +1852,7 @@ class TestCloudFormationChangeSets:
                 pass
 
     def test_execute_change_set(self, client):
-        """ExecuteChangeSet applies a change set."""
+        """ExecuteChangeSet applies a change set and creates resources."""
         stack_name = self._unique_name("cs-exec")
         cs_name = self._unique_name("changeset")
         queue_name = self._unique_name("q")
@@ -1867,6 +1867,74 @@ class TestCloudFormationChangeSets:
             time.sleep(0.5)
             resp = client.execute_change_set(StackName=stack_name, ChangeSetName=cs_name)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify the stack is now CREATE_COMPLETE with resources
+            desc = client.describe_stacks(StackName=stack_name)
+            stacks = desc["Stacks"]
+            assert len(stacks) == 1
+            assert stacks[0]["StackStatus"] == "CREATE_COMPLETE"
+
+            # Verify resources were actually created
+            resources = client.list_stack_resources(StackName=stack_name)
+            summaries = resources["StackResourceSummaries"]
+            assert len(summaries) >= 1
+            assert summaries[0]["ResourceType"] == "AWS::SQS::Queue"
+            assert summaries[0]["ResourceStatus"] == "CREATE_COMPLETE"
+        finally:
+            try:
+                client.delete_stack(StackName=stack_name)
+            except Exception:
+                pass
+
+    def test_execute_change_set_update(self, client):
+        """ExecuteChangeSet with UPDATE type updates an existing stack."""
+        stack_name = self._unique_name("cs-upd")
+        cs_name = self._unique_name("changeset")
+        queue_name = self._unique_name("q")
+        topic_name = self._unique_name("t")
+        sns_template = json.dumps(
+            {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Resources": {
+                    "MyTopic": {
+                        "Type": "AWS::SNS::Topic",
+                        "Properties": {"TopicName": topic_name},
+                    },
+                },
+            }
+        )
+        try:
+            # First create the stack with an SQS queue
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=cs_name,
+                TemplateBody=self._simple_template(queue_name),
+                ChangeSetType="CREATE",
+            )
+            time.sleep(0.5)
+            client.execute_change_set(StackName=stack_name, ChangeSetName=cs_name)
+
+            # Now create an UPDATE change set with SNS topic
+            update_cs = self._unique_name("changeset-upd")
+            client.create_change_set(
+                StackName=stack_name,
+                ChangeSetName=update_cs,
+                TemplateBody=sns_template,
+                ChangeSetType="UPDATE",
+            )
+            time.sleep(0.5)
+            client.execute_change_set(StackName=stack_name, ChangeSetName=update_cs)
+
+            # Verify the stack is UPDATE_COMPLETE
+            desc = client.describe_stacks(StackName=stack_name)
+            assert desc["Stacks"][0]["StackStatus"] == "UPDATE_COMPLETE"
+
+            # Verify the new resource is an SNS topic
+            resources = client.list_stack_resources(StackName=stack_name)
+            summaries = resources["StackResourceSummaries"]
+            assert len(summaries) >= 1
+            resource_types = [s["ResourceType"] for s in summaries]
+            assert "AWS::SNS::Topic" in resource_types
         finally:
             try:
                 client.delete_stack(StackName=stack_name)
