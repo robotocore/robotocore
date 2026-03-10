@@ -5,6 +5,7 @@ Supports STANDARD and EXPRESS workflow types, callback patterns, and execution h
 """
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -21,11 +22,15 @@ from robotocore.services.stepfunctions.asl import (
     send_task_success,
 )
 
+logger = logging.getLogger(__name__)
+
 # In-memory execution store
 _executions: dict[str, dict] = {}
 _state_machines: dict[str, dict] = {}  # arn -> definition
 _execution_histories: dict[str, Any] = {}  # exec_arn -> ExecutionHistory
 _tags: dict[str, list[dict]] = {}  # resource_arn -> [{"key": ..., "value": ...}]
+_running_threads: dict[str, threading.Thread] = {}  # exec_arn -> background thread
+_abort_events: dict[str, threading.Event] = {}  # exec_arn -> abort signal
 _exec_lock = threading.Lock()
 
 
@@ -173,46 +178,97 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
     exec_arn = f"{sm_arn.replace(':stateMachine:', ':execution:')}:{name}"
 
     input_data = json.loads(input_str) if isinstance(input_str, str) else input_str
-
-    # Execute synchronously
-    executor = ASLExecutor(sm["definition"], region, account_id, execution_arn=exec_arn)
     start_time = time.time()
 
-    try:
-        output = executor.execute(input_data)
-        status = "SUCCEEDED"
-        error = None
-        cause = None
-    except ASLExecutionError as e:
-        output = None
-        status = "FAILED"
-        error = e.error
-        cause = e.cause
-
+    # Store execution immediately with RUNNING status
     exec_info = {
         "executionArn": exec_arn,
         "stateMachineArn": sm_arn,
         "name": name,
-        "status": status,
+        "status": "RUNNING",
         "startDate": start_time,
-        "stopDate": time.time(),
+        "stopDate": None,
         "input": input_str,
-        "output": json.dumps(output) if output is not None else None,
-        "error": error,
-        "cause": cause,
+        "output": None,
+        "error": None,
+        "cause": None,
         "smType": sm.get("type", "STANDARD"),
     }
 
+    abort_event = threading.Event()
+
     with _exec_lock:
-        # EXPRESS executions are not stored in ListExecutions
         _executions[exec_arn] = exec_info
-        if executor.history:
-            _execution_histories[exec_arn] = executor.history
+        _abort_events[exec_arn] = abort_event
+
+    # Launch background thread for STANDARD workflows
+    definition = sm["definition"]
+    thread = threading.Thread(
+        target=_run_execution_background,
+        args=(exec_arn, definition, input_data, region, account_id, abort_event),
+        daemon=True,
+        name=f"sfn-exec-{name}",
+    )
+
+    with _exec_lock:
+        _running_threads[exec_arn] = thread
+
+    thread.start()
 
     return {
         "executionArn": exec_arn,
         "startDate": start_time,
     }
+
+
+def _run_execution_background(
+    exec_arn: str,
+    definition: dict,
+    input_data: dict,
+    region: str,
+    account_id: str,
+    abort_event: threading.Event,
+) -> None:
+    """Execute a state machine in a background thread, updating status on completion."""
+    executor = ASLExecutor(definition, region, account_id, execution_arn=exec_arn)
+
+    try:
+        output = executor.execute(input_data)
+
+        with _exec_lock:
+            execution = _executions.get(exec_arn)
+            if execution and execution["status"] == "RUNNING":
+                execution["status"] = "SUCCEEDED"
+                execution["stopDate"] = time.time()
+                execution["output"] = json.dumps(output) if output is not None else None
+            if executor.history:
+                _execution_histories[exec_arn] = executor.history
+
+    except ASLExecutionError as e:
+        with _exec_lock:
+            execution = _executions.get(exec_arn)
+            if execution and execution["status"] == "RUNNING":
+                execution["status"] = "FAILED"
+                execution["stopDate"] = time.time()
+                execution["error"] = e.error
+                execution["cause"] = e.cause
+            if executor.history:
+                _execution_histories[exec_arn] = executor.history
+
+    except Exception as e:
+        logger.exception(f"Unexpected error in execution {exec_arn}")
+        with _exec_lock:
+            execution = _executions.get(exec_arn)
+            if execution and execution["status"] == "RUNNING":
+                execution["status"] = "FAILED"
+                execution["stopDate"] = time.time()
+                execution["error"] = type(e).__name__
+                execution["cause"] = str(e)
+
+    finally:
+        with _exec_lock:
+            _running_threads.pop(exec_arn, None)
+            _abort_events.pop(exec_arn, None)
 
 
 def _start_sync_execution(params: dict, region: str, account_id: str) -> dict:
@@ -337,6 +393,14 @@ def _stop_execution(params: dict, region: str, account_id: str) -> dict:
             raise SfnError("ExecutionDoesNotExist", f"Execution not found: {exec_arn}")
         execution["status"] = "ABORTED"
         execution["stopDate"] = time.time()
+        if params.get("error"):
+            execution["error"] = params["error"]
+        if params.get("cause"):
+            execution["cause"] = params["cause"]
+        # Signal the background thread to stop
+        abort_event = _abort_events.get(exec_arn)
+        if abort_event:
+            abort_event.set()
         # Record abort in history
         history = _execution_histories.get(exec_arn)
         if history:
