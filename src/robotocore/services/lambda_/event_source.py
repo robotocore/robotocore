@@ -284,7 +284,7 @@ class EventSourceEngine:
         """Poll an SQS queue and invoke Lambda with received messages."""
         from robotocore.services.sqs.provider import _get_store
 
-        store = _get_store(region)
+        store = _get_store(region, account_id)
         queue_name = queue_arn.rsplit(":", 1)[-1]
         queue = store.get_queue(queue_name)
         if not queue:
@@ -395,7 +395,7 @@ class EventSourceEngine:
         """Poll a Kinesis stream and invoke Lambda with new records."""
         from robotocore.services.kinesis.models import _get_store
 
-        store = _get_store(region)
+        store = _get_store(region, account_id)
         stream_name = (
             stream_arn.rsplit("/", 1)[-1] if "/" in stream_arn else stream_arn.rsplit(":", 1)[-1]
         )

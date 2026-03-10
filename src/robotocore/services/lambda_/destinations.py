@@ -44,9 +44,9 @@ def dispatch_destination(
 
     try:
         if ":sqs:" in destination_arn:
-            _send_to_sqs(destination_arn, record, region)
+            _send_to_sqs(destination_arn, record, region, account_id)
         elif ":sns:" in destination_arn:
-            _send_to_sns(destination_arn, record, region)
+            _send_to_sns(destination_arn, record, region, account_id)
         elif ":lambda:" in destination_arn:
             _send_to_lambda(destination_arn, record, region, account_id)
         elif ":events:" in destination_arn or ":event-bus" in destination_arn:
@@ -91,7 +91,9 @@ def _build_destination_record(
     return record
 
 
-def _send_to_sqs(queue_arn: str, record: dict, region: str) -> None:
+def _send_to_sqs(
+    queue_arn: str, record: dict, region: str, account_id: str = "123456789012"
+) -> None:
     """Send destination record to SQS queue."""
     import hashlib
 
@@ -99,7 +101,7 @@ def _send_to_sqs(queue_arn: str, record: dict, region: str) -> None:
     from robotocore.services.sqs.provider import _get_store
 
     queue_name = queue_arn.rsplit(":", 1)[-1]
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     queue = store.get_queue(queue_name)
     if queue:
         body = json.dumps(record)
@@ -113,7 +115,9 @@ def _send_to_sqs(queue_arn: str, record: dict, region: str) -> None:
         logger.warning("Destination SQS queue not found: %s", queue_name)
 
 
-def _send_to_sns(topic_arn: str, record: dict, region: str) -> None:
+def _send_to_sns(
+    topic_arn: str, record: dict, region: str, account_id: str = "123456789012"
+) -> None:
     """Send destination record to SNS topic."""
     from robotocore.services.sns.provider import (
         _deliver_to_subscriber,
@@ -121,7 +125,7 @@ def _send_to_sns(topic_arn: str, record: dict, region: str) -> None:
         _new_id,
     )
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     topic = store.get_topic(topic_arn)
     if topic:
         message = json.dumps(record)

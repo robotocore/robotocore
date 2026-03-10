@@ -17,15 +17,18 @@ from robotocore.services.sqs.provider import _get_store as get_sqs_store
 
 logger = logging.getLogger(__name__)
 
-_stores: dict[str, SnsStore] = {}
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_stores: dict[tuple[str, str], SnsStore] = {}
 _store_lock = threading.Lock()
 
 
-def _get_store(region: str = "us-east-1") -> SnsStore:
+def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> SnsStore:
+    key = (account_id, region)
     with _store_lock:
-        if region not in _stores:
-            _stores[region] = SnsStore()
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = SnsStore()
+        return _stores[key]
 
 
 def _md5(s: str) -> str:
@@ -64,7 +67,7 @@ async def handle_sns_request(request: Request, region: str, account_id: str) -> 
         action = params.get("Action", "")
         use_json = False
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     handler = _ACTION_MAP.get(action)
     if handler is None:
         # Fall back to Moto for operations we don't intercept

@@ -19,7 +19,9 @@ from starlette.responses import Response
 # In-memory stores (region-scoped)
 # ---------------------------------------------------------------------------
 
-_stores: dict[str, "CognitoStore"] = {}
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_stores: dict[tuple[str, str], "CognitoStore"] = {}
 _lock = threading.RLock()
 
 
@@ -35,11 +37,12 @@ class CognitoStore:
         self.lock = threading.RLock()
 
 
-def _get_store(region: str = "us-east-1") -> CognitoStore:
+def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> CognitoStore:
+    key = (account_id, region)
     with _lock:
-        if region not in _stores:
-            _stores[region] = CognitoStore()
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = CognitoStore()
+        return _stores[key]
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +119,7 @@ async def handle_cognito_request(request: Request, region: str, account_id: str)
     action = target.split(".")[-1]
     params = json.loads(body) if body else {}
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     handler = _ACTION_MAP.get(action)
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto

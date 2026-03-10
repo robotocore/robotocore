@@ -13,8 +13,10 @@ from urllib.parse import unquote
 from starlette.requests import Request
 from starlette.responses import Response
 
-_schedules: dict[str, dict[str, dict]] = {}  # region -> name -> schedule
-_groups: dict[str, dict[str, dict]] = {}  # region -> name -> group
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_schedules: dict[tuple[str, str], dict[str, dict]] = {}  # (account_id, region) -> name -> schedule
+_groups: dict[tuple[str, str], dict[str, dict]] = {}  # (account_id, region) -> name -> group
 _lock = threading.Lock()
 
 
@@ -25,26 +27,28 @@ class SchedulerError(Exception):
         self.status = status
 
 
-def _get_schedules(region: str) -> dict[str, dict]:
+def _get_schedules(region: str, account_id: str = DEFAULT_ACCOUNT_ID) -> dict[str, dict]:
+    key = (account_id, region)
     with _lock:
-        if region not in _schedules:
-            _schedules[region] = {}
-        return _schedules[region]
+        if key not in _schedules:
+            _schedules[key] = {}
+        return _schedules[key]
 
 
-def _get_groups(region: str) -> dict[str, dict]:
+def _get_groups(region: str, account_id: str = DEFAULT_ACCOUNT_ID) -> dict[str, dict]:
+    key = (account_id, region)
     with _lock:
-        if region not in _groups:
-            _groups[region] = {}
+        if key not in _groups:
+            _groups[key] = {}
             # Default group always exists
-            _groups[region]["default"] = {
+            _groups[key]["default"] = {
                 "Name": "default",
-                "Arn": f"arn:aws:scheduler:{region}:123456789012:schedule-group/default",
+                "Arn": f"arn:aws:scheduler:{region}:{account_id}:schedule-group/default",
                 "State": "ACTIVE",
                 "CreationDate": time.time(),
                 "LastModificationDate": time.time(),
             }
-        return _groups[region]
+        return _groups[key]
 
 
 # REST-JSON path patterns
@@ -88,26 +92,28 @@ async def handle_scheduler_request(request: Request, region: str, account_id: st
                     _create_schedule_group(group_name, params, region, account_id)
                 )
             elif method == "GET":
-                return _json_response(_get_schedule_group(group_name, region))
+                return _json_response(_get_schedule_group(group_name, region, account_id))
             elif method == "DELETE":
-                return _json_response(_delete_schedule_group(group_name, region))
+                return _json_response(_delete_schedule_group(group_name, region, account_id))
 
         if _GROUPS_LIST.match(path) and method == "GET":
-            return _json_response(_list_schedule_groups(request.query_params, region))
+            return _json_response(_list_schedule_groups(request.query_params, region, account_id))
 
         # Tags
         m = _TAGS_PATH.match(path)
         if m:
             resource_arn = unquote(m.group(1))
             if method == "GET":
-                return _json_response({"Tags": _list_tags_scheduler(resource_arn, region)})
+                return _json_response(
+                    {"Tags": _list_tags_scheduler(resource_arn, region, account_id)}
+                )
             elif method == "POST":
                 new_tags = params.get("Tags", [])
-                _tag_resource_scheduler(resource_arn, new_tags, region)
+                _tag_resource_scheduler(resource_arn, new_tags, region, account_id)
                 return _json_response({})
             elif method == "DELETE":
                 tag_keys = request.query_params.getlist("TagKeys")
-                _untag_resource_scheduler(resource_arn, tag_keys, region)
+                _untag_resource_scheduler(resource_arn, tag_keys, region, account_id)
                 return _json_response({})
 
         return _error("InvalidAction", f"Unknown path: {method} {path}", 400)
@@ -119,7 +125,7 @@ async def handle_scheduler_request(request: Request, region: str, account_id: st
 
 
 def _create_schedule(name: str, params: dict, region: str, account_id: str) -> dict:
-    schedules = _get_schedules(region)
+    schedules = _get_schedules(region, account_id)
     group_name = params.get("GroupName", "default")
 
     arn = f"arn:aws:scheduler:{region}:{account_id}:schedule/{group_name}/{name}"
@@ -149,7 +155,7 @@ def _create_schedule(name: str, params: dict, region: str, account_id: str) -> d
 
 
 def _get_schedule(name: str, params: dict, region: str, account_id: str) -> dict:
-    schedules = _get_schedules(region)
+    schedules = _get_schedules(region, account_id)
     with _lock:
         schedule = schedules.get(name)
     if not schedule:
@@ -160,7 +166,7 @@ def _get_schedule(name: str, params: dict, region: str, account_id: str) -> dict
 
 
 def _update_schedule(name: str, params: dict, region: str, account_id: str) -> dict:
-    schedules = _get_schedules(region)
+    schedules = _get_schedules(region, account_id)
     with _lock:
         schedule = schedules.get(name)
         if not schedule:
@@ -184,7 +190,7 @@ def _update_schedule(name: str, params: dict, region: str, account_id: str) -> d
 
 
 def _delete_schedule(name: str, params: dict, region: str, account_id: str) -> dict:
-    schedules = _get_schedules(region)
+    schedules = _get_schedules(region, account_id)
     with _lock:
         if name not in schedules:
             raise SchedulerError(
@@ -195,7 +201,7 @@ def _delete_schedule(name: str, params: dict, region: str, account_id: str) -> d
 
 
 def _list_schedules(query_params, region: str, account_id: str) -> dict:
-    schedules = _get_schedules(region)
+    schedules = _get_schedules(region, account_id)
     group_filter = query_params.get("GroupName")
     name_prefix = query_params.get("NamePrefix")
 
@@ -226,7 +232,7 @@ def _list_schedules(query_params, region: str, account_id: str) -> dict:
 
 
 def _create_schedule_group(name: str, params: dict, region: str, account_id: str) -> dict:
-    groups = _get_groups(region)
+    groups = _get_groups(region, account_id)
     arn = f"arn:aws:scheduler:{region}:{account_id}:schedule-group/{name}"
 
     with _lock:
@@ -243,8 +249,8 @@ def _create_schedule_group(name: str, params: dict, region: str, account_id: str
     return {"ScheduleGroupArn": arn}
 
 
-def _get_schedule_group(name: str, region: str) -> dict:
-    groups = _get_groups(region)
+def _get_schedule_group(name: str, region: str, account_id: str = DEFAULT_ACCOUNT_ID) -> dict:
+    groups = _get_groups(region, account_id)
     with _lock:
         group = groups.get(name)
     if not group:
@@ -254,8 +260,8 @@ def _get_schedule_group(name: str, region: str) -> dict:
     return dict(group)
 
 
-def _delete_schedule_group(name: str, region: str) -> dict:
-    groups = _get_groups(region)
+def _delete_schedule_group(name: str, region: str, account_id: str = DEFAULT_ACCOUNT_ID) -> dict:
+    groups = _get_groups(region, account_id)
     with _lock:
         if name not in groups:
             raise SchedulerError(
@@ -269,8 +275,8 @@ def _delete_schedule_group(name: str, region: str) -> dict:
     return {}
 
 
-def _list_schedule_groups(query_params, region: str) -> dict:
-    groups = _get_groups(region)
+def _list_schedule_groups(query_params, region: str, account_id: str = DEFAULT_ACCOUNT_ID) -> dict:
+    groups = _get_groups(region, account_id)
     name_prefix = query_params.get("NamePrefix")
 
     with _lock:
@@ -293,14 +299,16 @@ def _list_schedule_groups(query_params, region: str) -> dict:
     }
 
 
-def _find_resource_by_arn_scheduler(resource_arn: str, region: str) -> dict | None:
+def _find_resource_by_arn_scheduler(
+    resource_arn: str, region: str, account_id: str = DEFAULT_ACCOUNT_ID
+) -> dict | None:
     """Find a schedule or group by ARN."""
-    schedules = _get_schedules(region)
+    schedules = _get_schedules(region, account_id)
     with _lock:
         for s in schedules.values():
             if s.get("Arn") == resource_arn:
                 return s
-    groups = _get_groups(region)
+    groups = _get_groups(region, account_id)
     with _lock:
         for g in groups.values():
             if g.get("Arn") == resource_arn:
@@ -308,16 +316,20 @@ def _find_resource_by_arn_scheduler(resource_arn: str, region: str) -> dict | No
     return None
 
 
-def _list_tags_scheduler(resource_arn: str, region: str) -> list[dict]:
-    resource = _find_resource_by_arn_scheduler(resource_arn, region)
+def _list_tags_scheduler(
+    resource_arn: str, region: str, account_id: str = DEFAULT_ACCOUNT_ID
+) -> list[dict]:
+    resource = _find_resource_by_arn_scheduler(resource_arn, region, account_id)
     if resource is None:
         return []
     tags = resource.get("_tags", {})
     return [{"Key": k, "Value": v} for k, v in tags.items()]
 
 
-def _tag_resource_scheduler(resource_arn: str, new_tags: list[dict], region: str) -> None:
-    resource = _find_resource_by_arn_scheduler(resource_arn, region)
+def _tag_resource_scheduler(
+    resource_arn: str, new_tags: list[dict], region: str, account_id: str = DEFAULT_ACCOUNT_ID
+) -> None:
+    resource = _find_resource_by_arn_scheduler(resource_arn, region, account_id)
     if resource is None:
         return
     with _lock:
@@ -326,8 +338,10 @@ def _tag_resource_scheduler(resource_arn: str, new_tags: list[dict], region: str
             existing[t["Key"]] = t["Value"]
 
 
-def _untag_resource_scheduler(resource_arn: str, tag_keys: list[str], region: str) -> None:
-    resource = _find_resource_by_arn_scheduler(resource_arn, region)
+def _untag_resource_scheduler(
+    resource_arn: str, tag_keys: list[str], region: str, account_id: str = DEFAULT_ACCOUNT_ID
+) -> None:
+    resource = _find_resource_by_arn_scheduler(resource_arn, region, account_id)
     if resource is None:
         return
     with _lock:

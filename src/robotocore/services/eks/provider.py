@@ -53,7 +53,7 @@ async def handle_eks_request(request: Request, region: str, account_id: str) -> 
 
         # GET /clusters -> ListClusters
         if path == "/clusters" and method == "GET":
-            return await forward_to_moto(request, "eks")
+            return await forward_to_moto(request, "eks", account_id=account_id)
 
         # Match /clusters/{name}
         m = _CLUSTER_RE.match(path)
@@ -66,15 +66,15 @@ async def handle_eks_request(request: Request, region: str, account_id: str) -> 
         # Match /clusters/{name}/node-groups
         m = _NODEGROUPS_COLLECTION_RE.match(path)
         if m:
-            return await forward_to_moto(request, "eks")
+            return await forward_to_moto(request, "eks", account_id=account_id)
 
         # Match /clusters/{name}/node-groups/{nodegroupName}
         m = _NODEGROUP_RE.match(path)
         if m:
-            return await forward_to_moto(request, "eks")
+            return await forward_to_moto(request, "eks", account_id=account_id)
 
         # Everything else -> Moto
-        return await forward_to_moto(request, "eks")
+        return await forward_to_moto(request, "eks", account_id=account_id)
 
     except Exception as e:
         logger.exception("EKS provider error: %s", e)
@@ -89,7 +89,7 @@ async def handle_eks_request(request: Request, region: str, account_id: str) -> 
 async def _create_cluster(request: Request, region: str, account_id: str) -> Response:
     """Intercept CreateCluster: forward to Moto, then start a mock K8s server."""
     # Forward to Moto first to get the cluster metadata
-    moto_response = await forward_to_moto(request, "eks")
+    moto_response = await forward_to_moto(request, "eks", account_id=account_id)
 
     if moto_response.status_code >= 400:
         return moto_response
@@ -128,7 +128,7 @@ async def _describe_cluster(
     request: Request, region: str, account_id: str, cluster_name: str
 ) -> Response:
     """Intercept DescribeCluster: forward to Moto, patch endpoint + cert."""
-    moto_response = await forward_to_moto(request, "eks")
+    moto_response = await forward_to_moto(request, "eks", account_id=account_id)
 
     if moto_response.status_code >= 400:
         return moto_response
@@ -165,7 +165,7 @@ async def _delete_cluster(
         server.stop()
 
     # Forward to Moto
-    return await forward_to_moto(request, "eks")
+    return await forward_to_moto(request, "eks", account_id=account_id)
 
 
 # ---------------------------------------------------------------------------

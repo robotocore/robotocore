@@ -176,12 +176,15 @@ class KinesisStore:
             return sorted(self.streams.keys())
 
 
-_stores: dict[str, KinesisStore] = {}
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_stores: dict[tuple[str, str], KinesisStore] = {}
 _store_lock = threading.Lock()
 
 
-def _get_store(region: str = "us-east-1") -> KinesisStore:
+def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> KinesisStore:
+    key = (account_id, region)
     with _store_lock:
-        if region not in _stores:
-            _stores[region] = KinesisStore()
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = KinesisStore()
+        return _stores[key]

@@ -22,15 +22,18 @@ from robotocore.services.cloudformation.engine import (
 )
 from robotocore.services.cloudformation.resources import create_resource, delete_resource
 
-_stores: dict[str, CfnStore] = {}
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_stores: dict[tuple[str, str], CfnStore] = {}
 _store_lock = threading.Lock()
 
 
-def _get_store(region: str = "us-east-1") -> CfnStore:
+def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> CfnStore:
+    key = (account_id, region)
     with _store_lock:
-        if region not in _stores:
-            _stores[region] = CfnStore()
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = CfnStore()
+        return _stores[key]
 
 
 def _new_id() -> str:
@@ -58,7 +61,7 @@ async def handle_cloudformation_request(request: Request, region: str, account_i
     params = {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
     action = params.get("Action", "")
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     handler = _ACTION_MAP.get(action)
     if handler is None:
         # Fall back to Moto for operations we don't intercept

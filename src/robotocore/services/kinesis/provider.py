@@ -70,7 +70,7 @@ async def handle_kinesis_request(request: Request, region: str, account_id: str)
 
         return await forward_to_moto(request, "kinesis", account_id=account_id)
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
 
     try:
         result = handler(store, params, region, account_id)

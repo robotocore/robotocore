@@ -17,7 +17,9 @@ from starlette.responses import Response
 # In-memory stores (region-scoped)
 # ---------------------------------------------------------------------------
 
-_stores: dict[str, "AppSyncStore"] = {}
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_stores: dict[tuple[str, str], "AppSyncStore"] = {}
 _lock = threading.RLock()
 
 
@@ -38,11 +40,12 @@ class AppSyncStore:
         self.lock = threading.RLock()
 
 
-def _get_store(region: str = "us-east-1") -> AppSyncStore:
+def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> AppSyncStore:
+    key = (account_id, region)
     with _lock:
-        if region not in _stores:
-            _stores[region] = AppSyncStore()
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = AppSyncStore()
+        return _stores[key]
 
 
 def _new_id() -> str:
@@ -104,7 +107,7 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
     method = request.method.upper()
     body = await request.body()
     params = json.loads(body) if body else {}
-    store = _get_store(region)
+    store = _get_store(region, account_id)
 
     try:
         # GraphQL APIs

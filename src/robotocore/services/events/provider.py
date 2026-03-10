@@ -739,7 +739,7 @@ def _invoke_sns_target(arn: str, payload: str, region: str, account_id: str):
     """Publish to an SNS topic from EventBridge."""
     from robotocore.services.sns.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     topic = store.get_topic(arn)
     if not topic:
         logger.error("EventBridge: SNS topic not found: %s", arn)
@@ -771,7 +771,7 @@ def _invoke_kinesis_target(arn: str, payload: str, region: str, account_id: str)
     from robotocore.services.kinesis.models import _get_store
 
     stream_name = arn.rsplit("/", 1)[-1] if "/" in arn else arn.rsplit(":", 1)[-1]
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     stream = store.streams.get(stream_name)
     if not stream:
         logger.error(
@@ -976,7 +976,7 @@ def _send_to_dlq(
     from robotocore.services.sqs.provider import _get_store
 
     queue_name = dlq_arn.rsplit(":", 1)[-1]
-    sqs_store = _get_store(region)
+    sqs_store = _get_store(region, account_id)
     queue = sqs_store.get_queue(queue_name)
     if not queue:
         logger.error("EventBridge DLQ: queue not found: %s", queue_name)

@@ -55,7 +55,7 @@ def delete_resource(resource: CfnResource, region: str, account_id: str) -> None
 def _create_sqs_queue(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sqs.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     name = resource.properties.get("QueueName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     attrs = {}
     if "VisibilityTimeout" in resource.properties:
@@ -78,7 +78,7 @@ def _create_sqs_queue(resource: CfnResource, region: str, account_id: str) -> No
 def _delete_sqs_queue(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sqs.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     if resource.physical_id:
         queue = store.get_queue_by_url(resource.physical_id)
         if queue:
@@ -91,7 +91,7 @@ def _delete_sqs_queue(resource: CfnResource, region: str, account_id: str) -> No
 def _create_sns_topic(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     name = resource.properties.get("TopicName", f"cfn-{resource.logical_id}-{uuid.uuid4().hex[:8]}")
     topic = store.create_topic(name, region, account_id)
     resource.physical_id = topic.arn
@@ -103,7 +103,7 @@ def _create_sns_topic(resource: CfnResource, region: str, account_id: str) -> No
 def _delete_sns_topic(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     if resource.physical_id:
         store.delete_topic(resource.physical_id)
 
@@ -111,7 +111,7 @@ def _delete_sns_topic(resource: CfnResource, region: str, account_id: str) -> No
 def _create_sns_subscription(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     topic_arn = resource.properties.get("TopicArn", "")
     protocol = resource.properties.get("Protocol", "")
     endpoint = resource.properties.get("Endpoint", "")
@@ -125,7 +125,7 @@ def _create_sns_subscription(resource: CfnResource, region: str, account_id: str
 def _delete_sns_subscription(resource: CfnResource, region: str, account_id: str) -> None:
     from robotocore.services.sns.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     if resource.physical_id:
         store.unsubscribe(resource.physical_id)
 
@@ -1711,7 +1711,7 @@ def _create_kinesis_stream(resource: CfnResource, region: str, account_id: str) 
     # Use native Kinesis provider store (not Moto) since the API routes through it
     from robotocore.services.kinesis.models import _get_store as _get_kinesis_store
 
-    store = _get_kinesis_store(region)
+    store = _get_kinesis_store(region, account_id)
     name = resource.properties.get(
         "Name",
         resource.properties.get(
@@ -1731,7 +1731,7 @@ def _delete_kinesis_stream(resource: CfnResource, region: str, account_id: str) 
     try:
         from robotocore.services.kinesis.models import _get_store as _get_kinesis_store
 
-        store = _get_kinesis_store(region)
+        store = _get_kinesis_store(region, account_id)
         if resource.physical_id:
             store.delete_stream(resource.physical_id)
     except Exception:
@@ -2036,7 +2036,7 @@ def _create_cognito_user_pool(resource: CfnResource, region: str, account_id: st
     # Use native Cognito provider store (not Moto) since the API routes through it
     from robotocore.services.cognito.provider import _get_store as _get_cognito_store
 
-    store = _get_cognito_store(region)
+    store = _get_cognito_store(region, account_id)
     pool_id = f"{region}_{uuid.uuid4().hex[:8]}"
     import time as _time
 
@@ -2527,7 +2527,7 @@ def _create_cfn_stack(resource: CfnResource, region: str, account_id: str) -> No
     )
     child_stack.parameters["__conditions__"] = conditions
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
 
     for logical_id in order:
         res_def = resource_defs[logical_id]
@@ -2582,7 +2582,7 @@ def _delete_cfn_stack(resource: CfnResource, region: str, account_id: str) -> No
 
     from robotocore.services.cloudformation.provider import _get_store
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     child_stack = store.get_stack(resource.physical_id)
     if not child_stack:
         return
@@ -2604,7 +2604,7 @@ def _create_cognito_user_pool_client(resource: CfnResource, region: str, account
     # Use native Cognito provider store (not Moto)
     from robotocore.services.cognito.provider import _get_store as _get_cognito_store
 
-    store = _get_cognito_store(region)
+    store = _get_cognito_store(region, account_id)
     pool_id = resource.properties.get("UserPoolId", "")
     client_name = resource.properties.get("ClientName", resource.logical_id)
     cid = uuid.uuid4().hex[:26]

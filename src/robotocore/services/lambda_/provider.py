@@ -786,14 +786,14 @@ def dispatch_to_dlq(
             from robotocore.services.sqs.provider import _get_store
 
             queue_name = target_arn.rsplit(":", 1)[-1]
-            store = _get_store(region)
+            store = _get_store(region, account_id)
             queue = store.get_queue(queue_name)
             if queue:
                 queue.send_message(body=record)
         elif ":sns:" in target_arn:
-            from robotocore.services.sns.provider import get_store
+            from robotocore.services.sns.provider import _get_store as get_store
 
-            store = get_store(region)
+            store = get_store(region, account_id)
             topic = store.get_topic(target_arn)
             if topic:
                 topic.publish(message=record, subject="Lambda DLQ")
