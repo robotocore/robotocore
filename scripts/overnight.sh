@@ -190,8 +190,30 @@ PROMPT
         uv lock 2>/dev/null || true
     fi
 
+    # Create prompt log for this service
+    PROMPT_FILE="prompts/$(date -u +%Y%m%d-%H%M%S)-expand-${SERVICE}.md"
+    cat > "$PROMPT_FILE" <<PLOG
+---
+session: "overnight-$(date -u +%Y%m%d)"
+timestamp: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+model: claude-opus-4-6
+reconstructed: true
+---
+
+## Human
+
+Overnight automation: expand compat tests for ${SERVICE}.
+
+## Assistant
+
+## Key decisions
+
+Probed ${SERVICE}, chunked untested operations, generated compat tests.
+Coverage: ${BEFORE} -> ${AFTER}.
+PLOG
+
     # Also pick up any source changes (Claude may fix the server to make tests pass)
-    git add "$TEST_FILE" src/robotocore/ uv.lock
+    git add "$TEST_FILE" "$PROMPT_FILE" src/robotocore/ uv.lock
     git commit -m "$(cat <<EOF
 Expand ${SERVICE} compat tests: ${AFTER} operations covered
 

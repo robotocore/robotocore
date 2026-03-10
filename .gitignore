@@ -23,3 +23,4 @@ gap_probe_results.json
 gap_untested_ops.json
 probe_stderr.log
 .robotocore-ports/
+logs/
