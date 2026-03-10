@@ -30,7 +30,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: 3.3
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --all-extras
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
@@ -112,7 +112,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: 3.3
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
@@ -149,7 +149,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: 3.3
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
