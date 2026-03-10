@@ -2,14 +2,41 @@
 
 import io
 import os
+import sys
 import time
 import zipfile
 
+import pytest
+
 from robotocore.services.lambda_.executor import (
     LambdaContext,
+    _code_cache,
     execute_python_handler,
     get_layer_zips,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clean_lambda_modules():
+    """Clean up Lambda-injected modules and code cache between tests.
+
+    The executor caches modules in sys.modules under _lambda_* keys, and
+    handler imports (like 'shared', 'my_layer') persist across tests within
+    the same process. This causes flaky failures when test ordering changes.
+    """
+    yield
+    # Remove all Lambda-cached modules and any test handler modules
+    stale = [
+        k
+        for k in sys.modules
+        if k.startswith("_lambda_") or k in ("shared", "my_layer", "lambda_function")
+    ]
+    for k in stale:
+        del sys.modules[k]
+    # Clear the code cache so each test gets a fresh extraction
+    with _code_cache._lock:
+        _code_cache._cache.clear()
+
 
 # ---------------------------------------------------------------------------
 # Helpers — create zip bytes containing Python modules
