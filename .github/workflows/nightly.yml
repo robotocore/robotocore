@@ -33,7 +33,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --all-extras
       - name: Start robotocore
         run: |
@@ -71,7 +70,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -117,7 +115,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Run unit tests with coverage
         run: >
@@ -155,7 +152,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Run unit tests with timing
         run: >

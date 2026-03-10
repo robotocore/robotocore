@@ -21,7 +21,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - run: uv run ruff check src/ tests/ scripts/
       - run: uv run ruff format --check src/ tests/ scripts/
@@ -35,7 +34,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Check test quality (static analysis)
         run: >
@@ -67,7 +65,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - run: uv run mypy src/robotocore/ --ignore-missing-imports
         continue-on-error: true  # Non-blocking during transition
@@ -88,7 +85,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: ${{ matrix.python-version }}
-          enable-cache: true
       - run: uv sync --extra dev
       - run: >
           uv run pytest
@@ -128,7 +124,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: ${{ matrix.python-version }}
-          enable-cache: true
       - run: uv sync --extra dev
       - run: >
           uv run pytest tests/unit/services/
@@ -157,7 +152,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: ${{ matrix.python-version }}
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Run infra unit tests
         run: >
@@ -192,7 +186,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - run: >
           uv run pytest tests/integration/
@@ -214,7 +207,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -255,7 +247,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
@@ -300,7 +291,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --all-extras
       - name: Start robotocore
         run: |
@@ -343,7 +333,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Python security scan (bandit)
         run: |
@@ -441,7 +430,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
-          enable-cache: true
       - run: uv sync --extra dev
       - name: Generate parity report
         run: >
