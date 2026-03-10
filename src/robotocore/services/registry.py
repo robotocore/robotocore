@@ -175,7 +175,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "efs": ServiceInfo("efs", ServiceStatus.MOTO_BACKED, "rest-json", "Elastic File System"),
     "eks": ServiceInfo("eks", ServiceStatus.MOTO_BACKED, "rest-json", "Elastic Kubernetes Service"),
     "elasticache": ServiceInfo(
-        "elasticache", ServiceStatus.MOTO_BACKED, "query", "ElastiCache (Redis/Memcached)"
+        "elasticache", ServiceStatus.NATIVE, "query", "ElastiCache (Redis/Memcached)"
     ),
     "elasticbeanstalk": ServiceInfo(
         "elasticbeanstalk", ServiceStatus.MOTO_BACKED, "query", "Elastic Beanstalk"
@@ -267,8 +267,8 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "polly": ServiceInfo("polly", ServiceStatus.MOTO_BACKED, "rest-json", "Polly Text-to-Speech"),
     "quicksight": ServiceInfo("quicksight", ServiceStatus.MOTO_BACKED, "rest-json", "QuickSight"),
     "ram": ServiceInfo("ram", ServiceStatus.MOTO_BACKED, "rest-json", "Resource Access Manager"),
-    "rds": ServiceInfo("rds", ServiceStatus.MOTO_BACKED, "query", "Relational Database Service"),
-    "rdsdata": ServiceInfo("rdsdata", ServiceStatus.MOTO_BACKED, "rest-json", "RDS Data API"),
+    "rds": ServiceInfo("rds", ServiceStatus.NATIVE, "query", "Relational Database Service"),
+    "rdsdata": ServiceInfo("rdsdata", ServiceStatus.NATIVE, "rest-json", "RDS Data API"),
     "redshiftdata": ServiceInfo(
         "redshiftdata", ServiceStatus.MOTO_BACKED, "json", "Redshift Data API"
     ),
