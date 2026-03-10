@@ -1045,3 +1045,244 @@ class TestAthenaListOps:
     def test_list_application_dpu_sizes(self, athena):
         resp = athena.list_application_dpu_sizes()
         assert "ApplicationDPUSizes" in resp
+
+
+class TestAthenaNotebookOperations:
+    """Tests for Athena notebook operations."""
+
+    def test_create_notebook(self, athena):
+        """CreateNotebook returns a NotebookId."""
+        name = _unique("nb")
+        resp = athena.create_notebook(WorkGroup="primary", Name=name)
+        assert "NotebookId" in resp
+
+    def test_create_presigned_notebook_url(self, athena):
+        """CreatePresignedNotebookUrl returns a URL and auth token."""
+        name = _unique("nb")
+        create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
+        create_resp["NotebookId"]
+        # Start a session for the notebook
+        session_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = session_resp["SessionId"]
+        resp = athena.create_presigned_notebook_url(SessionId=session_id)
+        assert "NotebookUrl" in resp
+        assert "AuthToken" in resp
+
+    def test_delete_notebook(self, athena):
+        """DeleteNotebook removes a notebook."""
+        name = _unique("nb")
+        create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
+        notebook_id = create_resp["NotebookId"]
+        del_resp = athena.delete_notebook(NotebookId=notebook_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_export_notebook(self, athena):
+        """ExportNotebook returns notebook metadata and payload."""
+        name = _unique("nb")
+        create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
+        notebook_id = create_resp["NotebookId"]
+        resp = athena.export_notebook(NotebookId=notebook_id)
+        assert "NotebookMetadata" in resp
+        assert resp["NotebookMetadata"]["NotebookId"] == notebook_id
+
+    def test_import_notebook(self, athena):
+        """ImportNotebook creates a notebook from content."""
+        name = _unique("nb")
+        resp = athena.import_notebook(
+            WorkGroup="primary",
+            Name=name,
+            Payload='{"cells": []}',
+            Type="IPYNB",
+        )
+        assert "NotebookId" in resp
+
+    def test_update_notebook(self, athena):
+        """UpdateNotebook modifies notebook content."""
+        name = _unique("nb")
+        create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
+        notebook_id = create_resp["NotebookId"]
+        # Start a session
+        session_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = session_resp["SessionId"]
+        resp = athena.update_notebook(
+            NotebookId=notebook_id,
+            Payload='{"cells": [{"source": "SELECT 1"}]}',
+            SessionId=session_id,
+            Type="IPYNB",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_notebook_metadata(self, athena):
+        """UpdateNotebookMetadata modifies notebook name."""
+        name = _unique("nb")
+        create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
+        notebook_id = create_resp["NotebookId"]
+        new_name = _unique("nb-updated")
+        resp = athena.update_notebook_metadata(
+            NotebookId=notebook_id,
+            Name=new_name,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_notebook_nonexistent(self, athena):
+        """DeleteNotebook with fake ID succeeds silently (no error)."""
+        resp = athena.delete_notebook(NotebookId="fake-notebook-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAthenaSessionEndpoint:
+    """Tests for GetSessionEndpoint."""
+
+    def test_get_session_endpoint(self, athena):
+        """GetSessionEndpoint returns endpoint info for a session."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        resp = athena.get_session_endpoint(SessionId=session_id)
+        # Response should have ResponseMetadata at minimum
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_session_endpoint_nonexistent(self, athena):
+        """GetSessionEndpoint with fake session raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_session_endpoint(SessionId="fake-session-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+
+class TestAthenaExecutorOperations:
+    """Tests for ListExecutors."""
+
+    def test_list_executors(self, athena):
+        """ListExecutors returns executor list for a session."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        resp = athena.list_executors(SessionId=session_id)
+        assert "ExecutorsSummary" in resp
+        assert isinstance(resp["ExecutorsSummary"], list)
+
+
+class TestAthenaTableMetadataList:
+    """Tests for ListTableMetadata."""
+
+    def test_list_table_metadata(self, athena):
+        """ListTableMetadata returns TableMetadataList for a database."""
+        resp = athena.list_table_metadata(
+            CatalogName="AwsDataCatalog",
+            DatabaseName="default",
+        )
+        assert "TableMetadataList" in resp
+        assert isinstance(resp["TableMetadataList"], list)
+
+
+class TestAthenaCapacityAssignment:
+    """Tests for PutCapacityAssignmentConfiguration."""
+
+    def test_put_capacity_assignment_configuration_nonexistent(self, athena):
+        """PutCapacityAssignmentConfiguration with nonexistent reservation raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.put_capacity_assignment_configuration(
+                CapacityReservationName="nonexistent-reservation",
+                CapacityAssignments=[
+                    {"WorkGroupNames": ["primary"]},
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "InvalidArgumentException",
+        )
+
+
+class TestAthenaCalculationExecution:
+    """Tests for StartCalculationExecution and StopCalculationExecution."""
+
+    def test_start_calculation_execution(self, athena):
+        """StartCalculationExecution returns a CalculationExecutionId."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        resp = athena.start_calculation_execution(
+            SessionId=session_id,
+            CodeBlock="SELECT 1",
+        )
+        assert "CalculationExecutionId" in resp
+        assert "State" in resp
+
+    def test_stop_calculation_execution_nonexistent(self, athena):
+        """StopCalculationExecution with fake ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.stop_calculation_execution(CalculationExecutionId="fake-calc-id")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_stop_calculation_execution(self, athena):
+        """StopCalculationExecution stops a running calculation."""
+        start_resp = athena.start_session(
+            WorkGroup="primary",
+            EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
+        )
+        session_id = start_resp["SessionId"]
+        calc_resp = athena.start_calculation_execution(
+            SessionId=session_id,
+            CodeBlock="SELECT 1",
+        )
+        calc_id = calc_resp["CalculationExecutionId"]
+        resp = athena.stop_calculation_execution(CalculationExecutionId=calc_id)
+        assert resp["State"] in ("CANCELING", "CANCELED", "COMPLETED")
+
+
+class TestAthenaUpdateNamedQuery:
+    """Tests for UpdateNamedQuery."""
+
+    def test_update_named_query(self, athena):
+        """UpdateNamedQuery modifies a named query."""
+        name = _unique("nq")
+        create_resp = athena.create_named_query(
+            Name=name,
+            Database="default",
+            QueryString="SELECT 1",
+            Description="original desc",
+        )
+        query_id = create_resp["NamedQueryId"]
+        resp = athena.update_named_query(
+            NamedQueryId=query_id,
+            Name=name,
+            QueryString="SELECT 2",
+            Description="updated desc",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the update
+        get_resp = athena.get_named_query(NamedQueryId=query_id)
+        nq = get_resp["NamedQuery"]
+        assert nq["QueryString"] == "SELECT 2"
+        assert nq["Description"] == "updated desc"
+
+
+class TestAthenaResourceDashboard:
+    """Tests for GetResourceDashboard."""
+
+    def test_get_resource_dashboard(self, athena):
+        """GetResourceDashboard returns a response for a workgroup ARN."""
+        name = _unique("wg")
+        athena.create_work_group(
+            Name=name,
+            Configuration={"ResultConfiguration": {"OutputLocation": "s3://test-bucket/results/"}},
+        )
+        try:
+            resp = athena.get_resource_dashboard(
+                ResourceARN=f"arn:aws:athena:us-east-1:123456789012:workgroup/{name}"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            athena.delete_work_group(WorkGroup=name)

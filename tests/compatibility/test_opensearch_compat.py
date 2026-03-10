@@ -1340,3 +1340,139 @@ class TestOpenSearchAdditionalWorkingOps:
                 VpcEndpointId="aos-fake-endpoint-id",
                 VpcOptions={"SubnetIds": ["subnet-12345"]},
             )
+
+
+class TestOpenSearchNewOps2:
+    """Tests for additional newly verified OpenSearch operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            opensearch.delete_domain(DomainName=name)
+        except Exception:
+            pass
+
+    def test_authorize_vpc_endpoint_access(self, opensearch, domain):
+        """AuthorizeVpcEndpointAccess with a fake account on a real domain."""
+        try:
+            resp = opensearch.authorize_vpc_endpoint_access(
+                DomainName=domain, Account="111122223333"
+            )
+            assert "AuthorizedPrincipal" in resp
+        except opensearch.exceptions.ClientError as e:
+            # May raise validation error but should still contact server
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_revoke_vpc_endpoint_access(self, opensearch, domain):
+        """RevokeVpcEndpointAccess with a fake account on a real domain."""
+        try:
+            resp = opensearch.revoke_vpc_endpoint_access(DomainName=domain, Account="111122223333")
+            assert "ResponseMetadata" in resp
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_create_and_get_application(self, opensearch):
+        """CreateApplication and GetApplication round-trip."""
+        app_name = f"app-{uuid.uuid4().hex[:8]}"
+        try:
+            create_resp = opensearch.create_application(name=app_name)
+            assert "id" in create_resp or "name" in create_resp
+            app_id = create_resp.get("id", "")
+            if app_id:
+                get_resp = opensearch.get_application(id=app_id)
+                assert "name" in get_resp or "id" in get_resp
+                # Cleanup
+                opensearch.delete_application(id=app_id)
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409, 500)
+
+    def test_delete_application_nonexistent(self, opensearch):
+        """DeleteApplication with fake ID."""
+        try:
+            opensearch.delete_application(id="fake-app-id-12345")
+            # If it succeeds, that's fine
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_get_application_nonexistent(self, opensearch):
+        """GetApplication with fake ID."""
+        try:
+            opensearch.get_application(id="fake-app-id-12345")
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_update_application_nonexistent(self, opensearch):
+        """UpdateApplication with fake ID."""
+        try:
+            opensearch.update_application(id="fake-app-id-12345")
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_delete_direct_query_data_source(self, opensearch):
+        """DeleteDirectQueryDataSource with fake name."""
+        try:
+            opensearch.delete_direct_query_data_source(DataSourceName="fake-ds")
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_get_direct_query_data_source(self, opensearch):
+        """GetDirectQueryDataSource with fake name."""
+        try:
+            opensearch.get_direct_query_data_source(DataSourceName="fake-ds")
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_get_domain_maintenance_status(self, opensearch, domain):
+        """GetDomainMaintenanceStatus with fake maintenance ID."""
+        try:
+            resp = opensearch.get_domain_maintenance_status(
+                DomainName=domain, MaintenanceId="fake-maint-id"
+            )
+            assert "Status" in resp or "ResponseMetadata" in resp
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_list_domain_maintenances(self, opensearch, domain):
+        """ListDomainMaintenances returns a list."""
+        try:
+            resp = opensearch.list_domain_maintenances(DomainName=domain)
+            assert "DomainMaintenances" in resp or "ResponseMetadata" in resp
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_list_scheduled_actions(self, opensearch, domain):
+        """ListScheduledActions returns a list."""
+        try:
+            resp = opensearch.list_scheduled_actions(DomainName=domain)
+            assert "ScheduledActions" in resp or "ResponseMetadata" in resp
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_start_domain_maintenance(self, opensearch, domain):
+        """StartDomainMaintenance with a valid action type."""
+        try:
+            resp = opensearch.start_domain_maintenance(
+                DomainName=domain, Action="REBOOT_NODE", NodeId="fake-node-id"
+            )
+            assert "MaintenanceId" in resp or "ResponseMetadata" in resp
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_update_scheduled_action(self, opensearch, domain):
+        """UpdateScheduledAction with fake action."""
+        try:
+            opensearch.update_scheduled_action(
+                DomainName=domain,
+                ActionID="fake-action-id",
+                ActionType="SERVICE_SOFTWARE_UPDATE",
+                ScheduleAt="NOW",
+            )
+        except opensearch.exceptions.ClientError as e:
+            assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)

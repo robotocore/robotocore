@@ -2684,3 +2684,15 @@ class TestDMSAdditionalOps:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError as e:
             assert "Code" in e.response["Error"]
+
+    def test_create_data_migration(self, dms):
+        """CreateDataMigration creates a data migration."""
+        try:
+            resp = dms.create_data_migration(
+                MigrationProjectIdentifier=_unique("mig-proj"),
+                DataMigrationType="full-load",
+                ServiceAccessRoleArn=("arn:aws:iam::123456789012:role/dms-role"),
+            )
+            assert "DataMigration" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]

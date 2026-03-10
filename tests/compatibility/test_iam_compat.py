@@ -4,6 +4,7 @@ import json
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -4786,3 +4787,24 @@ class TestIAMMiscOperations:
         """SetSecurityTokenServicePreferences sets global endpoint token version to v1."""
         resp = iam.set_security_token_service_preferences(GlobalEndpointTokenVersion="v1Token")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestIAMMFADeviceExtended:
+    """Tests for additional MFA device operations."""
+
+    def test_get_mfa_device_nonexistent(self, iam):
+        """GetMFADevice raises NoSuchEntity for nonexistent device."""
+        with pytest.raises(ClientError) as exc:
+            iam.get_mfa_device(SerialNumber="arn:aws:iam::123456789012:mfa/fake-dev")
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+
+    def test_resync_mfa_device_nonexistent_user(self, iam):
+        """ResyncMFADevice raises NoSuchEntity for nonexistent user."""
+        with pytest.raises(ClientError) as exc:
+            iam.resync_mfa_device(
+                UserName="fake-user-xyz",
+                SerialNumber="arn:aws:iam::123456789012:mfa/fake",
+                AuthenticationCode1="123456",
+                AuthenticationCode2="654321",
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"

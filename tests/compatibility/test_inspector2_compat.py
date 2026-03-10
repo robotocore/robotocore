@@ -815,3 +815,35 @@ class TestInspector2CisSessionOps:
             },
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestInspector2CodeSecurityOps:
+    """Tests for Code Security Integration operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_create_code_security_integration(self, client):
+        """CreateCodeSecurityIntegration creates an integration."""
+        resp = client.create_code_security_integration(
+            name="test-integration",
+            type="GITHUB",
+        )
+        assert "integrationArn" in resp
+
+    def test_delete_code_security_integration(self, client):
+        """DeleteCodeSecurityIntegration with fake ARN returns OK."""
+        fake_arn = "arn:aws:inspector2:us-east-1:123456789012:code-security-integration/fake"
+        resp = client.delete_code_security_integration(
+            integrationArn=fake_arn,
+        )
+        assert "integrationArn" in resp
+
+    def test_delete_code_security_scan_configuration(self, client):
+        """DeleteCodeSecurityScanConfiguration with fake ARN returns OK."""
+        fake_arn = "arn:aws:inspector2:us-east-1:123456789012:code-security-scan-configuration/fake"
+        resp = client.delete_code_security_scan_configuration(
+            scanConfigurationArn=fake_arn,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

@@ -2695,3 +2695,222 @@ class TestCloudFormationStackOps:
                 Status="SUCCESS",
             )
         assert "Code" in exc.value.response["Error"]
+
+
+class TestCloudFormationGeneratedTemplates:
+    """Tests for generated template operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_create_generated_template(self, client):
+        """CreateGeneratedTemplate creates a template and returns an ID."""
+        unique = uuid.uuid4().hex[:8]
+        resp = client.create_generated_template(
+            GeneratedTemplateName=f"gen-tmpl-{unique}",
+            Resources=[
+                {
+                    "ResourceType": "AWS::SQS::Queue",
+                    "ResourceIdentifier": {"QueueName": f"fake-queue-{unique}"},
+                }
+            ],
+        )
+        assert "GeneratedTemplateId" in resp
+        # Cleanup
+        try:
+            client.delete_generated_template(GeneratedTemplateName=f"gen-tmpl-{unique}")
+        except ClientError:
+            pass
+
+    def test_describe_generated_template(self, client):
+        """DescribeGeneratedTemplate returns details for a created template."""
+        unique = uuid.uuid4().hex[:8]
+        name = f"gen-tmpl-desc-{unique}"
+        client.create_generated_template(
+            GeneratedTemplateName=name,
+            Resources=[
+                {
+                    "ResourceType": "AWS::SQS::Queue",
+                    "ResourceIdentifier": {"QueueName": f"fake-q-{unique}"},
+                }
+            ],
+        )
+        resp = client.describe_generated_template(GeneratedTemplateName=name)
+        assert "GeneratedTemplateName" in resp
+        # Cleanup
+        try:
+            client.delete_generated_template(GeneratedTemplateName=name)
+        except ClientError:
+            pass
+
+    def test_update_generated_template(self, client):
+        """UpdateGeneratedTemplate updates a template and returns an ID."""
+        unique = uuid.uuid4().hex[:8]
+        name = f"gen-tmpl-upd-{unique}"
+        client.create_generated_template(
+            GeneratedTemplateName=name,
+            Resources=[
+                {
+                    "ResourceType": "AWS::SQS::Queue",
+                    "ResourceIdentifier": {"QueueName": f"fake-q-{unique}"},
+                }
+            ],
+        )
+        resp = client.update_generated_template(
+            GeneratedTemplateName=name,
+            NewGeneratedTemplateName=f"{name}-updated",
+        )
+        assert "GeneratedTemplateId" in resp
+        # Cleanup
+        try:
+            client.delete_generated_template(GeneratedTemplateName=f"{name}-updated")
+        except ClientError:
+            pass
+
+    def test_get_generated_template(self, client):
+        """GetGeneratedTemplate returns template body or status."""
+        unique = uuid.uuid4().hex[:8]
+        name = f"gen-tmpl-get-{unique}"
+        client.create_generated_template(
+            GeneratedTemplateName=name,
+            Resources=[
+                {
+                    "ResourceType": "AWS::SQS::Queue",
+                    "ResourceIdentifier": {"QueueName": f"fake-q-{unique}"},
+                }
+            ],
+        )
+        resp = client.get_generated_template(GeneratedTemplateName=name)
+        assert "Status" in resp
+        # Cleanup
+        try:
+            client.delete_generated_template(GeneratedTemplateName=name)
+        except ClientError:
+            pass
+
+    def test_delete_generated_template(self, client):
+        """DeleteGeneratedTemplate removes a template."""
+        unique = uuid.uuid4().hex[:8]
+        name = f"gen-tmpl-del-{unique}"
+        client.create_generated_template(
+            GeneratedTemplateName=name,
+            Resources=[
+                {
+                    "ResourceType": "AWS::SQS::Queue",
+                    "ResourceIdentifier": {"QueueName": f"fake-q-{unique}"},
+                }
+            ],
+        )
+        resp = client.delete_generated_template(GeneratedTemplateName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFormationStackRefactorOps:
+    """Tests for stack refactor operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_create_stack_refactor(self, client):
+        """CreateStackRefactor returns a refactor ID."""
+        try:
+            resp = client.create_stack_refactor(
+                Description="test refactor",
+                StackDefinitions=[
+                    {
+                        "StackName": "fake-refactor-stack-nonexist",
+                        "TemplateBody": json.dumps(
+                            {
+                                "AWSTemplateFormatVersion": "2010-09-09",
+                                "Resources": {
+                                    "Q": {
+                                        "Type": "AWS::SQS::Queue",
+                                        "Properties": {"QueueName": "refactor-q"},
+                                    }
+                                },
+                            }
+                        ),
+                    }
+                ],
+            )
+            assert "StackRefactorId" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
+
+    def test_describe_stack_refactor_fake(self, client):
+        """DescribeStackRefactor with fake ID returns response or error."""
+        try:
+            resp = client.describe_stack_refactor(
+                StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            )
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
+
+    def test_execute_stack_refactor_fake(self, client):
+        """ExecuteStackRefactor with fake ID returns response or error."""
+        try:
+            resp = client.execute_stack_refactor(
+                StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            )
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
+
+    def test_list_stack_refactor_actions_fake(self, client):
+        """ListStackRefactorActions with fake ID returns response or error."""
+        try:
+            resp = client.list_stack_refactor_actions(
+                StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            )
+            assert "ResponseMetadata" in resp
+        except ClientError as e:
+            assert "Code" in e.response["Error"]
+
+
+class TestCloudFormationDriftDetection:
+    """Tests for stack drift detection operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_detect_stack_drift(self, client):
+        """DetectStackDrift with a nonexistent stack returns error with Code."""
+        with pytest.raises(ClientError) as exc:
+            client.detect_stack_drift(StackName="fake-drift-stack-nonexist")
+        assert "Code" in exc.value.response["Error"]
+
+    def test_detect_stack_resource_drift(self, client):
+        """DetectStackResourceDrift with a nonexistent stack returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.detect_stack_resource_drift(
+                StackName="fake-drift-res-nonexist",
+                LogicalResourceId="MyQueue",
+            )
+        assert "Code" in exc.value.response["Error"]
+
+    def test_describe_stack_resource_drifts(self, client):
+        """DescribeStackResourceDrifts with a nonexistent stack returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_stack_resource_drifts(StackName="fake-drift-drifts-nonexist")
+        assert "Code" in exc.value.response["Error"]
+
+
+class TestCloudFormationTerminationProtection:
+    """Tests for termination protection."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_update_termination_protection(self, client):
+        """UpdateTerminationProtection with nonexistent stack returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.update_termination_protection(
+                EnableTerminationProtection=True,
+                StackName="fake-termprot-nonexist",
+            )
+        assert "Code" in exc.value.response["Error"]

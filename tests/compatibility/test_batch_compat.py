@@ -925,3 +925,211 @@ class TestSchedulingPolicies:
             assert "groupB" in identifiers
         finally:
             batch.delete_scheduling_policy(arn=arn)
+
+
+class TestConsumableResources:
+    def test_create_consumable_resource(self, batch):
+        name = _unique("cr")
+        resp = batch.create_consumable_resource(
+            consumableResourceName=name,
+            totalQuantity=100,
+            resourceType="GPU",
+        )
+        assert resp["consumableResourceName"] == name
+        assert "consumableResourceArn" in resp
+        batch.delete_consumable_resource(consumableResource=name)
+
+    def test_describe_consumable_resource(self, batch):
+        name = _unique("cr-desc")
+        batch.create_consumable_resource(
+            consumableResourceName=name,
+            totalQuantity=50,
+            resourceType="GPU",
+        )
+        try:
+            resp = batch.describe_consumable_resource(consumableResource=name)
+            assert resp["consumableResourceName"] == name
+            assert resp["totalQuantity"] == 50
+            assert "consumableResourceArn" in resp
+        finally:
+            batch.delete_consumable_resource(consumableResource=name)
+
+    def test_list_consumable_resources(self, batch):
+        name = _unique("cr-list")
+        batch.create_consumable_resource(
+            consumableResourceName=name,
+            totalQuantity=10,
+        )
+        try:
+            resp = batch.list_consumable_resources()
+            assert "consumableResources" in resp
+        finally:
+            batch.delete_consumable_resource(consumableResource=name)
+
+    def test_update_consumable_resource(self, batch):
+        name = _unique("cr-upd")
+        batch.create_consumable_resource(
+            consumableResourceName=name,
+            totalQuantity=100,
+        )
+        try:
+            resp = batch.update_consumable_resource(
+                consumableResource=name,
+                operation="SET",
+                quantity=200,
+            )
+            assert resp["consumableResourceName"] == name
+            assert "totalQuantity" in resp
+            assert "consumableResourceArn" in resp
+        finally:
+            batch.delete_consumable_resource(consumableResource=name)
+
+    def test_delete_consumable_resource(self, batch):
+        name = _unique("cr-del")
+        batch.create_consumable_resource(
+            consumableResourceName=name,
+            totalQuantity=10,
+        )
+        resp = batch.delete_consumable_resource(consumableResource=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_jobs_by_consumable_resource(self, batch):
+        name = _unique("cr-jobs")
+        batch.create_consumable_resource(
+            consumableResourceName=name,
+            totalQuantity=10,
+        )
+        try:
+            resp = batch.list_jobs_by_consumable_resource(consumableResource=name)
+            assert "jobs" in resp
+        finally:
+            batch.delete_consumable_resource(consumableResource=name)
+
+
+class TestServiceEnvironments:
+    def test_create_service_environment(self, batch):
+        name = _unique("se")
+        resp = batch.create_service_environment(
+            serviceEnvironmentName=name,
+            serviceEnvironmentType="SAGEMAKER_TRAINING",
+            capacityLimits=[{"maxCapacity": 10}],
+        )
+        assert resp["serviceEnvironmentName"] == name
+        assert "serviceEnvironmentArn" in resp
+        batch.delete_service_environment(serviceEnvironment=name)
+
+    def test_describe_service_environments(self, batch):
+        name = _unique("se-desc")
+        batch.create_service_environment(
+            serviceEnvironmentName=name,
+            serviceEnvironmentType="SAGEMAKER_TRAINING",
+            capacityLimits=[{"maxCapacity": 5}],
+        )
+        try:
+            resp = batch.describe_service_environments(serviceEnvironments=[name])
+            assert "serviceEnvironments" in resp
+        finally:
+            batch.delete_service_environment(serviceEnvironment=name)
+
+    def test_update_service_environment(self, batch):
+        name = _unique("se-upd")
+        batch.create_service_environment(
+            serviceEnvironmentName=name,
+            serviceEnvironmentType="SAGEMAKER_TRAINING",
+            capacityLimits=[{"maxCapacity": 5}],
+        )
+        try:
+            resp = batch.update_service_environment(
+                serviceEnvironment=name,
+                state="DISABLED",
+            )
+            assert resp["serviceEnvironmentName"] == name
+            assert "serviceEnvironmentArn" in resp
+        finally:
+            batch.delete_service_environment(serviceEnvironment=name)
+
+    def test_delete_service_environment(self, batch):
+        name = _unique("se-del")
+        batch.create_service_environment(
+            serviceEnvironmentName=name,
+            serviceEnvironmentType="SAGEMAKER_TRAINING",
+            capacityLimits=[{"maxCapacity": 5}],
+        )
+        resp = batch.delete_service_environment(serviceEnvironment=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestServiceJobs:
+    @pytest.fixture
+    def service_job_infra(self, batch):
+        ce_name = _unique("sj-ce")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+        ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+
+        jq_name = _unique("sj-jq")
+        batch.create_job_queue(
+            jobQueueName=jq_name,
+            priority=1,
+            computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+        )
+        yield jq_name
+        batch.delete_job_queue(jobQueue=jq_name)
+        batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_list_service_jobs(self, batch):
+        resp = batch.list_service_jobs()
+        assert "jobSummaryList" in resp
+
+    def test_submit_service_job(self, batch, service_job_infra):
+        jq_name = service_job_infra
+        resp = batch.submit_service_job(
+            jobName=_unique("sj"),
+            jobQueue=jq_name,
+            serviceRequestPayload="{}",
+            serviceJobType="SAGEMAKER_TRAINING",
+        )
+        assert "jobId" in resp
+        assert "jobName" in resp
+
+    def test_describe_service_job(self, batch, service_job_infra):
+        jq_name = service_job_infra
+        submitted = batch.submit_service_job(
+            jobName=_unique("sj-desc"),
+            jobQueue=jq_name,
+            serviceRequestPayload="{}",
+            serviceJobType="SAGEMAKER_TRAINING",
+        )
+        job_id = submitted["jobId"]
+        resp = batch.describe_service_job(jobId=job_id)
+        assert resp["jobId"] == job_id
+        assert "status" in resp
+
+    def test_terminate_service_job(self, batch, service_job_infra):
+        jq_name = service_job_infra
+        submitted = batch.submit_service_job(
+            jobName=_unique("sj-term"),
+            jobQueue=jq_name,
+            serviceRequestPayload="{}",
+            serviceJobType="SAGEMAKER_TRAINING",
+        )
+        job_id = submitted["jobId"]
+        resp = batch.terminate_service_job(jobId=job_id, reason="Testing termination")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGetJobQueueSnapshot:
+    def test_get_job_queue_snapshot_nonexistent(self, batch):
+        """GetJobQueueSnapshot returns ClientException for nonexistent queue."""
+        with pytest.raises(batch.exceptions.ClientException) as exc_info:
+            batch.get_job_queue_snapshot(jobQueue=_unique("nonexist-jq"))
+        assert "does not exist" in str(exc_info.value)

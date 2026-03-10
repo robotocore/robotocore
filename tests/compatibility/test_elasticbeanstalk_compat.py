@@ -413,3 +413,219 @@ class TestTagsRoundTrip:
         resp = eb.list_tags_for_resource(ResourceArn=env_arn)
         keys = [t["Key"] for t in resp["ResourceTags"]]
         assert "removeme" not in keys
+
+
+class TestConfigurationTemplateOperations:
+    """Tests for configuration template CRUD operations."""
+
+    @pytest.fixture
+    def app(self, eb):
+        name = _unique("tpl-app")
+        eb.create_application(ApplicationName=name)
+        yield name
+        eb.delete_application(ApplicationName=name)
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    def test_create_configuration_template(self, eb, app, solution_stack):
+        """CreateConfigurationTemplate creates a template for an application."""
+        tpl_name = _unique("tpl")
+        resp = eb.create_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            SolutionStackName=solution_stack,
+        )
+        assert resp["ApplicationName"] == app
+        assert resp["TemplateName"] == tpl_name
+        assert "SolutionStackName" in resp
+
+    def test_update_configuration_template(self, eb, app, solution_stack):
+        """UpdateConfigurationTemplate updates description."""
+        tpl_name = _unique("upd-tpl")
+        eb.create_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            SolutionStackName=solution_stack,
+        )
+        resp = eb.update_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            Description="updated description",
+        )
+        assert resp["ApplicationName"] == app
+        assert resp["TemplateName"] == tpl_name
+
+    def test_delete_configuration_template(self, eb, app, solution_stack):
+        """DeleteConfigurationTemplate removes the template."""
+        tpl_name = _unique("del-tpl")
+        eb.create_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            SolutionStackName=solution_stack,
+        )
+        # Should not raise
+        eb.delete_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+        )
+        # Verify it's gone by checking describe_configuration_settings
+        resp = eb.describe_configuration_settings(ApplicationName=app)
+        tpl_names = [s.get("TemplateName") for s in resp["ConfigurationSettings"]]
+        assert tpl_name not in tpl_names
+
+
+class TestEnvironmentUpdateOperations:
+    """Tests for environment update, rebuild, and abort operations."""
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    @pytest.fixture
+    def app_and_env(self, eb, solution_stack):
+        app_name = _unique("upd-app")
+        env_name = _unique("upd-env")
+        eb.create_application(ApplicationName=app_name)
+        resp = eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        env_id = resp["EnvironmentId"]
+        yield app_name, env_name, env_id
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_update_environment(self, eb, app_and_env):
+        """UpdateEnvironment updates the environment description."""
+        app_name, env_name, env_id = app_and_env
+        resp = eb.update_environment(
+            EnvironmentName=env_name,
+            Description="updated env",
+        )
+        assert resp["EnvironmentName"] == env_name
+        assert "EnvironmentId" in resp
+
+    def test_abort_environment_update(self, eb, app_and_env):
+        """AbortEnvironmentUpdate can be called on an environment."""
+        _app_name, env_name, _env_id = app_and_env
+        # AbortEnvironmentUpdate returns None on success (no response body)
+        eb.abort_environment_update(EnvironmentName=env_name)
+        # Verify environment still exists after abort
+        resp = eb.describe_environments(EnvironmentNames=[env_name])
+        assert len(resp["Environments"]) == 1
+
+    def test_rebuild_environment(self, eb, app_and_env):
+        """RebuildEnvironment can be called on an environment."""
+        _app_name, env_name, _env_id = app_and_env
+        eb.rebuild_environment(EnvironmentName=env_name)
+        # Verify environment still exists after rebuild
+        resp = eb.describe_environments(EnvironmentNames=[env_name])
+        assert len(resp["Environments"]) == 1
+
+
+class TestEnvironmentInfoOperations:
+    """Tests for RequestEnvironmentInfo and RetrieveEnvironmentInfo."""
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    @pytest.fixture
+    def env_name(self, eb, solution_stack):
+        app_name = _unique("info-app")
+        env_name = _unique("info-env")
+        eb.create_application(ApplicationName=app_name)
+        eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        yield env_name
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_request_environment_info(self, eb, env_name):
+        """RequestEnvironmentInfo can be called with tail info type."""
+        eb.request_environment_info(
+            EnvironmentName=env_name,
+            InfoType="tail",
+        )
+        # No exception means success; request_environment_info has no response body
+
+    def test_retrieve_environment_info(self, eb, env_name):
+        """RetrieveEnvironmentInfo returns info list."""
+        eb.request_environment_info(
+            EnvironmentName=env_name,
+            InfoType="tail",
+        )
+        resp = eb.retrieve_environment_info(
+            EnvironmentName=env_name,
+            InfoType="tail",
+        )
+        assert "EnvironmentInfo" in resp
+        assert isinstance(resp["EnvironmentInfo"], list)
+
+
+class TestPlatformVersionOperations:
+    """Tests for CreatePlatformVersion and DeletePlatformVersion."""
+
+    def test_create_platform_version(self, eb):
+        """CreatePlatformVersion creates a custom platform."""
+        pv_name = _unique("plat")
+        resp = eb.create_platform_version(
+            PlatformName=pv_name,
+            PlatformVersion="1.0.0",
+            PlatformDefinitionBundle={
+                "S3Bucket": "my-bucket",
+                "S3Key": "my-platform.zip",
+            },
+        )
+        assert "PlatformSummary" in resp
+        assert "PlatformArn" in resp["PlatformSummary"]
+
+    def test_delete_platform_version(self, eb):
+        """DeletePlatformVersion deletes a custom platform."""
+        pv_name = _unique("delplat")
+        created = eb.create_platform_version(
+            PlatformName=pv_name,
+            PlatformVersion="1.0.0",
+            PlatformDefinitionBundle={
+                "S3Bucket": "my-bucket",
+                "S3Key": "my-platform.zip",
+            },
+        )
+        platform_arn = created["PlatformSummary"]["PlatformArn"]
+        resp = eb.delete_platform_version(PlatformArn=platform_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestComposeEnvironments:
+    """Tests for ComposeEnvironments operation."""
+
+    def test_compose_environments(self, eb):
+        """ComposeEnvironments returns environment list."""
+        app_name = _unique("compose-app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            resp = eb.compose_environments(ApplicationName=app_name)
+            assert "Environments" in resp
+            assert isinstance(resp["Environments"], list)
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+
+class TestApplyEnvironmentManagedAction:
+    """Tests for ApplyEnvironmentManagedAction operation."""
+
+    def test_apply_environment_managed_action(self, eb):
+        """ApplyEnvironmentManagedAction returns action status."""
+        resp = eb.apply_environment_managed_action(
+            EnvironmentName="nonexistent-env",
+            ActionId="fake-action-id",
+        )
+        assert "ActionId" in resp
+        assert "Status" in resp

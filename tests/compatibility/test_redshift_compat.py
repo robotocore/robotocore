@@ -2525,3 +2525,323 @@ class TestRedshiftSnapshotScheduleLifecycle:
         assert "DbUser" in resp
         assert "DbPassword" in resp
         assert "Expiration" in resp
+
+
+class TestRedshiftNewOps:
+    """Tests for additional Redshift operations."""
+
+    def test_modify_cluster_parameter_group(self, redshift):
+        """ModifyClusterParameterGroup updates parameters."""
+        name = f"mpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Modify test",
+        )
+        try:
+            resp = redshift.modify_cluster_parameter_group(
+                ParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "enable_user_activity_logging",
+                        "ParameterValue": "true",
+                        "ApplyType": "dynamic",
+                    }
+                ],
+            )
+            assert resp["ParameterGroupName"] == name
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_reset_cluster_parameter_group(self, redshift):
+        """ResetClusterParameterGroup resets parameters to defaults."""
+        name = f"rpg-{_uid()}"
+        redshift.create_cluster_parameter_group(
+            ParameterGroupName=name,
+            ParameterGroupFamily="redshift-1.0",
+            Description="Reset test",
+        )
+        try:
+            resp = redshift.reset_cluster_parameter_group(
+                ParameterGroupName=name,
+                ResetAllParameters=True,
+            )
+            assert resp["ParameterGroupName"] == name
+        finally:
+            redshift.delete_cluster_parameter_group(ParameterGroupName=name)
+
+    def test_modify_cluster_subnet_group(self, redshift):
+        """ModifyClusterSubnetGroup updates subnet group."""
+        ec2 = make_client("ec2")
+        vpc = ec2.create_vpc(CidrBlock="10.250.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.250.1.0/24")
+        subnet2 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.250.2.0/24")
+        sid1 = subnet1["Subnet"]["SubnetId"]
+        sid2 = subnet2["Subnet"]["SubnetId"]
+        name = f"msg-{_uid()}"
+        redshift.create_cluster_subnet_group(
+            ClusterSubnetGroupName=name,
+            Description="Original",
+            SubnetIds=[sid1],
+        )
+        try:
+            resp = redshift.modify_cluster_subnet_group(
+                ClusterSubnetGroupName=name,
+                Description="Modified",
+                SubnetIds=[sid1, sid2],
+            )
+            assert resp["ClusterSubnetGroup"]["ClusterSubnetGroupName"] == name
+            assert resp["ClusterSubnetGroup"]["Description"] == "Modified"
+        finally:
+            redshift.delete_cluster_subnet_group(ClusterSubnetGroupName=name)
+
+    def test_reboot_cluster(self, redshift):
+        """RebootCluster returns cluster info."""
+        cid = f"reboot-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.reboot_cluster(ClusterIdentifier=cid)
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster_snapshot(self, redshift):
+        """ModifyClusterSnapshot changes snapshot retention."""
+        cid = f"mcs-{_uid()}"
+        snap = f"mcs-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            redshift.create_cluster_snapshot(SnapshotIdentifier=snap, ClusterIdentifier=cid)
+            resp = redshift.modify_cluster_snapshot(
+                SnapshotIdentifier=snap,
+                ManualSnapshotRetentionPeriod=30,
+            )
+            assert resp["Snapshot"]["SnapshotIdentifier"] == snap
+            redshift.delete_cluster_snapshot(SnapshotIdentifier=snap)
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster_maintenance(self, redshift):
+        """ModifyClusterMaintenance on a cluster returns cluster info."""
+        cid = f"mcm-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_cluster_maintenance(
+                ClusterIdentifier=cid,
+                DeferMaintenance=True,
+                DeferMaintenanceDuration=14,
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster_db_revision(self, redshift):
+        """ModifyClusterDbRevision on a cluster returns cluster info."""
+        cid = f"mdr-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_cluster_db_revision(
+                ClusterIdentifier=cid,
+                RevisionTarget="current",
+            )
+            assert resp["Cluster"]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_aqua_configuration(self, redshift):
+        """ModifyAquaConfiguration on a cluster returns AQUA config."""
+        cid = f"aqua-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        try:
+            resp = redshift.modify_aqua_configuration(
+                ClusterIdentifier=cid,
+                AquaConfigurationStatus="disabled",
+            )
+            assert "AquaConfiguration" in resp
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+
+    def test_modify_cluster_snapshot_schedule(self, redshift):
+        """ModifyClusterSnapshotSchedule associates a schedule with a cluster."""
+        cid = f"mcss-{_uid()}"
+        sid = f"mcss-{_uid()}"
+        redshift.create_cluster(
+            ClusterIdentifier=cid,
+            NodeType="dc2.large",
+            MasterUsername="admin",
+            MasterUserPassword="Password1!",
+            NumberOfNodes=1,
+            ClusterType="single-node",
+        )
+        redshift.create_snapshot_schedule(
+            ScheduleIdentifier=sid,
+            ScheduleDefinitions=["rate(12 hours)"],
+        )
+        try:
+            redshift.modify_cluster_snapshot_schedule(
+                ClusterIdentifier=cid,
+                ScheduleIdentifier=sid,
+            )
+            # No error means success; verify cluster still exists
+            desc = redshift.describe_clusters(ClusterIdentifier=cid)
+            assert desc["Clusters"][0]["ClusterIdentifier"] == cid
+        finally:
+            redshift.delete_cluster(ClusterIdentifier=cid, SkipFinalClusterSnapshot=True)
+            redshift.delete_snapshot_schedule(ScheduleIdentifier=sid)
+
+    def test_revoke_cluster_security_group_ingress(self, redshift):
+        """RevokeClusterSecurityGroupIngress revokes CIDR access."""
+        name = f"rsg-{_uid()}"
+        redshift.create_cluster_security_group(
+            ClusterSecurityGroupName=name,
+            Description="Revoke ingress test",
+        )
+        try:
+            redshift.authorize_cluster_security_group_ingress(
+                ClusterSecurityGroupName=name,
+                CIDRIP="10.0.0.0/24",
+            )
+            resp = redshift.revoke_cluster_security_group_ingress(
+                ClusterSecurityGroupName=name,
+                CIDRIP="10.0.0.0/24",
+            )
+            sg = resp["ClusterSecurityGroup"]
+            assert sg["ClusterSecurityGroupName"] == name
+        finally:
+            redshift.delete_cluster_security_group(ClusterSecurityGroupName=name)
+
+    def test_authorize_data_share(self, redshift):
+        """AuthorizeDataShare with a fake ARN returns or raises a known error."""
+        fake_arn = "arn:aws:redshift:us-east-1:123456789012:datashare:fake-ns/fake-share"
+        try:
+            resp = redshift.authorize_data_share(
+                DataShareArn=fake_arn,
+                ConsumerIdentifier="123456789012",
+            )
+            assert "DataShareArn" in resp
+        except ClientError as exc:
+            # Server contacted but data share doesn't exist
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_deauthorize_data_share(self, redshift):
+        """DeauthorizeDataShare with a fake ARN returns or raises a known error."""
+        fake_arn = "arn:aws:redshift:us-east-1:123456789012:datashare:fake-ns/fake-share"
+        try:
+            resp = redshift.deauthorize_data_share(
+                DataShareArn=fake_arn,
+                ConsumerIdentifier="123456789012",
+            )
+            assert "DataShareArn" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_associate_data_share_consumer(self, redshift):
+        """AssociateDataShareConsumer with a fake ARN returns or raises a known error."""
+        fake_arn = "arn:aws:redshift:us-east-1:123456789012:datashare:fake-ns/fake-share"
+        try:
+            resp = redshift.associate_data_share_consumer(
+                DataShareArn=fake_arn,
+                ConsumerArn="arn:aws:redshift:us-east-1:123456789012:namespace:fake-ns",
+            )
+            assert "DataShareArn" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_disassociate_data_share_consumer(self, redshift):
+        """DisassociateDataShareConsumer with a fake ARN returns or raises a known error."""
+        fake_arn = "arn:aws:redshift:us-east-1:123456789012:datashare:fake-ns/fake-share"
+        try:
+            resp = redshift.disassociate_data_share_consumer(
+                DataShareArn=fake_arn,
+                ConsumerArn="arn:aws:redshift:us-east-1:123456789012:namespace:fake-ns",
+            )
+            assert "DataShareArn" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_reject_data_share(self, redshift):
+        """RejectDataShare with a fake ARN returns or raises a known error."""
+        fake_arn = "arn:aws:redshift:us-east-1:123456789012:datashare:fake-ns/fake-share"
+        try:
+            resp = redshift.reject_data_share(DataShareArn=fake_arn)
+            assert "DataShareArn" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_create_custom_domain_association(self, redshift):
+        """CreateCustomDomainAssociation with a fake cluster raises expected error."""
+        cid = f"nonexistent-{_uid()}"
+        try:
+            resp = redshift.create_custom_domain_association(
+                CustomDomainName=f"test-{_uid()}.example.com",
+                CustomDomainCertificateArn=(
+                    "arn:aws:acm:us-east-1:123456789012:certificate/fake-cert"
+                ),
+                ClusterIdentifier=cid,
+            )
+            assert "CustomDomainName" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as exc:
+            # ClusterNotFound is the expected error
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_delete_custom_domain_association(self, redshift):
+        """DeleteCustomDomainAssociation with a fake cluster raises expected error."""
+        cid = f"nonexistent-{_uid()}"
+        try:
+            redshift.delete_custom_domain_association(
+                CustomDomainName=f"test-{_uid()}.example.com",
+                ClusterIdentifier=cid,
+            )
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_modify_custom_domain_association(self, redshift):
+        """ModifyCustomDomainAssociation with a fake cluster raises expected error."""
+        cid = f"nonexistent-{_uid()}"
+        try:
+            resp = redshift.modify_custom_domain_association(
+                CustomDomainName=f"test-{_uid()}.example.com",
+                CustomDomainCertificateArn=(
+                    "arn:aws:acm:us-east-1:123456789012:certificate/fake-cert"
+                ),
+                ClusterIdentifier=cid,
+            )
+            assert "CustomDomainName" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

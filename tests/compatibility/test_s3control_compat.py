@@ -2864,3 +2864,703 @@ class TestS3ControlDeleteStorageLensTagging:
                 )
             except Exception:
                 pass
+
+
+class TestS3ControlAccessPointForObjectLambda:
+    """Tests for Object Lambda Access Point operations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    def _make_olap_config(self, ap_name):
+        return {
+            "SupportingAccessPoint": (f"arn:aws:s3:us-east-1:{ACCOUNT_ID}:accesspoint/{ap_name}"),
+            "TransformationConfigurations": [
+                {
+                    "Actions": ["GetObject"],
+                    "ContentTransformation": {
+                        "AwsLambda": {
+                            "FunctionArn": (
+                                f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:my-func"
+                            ),
+                        }
+                    },
+                }
+            ],
+        }
+
+    def test_create_access_point_for_object_lambda(self, s3control, s3):
+        """CreateAccessPointForObjectLambda creates an OLAP."""
+        bucket = f"olap-cr-{_uid()}"
+        ap_name = f"olap-src-{_uid()}"
+        olap_name = f"olap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            resp = s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ObjectLambdaAccessPointArn" in resp
+        finally:
+            try:
+                s3control.delete_access_point_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_access_point_for_object_lambda(self, s3control, s3):
+        """GetAccessPointForObjectLambda returns OLAP details."""
+        bucket = f"olap-get-{_uid()}"
+        ap_name = f"olap-gsrc-{_uid()}"
+        olap_name = f"olap-g-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            resp = s3control.get_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name
+            )
+            assert resp["Name"] == olap_name
+            assert "CreationDate" in resp
+        finally:
+            try:
+                s3control.delete_access_point_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_access_point_for_object_lambda(self, s3control, s3):
+        """DeleteAccessPointForObjectLambda removes an OLAP."""
+        bucket = f"olap-del-{_uid()}"
+        ap_name = f"olap-dsrc-{_uid()}"
+        olap_name = f"olap-d-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            resp = s3control.delete_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_put_access_point_policy_for_object_lambda(self, s3control, s3):
+        """PutAccessPointPolicyForObjectLambda sets a policy on an OLAP."""
+        bucket = f"olap-pp-{_uid()}"
+        ap_name = f"olap-ppsrc-{_uid()}"
+        olap_name = f"olap-pp-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3-object-lambda:GetObject",
+                            "Resource": (
+                                f"arn:aws:s3-object-lambda:us-east-1:{ACCOUNT_ID}"
+                                f":accesspoint/{olap_name}"
+                            ),
+                        }
+                    ],
+                }
+            )
+            resp = s3control.put_access_point_policy_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name, Policy=policy
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_access_point_policy_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_access_point_policy_for_object_lambda(self, s3control, s3):
+        """GetAccessPointPolicyForObjectLambda returns the policy."""
+        bucket = f"olap-gp-{_uid()}"
+        ap_name = f"olap-gpsrc-{_uid()}"
+        olap_name = f"olap-gp-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3-object-lambda:GetObject",
+                            "Resource": (
+                                f"arn:aws:s3-object-lambda:us-east-1:{ACCOUNT_ID}"
+                                f":accesspoint/{olap_name}"
+                            ),
+                        }
+                    ],
+                }
+            )
+            s3control.put_access_point_policy_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name, Policy=policy
+            )
+            resp = s3control.get_access_point_policy_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name
+            )
+            assert "Policy" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_access_point_policy_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_access_point_policy_for_object_lambda(self, s3control, s3):
+        """DeleteAccessPointPolicyForObjectLambda removes the OLAP policy."""
+        bucket = f"olap-dp-{_uid()}"
+        ap_name = f"olap-dpsrc-{_uid()}"
+        olap_name = f"olap-dp-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            policy = json.dumps({"Version": "2012-10-17", "Statement": []})
+            s3control.put_access_point_policy_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name, Policy=policy
+            )
+            resp = s3control.delete_access_point_policy_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        finally:
+            try:
+                s3control.delete_access_point_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_access_point_policy_status_for_object_lambda(self, s3control, s3):
+        """GetAccessPointPolicyStatusForObjectLambda returns IsPublic."""
+        bucket = f"olap-ps-{_uid()}"
+        ap_name = f"olap-pssrc-{_uid()}"
+        olap_name = f"olap-ps-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.create_access_point_for_object_lambda(
+                AccountId=ACCOUNT_ID,
+                Name=olap_name,
+                Configuration=self._make_olap_config(ap_name),
+            )
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3-object-lambda:GetObject",
+                            "Resource": (
+                                f"arn:aws:s3-object-lambda:us-east-1:{ACCOUNT_ID}"
+                                f":accesspoint/{olap_name}"
+                            ),
+                        }
+                    ],
+                }
+            )
+            s3control.put_access_point_policy_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name, Policy=policy
+            )
+            resp = s3control.get_access_point_policy_status_for_object_lambda(
+                AccountId=ACCOUNT_ID, Name=olap_name
+            )
+            assert "PolicyStatus" in resp
+            assert "IsPublic" in resp["PolicyStatus"]
+        finally:
+            try:
+                s3control.delete_access_point_policy_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point_for_object_lambda(
+                    AccountId=ACCOUNT_ID, Name=olap_name
+                )
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+
+class TestS3ControlAccessPointScope:
+    """Tests for Access Point Scope operations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    def test_put_access_point_scope(self, s3control, s3):
+        """PutAccessPointScope sets a scope on an access point."""
+        bucket = f"scope-put-{_uid()}"
+        ap_name = f"scope-ap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            resp = s3control.put_access_point_scope(
+                AccountId=ACCOUNT_ID,
+                Name=ap_name,
+                Scope={
+                    "Prefixes": ["data/"],
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_access_point_scope(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_get_access_point_scope(self, s3control, s3):
+        """GetAccessPointScope returns the scope for an access point."""
+        bucket = f"scope-get-{_uid()}"
+        ap_name = f"scope-gap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.put_access_point_scope(
+                AccountId=ACCOUNT_ID,
+                Name=ap_name,
+                Scope={
+                    "Prefixes": ["data/"],
+                },
+            )
+            resp = s3control.get_access_point_scope(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Scope" in resp
+        finally:
+            try:
+                s3control.delete_access_point_scope(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_access_point_scope(self, s3control, s3):
+        """DeleteAccessPointScope removes the scope from an access point."""
+        bucket = f"scope-del-{_uid()}"
+        ap_name = f"scope-dap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            s3control.put_access_point_scope(
+                AccountId=ACCOUNT_ID,
+                Name=ap_name,
+                Scope={
+                    "Prefixes": ["data/"],
+                },
+            )
+            resp = s3control.delete_access_point_scope(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        finally:
+            try:
+                s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass
+            s3.delete_bucket(Bucket=bucket)
+
+
+class TestS3ControlBucketLifecyclePolicyReplicationTagging:
+    """Tests for bucket-level Put/Delete operations: lifecycle, policy, replication, tagging."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def bucket(self, s3):
+        name = f"bkt-ops-{_uid()}"
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    def test_put_bucket_tagging(self, s3control, bucket):
+        """PutBucketTagging sets tags on a bucket."""
+        resp = s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "env", "Value": "test"}]},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_and_get_bucket_tagging(self, s3control, bucket):
+        """PutBucketTagging then GetBucketTagging returns tags."""
+        s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "team", "Value": "platform"}]},
+        )
+        resp = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_bucket_tagging(self, s3control, bucket):
+        """DeleteBucketTagging removes tags."""
+        s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "k", "Value": "v"}]},
+        )
+        resp = s3control.delete_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_put_bucket_policy(self, s3control, bucket):
+        """PutBucketPolicy sets a policy on a bucket."""
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
+        resp = s3control.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_bucket_policy(self, s3control, bucket):
+        """DeleteBucketPolicy removes the policy."""
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
+        s3control.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy)
+        resp = s3control.delete_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_bucket_lifecycle_configuration(self, s3control, bucket):
+        """DeleteBucketLifecycleConfiguration removes lifecycle rules."""
+        resp = s3control.delete_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_put_bucket_replication(self, s3control, bucket):
+        """PutBucketReplication sets replication config."""
+        resp = s3control.put_bucket_replication(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            ReplicationConfiguration={
+                "Role": f"arn:aws:iam::{ACCOUNT_ID}:role/repl-role",
+                "Rules": [
+                    {
+                        "ID": "rule1",
+                        "Status": "Enabled",
+                        "Priority": 1,
+                        "Bucket": f"arn:aws:s3:::{bucket}",
+                        "Filter": {"Prefix": ""},
+                        "Destination": {
+                            "Bucket": f"arn:aws:s3:::{bucket}",
+                            "Account": ACCOUNT_ID,
+                        },
+                        "DeleteMarkerReplication": {"Status": "Disabled"},
+                    }
+                ],
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_bucket_replication(self, s3control, bucket):
+        """DeleteBucketReplication removes replication config."""
+        resp = s3control.delete_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestS3ControlJobTagging:
+    """Tests for S3 Batch Operations job tagging."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    @pytest.fixture
+    def job_id(self, s3control, s3):
+        bucket = f"jt-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        resp = s3control.create_job(
+            AccountId=ACCOUNT_ID,
+            Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+            Report={"Enabled": False},
+            ClientRequestToken=str(uuid.uuid4()),
+            Priority=10,
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+            ConfirmationRequired=False,
+            ManifestGenerator={
+                "S3JobManifestGenerator": {
+                    "SourceBucket": f"arn:aws:s3:::{bucket}",
+                    "EnableManifestOutput": False,
+                }
+            },
+            Tags=[{"Key": "env", "Value": "test"}],
+        )
+        jid = resp["JobId"]
+        yield jid
+        try:
+            s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=jid, RequestedJobStatus="Cancelled"
+            )
+        except Exception:
+            pass
+        try:
+            s3.delete_bucket(Bucket=bucket)
+        except Exception:
+            pass
+
+    def test_get_job_tagging(self, s3control, job_id):
+        """GetJobTagging returns tags for a job."""
+        resp = s3control.get_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], list)
+
+    def test_delete_job_tagging(self, s3control, job_id):
+        """DeleteJobTagging removes tags from a job."""
+        resp = s3control.delete_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_then_get_job_tagging(self, s3control, job_id):
+        """After DeleteJobTagging, GetJobTagging returns empty tags."""
+        s3control.delete_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
+        resp = s3control.get_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
+        assert resp["Tags"] == []
+
+
+class TestS3ControlStorageLensGroups:
+    """Tests for Storage Lens Group operations."""
+
+    @pytest.fixture
+    def s3control(self):
+        return make_client("s3control")
+
+    def test_create_storage_lens_group(self, s3control):
+        """CreateStorageLensGroup creates a group."""
+        name = f"slg-{_uid()}"
+        try:
+            resp = s3control.create_storage_lens_group(
+                AccountId=ACCOUNT_ID,
+                StorageLensGroup={
+                    "Name": name,
+                    "Filter": {
+                        "MatchAnyPrefix": ["logs/"],
+                    },
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
+            except Exception:
+                pass
+
+    def test_get_storage_lens_group(self, s3control):
+        """GetStorageLensGroup returns group details."""
+        name = f"slg-get-{_uid()}"
+        try:
+            s3control.create_storage_lens_group(
+                AccountId=ACCOUNT_ID,
+                StorageLensGroup={
+                    "Name": name,
+                    "Filter": {
+                        "MatchAnyPrefix": ["data/"],
+                    },
+                },
+            )
+            resp = s3control.get_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
+            assert "StorageLensGroup" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
+            except Exception:
+                pass
+
+    def test_list_storage_lens_groups(self, s3control):
+        """ListStorageLensGroups returns groups for the account."""
+        name = f"slg-ls-{_uid()}"
+        try:
+            s3control.create_storage_lens_group(
+                AccountId=ACCOUNT_ID,
+                StorageLensGroup={
+                    "Name": name,
+                    "Filter": {
+                        "MatchAnyPrefix": ["tmp/"],
+                    },
+                },
+            )
+            resp = s3control.list_storage_lens_groups(AccountId=ACCOUNT_ID)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
+            except Exception:
+                pass
+
+    def test_update_storage_lens_group(self, s3control):
+        """UpdateStorageLensGroup modifies a group."""
+        name = f"slg-up-{_uid()}"
+        try:
+            s3control.create_storage_lens_group(
+                AccountId=ACCOUNT_ID,
+                StorageLensGroup={
+                    "Name": name,
+                    "Filter": {
+                        "MatchAnyPrefix": ["old/"],
+                    },
+                },
+            )
+            resp = s3control.update_storage_lens_group(
+                AccountId=ACCOUNT_ID,
+                Name=name,
+                StorageLensGroup={
+                    "Name": name,
+                    "Filter": {
+                        "MatchAnyPrefix": ["new/"],
+                    },
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
+            except Exception:
+                pass
+
+    def test_delete_storage_lens_group(self, s3control):
+        """DeleteStorageLensGroup removes a group."""
+        name = f"slg-del-{_uid()}"
+        s3control.create_storage_lens_group(
+            AccountId=ACCOUNT_ID,
+            StorageLensGroup={
+                "Name": name,
+                "Filter": {
+                    "MatchAnyPrefix": ["del/"],
+                },
+            },
+        )
+        resp = s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
