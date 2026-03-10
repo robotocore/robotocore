@@ -59,6 +59,12 @@ async def handle_dynamodb_request(request: Request, region: str, account_id: str
         except Exception:
             logger.debug("Failed to fire stream hooks for %s", target, exc_info=True)
 
+        # Replicate writes to global table replicas
+        try:
+            _replicate_mutation(target, body_bytes, region, account_id)
+        except Exception:
+            logger.debug("Failed to replicate mutation for %s", target, exc_info=True)
+
     return response
 
 
@@ -188,6 +194,84 @@ def _fire_stream_hooks(
                 )
 
 
+def _replicate_mutation(target: str, body_bytes: bytes, region: str, account_id: str) -> None:
+    """Replicate a mutation to all global table replicas."""
+    from robotocore.services.dynamodb.replication import replicate_write
+
+    body = json.loads(body_bytes)
+    op = target.split(".")[-1]
+    table_name = body.get("TableName", "")
+
+    if op in ("PutItem", "UpdateItem", "DeleteItem"):
+        replicate_write(
+            table_name=table_name,
+            operation=op,
+            body=body,
+            source_region=region,
+            account_id=account_id,
+            global_tables=_global_tables,
+        )
+    elif op == "BatchWriteItem":
+        for tbl_name, requests in body.get("RequestItems", {}).items():
+            for req in requests:
+                if "PutRequest" in req:
+                    replicate_write(
+                        table_name=tbl_name,
+                        operation="PutItem",
+                        body={"TableName": tbl_name, "Item": req["PutRequest"]["Item"]},
+                        source_region=region,
+                        account_id=account_id,
+                        global_tables=_global_tables,
+                    )
+                elif "DeleteRequest" in req:
+                    replicate_write(
+                        table_name=tbl_name,
+                        operation="DeleteItem",
+                        body={"TableName": tbl_name, "Key": req["DeleteRequest"]["Key"]},
+                        source_region=region,
+                        account_id=account_id,
+                        global_tables=_global_tables,
+                    )
+    elif op == "TransactWriteItems":
+        for item in body.get("TransactItems", []):
+            if "Put" in item:
+                put = item["Put"]
+                replicate_write(
+                    table_name=put.get("TableName", ""),
+                    operation="PutItem",
+                    body={"TableName": put.get("TableName", ""), "Item": put.get("Item", {})},
+                    source_region=region,
+                    account_id=account_id,
+                    global_tables=_global_tables,
+                )
+            elif "Delete" in item:
+                delete = item["Delete"]
+                replicate_write(
+                    table_name=delete.get("TableName", ""),
+                    operation="DeleteItem",
+                    body={
+                        "TableName": delete.get("TableName", ""),
+                        "Key": delete.get("Key", {}),
+                    },
+                    source_region=region,
+                    account_id=account_id,
+                    global_tables=_global_tables,
+                )
+            elif "Update" in item:
+                update = item["Update"]
+                replicate_write(
+                    table_name=update.get("TableName", ""),
+                    operation="UpdateItem",
+                    body={
+                        "TableName": update.get("TableName", ""),
+                        "Key": update.get("Key", {}),
+                    },
+                    source_region=region,
+                    account_id=account_id,
+                    global_tables=_global_tables,
+                )
+
+
 def _extract_keys_from_item(table_name: str, item: dict, region: str, account_id: str) -> dict:
     """Extract just the key attributes from a full item, using Moto's table key schema."""
     try:
@@ -222,6 +306,8 @@ class _DynamoDBError(Exception):
 
 
 def _create_global_table(params: dict, region: str, account_id: str) -> dict:
+    from robotocore.services.dynamodb.replication import create_replica_table
+
     name = params.get("GlobalTableName", "")
     replication_group = params.get("ReplicationGroup", [])
     key = (account_id, name)
@@ -241,6 +327,13 @@ def _create_global_table(params: dict, region: str, account_id: str) -> dict:
             "GlobalTableStatus": "ACTIVE",
         }
         _global_tables[key] = desc
+
+    # Create replica tables in each region (outside the lock to avoid deadlock)
+    for replica in replication_group:
+        target_region = replica["RegionName"]
+        if target_region != region:
+            create_replica_table(name, region, target_region, account_id)
+
     return {"GlobalTableDescription": desc}
 
 
@@ -341,9 +434,90 @@ def _describe_table_replica_auto_scaling(params: dict, region: str, account_id: 
     }
 
 
+def _update_global_table(params: dict, region: str, account_id: str) -> dict:
+    """Add or remove replicas from a global table."""
+    from robotocore.services.dynamodb.replication import (
+        backfill_replica,
+        create_replica_table,
+        delete_replica_table,
+    )
+
+    name = params.get("GlobalTableName", "")
+    updates = params.get("ReplicaUpdates", [])
+    key = (account_id, name)
+
+    with _global_tables_lock:
+        if key not in _global_tables:
+            raise _DynamoDBError(
+                "GlobalTableNotFoundException",
+                f"Global table with name '{name}' does not exist",
+            )
+        gt = _global_tables[key]
+        current_regions = {r["RegionName"] for r in gt.get("ReplicationGroup", [])}
+
+        for update in updates:
+            if "Create" in update:
+                new_region = update["Create"]["RegionName"]
+                if new_region in current_regions:
+                    raise _DynamoDBError(
+                        "ReplicaAlreadyExistsException",
+                        f"Replica already exists in region '{new_region}'",
+                    )
+                # Determine a source region for creating the replica
+                source_region = next(iter(current_regions)) if current_regions else region
+                # Create the table in the new region
+                create_replica_table(name, source_region, new_region, account_id)
+                # Backfill existing items
+                backfill_replica(name, source_region, new_region, account_id)
+                gt["ReplicationGroup"].append({"RegionName": new_region})
+                current_regions.add(new_region)
+
+            elif "Delete" in update:
+                del_region = update["Delete"]["RegionName"]
+                if del_region not in current_regions:
+                    raise _DynamoDBError(
+                        "ReplicaNotFoundException",
+                        f"Replica does not exist in region '{del_region}'",
+                    )
+                delete_replica_table(name, del_region, account_id)
+                gt["ReplicationGroup"] = [
+                    r for r in gt["ReplicationGroup"] if r["RegionName"] != del_region
+                ]
+                current_regions.discard(del_region)
+
+        _global_tables[key] = gt
+
+    return {"GlobalTableDescription": gt}
+
+
+def _delete_global_table(params: dict, region: str, account_id: str) -> dict:
+    """Delete a global table and all its replicas."""
+    from robotocore.services.dynamodb.replication import delete_replica_table
+
+    name = params.get("GlobalTableName", "")
+    key = (account_id, name)
+
+    with _global_tables_lock:
+        if key not in _global_tables:
+            raise _DynamoDBError(
+                "GlobalTableNotFoundException",
+                f"Global table with name '{name}' does not exist",
+            )
+        gt = _global_tables.pop(key)
+
+    # Delete replica tables in all regions
+    for replica in gt.get("ReplicationGroup", []):
+        delete_replica_table(name, replica["RegionName"], account_id)
+
+    gt["GlobalTableStatus"] = "DELETING"
+    return {"GlobalTableDescription": gt}
+
+
 _INTERCEPT_OPS: dict = {
     "CreateGlobalTable": _create_global_table,
     "DescribeGlobalTable": _describe_global_table,
     "ListGlobalTables": _list_global_tables,
+    "UpdateGlobalTable": _update_global_table,
+    "DeleteGlobalTable": _delete_global_table,
     "DescribeTableReplicaAutoScaling": _describe_table_replica_auto_scaling,
 }
