@@ -14,15 +14,18 @@ test: unit-test ## Run unit tests (default)
 ## ── Testing ──────────────────────────────────────────────────────────────────
 
 unit-test: ## Run unit tests in parallel (no server needed)
+	uv sync --all-extras
 	uv run pytest tests/unit/ -n$(N) -q --tb=short
 
 coverage: ## Run unit tests with coverage report
+	uv sync --all-extras
 	uv run pytest tests/unit/ -n$(N) -q --tb=short --cov=src/robotocore --cov-report=term-missing --cov-report=html:htmlcov
 
 compat-test: ## Run compatibility tests (auto-starts/stops server)
 	$(DEV) test-compat
 
 compat-test-hot: ## Run compatibility tests (assumes server already running)
+	uv sync --all-extras
 	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
 
 integration-test: ## Run integration tests (auto-manages server)
@@ -34,24 +37,31 @@ test-all: ## Run all tests: unit + compat + integration
 ## ── IaC tests ────────────────────────────────────────────────────────────────
 
 test-iac: ## Run all IaC tests (requires running server + tool binaries)
+	uv sync --all-extras
 	uv run pytest tests/iac/ -q --tb=short
 
 test-iac-terraform: ## Run Terraform IaC tests
+	uv sync --all-extras
 	uv run pytest tests/iac/terraform/ -q --tb=short
 
 test-iac-cloudformation: ## Run CloudFormation IaC tests
+	uv sync --all-extras
 	uv run pytest tests/iac/cloudformation/ -q --tb=short
 
 test-iac-cdk: ## Run CDK IaC tests
+	uv sync --all-extras
 	uv run pytest tests/iac/cdk/ -q --tb=short
 
 test-iac-pulumi: ## Run Pulumi IaC tests
+	uv sync --all-extras
 	uv run pytest tests/iac/pulumi/ -q --tb=short
 
 test-iac-serverless: ## Run Serverless Framework IaC tests
+	uv sync --all-extras
 	uv run pytest tests/iac/serverless/ -q --tb=short
 
 test-iac-sam: ## Run SAM IaC tests
+	uv sync --all-extras
 	uv run pytest tests/iac/sam/ -q --tb=short
 
 ## ── Server ───────────────────────────────────────────────────────────────────
