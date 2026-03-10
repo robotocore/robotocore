@@ -469,6 +469,28 @@ async def audit_log(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# SES SMTP email inspection endpoints
+# ---------------------------------------------------------------------------
+
+
+async def ses_messages_list(request: Request) -> JSONResponse:
+    """List emails received via the SMTP server."""
+    from robotocore.services.ses.email_store import get_email_store
+
+    limit = int(request.query_params.get("limit", "100"))
+    messages = get_email_store().get_messages(limit)
+    return JSONResponse({"messages": messages, "count": len(messages)})
+
+
+async def ses_messages_clear(request: Request) -> JSONResponse:
+    """Clear all stored SMTP emails."""
+    from robotocore.services.ses.email_store import get_email_store
+
+    count = get_email_store().clear_messages()
+    return JSONResponse({"status": "cleared", "count": count})
+
+
+# ---------------------------------------------------------------------------
 # AWS request handler
 # ---------------------------------------------------------------------------
 
@@ -669,6 +691,9 @@ management_routes = [
     Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),
     # Audit log
     Route("/_robotocore/audit", audit_log, methods=["GET"]),
+    # SES SMTP email inspection
+    Route("/_robotocore/ses/messages", ses_messages_list, methods=["GET"]),
+    Route("/_robotocore/ses/messages", ses_messages_clear, methods=["DELETE"]),
 ]
 
 
@@ -697,6 +722,11 @@ def _start_background_engines():
             # Fall back to loading default state
             manager.load()
 
+    # Start SMTP server
+    from robotocore.services.ses.smtp_server import start_smtp_server
+
+    start_smtp_server()
+
     # Run ready hooks
     run_init_hooks("ready")
 
@@ -709,6 +739,11 @@ def _shutdown():
         manager = get_state_manager()
         if manager.state_dir:
             manager.save()
+
+    # Stop SMTP server
+    from robotocore.services.ses.smtp_server import stop_smtp_server
+
+    stop_smtp_server()
 
     # Run shutdown hooks
     run_init_hooks("shutdown")
