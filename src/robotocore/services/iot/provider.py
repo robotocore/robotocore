@@ -1,8 +1,8 @@
 """Native IoT provider with rule engine and target dispatch.
 
-Intercepts CreateTopicRule, DeleteTopicRule, GetTopicRule, and ReplaceTopicRule
-to maintain a local rule registry with parsed SQL. All other operations are
-forwarded to Moto.
+Intercepts CreateTopicRule, DeleteTopicRule, DisableTopicRule, EnableTopicRule,
+GetTopicRule, and ReplaceTopicRule to maintain a local rule registry with parsed
+SQL. All other operations are forwarded to Moto.
 """
 
 import json
@@ -48,6 +48,16 @@ async def handle_iot_request(request: Request, region: str, account_id: str) -> 
     # GetTopicRule: GET /rules/{ruleName}
     # ReplaceTopicRule: PATCH /rules/{ruleName}
     # ListTopicRules: GET /rules
+
+    # DisableTopicRule: POST /rules/{ruleName}/disable
+    # EnableTopicRule: POST /rules/{ruleName}/enable
+    disable_match = re.match(r"^/rules/([^/?]+)/disable$", path)
+    if disable_match and method == "POST":
+        return await _disable_topic_rule(request, disable_match.group(1), region, account_id)
+
+    enable_match = re.match(r"^/rules/([^/?]+)/enable$", path)
+    if enable_match and method == "POST":
+        return await _enable_topic_rule(request, enable_match.group(1), region, account_id)
 
     rule_match = re.match(r"^/rules/([^/?]+)$", path)
 
@@ -206,6 +216,36 @@ async def _replace_topic_rule(
     await forward_to_moto(request, "iot", account_id=account_id)
 
     return Response(content=b"", status_code=200, media_type="application/json")
+
+
+async def _disable_topic_rule(
+    request: Request, rule_name: str, region: str, account_id: str
+) -> Response:
+    """Disable a topic rule in the native store and forward to Moto."""
+    rules = _get_rules(region, account_id)
+    rule = rules.get(rule_name)
+    if rule:
+        rule.enabled = False
+
+    # Forward to Moto so its state stays in sync
+    from robotocore.providers.moto_bridge import forward_to_moto
+
+    return await forward_to_moto(request, "iot", account_id=account_id)
+
+
+async def _enable_topic_rule(
+    request: Request, rule_name: str, region: str, account_id: str
+) -> Response:
+    """Enable a topic rule in the native store and forward to Moto."""
+    rules = _get_rules(region, account_id)
+    rule = rules.get(rule_name)
+    if rule:
+        rule.enabled = True
+
+    # Forward to Moto so its state stays in sync
+    from robotocore.providers.moto_bridge import forward_to_moto
+
+    return await forward_to_moto(request, "iot", account_id=account_id)
 
 
 async def _list_topic_rules(request: Request, region: str, account_id: str) -> Response:
