@@ -33,6 +33,18 @@ from robotocore.services.batch.provider import handle_batch_request
 from robotocore.services.cloudformation.provider import handle_cloudformation_request
 from robotocore.services.cloudwatch.logs_provider import handle_logs_request
 from robotocore.services.cloudwatch.provider import handle_cloudwatch_request
+from robotocore.services.cognito.hosted_ui import (
+    confirm_forgot_password_endpoint,
+    forgot_password_endpoint,
+    jwks_json,
+    login_get,
+    login_post,
+    logout,
+    oauth2_authorize,
+    oauth2_token,
+    oauth2_userinfo,
+    openid_configuration,
+)
 from robotocore.services.cognito.provider import handle_cognito_request
 from robotocore.services.config.provider import handle_config_request
 from robotocore.services.dynamodb.provider import handle_dynamodb_request
@@ -715,6 +727,49 @@ class AWSRoutingMiddleware:
                 stage=v2_match.group(2),
                 proxy_path=v2_match.group(3),
             )
+            await response(scope, receive, send)
+            return
+
+        # Cognito Hosted UI / OAuth2 endpoints
+        method = scope.get("method", "GET")
+        if path == "/oauth2/authorize" and method == "GET":
+            response = await oauth2_authorize(request)
+            await response(scope, receive, send)
+            return
+        if path == "/oauth2/token" and method == "POST":
+            response = await oauth2_token(request)
+            await response(scope, receive, send)
+            return
+        if path == "/oauth2/userInfo" and method == "GET":
+            response = await oauth2_userinfo(request)
+            await response(scope, receive, send)
+            return
+        if path == "/.well-known/openid-configuration" and method == "GET":
+            response = await openid_configuration(request)
+            await response(scope, receive, send)
+            return
+        if path == "/.well-known/jwks.json" and method == "GET":
+            response = await jwks_json(request)
+            await response(scope, receive, send)
+            return
+        if path == "/login" and method == "GET":
+            response = await login_get(request)
+            await response(scope, receive, send)
+            return
+        if path == "/login" and method == "POST":
+            response = await login_post(request)
+            await response(scope, receive, send)
+            return
+        if path == "/logout" and method == "GET":
+            response = await logout(request)
+            await response(scope, receive, send)
+            return
+        if path == "/forgotpassword" and method == "POST":
+            response = await forgot_password_endpoint(request)
+            await response(scope, receive, send)
+            return
+        if path == "/confirmforgotpassword" and method == "POST":
+            response = await confirm_forgot_password_endpoint(request)
             await response(scope, receive, send)
             return
 

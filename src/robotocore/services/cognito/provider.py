@@ -34,6 +34,9 @@ class CognitoStore:
         self.clients: dict[str, dict[str, dict]] = {}  # pool_id -> client_id -> client
         self.groups: dict[str, dict[str, dict]] = {}  # pool_id -> group_name -> group
         self.user_groups: dict[str, dict[str, list[str]]] = {}  # pool_id -> user -> [groups]
+        self.domains: dict[str, str] = {}  # domain_prefix -> pool_id
+        self.auth_codes: dict[str, dict] = {}  # code -> {pool_id, client_id, username, ...}
+        self.refresh_tokens: dict[str, dict] = {}  # refresh_token -> {pool_id, username, ...}
         self.lock = threading.RLock()
 
 
@@ -1453,6 +1456,67 @@ def _user_from_token(store: CognitoStore, access_token: str) -> tuple:
     raise CognitoError("NotAuthorizedException", "Invalid access token.")
 
 
+def _create_user_pool_domain(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    domain = params.get("Domain", "")
+    _require_pool(store, pool_id)
+
+    if not domain:
+        raise CognitoError("InvalidParameterException", "Domain is required.")
+
+    with store.lock:
+        if domain in store.domains:
+            raise CognitoError(
+                "InvalidParameterException",
+                f"Domain {domain} is already associated with a user pool.",
+            )
+        store.domains[domain] = pool_id
+        pool = store.pools[pool_id]
+        pool["Domain"] = domain
+
+    return {}
+
+
+def _describe_user_pool_domain(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    domain = params.get("Domain", "")
+
+    with store.lock:
+        pool_id = store.domains.get(domain)
+        if not pool_id:
+            return {"DomainDescription": {}}
+
+    return {
+        "DomainDescription": {
+            "UserPoolId": pool_id,
+            "AWSAccountId": account_id,
+            "Domain": domain,
+            "Status": "ACTIVE",
+            "CloudFrontDistribution": f"d{_new_id()[:13]}.cloudfront.net",
+            "S3Bucket": f"aws-cognito-idp-{region}",
+            "Version": "20241001",
+        }
+    }
+
+
+def _delete_user_pool_domain(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    domain = params.get("Domain", "")
+    _require_pool(store, pool_id)
+
+    with store.lock:
+        if domain in store.domains:
+            del store.domains[domain]
+            pool = store.pools.get(pool_id, {})
+            pool.pop("Domain", None)
+    return {}
+
+
 def _pool_id_from_arn(arn: str) -> str:
     """Extract pool_id from an ARN like arn:aws:cognito-idp:REGION:ACCT:userpool/POOL_ID."""
     if "/userpool/" in arn:
@@ -1521,4 +1585,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "ConfirmSignUp": _confirm_sign_up,
     "GlobalSignOut": _global_sign_out,
     "UpdateUserAttributes": _update_user_attributes,
+    "CreateUserPoolDomain": _create_user_pool_domain,
+    "DescribeUserPoolDomain": _describe_user_pool_domain,
+    "DeleteUserPoolDomain": _delete_user_pool_domain,
 }
