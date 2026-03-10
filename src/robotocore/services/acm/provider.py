@@ -36,4 +36,4 @@ async def handle_acm_request(request: Request, region: str, account_id: str) -> 
             media_type="application/x-amz-json-1.1",
         )
 
-    return await forward_to_moto(request, "acm")
+    return await forward_to_moto(request, "acm", account_id=account_id)

@@ -46,7 +46,7 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
         max_results = params.get("maxResults")
         if max_results:
             # Forward to Moto, then truncate results
-            response = await forward_to_moto(request, "ecr")
+            response = await forward_to_moto(request, "ecr", account_id=account_id)
             resp_body = json.loads(response.body)
             repos = resp_body.get("repositories", [])
             if len(repos) > max_results:
@@ -59,4 +59,4 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
                 )
             return response
 
-    return await forward_to_moto(request, "ecr")
+    return await forward_to_moto(request, "ecr", account_id=account_id)

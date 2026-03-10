@@ -51,7 +51,7 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
             return _list_email_templates(region)
 
     # Everything else → Moto
-    return await forward_to_moto(request, "sesv2")
+    return await forward_to_moto(request, "sesv2", account_id=account_id)
 
 
 def _store(region: str) -> dict[str, dict]:

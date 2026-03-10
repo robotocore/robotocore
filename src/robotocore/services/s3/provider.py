@@ -618,7 +618,7 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
     # These are native Moto operations and need no interception.
 
     # Forward to Moto for actual S3 operation
-    response = await forward_to_moto(request, "s3")
+    response = await forward_to_moto(request, "s3", account_id=account_id)
 
     # Post-response cleanup and event firing
     if response.status_code in (200, 204):

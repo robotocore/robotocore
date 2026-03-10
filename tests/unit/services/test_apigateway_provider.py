@@ -25,7 +25,7 @@ class TestAPIGatewayProvider:
         asyncio.get_event_loop().run_until_complete(
             handle_apigateway_request(request, "us-east-1", "123456789012")
         )
-        mock_forward.assert_called_once_with(request, "apigateway")
+        mock_forward.assert_called_once_with(request, "apigateway", account_id="123456789012")
 
     @patch("moto.backends.get_backend")
     def test_delete_model_success(self, mock_get_backend):

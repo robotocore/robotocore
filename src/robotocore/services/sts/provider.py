@@ -60,7 +60,7 @@ async def handle_sts_request(request: Request, region: str, account_id: str) -> 
     if action == "AssumeRoleWithSAML":
         return _assume_role_with_saml(params, account_id)
 
-    return await forward_to_moto_with_body(request, "sts", body)
+    return await forward_to_moto_with_body(request, "sts", body, account_id=account_id)
 
 
 def _require_param(params: dict, name: str) -> str | None:

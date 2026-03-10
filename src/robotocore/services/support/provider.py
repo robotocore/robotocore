@@ -94,7 +94,7 @@ async def handle_support_request(request: Request, region: str, account_id: str)
             media_type="application/x-amz-json-1.1",
         )
 
-    return await forward_to_moto(request, "support")
+    return await forward_to_moto(request, "support", account_id=account_id)
 
 
 def _describe_services(params: dict, region: str, account_id: str) -> dict:

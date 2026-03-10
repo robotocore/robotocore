@@ -64,7 +64,7 @@ async def handle_cloudformation_request(request: Request, region: str, account_i
         # Fall back to Moto for operations we don't intercept
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "cloudformation")
+        return await forward_to_moto(request, "cloudformation", account_id=account_id)
 
     try:
         result = handler(store, params, region, account_id)

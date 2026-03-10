@@ -70,7 +70,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
     target = request.headers.get("x-amz-target", "")
 
     if not target:
-        return await forward_to_moto(request, "logs")
+        return await forward_to_moto(request, "logs", account_id=account_id)
 
     action = target.split(".")[-1]
     params = json.loads(body) if body else {}
@@ -99,7 +99,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
                 "1827, 2192, 2557, 2922, 3288, 3653]",
                 400,
             )
-        return await forward_to_moto(request, "logs")
+        return await forward_to_moto(request, "logs", account_id=account_id)
 
     # FilterLogEvents: handle logStreamNamePrefix natively
     if action == "FilterLogEvents":
@@ -108,11 +108,11 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             return await _filter_log_events_with_prefix(
                 request, params, region, account_id, log_stream_name_prefix
             )
-        return await forward_to_moto(request, "logs")
+        return await forward_to_moto(request, "logs", account_id=account_id)
 
     # PutLogEvents: forward to Moto, then process filters
     if action == "PutLogEvents":
-        response = await forward_to_moto(request, "logs")
+        response = await forward_to_moto(request, "logs", account_id=account_id)
         if 200 <= response.status_code < 300:
             try:
                 from robotocore.services.cloudwatch.filters import process_log_events
@@ -139,7 +139,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             tags = logs_backend.list_tags_for_resource(resource_arn)
             return _json_response(200, {"tags": tags})
         except Exception:
-            return await forward_to_moto(request, "logs")
+            return await forward_to_moto(request, "logs", account_id=account_id)
 
     # TagResource: normalize ARN (strip trailing :*) before forwarding
     if action == "TagResource":
@@ -156,7 +156,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             logs_backend.tag_resource(resource_arn, tags)
             return _json_response(200, {})
         except Exception:
-            return await forward_to_moto(request, "logs")
+            return await forward_to_moto(request, "logs", account_id=account_id)
 
     # UntagResource: normalize ARN (strip trailing :*) before forwarding
     if action == "UntagResource":
@@ -173,10 +173,10 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             logs_backend.untag_resource(resource_arn, tag_keys)
             return _json_response(200, {})
         except Exception:
-            return await forward_to_moto(request, "logs")
+            return await forward_to_moto(request, "logs", account_id=account_id)
 
     # Fall back to Moto for everything else
-    return await forward_to_moto(request, "logs")
+    return await forward_to_moto(request, "logs", account_id=account_id)
 
 
 # ---------------------------------------------------------------------------

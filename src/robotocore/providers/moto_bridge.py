@@ -118,7 +118,9 @@ def _get_dispatcher(service: str, path: str):
     return endpoint
 
 
-def _build_werkzeug_request(request: Request, body: bytes) -> WerkzeugRequest:
+def _build_werkzeug_request(
+    request: Request, body: bytes, account_id: str = DEFAULT_ACCOUNT_ID
+) -> WerkzeugRequest:
     """Convert a Starlette Request to a Werkzeug Request for Moto."""
     # Use raw_path from ASGI scope to preserve percent-encoding.  Starlette's
     # request.url.path is already decoded, but Werkzeug's EnvironBuilder will
@@ -130,12 +132,15 @@ def _build_werkzeug_request(request: Request, body: bytes) -> WerkzeugRequest:
     else:
         # Fallback: re-encode what Starlette decoded so Werkzeug's decode is a no-op.
         path = quote(request.url.path, safe="/:@!$&'()*+,;=-._~")
+    headers = dict(request.headers)
+    # Inject Moto's multi-account header so the correct backend is used.
+    headers["x-moto-account-id"] = account_id
     builder = EnvironBuilder(
         method=request.method,
         path=path,
         query_string=str(request.url.query) if request.url.query else "",
         data=body,
-        headers=dict(request.headers),
+        headers=headers,
     )
     env = builder.get_environ()
     # Werkzeug EnvironBuilder strips Content-Length when data is empty, but some
@@ -145,7 +150,9 @@ def _build_werkzeug_request(request: Request, body: bytes) -> WerkzeugRequest:
     return WerkzeugRequest(env)
 
 
-async def forward_to_moto(request: Request, service_name: str) -> Response:
+async def forward_to_moto(
+    request: Request, service_name: str, account_id: str = DEFAULT_ACCOUNT_ID
+) -> Response:
     """Forward an AWS API request to the appropriate Moto backend."""
     body = await request.body()
 
@@ -160,7 +167,7 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
             501,
         )
 
-    werkzeug_request = _build_werkzeug_request(request, body)
+    werkzeug_request = _build_werkzeug_request(request, body, account_id=account_id)
 
     # Build the full URL as Moto expects
     full_url = str(request.url)
@@ -251,7 +258,9 @@ async def forward_to_moto(request: Request, service_name: str) -> Response:
         )
 
 
-async def forward_to_moto_with_body(request: Request, service_name: str, body: bytes) -> Response:
+async def forward_to_moto_with_body(
+    request: Request, service_name: str, body: bytes, account_id: str = DEFAULT_ACCOUNT_ID
+) -> Response:
     """Forward to Moto with a custom body (for request body modifications)."""
     raw_path = request.url.path
     try:
@@ -264,7 +273,7 @@ async def forward_to_moto_with_body(request: Request, service_name: str, body: b
             501,
         )
 
-    werkzeug_request = _build_werkzeug_request(request, body)
+    werkzeug_request = _build_werkzeug_request(request, body, account_id=account_id)
     full_url = str(request.url)
 
     try:

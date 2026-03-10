@@ -71,7 +71,9 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
             # Create modified request with fixed body
             from robotocore.providers.moto_bridge import forward_to_moto_with_body
 
-            return await forward_to_moto_with_body(request, "route53", body_str.encode("utf-8"))
+            return await forward_to_moto_with_body(
+                request, "route53", body_str.encode("utf-8"), account_id=account_id
+            )
 
     # AssociateVPCWithHostedZone
     m = _ASSOCIATE_VPC_RE.match(path)
@@ -119,7 +121,7 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
     if _TRAFFIC_POLICY_INSTANCES_RE.match(path) and request.method == "GET":
         return _handle_list_traffic_policy_instances()
 
-    return await forward_to_moto(request, "route53")
+    return await forward_to_moto(request, "route53", account_id=account_id)
 
 
 def _handle_checker_ip_ranges() -> Response:

@@ -16,17 +16,20 @@ from starlette.responses import Response
 
 from robotocore.services.sqs.models import SqsMessage, SqsStore, StandardQueue
 
-_stores: dict[str, SqsStore] = {}
+DEFAULT_ACCOUNT_ID = "123456789012"
+
+_stores: dict[tuple[str, str], SqsStore] = {}
 _store_lock = threading.Lock()
 _worker_started = False
 _worker_lock = threading.Lock()
 
 
-def _get_store(region: str = "us-east-1") -> SqsStore:
+def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> SqsStore:
+    key = (account_id, region)
     with _store_lock:
-        if region not in _stores:
-            _stores[region] = SqsStore()
-        return _stores[region]
+        if key not in _stores:
+            _stores[key] = SqsStore()
+        return _stores[key]
 
 
 def _ensure_worker():
@@ -81,12 +84,12 @@ async def handle_sqs_request(request: Request, region: str, account_id: str) -> 
         action = params.get("Action", "")
         use_json = False
 
-    store = _get_store(region)
+    store = _get_store(region, account_id)
     handler = _ACTION_MAP.get(action)
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "sqs")
+        return await forward_to_moto(request, "sqs", account_id=account_id)
 
     try:
         # ReceiveMessage may long-poll (block), so run in a thread to avoid

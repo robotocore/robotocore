@@ -53,7 +53,7 @@ async def handle_ses_request(request: Request, region: str, account_id: str) -> 
             return _error_response("InternalError", str(e), 500)
 
     # Fall back to Moto
-    return await forward_to_moto(request, "ses")
+    return await forward_to_moto(request, "ses", account_id=account_id)
 
 
 class SesError(Exception):

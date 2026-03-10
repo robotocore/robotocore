@@ -121,7 +121,7 @@ async def handle_cognito_request(request: Request, region: str, account_id: str)
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "cognito-idp")
+        return await forward_to_moto(request, "cognito-idp", account_id=account_id)
 
     try:
         result = handler(store, params, region, account_id)
