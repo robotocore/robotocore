@@ -299,7 +299,7 @@ class AlarmScheduler:
         account_id: str,
         region_name: str,
     ) -> None:
-        """Publish SNS notifications for alarm state transitions."""
+        """Dispatch alarm actions (SNS, Auto Scaling, EC2, Lambda) on state transitions."""
         if new_state == "ALARM":
             action_arns = alarm.alarm_actions or []
         elif new_state == "OK":
@@ -319,10 +319,13 @@ class AlarmScheduler:
 
         for action_arn in action_arns:
             try:
-                self._publish_to_sns(action_arn, message, subject, account_id, region_name)
+                if ":autoscaling:" in action_arn:
+                    self._execute_autoscaling_action(action_arn, account_id, region_name)
+                else:
+                    self._publish_to_sns(action_arn, message, subject, account_id, region_name)
             except Exception:
                 logger.exception(
-                    "Failed to publish alarm action to %s for alarm %s",
+                    "Failed to dispatch alarm action to %s for alarm %s",
                     action_arn,
                     alarm.name,
                 )
@@ -388,3 +391,87 @@ class AlarmScheduler:
             arn=topic_arn,
             subject=subject,
         )
+
+    @staticmethod
+    def _execute_autoscaling_action(
+        action_arn: str,
+        account_id: str,
+        region_name: str,
+    ) -> None:
+        """Execute an Auto Scaling action (scaling policy or SetDesiredCapacity).
+
+        Supports two ARN formats:
+        - Scaling policy: arn:aws:autoscaling:REGION:ACCOUNT:scalingPolicy:UUID:
+              autoScalingGroupName/GROUP:policyName/POLICY
+        - Auto Scaling group (SetDesiredCapacity):
+              arn:aws:autoscaling:REGION:ACCOUNT:autoScalingGroup:UUID:
+              autoScalingGroupName/GROUP
+        """
+        # Parse region from the ARN
+        arn_match = re.match(r"arn:aws:autoscaling:([^:]+):([^:]+):(.*)", action_arn)
+        if not arn_match:
+            logger.warning("Cannot parse Auto Scaling action ARN: %s", action_arn)
+            return
+
+        asg_region = arn_match.group(1)
+        asg_account = arn_match.group(2)
+        resource_part = arn_match.group(3)
+
+        try:
+            asg_backend = get_backend("autoscaling")[asg_account][asg_region]
+        except (KeyError, TypeError):
+            logger.warning("Auto Scaling backend not found for %s/%s", asg_account, asg_region)
+            return
+
+        if resource_part.startswith("scalingPolicy:"):
+            # Extract policy name from the ARN
+            # Format: scalingPolicy:UUID:autoScalingGroupName/GROUP:policyName/POLICY
+            policy_match = re.search(r"policyName/(.+)$", resource_part)
+            if not policy_match:
+                logger.warning("Cannot parse scaling policy name from ARN: %s", action_arn)
+                return
+            policy_name = policy_match.group(1)
+
+            # Extract ASG name
+            group_match = re.search(r"autoScalingGroupName/([^:]+)", resource_part)
+            group_name = group_match.group(1) if group_match else None
+
+            try:
+                asg_backend.execute_policy(group_name or "", policy_name)
+                logger.info(
+                    "CloudWatch alarm -> Auto Scaling ExecutePolicy: %s",
+                    policy_name,
+                )
+            except Exception:
+                logger.exception("Failed to execute Auto Scaling policy: %s", policy_name)
+                raise
+
+        elif resource_part.startswith("autoScalingGroup:"):
+            # SetDesiredCapacity-style action on an ASG
+            # Format: autoScalingGroup:UUID:autoScalingGroupName/GROUP
+            group_match = re.search(r"autoScalingGroupName/(.+)$", resource_part)
+            if not group_match:
+                logger.warning("Cannot parse ASG name from ARN: %s", action_arn)
+                return
+            group_name = group_match.group(1)
+
+            try:
+                # Find the ASG and increment desired capacity by 1
+                # (AWS behavior for simple alarm-triggered scaling)
+                groups = asg_backend.describe_auto_scaling_groups([group_name])
+                if groups:
+                    group = groups[0]
+                    new_desired = min(group.desired_capacity + 1, group.max_size)
+                    asg_backend.set_desired_capacity(group_name, new_desired)
+                    logger.info(
+                        "CloudWatch alarm -> Auto Scaling SetDesiredCapacity: %s -> %d",
+                        group_name,
+                        new_desired,
+                    )
+                else:
+                    logger.warning("Auto Scaling group not found: %s", group_name)
+            except Exception:
+                logger.exception("Failed to set desired capacity for ASG: %s", group_name)
+                raise
+        else:
+            logger.warning("Unknown Auto Scaling action type in ARN: %s", action_arn)
