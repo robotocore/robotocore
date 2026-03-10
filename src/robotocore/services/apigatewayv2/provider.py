@@ -1385,16 +1385,25 @@ def list_connections(api_id: str) -> list[dict]:
 
 
 def post_to_connection(api_id: str, connection_id: str, data: bytes) -> bool:
-    """Send data to a WebSocket connection. Returns True if connection exists."""
+    """Send data to a WebSocket connection. Returns True if connection exists.
+
+    Tries to push through the live ASGI WebSocket transport first; always
+    records the message in the connection store for observability.
+    """
+    from robotocore.services.apigatewayv2.websocket import get_send_queue
+
     conns = _store(_connections, api_id)
     with _lock:
         conn = conns.get(connection_id)
         if not conn:
             return False
-        # In a real implementation, this would push through a WebSocket.
-        # For emulation, store the last message.
         conn["lastMessage"] = data.decode() if isinstance(data, bytes) else data
         conn["lastMessageAt"] = int(time.time() * 1000)
+
+    # Attempt to push through the live WebSocket (best-effort, non-blocking).
+    queue = get_send_queue(api_id, connection_id)
+    if queue is not None:
+        queue.put_nowait(data)
     return True
 
 

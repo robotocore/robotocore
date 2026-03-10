@@ -763,6 +763,10 @@ class AWSRoutingMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            await self._handle_websocket(scope, receive, send)
+            return
+
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -863,6 +867,12 @@ class AWSRoutingMiddleware:
 
         response = await handle_aws_request(request)
         await response(scope, receive, send)
+
+    async def _handle_websocket(self, scope, receive, send):
+        """Route WebSocket connections to API Gateway V2 WebSocket APIs."""
+        from robotocore.services.apigatewayv2.websocket import handle_websocket
+
+        await handle_websocket(scope, receive, send)
 
 
 # Order matters: AWSRoutingMiddleware is added first (inner), TracingMiddleware second (outer).
