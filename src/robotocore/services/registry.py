@@ -309,7 +309,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "signer": ServiceInfo("signer", ServiceStatus.MOTO_BACKED, "rest-json", "Signer"),
     "ssoadmin": ServiceInfo("ssoadmin", ServiceStatus.MOTO_BACKED, "json", "SSO Admin"),
     "synthetics": ServiceInfo(
-        "synthetics", ServiceStatus.MOTO_BACKED, "rest-json", "CloudWatch Synthetics"
+        "synthetics", ServiceStatus.NATIVE, "rest-json", "CloudWatch Synthetics"
     ),
     "textract": ServiceInfo("textract", ServiceStatus.MOTO_BACKED, "json", "Textract"),
     "timestreaminfluxdb": ServiceInfo(

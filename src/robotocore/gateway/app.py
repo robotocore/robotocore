@@ -65,6 +65,7 @@ from robotocore.services.ssm.provider import handle_ssm_request
 from robotocore.services.stepfunctions.provider import handle_stepfunctions_request
 from robotocore.services.sts.provider import handle_sts_request
 from robotocore.services.support.provider import handle_support_request
+from robotocore.services.synthetics.provider import handle_synthetics_request
 from robotocore.services.tagging.provider import handle_tagging_request
 from robotocore.services.xray.provider import handle_xray_request
 
@@ -112,6 +113,7 @@ NATIVE_PROVIDERS = {
     "rds": handle_rds_request,
     "rdsdata": handle_rdsdata_request,
     "elasticache": handle_elasticache_request,
+    "synthetics": handle_synthetics_request,
 }
 
 # Default account ID
@@ -625,6 +627,9 @@ def _start_background_engines():
     from robotocore.services.cloudwatch.alarm_scheduler import get_alarm_scheduler
 
     get_alarm_scheduler().start()
+    from robotocore.services.synthetics.scheduler import get_canary_scheduler
+
+    get_canary_scheduler().start()
 
     # Auto-load state if configured
     if os.environ.get("ROBOTOCORE_STATE_DIR"):
