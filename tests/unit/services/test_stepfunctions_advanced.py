@@ -49,11 +49,19 @@ from robotocore.services.stepfunctions.provider import (
     _executions,
     _get_execution_history,
     _list_executions,
+    _running_threads,
     _start_execution,
     _start_sync_execution,
     _state_machines,
     _stop_execution,
 )
+
+
+def _wait_for_execution(exec_arn: str, timeout: float = 5.0):
+    """Wait for a background execution thread to finish."""
+    thread = _running_threads.get(exec_arn)
+    if thread:
+        thread.join(timeout=timeout)
 
 
 def _clear_state():
@@ -1336,6 +1344,7 @@ class TestGetExecutionHistoryProvider:
             "us-east-1",
             "123",
         )
+        _wait_for_execution(start["executionArn"])
         result = _get_execution_history(
             {"executionArn": start["executionArn"]},
             "us-east-1",
@@ -1358,6 +1367,7 @@ class TestGetExecutionHistoryProvider:
             "us-east-1",
             "123",
         )
+        _wait_for_execution(start["executionArn"])
         result = _get_execution_history(
             {"executionArn": start["executionArn"], "reverseOrder": True},
             "us-east-1",
