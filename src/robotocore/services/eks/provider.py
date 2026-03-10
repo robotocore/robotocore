@@ -21,11 +21,16 @@ from robotocore.services.eks.kubeconfig import _FAKE_CA_CERT
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# K8s server registry (cluster_name -> K8sMockServer)
+# K8s server registry  (region:account:cluster_name -> K8sMockServer)
 # ---------------------------------------------------------------------------
 
 _k8s_servers: dict[str, K8sMockServer] = {}
 _lock = threading.Lock()
+
+
+def _server_key(region: str, account_id: str, cluster_name: str) -> str:
+    return f"{region}:{account_id}:{cluster_name}"
+
 
 # ---------------------------------------------------------------------------
 # URL pattern matching for rest-json routing
@@ -103,11 +108,21 @@ async def _create_cluster(request: Request, region: str, account_id: str) -> Res
         return moto_response
 
     # Start a mock K8s server for this cluster
-    server = K8sMockServer()
-    port = server.start(cluster_name, port=0)
+    key = _server_key(region, account_id, cluster_name)
+    try:
+        server = K8sMockServer()
+        port = server.start(cluster_name, port=0)
+    except RuntimeError:
+        logger.exception("Failed to start mock K8s server for cluster %s", cluster_name)
+        # Return the Moto response as-is; cluster exists but no mock server
+        return moto_response
 
     with _lock:
-        _k8s_servers[cluster_name] = server
+        # Stop any previous server for this key (shouldn't happen, but be safe)
+        old = _k8s_servers.pop(key, None)
+        if old:
+            old.stop()
+        _k8s_servers[key] = server
 
     # Patch the response with the real mock K8s endpoint
     endpoint = f"http://localhost:{port}"
@@ -136,10 +151,11 @@ async def _describe_cluster(
     body = json.loads(moto_response.body.decode("utf-8"))
     cluster = body.get("cluster", {})
 
+    key = _server_key(region, account_id, cluster_name)
     with _lock:
-        server = _k8s_servers.get(cluster_name)
+        server = _k8s_servers.get(key)
 
-    if server and server.port:
+    if server and server.port and server.is_running:
         cluster["endpoint"] = f"http://localhost:{server.port}"
         cluster["certificateAuthority"] = {
             "data": base64.b64encode(_FAKE_CA_CERT).decode("ascii"),
@@ -158,8 +174,9 @@ async def _delete_cluster(
 ) -> Response:
     """Intercept DeleteCluster: stop the mock K8s server, then forward to Moto."""
     # Stop the K8s server first
+    key = _server_key(region, account_id, cluster_name)
     with _lock:
-        server = _k8s_servers.pop(cluster_name, None)
+        server = _k8s_servers.pop(key, None)
 
     if server:
         server.stop()
