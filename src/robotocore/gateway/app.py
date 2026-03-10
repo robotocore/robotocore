@@ -45,6 +45,8 @@ from robotocore.services.elasticache.provider import handle_elasticache_request
 from robotocore.services.events.provider import handle_events_request
 from robotocore.services.firehose.provider import handle_firehose_request
 from robotocore.services.iam.provider import handle_iam_request
+from robotocore.services.iot.data_provider import handle_iot_data_request
+from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
@@ -84,6 +86,8 @@ NATIVE_PROVIDERS = {
     "eks": handle_eks_request,
     "events": handle_events_request,
     "firehose": handle_firehose_request,
+    "iot": handle_iot_request,
+    "iotdata": handle_iot_data_request,
     "kinesis": handle_kinesis_request,
     "lambda": handle_lambda_request,
     "logs": handle_logs_request,
