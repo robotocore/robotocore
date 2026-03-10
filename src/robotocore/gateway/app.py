@@ -40,12 +40,15 @@ from robotocore.services.dynamodbstreams.provider import handle_dynamodbstreams_
 from robotocore.services.ec2.provider import handle_ec2_request
 from robotocore.services.ecr.provider import handle_ecr_request
 from robotocore.services.ecs.provider import handle_ecs_request
+from robotocore.services.elasticache.provider import handle_elasticache_request
 from robotocore.services.events.provider import handle_events_request
 from robotocore.services.firehose.provider import handle_firehose_request
 from robotocore.services.iam.provider import handle_iam_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
+from robotocore.services.rds.data_provider import handle_rdsdata_request
+from robotocore.services.rds.provider import handle_rds_request
 from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
 from robotocore.services.rekognition.provider import handle_rekognition_request
 from robotocore.services.resource_groups.provider import handle_resource_groups_request
@@ -104,6 +107,9 @@ NATIVE_PROVIDERS = {
     "ssm": handle_ssm_request,
     "support": handle_support_request,
     "xray": handle_xray_request,
+    "rds": handle_rds_request,
+    "rdsdata": handle_rdsdata_request,
+    "elasticache": handle_elasticache_request,
 }
 
 # Default account ID
