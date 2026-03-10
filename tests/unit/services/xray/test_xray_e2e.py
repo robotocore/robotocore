@@ -167,24 +167,6 @@ class TestE2EServiceMapFlow:
         base = 3000.0
         t = "1-67890abc-222222222222222222222222"
 
-        put_req = _make_request(
-            "POST",
-            "/TraceSegments",
-            {
-                "TraceSegmentDocuments": [
-                    _seg(
-                        t,
-                        "web",
-                        "web-app",
-                        base,
-                        base + 1.0,
-                        error=True,
-                        http=json.dumps({"response": {"status": 500}}),
-                    ),
-                ]
-            },
-        )
-
         # The http field needs to be a dict not a string in the segment
         seg_dict = {
             "trace_id": t,
