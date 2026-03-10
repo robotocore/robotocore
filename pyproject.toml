@@ -55,8 +55,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 source = "vcs"
+fallback-version = "0.0.0.dev0"
 # CalVer: tags like v2026.3.8 become version 2026.3.8
 # Between tags, dev suffix is appended (e.g. 2026.3.8.dev2+gabcdef)
+# Fallback version for Docker builds where .git is not available
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/robotocore"]
