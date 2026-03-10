@@ -1076,6 +1076,112 @@ class TestElastiCacheBatchUpdateActions:
         assert "ProcessedUpdateActions" in resp or "UnprocessedUpdateActions" in resp
 
 
+class TestElastiCacheReplicationGroupAdvanced:
+    """Tests for advanced replication group operations that require existing groups."""
+
+    def test_complete_migration_nonexistent(self, elasticache):
+        """CompleteMigration with nonexistent replication group returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.complete_migration(
+                ReplicationGroupId="nonexistent-rg-migration",
+                Force=False,
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ReplicationGroupNotFoundFault",
+            "ReplicationGroupNotFound",
+        )
+
+    def test_test_migration_nonexistent(self, elasticache):
+        """TestMigration with nonexistent replication group returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.test_migration(
+                ReplicationGroupId="nonexistent-rg-testmig",
+                CustomerNodeEndpointList=[
+                    {"Address": "192.168.1.1", "Port": 6379},
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ReplicationGroupNotFoundFault",
+            "ReplicationGroupNotFound",
+        )
+
+    def test_test_failover_nonexistent(self, elasticache):
+        """TestFailover with nonexistent replication group returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.test_failover(
+                ReplicationGroupId="nonexistent-rg-failover",
+                NodeGroupId="0001",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ReplicationGroupNotFoundFault",
+            "ReplicationGroupNotFound",
+        )
+
+    def test_decrease_replica_count_nonexistent(self, elasticache):
+        """DecreaseReplicaCount with nonexistent replication group returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.decrease_replica_count(
+                ReplicationGroupId="nonexistent-rg-decrease",
+                ApplyImmediately=True,
+                NewReplicaCount=0,
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ReplicationGroupNotFoundFault",
+            "ReplicationGroupNotFound",
+        )
+
+    def test_increase_replica_count_nonexistent(self, elasticache):
+        """IncreaseReplicaCount with nonexistent replication group returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.increase_replica_count(
+                ReplicationGroupId="nonexistent-rg-increase",
+                ApplyImmediately=True,
+                NewReplicaCount=2,
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ReplicationGroupNotFoundFault",
+            "ReplicationGroupNotFound",
+        )
+
+    def test_disassociate_global_replication_group_nonexistent(self, elasticache):
+        """DisassociateGlobalReplicationGroup with nonexistent global RG returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.disassociate_global_replication_group(
+                GlobalReplicationGroupId="nonexistent-global-rg",
+                ReplicationGroupId="nonexistent-rg-disassoc",
+                ReplicationGroupRegion="us-east-1",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "GlobalReplicationGroupNotFoundFault",
+            "GlobalReplicationGroupNotFound",
+        )
+
+    def test_failover_global_replication_group_nonexistent(self, elasticache):
+        """FailoverGlobalReplicationGroup with nonexistent global RG returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.failover_global_replication_group(
+                GlobalReplicationGroupId="nonexistent-global-rg-fo",
+                PrimaryRegion="us-east-1",
+                PrimaryReplicationGroupId="nonexistent-rg-fo",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "GlobalReplicationGroupNotFoundFault",
+            "GlobalReplicationGroupNotFound",
+        )
+
+    def test_rebalance_slots_in_global_replication_group_nonexistent(self, elasticache):
+        """RebalanceSlotsInGlobalReplicationGroup with nonexistent global RG returns error."""
+        with pytest.raises(ClientError) as exc:
+            elasticache.rebalance_slots_in_global_replication_group(
+                GlobalReplicationGroupId="nonexistent-global-rg-rebal",
+                ApplyImmediately=True,
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "GlobalReplicationGroupNotFoundFault",
+            "GlobalReplicationGroupNotFound",
+        )
+
+
 class TestElastiCacheCopySnapshot:
     """Tests for copy snapshot operation."""
 

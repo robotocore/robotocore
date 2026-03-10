@@ -1886,3 +1886,262 @@ class TestGuardDutyMalwareProtection:
         plan_id = create_resp["MalwareProtectionPlanId"]
         resp = guardduty.delete_malware_protection_plan(MalwareProtectionPlanId=plan_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyThreatEntitySetOperations:
+    """Tests for GuardDuty ThreatEntitySet CRUD operations."""
+
+    def test_create_threat_entity_set(self, guardduty, detector):
+        """CreateThreatEntitySet returns a ThreatEntitySetId."""
+        resp = guardduty.create_threat_entity_set(
+            DetectorId=detector,
+            Name=_unique("threat"),
+            Format="TXT",
+            Location="s3://test-bucket/threats.txt",
+            Activate=True,
+        )
+        assert "ThreatEntitySetId" in resp
+        assert resp["ThreatEntitySetId"]
+        guardduty.delete_threat_entity_set(
+            DetectorId=detector, ThreatEntitySetId=resp["ThreatEntitySetId"]
+        )
+
+    def test_get_threat_entity_set(self, guardduty, detector):
+        """GetThreatEntitySet returns set details."""
+        create_resp = guardduty.create_threat_entity_set(
+            DetectorId=detector,
+            Name=_unique("threat"),
+            Format="TXT",
+            Location="s3://test-bucket/threats.txt",
+            Activate=True,
+        )
+        tes_id = create_resp["ThreatEntitySetId"]
+        try:
+            resp = guardduty.get_threat_entity_set(DetectorId=detector, ThreatEntitySetId=tes_id)
+            assert resp["Name"]
+            assert resp["Format"] == "TXT"
+            assert resp["Location"] == "s3://test-bucket/threats.txt"
+            assert "Status" in resp
+        finally:
+            guardduty.delete_threat_entity_set(DetectorId=detector, ThreatEntitySetId=tes_id)
+
+    def test_list_threat_entity_sets(self, guardduty, detector):
+        """ListThreatEntitySets returns ThreatEntitySetIds."""
+        resp = guardduty.list_threat_entity_sets(DetectorId=detector)
+        assert "ThreatEntitySetIds" in resp
+
+    def test_list_threat_entity_sets_includes_created(self, guardduty, detector):
+        """ListThreatEntitySets includes a newly created set."""
+        create_resp = guardduty.create_threat_entity_set(
+            DetectorId=detector,
+            Name=_unique("threat"),
+            Format="TXT",
+            Location="s3://test-bucket/threats.txt",
+            Activate=True,
+        )
+        tes_id = create_resp["ThreatEntitySetId"]
+        try:
+            resp = guardduty.list_threat_entity_sets(DetectorId=detector)
+            assert tes_id in resp["ThreatEntitySetIds"]
+        finally:
+            guardduty.delete_threat_entity_set(DetectorId=detector, ThreatEntitySetId=tes_id)
+
+    def test_update_threat_entity_set(self, guardduty, detector):
+        """UpdateThreatEntitySet modifies the set name."""
+        create_resp = guardduty.create_threat_entity_set(
+            DetectorId=detector,
+            Name=_unique("threat"),
+            Format="TXT",
+            Location="s3://test-bucket/threats.txt",
+            Activate=True,
+        )
+        tes_id = create_resp["ThreatEntitySetId"]
+        try:
+            updated_name = _unique("updated-threat")
+            resp = guardduty.update_threat_entity_set(
+                DetectorId=detector, ThreatEntitySetId=tes_id, Name=updated_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            get_resp = guardduty.get_threat_entity_set(
+                DetectorId=detector, ThreatEntitySetId=tes_id
+            )
+            assert get_resp["Name"] == updated_name
+        finally:
+            guardduty.delete_threat_entity_set(DetectorId=detector, ThreatEntitySetId=tes_id)
+
+    def test_delete_threat_entity_set(self, guardduty, detector):
+        """DeleteThreatEntitySet removes the set."""
+        create_resp = guardduty.create_threat_entity_set(
+            DetectorId=detector,
+            Name=_unique("threat"),
+            Format="TXT",
+            Location="s3://test-bucket/threats.txt",
+            Activate=True,
+        )
+        tes_id = create_resp["ThreatEntitySetId"]
+        resp = guardduty.delete_threat_entity_set(DetectorId=detector, ThreatEntitySetId=tes_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        listed = guardduty.list_threat_entity_sets(DetectorId=detector)
+        assert tes_id not in listed["ThreatEntitySetIds"]
+
+
+class TestGuardDutyTrustedEntitySetOperations:
+    """Tests for GuardDuty TrustedEntitySet CRUD operations."""
+
+    def test_create_trusted_entity_set(self, guardduty, detector):
+        """CreateTrustedEntitySet returns a TrustedEntitySetId."""
+        resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        assert "TrustedEntitySetId" in resp
+        assert resp["TrustedEntitySetId"]
+        guardduty.delete_trusted_entity_set(
+            DetectorId=detector, TrustedEntitySetId=resp["TrustedEntitySetId"]
+        )
+
+    def test_get_trusted_entity_set(self, guardduty, detector):
+        """GetTrustedEntitySet returns set details."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            resp = guardduty.get_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id
+            )
+            assert resp["Name"]
+            assert resp["Format"] == "TXT"
+            assert resp["Location"] == "s3://test-bucket/trusted.txt"
+            assert "Status" in resp
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_list_trusted_entity_sets(self, guardduty, detector):
+        """ListTrustedEntitySets returns TrustedEntitySetIds."""
+        resp = guardduty.list_trusted_entity_sets(DetectorId=detector)
+        assert "TrustedEntitySetIds" in resp
+
+    def test_list_trusted_entity_sets_includes_created(self, guardduty, detector):
+        """ListTrustedEntitySets includes a newly created set."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            resp = guardduty.list_trusted_entity_sets(DetectorId=detector)
+            assert trust_id in resp["TrustedEntitySetIds"]
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_update_trusted_entity_set(self, guardduty, detector):
+        """UpdateTrustedEntitySet modifies the set name."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            updated_name = _unique("updated-trusted")
+            resp = guardduty.update_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id, Name=updated_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            get_resp = guardduty.get_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id
+            )
+            assert get_resp["Name"] == updated_name
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_delete_trusted_entity_set(self, guardduty, detector):
+        """DeleteTrustedEntitySet removes the set."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        resp = guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        listed = guardduty.list_trusted_entity_sets(DetectorId=detector)
+        assert trust_id not in listed["TrustedEntitySetIds"]
+
+
+class TestGuardDutyOrganizationStatistics:
+    """Tests for GetOrganizationStatistics."""
+
+    def test_get_organization_statistics(self, guardduty):
+        """GetOrganizationStatistics returns OrganizationDetails."""
+        resp = guardduty.get_organization_statistics()
+        assert "OrganizationDetails" in resp
+
+    def test_get_organization_statistics_response_code(self, guardduty):
+        """GetOrganizationStatistics returns 200."""
+        resp = guardduty.get_organization_statistics()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyListMalwareScans:
+    """Tests for ListMalwareScans."""
+
+    def test_list_malware_scans(self, guardduty):
+        """ListMalwareScans returns Scans list."""
+        resp = guardduty.list_malware_scans()
+        assert "Scans" in resp
+        assert isinstance(resp["Scans"], list)
+
+
+class TestGuardDutySendObjectMalwareScan:
+    """Tests for SendObjectMalwareScan."""
+
+    def test_send_object_malware_scan(self, guardduty):
+        """SendObjectMalwareScan returns 200."""
+        resp = guardduty.send_object_malware_scan()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_send_object_malware_scan_with_s3_object(self, guardduty):
+        """SendObjectMalwareScan accepts S3Object parameter."""
+        resp = guardduty.send_object_malware_scan(
+            S3Object={
+                "Bucket": "test-bucket",
+                "Key": "test-key",
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyUpdateMalwareProtectionPlan:
+    """Tests for UpdateMalwareProtectionPlan."""
+
+    def test_update_malware_protection_plan(self, guardduty):
+        """UpdateMalwareProtectionPlan modifies a plan."""
+        create_resp = guardduty.create_malware_protection_plan(
+            Role="arn:aws:iam::123456789012:role/test",
+            ProtectedResource={"S3Bucket": {"BucketName": "test-bucket"}},
+        )
+        plan_id = create_resp["MalwareProtectionPlanId"]
+        try:
+            resp = guardduty.update_malware_protection_plan(
+                MalwareProtectionPlanId=plan_id,
+                Role="arn:aws:iam::123456789012:role/updated",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            guardduty.delete_malware_protection_plan(MalwareProtectionPlanId=plan_id)

@@ -934,6 +934,63 @@ class TestECRValidatePullThroughCacheRule:
             ecr.delete_pull_through_cache_rule(ecrRepositoryPrefix=prefix)
 
 
+class TestECRDescribeImageReplicationStatus:
+    """Tests for DescribeImageReplicationStatus operation."""
+
+    def test_describe_image_replication_status(self, ecr):
+        """DescribeImageReplicationStatus returns status for an image."""
+        import hashlib
+
+        repo_name = _unique("replst")
+        ecr.create_repository(repositoryName=repo_name)
+        digest = hashlib.sha256(b"repl-status-config").hexdigest()
+        manifest = json.dumps(
+            {
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "size": 7023,
+                    "digest": f"sha256:{digest}",
+                },
+                "layers": [],
+            }
+        )
+        put_resp = ecr.put_image(
+            repositoryName=repo_name, imageManifest=manifest, imageTag="repltest"
+        )
+        image_digest = put_resp["image"]["imageId"]["imageDigest"]
+        try:
+            resp = ecr.describe_image_replication_status(
+                repositoryName=repo_name,
+                imageId={"imageDigest": image_digest},
+            )
+            assert resp["repositoryName"] == repo_name
+            assert "imageId" in resp
+        finally:
+            ecr.delete_repository(repositoryName=repo_name, force=True)
+
+
+class TestECRUpdatePullThroughCacheRule:
+    """Tests for UpdatePullThroughCacheRule operation."""
+
+    def test_update_pull_through_cache_rule(self, ecr):
+        """UpdatePullThroughCacheRule modifies an existing rule's credential ARN."""
+        prefix = _unique("upd-ptcr")
+        ecr.create_pull_through_cache_rule(
+            ecrRepositoryPrefix=prefix,
+            upstreamRegistryUrl="public.ecr.aws",
+        )
+        try:
+            resp = ecr.update_pull_through_cache_rule(
+                ecrRepositoryPrefix=prefix,
+                credentialArn="arn:aws:secretsmanager:us-east-1:123456789012:secret:ecr-creds",
+            )
+            assert resp["ecrRepositoryPrefix"] == prefix
+        finally:
+            ecr.delete_pull_through_cache_rule(ecrRepositoryPrefix=prefix)
+
+
 class TestECRLifecyclePolicyPreview:
     """Tests for StartLifecyclePolicyPreview and GetLifecyclePolicyPreview."""
 

@@ -1452,3 +1452,18 @@ class TestServiceCatalogProvisionedProductOps:
         assert "RecordId" in rd
         assert rd["RecordType"] == "IMPORT_PROVISIONED_PRODUCT"
         assert rd["Status"] == "SUCCEEDED"
+
+
+class TestServiceCatalogProvisionProduct:
+    """Tests for ProvisionProduct operation."""
+
+    def test_provision_product(self, servicecatalog):
+        """ProvisionProduct creates a provisioned product."""
+        resp = servicecatalog.provision_product(
+            ProductId="prod-fake123",
+            ProvisioningArtifactId="pa-fake123",
+            ProvisionedProductName=_uid("pp-prov"),
+        )
+        assert "RecordDetail" in resp
+        rd = resp["RecordDetail"]
+        assert "RecordId" in rd

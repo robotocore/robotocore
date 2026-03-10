@@ -1792,3 +1792,89 @@ class TestBackupPlanJsonParsing:
         assert "BackupPlan" in resp
         assert resp["BackupPlan"]["BackupPlanName"] == "json-plan"
         assert len(resp["BackupPlan"]["Rules"]) == 1
+
+
+class TestBackupAdditionalOperations:
+    """Tests for additional backup operations."""
+
+    @pytest.fixture
+    def backup(self):
+        return make_client("backup")
+
+    def test_list_backup_job_summaries(self, backup):
+        """ListBackupJobSummaries returns a list of summaries."""
+        resp = backup.list_backup_job_summaries()
+        assert "BackupJobSummaries" in resp
+
+    def test_list_copy_job_summaries(self, backup):
+        """ListCopyJobSummaries returns a list of summaries."""
+        resp = backup.list_copy_job_summaries()
+        assert "CopyJobSummaries" in resp
+
+    def test_list_restore_job_summaries(self, backup):
+        """ListRestoreJobSummaries returns a list of summaries."""
+        resp = backup.list_restore_job_summaries()
+        assert "RestoreJobSummaries" in resp
+
+    def test_list_report_jobs(self, backup):
+        """ListReportJobs returns a list of report jobs."""
+        resp = backup.list_report_jobs()
+        assert "ReportJobs" in resp
+
+    def test_list_recovery_points_by_legal_hold(self, backup):
+        """ListRecoveryPointsByLegalHold returns recovery points for a legal hold."""
+        # Create a legal hold to get a valid ID
+        name = _unique("hold")
+        resp = backup.create_legal_hold(
+            Title=name,
+            Description="test hold",
+        )
+        hold_id = resp["LegalHoldId"]
+        try:
+            resp = backup.list_recovery_points_by_legal_hold(LegalHoldId=hold_id)
+            assert "RecoveryPoints" in resp
+        finally:
+            backup.cancel_legal_hold(LegalHoldId=hold_id, CancelDescription="cleanup")
+
+    def test_describe_report_job_not_found(self, backup):
+        """DescribeReportJob with a fake ID returns an error."""
+        with pytest.raises(ClientError) as exc_info:
+            backup.describe_report_job(ReportJobId="fake-report-job-id-12345")
+        err = exc_info.value.response["Error"]
+        assert err["Code"] in ("ResourceNotFoundException", "NotFoundException")
+
+    def test_disassociate_recovery_point_not_found(self, backup):
+        """DisassociateRecoveryPoint with fake IDs returns an error."""
+        vault_name = _make_vault(backup)
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                backup.disassociate_recovery_point(
+                    BackupVaultName=vault_name,
+                    RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake-rp-id",
+                )
+            err = exc_info.value.response["Error"]
+            assert err["Code"] in (
+                "ResourceNotFoundException",
+                "NotFoundException",
+                "InvalidParameterValueException",
+            )
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_disassociate_recovery_point_from_parent_not_found(self, backup):
+        """DisassociateRecoveryPointFromParent with fake IDs returns an error."""
+        vault_name = _make_vault(backup)
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                backup.disassociate_recovery_point_from_parent(
+                    BackupVaultName=vault_name,
+                    RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:fake-rp-id",
+                )
+            err = exc_info.value.response["Error"]
+            assert err["Code"] in (
+                "ResourceNotFoundException",
+                "NotFoundException",
+                "InvalidParameterValueException",
+            )
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)

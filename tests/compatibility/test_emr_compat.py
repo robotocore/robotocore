@@ -1021,3 +1021,166 @@ class TestEMRNotebookErrors:
             "InvalidRequestException",
             "ResourceNotFoundException",
         )
+
+
+class TestEMRInstanceFleetOperations:
+    """Tests for EMR instance fleet operations."""
+
+    @pytest.fixture
+    def fleet_cluster_id(self, emr):
+        """Create a cluster with InstanceFleets instead of InstanceGroups."""
+        resp = emr.run_job_flow(
+            Name=_unique("fleet-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "InstanceFleets": [
+                    {
+                        "Name": "master-fleet",
+                        "InstanceFleetType": "MASTER",
+                        "TargetOnDemandCapacity": 1,
+                        "InstanceTypeConfigs": [
+                            {"InstanceType": "m5.xlarge"},
+                        ],
+                    },
+                ],
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        yield cid
+        try:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            pass
+
+    def test_list_instance_fleets(self, emr, fleet_cluster_id):
+        """ListInstanceFleets returns fleets for a fleet-based cluster."""
+        resp = emr.list_instance_fleets(ClusterId=fleet_cluster_id)
+        assert "InstanceFleets" in resp
+        assert isinstance(resp["InstanceFleets"], list)
+
+    def test_add_instance_fleet(self, emr, fleet_cluster_id):
+        """AddInstanceFleet adds a TASK fleet to the cluster."""
+        resp = emr.add_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={
+                "Name": "task-fleet",
+                "InstanceFleetType": "TASK",
+                "TargetOnDemandCapacity": 1,
+                "InstanceTypeConfigs": [
+                    {"InstanceType": "m5.xlarge"},
+                ],
+            },
+        )
+        assert "ClusterId" in resp
+        assert resp["ClusterId"] == fleet_cluster_id
+        assert "InstanceFleetId" in resp
+
+    def test_add_and_list_instance_fleets(self, emr, fleet_cluster_id):
+        """AddInstanceFleet followed by ListInstanceFleets shows the fleet."""
+        emr.add_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={
+                "Name": "listed-fleet",
+                "InstanceFleetType": "TASK",
+                "TargetOnDemandCapacity": 1,
+                "InstanceTypeConfigs": [
+                    {"InstanceType": "m5.xlarge"},
+                ],
+            },
+        )
+        resp = emr.list_instance_fleets(ClusterId=fleet_cluster_id)
+        assert "InstanceFleets" in resp
+        fleet_names = [f["Name"] for f in resp["InstanceFleets"]]
+        assert "listed-fleet" in fleet_names
+
+    def test_modify_instance_fleet(self, emr, fleet_cluster_id):
+        """ModifyInstanceFleet changes target capacity of a fleet."""
+        # Add a task fleet first
+        add_resp = emr.add_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={
+                "Name": "modify-fleet",
+                "InstanceFleetType": "TASK",
+                "TargetOnDemandCapacity": 1,
+                "InstanceTypeConfigs": [
+                    {"InstanceType": "m5.xlarge"},
+                ],
+            },
+        )
+        fleet_id = add_resp["InstanceFleetId"]
+        resp = emr.modify_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={
+                "InstanceFleetId": fleet_id,
+                "TargetOnDemandCapacity": 2,
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEMRStudioSessionMappingOperations:
+    """Tests for EMR Studio session mapping operations."""
+
+    @pytest.fixture
+    def studio_id(self, emr):
+        """Create a studio for session mapping tests."""
+        resp = emr.create_studio(
+            Name=_unique("session-studio"),
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        sid = resp["StudioId"]
+        yield sid
+        try:
+            emr.delete_studio(StudioId=sid)
+        except Exception:
+            pass
+
+    def test_create_studio_session_mapping(self, emr, studio_id):
+        """CreateStudioSessionMapping creates a mapping for an IAM user."""
+        resp = emr.create_studio_session_mapping(
+            StudioId=studio_id,
+            IdentityType="USER",
+            IdentityName="test-user@example.com",
+            SessionPolicyArn="arn:aws:iam::123456789012:policy/TestPolicy",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_studio_session_mapping_not_found(self, emr, studio_id):
+        """GetStudioSessionMapping with nonexistent mapping raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            emr.get_studio_session_mapping(
+                StudioId=studio_id,
+                IdentityType="USER",
+                IdentityName="nonexistent@example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_update_studio_session_mapping_not_found(self, emr, studio_id):
+        """UpdateStudioSessionMapping with nonexistent mapping raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            emr.update_studio_session_mapping(
+                StudioId=studio_id,
+                IdentityType="USER",
+                IdentityName="nonexistent@example.com",
+                SessionPolicyArn="arn:aws:iam::123456789012:policy/NewPolicy",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_delete_studio_session_mapping_not_found(self, emr, studio_id):
+        """DeleteStudioSessionMapping with nonexistent mapping raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            emr.delete_studio_session_mapping(
+                StudioId=studio_id,
+                IdentityType="USER",
+                IdentityName="nonexistent@example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"

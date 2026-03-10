@@ -1127,3 +1127,228 @@ class TestAppsyncAutoCoverage:
         """ListApis returns a response with apis key."""
         resp = client.list_apis()
         assert "apis" in resp
+
+
+class TestAppsyncMergedApiOps:
+    """Tests for merged/source GraphQL API association operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def merged_api(self, client):
+        """Create a MERGED-type GraphQL API."""
+        created = client.create_graphql_api(
+            name=_unique("merged-api"),
+            authenticationType="API_KEY",
+            apiType="MERGED",
+            mergedApiExecutionRoleArn="arn:aws:iam::123456789012:role/fake-role",
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        yield created["graphqlApi"]
+        client.delete_graphql_api(apiId=api_id)
+
+    @pytest.fixture
+    def source_api(self, client):
+        """Create a regular GraphQL API to use as source."""
+        created = client.create_graphql_api(
+            name=_unique("source-api"),
+            authenticationType="API_KEY",
+        )
+        api_id = created["graphqlApi"]["apiId"]
+        yield created["graphqlApi"]
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_associate_merged_graphql_api(self, client, source_api, merged_api):
+        """AssociateMergedGraphqlApi creates an association."""
+        resp = client.associate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            mergedApiIdentifier=merged_api["apiId"],
+        )
+        assert "sourceApiAssociation" in resp
+        assert "associationId" in resp["sourceApiAssociation"]
+        assert resp["sourceApiAssociation"]["sourceApiId"] == source_api["apiId"]
+
+    def test_associate_source_graphql_api(self, client, source_api, merged_api):
+        """AssociateSourceGraphqlApi creates an association from merged side."""
+        resp = client.associate_source_graphql_api(
+            mergedApiIdentifier=merged_api["apiId"],
+            sourceApiIdentifier=source_api["apiId"],
+        )
+        assert "sourceApiAssociation" in resp
+        assert "associationId" in resp["sourceApiAssociation"]
+        assert resp["sourceApiAssociation"]["mergedApiId"] == merged_api["apiId"]
+
+    def test_disassociate_merged_graphql_api(self, client, source_api, merged_api):
+        """DisassociateMergedGraphqlApi removes an association."""
+        assoc = client.associate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            mergedApiIdentifier=merged_api["apiId"],
+        )
+        assoc_id = assoc["sourceApiAssociation"]["associationId"]
+        resp = client.disassociate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            associationId=assoc_id,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_source_graphql_api(self, client, source_api, merged_api):
+        """DisassociateSourceGraphqlApi removes an association."""
+        assoc = client.associate_source_graphql_api(
+            mergedApiIdentifier=merged_api["apiId"],
+            sourceApiIdentifier=source_api["apiId"],
+        )
+        assoc_id = assoc["sourceApiAssociation"]["associationId"]
+        resp = client.disassociate_source_graphql_api(
+            mergedApiIdentifier=merged_api["apiId"],
+            associationId=assoc_id,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_source_api_association(self, client, source_api, merged_api):
+        """GetSourceApiAssociation retrieves an existing association."""
+        assoc = client.associate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            mergedApiIdentifier=merged_api["apiId"],
+        )
+        assoc_id = assoc["sourceApiAssociation"]["associationId"]
+        resp = client.get_source_api_association(
+            mergedApiIdentifier=merged_api["apiId"],
+            associationId=assoc_id,
+        )
+        assert "sourceApiAssociation" in resp
+        assert resp["sourceApiAssociation"]["associationId"] == assoc_id
+
+    def test_list_source_api_associations(self, client, merged_api):
+        """ListSourceApiAssociations returns list for API."""
+        resp = client.list_source_api_associations(apiId=merged_api["apiId"])
+        assert "sourceApiAssociationSummaries" in resp
+        assert isinstance(resp["sourceApiAssociationSummaries"], list)
+
+    def test_list_types_by_association(self, client, source_api, merged_api):
+        """ListTypesByAssociation returns types for an association."""
+        assoc = client.associate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            mergedApiIdentifier=merged_api["apiId"],
+        )
+        assoc_id = assoc["sourceApiAssociation"]["associationId"]
+        resp = client.list_types_by_association(
+            mergedApiIdentifier=merged_api["apiId"],
+            associationId=assoc_id,
+            format="SDL",
+        )
+        assert "types" in resp
+        assert isinstance(resp["types"], list)
+
+    def test_start_schema_merge(self, client, source_api, merged_api):
+        """StartSchemaMerge initiates a merge."""
+        assoc = client.associate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            mergedApiIdentifier=merged_api["apiId"],
+        )
+        assoc_id = assoc["sourceApiAssociation"]["associationId"]
+        resp = client.start_schema_merge(
+            mergedApiIdentifier=merged_api["apiId"],
+            associationId=assoc_id,
+        )
+        assert "sourceApiAssociationStatus" in resp
+        assert resp["sourceApiAssociationStatus"] in (
+            "MERGE_IN_PROGRESS",
+            "MERGE_SUCCESS",
+            "MERGE_SCHEDULED",
+        )
+
+
+class TestAppsyncEvalAndIntrospection:
+    """Tests for EvaluateCode, EvaluateMappingTemplate, and data source introspection."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("appsync")
+
+    @pytest.fixture
+    def api(self, client):
+        created = client.create_graphql_api(name=_unique("eval-api"), authenticationType="API_KEY")
+        api_id = created["graphqlApi"]["apiId"]
+        yield api_id
+        client.delete_graphql_api(apiId=api_id)
+
+    def test_evaluate_mapping_template(self, client):
+        """EvaluateMappingTemplate evaluates a VTL template."""
+        resp = client.evaluate_mapping_template(
+            template='$util.toJson({"hello": "world"})',
+            context='{"arguments": {}, "source": {}}',
+        )
+        assert "evaluationResult" in resp
+
+    def test_evaluate_code(self, client):
+        """EvaluateCode evaluates an AppSync JS runtime code."""
+        resp = client.evaluate_code(
+            runtime={"name": "APPSYNC_JS", "runtimeVersion": "1.0.0"},
+            code=(
+                "export function request(ctx) { return {}; }"
+                " export function response(ctx) { return ctx.prev.result; }"
+            ),
+            context='{"arguments": {}, "source": {}}',
+            function="request",
+        )
+        assert "evaluationResult" in resp or "error" in resp
+
+    def test_start_data_source_introspection(self, client):
+        """StartDataSourceIntrospection returns an introspection ID."""
+        resp = client.start_data_source_introspection(
+            rdsDataApiConfig={
+                "resourceArn": "arn:aws:rds:us-east-1:123456789012:cluster:fake-cluster",
+                "secretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:fake",
+                "databaseName": "testdb",
+            }
+        )
+        assert "introspectionId" in resp
+        assert isinstance(resp["introspectionId"], str)
+        assert len(resp["introspectionId"]) > 0
+
+    def test_get_data_source_introspection(self, client):
+        """GetDataSourceIntrospection returns status for an introspection ID."""
+        # Start an introspection first to get a valid ID
+        start_resp = client.start_data_source_introspection(
+            rdsDataApiConfig={
+                "resourceArn": "arn:aws:rds:us-east-1:123456789012:cluster:fake",
+                "secretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:fake",
+                "databaseName": "testdb",
+            }
+        )
+        introspection_id = start_resp["introspectionId"]
+        resp = client.get_data_source_introspection(
+            introspectionId=introspection_id,
+        )
+        assert "introspectionStatus" in resp
+        assert resp["introspectionStatus"] in ("PROCESSING", "SUCCESS", "FAILED")
+
+    def test_get_graphql_api_environment_variables_not_found(self, client):
+        """GetGraphqlApiEnvironmentVariables with fake API returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.get_graphql_api_environment_variables(apiId="fake-api-id-12345")
+
+    def test_put_graphql_api_environment_variables_not_found(self, client):
+        """PutGraphqlApiEnvironmentVariables with fake API returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.put_graphql_api_environment_variables(
+                apiId="fake-api-id-12345",
+                environmentVariables={"MY_VAR": "my_value"},
+            )
+
+    def test_list_resolvers_by_function_not_found(self, client):
+        """ListResolversByFunction with fake API returns NotFoundException."""
+        with pytest.raises(client.exceptions.NotFoundException):
+            client.list_resolvers_by_function(apiId="fake-api-id", functionId="fake-func-id")
+
+    def test_start_schema_creation_returns_status(self, client, api):
+        """StartSchemaCreation returns a status field."""
+        schema = b"type Query { greeting: String }"
+        resp = client.start_schema_creation(
+            apiId=api,
+            definition=base64.b64encode(schema),
+        )
+        assert "status" in resp
+        assert resp["status"] in ("ACTIVE", "PROCESSING", "SUCCESS")

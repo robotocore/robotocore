@@ -1340,3 +1340,274 @@ class TestWAFv2AdditionalOperations:
         resp = wafv2.check_capacity(Scope="REGIONAL", Rules=[])
         assert "Capacity" in resp
         assert resp["Capacity"] == 0
+
+
+class TestWAFv2AdditionalOps:
+    """Tests for additional WAFv2 operations: API keys, managed products, etc."""
+
+    def test_list_api_keys(self, wafv2):
+        """ListAPIKeys returns a list of API keys."""
+        resp = wafv2.list_api_keys(Scope="REGIONAL")
+        assert "APIKeySummaries" in resp
+        assert isinstance(resp["APIKeySummaries"], list)
+
+    def test_delete_api_key_nonexistent(self, wafv2):
+        """DeleteAPIKey on a nonexistent key succeeds (idempotent)."""
+        resp = wafv2.delete_api_key(
+            Scope="REGIONAL",
+            APIKey="nonexistent-api-key-value",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_decrypted_api_key_nonexistent(self, wafv2):
+        """GetDecryptedAPIKey on a nonexistent key returns empty token domains."""
+        resp = wafv2.get_decrypted_api_key(
+            Scope="REGIONAL",
+            APIKey="nonexistent-api-key-value",
+        )
+        assert "TokenDomains" in resp
+        assert isinstance(resp["TokenDomains"], list)
+
+    def test_describe_all_managed_products(self, wafv2):
+        """DescribeAllManagedProducts returns a list of managed products."""
+        resp = wafv2.describe_all_managed_products(Scope="REGIONAL")
+        assert "ManagedProducts" in resp
+        assert isinstance(resp["ManagedProducts"], list)
+
+    def test_describe_managed_products_by_vendor(self, wafv2):
+        """DescribeManagedProductsByVendor returns products from AWS vendor."""
+        resp = wafv2.describe_managed_products_by_vendor(
+            Scope="REGIONAL",
+            VendorName="AWS",
+        )
+        assert "ManagedProducts" in resp
+        assert isinstance(resp["ManagedProducts"], list)
+
+    def test_generate_mobile_sdk_release_url(self, wafv2):
+        """GenerateMobileSdkReleaseUrl returns a URL."""
+        resp = wafv2.generate_mobile_sdk_release_url(
+            Platform="IOS",
+            ReleaseVersion="1.0.0",
+        )
+        assert "Url" in resp
+        assert isinstance(resp["Url"], str)
+        assert len(resp["Url"]) > 0
+
+    def test_list_mobile_sdk_releases(self, wafv2):
+        """ListMobileSdkReleases returns a list."""
+        resp = wafv2.list_mobile_sdk_releases(Platform="IOS")
+        assert "ReleaseSummaries" in resp
+        assert isinstance(resp["ReleaseSummaries"], list)
+
+    def test_get_mobile_sdk_release(self, wafv2):
+        """GetMobileSdkRelease returns release details."""
+        resp = wafv2.get_mobile_sdk_release(
+            Platform="IOS",
+            ReleaseVersion="1.0.0",
+        )
+        assert "MobileSdkRelease" in resp
+        release = resp["MobileSdkRelease"]
+        assert "ReleaseVersion" in release
+        assert "Timestamp" in release
+
+    def test_list_managed_rule_sets(self, wafv2):
+        """ListManagedRuleSets returns a list."""
+        resp = wafv2.list_managed_rule_sets(Scope="REGIONAL")
+        assert "ManagedRuleSets" in resp
+        assert isinstance(resp["ManagedRuleSets"], list)
+
+    def test_get_managed_rule_set(self, wafv2):
+        """GetManagedRuleSet returns rule set details."""
+        resp = wafv2.get_managed_rule_set(
+            Name="test-rule-set",
+            Scope="REGIONAL",
+            Id="00000000-0000-0000-0000-000000000000",
+        )
+        assert "ManagedRuleSet" in resp
+        rule_set = resp["ManagedRuleSet"]
+        assert "Name" in rule_set
+        assert "Id" in rule_set
+        assert "ARN" in rule_set
+        assert "LockToken" in resp
+
+    def test_put_managed_rule_set_versions(self, wafv2):
+        """PutManagedRuleSetVersions returns a next lock token."""
+        resp = wafv2.put_managed_rule_set_versions(
+            Name="test-rule-set",
+            Scope="REGIONAL",
+            Id="00000000-0000-0000-0000-000000000000",
+            LockToken="fake-lock-token",
+            RecommendedVersion="1.0",
+            VersionsToPublish={
+                "1.0": {
+                    "AssociatedRuleGroupArn": (
+                        "arn:aws:wafv2:us-east-1:123456789012:regional/rulegroup/fake/fake-id"
+                    )
+                }
+            },
+        )
+        assert "NextLockToken" in resp
+        assert isinstance(resp["NextLockToken"], str)
+
+    def test_update_managed_rule_set_version_expiry_date(self, wafv2):
+        """UpdateManagedRuleSetVersionExpiryDate returns expiry info and lock token."""
+        resp = wafv2.update_managed_rule_set_version_expiry_date(
+            Name="test-rule-set",
+            Scope="REGIONAL",
+            Id="00000000-0000-0000-0000-000000000000",
+            LockToken="fake-lock-token",
+            VersionToExpire="1.0",
+            ExpiryTimestamp=1700000000,
+        )
+        assert "ExpiringVersion" in resp
+        assert resp["ExpiringVersion"] == "1.0"
+        assert "ExpiryTimestamp" in resp
+        assert "NextLockToken" in resp
+
+    def test_get_rate_based_statement_managed_keys(self, wafv2):
+        """GetRateBasedStatementManagedKeys needs a WebACL with a rate-based rule."""
+        # Create a WebACL with a rate-based statement
+        name = _unique("webacl-rate")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            Rules=[
+                {
+                    "Name": "rate-rule",
+                    "Priority": 1,
+                    "Statement": {
+                        "RateBasedStatement": {
+                            "Limit": 2000,
+                            "AggregateKeyType": "IP",
+                        }
+                    },
+                    "Action": {"Block": {}},
+                    "VisibilityConfig": {
+                        "SampledRequestsEnabled": True,
+                        "CloudWatchMetricsEnabled": True,
+                        "MetricName": "rate-rule",
+                    },
+                }
+            ],
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        try:
+            keys_resp = wafv2.get_rate_based_statement_managed_keys(
+                Scope="REGIONAL",
+                WebACLName=name,
+                WebACLId=summary["Id"],
+                RuleName="rate-rule",
+            )
+            assert "ManagedKeysIPV4" in keys_resp
+            assert "ManagedKeysIPV6" in keys_resp
+        finally:
+            get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_web_acl(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+    def test_get_sampled_requests(self, wafv2):
+        """GetSampledRequests returns sampled requests for a WebACL."""
+        import datetime
+
+        name = _unique("webacl-sampled")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        try:
+            now = datetime.datetime.now(datetime.UTC)
+            start = now - datetime.timedelta(hours=1)
+            sampled = wafv2.get_sampled_requests(
+                WebAclArn=summary["ARN"],
+                RuleMetricName=name,
+                Scope="REGIONAL",
+                TimeWindow={
+                    "StartTime": start,
+                    "EndTime": now,
+                },
+                MaxItems=10,
+            )
+            assert "SampledRequests" in sampled
+            assert isinstance(sampled["SampledRequests"], list)
+        finally:
+            get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_web_acl(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+    def test_list_resources_for_web_acl(self, wafv2):
+        """ListResourcesForWebACL returns associated resources."""
+        name = _unique("webacl-res")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        try:
+            res_resp = wafv2.list_resources_for_web_acl(WebACLArn=summary["ARN"])
+            assert "ResourceArns" in res_resp
+            assert isinstance(res_resp["ResourceArns"], list)
+        finally:
+            get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_web_acl(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp["LockToken"],
+            )
+
+    def test_delete_firewall_manager_rule_groups(self, wafv2):
+        """DeleteFirewallManagerRuleGroups on a WebACL with no FM rules."""
+        name = _unique("webacl-fm")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        summary = resp["Summary"]
+        try:
+            get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            fm_resp = wafv2.delete_firewall_manager_rule_groups(
+                WebACLArn=summary["ARN"],
+                WebACLLockToken=get_resp["LockToken"],
+            )
+            assert "NextWebACLLockToken" in fm_resp
+        finally:
+            get_resp2 = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
+            wafv2.delete_web_acl(
+                Name=name,
+                Scope="REGIONAL",
+                Id=summary["Id"],
+                LockToken=get_resp2["LockToken"],
+            )
