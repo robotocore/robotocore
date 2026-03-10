@@ -14,6 +14,7 @@ Supported targets:
 
 import json
 import logging
+import re
 import time
 import uuid
 from typing import Any
@@ -386,9 +387,8 @@ def _dispatch_cloudwatch_logs(
 
 def _resolve_template(template: str, payload: dict[str, Any], topic: str) -> str:
     """Resolve ${...} template variables in action config values."""
-    import re as _re
 
-    def replacer(match: _re.Match) -> str:
+    def replacer(match: re.Match) -> str:
         expr = match.group(1)
         if expr == "topic()":
             return topic
@@ -404,7 +404,7 @@ def _resolve_template(template: str, payload: dict[str, Any], topic: str) -> str
                 return match.group(0)  # Leave unresolved
         return str(current)
 
-    return _re.sub(r"\$\{([^}]+)\}", replacer, template)
+    return re.sub(r"\$\{([^}]+)\}", replacer, template)
 
 
 # Target handler registry
