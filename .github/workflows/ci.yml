@@ -12,6 +12,34 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  prompt-log:
+    name: Prompt log check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for prompt log entry
+        run: |
+          CODE=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD \
+            | grep -E '^(src/|tests/|scripts/)' || true)
+          PROMPTS=$(git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
+            | grep '^prompts/' || true)
+          if [ -z "$CODE" ]; then
+            echo "✓ No source/test changes — prompt log not required."
+            exit 0
+          fi
+          if [ -z "$PROMPTS" ]; then
+            echo "✗ This PR changes source/tests but adds no prompt log."
+            echo ""
+            echo "  Add a file to prompts/YYYYMMDD-HHMMSS-<slug>.md documenting"
+            echo "  the human prompts and key assistant decisions in this PR."
+            echo "  See prompts/PROMPTLOG.md for format."
+            exit 1
+          fi
+          echo "✓ Prompt log present: $PROMPTS"
+
   lint:
     runs-on: ubuntu-latest
     steps:
