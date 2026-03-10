@@ -8,8 +8,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0.dev0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
+ARG HATCH_VCS_FALLBACK_VERSION=0.0.0.dev0
+ENV HATCH_VCS_FALLBACK_VERSION=${HATCH_VCS_FALLBACK_VERSION}
 
 # Install dependencies (layer cache: only re-runs when lockfile changes)
 # Split into two layers: heavy deps (moto, boto3 — rarely change) then the rest
@@ -64,11 +64,11 @@ RUN chown -R robotocore:robotocore /app /tmp/robotocore /etc/robotocore
 
 EXPOSE 4566
 
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0.dev0
+ARG HATCH_VCS_FALLBACK_VERSION=0.0.0.dev0
 ENV ROBOTOCORE_HOST=0.0.0.0
 ENV ROBOTOCORE_PORT=4566
 ENV MOTO_ALLOW_NONEXISTENT_REGION=true
-ENV ROBOTOCORE_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
+ENV ROBOTOCORE_VERSION=${HATCH_VCS_FALLBACK_VERSION}
 
 USER robotocore
 
