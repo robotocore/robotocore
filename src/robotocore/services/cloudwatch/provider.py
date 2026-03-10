@@ -784,7 +784,7 @@ async def handle_cloudwatch_request(request: Request, region: str, account_id: s
             return _error_response("InternalError", str(e), 500)
 
     # Fall back to Moto for everything else
-    return await forward_to_moto(request, "cloudwatch")
+    return await forward_to_moto(request, "cloudwatch", account_id=account_id)
 
 
 def _flatten_query_params(parsed: dict) -> dict:

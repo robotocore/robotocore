@@ -50,7 +50,7 @@ async def handle_apigateway_request(request: Request, region: str, account_id: s
         resource_arn = unquote(match.group(1))
         return await _handle_tags(request, method, resource_arn, account_id, region)
 
-    return await forward_to_moto(request, "apigateway")
+    return await forward_to_moto(request, "apigateway", account_id=account_id)
 
 
 async def _handle_tags(

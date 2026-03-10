@@ -41,7 +41,7 @@ async def handle_secretsmanager_request(request: Request, region: str, account_i
                 media_type="application/x-amz-json-1.1",
             )
 
-    return await forward_to_moto(request, "secretsmanager")
+    return await forward_to_moto(request, "secretsmanager", account_id=account_id)
 
 
 class _SMError(Exception):

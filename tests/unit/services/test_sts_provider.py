@@ -46,7 +46,7 @@ class TestSTSProvider:
         asyncio.get_event_loop().run_until_complete(
             handle_sts_request(request, "us-east-1", "123456789012")
         )
-        mock_forward.assert_called_once_with(request, "sts", body)
+        mock_forward.assert_called_once_with(request, "sts", body, account_id="123456789012")
 
     @patch("robotocore.services.sts.provider.forward_to_moto_with_body")
     def test_assume_role_forwards_to_moto(self, mock_forward):

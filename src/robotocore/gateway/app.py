@@ -373,7 +373,8 @@ async def resources_overview(request: Request) -> JSONResponse:
     """List resource counts per service."""
     from robotocore.resources.browser import get_resource_counts
 
-    counts = get_resource_counts()
+    account_id = request.query_params.get("account_id", DEFAULT_ACCOUNT_ID)
+    counts = get_resource_counts(account_id=account_id)
     return JSONResponse({"resources": counts})
 
 
@@ -382,7 +383,8 @@ async def resources_for_service(request: Request) -> JSONResponse:
     from robotocore.resources.browser import get_service_resources
 
     service = request.path_params["service"]
-    resources = get_service_resources(service)
+    account_id = request.query_params.get("account_id", DEFAULT_ACCOUNT_ID)
+    resources = get_service_resources(service, account_id=account_id)
     return JSONResponse({"service": service, "resources": resources})
 
 
@@ -441,7 +443,7 @@ async def handle_aws_request(request: Request) -> Response:
     if native_handler:
         response = await native_handler(request, context.region, context.account_id)
     else:
-        response = await forward_to_moto(request, service_name)
+        response = await forward_to_moto(request, service_name, account_id=account_id)
 
     # Run response handlers with the Moto response
     context.response = response

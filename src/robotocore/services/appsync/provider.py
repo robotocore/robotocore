@@ -356,7 +356,7 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
         # Fall through to Moto for ops not handled natively
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "appsync")
+        return await forward_to_moto(request, "appsync", account_id=account_id)
 
     except AppSyncError as e:
         return _error(e.code, e.message, e.status)

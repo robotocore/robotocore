@@ -68,7 +68,7 @@ async def handle_kinesis_request(request: Request, region: str, account_id: str)
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "kinesis")
+        return await forward_to_moto(request, "kinesis", account_id=account_id)
 
     store = _get_store(region)
 

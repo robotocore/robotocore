@@ -54,7 +54,7 @@ async def handle_dynamodbstreams_request(
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "dynamodbstreams")
+        return await forward_to_moto(request, "dynamodbstreams", account_id=account_id)
 
     try:
         result = handler(params, region, account_id)

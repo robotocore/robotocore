@@ -70,7 +70,7 @@ async def handle_sns_request(request: Request, region: str, account_id: str) -> 
         # Fall back to Moto for operations we don't intercept
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "sns")
+        return await forward_to_moto(request, "sns", account_id=account_id)
 
     try:
         result = handler(store, params, region, account_id, request)

@@ -59,7 +59,7 @@ async def handle_resource_groups_request(
         body = await request.body()
         return _update_account_settings(body)
 
-    return await forward_to_moto(request, "resource-groups")
+    return await forward_to_moto(request, "resource-groups", account_id=account_id)
 
 
 def _get_tags(arn: str, region: str, account_id: str) -> Response:

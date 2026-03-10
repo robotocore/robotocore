@@ -114,7 +114,7 @@ async def handle_firehose_request(request: Request, region: str, account_id: str
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "firehose")
+        return await forward_to_moto(request, "firehose", account_id=account_id)
 
     try:
         result = handler(params, region, account_id)

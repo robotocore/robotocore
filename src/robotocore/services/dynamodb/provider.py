@@ -50,7 +50,7 @@ async def handle_dynamodb_request(request: Request, region: str, account_id: str
             )
 
     # Forward to Moto
-    response = await forward_to_moto(request, "dynamodb")
+    response = await forward_to_moto(request, "dynamodb", account_id=account_id)
 
     # Only fire hooks on successful mutations
     if target in _MUTATION_OPS and 200 <= response.status_code < 300:
