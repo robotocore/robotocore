@@ -32,6 +32,7 @@ dependencies = [
     "jinja2>=3.1",
     "pyyaml>=6.0",
     "python-multipart>=0.0.6",
+    "aiosmtpd>=1.4",
 ]
 
 [project.optional-dependencies]
