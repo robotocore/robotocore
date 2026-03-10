@@ -10,6 +10,13 @@ import uuid
 from starlette.requests import Request
 from starlette.responses import Response
 
+from robotocore.services.lambda_.executor import get_code_cache
+from robotocore.services.lambda_.hot_reload import (
+    get_file_watcher,
+    get_mount_path,
+    is_hot_reload_enabled,
+    is_hot_reload_for_function,
+)
 from robotocore.services.lambda_.runtimes import get_executor_for_runtime
 
 logger = logging.getLogger(__name__)
@@ -206,6 +213,8 @@ async def _handle_functions(
                 spec = json.loads(body) if body else {}
                 qualifier = request.query_params.get("Qualifier")
                 result = backend.update_function_code(func_name, qualifier, spec)
+                # Invalidate code cache so next invocation picks up new code
+                get_code_cache().invalidate(func_name)
                 return _json(200, result if isinstance(result, dict) else _fn_config(result))
 
         # /functions/{name}/versions — PublishVersion / ListVersionsByFunction
@@ -1072,21 +1081,37 @@ async def _invoke(
     timeout = int(getattr(fn, "timeout", 3) or 3)
     memory_size = int(getattr(fn, "memory_size", 128) or 128)
 
+    # Hot reload: check for mounted code directory
+    code_dir = get_mount_path(func_name)
+    use_hot_reload = False
+    if code_dir:
+        use_hot_reload = is_hot_reload_enabled() or is_hot_reload_for_function(env_vars)
+        if use_hot_reload:
+            watcher = get_file_watcher()
+            if watcher.check_for_changes(func_name, code_dir):
+                get_code_cache().invalidate(func_name)
+
     result, error_type, logs = None, None, ""
 
-    if code_zip:
+    if code_dir or code_zip:
         executor = get_executor_for_runtime(runtime)
-        result, error_type, logs = executor.execute(
-            code_zip=code_zip,
-            handler=handler,
-            event=event,
-            function_name=func_name,
-            timeout=timeout,
-            memory_size=memory_size,
-            env_vars=env_vars,
-            region=region,
-            account_id=account_id,
-        )
+        # Build kwargs — pass code_dir/hot_reload for Python executor
+        kwargs: dict = {
+            "code_zip": code_zip or b"",
+            "handler": handler,
+            "event": event,
+            "function_name": func_name,
+            "timeout": timeout,
+            "memory_size": memory_size,
+            "env_vars": env_vars,
+            "region": region,
+            "account_id": account_id,
+        }
+        # Only PythonExecutor accepts code_dir/hot_reload
+        if code_dir:
+            kwargs["code_dir"] = code_dir
+            kwargs["hot_reload"] = use_hot_reload
+        result, error_type, logs = executor.execute(**kwargs)
     else:
         # No code — return a simple success (like Moto's simple mode)
         result, error_type, logs = "Simple Lambda happy path OK", None, ""

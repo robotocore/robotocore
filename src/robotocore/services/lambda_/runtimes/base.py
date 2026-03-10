@@ -1,13 +1,10 @@
 """Base subprocess executor shared by Node.js, Ruby, Java, .NET, and custom runtimes."""
 
-import io
 import json
 import logging
 import os
 import shutil
 import subprocess
-import tempfile
-import zipfile
 
 logger = logging.getLogger(__name__)
 
@@ -15,23 +12,26 @@ logger = logging.getLogger(__name__)
 def extract_code(
     code_zip: bytes,
     layer_zips: list[bytes] | None = None,
+    code_dir: str | None = None,
 ) -> str:
     """Extract code zip (and layers) to a temp directory. Returns the path.
 
-    Caller is responsible for cleanup via shutil.rmtree().
+    If code_dir is provided (e.g., from a mount directory), returns it directly
+    without extracting. Caller is responsible for cleanup via shutil.rmtree()
+    only when code_dir was NOT provided.
+
     Layers are extracted first so function code can override layer files.
     """
-    tmpdir = tempfile.mkdtemp(prefix="lambda_")
-    if layer_zips:
-        for layer_zip in layer_zips:
-            try:
-                with zipfile.ZipFile(io.BytesIO(layer_zip)) as zf:
-                    zf.extractall(tmpdir)
-            except Exception:
-                pass
-    with zipfile.ZipFile(io.BytesIO(code_zip)) as zf:
-        zf.extractall(tmpdir)
-    return tmpdir
+    if code_dir:
+        return code_dir
+
+    from robotocore.services.lambda_.executor import get_code_cache
+
+    return get_code_cache().get_or_extract(
+        function_name="__subprocess__",
+        code_zip=code_zip,
+        layer_zips=layer_zips,
+    )
 
 
 def build_env(

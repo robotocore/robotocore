@@ -5,7 +5,6 @@ import shutil
 
 from robotocore.services.lambda_.runtimes.base import (
     build_env,
-    cleanup,
     extract_code,
     run_subprocess,
 )
@@ -32,21 +31,16 @@ class RubyExecutor:
             return None, "Runtime.InvalidRuntime", "Ruby not installed"
 
         tmpdir = extract_code(code_zip, layer_zips)
-        try:
-            env = build_env(
-                function_name, region, account_id, timeout, memory_size, handler, env_vars
-            )
-            # Add load paths for layers (ruby/ subdirectory)
-            rubyopt_parts = []
-            ruby_dir = os.path.join(tmpdir, "ruby")
-            if os.path.isdir(ruby_dir):
-                rubyopt_parts.append(f"-I{ruby_dir}")
-            rubyopt_parts.append(f"-I{tmpdir}")
-            if rubyopt_parts:
-                env["RUBYOPT"] = " ".join(rubyopt_parts)
-            env["GEM_PATH"] = os.path.join(tmpdir, "ruby", "gems")
+        env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
+        # Add load paths for layers (ruby/ subdirectory)
+        rubyopt_parts = []
+        ruby_dir = os.path.join(tmpdir, "ruby")
+        if os.path.isdir(ruby_dir):
+            rubyopt_parts.append(f"-I{ruby_dir}")
+        rubyopt_parts.append(f"-I{tmpdir}")
+        if rubyopt_parts:
+            env["RUBYOPT"] = " ".join(rubyopt_parts)
+        env["GEM_PATH"] = os.path.join(tmpdir, "ruby", "gems")
 
-            cmd = [ruby_bin, BOOTSTRAP_RB]
-            return run_subprocess(cmd, event, tmpdir, env, timeout)
-        finally:
-            cleanup(tmpdir)
+        cmd = [ruby_bin, BOOTSTRAP_RB]
+        return run_subprocess(cmd, event, tmpdir, env, timeout)

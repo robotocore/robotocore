@@ -9,7 +9,6 @@ import stat
 
 from robotocore.services.lambda_.runtimes.base import (
     build_env,
-    cleanup,
     extract_code,
     run_subprocess,
 )
@@ -30,29 +29,24 @@ class CustomRuntimeExecutor:
         layer_zips: list[bytes] | None = None,
     ) -> tuple[dict | str | list | None, str | None, str]:
         tmpdir = extract_code(code_zip, layer_zips)
-        try:
-            env = build_env(
-                function_name, region, account_id, timeout, memory_size, handler, env_vars
+        env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
+
+        # Look for bootstrap executable
+        bootstrap_path = os.path.join(tmpdir, "bootstrap")
+        if not os.path.exists(bootstrap_path):
+            # Some packages name it after the handler
+            handler_base = handler.split(".")[0] if "." in handler else handler
+            bootstrap_path = os.path.join(tmpdir, handler_base)
+        if not os.path.exists(bootstrap_path):
+            return (
+                None,
+                "Runtime.InvalidEntrypoint",
+                "No 'bootstrap' executable found in code package",
             )
 
-            # Look for bootstrap executable
-            bootstrap_path = os.path.join(tmpdir, "bootstrap")
-            if not os.path.exists(bootstrap_path):
-                # Some packages name it after the handler
-                handler_base = handler.split(".")[0] if "." in handler else handler
-                bootstrap_path = os.path.join(tmpdir, handler_base)
-            if not os.path.exists(bootstrap_path):
-                return (
-                    None,
-                    "Runtime.InvalidEntrypoint",
-                    "No 'bootstrap' executable found in code package",
-                )
+        # Ensure it's executable
+        st = os.stat(bootstrap_path)
+        os.chmod(bootstrap_path, st.st_mode | stat.S_IEXEC)
 
-            # Ensure it's executable
-            st = os.stat(bootstrap_path)
-            os.chmod(bootstrap_path, st.st_mode | stat.S_IEXEC)
-
-            cmd = [bootstrap_path]
-            return run_subprocess(cmd, event, tmpdir, env, timeout)
-        finally:
-            cleanup(tmpdir)
+        cmd = [bootstrap_path]
+        return run_subprocess(cmd, event, tmpdir, env, timeout)

@@ -5,7 +5,6 @@ import shutil
 
 from robotocore.services.lambda_.runtimes.base import (
     build_env,
-    cleanup,
     extract_code,
     run_subprocess,
 )
@@ -32,25 +31,20 @@ class NodejsExecutor:
             return None, "Runtime.InvalidRuntime", "Node.js not installed"
 
         tmpdir = extract_code(code_zip, layer_zips)
-        try:
-            env = build_env(
-                function_name, region, account_id, timeout, memory_size, handler, env_vars
-            )
-            # Add node_modules from the extracted code to NODE_PATH
-            node_modules = os.path.join(tmpdir, "node_modules")
-            node_path_parts = [tmpdir]
-            if os.path.isdir(node_modules):
-                node_path_parts.append(node_modules)
-            # Layers may put Node modules in nodejs/node_modules
-            nodejs_dir = os.path.join(tmpdir, "nodejs")
-            if os.path.isdir(nodejs_dir):
-                node_path_parts.append(nodejs_dir)
-                nodejs_modules = os.path.join(nodejs_dir, "node_modules")
-                if os.path.isdir(nodejs_modules):
-                    node_path_parts.append(nodejs_modules)
-            env["NODE_PATH"] = os.pathsep.join(node_path_parts)
+        env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
+        # Add node_modules from the extracted code to NODE_PATH
+        node_modules = os.path.join(tmpdir, "node_modules")
+        node_path_parts = [tmpdir]
+        if os.path.isdir(node_modules):
+            node_path_parts.append(node_modules)
+        # Layers may put Node modules in nodejs/node_modules
+        nodejs_dir = os.path.join(tmpdir, "nodejs")
+        if os.path.isdir(nodejs_dir):
+            node_path_parts.append(nodejs_dir)
+            nodejs_modules = os.path.join(nodejs_dir, "node_modules")
+            if os.path.isdir(nodejs_modules):
+                node_path_parts.append(nodejs_modules)
+        env["NODE_PATH"] = os.pathsep.join(node_path_parts)
 
-            cmd = [node_bin, BOOTSTRAP_JS, handler]
-            return run_subprocess(cmd, event, tmpdir, env, timeout)
-        finally:
-            cleanup(tmpdir)
+        cmd = [node_bin, BOOTSTRAP_JS, handler]
+        return run_subprocess(cmd, event, tmpdir, env, timeout)
