@@ -389,12 +389,15 @@ jobs:
               aws_access_key_id='test', aws_secret_access_key='test',
               region_name='us-east-1')
           q = sqs.create_queue(QueueName='test-queue')
-          sqs.send_message(QueueUrl=q['QueueUrl'], MessageBody='hello')
-          time.sleep(0.5)
+          url = q['QueueUrl']
+          print('Queue URL:', url)
+          sqs.send_message(QueueUrl=url, MessageBody='hello')
+          time.sleep(1)
           msgs = []
-          for _ in range(10):
-              resp = sqs.receive_message(QueueUrl=q['QueueUrl'], MaxNumberOfMessages=1)
+          for i in range(10):
+              resp = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10, VisibilityTimeout=0)
               msgs = resp.get('Messages', [])
+              print(f'Attempt {i+1}: got {len(msgs)} messages')
               if msgs:
                   break
               time.sleep(1)
