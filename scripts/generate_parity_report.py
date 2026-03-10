@@ -119,6 +119,30 @@ def get_botocore_operations(service_name: str) -> list[str]:
         return []
 
 
+def get_operation_params(service_name: str) -> dict[str, list[str]]:
+    """Get required input parameters for each operation from botocore shapes."""
+    botocore_name = _BOTOCORE_NAME_MAP.get(service_name, service_name)
+    try:
+        import botocore.loaders
+
+        loader = botocore.loaders.Loader()
+        model = loader.load_service_model(botocore_name, "service-2")
+        ops = model.get("operations", {})
+        shapes = model.get("shapes", {})
+        result: dict[str, list[str]] = {}
+        for op_name, op_data in ops.items():
+            input_ref = op_data.get("input", {})
+            if not input_ref:
+                result[op_name] = []
+                continue
+            shape_name = input_ref.get("shape", "")
+            shape = shapes.get(shape_name, {})
+            result[op_name] = shape.get("required", [])
+        return result
+    except Exception:
+        return {}
+
+
 # --- Native provider operations ---
 
 # Complete map: registry service name → provider directory name.
@@ -648,11 +672,15 @@ def build_report(filter_service: str | None = None) -> dict:
         svc_tested = tested_ops.get(svc_name, set())
         valid_tested = svc_tested & botocore_set if botocore_set else svc_tested
 
+        op_params = get_operation_params(svc_name)
+
         services[svc_name] = {
             "status": svc_info.status.value,
             "protocol": svc_info.protocol,
             "description": svc_info.description,
             "total_aws_ops": len(botocore_ops),
+            "all_ops": botocore_ops,
+            "op_params": op_params,
             "implemented_ops": sorted(valid_implemented),
             "implemented_count": len(valid_implemented),
             "native_ops": sorted(set(native_ops) & botocore_set) if botocore_set else native_ops,

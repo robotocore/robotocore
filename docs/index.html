@@ -3,383 +3,534 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>robotocore — AWS Service Coverage</title>
+<title>robotocore — AWS API Coverage</title>
 <style>
   :root {
-    --bg: #f9f6ea;
-    --bg2: #f2eedf;
-    --border: #ddd5b0;
-    --text: #4a3d2a;
-    --muted: #8a7a60;
-    --gold: #c47e3a;
-    --gold-light: #f1d392;
-    --olive: #7d8258;
-    --warm: #d4a843;
-
-    /* Coverage tier colors */
-    --c100: #d4a843;
-    --c90:  #c8973a;
-    --c70:  #c47e3a;
-    --c40:  #8a9e5a;
-    --c20:  #7b8a6a;
-    --c0:   #c8bfa0;
+    --bg:      #f9f6ea;
+    --bg2:     #f2eedf;
+    --bg3:     #eae6d8;
+    --border:  #ddd5b0;
+    --text:    #3a2e1a;
+    --muted:   #8a7a60;
+    --gold:    #c47e3a;
+    --gold2:   #d4a843;
+    --olive:   #5a7040;
+    --code-bg: #1e1a14;
+    --code-fg: #f0e8d0;
+    --native-bg: #fff8e8;
+    --native-border: #d4a843;
+    --moto-bg: #f0f4e8;
+    --moto-border: #8aaa60;
+    --missing-fg: #a09070;
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'Courier New', Courier, monospace;
-    min-height: 100vh;
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
   }
 
-  header {
-    border-bottom: 1px solid var(--border);
-    padding: 20px 32px;
+  a { color: var(--gold); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg);
+    border-bottom: 2px solid var(--border);
+    padding: 0 32px;
+    height: 52px;
     display: flex;
-    align-items: baseline;
-    gap: 16px;
-    flex-wrap: wrap;
+    align-items: center;
+    gap: 24px;
   }
 
-  header h1 {
-    font-size: 20px;
+  .header-logo {
+    font-size: 18px;
     font-weight: bold;
     letter-spacing: -0.5px;
+    color: var(--text);
+    text-decoration: none;
   }
-  header h1 a { color: var(--text); text-decoration: none; }
-  header h1 a:hover { color: var(--gold); }
+  .header-logo:hover { color: var(--gold); text-decoration: none; }
+  .header-logo span { color: var(--gold); }
 
-  header .sub {
+  .header-title {
     font-size: 12px;
     color: var(--muted);
-    margin-left: auto;
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 
-  .stats-bar {
-    display: flex;
-    gap: 24px;
-    padding: 14px 32px;
+  .header-search {
+    margin-left: auto;
+    position: relative;
+  }
+  .header-search input {
+    width: 240px;
+    padding: 6px 12px 6px 32px;
+    font-family: inherit;
+    font-size: 13px;
     background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+  }
+  .header-search input:focus { outline: 2px solid var(--gold); }
+  .header-search::before {
+    content: '⌕';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 16px;
+    pointer-events: none;
+  }
+
+  .header-link {
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .header-link:hover { background: var(--bg2); color: var(--text); text-decoration: none; }
+
+  /* ── Overview strip ──────────────────────────────────────── */
+  .overview {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0;
     border-bottom: 1px solid var(--border);
+    max-height: 180px;
+    overflow: hidden;
+  }
+
+  /* Dot grid visual */
+  .dot-grid-wrap {
+    padding: 16px 20px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    background: var(--bg2);
+  }
+  .dot-grid-svg { display: block; }
+
+  /* Stats on the right */
+  .overview-stats {
+    padding: 20px 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .stat-row {
+    display: flex;
+    gap: 32px;
     flex-wrap: wrap;
   }
 
-  .stat {
+  .stat-item {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
-  .stat-value {
-    font-size: 22px;
+  .stat-num {
+    font-size: 26px;
     font-weight: bold;
     color: var(--gold);
     line-height: 1;
   }
-  .stat-label {
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-  }
-
-  .progress-bar {
-    flex: 1;
-    min-width: 200px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-  }
-  .progress-track {
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    border-radius: 3px;
-    background: linear-gradient(90deg, var(--c70), var(--c100));
-    transition: width 1s ease;
-  }
-  .progress-label {
-    font-size: 10px;
-    color: var(--muted);
-    display: flex;
-    justify-content: space-between;
-  }
-
-  .controls {
-    padding: 12px 32px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .controls label {
+  .stat-lbl {
     font-size: 11px;
     color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
+  }
+
+  .progress-set {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 380px;
+  }
+  .prog-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 44px;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .prog-track {
+    height: 7px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1.2s ease;
+  }
+  .prog-fill.impl { background: linear-gradient(90deg, var(--gold), var(--gold2)); }
+  .prog-fill.test { background: linear-gradient(90deg, var(--olive), #7aaa50); }
+  .prog-pct { font-weight: bold; color: var(--text); text-align: right; }
+
+  /* ── Controls ────────────────────────────────────────────── */
+  .controls {
+    padding: 10px 32px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    position: sticky;
+    top: 52px;
+    z-index: 90;
+  }
+
+  .ctl-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
   }
 
   .btn-group {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .btn-group button {
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .btn-group button:last-child { border-right: none; }
+  .btn-group button.active { background: var(--gold); color: white; font-weight: bold; }
+  .btn-group button:hover:not(.active) { background: var(--bg2); color: var(--text); }
+
+  .count-label {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Service list table ──────────────────────────────────── */
+  .table-header {
+    display: grid;
+    grid-template-columns: 200px 90px 1fr 110px 90px 32px;
+    padding: 8px 32px;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    border-bottom: 2px solid var(--border);
+    background: var(--bg2);
+    position: sticky;
+    top: 93px;
+    z-index: 89;
+  }
+
+  .service-list {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .service-item { border-bottom: 1px solid var(--border); }
+  .service-item:last-child { border-bottom: none; }
+
+  .svc-row {
+    display: grid;
+    grid-template-columns: 200px 90px 1fr 110px 90px 32px;
+    padding: 10px 32px;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .svc-row:hover { background: var(--bg2); }
+  .svc-row.expanded { background: var(--bg3); border-bottom: 1px solid var(--border); }
+
+  .svc-name {
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: -0.2px;
+    color: var(--text);
+  }
+
+  .svc-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: bold;
+  }
+  .svc-badge.native { background: var(--native-bg); color: #7a4010; border: 1px solid var(--native-border); }
+  .svc-badge.moto   { background: var(--moto-bg);   color: #2a4020; border: 1px solid var(--moto-border); }
+
+  .svc-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .svc-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .svc-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+  }
+  .svc-bar-pct {
+    font-size: 12px;
+    color: var(--muted);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  .svc-ops-count { font-size: 13px; color: var(--muted); }
+  .svc-ops-count strong { color: var(--text); }
+
+  .svc-tests-count { font-size: 13px; color: var(--muted); }
+  .svc-tests-count strong { color: var(--text); }
+
+  .svc-chevron {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    transition: transform 0.2s;
+  }
+  .svc-row.expanded .svc-chevron { transform: rotate(90deg); }
+
+  /* ── Expanded service panel ──────────────────────────────── */
+  .svc-panel {
+    display: none;
+    padding: 24px 32px 32px;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+  }
+  .svc-panel.open { display: block; }
+
+  .panel-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 32px;
+  }
+
+  /* Connect block */
+  .connect-block h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .code-block {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+    font-family: inherit;
+    border: 1px solid #3a3020;
+  }
+
+  .code-comment { color: #7a6a50; }
+  .code-kw { color: #d4a843; }
+  .code-str { color: #a8d080; }
+  .code-param { color: #a0c0e0; }
+  .code-val { color: #e0a060; }
+
+  /* Ops block */
+  .ops-block h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .ops-block h3 .ops-summary { font-size: 12px; color: var(--text); text-transform: none; letter-spacing: 0; }
+
+  .ops-filter {
     display: flex;
     gap: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
+    margin-bottom: 12px;
+    width: fit-content;
   }
-  .btn-group button {
-    padding: 4px 10px;
+  .ops-filter button {
+    padding: 3px 10px;
     font-family: inherit;
     font-size: 11px;
-    background: transparent;
     border: none;
-    cursor: pointer;
-    color: var(--muted);
     border-right: 1px solid var(--border);
-  }
-  .btn-group button:last-child { border-right: none; }
-  .btn-group button.active {
-    background: var(--gold);
-    color: white;
-  }
-  .btn-group button:hover:not(.active) { background: var(--bg2); }
-
-  input[type=search] {
-    padding: 4px 10px;
-    font-family: inherit;
-    font-size: 11px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text);
-    width: 180px;
-  }
-  input[type=search]:focus { outline: 1px solid var(--gold); }
-
-  /* Legend */
-  .legend {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    margin-left: auto;
-    flex-wrap: wrap;
-  }
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
+    cursor: pointer;
+    background: transparent;
     color: var(--muted);
   }
-  .legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
+  .ops-filter button:last-child { border-right: none; }
+  .ops-filter button.active { background: var(--bg3); color: var(--text); font-weight: bold; }
+  .ops-filter button:hover:not(.active) { background: var(--bg); }
 
-  /* Grid */
-  .grid-container {
-    padding: 20px 32px;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
-    gap: 6px;
-    max-width: 900px;
-  }
-
-  .service-cell {
-    aspect-ratio: 1;
-    border-radius: 8px;
+  .ops-grid {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    position: relative;
-    transition: transform 0.15s, box-shadow 0.15s;
-    border: 1.5px solid transparent;
-  }
-
-  .service-cell:hover {
-    transform: scale(1.12);
-    z-index: 10;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  }
-
-  .service-cell.native {
-    border-color: rgba(0,0,0,0.2);
-  }
-
-  .service-cell.dimmed {
-    opacity: 0.2;
-    transform: none !important;
-  }
-
-  .cell-pct {
-    font-size: 9px;
-    font-weight: bold;
-    line-height: 1;
-    color: rgba(255,255,255,0.9);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-  }
-  .cell-name {
-    font-size: 6px;
-    color: rgba(255,255,255,0.75);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0 2px;
-  }
-
-  /* Tooltip */
-  .tooltip {
-    display: none;
-    position: fixed;
-    background: #2a2218;
-    color: #f9f6ea;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 12px;
-    line-height: 1.6;
-    pointer-events: none;
-    z-index: 1000;
-    min-width: 200px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  }
-  .tooltip.visible { display: block; }
-  .tooltip-name { font-size: 14px; font-weight: bold; color: var(--gold-light); margin-bottom: 4px; }
-  .tooltip-badge {
-    display: inline-block;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
-  }
-  .badge-native { background: var(--gold); color: #2a2218; }
-  .badge-moto { background: #4a5a3a; color: #c8d4a8; }
-  .tooltip-row { display: flex; justify-content: space-between; gap: 16px; }
-  .tooltip-key { color: #a89870; }
-  .tooltip-val { font-weight: bold; }
-
-  /* Detail panel */
-  .detail-panel {
-    display: none;
-    padding: 20px 32px;
-    border-top: 1px solid var(--border);
-    background: var(--bg2);
-  }
-  .detail-panel.visible { display: block; }
-  .detail-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-  .detail-header h2 { font-size: 20px; }
-  .detail-header .close-btn {
-    margin-left: auto;
-    cursor: pointer;
-    font-size: 18px;
-    color: var(--muted);
-    background: none;
-    border: none;
-    font-family: inherit;
-    padding: 0 4px;
-  }
-  .detail-header .close-btn:hover { color: var(--text); }
-
-  .detail-ops {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    max-height: 300px;
+    gap: 3px;
+    max-height: 420px;
     overflow-y: auto;
   }
-  .op-tag {
-    padding: 3px 8px;
-    border-radius: 4px;
+
+  .op-row {
+    display: grid;
+    grid-template-columns: 260px 90px 1fr;
+    gap: 8px;
+    align-items: baseline;
+    padding: 5px 8px;
+    border-radius: 5px;
+    font-size: 12.5px;
+  }
+  .op-row.native { background: var(--native-bg); border-left: 3px solid var(--native-border); }
+  .op-row.moto   { background: var(--moto-bg);   border-left: 3px solid var(--moto-border); }
+  .op-row.missing {
+    opacity: 0.55;
+    border-left: 3px solid transparent;
+    padding-left: 11px;
+  }
+  .op-row.hidden-op { display: none; }
+
+  .op-name { font-weight: bold; color: var(--text); }
+  .op-row.missing .op-name { text-decoration: line-through; color: var(--muted); }
+
+  .op-status {
     font-size: 10px;
     font-weight: bold;
-    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
   }
-  .op-impl { background: #e8f0d8; color: #3a4a2a; border: 1px solid #b8c8a0; }
-  .op-missing { background: #f0e8d8; color: #4a3a2a; border: 1px solid #c8b890; opacity: 0.7; }
-  .op-native { background: #f8e8c0; color: #4a3010; border: 1px solid #d4a843; }
+  .op-status.native { color: #7a4010; }
+  .op-status.moto   { color: #2a5020; }
+  .op-status.missing { color: var(--muted); }
 
-  /* Updated timestamp */
-  .updated-at {
-    font-size: 10px;
+  .op-params {
+    font-size: 11.5px;
     color: var(--muted);
-    padding: 8px 32px;
+    font-style: italic;
+  }
+  .op-params .req { color: var(--text); font-style: normal; }
+
+  /* ── Legend strip ────────────────────────────────────────── */
+  .legend-strip {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 12px;
     border-top: 1px solid var(--border);
-    text-align: right;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Footer ──────────────────────────────────────────────── */
+  .footer {
+    padding: 16px 32px;
+    font-size: 11px;
+    color: var(--muted);
+    border-top: 2px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 </style>
 </head>
 <body>
 
-<header>
-  <h1><a href="https://github.com/robotocore/robotocore">robotocore</a></h1>
-  <span style="color:var(--muted);font-size:14px">AWS Service Coverage</span>
-  <span class="sub" id="updated-label"></span>
+<!-- Header -->
+<header class="header">
+  <a class="header-logo" href="https://github.com/robotocore/robotocore">roboto<span>core</span></a>
+  <span class="header-title">AWS API Coverage</span>
+  <div class="header-search">
+    <input type="search" id="search" placeholder="Filter services…" autocomplete="off">
+  </div>
+  <a class="header-link" href="https://github.com/robotocore/robotocore" target="_blank">GitHub ↗</a>
+  <a class="header-link" href="https://hub.docker.com/r/robotocore/robotocore" target="_blank">Docker ↗</a>
 </header>
 
-<div class="stats-bar">
-  <div class="stat">
-    <span class="stat-value" id="stat-services">—</span>
-    <span class="stat-label">Services</span>
+<!-- Overview -->
+<div class="overview">
+  <div class="dot-grid-wrap">
+    <svg class="dot-grid-svg" id="dot-svg" width="220" height="148" viewBox="0 0 220 148"></svg>
   </div>
-  <div class="stat">
-    <span class="stat-value" id="stat-native">—</span>
-    <span class="stat-label">Native providers</span>
-  </div>
-  <div class="stat">
-    <span class="stat-value" id="stat-impl">—</span>
-    <span class="stat-label">Ops implemented</span>
-  </div>
-  <div class="stat">
-    <span class="stat-value" id="stat-tests">—</span>
-    <span class="stat-label">Test methods</span>
-  </div>
-  <div class="progress-bar">
-    <div class="progress-track">
-      <div class="progress-fill" id="impl-bar" style="width:0%"></div>
+  <div class="overview-stats">
+    <div class="stat-row">
+      <div class="stat-item">
+        <span class="stat-num" id="stat-services">—</span>
+        <span class="stat-lbl">Services</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="stat-native">—</span>
+        <span class="stat-lbl">Native providers</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="stat-impl">—</span>
+        <span class="stat-lbl">Ops implemented</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="stat-tests">—</span>
+        <span class="stat-lbl">Test methods</span>
+      </div>
     </div>
-    <div class="progress-label">
-      <span>Implementation</span>
-      <span id="impl-pct">—</span>
-    </div>
-    <div class="progress-track" style="margin-top:6px">
-      <div class="progress-fill" id="test-bar" style="width:0%;background:linear-gradient(90deg,var(--c40),var(--c70))"></div>
-    </div>
-    <div class="progress-label">
-      <span>Test coverage</span>
-      <span id="test-pct">—</span>
+    <div class="progress-set">
+      <div class="prog-row">
+        <span>Implementation</span>
+        <div class="prog-track"><div class="prog-fill impl" id="impl-bar" style="width:0%"></div></div>
+        <span class="prog-pct" id="impl-pct">—</span>
+      </div>
+      <div class="prog-row">
+        <span>Test coverage</span>
+        <div class="prog-track"><div class="prog-fill test" id="test-bar" style="width:0%"></div></div>
+        <span class="prog-pct" id="test-pct">—</span>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- Controls -->
 <div class="controls">
-  <label>Sort</label>
-  <div class="btn-group" id="sort-group">
-    <button class="active" data-sort="alpha">A–Z</button>
-    <button data-sort="coverage">Coverage</button>
-    <button data-sort="ops">Op count</button>
-  </div>
-  <label>Filter</label>
+  <span class="ctl-label">Filter</span>
   <div class="btn-group" id="filter-group">
     <button class="active" data-filter="all">All</button>
     <button data-filter="native">Native</button>
@@ -388,227 +539,326 @@
     <button data-filter="partial">Partial</button>
     <button data-filter="none">0%</button>
   </div>
-  <input type="search" id="search" placeholder="search services…">
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:var(--c100)"></div>90–100%</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--c70)"></div>70–89%</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--c40)"></div>40–69%</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--c20)"></div>1–39%</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--c0)"></div>0%</div>
-    <div class="legend-item" style="margin-left:4px"><div class="legend-dot" style="border:1.5px solid #888;background:transparent"></div>native</div>
+  <span class="ctl-label">Sort</span>
+  <div class="btn-group" id="sort-group">
+    <button class="active" data-sort="alpha">A–Z</button>
+    <button data-sort="coverage">Coverage</button>
+    <button data-sort="ops">Op count</button>
+    <button data-sort="tests">Tests</button>
   </div>
+  <span class="count-label" id="count-label"></span>
 </div>
 
-<div class="grid-container">
-  <div class="grid" id="grid"></div>
+<!-- Table header -->
+<div class="table-header">
+  <span>Service</span>
+  <span>Provider</span>
+  <span>Implementation</span>
+  <span>AWS ops</span>
+  <span>Tests</span>
+  <span></span>
 </div>
 
-<div class="detail-panel" id="detail">
-  <div class="detail-header">
-    <h2 id="detail-name"></h2>
-    <span id="detail-badge" class="tooltip-badge"></span>
-    <span id="detail-stats" style="font-size:12px;color:var(--muted)"></span>
-    <button class="close-btn" onclick="closeDetail()">✕</button>
-  </div>
-  <div class="detail-ops" id="detail-ops"></div>
+<!-- Service list -->
+<div class="service-list" id="service-list"></div>
+
+<!-- Footer -->
+<div class="footer">
+  <span id="footer-generated"></span>
+  <span>
+    <a href="https://github.com/robotocore/robotocore">robotocore</a> ·
+    MIT License · Free forever
+  </span>
 </div>
-
-<div class="tooltip" id="tooltip"></div>
-
-<div class="updated-at" id="updated-footer"></div>
 
 <script>
-// Data injected at build time
+// ── Data ────────────────────────────────────────────────────
 const PARITY_DATA = DATA_PLACEHOLDER;
-
 const { services: rawServices, summary } = PARITY_DATA;
 
-// Flatten to array
 const services = Object.entries(rawServices).map(([name, s]) => ({
   name,
-  impl_pct: s.impl_pct || 0,
-  test_pct: s.test_pct || 0,
-  total: s.total_aws_ops || 0,
-  impl: s.implemented_count || 0,
-  tested: s.tested_count || 0,
-  native: s.status === 'native',
-  impl_ops: s.implemented_ops || [],
-  native_ops: s.native_ops || [],
-  moto_ops: s.moto_ops || [],
-  all_ops: (s.implemented_ops || []).concat(
-    (s.total_aws_ops || 0) > (s.implemented_count || 0)
-      ? ['…' + ((s.total_aws_ops||0) - (s.implemented_count||0)) + ' more not implemented']
-      : []
-  ),
+  impl_pct:   s.impl_pct || 0,
+  test_pct:   s.test_pct || 0,
+  total:      s.total_aws_ops || 0,
+  impl:       s.implemented_count || 0,
+  tested:     s.tested_count || 0,
+  tests:      s.test_method_count || 0,
+  native:     s.status === 'native',
+  status:     s.status || 'moto_backed',
+  protocol:   s.protocol || '',
+  description: s.description || '',
+  all_ops:    s.all_ops || [],
+  impl_ops:   new Set(s.implemented_ops || []),
+  native_ops: new Set(s.native_ops || []),
+  moto_ops:   new Set(s.moto_ops || []),
+  tested_ops: new Set(s.tested_ops || []),
+  op_params:  s.op_params || {},
 }));
 
-// Stats
+// ── Stats ────────────────────────────────────────────────────
 document.getElementById('stat-services').textContent = summary.total_services;
-document.getElementById('stat-native').textContent = summary.native_services;
-document.getElementById('stat-impl').textContent = summary.total_implemented.toLocaleString() + ' / ' + summary.total_aws_operations.toLocaleString();
-document.getElementById('stat-tests').textContent = (summary.total_test_methods || 0).toLocaleString();
-const ip = summary.impl_pct.toFixed(1);
-const tp = summary.test_pct.toFixed(1);
+document.getElementById('stat-native').textContent   = summary.native_services;
+document.getElementById('stat-impl').textContent     =
+  (summary.total_implemented||0).toLocaleString() + ' / ' + (summary.total_aws_operations||0).toLocaleString();
+document.getElementById('stat-tests').textContent    = (summary.total_test_methods||0).toLocaleString();
+
+const ip = (summary.impl_pct||0).toFixed(1);
+const tp = (summary.test_pct||0).toFixed(1);
 document.getElementById('impl-pct').textContent = ip + '%';
 document.getElementById('test-pct').textContent = tp + '%';
 setTimeout(() => {
   document.getElementById('impl-bar').style.width = ip + '%';
   document.getElementById('test-bar').style.width = tp + '%';
-}, 100);
+}, 80);
 
-// Updated timestamp
 if (PARITY_DATA.generated_at) {
   const d = new Date(PARITY_DATA.generated_at);
-  const s = d.toUTCString();
-  document.getElementById('updated-label').textContent = 'Updated ' + s;
-  document.getElementById('updated-footer').textContent = 'Data generated ' + s + ' · robotocore/' + (PARITY_DATA.commit || 'main');
+  document.getElementById('footer-generated').textContent =
+    'Generated ' + d.toUTCString() + ' · ' + (PARITY_DATA.commit || 'main');
 }
 
-// Color by coverage
-function cellColor(pct) {
+// ── Dot grid ─────────────────────────────────────────────────
+function renderDots(svcs) {
+  const svg = document.getElementById('dot-svg');
+  const cols = 20, r = 5, gap = 11;
+  const w = cols * gap, rows = Math.ceil(svcs.length / cols);
+  svg.setAttribute('viewBox', `0 0 ${w} ${rows * gap}`);
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', rows * gap);
+  svg.innerHTML = '';
+  svcs.forEach((s, i) => {
+    const cx = (i % cols) * gap + r, cy = Math.floor(i / cols) * gap + r;
+    const pct = s.impl_pct;
+    const fill = pct >= 90 ? '#c9953a' : pct >= 70 ? '#b87030' : pct >= 40 ? '#7a9050' : pct >= 1 ? '#6a7a5a' : '#c8bf98';
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r - 1);
+    c.setAttribute('fill', fill);
+    if (s.native) { c.setAttribute('stroke', 'rgba(255,255,255,0.5)'); c.setAttribute('stroke-width', '1.5'); }
+    svg.appendChild(c);
+  });
+}
+
+// ── Color helpers ─────────────────────────────────────────────
+function barColor(pct) {
   if (pct >= 90) return '#c9953a';
   if (pct >= 70) return '#b87030';
   if (pct >= 40) return '#7a9050';
   if (pct >= 1)  return '#6a7a5a';
-  return '#b8af90';
-}
-function textColor(pct) {
-  return pct === 0 ? '#7a7060' : 'rgba(255,255,255,0.95)';
+  return '#c8bf98';
 }
 
-// State
-let sortMode = 'alpha';
+// ── State ─────────────────────────────────────────────────────
+let sortMode   = 'alpha';
 let filterMode = 'all';
-let searchQuery = '';
-let activeService = null;
+let searchQ    = '';
+let openService = null;
 
-function sortedFiltered() {
+function filtered() {
   let list = [...services];
-  // Filter
-  if (filterMode === 'native') list = list.filter(s => s.native);
-  else if (filterMode === 'moto') list = list.filter(s => !s.native);
-  else if (filterMode === 'full') list = list.filter(s => s.impl_pct >= 99);
-  else if (filterMode === 'partial') list = list.filter(s => s.impl_pct > 0 && s.impl_pct < 99);
-  else if (filterMode === 'none') list = list.filter(s => s.impl_pct === 0);
-  // Search
-  if (searchQuery) list = list.filter(s => s.name.includes(searchQuery.toLowerCase()));
-  // Sort
+  if (filterMode === 'native')  list = list.filter(s => s.native);
+  if (filterMode === 'moto')    list = list.filter(s => !s.native);
+  if (filterMode === 'full')    list = list.filter(s => s.impl_pct >= 99);
+  if (filterMode === 'partial') list = list.filter(s => s.impl_pct > 0 && s.impl_pct < 99);
+  if (filterMode === 'none')    list = list.filter(s => s.impl_pct === 0);
+  if (searchQ) list = list.filter(s => s.name.toLowerCase().includes(searchQ));
   if (sortMode === 'coverage') list.sort((a,b) => b.impl_pct - a.impl_pct);
   else if (sortMode === 'ops') list.sort((a,b) => b.total - a.total);
+  else if (sortMode === 'tests') list.sort((a,b) => b.tests - a.tests);
   else list.sort((a,b) => a.name.localeCompare(b.name));
   return list;
 }
 
-function renderGrid() {
-  const grid = document.getElementById('grid');
-  const list = sortedFiltered();
-  const allNames = new Set(list.map(s => s.name));
-  grid.innerHTML = '';
+// ── Render operations ─────────────────────────────────────────
+function renderOps(svc, opsFilter) {
+  const ops = svc.all_ops;
+  if (!ops.length) return '<div style="color:var(--muted);font-size:12px">No operation data</div>';
+
+  const rows = ops.map(op => {
+    const isImpl   = svc.impl_ops.has(op);
+    const isNative = svc.native_ops.has(op);
+    const isMoto   = svc.moto_ops.has(op);
+    const params   = svc.op_params[op] || [];
+
+    let cls = isImpl ? (isNative ? 'native' : 'moto') : 'missing';
+    let statusHtml = isNative
+      ? '<span class="op-status native">● native</span>'
+      : isMoto
+      ? '<span class="op-status moto">● moto</span>'
+      : '<span class="op-status missing">✗ not impl</span>';
+
+    let paramsHtml = '';
+    if (params.length > 0) {
+      paramsHtml = params.map(p => `<span class="req">${p}</span>`).join(', ');
+    } else {
+      paramsHtml = '<span style="opacity:0.5">—</span>';
+    }
+
+    const hidden = (opsFilter === 'impl' && !isImpl) || (opsFilter === 'missing' && isImpl) ? ' hidden-op' : '';
+    return `<div class="op-row ${cls}${hidden}">
+      <span class="op-name">${op}</span>
+      ${statusHtml}
+      <span class="op-params">${paramsHtml}</span>
+    </div>`;
+  }).join('');
+
+  return rows;
+}
+
+// ── Render connect snippet ────────────────────────────────────
+function renderSnippet(svc) {
+  const n = svc.name;
+  return `<div class="code-block"><span class="code-kw">import</span> boto3
+
+client = boto3.<span class="code-kw">client</span>(
+    <span class="code-str">'${n}'</span>,
+    endpoint_url=<span class="code-str">'http://localhost:4566'</span>,
+    region_name=<span class="code-str">'us-east-1'</span>,
+    aws_access_key_id=<span class="code-str">'test'</span>,
+    aws_secret_access_key=<span class="code-str">'test'</span>,
+)
+
+<span class="code-comment"># ${svc.impl} of ${svc.total} operations implemented (${svc.impl_pct.toFixed(0)}%)</span>
+<span class="code-comment"># ${svc.tests} test methods</span></div>`;
+}
+
+// ── Render full list ──────────────────────────────────────────
+function renderList() {
+  const list = filtered();
+  const el = document.getElementById('service-list');
+
+  renderDots(list.length ? list : services.slice().sort((a,b) => a.name.localeCompare(b.name)));
+  document.getElementById('count-label').textContent =
+    list.length + ' service' + (list.length !== 1 ? 's' : '');
+
+  el.innerHTML = '';
+
   list.forEach(svc => {
-    const pct = Math.round(svc.impl_pct);
-    const bg = cellColor(pct);
-    const tc = textColor(pct);
-    const cell = document.createElement('div');
-    cell.className = 'service-cell' + (svc.native ? ' native' : '');
-    cell.style.background = bg;
-    if (svc.native) cell.style.borderColor = 'rgba(255,255,255,0.35)';
-    cell.dataset.name = svc.name;
-    cell.innerHTML = `<span class="cell-pct" style="color:${tc}">${pct}%</span><span class="cell-name" style="color:${tc}">${svc.name}</span>`;
-    cell.addEventListener('mouseenter', e => showTooltip(e, svc));
-    cell.addEventListener('mouseleave', hideTooltip);
-    cell.addEventListener('mousemove', moveTooltip);
-    cell.addEventListener('click', () => showDetail(svc));
-    grid.appendChild(cell);
+    const pct = svc.impl_pct.toFixed(1);
+    const fill = barColor(svc.impl_pct);
+    const isOpen = openService === svc.name;
+
+    const item = document.createElement('div');
+    item.className = 'service-item';
+    item.id = 'item-' + svc.name;
+
+    item.innerHTML = `
+      <div class="svc-row${isOpen ? ' expanded' : ''}" data-svc="${svc.name}">
+        <span class="svc-name">${svc.name}</span>
+        <span class="svc-badge ${svc.native ? 'native' : 'moto'}">${svc.native ? 'native' : 'moto'}</span>
+        <div class="svc-bar-wrap">
+          <div class="svc-bar-track">
+            <div class="svc-bar-fill" style="width:${pct}%;background:${fill}"></div>
+          </div>
+          <span class="svc-bar-pct">${pct}%</span>
+        </div>
+        <span class="svc-ops-count"><strong>${svc.impl}</strong> / ${svc.total}</span>
+        <span class="svc-tests-count"><strong>${svc.tests}</strong></span>
+        <span class="svc-chevron">▶</span>
+      </div>
+      <div class="svc-panel${isOpen ? ' open' : ''}" id="panel-${svc.name}">
+        <div class="panel-grid">
+          <div class="connect-block">
+            <h3>Connect with boto3</h3>
+            ${renderSnippet(svc)}
+            ${svc.description ? `<p style="margin-top:10px;font-size:12px;color:var(--muted)">${svc.description}</p>` : ''}
+          </div>
+          <div class="ops-block">
+            <h3>
+              Operations
+              <span class="ops-summary">${svc.impl} implemented · ${svc.total - svc.impl} missing</span>
+            </h3>
+            <div class="ops-filter" data-svc="${svc.name}">
+              <button class="active" data-of="all">All (${svc.total})</button>
+              <button data-of="impl">Implemented (${svc.impl})</button>
+              <button data-of="missing">Missing (${svc.total - svc.impl})</button>
+            </div>
+            <div class="ops-grid" id="ops-${svc.name}">
+              ${renderOps(svc, 'all')}
+            </div>
+            <div class="legend-strip">
+              <div class="legend-item"><div class="legend-dot" style="background:var(--native-border)"></div>Native provider</div>
+              <div class="legend-item"><div class="legend-dot" style="background:var(--moto-border)"></div>Moto-backed</div>
+              <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div>Not implemented</div>
+              <span style="margin-left:auto;font-size:11px;color:var(--muted)">Required params shown · <a href="https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/${svc.name}.html" target="_blank">AWS docs ↗</a></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    el.appendChild(item);
   });
 }
 
-// Tooltip
-const tooltip = document.getElementById('tooltip');
-function showTooltip(e, svc) {
-  const pct = svc.impl_pct.toFixed(1);
-  const tpct = svc.test_pct.toFixed(1);
-  tooltip.innerHTML = `
-    <div class="tooltip-name">${svc.name}</div>
-    <span class="tooltip-badge ${svc.native ? 'badge-native' : 'badge-moto'}">${svc.native ? 'native' : 'moto-backed'}</span>
-    <div class="tooltip-row"><span class="tooltip-key">implemented</span><span class="tooltip-val">${svc.impl} / ${svc.total} (${pct}%)</span></div>
-    <div class="tooltip-row"><span class="tooltip-key">tested</span><span class="tooltip-val">${svc.tested} / ${svc.total} (${tpct}%)</span></div>
-  `;
-  tooltip.classList.add('visible');
-  moveTooltip(e);
-}
-function hideTooltip() { tooltip.classList.remove('visible'); }
-function moveTooltip(e) {
-  const x = e.clientX + 16, y = e.clientY - 10;
-  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-  tooltip.style.left = (x + tw > window.innerWidth ? x - tw - 32 : x) + 'px';
-  tooltip.style.top  = (y + th > window.innerHeight ? y - th : y) + 'px';
-}
+// ── Toggle detail panel ───────────────────────────────────────
+document.getElementById('service-list').addEventListener('click', e => {
+  const row = e.target.closest('.svc-row');
+  const ofBtn = e.target.closest('.ops-filter button');
 
-// Detail panel
-function showDetail(svc) {
-  activeService = svc.name;
-  document.getElementById('detail-name').textContent = svc.name;
-  document.getElementById('detail-badge').textContent = svc.native ? 'native' : 'moto-backed';
-  document.getElementById('detail-badge').className = 'tooltip-badge ' + (svc.native ? 'badge-native' : 'badge-moto');
-  document.getElementById('detail-stats').textContent =
-    `${svc.impl} / ${svc.total} ops implemented (${svc.impl_pct.toFixed(1)}%)  ·  ${svc.tested} tested (${svc.test_pct.toFixed(1)}%)`;
-  const opsEl = document.getElementById('detail-ops');
-  opsEl.innerHTML = '';
-  // Native ops first (gold), then moto ops (green), then missing ops (muted)
-  const allImpl = new Set([...svc.native_ops, ...svc.moto_ops]);
-  svc.native_ops.forEach(op => {
-    const tag = document.createElement('span');
-    tag.className = 'op-tag op-native';
-    tag.textContent = op;
-    opsEl.appendChild(tag);
-  });
-  svc.moto_ops.forEach(op => {
-    const tag = document.createElement('span');
-    tag.className = 'op-tag op-impl';
-    tag.textContent = op;
-    opsEl.appendChild(tag);
-  });
-  // Figure out missing: not in implemented_ops
-  const implSet = new Set(svc.impl_ops);
-  // We don't have the full list of AWS ops easily, but we can show the count
-  if (svc.total > svc.impl) {
-    const tag = document.createElement('span');
-    tag.className = 'op-tag op-missing';
-    tag.textContent = `+ ${svc.total - svc.impl} not implemented`;
-    opsEl.appendChild(tag);
+  if (ofBtn) {
+    e.stopPropagation();
+    const svcName = ofBtn.closest('.ops-filter').dataset.svc;
+    const filter = ofBtn.dataset.of;
+    ofBtn.closest('.ops-filter').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    ofBtn.classList.add('active');
+    const svc = services.find(s => s.name === svcName);
+    document.getElementById('ops-' + svcName).innerHTML = renderOps(svc, filter);
+    return;
   }
-  document.getElementById('detail').classList.add('visible');
-  document.getElementById('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-function closeDetail() {
-  document.getElementById('detail').classList.remove('visible');
-  activeService = null;
-}
 
-// Controls
-document.getElementById('sort-group').addEventListener('click', e => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  document.querySelectorAll('#sort-group button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  sortMode = btn.dataset.sort;
-  renderGrid();
+  if (!row) return;
+  const svcName = row.dataset.svc;
+
+  if (openService === svcName) {
+    openService = null;
+    row.classList.remove('expanded');
+    document.getElementById('panel-' + svcName).classList.remove('open');
+  } else {
+    // Close previous
+    if (openService) {
+      const prevRow = document.querySelector(`.svc-row[data-svc="${openService}"]`);
+      if (prevRow) prevRow.classList.remove('expanded');
+      const prevPanel = document.getElementById('panel-' + openService);
+      if (prevPanel) prevPanel.classList.remove('open');
+    }
+    openService = svcName;
+    row.classList.add('expanded');
+    document.getElementById('panel-' + svcName).classList.add('open');
+    // Scroll into view if panel is below viewport
+    setTimeout(() => {
+      document.getElementById('panel-' + svcName).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+  }
 });
+
+// ── Controls ──────────────────────────────────────────────────
 document.getElementById('filter-group').addEventListener('click', e => {
   const btn = e.target.closest('button');
   if (!btn) return;
   document.querySelectorAll('#filter-group button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   filterMode = btn.dataset.filter;
-  renderGrid();
-});
-document.getElementById('search').addEventListener('input', e => {
-  searchQuery = e.target.value.trim();
-  renderGrid();
+  openService = null;
+  renderList();
 });
 
-// Initial render
-renderGrid();
+document.getElementById('sort-group').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#sort-group button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  sortMode = btn.dataset.sort;
+  renderList();
+});
+
+document.getElementById('search').addEventListener('input', e => {
+  searchQ = e.target.value.trim().toLowerCase();
+  renderList();
+});
+
+// ── Initial render ────────────────────────────────────────────
+renderList();
 </script>
 </body>
 </html>
