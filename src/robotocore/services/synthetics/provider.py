@@ -109,7 +109,7 @@ def _handle_get_canary_runs(canary_name: str, region: str, account_id: str) -> R
             )
             return Response(content=body, status_code=404, media_type="application/json")
     except Exception:
-        pass
+        pass  # best-effort; failures are non-fatal
 
     # Get runs from our executor store
     runs = get_runs(account_id, region, canary_name)
