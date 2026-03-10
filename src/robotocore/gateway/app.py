@@ -40,6 +40,7 @@ from robotocore.services.dynamodbstreams.provider import handle_dynamodbstreams_
 from robotocore.services.ec2.provider import handle_ec2_request
 from robotocore.services.ecr.provider import handle_ecr_request
 from robotocore.services.ecs.provider import handle_ecs_request
+from robotocore.services.eks.provider import handle_eks_request
 from robotocore.services.events.provider import handle_events_request
 from robotocore.services.firehose.provider import handle_firehose_request
 from robotocore.services.iam.provider import handle_iam_request
@@ -77,6 +78,7 @@ NATIVE_PROVIDERS = {
     "dynamodb": handle_dynamodb_request,
     "dynamodbstreams": handle_dynamodbstreams_request,
     "ecs": handle_ecs_request,
+    "eks": handle_eks_request,
     "events": handle_events_request,
     "firehose": handle_firehose_request,
     "kinesis": handle_kinesis_request,

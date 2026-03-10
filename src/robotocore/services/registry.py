@@ -173,7 +173,9 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "ec2instanceconnect", ServiceStatus.MOTO_BACKED, "json", "EC2 Instance Connect"
     ),
     "efs": ServiceInfo("efs", ServiceStatus.MOTO_BACKED, "rest-json", "Elastic File System"),
-    "eks": ServiceInfo("eks", ServiceStatus.MOTO_BACKED, "rest-json", "Elastic Kubernetes Service"),
+    "eks": ServiceInfo(
+        "eks", ServiceStatus.NATIVE, "rest-json", "Elastic Kubernetes Service with mock K8s API"
+    ),
     "elasticache": ServiceInfo(
         "elasticache", ServiceStatus.MOTO_BACKED, "query", "ElastiCache (Redis/Memcached)"
     ),
