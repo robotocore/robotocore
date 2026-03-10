@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>robotocore — AWS Service Coverage</title>
+<style>
+  :root {
+    --bg: #f9f6ea;
+    --bg2: #f2eedf;
+    --border: #ddd5b0;
+    --text: #4a3d2a;
+    --muted: #8a7a60;
+    --gold: #c47e3a;
+    --gold-light: #f1d392;
+    --olive: #7d8258;
+    --warm: #d4a843;
+
+    /* Coverage tier colors */
+    --c100: #d4a843;
+    --c90:  #c8973a;
+    --c70:  #c47e3a;
+    --c40:  #8a9e5a;
+    --c20:  #7b8a6a;
+    --c0:   #c8bfa0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    min-height: 100vh;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: -0.5px;
+  }
+  header h1 a { color: var(--text); text-decoration: none; }
+  header h1 a:hover { color: var(--gold); }
+
+  header .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+    padding: 14px 32px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat-value {
+    font-size: 22px;
+    font-weight: bold;
+    color: var(--gold);
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .progress-bar {
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .progress-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--c70), var(--c100));
+    transition: width 1s ease;
+  }
+  .progress-label {
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .controls {
+    padding: 12px 32px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .controls label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .btn-group {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .btn-group button {
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    border-right: 1px solid var(--border);
+  }
+  .btn-group button:last-child { border-right: none; }
+  .btn-group button.active {
+    background: var(--gold);
+    color: white;
+  }
+  .btn-group button:hover:not(.active) { background: var(--bg2); }
+
+  input[type=search] {
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    width: 180px;
+  }
+  input[type=search]:focus { outline: 1px solid var(--gold); }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  /* Grid */
+  .grid-container {
+    padding: 20px 32px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+    gap: 6px;
+    max-width: 900px;
+  }
+
+  .service-cell {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.15s, box-shadow 0.15s;
+    border: 1.5px solid transparent;
+  }
+
+  .service-cell:hover {
+    transform: scale(1.12);
+    z-index: 10;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+
+  .service-cell.native {
+    border-color: rgba(0,0,0,0.2);
+  }
+
+  .service-cell.dimmed {
+    opacity: 0.2;
+    transform: none !important;
+  }
+
+  .cell-pct {
+    font-size: 9px;
+    font-weight: bold;
+    line-height: 1;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .cell-name {
+    font-size: 6px;
+    color: rgba(255,255,255,0.75);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 2px;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    display: none;
+    position: fixed;
+    background: #2a2218;
+    color: #f9f6ea;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    pointer-events: none;
+    z-index: 1000;
+    min-width: 200px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .tooltip.visible { display: block; }
+  .tooltip-name { font-size: 14px; font-weight: bold; color: var(--gold-light); margin-bottom: 4px; }
+  .tooltip-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .badge-native { background: var(--gold); color: #2a2218; }
+  .badge-moto { background: #4a5a3a; color: #c8d4a8; }
+  .tooltip-row { display: flex; justify-content: space-between; gap: 16px; }
+  .tooltip-key { color: #a89870; }
+  .tooltip-val { font-weight: bold; }
+
+  /* Detail panel */
+  .detail-panel {
+    display: none;
+    padding: 20px 32px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .detail-panel.visible { display: block; }
+  .detail-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .detail-header h2 { font-size: 20px; }
+  .detail-header .close-btn {
+    margin-left: auto;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    font-family: inherit;
+    padding: 0 4px;
+  }
+  .detail-header .close-btn:hover { color: var(--text); }
+
+  .detail-ops {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .op-tag {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.3px;
+  }
+  .op-impl { background: #e8f0d8; color: #3a4a2a; border: 1px solid #b8c8a0; }
+  .op-missing { background: #f0e8d8; color: #4a3a2a; border: 1px solid #c8b890; opacity: 0.7; }
+  .op-native { background: #f8e8c0; color: #4a3010; border: 1px solid #d4a843; }
+
+  /* Updated timestamp */
+  .updated-at {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 8px 32px;
+    border-top: 1px solid var(--border);
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="https://github.com/robotocore/robotocore">robotocore</a></h1>
+  <span style="color:var(--muted);font-size:14px">AWS Service Coverage</span>
+  <span class="sub" id="updated-label"></span>
+</header>
+
+<div class="stats-bar">
+  <div class="stat">
+    <span class="stat-value" id="stat-services">—</span>
+    <span class="stat-label">Services</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value" id="stat-native">—</span>
+    <span class="stat-label">Native providers</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value" id="stat-impl">—</span>
+    <span class="stat-label">Ops implemented</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value" id="stat-tests">—</span>
+    <span class="stat-label">Test methods</span>
+  </div>
+  <div class="progress-bar">
+    <div class="progress-track">
+      <div class="progress-fill" id="impl-bar" style="width:0%"></div>
+    </div>
+    <div class="progress-label">
+      <span>Implementation</span>
+      <span id="impl-pct">—</span>
+    </div>
+    <div class="progress-track" style="margin-top:6px">
+      <div class="progress-fill" id="test-bar" style="width:0%;background:linear-gradient(90deg,var(--c40),var(--c70))"></div>
+    </div>
+    <div class="progress-label">
+      <span>Test coverage</span>
+      <span id="test-pct">—</span>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <label>Sort</label>
+  <div class="btn-group" id="sort-group">
+    <button class="active" data-sort="alpha">A–Z</button>
+    <button data-sort="coverage">Coverage</button>
+    <button data-sort="ops">Op count</button>
+  </div>
+  <label>Filter</label>
+  <div class="btn-group" id="filter-group">
+    <button class="active" data-filter="all">All</button>
+    <button data-filter="native">Native</button>
+    <button data-filter="moto">Moto-backed</button>
+    <button data-filter="full">100%</button>
+    <button data-filter="partial">Partial</button>
+    <button data-filter="none">0%</button>
+  </div>
+  <input type="search" id="search" placeholder="search services…">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--c100)"></div>90–100%</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--c70)"></div>70–89%</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--c40)"></div>40–69%</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--c20)"></div>1–39%</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--c0)"></div>0%</div>
+    <div class="legend-item" style="margin-left:4px"><div class="legend-dot" style="border:1.5px solid #888;background:transparent"></div>native</div>
+  </div>
+</div>
+
+<div class="grid-container">
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="detail-panel" id="detail">
+  <div class="detail-header">
+    <h2 id="detail-name"></h2>
+    <span id="detail-badge" class="tooltip-badge"></span>
+    <span id="detail-stats" style="font-size:12px;color:var(--muted)"></span>
+    <button class="close-btn" onclick="closeDetail()">✕</button>
+  </div>
+  <div class="detail-ops" id="detail-ops"></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<div class="updated-at" id="updated-footer"></div>
+
+<script>
+// Data injected at build time
+const PARITY_DATA = DATA_PLACEHOLDER;
+
+const { services: rawServices, summary } = PARITY_DATA;
+
+// Flatten to array
+const services = Object.entries(rawServices).map(([name, s]) => ({
+  name,
+  impl_pct: s.impl_pct || 0,
+  test_pct: s.test_pct || 0,
+  total: s.total_aws_ops || 0,
+  impl: s.implemented_count || 0,
+  tested: s.tested_count || 0,
+  native: s.status === 'native',
+  impl_ops: s.implemented_ops || [],
+  native_ops: s.native_ops || [],
+  moto_ops: s.moto_ops || [],
+  all_ops: (s.implemented_ops || []).concat(
+    (s.total_aws_ops || 0) > (s.implemented_count || 0)
+      ? ['…' + ((s.total_aws_ops||0) - (s.implemented_count||0)) + ' more not implemented']
+      : []
+  ),
+}));
+
+// Stats
+document.getElementById('stat-services').textContent = summary.total_services;
+document.getElementById('stat-native').textContent = summary.native_services;
+document.getElementById('stat-impl').textContent = summary.total_implemented.toLocaleString() + ' / ' + summary.total_aws_operations.toLocaleString();
+document.getElementById('stat-tests').textContent = (summary.total_test_methods || 0).toLocaleString();
+const ip = summary.impl_pct.toFixed(1);
+const tp = summary.test_pct.toFixed(1);
+document.getElementById('impl-pct').textContent = ip + '%';
+document.getElementById('test-pct').textContent = tp + '%';
+setTimeout(() => {
+  document.getElementById('impl-bar').style.width = ip + '%';
+  document.getElementById('test-bar').style.width = tp + '%';
+}, 100);
+
+// Updated timestamp
+if (PARITY_DATA.generated_at) {
+  const d = new Date(PARITY_DATA.generated_at);
+  const s = d.toUTCString();
+  document.getElementById('updated-label').textContent = 'Updated ' + s;
+  document.getElementById('updated-footer').textContent = 'Data generated ' + s + ' · robotocore/' + (PARITY_DATA.commit || 'main');
+}
+
+// Color by coverage
+function cellColor(pct) {
+  if (pct >= 90) return '#c9953a';
+  if (pct >= 70) return '#b87030';
+  if (pct >= 40) return '#7a9050';
+  if (pct >= 1)  return '#6a7a5a';
+  return '#b8af90';
+}
+function textColor(pct) {
+  return pct === 0 ? '#7a7060' : 'rgba(255,255,255,0.95)';
+}
+
+// State
+let sortMode = 'alpha';
+let filterMode = 'all';
+let searchQuery = '';
+let activeService = null;
+
+function sortedFiltered() {
+  let list = [...services];
+  // Filter
+  if (filterMode === 'native') list = list.filter(s => s.native);
+  else if (filterMode === 'moto') list = list.filter(s => !s.native);
+  else if (filterMode === 'full') list = list.filter(s => s.impl_pct >= 99);
+  else if (filterMode === 'partial') list = list.filter(s => s.impl_pct > 0 && s.impl_pct < 99);
+  else if (filterMode === 'none') list = list.filter(s => s.impl_pct === 0);
+  // Search
+  if (searchQuery) list = list.filter(s => s.name.includes(searchQuery.toLowerCase()));
+  // Sort
+  if (sortMode === 'coverage') list.sort((a,b) => b.impl_pct - a.impl_pct);
+  else if (sortMode === 'ops') list.sort((a,b) => b.total - a.total);
+  else list.sort((a,b) => a.name.localeCompare(b.name));
+  return list;
+}
+
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  const list = sortedFiltered();
+  const allNames = new Set(list.map(s => s.name));
+  grid.innerHTML = '';
+  list.forEach(svc => {
+    const pct = Math.round(svc.impl_pct);
+    const bg = cellColor(pct);
+    const tc = textColor(pct);
+    const cell = document.createElement('div');
+    cell.className = 'service-cell' + (svc.native ? ' native' : '');
+    cell.style.background = bg;
+    if (svc.native) cell.style.borderColor = 'rgba(255,255,255,0.35)';
+    cell.dataset.name = svc.name;
+    cell.innerHTML = `<span class="cell-pct" style="color:${tc}">${pct}%</span><span class="cell-name" style="color:${tc}">${svc.name}</span>`;
+    cell.addEventListener('mouseenter', e => showTooltip(e, svc));
+    cell.addEventListener('mouseleave', hideTooltip);
+    cell.addEventListener('mousemove', moveTooltip);
+    cell.addEventListener('click', () => showDetail(svc));
+    grid.appendChild(cell);
+  });
+}
+
+// Tooltip
+const tooltip = document.getElementById('tooltip');
+function showTooltip(e, svc) {
+  const pct = svc.impl_pct.toFixed(1);
+  const tpct = svc.test_pct.toFixed(1);
+  tooltip.innerHTML = `
+    <div class="tooltip-name">${svc.name}</div>
+    <span class="tooltip-badge ${svc.native ? 'badge-native' : 'badge-moto'}">${svc.native ? 'native' : 'moto-backed'}</span>
+    <div class="tooltip-row"><span class="tooltip-key">implemented</span><span class="tooltip-val">${svc.impl} / ${svc.total} (${pct}%)</span></div>
+    <div class="tooltip-row"><span class="tooltip-key">tested</span><span class="tooltip-val">${svc.tested} / ${svc.total} (${tpct}%)</span></div>
+  `;
+  tooltip.classList.add('visible');
+  moveTooltip(e);
+}
+function hideTooltip() { tooltip.classList.remove('visible'); }
+function moveTooltip(e) {
+  const x = e.clientX + 16, y = e.clientY - 10;
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  tooltip.style.left = (x + tw > window.innerWidth ? x - tw - 32 : x) + 'px';
+  tooltip.style.top  = (y + th > window.innerHeight ? y - th : y) + 'px';
+}
+
+// Detail panel
+function showDetail(svc) {
+  activeService = svc.name;
+  document.getElementById('detail-name').textContent = svc.name;
+  document.getElementById('detail-badge').textContent = svc.native ? 'native' : 'moto-backed';
+  document.getElementById('detail-badge').className = 'tooltip-badge ' + (svc.native ? 'badge-native' : 'badge-moto');
+  document.getElementById('detail-stats').textContent =
+    `${svc.impl} / ${svc.total} ops implemented (${svc.impl_pct.toFixed(1)}%)  ·  ${svc.tested} tested (${svc.test_pct.toFixed(1)}%)`;
+  const opsEl = document.getElementById('detail-ops');
+  opsEl.innerHTML = '';
+  // Native ops first (gold), then moto ops (green), then missing ops (muted)
+  const allImpl = new Set([...svc.native_ops, ...svc.moto_ops]);
+  svc.native_ops.forEach(op => {
+    const tag = document.createElement('span');
+    tag.className = 'op-tag op-native';
+    tag.textContent = op;
+    opsEl.appendChild(tag);
+  });
+  svc.moto_ops.forEach(op => {
+    const tag = document.createElement('span');
+    tag.className = 'op-tag op-impl';
+    tag.textContent = op;
+    opsEl.appendChild(tag);
+  });
+  // Figure out missing: not in implemented_ops
+  const implSet = new Set(svc.impl_ops);
+  // We don't have the full list of AWS ops easily, but we can show the count
+  if (svc.total > svc.impl) {
+    const tag = document.createElement('span');
+    tag.className = 'op-tag op-missing';
+    tag.textContent = `+ ${svc.total - svc.impl} not implemented`;
+    opsEl.appendChild(tag);
+  }
+  document.getElementById('detail').classList.add('visible');
+  document.getElementById('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function closeDetail() {
+  document.getElementById('detail').classList.remove('visible');
+  activeService = null;
+}
+
+// Controls
+document.getElementById('sort-group').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#sort-group button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  sortMode = btn.dataset.sort;
+  renderGrid();
+});
+document.getElementById('filter-group').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#filter-group button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filterMode = btn.dataset.filter;
+  renderGrid();
+});
+document.getElementById('search').addEventListener('input', e => {
+  searchQuery = e.target.value.trim();
+  renderGrid();
+});
+
+// Initial render
+renderGrid();
+</script>
+</body>
+</html>
