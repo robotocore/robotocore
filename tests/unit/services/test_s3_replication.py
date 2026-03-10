@@ -106,6 +106,48 @@ class TestMaybeReplicate:
                 maybe_replicate("src", "key.txt", "us-east-1", "123456789012")
         mock_ex.submit.assert_not_called()
 
+    def test_filter_and_prefix_matching_submits(self):
+        """Filter.And.Prefix is used for prefix matching — matching key is replicated."""
+        mock_backend = MagicMock()
+        mock_backend.get_bucket_replication.return_value = {
+            "Rule": [
+                {
+                    "Status": "Enabled",
+                    "Filter": {"And": {"Prefix": "docs/"}},
+                    "Destination": {"Bucket": "arn:aws:s3:::dest"},
+                    "ID": "and-rule",
+                }
+            ]
+        }
+        with patch("robotocore.services.s3.replication.get_backend") as mock_gb:
+            mock_gb.return_value.__getitem__.return_value.__getitem__.return_value = mock_backend
+            with patch("robotocore.services.s3.replication._executor") as mock_ex:
+                from robotocore.services.s3.replication import maybe_replicate
+
+                maybe_replicate("src", "docs/readme.md", "us-east-1", "123456789012")
+        mock_ex.submit.assert_called_once()
+
+    def test_filter_and_prefix_mismatch_no_submit(self):
+        """Filter.And.Prefix prefix mismatch — key is not replicated."""
+        mock_backend = MagicMock()
+        mock_backend.get_bucket_replication.return_value = {
+            "Rule": [
+                {
+                    "Status": "Enabled",
+                    "Filter": {"And": {"Prefix": "docs/"}},
+                    "Destination": {"Bucket": "arn:aws:s3:::dest"},
+                    "ID": "and-rule",
+                }
+            ]
+        }
+        with patch("robotocore.services.s3.replication.get_backend") as mock_gb:
+            mock_gb.return_value.__getitem__.return_value.__getitem__.return_value = mock_backend
+            with patch("robotocore.services.s3.replication._executor") as mock_ex:
+                from robotocore.services.s3.replication import maybe_replicate
+
+                maybe_replicate("src", "other/file.txt", "us-east-1", "123456789012")
+        mock_ex.submit.assert_not_called()
+
     def test_prefix_mismatch_no_submit(self):
         mock_backend = MagicMock()
         mock_backend.get_bucket_replication.return_value = {

@@ -439,3 +439,79 @@ class TestEventBridgeDelivery:
         mock_pub.assert_called_once()
         event = mock_pub.call_args[0][0]
         assert event["detail-type"] == "Object Created"
+
+    def test_deliver_to_eventbridge_exception_is_swallowed(self):
+        """If publish_event_to_bus raises, _deliver_to_eventbridge swallows the exception."""
+        import robotocore.services.events.provider as _ev_mod
+
+        original = _ev_mod.publish_event_to_bus
+        _ev_mod.publish_event_to_bus = MagicMock(side_effect=RuntimeError("bus error"))
+        try:
+            # Must not raise
+            _deliver_to_eventbridge(
+                "s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123456789012", 0, ""
+            )
+        finally:
+            _ev_mod.publish_event_to_bus = original
+
+    def test_deliver_to_eventbridge_exception_is_logged(self, caplog):
+        """If publish_event_to_bus raises, the error is logged with the bucket name."""
+        import logging
+
+        import robotocore.services.events.provider as _ev_mod
+
+        original = _ev_mod.publish_event_to_bus
+        _ev_mod.publish_event_to_bus = MagicMock(side_effect=RuntimeError("bus error"))
+        try:
+            with caplog.at_level(logging.ERROR, logger="robotocore.services.s3.notifications"):
+                _deliver_to_eventbridge(
+                    "s3:ObjectCreated:Put",
+                    "my-test-bucket",
+                    "key",
+                    "us-east-1",
+                    "123456789012",
+                    0,
+                    "",
+                )
+        finally:
+            _ev_mod.publish_event_to_bus = original
+        assert any("my-test-bucket" in rec.message for rec in caplog.records)
+
+
+class TestFireEventOnlyEventBridge:
+    """Semantic: fire_event with only EventBridge configured (no SQS/SNS/Lambda)."""
+
+    def setup_method(self):
+        _bucket_notifications.clear()
+
+    @patch("robotocore.services.s3.notifications._deliver_to_eventbridge")
+    def test_only_eventbridge_enabled_fires_eventbridge(self, mock_eb):
+        """When only EventBridge is configured, fire_event still reaches _deliver_to_eventbridge."""
+        cfg = NotificationConfig(eventbridge_enabled=True)
+        set_notification_config("my-bucket", cfg)
+        fire_event("s3:ObjectCreated:Put", "my-bucket", "key.txt", "us-east-1", "123456789012")
+        mock_eb.assert_called_once()
+
+    @patch("robotocore.services.s3.notifications._deliver_to_eventbridge")
+    def test_eventbridge_receives_all_positional_args(self, mock_eb):
+        """fire_event forwards all positional args to _deliver_to_eventbridge correctly."""
+        cfg = NotificationConfig(eventbridge_enabled=True)
+        set_notification_config("my-bucket", cfg)
+        fire_event(
+            "s3:ObjectCreated:Copy",
+            "my-bucket",
+            "my-key.txt",
+            "eu-west-1",
+            "999888777666",
+            1024,
+            "etag123",
+        )
+        mock_eb.assert_called_once()
+        call_args = mock_eb.call_args[0]
+        assert call_args[0] == "s3:ObjectCreated:Copy"
+        assert call_args[1] == "my-bucket"
+        assert call_args[2] == "my-key.txt"
+        assert call_args[3] == "eu-west-1"
+        assert call_args[4] == "999888777666"
+        assert call_args[5] == 1024
+        assert call_args[6] == "etag123"

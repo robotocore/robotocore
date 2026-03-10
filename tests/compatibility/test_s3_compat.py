@@ -2956,3 +2956,64 @@ class TestS3ReplicationEngine:
         assert resp["Body"].read() == b"log data"
         with pytest.raises(Exception):
             s3.get_object(Bucket=dest_bucket, Key="data/file.bin")
+
+
+class TestS3RestoreObjectNotification:
+    """Verify that RestoreObject on a Glacier object fires s3:ObjectRestore:Post notification."""
+
+    @pytest.fixture
+    def unique_bucket(self, s3):
+        name = "test-restore-notif-" + str(uuid.uuid4())[:8]
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objects = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objects:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    @pytest.fixture
+    def unique_queue(self, sqs):
+        name = "test-restore-q-" + str(uuid.uuid4())[:8]
+        resp = sqs.create_queue(QueueName=name)
+        url = resp["QueueUrl"]
+        yield url
+        try:
+            sqs.delete_queue(QueueUrl=url)
+        except Exception:
+            pass
+
+    def test_restore_object_fires_restore_event(self, s3, sqs, unique_bucket, unique_queue):
+        """Put Glacier object, set SQS notification, restore — assert ObjectRestore:Post arrives."""
+        queue_url = unique_queue
+        attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = attrs["Attributes"]["QueueArn"]
+
+        s3.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={
+                "QueueConfigurations": [
+                    {"QueueArn": queue_arn, "Events": ["s3:ObjectRestore:Post"]}
+                ]
+            },
+        )
+        s3.put_object(
+            Bucket=unique_bucket, Key="glacier-obj", Body=b"archived data", StorageClass="GLACIER"
+        )
+        resp = s3.restore_object(
+            Bucket=unique_bucket,
+            Key="glacier-obj",
+            RestoreRequest={"Days": 1, "GlacierJobParameters": {"Tier": "Expedited"}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 202
+
+        time.sleep(0.5)
+        msgs = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=2)
+        messages = msgs.get("Messages", [])
+        assert len(messages) > 0
+        record = json.loads(messages[0]["Body"])["Records"][0]
+        assert record["eventName"] == "ObjectRestore:Post"
+        assert record["s3"]["bucket"]["name"] == unique_bucket
+        assert record["s3"]["object"]["key"] == "glacier-obj"

@@ -274,6 +274,39 @@ class TestNotificationConfigToXml:
         assert "EventBridgeConfiguration" not in xml
 
 
+class TestEventBridgeConfigRoundTrip:
+    """Semantic: parse → serialize → parse again preserves eventbridge_enabled."""
+
+    def test_round_trip_eventbridge_enabled(self):
+        """Parse XML with EventBridgeConfiguration, serialize, parse again — still enabled."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <EventBridgeConfiguration/>
+        </NotificationConfiguration>"""
+        config1 = _parse_notification_config_xml(xml)
+        assert config1.eventbridge_enabled is True
+        serialized = _notification_config_to_xml(config1)
+        config2 = _parse_notification_config_xml(serialized)
+        assert config2.eventbridge_enabled is True
+
+    def test_round_trip_eventbridge_disabled(self):
+        """Parse XML without EventBridgeConfiguration, serialize, parse again — still disabled."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <QueueConfiguration>
+            <Queue>arn:aws:sqs:us-east-1:123:q</Queue>
+            <Event>s3:ObjectCreated:*</Event>
+          </QueueConfiguration>
+        </NotificationConfiguration>"""
+        config1 = _parse_notification_config_xml(xml)
+        assert config1.eventbridge_enabled is False
+        serialized = _notification_config_to_xml(config1)
+        config2 = _parse_notification_config_xml(serialized)
+        assert config2.eventbridge_enabled is False
+
+
 class TestParseNotificationConfigXmlEventBridge:
     def test_parse_eventbridge_configuration(self):
         """<EventBridgeConfiguration/> in XML sets eventbridge_enabled=True."""
