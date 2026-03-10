@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://robotocore.github.io/robotocore/">
+  <a href="https://robotocore.github.io/robotocore/coverage.html">
     <img src="docs/coverage.svg" alt="AWS service coverage — 147 services, 84% of operations implemented" width="640">
   </a>
 </p>
@@ -38,7 +38,7 @@ docker run -d -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 Verify it's running:
 
 ```bash
-curl -s http://localhost:4566/_localstack/health | python3 -m json.tool
+curl -s http://localhost:4566/_robotocore/health | python3 -m json.tool
 ```
 
 ### Python (boto3)
@@ -105,7 +105,7 @@ jobs:
         ports:
           - 4566:4566
         options: >-
-          --health-cmd "curl -f http://localhost:4566/_localstack/health"
+          --health-cmd "curl -f http://localhost:4566/_robotocore/health"
           --health-interval 5s
           --health-retries 10
     steps:
@@ -304,8 +304,8 @@ Every standard AWS API call works. Services are listed above. If an operation is
 ### Health check
 
 ```bash
-curl http://localhost:4566/_localstack/health   # service status
-curl http://localhost:4566/_localstack/info     # version info
+curl http://localhost:4566/_robotocore/health    # service status
+curl http://localhost:4566/_robotocore/config    # version & config info
 ```
 
 ### Common patterns
