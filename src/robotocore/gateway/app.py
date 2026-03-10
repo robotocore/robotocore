@@ -312,25 +312,65 @@ async def reset_state(request: Request) -> JSONResponse:
     return JSONResponse({"status": "reset"})
 
 
-async def export_state(request: Request) -> JSONResponse:
-    """Export emulator state as JSON."""
+async def export_state(request: Request) -> Response:
+    """Export emulator state.
+
+    Query params:
+        format=json (default) — returns JSON of native provider state
+        format=snapshot — returns compressed tar.gz of full state (Moto + native)
+        name=<snapshot> — export a specific named snapshot
+    """
     from robotocore.state.manager import get_state_manager
 
     manager = get_state_manager()
+    fmt = request.query_params.get("format", "json")
+    snap_name = request.query_params.get("name")
+
+    if fmt == "snapshot":
+        try:
+            data = manager.export_snapshot_bytes(name=snap_name)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        filename = f"{snap_name or 'state'}.tar.gz"
+        return Response(
+            content=data,
+            status_code=200,
+            media_type="application/gzip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     data = manager.export_json()
     return JSONResponse(data)
 
 
 async def import_state(request: Request) -> JSONResponse:
-    """Import emulator state from JSON."""
+    """Import emulator state.
+
+    Content-Type:
+        application/json — import native provider state from JSON body
+        application/gzip or application/octet-stream — import full snapshot from tar.gz
+    Query params:
+        name=<name> — assign a name to the imported snapshot (for snapshot format)
+    """
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
     if not body:
         return JSONResponse({"error": "No data provided"}, status_code=400)
 
-    data = json.loads(body)
     manager = get_state_manager()
+    content_type = request.headers.get("content-type", "")
+
+    if "gzip" in content_type or "octet-stream" in content_type:
+        snap_name = request.query_params.get("name")
+        try:
+            imported_name = manager.import_snapshot_bytes(data=body, name=snap_name)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"status": "imported", "name": imported_name})
+
+    # Default: JSON import
+    data = json.loads(body)
     manager.import_json(data)
     return JSONResponse({"status": "imported"})
 
@@ -647,7 +687,11 @@ def _start_background_engines():
     if os.environ.get("ROBOTOCORE_STATE_DIR"):
         from robotocore.state.manager import get_state_manager
 
-        get_state_manager().load()
+        manager = get_state_manager()
+        # Try auto-restore from ROBOTOCORE_RESTORE_SNAPSHOT first
+        if not manager.restore_on_startup():
+            # Fall back to loading default state
+            manager.load()
 
     # Run ready hooks
     run_init_hooks("ready")
