@@ -61,26 +61,49 @@ class RedisCompatStore:
         self._check_type(key, "string")
         return self._data.get(key)
 
-    def _cmd_set(self, key: str, value: str, *args: Any) -> str:
-        self._data[key] = str(value)
-        self._types[key] = "string"
-        # Handle EX/PX/EXAT/PXAT options
+    def _cmd_set(self, key: str, value: str, *args: Any) -> str | None:
+        self._is_expired(key)  # Clean up expired keys first
+
+        # Parse options before setting
+        nx = False
+        xx = False
+        ex_seconds = None
+        px_millis = None
         idx = 0
         while idx < len(args):
-            opt = str(args[idx]).upper() if idx < len(args) else ""
+            opt = str(args[idx]).upper()
             if opt == "EX" and idx + 1 < len(args):
-                self._expiry[key] = time.time() + int(args[idx + 1])
+                ex_seconds = int(args[idx + 1])
                 idx += 2
             elif opt == "PX" and idx + 1 < len(args):
-                self._expiry[key] = time.time() + int(args[idx + 1]) / 1000
+                px_millis = int(args[idx + 1])
                 idx += 2
             elif opt == "NX":
-                # NX handled at SET level in real Redis, simplified here
+                nx = True
                 idx += 1
             elif opt == "XX":
+                xx = True
                 idx += 1
             else:
                 idx += 1
+
+        # NX: only set if key does NOT exist
+        if nx and key in self._data:
+            return None
+        # XX: only set if key DOES exist
+        if xx and key not in self._data:
+            return None
+
+        self._data[key] = str(value)
+        self._types[key] = "string"
+        # Clear any previous expiry
+        self._expiry.pop(key, None)
+
+        if ex_seconds is not None:
+            self._expiry[key] = time.time() + ex_seconds
+        elif px_millis is not None:
+            self._expiry[key] = time.time() + px_millis / 1000
+
         return "OK"
 
     def _cmd_setnx(self, key: str, value: str) -> int:
@@ -93,9 +116,12 @@ class RedisCompatStore:
         return 1
 
     def _cmd_setex(self, key: str, seconds: int, value: str) -> str:
+        seconds = int(seconds)
+        if seconds <= 0:
+            raise RedisError("ERR invalid expire time in 'setex' command")
         self._data[key] = str(value)
         self._types[key] = "string"
-        self._expiry[key] = time.time() + int(seconds)
+        self._expiry[key] = time.time() + seconds
         return "OK"
 
     def _cmd_mget(self, *keys: str) -> list[str | None]:
@@ -373,11 +399,18 @@ class RedisCompatStore:
         return [k for k in self._data if fnmatch.fnmatch(k, pattern)]
 
     def _cmd_expire(self, key: str, seconds: int) -> int:
+        seconds = int(seconds)
+        if seconds <= 0:
+            # Redis deletes the key if EXPIRE is called with <= 0
+            if key in self._data:
+                self._delete_key(key)
+                return 1
+            return 0
         if self._is_expired(key):
             return 0
         if key not in self._data:
             return 0
-        self._expiry[key] = time.time() + int(seconds)
+        self._expiry[key] = time.time() + seconds
         return 1
 
     def _cmd_ttl(self, key: str) -> int:
@@ -410,10 +443,16 @@ class RedisCompatStore:
             raise RedisError("ERR no such key")
         if key not in self._data:
             raise RedisError("ERR no such key")
+        # Delete the target key if it exists (overwrite)
+        if newkey in self._data and newkey != key:
+            self._delete_key(newkey)
         self._data[newkey] = self._data.pop(key)
         self._types[newkey] = self._types.pop(key)
         if key in self._expiry:
             self._expiry[newkey] = self._expiry.pop(key)
+        else:
+            # If source had no expiry, remove any expiry on target
+            self._expiry.pop(newkey, None)
         return "OK"
 
 

@@ -134,6 +134,23 @@ def _rows_to_records(rows: list[dict]) -> list[list[dict]]:
     return records
 
 
+def _convert_parameters(sql: str, parameters: list[dict]) -> list | dict:
+    """Convert RDS Data API parameters to SQLite-compatible format.
+
+    If the SQL uses named parameters (:name), return a dict for SQLite's
+    named parameter binding. Otherwise, return a positional list.
+    """
+    # Check if any parameter has a name and the SQL contains :name references
+    has_named = any(p.get("name") for p in parameters)
+    if has_named:
+        result = {}
+        for p in parameters:
+            name = p.get("name", "")
+            result[name] = _rds_param_to_python(p)
+        return result
+    return [_rds_param_to_python(p) for p in parameters]
+
+
 def _json_response(data: dict, status_code: int = 200) -> Response:
     """Build a JSON response."""
     return Response(
@@ -201,8 +218,8 @@ async def _execute_statement(request: Request, region: str, account_id: str) -> 
             f"Database {db_identifier} not found. Create it with RDS CreateDBInstance first.",
         )
 
-    # Convert parameters to a list for SQLite
-    sql_params = [_rds_param_to_python(p) for p in parameters] if parameters else None
+    # Convert parameters for SQLite
+    sql_params = _convert_parameters(sql, parameters) if parameters else None
 
     try:
         if transaction_id:
@@ -265,7 +282,7 @@ async def _batch_execute_statement(request: Request, region: str, account_id: st
     update_results = []
     try:
         for param_set in parameter_sets:
-            sql_params = [_rds_param_to_python(p) for p in param_set]
+            sql_params = _convert_parameters(sql, param_set)
             if transaction_id:
                 rows = engine.execute_in_transaction(transaction_id, sql, sql_params)
             else:

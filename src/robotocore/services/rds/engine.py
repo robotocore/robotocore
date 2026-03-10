@@ -58,20 +58,27 @@ class SQLiteEngine:
     def execute_sql(self, sql: str, params: list | None = None) -> list[dict]:
         """Execute SQL and return results as list of dicts."""
         with self._lock:
-            cursor = self._conn.cursor()
-            if params:
-                cursor.execute(sql, params)
-            else:
-                cursor.execute(sql)
-            # For statements that don't return rows (INSERT, UPDATE, DELETE, CREATE, etc.)
-            if cursor.description is None:
+            return self._execute_sql_unlocked(sql, params, commit=True)
+
+    def _execute_sql_unlocked(
+        self, sql: str, params: list | None, commit: bool = True
+    ) -> list[dict]:
+        """Execute SQL without acquiring the lock (caller must hold it)."""
+        cursor = self._conn.cursor()
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+        # For statements that don't return rows (INSERT, UPDATE, DELETE, CREATE, etc.)
+        if cursor.description is None:
+            if commit:
                 self._conn.commit()
-                return [{"rowsAffected": cursor.rowcount}]
-            columns = [desc[0] for desc in cursor.description]
-            rows = []
-            for row in cursor.fetchall():
-                rows.append(dict(zip(columns, row)))
-            return rows
+            return [{"rowsAffected": cursor.rowcount}]
+        columns = [desc[0] for desc in cursor.description]
+        rows = []
+        for row in cursor.fetchall():
+            rows.append(dict(zip(columns, row)))
+        return rows
 
     def close(self) -> None:
         """Close the database connection."""
@@ -91,15 +98,25 @@ class SQLiteEngine:
         """Commit a transaction by releasing its savepoint."""
         with self._lock:
             savepoint = self._transactions.pop(tx_id, None)
-            if savepoint:
+            if savepoint is None:
+                raise ValueError(f"Transaction {tx_id} not found or already completed")
+            try:
                 self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except sqlite3.OperationalError:
+                # Savepoint may have been released by a parent commit
+                self._conn.commit()
 
     def rollback_transaction(self, tx_id: str) -> None:
         """Roll back a transaction to its savepoint."""
         with self._lock:
             savepoint = self._transactions.pop(tx_id, None)
-            if savepoint:
+            if savepoint is None:
+                raise ValueError(f"Transaction {tx_id} not found or already completed")
+            try:
                 self._conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            except sqlite3.OperationalError:
+                # Savepoint may have been released by a parent commit
+                pass
 
     def execute_in_transaction(
         self, tx_id: str, sql: str, params: list | None = None
@@ -108,18 +125,7 @@ class SQLiteEngine:
         with self._lock:
             if tx_id not in self._transactions:
                 raise ValueError(f"Transaction {tx_id} not found or already completed")
-            cursor = self._conn.cursor()
-            if params:
-                cursor.execute(sql, params)
-            else:
-                cursor.execute(sql)
-            if cursor.description is None:
-                return [{"rowsAffected": cursor.rowcount}]
-            columns = [desc[0] for desc in cursor.description]
-            rows = []
-            for row in cursor.fetchall():
-                rows.append(dict(zip(columns, row)))
-            return rows
+            return self._execute_sql_unlocked(sql, params, commit=False)
 
     def get_column_metadata(self, sql: str) -> list[dict]:
         """Get column metadata for a SELECT query without fetching all rows."""
@@ -127,9 +133,13 @@ class SQLiteEngine:
             cursor = self._conn.cursor()
             # Use LIMIT 0 trick to get column info without data
             try:
-                cursor.execute(sql)
+                wrapped = f"SELECT * FROM ({sql}) LIMIT 0"
+                cursor.execute(wrapped)
             except sqlite3.Error:
-                return []
+                try:
+                    cursor.execute(sql)
+                except sqlite3.Error:
+                    return []
             if cursor.description is None:
                 return []
             metadata = []
