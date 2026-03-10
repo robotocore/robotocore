@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Build the GitHub Pages site by injecting parity data into docs/index.html.
+"""Build the GitHub Pages site.
 
 Usage:
     uv run python scripts/build_pages.py [--output-dir OUTPUT]
 
-Reads: scripts/generate_parity_report.py output (runs it internally)
-Writes: OUTPUT/index.html with embedded parity JSON, OUTPUT/coverage.svg
+Builds two pages:
+  - index.html       — project story page (static, copied as-is)
+  - coverage.html    — interactive coverage dashboard (parity data injected)
+
+Plus static assets: banner.svg, coverage.svg, logo.png, parity-report.json
 
 The gh-pages deployment workflow runs this script, then pushes the
 OUTPUT directory to GitHub Pages.
@@ -52,13 +55,17 @@ def main() -> None:
     data["commit"] = args.commit or _git_sha()
     parity_path.write_text(json.dumps(data, indent=2))
 
-    # 3. Inject into HTML template
-    template = (DOCS / "index.html").read_text()
-    injected = template.replace("DATA_PLACEHOLDER", json.dumps(data), 1)
-    (out / "index.html").write_text(injected)
-    print(f"  → {out / 'index.html'}", flush=True)
+    # 3. Copy story page (static, no injection needed)
+    shutil.copy2(DOCS / "index.html", out / "index.html")
+    print(f"  → {out / 'index.html'} (story)", flush=True)
 
-    # 4. Copy static assets
+    # 4. Inject parity data into coverage dashboard
+    template = (DOCS / "coverage.html").read_text()
+    injected = template.replace("DATA_PLACEHOLDER", json.dumps(data), 1)
+    (out / "coverage.html").write_text(injected)
+    print(f"  → {out / 'coverage.html'} (coverage dashboard)", flush=True)
+
+    # 5. Copy static assets
     for asset in ["banner.svg", "coverage.svg", "logo.png"]:
         src = DOCS / asset
         if src.exists():

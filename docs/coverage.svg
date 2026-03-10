@@ -211,5 +211,5 @@
 <!-- CTA button -->
 <line x1="40" y1="270" x2="600" y2="270" stroke="#ddd5b0" stroke-width="1"/>
 <rect x="120" y="279" width="400" height="28" rx="14" fill="#c47e3a"/>
-<text x="320" y="298" font-family="monospace,Consolas,'Courier New'" font-size="12.5" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="0.5">↗ View interactive coverage · robotocore.github.io/robotocore</text>
+<text x="320" y="298" font-family="monospace,Consolas,'Courier New'" font-size="12.5" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="0.5">View interactive coverage ↗</text>
 </svg>
