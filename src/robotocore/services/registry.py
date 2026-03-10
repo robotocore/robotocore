@@ -211,8 +211,12 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "inspector2": ServiceInfo(
         "inspector2", ServiceStatus.MOTO_BACKED, "rest-json", "Inspector Vulnerability Scanning"
     ),
-    "iot": ServiceInfo("iot", ServiceStatus.MOTO_BACKED, "rest-json", "IoT Core"),
-    "iotdata": ServiceInfo("iotdata", ServiceStatus.MOTO_BACKED, "rest-json", "IoT Data Plane"),
+    "iot": ServiceInfo(
+        "iot", ServiceStatus.NATIVE, "rest-json", "IoT Core with rule engine and target dispatch"
+    ),
+    "iotdata": ServiceInfo(
+        "iotdata", ServiceStatus.NATIVE, "rest-json", "IoT Data Plane with publish and rule eval"
+    ),
     "ivs": ServiceInfo("ivs", ServiceStatus.MOTO_BACKED, "rest-json", "Interactive Video Service"),
     "kafka": ServiceInfo(
         "kafka", ServiceStatus.MOTO_BACKED, "rest-json", "Managed Streaming for Kafka"

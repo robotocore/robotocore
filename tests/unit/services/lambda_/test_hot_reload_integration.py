@@ -65,11 +65,18 @@ class TestHotReloadInvocationFlow:
         assert err2 is None
 
     def test_hot_reload_disabled_keeps_old_code(self, tmp_path):
-        """Without hot reload, cached modules return old results."""
+        """Without hot reload, cached modules return old results.
+
+        Real Lambda behavior: modules persist in memory across invocations
+        within the same execution environment. The executor caches loaded
+        modules in sys.modules (keyed by function name + module path) when
+        hot_reload=False, so file changes don't take effect until the
+        function is redeployed (cache cleared).
+        """
         handler = tmp_path / "hr_disabled_mod.py"
         handler.write_text("def main(event, context):\n    return {'version': 1}\n")
 
-        result1, _, _ = self.executor.execute(
+        result1, err1, _ = self.executor.execute(
             code_zip=b"",
             handler="hr_disabled_mod.main",
             event={},
@@ -78,11 +85,12 @@ class TestHotReloadInvocationFlow:
             hot_reload=False,
         )
         assert result1 == {"version": 1}
+        assert err1 is None
 
         # Modify the code (but hot reload is off)
         handler.write_text("def main(event, context):\n    return {'version': 2}\n")
 
-        result2, _, _ = self.executor.execute(
+        result2, err2, _ = self.executor.execute(
             code_zip=b"",
             handler="hr_disabled_mod.main",
             event={},
@@ -92,6 +100,19 @@ class TestHotReloadInvocationFlow:
         )
         # Module is cached in sys.modules, so we get old result
         assert result2 == {"version": 1}
+        assert err2 is None
+
+        # Verify that hot_reload=True picks up the change
+        result3, err3, _ = self.executor.execute(
+            code_zip=b"",
+            handler="hr_disabled_mod.main",
+            event={},
+            function_name="no_reload_fn",
+            code_dir=str(tmp_path),
+            hot_reload=True,
+        )
+        assert result3 == {"version": 2}
+        assert err3 is None
 
         # Clean up so we don't pollute other tests
         _clear_modules_for_dir(str(tmp_path))

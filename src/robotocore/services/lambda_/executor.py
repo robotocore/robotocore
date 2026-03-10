@@ -155,6 +155,11 @@ class CodeCache:
             for key in keys_to_remove:
                 path = self._cache.pop(key)
                 shutil.rmtree(path, ignore_errors=True)
+        # Also clear function-scoped module cache in sys.modules
+        prefix = f"_lambda_{function_name}."
+        for name in list(sys.modules.keys()):
+            if name.startswith(prefix):
+                sys.modules.pop(name, None)
 
     def invalidate_all(self) -> None:
         """Remove all cached entries and clean up all tmpdirs."""
@@ -162,6 +167,10 @@ class CodeCache:
             for path in self._cache.values():
                 shutil.rmtree(path, ignore_errors=True)
             self._cache.clear()
+        # Also clear all function-scoped module cache entries
+        for name in list(sys.modules.keys()):
+            if name.startswith("_lambda_"):
+                sys.modules.pop(name, None)
 
     def __len__(self) -> int:
         with self._lock:
@@ -219,6 +228,17 @@ def _clear_modules_for_dir(code_dir: str) -> None:
                     to_remove.append(name)
             except (ValueError, TypeError):
                 pass
+    # Also clear function-scoped module cache keys (_lambda_* entries)
+    for name in list(sys.modules.keys()):
+        if name.startswith("_lambda_"):
+            mod = sys.modules[name]
+            mod_file = getattr(mod, "__file__", None)
+            if mod_file:
+                try:
+                    if os.path.abspath(mod_file).startswith(norm_dir):
+                        to_remove.append(name)
+                except (ValueError, TypeError):
+                    pass
     for name in to_remove:
         sys.modules.pop(name, None)
 
@@ -320,8 +340,8 @@ def execute_python_handler(
         if not os.path.exists(module_file):
             return None, "Runtime.ImportModuleError", f"Cannot find module: {module_path}"
 
-        spec = importlib.util.spec_from_file_location(module_path, module_file)
-        module = importlib.util.module_from_spec(spec)
+        # Use a function-scoped key so different Lambda functions don't collide
+        modules_key = f"_lambda_{function_name}.{module_path}"
 
         # Capture print output
         old_stdout = sys.stdout
@@ -330,7 +350,15 @@ def execute_python_handler(
         sys.stderr = logs_output
 
         try:
-            spec.loader.exec_module(module)
+            # Reuse cached module when hot_reload is off (matches real Lambda behavior:
+            # modules persist across invocations within the same execution environment)
+            if not hot_reload and modules_key in sys.modules:
+                module = sys.modules[modules_key]
+            else:
+                spec = importlib.util.spec_from_file_location(module_path, module_file)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                sys.modules[modules_key] = module
             handler_func = getattr(module, func_name, None)
             if handler_func is None:
                 return (
