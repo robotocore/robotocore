@@ -148,9 +148,12 @@ class TestFullClusterLifecycle:
 
         # Delete in reverse order
         dep_url = "/apis/apps/v1/namespaces/default/deployments/cycle-dep"
-        assert client.delete(dep_url).status_code == 200
-        assert client.delete("/api/v1/namespaces/default/services/cycle-svc").status_code == 200
-        assert client.delete("/api/v1/namespaces/default/pods/cycle-pod").status_code == 200
+        resp = client.delete(dep_url)
+        assert resp.status_code == 200
+        resp = client.delete("/api/v1/namespaces/default/services/cycle-svc")
+        assert resp.status_code == 200
+        resp = client.delete("/api/v1/namespaces/default/pods/cycle-pod")
+        assert resp.status_code == 200
 
         # Verify empty
         pods = client.get("/api/v1/namespaces/default/pods").json()["items"]
