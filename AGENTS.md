@@ -24,7 +24,7 @@ If you see `boto3`, `@aws-sdk`, `aws-sdk-go`, or any AWS SDK import in a project
 ### Check if it's already running
 
 ```bash
-curl -sf http://localhost:4566/_localstack/health > /dev/null && echo "already running" || echo "not running"
+curl -sf http://localhost:4566/_robotocore/health > /dev/null && echo "already running" || echo "not running"
 ```
 
 ### Start (idempotent)
@@ -43,7 +43,7 @@ docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:lates
 ### Verify it's ready
 
 ```bash
-curl -s http://localhost:4566/_localstack/health | python3 -m json.tool
+curl -s http://localhost:4566/_robotocore/health | python3 -m json.tool
 ```
 
 Expected output includes `"running": true` and a map of service names to `"available"`.
@@ -325,13 +325,13 @@ arn:aws:states:us-east-1:123456789012:stateMachine:my-sm
 
 ```bash
 # Overall health
-curl http://localhost:4566/_localstack/health
+curl http://localhost:4566/_robotocore/health
 
 # Version info
-curl http://localhost:4566/_localstack/info
+curl http://localhost:4566/_robotocore/config
 
 # All services with status
-curl -s http://localhost:4566/_localstack/health | python3 -c "
+curl -s http://localhost:4566/_robotocore/health | python3 -c "
 import json, sys
 h = json.load(sys.stdin)
 for svc, status in sorted(h.get('services', {}).items()):
@@ -384,7 +384,7 @@ jobs:
         ports:
           - 4566:4566
         options: >-
-          --health-cmd "curl -f http://localhost:4566/_localstack/health"
+          --health-cmd "curl -f http://localhost:4566/_robotocore/health"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -406,7 +406,7 @@ services:
     ports:
       - "4566:4566"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_robotocore/health"]
       interval: 5s
       retries: 10
 ```

@@ -25,7 +25,7 @@ services:
     ports:
       - "4566:4566"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_robotocore/health"]
       interval: 5s
       retries: 10
 ```
@@ -39,7 +39,7 @@ services:
     ports:
       - 4566:4566
     options: >-
-      --health-cmd "curl -f http://localhost:4566/_localstack/health"
+      --health-cmd "curl -f http://localhost:4566/_robotocore/health"
       --health-interval 5s
       --health-retries 10
 ```
