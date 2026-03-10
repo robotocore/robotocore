@@ -325,12 +325,12 @@ def _coerce_types(left: Any, right: Any) -> tuple[Any, Any]:
         try:
             right = float(right) if "." in right else int(right)
         except (ValueError, TypeError):
-            pass
+            pass  # best-effort; failures are non-fatal
     elif isinstance(right, (int, float)) and isinstance(left, str):
         try:
             left = float(left) if "." in left else int(left)
         except (ValueError, TypeError):
-            pass
+            pass  # best-effort; failures are non-fatal
     return left, right
 
 
