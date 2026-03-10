@@ -621,7 +621,7 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
     response = await forward_to_moto(request, "s3", account_id=account_id)
 
     # Post-response cleanup and event firing
-    if response.status_code in (200, 204):
+    if response.status_code in (200, 202, 204):
         match = _PATH_RE.match(path)
         if match:
             bucket = match.group(1)
@@ -649,6 +649,16 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                 # Detect multipart complete (POST with uploadId)
                 if "uploadId" in query:
                     pass  # handled below in POST
+                elif request.headers.get("x-amz-copy-source"):
+                    fire_event(
+                        "s3:ObjectCreated:Copy",
+                        bucket,
+                        key,
+                        region,
+                        account_id,
+                        content_length,
+                        etag,
+                    )
                 else:
                     fire_event(
                         "s3:ObjectCreated:Put",
@@ -659,6 +669,9 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                         content_length,
                         etag,
                     )
+                    from robotocore.services.s3.replication import maybe_replicate
+
+                    maybe_replicate(bucket, key, region, account_id)
             elif method == "POST" and key:
                 if "uploadId" in query:
                     fire_event(
@@ -670,6 +683,14 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                     )
                 elif "uploads" in query:
                     pass  # CreateMultipartUpload — no notification
+                elif "restore" in query:
+                    fire_event(
+                        "s3:ObjectRestore:Post",
+                        bucket,
+                        key,
+                        region,
+                        account_id,
+                    )
                 else:
                     fire_event(
                         "s3:ObjectCreated:Post",
@@ -679,13 +700,31 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                         account_id,
                     )
             elif method == "DELETE" and key:
-                fire_event(
-                    "s3:ObjectRemoved:Delete",
-                    bucket,
-                    key,
-                    region,
-                    account_id,
-                )
+                # Check if Moto created a delete marker
+                is_delete_marker = False
+                for h, v in response.raw_headers:
+                    hname = h.decode() if isinstance(h, bytes) else h
+                    if hname.lower() == "x-amz-delete-marker":
+                        hval = v.decode() if isinstance(v, bytes) else v
+                        if hval.lower() == "true":
+                            is_delete_marker = True
+                        break
+                if is_delete_marker:
+                    fire_event(
+                        "s3:ObjectRemoved:DeleteMarkerCreated",
+                        bucket,
+                        key,
+                        region,
+                        account_id,
+                    )
+                else:
+                    fire_event(
+                        "s3:ObjectRemoved:Delete",
+                        bucket,
+                        key,
+                        region,
+                        account_id,
+                    )
 
     return response
 
@@ -964,6 +1003,13 @@ def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
             entry["Filter"] = {"Key": {"FilterRules": filter_rules}}
         config.lambda_configs.append(entry)
 
+    # Parse EventBridgeConfiguration
+    eb_elements = root.findall(f"{{{ns}}}EventBridgeConfiguration") + root.findall(
+        "EventBridgeConfiguration"
+    )
+    if eb_elements:
+        config.eventbridge_enabled = True
+
     return config
 
 
@@ -1013,6 +1059,9 @@ def _notification_config_to_xml(config: NotificationConfig) -> str:
             parts.append(f"<Event>{evt}</Event>")
         _append_filter_xml(parts, lc)
         parts.append("</LambdaFunctionConfiguration>")
+
+    if config.eventbridge_enabled:
+        parts.append("<EventBridgeConfiguration/>")
 
     parts.append("</NotificationConfiguration>")
     return "".join(parts)

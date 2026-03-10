@@ -261,6 +261,91 @@ class TestNotificationConfigToXml:
         assert "<Name>prefix</Name>" in xml
         assert "<Value>logs/</Value>" in xml
 
+    def test_eventbridge_enabled_produces_tag(self):
+        """eventbridge_enabled=True must emit <EventBridgeConfiguration/>."""
+        config = NotificationConfig(eventbridge_enabled=True)
+        xml = _notification_config_to_xml(config)
+        assert "<EventBridgeConfiguration/>" in xml
+
+    def test_eventbridge_disabled_omits_tag(self):
+        """eventbridge_enabled=False must NOT emit <EventBridgeConfiguration/>."""
+        config = NotificationConfig(eventbridge_enabled=False)
+        xml = _notification_config_to_xml(config)
+        assert "EventBridgeConfiguration" not in xml
+
+
+class TestEventBridgeConfigRoundTrip:
+    """Semantic: parse → serialize → parse again preserves eventbridge_enabled."""
+
+    def test_round_trip_eventbridge_enabled(self):
+        """Parse XML with EventBridgeConfiguration, serialize, parse again — still enabled."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <EventBridgeConfiguration/>
+        </NotificationConfiguration>"""
+        config1 = _parse_notification_config_xml(xml)
+        assert config1.eventbridge_enabled is True
+        serialized = _notification_config_to_xml(config1)
+        config2 = _parse_notification_config_xml(serialized)
+        assert config2.eventbridge_enabled is True
+
+    def test_round_trip_eventbridge_disabled(self):
+        """Parse XML without EventBridgeConfiguration, serialize, parse again — still disabled."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <QueueConfiguration>
+            <Queue>arn:aws:sqs:us-east-1:123:q</Queue>
+            <Event>s3:ObjectCreated:*</Event>
+          </QueueConfiguration>
+        </NotificationConfiguration>"""
+        config1 = _parse_notification_config_xml(xml)
+        assert config1.eventbridge_enabled is False
+        serialized = _notification_config_to_xml(config1)
+        config2 = _parse_notification_config_xml(serialized)
+        assert config2.eventbridge_enabled is False
+
+
+class TestParseNotificationConfigXmlEventBridge:
+    def test_parse_eventbridge_configuration(self):
+        """<EventBridgeConfiguration/> in XML sets eventbridge_enabled=True."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <EventBridgeConfiguration/>
+        </NotificationConfiguration>"""
+        config = _parse_notification_config_xml(xml)
+        assert config.eventbridge_enabled is True
+
+    def test_parse_without_eventbridge_configuration(self):
+        """Missing <EventBridgeConfiguration/> leaves eventbridge_enabled=False."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <QueueConfiguration>
+            <Queue>arn:aws:sqs:us-east-1:123:q</Queue>
+            <Event>s3:ObjectCreated:*</Event>
+          </QueueConfiguration>
+        </NotificationConfiguration>"""
+        config = _parse_notification_config_xml(xml)
+        assert config.eventbridge_enabled is False
+
+    def test_parse_eventbridge_with_other_configs(self):
+        """EventBridge and SQS configs can coexist in one XML document."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <NotificationConfiguration
+            xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <QueueConfiguration>
+            <Queue>arn:aws:sqs:us-east-1:123:q</Queue>
+            <Event>s3:ObjectCreated:*</Event>
+          </QueueConfiguration>
+          <EventBridgeConfiguration/>
+        </NotificationConfiguration>"""
+        config = _parse_notification_config_xml(xml)
+        assert config.eventbridge_enabled is True
+        assert len(config.queue_configs) == 1
+
 
 @pytest.mark.asyncio
 class TestHandleS3Request:

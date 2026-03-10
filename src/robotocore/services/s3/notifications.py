@@ -46,6 +46,28 @@ ALL_EVENT_TYPES = [
 ]
 
 
+_S3_EVENT_TO_DETAIL_TYPE = {
+    "s3:ObjectCreated:Put": "Object Created",
+    "s3:ObjectCreated:Copy": "Object Created",
+    "s3:ObjectCreated:Post": "Object Created",
+    "s3:ObjectCreated:CompleteMultipartUpload": "Object Created",
+    "s3:ObjectRemoved:Delete": "Object Deleted",
+    "s3:ObjectRemoved:DeleteMarkerCreated": "Object Deleted",
+    "s3:ObjectRestore:Post": "Object Restore Initiated",
+    "s3:Replication:OperationReplicatedAfterThreshold": "Object Created",
+    "s3:Replication:OperationFailedReplication": "Object Created",
+}
+_S3_EVENT_TO_REASON = {
+    "s3:ObjectCreated:Put": "PutObject",
+    "s3:ObjectCreated:Copy": "CopyObject",
+    "s3:ObjectCreated:Post": "POST Object",
+    "s3:ObjectCreated:CompleteMultipartUpload": "CompleteMultipartUpload",
+    "s3:ObjectRemoved:Delete": "DeleteObject",
+    "s3:ObjectRemoved:DeleteMarkerCreated": "DeleteObject",
+    "s3:ObjectRestore:Post": "RestoreObject",
+}
+
+
 @dataclass
 class NotificationConfig:
     """Parsed bucket notification configuration."""
@@ -53,6 +75,7 @@ class NotificationConfig:
     queue_configs: list[dict] = field(default_factory=list)
     topic_configs: list[dict] = field(default_factory=list)
     lambda_configs: list[dict] = field(default_factory=list)
+    eventbridge_enabled: bool = False
 
 
 _bucket_notifications: dict[str, NotificationConfig] = {}
@@ -80,7 +103,12 @@ def fire_event(
 ) -> None:
     """Fire S3 event notifications for a bucket mutation."""
     config = get_notification_config(bucket)
-    if not config.queue_configs and not config.topic_configs and not config.lambda_configs:
+    if (
+        not config.queue_configs
+        and not config.topic_configs
+        and not config.lambda_configs
+        and not config.eventbridge_enabled
+    ):
         return
 
     record = _build_event_record(event_name, bucket, key, region, account_id, size, etag)
@@ -97,6 +125,9 @@ def fire_event(
     for lc in config.lambda_configs:
         if _event_matches(event_name, lc.get("Events", []), key, lc.get("Filter")):
             _deliver_to_lambda(lc["LambdaFunctionArn"], message, region, account_id)
+
+    if config.eventbridge_enabled:
+        _deliver_to_eventbridge(event_name, bucket, key, region, account_id, size, etag)
 
 
 def _event_matches(event_name: str, events: list[str], key: str, filter_rules: dict | None) -> bool:
@@ -199,3 +230,41 @@ def _deliver_to_lambda(
         invoke_lambda_async(function_arn, payload, region, account_id)
     except Exception:
         logger.exception("Failed to invoke Lambda %s for S3 notification", function_arn)
+
+
+def _deliver_to_eventbridge(
+    event_name: str,
+    bucket: str,
+    key: str,
+    region: str,
+    account_id: str,
+    size: int,
+    etag: str,
+) -> None:
+    """Publish an S3 event to the account's default EventBridge bus."""
+    try:
+        from robotocore.services.events.provider import publish_event_to_bus
+
+        detail_type = _S3_EVENT_TO_DETAIL_TYPE.get(event_name, "Object Created")
+        reason = _S3_EVENT_TO_REASON.get(event_name, "PutObject")
+        event = {
+            "version": "0",
+            "id": str(uuid.uuid4()),
+            "source": "aws.s3",
+            "account": account_id,
+            "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "region": region,
+            "resources": [f"arn:aws:s3:::{bucket}"],
+            "detail-type": detail_type,
+            "detail": {
+                "version": "0",
+                "bucket": {"name": bucket},
+                "object": {"key": key, "size": size, "etag": etag},
+                "request-id": str(uuid.uuid4()),
+                "requester": account_id,
+                "reason": reason,
+            },
+        }
+        publish_event_to_bus(event, region, account_id)
+    except Exception:
+        logger.exception("Failed to deliver S3 event to EventBridge for bucket %s", bucket)

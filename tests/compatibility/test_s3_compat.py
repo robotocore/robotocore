@@ -49,7 +49,7 @@ def bucket(s3):
             s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
         s3.delete_bucket(Bucket=bucket_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup; failures are non-fatal
 
 
 class TestS3BasicOperations:
@@ -554,7 +554,7 @@ class TestS3CopyObject:
                 s3.delete_object(Bucket=dest_bucket, Key="dest.txt")
                 s3.delete_bucket(Bucket=dest_bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup; failures are non-fatal
 
 
 class TestS3MultipartLifecycle:
@@ -1257,7 +1257,7 @@ class TestS3Versioning:
                 s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_put_bucket_versioning_enabled(self, s3, versioned_bucket):
         resp = s3.get_bucket_versioning(Bucket=versioned_bucket)
@@ -1319,7 +1319,7 @@ class TestS3MultipartUpload:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_create_and_abort_multipart(self, s3, bucket):
         resp = s3.create_multipart_upload(Bucket=bucket, Key="aborted.bin")
@@ -1387,7 +1387,7 @@ class TestS3CORS:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_put_get_delete_cors(self, s3, bucket):
         cors_config = {
@@ -1444,7 +1444,7 @@ class TestS3ObjectOperations:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_copy_object(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="src.txt", Body=b"source")
@@ -1555,7 +1555,7 @@ class TestS3BucketOperations:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_head_bucket(self, s3, bucket):
         resp = s3.head_bucket(Bucket=bucket)
@@ -1962,7 +1962,7 @@ class TestS3ObjectLocking:
                 s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_put_and_get_object_lock_configuration(self, s3, lock_bucket):
         s3.put_object_lock_configuration(
@@ -2363,7 +2363,7 @@ class TestS3ObjectRetentionAndTorrent:
                 )
             s3.delete_bucket(Bucket=bucket_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_put_get_object_retention(self, s3):
         """PutObjectRetention + GetObjectRetention on lock-enabled bucket."""
@@ -2696,7 +2696,7 @@ class TestS3LegacyOps:
                 s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
             s3.delete_bucket(Bucket=bucket_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_list_objects_v1(self, s3, bucket):
         """ListObjects (v1) returns bucket Name."""
@@ -2728,3 +2728,292 @@ class TestS3LegacyOps:
         assert "Rules" in resp
         assert len(resp["Rules"]) >= 1
         assert resp["Rules"][0]["ID"] == "expire-all"
+
+
+class TestS3EventBridgeNotification:
+    @pytest.fixture
+    def unique_bucket(self, s3):
+        name = "test-eb-notif-" + str(uuid.uuid4())[:8]
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objects = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objects:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
+
+    @pytest.fixture
+    def unique_queue(self, sqs):
+        name = "test-eb-q-" + str(uuid.uuid4())[:8]
+        resp = sqs.create_queue(QueueName=name)
+        url = resp["QueueUrl"]
+        yield url
+        try:
+            sqs.delete_queue(QueueUrl=url)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
+
+    def test_eventbridge_configuration_round_trip(self, s3, unique_bucket):
+        """PUT notification config with EventBridgeConfiguration, GET and assert it's preserved."""
+        s3.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={"EventBridgeConfiguration": {}},
+        )
+        resp = s3.get_bucket_notification_configuration(Bucket=unique_bucket)
+        assert "EventBridgeConfiguration" in resp
+
+    def test_put_object_fires_eventbridge_event(self, s3, sqs, unique_bucket, unique_queue):
+        """Enable EB notifications, put EB rule targeting SQS, put object, assert event arrives."""
+        events_client = make_client("events")
+        queue_url = unique_queue
+        attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = attrs["Attributes"]["QueueArn"]
+
+        s3.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={"EventBridgeConfiguration": {}},
+        )
+        rule_name = "s3-test-rule-" + str(uuid.uuid4())[:8]
+        events_client.put_rule(
+            Name=rule_name,
+            EventPattern=json.dumps({"source": ["aws.s3"]}),
+            State="ENABLED",
+        )
+        events_client.put_targets(Rule=rule_name, Targets=[{"Id": "1", "Arn": queue_arn}])
+
+        s3.put_object(Bucket=unique_bucket, Key="test.txt", Body=b"hello")
+        time.sleep(0.5)
+        msgs = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=2)
+        messages = msgs.get("Messages", [])
+        assert len(messages) > 0
+        body = json.loads(messages[0]["Body"])
+        assert body.get("source") == "aws.s3"
+        assert body.get("detail", {}).get("bucket", {}).get("name") == unique_bucket
+
+
+class TestS3AdditionalEventTypes:
+    @pytest.fixture
+    def unique_bucket(self, s3):
+        name = "test-evt-" + str(uuid.uuid4())[:8]
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            # Delete all versions if versioning was enabled
+            resp = s3.list_object_versions(Bucket=name)
+            for v in resp.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for dm in resp.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
+            objects = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objects:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
+
+    @pytest.fixture
+    def unique_queue(self, sqs):
+        name = "test-evt-q-" + str(uuid.uuid4())[:8]
+        resp = sqs.create_queue(QueueName=name)
+        url = resp["QueueUrl"]
+        yield url
+        try:
+            sqs.delete_queue(QueueUrl=url)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
+
+    def test_copy_object_fires_copy_event(self, s3, sqs, unique_bucket, unique_queue):
+        """Set SQS notification for s3:ObjectCreated:Copy, copy object, assert eventName is Copy."""
+        queue_url = unique_queue
+        attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = attrs["Attributes"]["QueueArn"]
+        s3.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={
+                "QueueConfigurations": [
+                    {"QueueArn": queue_arn, "Events": ["s3:ObjectCreated:Copy"]}
+                ]
+            },
+        )
+        s3.put_object(Bucket=unique_bucket, Key="source.txt", Body=b"data")
+        s3.copy_object(
+            Bucket=unique_bucket,
+            Key="dest.txt",
+            CopySource={"Bucket": unique_bucket, "Key": "source.txt"},
+        )
+        time.sleep(0.3)
+        msgs = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=2)
+        messages = msgs.get("Messages", [])
+        assert len(messages) > 0
+        record = json.loads(messages[0]["Body"])["Records"][0]
+        assert record["eventName"] == "ObjectCreated:Copy"
+
+    def test_delete_marker_fires_delete_marker_event(self, s3, sqs, unique_bucket, unique_queue):
+        """Enable versioning, set notification for DeleteMarkerCreated, delete, assert event."""
+        queue_url = unique_queue
+        attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = attrs["Attributes"]["QueueArn"]
+        s3.put_bucket_versioning(
+            Bucket=unique_bucket, VersioningConfiguration={"Status": "Enabled"}
+        )
+        s3.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={
+                "QueueConfigurations": [
+                    {
+                        "QueueArn": queue_arn,
+                        "Events": ["s3:ObjectRemoved:DeleteMarkerCreated"],
+                    }
+                ]
+            },
+        )
+        s3.put_object(Bucket=unique_bucket, Key="versioned.txt", Body=b"v1")
+        s3.delete_object(Bucket=unique_bucket, Key="versioned.txt")
+        time.sleep(0.3)
+        msgs = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=2)
+        messages = msgs.get("Messages", [])
+        assert len(messages) > 0
+        record = json.loads(messages[0]["Body"])["Records"][0]
+        assert record["eventName"] == "ObjectRemoved:DeleteMarkerCreated"
+
+
+class TestS3ReplicationEngine:
+    @pytest.fixture
+    def src_bucket(self, s3):
+        name = "test-repl-src-" + str(uuid.uuid4())[:8]
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        yield name
+        try:
+            resp = s3.list_object_versions(Bucket=name)
+            for v in resp.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for dm in resp.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
+
+    @pytest.fixture
+    def dest_bucket(self, s3):
+        name = "test-repl-dst-" + str(uuid.uuid4())[:8]
+        s3.create_bucket(Bucket=name)
+        s3.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
+        yield name
+        try:
+            resp = s3.list_object_versions(Bucket=name)
+            for v in resp.get("Versions", []):
+                s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
+            for dm in resp.get("DeleteMarkers", []):
+                s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
+
+    def test_put_object_replicates_to_dest_bucket(self, s3, src_bucket, dest_bucket):
+        """Configure replication, put object, assert it appears in dest bucket."""
+        s3.put_bucket_replication(
+            Bucket=src_bucket,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/replication-role",
+                "Rules": [
+                    {
+                        "ID": "replicate-all",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": ""},
+                        "Destination": {"Bucket": f"arn:aws:s3:::{dest_bucket}"},
+                    }
+                ],
+            },
+        )
+        s3.put_object(Bucket=src_bucket, Key="replicated.txt", Body=b"hello replication")
+        time.sleep(0.5)
+        resp = s3.get_object(Bucket=dest_bucket, Key="replicated.txt")
+        assert resp["Body"].read() == b"hello replication"
+
+    def test_replication_respects_prefix_filter(self, s3, src_bucket, dest_bucket):
+        """Keys matching prefix get replicated; keys not matching do not."""
+        s3.put_bucket_replication(
+            Bucket=src_bucket,
+            ReplicationConfiguration={
+                "Role": "arn:aws:iam::123456789012:role/replication-role",
+                "Rules": [
+                    {
+                        "ID": "logs-only",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "logs/"},
+                        "Destination": {"Bucket": f"arn:aws:s3:::{dest_bucket}"},
+                    }
+                ],
+            },
+        )
+        s3.put_object(Bucket=src_bucket, Key="logs/access.log", Body=b"log data")
+        s3.put_object(Bucket=src_bucket, Key="data/file.bin", Body=b"binary")
+        time.sleep(0.5)
+        resp = s3.get_object(Bucket=dest_bucket, Key="logs/access.log")
+        assert resp["Body"].read() == b"log data"
+        with pytest.raises(Exception):
+            s3.get_object(Bucket=dest_bucket, Key="data/file.bin")
+
+
+class TestS3RestoreObjectNotification:
+    """Verify that RestoreObject on a Glacier object fires s3:ObjectRestore:Post notification."""
+
+    @pytest.fixture
+    def unique_bucket(self, s3):
+        name = "test-restore-notif-" + str(uuid.uuid4())[:8]
+        s3.create_bucket(Bucket=name)
+        yield name
+        try:
+            objects = s3.list_objects_v2(Bucket=name).get("Contents", [])
+            for obj in objects:
+                s3.delete_object(Bucket=name, Key=obj["Key"])
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass
+
+    @pytest.fixture
+    def unique_queue(self, sqs):
+        name = "test-restore-q-" + str(uuid.uuid4())[:8]
+        resp = sqs.create_queue(QueueName=name)
+        url = resp["QueueUrl"]
+        yield url
+        try:
+            sqs.delete_queue(QueueUrl=url)
+        except Exception:
+            pass
+
+    def test_restore_object_fires_restore_event(self, s3, sqs, unique_bucket, unique_queue):
+        """Put Glacier object, set SQS notification, restore — assert ObjectRestore:Post arrives."""
+        queue_url = unique_queue
+        attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_arn = attrs["Attributes"]["QueueArn"]
+
+        s3.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={
+                "QueueConfigurations": [
+                    {"QueueArn": queue_arn, "Events": ["s3:ObjectRestore:Post"]}
+                ]
+            },
+        )
+        s3.put_object(
+            Bucket=unique_bucket, Key="glacier-obj", Body=b"archived data", StorageClass="GLACIER"
+        )
+        resp = s3.restore_object(
+            Bucket=unique_bucket,
+            Key="glacier-obj",
+            RestoreRequest={"Days": 1, "GlacierJobParameters": {"Tier": "Expedited"}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 202
+
+        time.sleep(0.5)
+        msgs = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=2)
+        messages = msgs.get("Messages", [])
+        assert len(messages) > 0
+        record = json.loads(messages[0]["Body"])["Records"][0]
+        assert record["eventName"] == "ObjectRestore:Post"
+        assert record["s3"]["bucket"]["name"] == unique_bucket
+        assert record["s3"]["object"]["key"] == "glacier-obj"
