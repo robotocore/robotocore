@@ -82,7 +82,7 @@ async def handle_ecs_request(request: Request, region: str, account_id: str) -> 
     if handler is None:
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "ecs")
+        return await forward_to_moto(request, "ecs", account_id=account_id)
 
     try:
         result = handler(store, params, region, account_id)

@@ -50,7 +50,7 @@ async def handle_xray_request(request: Request, region: str, account_id: str) ->
             return _json_response(error_data, status_code=result.get("status_code", 400))
         return _json_response(result)
 
-    return await forward_to_moto(request, "xray")
+    return await forward_to_moto(request, "xray", account_id=account_id)
 
 
 def _create_sampling_rule(params: dict, region: str, account_id: str) -> dict:

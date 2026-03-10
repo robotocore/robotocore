@@ -36,15 +36,15 @@ RESOURCE_ATTRS = {
 }
 
 
-def _get_backend(service_name: str):
+def _get_backend(service_name: str, account_id: str = DEFAULT_ACCOUNT_ID):
     """Safely get a Moto backend instance."""
     try:
         from moto.backends import get_backend
 
         backend_dict = get_backend(service_name)
         if isinstance(backend_dict, BackendDict):
-            if DEFAULT_ACCOUNT_ID in backend_dict:
-                regions = backend_dict[DEFAULT_ACCOUNT_ID]
+            if account_id in backend_dict:
+                regions = backend_dict[account_id]
                 if "us-east-1" in regions:
                     return regions["us-east-1"]
                 if "global" in regions:
@@ -57,13 +57,13 @@ def _get_backend(service_name: str):
         return None
 
 
-def get_resource_counts() -> dict[str, int]:
+def get_resource_counts(account_id: str = DEFAULT_ACCOUNT_ID) -> dict[str, int]:
     """Get resource counts for all services."""
     from robotocore.services.registry import SERVICE_REGISTRY
 
     counts = {}
     for service_name in sorted(SERVICE_REGISTRY.keys()):
-        backend = _get_backend(service_name)
+        backend = _get_backend(service_name, account_id=account_id)
         if backend is None:
             continue
 
@@ -82,9 +82,9 @@ def get_resource_counts() -> dict[str, int]:
     return counts
 
 
-def get_service_resources(service_name: str) -> list[dict]:
+def get_service_resources(service_name: str, account_id: str = DEFAULT_ACCOUNT_ID) -> list[dict]:
     """Get detailed resource list for a specific service."""
-    backend = _get_backend(service_name)
+    backend = _get_backend(service_name, account_id=account_id)
     if backend is None:
         return []
 

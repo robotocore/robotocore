@@ -27,7 +27,7 @@ async def handle_tagging_request(request: Request, region: str, account_id: str)
         return await _get_tag_keys(request, body, region, account_id)
 
     # Everything else (TagResources, UntagResources, GetTagValues) -> Moto
-    return await forward_to_moto(request, "resourcegroupstaggingapi")
+    return await forward_to_moto(request, "resourcegroupstaggingapi", account_id=account_id)
 
 
 async def _get_resources(request: Request, body: bytes, region: str, account_id: str) -> Response:
@@ -36,7 +36,7 @@ async def _get_resources(request: Request, body: bytes, region: str, account_id:
     resource_type_filters = [r.lower() for r in params.get("ResourceTypeFilters", [])]
 
     # Get Moto results first
-    moto_resp = await forward_to_moto(request, "resourcegroupstaggingapi")
+    moto_resp = await forward_to_moto(request, "resourcegroupstaggingapi", account_id=account_id)
     moto_body = json.loads(moto_resp.body)
     results = moto_body.get("ResourceTagMappingList", [])
 
@@ -69,7 +69,7 @@ async def _get_resources(request: Request, body: bytes, region: str, account_id:
 
 async def _get_tag_keys(request: Request, body: bytes, region: str, account_id: str) -> Response:
     # Get Moto results
-    moto_resp = await forward_to_moto(request, "resourcegroupstaggingapi")
+    moto_resp = await forward_to_moto(request, "resourcegroupstaggingapi", account_id=account_id)
     moto_body = json.loads(moto_resp.body)
     tag_keys = set(moto_body.get("TagKeys", []))
 

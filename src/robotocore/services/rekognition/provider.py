@@ -100,7 +100,7 @@ async def handle_rekognition_request(request: Request, region: str, account_id: 
             media_type=_JSON_TYPE,
         )
 
-    return await forward_to_moto(request, "rekognition")
+    return await forward_to_moto(request, "rekognition", account_id=account_id)
 
 
 # ---------------------------------------------------------------------------

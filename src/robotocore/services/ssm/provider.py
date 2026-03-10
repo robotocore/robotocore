@@ -55,7 +55,7 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
                 media_type="application/x-amz-json-1.1",
             )
 
-    return await forward_to_moto(request, "ssm")
+    return await forward_to_moto(request, "ssm", account_id=account_id)
 
 
 def _send_command_native(params: dict, region: str, account_id: str) -> Response:

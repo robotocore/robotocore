@@ -63,7 +63,7 @@ async def handle_config_request(request: Request, region: str, account_id: str) 
             return _error_response("InternalError", str(e), 500)
 
     # Fall back to Moto
-    return await forward_to_moto(request, "config")
+    return await forward_to_moto(request, "config", account_id=account_id)
 
 
 class ConfigError(Exception):

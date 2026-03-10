@@ -111,7 +111,7 @@ async def handle_batch_request(request: Request, region: str, account_id: str) -
         # Fall through to Moto for ops not handled natively
         from robotocore.providers.moto_bridge import forward_to_moto
 
-        return await forward_to_moto(request, "batch")
+        return await forward_to_moto(request, "batch", account_id=account_id)
 
     except BatchError as e:
         return _error(e.code, e.message, e.status)

@@ -1709,7 +1709,7 @@ class TestIAMProviderErrorPaths:
             asyncio.get_event_loop().run_until_complete(
                 handle_iam_request(request, "us-east-1", "123456789012")
             )
-            mock_forward.assert_called_once_with(request, "iam")
+            mock_forward.assert_called_once_with(request, "iam", account_id="123456789012")
 
     def test_moto_nosuchentity_passthrough(self):
         """When Moto returns NoSuchEntity for a non-existent user, it passes through."""

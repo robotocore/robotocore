@@ -97,7 +97,7 @@ async def handle_opensearch_request(request: Request, region: str, account_id: s
             media_type="application/json",
         )
 
-    return await forward_to_moto(request, "opensearch")
+    return await forward_to_moto(request, "opensearch", account_id=account_id)
 
 
 async def handle_es_request(request: Request, region: str, account_id: str) -> Response:
@@ -176,4 +176,4 @@ async def handle_es_request(request: Request, region: str, account_id: str) -> R
             media_type="application/json",
         )
 
-    return await forward_to_moto(request, "es")
+    return await forward_to_moto(request, "es", account_id=account_id)

@@ -52,7 +52,7 @@ async def handle_ec2_request(request: Request, region: str, account_id: str) -> 
             )
             return Response(content=xml, status_code=500, media_type="text/xml")
 
-    return await forward_to_moto(request, "ec2")
+    return await forward_to_moto(request, "ec2", account_id=account_id)
 
 
 def _get_param(params: dict, key: str) -> str:

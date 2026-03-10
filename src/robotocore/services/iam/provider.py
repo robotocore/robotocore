@@ -31,7 +31,7 @@ async def handle_iam_request(request: Request, region: str, account_id: str) -> 
     if handler:
         return handler(params, region, account_id)
 
-    response = await forward_to_moto(request, "iam")
+    response = await forward_to_moto(request, "iam", account_id=account_id)
 
     # Post-process GetUser to inject PermissionsBoundary if set
     if action == "GetUser" and response.status_code == 200:
