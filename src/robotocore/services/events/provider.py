@@ -285,6 +285,20 @@ def _put_events(store: EventsStore, params: dict, region: str, account_id: str) 
     }
 
 
+def publish_event_to_bus(
+    event: dict, region: str, account_id: str, bus_name: str = "default"
+) -> None:
+    """Route a pre-built event through EventBridge rule matching. Called by S3, etc."""
+    store = _get_store(region, account_id)
+    bus = store.get_bus(bus_name)
+    if not bus:
+        return
+    store.archive_event(event, bus_name)
+    for rule in bus.rules.values():
+        if rule.matches_event(event):
+            _dispatch_to_targets(rule, event, region, account_id, store)
+
+
 def _create_event_bus(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
     bus = store.create_event_bus(name, region, account_id)

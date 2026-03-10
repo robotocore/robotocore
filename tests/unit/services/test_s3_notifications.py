@@ -1,12 +1,15 @@
 """Tests for robotocore.services.s3.notifications."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: F401
 
 from robotocore.services.s3.notifications import (
+    _S3_EVENT_TO_DETAIL_TYPE,
+    _S3_EVENT_TO_REASON,
     NotificationConfig,
     _bucket_notifications,
     _build_event_record,
+    _deliver_to_eventbridge,
     _deliver_to_sns,
     _deliver_to_sqs,
     _event_matches,
@@ -358,3 +361,81 @@ class TestFireEventMultipleTargets:
         fire_event("s3:ObjectCreated:Put", "bucket", "key", "us-east-1", "123")
         assert mock_sqs.call_count == 1
         assert mock_sqs.call_args[0][0] == "arn:aws:sqs:us-east-1:123:q1"
+
+
+class TestEventBridgeDelivery:
+    def setup_method(self):
+        _bucket_notifications.clear()
+
+    def test_eventbridge_enabled_calls_deliver(self):
+        config = NotificationConfig(eventbridge_enabled=True)
+        notif_path = "robotocore.services.s3.notifications._bucket_notifications"
+        deliver_path = "robotocore.services.s3.notifications._deliver_to_eventbridge"
+        with patch(notif_path, {"my-bucket": config}):
+            with patch(deliver_path) as mock_eb:
+                fire_event("s3:ObjectCreated:Put", "my-bucket", "key.txt")
+        mock_eb.assert_called_once()
+
+    def test_eventbridge_disabled_no_call(self):
+        config = NotificationConfig(eventbridge_enabled=False)
+        notif_path = "robotocore.services.s3.notifications._bucket_notifications"
+        deliver_path = "robotocore.services.s3.notifications._deliver_to_eventbridge"
+        with patch(notif_path, {"my-bucket": config}):
+            with patch(deliver_path) as mock_eb:
+                fire_event("s3:ObjectCreated:Put", "my-bucket", "key.txt")
+        mock_eb.assert_not_called()
+
+    def test_event_type_mappings(self):
+        assert _S3_EVENT_TO_DETAIL_TYPE["s3:ObjectCreated:Copy"] == "Object Created"
+        assert _S3_EVENT_TO_DETAIL_TYPE["s3:ObjectRemoved:DeleteMarkerCreated"] == "Object Deleted"
+        assert _S3_EVENT_TO_REASON["s3:ObjectCreated:Copy"] == "CopyObject"
+
+    def test_deliver_to_eventbridge_calls_publish(self):
+        # publish_event_to_bus is imported lazily inside _deliver_to_eventbridge,
+        # so patch it at the source module.
+        with patch("robotocore.services.events.provider.publish_event_to_bus") as mock_pub:
+            import robotocore.services.events.provider as _ev_mod
+
+            # Inject the mock into the events provider module so the lazy import picks it up
+            original = _ev_mod.publish_event_to_bus
+            _ev_mod.publish_event_to_bus = mock_pub
+            try:
+                _deliver_to_eventbridge(
+                    "s3:ObjectCreated:Put",
+                    "my-bucket",
+                    "key.txt",
+                    "us-east-1",
+                    "123456789012",
+                    42,
+                    "abc123",
+                )
+            finally:
+                _ev_mod.publish_event_to_bus = original
+        mock_pub.assert_called_once()
+        call_kwargs = mock_pub.call_args
+        event = call_kwargs[0][0]
+        assert event["source"] == "aws.s3"
+        assert event["detail-type"] == "Object Created"
+        assert event["detail"]["bucket"]["name"] == "my-bucket"
+
+    def test_deliver_to_eventbridge_unknown_event_defaults(self):
+        with patch("robotocore.services.events.provider.publish_event_to_bus") as mock_pub:
+            import robotocore.services.events.provider as _ev_mod
+
+            original = _ev_mod.publish_event_to_bus
+            _ev_mod.publish_event_to_bus = mock_pub
+            try:
+                _deliver_to_eventbridge(
+                    "s3:SomeUnknownEvent",
+                    "bucket",
+                    "key",
+                    "us-east-1",
+                    "123456789012",
+                    0,
+                    "",
+                )
+            finally:
+                _ev_mod.publish_event_to_bus = original
+        mock_pub.assert_called_once()
+        event = mock_pub.call_args[0][0]
+        assert event["detail-type"] == "Object Created"
