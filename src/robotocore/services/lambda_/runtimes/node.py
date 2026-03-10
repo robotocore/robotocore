@@ -25,12 +25,14 @@ class NodejsExecutor:
         region: str = "us-east-1",
         account_id: str = "123456789012",
         layer_zips: list[bytes] | None = None,
+        code_dir: str | None = None,
+        hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
         node_bin = shutil.which("node")
         if not node_bin:
             return None, "Runtime.InvalidRuntime", "Node.js not installed"
 
-        tmpdir = extract_code(code_zip, layer_zips)
+        tmpdir = extract_code(code_zip, layer_zips, code_dir=code_dir, function_name=function_name)
         env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
         # Add node_modules from the extracted code to NODE_PATH
         node_modules = os.path.join(tmpdir, "node_modules")

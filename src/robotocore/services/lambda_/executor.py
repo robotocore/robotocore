@@ -93,6 +93,9 @@ class CodeCache:
 
         The returned directory must NOT be deleted by the caller — the cache
         manages its lifecycle.
+
+        Extraction happens outside the lock to avoid blocking concurrent cache
+        lookups during slow I/O.
         """
         code_hash = hashlib.sha256(code_zip).hexdigest()
         key = (function_name, code_hash)
@@ -107,17 +110,33 @@ class CodeCache:
                 # Dir was deleted externally — remove stale entry
                 del self._cache[key]
 
-            # Extract new
-            tmpdir = tempfile.mkdtemp(prefix="lambda_cache_")
+        # Extract outside the lock — I/O can be slow for large zips
+        tmpdir = tempfile.mkdtemp(prefix="lambda_cache_")
+        try:
             if layer_zips:
                 for layer_zip in layer_zips:
                     try:
                         with zipfile.ZipFile(io.BytesIO(layer_zip)) as zf:
                             zf.extractall(tmpdir)
-                    except Exception:
-                        pass
+                    except (zipfile.BadZipFile, OSError):
+                        logger.warning("CodeCache: failed to extract layer zip")
             with zipfile.ZipFile(io.BytesIO(code_zip)) as zf:
                 zf.extractall(tmpdir)
+        except (zipfile.BadZipFile, OSError) as exc:
+            # Clean up on extraction failure
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            raise zipfile.BadZipFile(f"Failed to extract Lambda code: {exc}") from exc
+
+        with self._lock:
+            # Another thread may have extracted the same key while we were outside the lock.
+            # If so, discard our extraction and use the existing one.
+            if key in self._cache:
+                existing = self._cache[key]
+                if os.path.isdir(existing):
+                    shutil.rmtree(tmpdir, ignore_errors=True)
+                    self._cache.move_to_end(key)
+                    return existing
+                del self._cache[key]
 
             self._cache[key] = tmpdir
 
@@ -182,14 +201,41 @@ def _clear_modules_for_dir(code_dir: str) -> None:
     """Remove cached modules that live inside code_dir from sys.modules.
 
     This forces fresh imports on the next invocation when hot reload is active.
+    Also removes __pycache__ directories (bytecode cache) and clears importlib's
+    finder caches so that SourceFileLoader re-reads the source files.
     """
+    import importlib
+    import linecache
+
+    norm_dir = os.path.abspath(code_dir) + os.sep
     to_remove = []
-    for name, mod in sys.modules.items():
+    # Copy items() to a list to avoid RuntimeError if another thread modifies sys.modules
+    for name, mod in list(sys.modules.items()):
         mod_file = getattr(mod, "__file__", None)
-        if mod_file and os.path.commonpath([mod_file, code_dir]) == code_dir:
-            to_remove.append(name)
+        if mod_file:
+            try:
+                norm_file = os.path.abspath(mod_file)
+                if norm_file.startswith(norm_dir):
+                    to_remove.append(name)
+            except (ValueError, TypeError):
+                pass
     for name in to_remove:
-        del sys.modules[name]
+        sys.modules.pop(name, None)
+
+    # Remove __pycache__ directories so SourceFileLoader doesn't use stale bytecode
+    for dirpath, dirnames, _ in os.walk(code_dir):
+        for dirname in dirnames:
+            if dirname == "__pycache__":
+                pycache_path = os.path.join(dirpath, dirname)
+                shutil.rmtree(pycache_path, ignore_errors=True)
+
+    # Clear linecache for files in the code dir
+    keys_to_clear = [k for k in list(linecache.cache) if os.path.abspath(k).startswith(norm_dir)]
+    for k in keys_to_clear:
+        linecache.cache.pop(k, None)
+
+    # Invalidate importlib finder caches so loaders re-read source files
+    importlib.invalidate_caches()
 
 
 def execute_python_handler(

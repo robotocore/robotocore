@@ -13,6 +13,7 @@ def extract_code(
     code_zip: bytes,
     layer_zips: list[bytes] | None = None,
     code_dir: str | None = None,
+    function_name: str = "__subprocess__",
 ) -> str:
     """Extract code zip (and layers) to a temp directory. Returns the path.
 
@@ -28,7 +29,7 @@ def extract_code(
     from robotocore.services.lambda_.executor import get_code_cache
 
     return get_code_cache().get_or_extract(
-        function_name="__subprocess__",
+        function_name=function_name,
         code_zip=code_zip,
         layer_zips=layer_zips,
     )

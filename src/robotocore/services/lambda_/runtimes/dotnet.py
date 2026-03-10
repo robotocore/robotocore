@@ -102,12 +102,14 @@ class DotnetExecutor:
         region: str = "us-east-1",
         account_id: str = "123456789012",
         layer_zips: list[bytes] | None = None,
+        code_dir: str | None = None,
+        hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
         dotnet_bin = shutil.which("dotnet")
         if not dotnet_bin:
             return None, "Runtime.InvalidRuntime", ".NET SDK not installed"
 
-        tmpdir = extract_code(code_zip, layer_zips)
+        tmpdir = extract_code(code_zip, layer_zips, code_dir=code_dir, function_name=function_name)
         env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
 
         # Parse handler: "Assembly::Type::Method"

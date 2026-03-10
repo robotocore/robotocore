@@ -25,12 +25,14 @@ class RubyExecutor:
         region: str = "us-east-1",
         account_id: str = "123456789012",
         layer_zips: list[bytes] | None = None,
+        code_dir: str | None = None,
+        hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
         ruby_bin = shutil.which("ruby")
         if not ruby_bin:
             return None, "Runtime.InvalidRuntime", "Ruby not installed"
 
-        tmpdir = extract_code(code_zip, layer_zips)
+        tmpdir = extract_code(code_zip, layer_zips, code_dir=code_dir, function_name=function_name)
         env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
         # Add load paths for layers (ruby/ subdirectory)
         rubyopt_parts = []

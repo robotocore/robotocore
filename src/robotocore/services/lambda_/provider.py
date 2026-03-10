@@ -1095,23 +1095,19 @@ async def _invoke(
 
     if code_dir or code_zip:
         executor = get_executor_for_runtime(runtime)
-        # Build kwargs — pass code_dir/hot_reload for Python executor
-        kwargs: dict = {
-            "code_zip": code_zip or b"",
-            "handler": handler,
-            "event": event,
-            "function_name": func_name,
-            "timeout": timeout,
-            "memory_size": memory_size,
-            "env_vars": env_vars,
-            "region": region,
-            "account_id": account_id,
-        }
-        # Only PythonExecutor accepts code_dir/hot_reload
-        if code_dir:
-            kwargs["code_dir"] = code_dir
-            kwargs["hot_reload"] = use_hot_reload
-        result, error_type, logs = executor.execute(**kwargs)
+        result, error_type, logs = executor.execute(
+            code_zip=code_zip or b"",
+            handler=handler,
+            event=event,
+            function_name=func_name,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+            code_dir=code_dir,
+            hot_reload=use_hot_reload,
+        )
     else:
         # No code — return a simple success (like Moto's simple mode)
         result, error_type, logs = "Simple Lambda happy path OK", None, ""

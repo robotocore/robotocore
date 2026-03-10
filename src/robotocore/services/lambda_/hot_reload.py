@@ -73,6 +73,9 @@ class FileWatcher:
 
         On first call for a given function_name, returns False (no change yet)
         and records the current mtime.
+
+        Detects both forward and backward mtime changes (e.g., git checkout
+        can set mtimes to older values).
         """
         current_mtime = self._scan_directory(code_dir)
         last_mtime = self._last_mtimes.get(function_name)
@@ -82,7 +85,7 @@ class FileWatcher:
             self._last_mtimes[function_name] = current_mtime
             return False
 
-        if current_mtime > last_mtime:
+        if current_mtime != last_mtime:
             self._last_mtimes[function_name] = current_mtime
             logger.info(
                 "Hot reload: detected changes in %s (mtime %.3f -> %.3f)",
@@ -99,10 +102,16 @@ class FileWatcher:
         self._last_mtimes.pop(function_name, None)
 
     def _scan_directory(self, path: str) -> float:
-        """Recursively find the max mtime of watched files in path."""
+        """Recursively find the max mtime of watched files in path.
+
+        Does not follow symlinks to avoid infinite loops from circular links.
+        Uses os.lstat to get the mtime of the link target without following chains.
+        """
         max_mtime = 0.0
         try:
-            for dirpath, _dirnames, filenames in os.walk(path):
+            for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
+                # Skip hidden directories and __pycache__
+                dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"]
                 for filename in filenames:
                     _, ext = os.path.splitext(filename)
                     if ext in _WATCHED_EXTENSIONS:

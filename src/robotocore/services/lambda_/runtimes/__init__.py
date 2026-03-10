@@ -30,6 +30,8 @@ class RuntimeExecutor(Protocol):
         region: str = "us-east-1",
         account_id: str = "123456789012",
         layer_zips: list[bytes] | None = None,
+        code_dir: str | None = None,
+        hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
         """Execute a Lambda handler. Returns (result, error_type, logs)."""
         ...
