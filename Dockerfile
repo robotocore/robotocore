@@ -13,6 +13,7 @@ ENV HATCH_VCS_FALLBACK_VERSION=${HATCH_VCS_FALLBACK_VERSION}
 
 # Install dependencies (layer cache: only re-runs when lockfile changes)
 # Split into two layers: heavy deps (moto, boto3 — rarely change) then the rest
+COPY .git/ .git/
 COPY pyproject.toml uv.lock* README.md ./
 RUN uv sync --no-dev --no-install-project \
     && uv cache clean
@@ -22,8 +23,9 @@ COPY src/ src/
 RUN uv sync --no-dev
 
 # Strip build artifacts and unused transitive deps (~90MB savings)
+# Also remove the main .git directory (now that version is determined)
 RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
-    rm -rf /app/.venv/src/*/.git /root/.cache/uv \
+    rm -rf /app/.git /app/.venv/src/*/.git /root/.cache/uv \
     /app/.venv/lib/python3.12/site-packages/cfnlint \
     /app/.venv/lib/python3.12/site-packages/cfn_lint*.dist-info \
     /app/.venv/lib/python3.12/site-packages/sympy \
