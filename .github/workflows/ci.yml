@@ -390,13 +390,14 @@ jobs:
               region_name='us-east-1')
           q = sqs.create_queue(QueueName='test-queue')
           sqs.send_message(QueueUrl=q['QueueUrl'], MessageBody='hello')
+          time.sleep(0.5)
           msgs = []
-          for _ in range(5):
-              resp = sqs.receive_message(QueueUrl=q['QueueUrl'], WaitTimeSeconds=1)
+          for _ in range(10):
+              resp = sqs.receive_message(QueueUrl=q['QueueUrl'], MaxNumberOfMessages=1)
               msgs = resp.get('Messages', [])
               if msgs:
                   break
-              time.sleep(0.5)
+              time.sleep(1)
           assert msgs and msgs[0]['Body'] == 'hello', f'Expected message, got: {msgs}'
           print('SQS smoke test passed')
           "
