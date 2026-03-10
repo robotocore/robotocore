@@ -16,6 +16,8 @@ class PythonExecutor:
         region: str = "us-east-1",
         account_id: str = "123456789012",
         layer_zips: list[bytes] | None = None,
+        code_dir: str | None = None,
+        hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
         return execute_python_handler(
             code_zip=code_zip,
@@ -28,4 +30,6 @@ class PythonExecutor:
             region=region,
             account_id=account_id,
             layer_zips=layer_zips,
+            code_dir=code_dir,
+            hot_reload=hot_reload,
         )

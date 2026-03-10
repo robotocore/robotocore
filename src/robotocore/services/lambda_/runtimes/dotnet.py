@@ -12,7 +12,6 @@ import shutil
 
 from robotocore.services.lambda_.runtimes.base import (
     build_env,
-    cleanup,
     extract_code,
     run_subprocess,
 )
@@ -109,52 +108,47 @@ class DotnetExecutor:
             return None, "Runtime.InvalidRuntime", ".NET SDK not installed"
 
         tmpdir = extract_code(code_zip, layer_zips)
-        try:
-            env = build_env(
-                function_name, region, account_id, timeout, memory_size, handler, env_vars
+        env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
+
+        # Parse handler: "Assembly::Type::Method"
+        parts = handler.split("::")
+        if len(parts) < 3:
+            return (
+                None,
+                "Runtime.HandlerNotFound",
+                f"Bad .NET handler format: {handler}. Expected Assembly::Type::Method",
             )
 
-            # Parse handler: "Assembly::Type::Method"
-            parts = handler.split("::")
-            if len(parts) < 3:
-                return (
-                    None,
-                    "Runtime.HandlerNotFound",
-                    f"Bad .NET handler format: {handler}. Expected Assembly::Type::Method",
-                )
+        assembly_name = parts[0]
 
-            assembly_name = parts[0]
+        # Look for the assembly DLL
+        dll_path = os.path.join(tmpdir, assembly_name + ".dll")
+        if not os.path.exists(dll_path):
+            # Try in publish/ subdirectory
+            dll_path = os.path.join(tmpdir, "publish", assembly_name + ".dll")
+        if not os.path.exists(dll_path):
+            return (
+                None,
+                "Runtime.ImportModuleError",
+                f"Assembly '{assembly_name}.dll' not found",
+            )
 
-            # Look for the assembly DLL
-            dll_path = os.path.join(tmpdir, assembly_name + ".dll")
-            if not os.path.exists(dll_path):
-                # Try in publish/ subdirectory
-                dll_path = os.path.join(tmpdir, "publish", assembly_name + ".dll")
-            if not os.path.exists(dll_path):
-                return (
-                    None,
-                    "Runtime.ImportModuleError",
-                    f"Assembly '{assembly_name}.dll' not found",
-                )
+        # Write bootstrap C# file
+        bootstrap_path = os.path.join(tmpdir, "Bootstrap.cs")
+        with open(bootstrap_path, "w") as f:
+            f.write(BOOTSTRAP_TEMPLATE)
 
-            # Write bootstrap C# file
-            bootstrap_path = os.path.join(tmpdir, "Bootstrap.cs")
-            with open(bootstrap_path, "w") as f:
-                f.write(BOOTSTRAP_TEMPLATE)
+        # Use dotnet-script or compile and run
+        # Simpler approach: use `dotnet exec` on the DLL directly if it has an entry point,
+        # or compile our bootstrap
+        cmd = [dotnet_bin, "script", bootstrap_path]
 
-            # Use dotnet-script or compile and run
-            # Simpler approach: use `dotnet exec` on the DLL directly if it has an entry point,
-            # or compile our bootstrap
-            cmd = [dotnet_bin, "script", bootstrap_path]
+        # If dotnet-script isn't available, fall back to dotnet exec on the DLL
+        # For compiled Lambda packages, they include a runtimeconfig.json
+        runtimeconfig = os.path.join(tmpdir, assembly_name + ".runtimeconfig.json")
+        if os.path.exists(runtimeconfig):
+            # The DLL is a complete app — run it directly
+            # Pass the event via stdin and hope it reads it
+            cmd = [dotnet_bin, "exec", dll_path]
 
-            # If dotnet-script isn't available, fall back to dotnet exec on the DLL
-            # For compiled Lambda packages, they include a runtimeconfig.json
-            runtimeconfig = os.path.join(tmpdir, assembly_name + ".runtimeconfig.json")
-            if os.path.exists(runtimeconfig):
-                # The DLL is a complete app — run it directly
-                # Pass the event via stdin and hope it reads it
-                cmd = [dotnet_bin, "exec", dll_path]
-
-            return run_subprocess(cmd, event, tmpdir, env, timeout)
-        finally:
-            cleanup(tmpdir)
+        return run_subprocess(cmd, event, tmpdir, env, timeout)

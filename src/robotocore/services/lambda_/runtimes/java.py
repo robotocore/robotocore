@@ -7,7 +7,6 @@ import subprocess
 
 from robotocore.services.lambda_.runtimes.base import (
     build_env,
-    cleanup,
     extract_code,
     run_subprocess,
 )
@@ -68,29 +67,24 @@ class JavaExecutor:
             return None, "Runtime.InvalidRuntime", "Cannot compile Java bootstrap (javac not found)"
 
         tmpdir = extract_code(code_zip, layer_zips)
-        try:
-            env = build_env(
-                function_name, region, account_id, timeout, memory_size, handler, env_vars
-            )
+        env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
 
-            # Build classpath: bootstrap dir + extracted code dir + all JARs
-            cp_parts = [bootstrap_dir, tmpdir]
-            # Add lib/ directory JARs
-            lib_dir = os.path.join(tmpdir, "lib")
-            if os.path.isdir(lib_dir):
-                cp_parts.extend(glob.glob(os.path.join(lib_dir, "*.jar")))
-            # Add root-level JARs
-            cp_parts.extend(glob.glob(os.path.join(tmpdir, "*.jar")))
-            # Java layers put deps in java/lib/
-            java_dir = os.path.join(tmpdir, "java")
-            if os.path.isdir(java_dir):
-                cp_parts.append(java_dir)
-                java_lib = os.path.join(java_dir, "lib")
-                if os.path.isdir(java_lib):
-                    cp_parts.extend(glob.glob(os.path.join(java_lib, "*.jar")))
+        # Build classpath: bootstrap dir + extracted code dir + all JARs
+        cp_parts = [bootstrap_dir, tmpdir]
+        # Add lib/ directory JARs
+        lib_dir = os.path.join(tmpdir, "lib")
+        if os.path.isdir(lib_dir):
+            cp_parts.extend(glob.glob(os.path.join(lib_dir, "*.jar")))
+        # Add root-level JARs
+        cp_parts.extend(glob.glob(os.path.join(tmpdir, "*.jar")))
+        # Java layers put deps in java/lib/
+        java_dir = os.path.join(tmpdir, "java")
+        if os.path.isdir(java_dir):
+            cp_parts.append(java_dir)
+            java_lib = os.path.join(java_dir, "lib")
+            if os.path.isdir(java_lib):
+                cp_parts.extend(glob.glob(os.path.join(java_lib, "*.jar")))
 
-            classpath = os.pathsep.join(cp_parts)
-            cmd = [java_bin, "-cp", classpath, f"-Xmx{memory_size}m", "Bootstrap"]
-            return run_subprocess(cmd, event, tmpdir, env, timeout)
-        finally:
-            cleanup(tmpdir)
+        classpath = os.pathsep.join(cp_parts)
+        cmd = [java_bin, "-cp", classpath, f"-Xmx{memory_size}m", "Bootstrap"]
+        return run_subprocess(cmd, event, tmpdir, env, timeout)
