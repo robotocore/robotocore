@@ -626,6 +626,91 @@ class TestConnectionsApiDestinationsIsolation:
 # ---------------------------------------------------------------------------
 
 
+class TestPublishEventToBus:
+    """Unit tests for the publish_event_to_bus() helper (called by S3, etc.)."""
+
+    def test_no_bus_returns_silently(self):
+        """If the named bus does not exist, publish_event_to_bus returns without error."""
+        from robotocore.services.events.provider import publish_event_to_bus
+
+        # "nonexistent-bus" has never been created — should be a no-op
+        publish_event_to_bus({"source": "aws.s3"}, "us-east-1", "123456789012", "nonexistent-bus")
+
+    def test_default_bus_exists_is_noop_with_no_rules(self):
+        """Publishing to the default bus with no matching rules completes without error."""
+        from robotocore.services.events.provider import _get_store, publish_event_to_bus
+
+        store = _get_store("us-east-1", "123456789012")
+        bus = store.get_bus("default")
+        assert bus is not None  # default bus always exists
+        event = {"source": "aws.s3", "detail-type": "Object Created", "detail": {}}
+        # Should not raise; no rules means no dispatch
+        publish_event_to_bus(event, "us-east-1", "123456789012")
+
+    @pytest.mark.asyncio
+    async def test_matching_rule_dispatches_target(self):
+        """A rule whose pattern matches the event should attempt dispatch to its targets."""
+        from unittest.mock import patch
+
+        from robotocore.services.events.provider import (
+            handle_events_request,
+            publish_event_to_bus,
+        )
+
+        # Create a rule that matches source aws.s3
+        req = _make_request(
+            "PutRule",
+            {
+                "Name": "s3-rule",
+                "EventPattern": json.dumps({"source": ["aws.s3"]}),
+                "State": "ENABLED",
+            },
+        )
+        await handle_events_request(req, "us-east-1", "123456789012")
+
+        # Add an SQS target
+        target_req = _make_request(
+            "PutTargets",
+            {
+                "Rule": "s3-rule",
+                "Targets": [{"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:q"}],
+            },
+        )
+        await handle_events_request(target_req, "us-east-1", "123456789012")
+
+        event = {
+            "source": "aws.s3",
+            "detail-type": "Object Created",
+            "detail": {},
+            "account": "123456789012",
+            "region": "us-east-1",
+        }
+        # Patch the SQS dispatch so we can verify it was called (rule matched)
+        with patch("robotocore.services.events.provider._invoke_sqs_target") as mock_sqs:
+            publish_event_to_bus(event, "us-east-1", "123456789012")
+        mock_sqs.assert_called_once()
+
+    def test_non_matching_rule_does_not_dispatch(self):
+        """An event that does not match any rule pattern should not dispatch targets."""
+        from robotocore.services.events.provider import (
+            clear_invocation_log,
+            get_invocation_log,
+            publish_event_to_bus,
+        )
+
+        clear_invocation_log()
+        # Publish an event with a source that no rule matches
+        event = {
+            "source": "aws.ec2",
+            "detail-type": "EC2 Instance State-change Notification",
+            "detail": {},
+        }
+        publish_event_to_bus(event, "us-east-1", "123456789012")
+        log = get_invocation_log()
+        # No targets dispatched (we haven't created any ec2 rules)
+        assert log == []
+
+
 class TestConsistentErrorCodes:
     """AWS EventBridge uses HTTP 400 for ResourceNotFoundException (not 404).
     All operations must be consistent."""
