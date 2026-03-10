@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/coverage.svg" alt="AWS service coverage — 147 services, 84% of operations implemented" width="640">
+</p>
+
+<p align="center">
   <strong>A digital twin of AWS. Free forever. Runs anywhere.</strong><br>
   MIT licensed · No registration · No telemetry · Drop-in replacement for LocalStack
 </p>
