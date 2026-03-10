@@ -144,12 +144,12 @@
   </circle>
 
   <!-- Tagline -->
-  <text x="197" y="140" font-family="monospace, Consolas, 'Courier New'" font-size="15" fill="#a1735c" letter-spacing="0.3">
+  <text x="197" y="152" font-family="monospace, Consolas, 'Courier New'" font-size="15" fill="#a1735c" letter-spacing="0.3">
     a digital twin of AWS
   </text>
 
   <!-- Badges row -->
-  <g transform="translate(197, 158)">
+  <g transform="translate(197, 170)">
     <!-- Services badge -->
     <rect x="0" y="0" width="104" height="24" rx="5" fill="#a19e6a" opacity="0.15"/>
     <rect x="0" y="0" width="104" height="24" rx="5" fill="none" stroke="#a19e6a" stroke-width="0.8" opacity="0.4"/>
