@@ -32,7 +32,7 @@ def _make_request(path: str = "/", host: str = "localhost") -> Request:
 
 def _run(coro):
     """Run an async function synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 @mock_aws
