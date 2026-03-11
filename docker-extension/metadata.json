@@ -1,0 +1,19 @@
+{
+  "name": "robotocore",
+  "description": "Local AWS emulator — 147 services, zero config, MIT licensed",
+  "version": "1.0.0",
+  "icon": "robotocore.svg",
+  "ui": {
+    "dashboard-tab": {
+      "title": "Robotocore",
+      "root": "/ui",
+      "src": "index.html"
+    }
+  },
+  "vm": {
+    "image": "${DESKTOP_PLUGIN_IMAGE}"
+  },
+  "host": {
+    "binaries": []
+  }
+}

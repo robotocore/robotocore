@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robotocore - Local AWS Emulator</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --surface-hover: #1a2744;
+      --primary: #0f3460;
+      --accent: #e94560;
+      --text: #eee;
+      --text-muted: #999;
+      --success: #4caf50;
+      --warning: #ff9800;
+      --error: #f44336;
+      --border: #2a2a4a;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 24px;
+    }
+
+    h1 { font-size: 28px; margin-bottom: 4px; }
+    h2 { font-size: 18px; margin-bottom: 12px; color: var(--text-muted); font-weight: 400; }
+    h3 { font-size: 16px; margin-bottom: 8px; }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-text { flex: 1; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-running { background: var(--success); color: #fff; }
+    .badge-stopped { background: var(--error); color: #fff; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .card-full { grid-column: 1 / -1; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+    .btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-start { background: var(--success); color: #fff; }
+    .btn-stop { background: var(--error); color: #fff; }
+    .btn-secondary { background: var(--primary); color: var(--text); }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: var(--text-muted); }
+
+    #logs-output {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      padding: 12px;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 2px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:hover td { background: var(--surface-hover); }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .status-dot-ok { background: var(--success); }
+    .status-dot-warn { background: var(--warning); }
+    .status-dot-err { background: var(--error); }
+
+    .quick-links { display: flex; gap: 12px; flex-wrap: wrap; }
+    .quick-links a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      padding: 4px 0;
+    }
+    .quick-links a:hover { text-decoration: underline; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-text">
+    <h1>Robotocore</h1>
+    <h2>Local AWS emulator &mdash; 147 services, MIT licensed</h2>
+  </div>
+  <span id="status-badge" class="badge badge-stopped">Stopped</span>
+</div>
+
+<!-- Status Panel -->
+<div class="grid">
+  <div class="card" id="status-panel">
+    <h3>Instance Status</h3>
+    <div class="info-row">
+      <span class="info-label">State</span>
+      <span id="status-state">Unknown</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Container ID</span>
+      <span id="status-container-id">&mdash;</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Port</span>
+      <span id="status-port">4566</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Uptime</span>
+      <span id="status-uptime">&mdash;</span>
+    </div>
+    <div class="btn-row">
+      <button id="btn-start" class="btn btn-start" onclick="startContainer()">Start</button>
+      <button id="btn-stop" class="btn btn-stop" onclick="stopContainer()" disabled>Stop</button>
+      <button class="btn btn-secondary" onclick="refreshStatus()">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Configuration -->
+  <div class="card" id="config-panel">
+    <h3>Configuration</h3>
+    <form id="config-form" onsubmit="return false">
+      <div class="form-row">
+        <div>
+          <label for="cfg-SERVICES">SERVICES</label>
+          <input type="text" id="cfg-SERVICES" name="SERVICES"
+                 placeholder="s3,sqs,dynamodb (blank=all)">
+        </div>
+        <div>
+          <label for="cfg-LOG_LEVEL">LOG_LEVEL</label>
+          <select id="cfg-LOG_LEVEL" name="LOG_LEVEL">
+            <option value="INFO" selected>INFO</option>
+            <option value="DEBUG">DEBUG</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label for="cfg-ENFORCE_IAM">ENFORCE_IAM</label>
+          <select id="cfg-ENFORCE_IAM" name="ENFORCE_IAM">
+            <option value="0" selected>Disabled (0)</option>
+            <option value="1">Enabled (1)</option>
+          </select>
+        </div>
+        <div>
+          <label for="cfg-PERSISTENCE">PERSISTENCE</label>
+          <select id="cfg-PERSISTENCE" name="PERSISTENCE">
+            <option value="0" selected>Disabled (0)</option>
+            <option value="1">Enabled (1)</option>
+          </select>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="grid">
+  <div class="card">
+    <h3>Quick Actions</h3>
+    <div class="quick-links">
+      <a href="#" onclick="openDashboard()">Open Dashboard</a>
+      <a href="#" onclick="viewAuditLog()">View Audit Log</a>
+      <a href="#" onclick="viewResources()">Browse Resources</a>
+      <a href="#" onclick="viewHealth()">Health Check</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Endpoints</h3>
+    <div class="info-row">
+      <span class="info-label">AWS Endpoint</span>
+      <span>http://localhost:4566</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Dashboard</span>
+      <span>http://localhost:4566/_robotocore/</span>
+    </div>
+  </div>
+</div>
+
+<!-- Logs -->
+<div class="grid">
+  <div class="card card-full">
+    <h3>Container Logs
+      <button class="btn btn-secondary" style="float:right;padding:4px 12px;font-size:12px"
+              onclick="refreshLogs()">Refresh Logs</button>
+    </h3>
+    <div id="logs-output">No logs available. Start the container to see output.</div>
+  </div>
+</div>
+
+<!-- Service Status -->
+<div class="grid">
+  <div class="card card-full" id="service-status-panel">
+    <h3>Service Status
+      <button class="btn btn-secondary" style="float:right;padding:4px 12px;font-size:12px"
+              onclick="refreshServices()">Refresh</button>
+    </h3>
+    <div style="max-height:400px;overflow-y:auto">
+      <table id="service-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Status</th>
+            <th>Protocol</th>
+            <th>Provider</th>
+          </tr>
+        </thead>
+        <tbody id="service-table-body">
+          <tr><td colspan="4" style="color:var(--text-muted)">Start robotocore to view services</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Backend API base URL. In Docker Desktop extension context, requests go through
+  // the extension VM service. For local dev, point at the backend directly.
+  const API_BASE = '';
+
+  // --- Status ---
+
+  async function refreshStatus() {
+    try {
+      const resp = await fetch(API_BASE + '/status');
+      const data = await resp.json();
+      updateStatusUI(data);
+    } catch (err) {
+      updateStatusUI({ running: false, container_id: null, uptime: null, port: 4566 });
+    }
+  }
+
+  function updateStatusUI(data) {
+    const badge = document.getElementById('status-badge');
+    const state = document.getElementById('status-state');
+    const cid = document.getElementById('status-container-id');
+    const port = document.getElementById('status-port');
+    const uptime = document.getElementById('status-uptime');
+    const btnStart = document.getElementById('btn-start');
+    const btnStop = document.getElementById('btn-stop');
+
+    if (data.running) {
+      badge.textContent = 'Running';
+      badge.className = 'badge badge-running';
+      state.textContent = 'Running';
+      cid.textContent = data.container_id || '\u2014';
+      uptime.textContent = data.uptime || '\u2014';
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+    } else {
+      badge.textContent = 'Stopped';
+      badge.className = 'badge badge-stopped';
+      state.textContent = 'Stopped';
+      cid.textContent = '\u2014';
+      uptime.textContent = '\u2014';
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+    }
+    port.textContent = data.port || 4566;
+  }
+
+  // --- Start / Stop ---
+
+  async function startContainer() {
+    const btn = document.getElementById('btn-start');
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+
+    const env = {};
+    const services = document.getElementById('cfg-SERVICES').value.trim();
+    if (services) env.SERVICES = services;
+    env.LOG_LEVEL = document.getElementById('cfg-LOG_LEVEL').value;
+    env.ENFORCE_IAM = document.getElementById('cfg-ENFORCE_IAM').value;
+    env.PERSISTENCE = document.getElementById('cfg-PERSISTENCE').value;
+
+    try {
+      const resp = await fetch(API_BASE + '/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env }),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        alert('Failed to start: ' + data.error);
+      }
+    } catch (err) {
+      alert('Failed to start container: ' + err.message);
+    }
+
+    btn.textContent = 'Start';
+    setTimeout(refreshStatus, 1500);
+    setTimeout(refreshLogs, 3000);
+    setTimeout(refreshServices, 5000);
+  }
+
+  async function stopContainer() {
+    const btn = document.getElementById('btn-stop');
+    btn.disabled = true;
+    btn.textContent = 'Stopping...';
+
+    try {
+      await fetch(API_BASE + '/stop', { method: 'POST' });
+    } catch (err) {
+      alert('Failed to stop: ' + err.message);
+    }
+
+    btn.textContent = 'Stop';
+    setTimeout(refreshStatus, 1500);
+  }
+
+  // --- Logs ---
+
+  async function refreshLogs() {
+    try {
+      const resp = await fetch(API_BASE + '/logs?tail=200');
+      const text = await resp.text();
+      const output = document.getElementById('logs-output');
+      output.textContent = text || 'No logs available.';
+      output.scrollTop = output.scrollHeight;
+    } catch {
+      document.getElementById('logs-output').textContent = 'Cannot fetch logs. Is the container running?';
+    }
+  }
+
+  // --- Services ---
+
+  async function refreshServices() {
+    try {
+      const resp = await fetch(API_BASE + '/proxy/_robotocore/services');
+      const data = await resp.json();
+      renderServiceTable(data);
+    } catch {
+      document.getElementById('service-table-body').innerHTML =
+        '<tr><td colspan="4" style="color:var(--text-muted)">Cannot load services. Is robotocore running?</td></tr>';
+    }
+  }
+
+  function renderServiceTable(data) {
+    const tbody = document.getElementById('service-table-body');
+    const services = data.services || data || [];
+
+    if (!Array.isArray(services) || services.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted)">No services found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = services.map(svc => {
+      const name = svc.name || svc;
+      const status = svc.status || 'available';
+      const protocol = svc.protocol || '-';
+      const provider = svc.provider || '-';
+      const dotClass = status === 'available' ? 'status-dot-ok' :
+                       status === 'degraded' ? 'status-dot-warn' : 'status-dot-err';
+      return `<tr>
+        <td>${name}</td>
+        <td><span class="status-dot ${dotClass}"></span>${status}</td>
+        <td>${protocol}</td>
+        <td>${provider}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // --- Quick Actions ---
+
+  function openDashboard() { window.open('http://localhost:4566/_robotocore/', '_blank'); }
+  function viewAuditLog() { window.open('http://localhost:4566/_robotocore/audit', '_blank'); }
+  function viewResources() { window.open('http://localhost:4566/_robotocore/resources', '_blank'); }
+  function viewHealth() { window.open('http://localhost:4566/_robotocore/health', '_blank'); }
+
+  // --- Init ---
+  refreshStatus();
+  setInterval(refreshStatus, 10000);
+</script>
+
+</body>
+</html>
