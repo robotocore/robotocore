@@ -751,6 +751,61 @@ async def config_active_endpoint(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# IAM policy stream endpoints
+# ---------------------------------------------------------------------------
+
+
+async def iam_policy_stream_list(request: Request) -> JSONResponse:
+    """Return recent IAM policy evaluations."""
+    from robotocore.services.iam.policy_stream import (
+        format_stream_response,
+        get_policy_stream,
+        is_stream_enabled,
+    )
+
+    if not is_stream_enabled():
+        return JSONResponse(
+            {"error": "IAM policy stream is disabled. Set IAM_POLICY_STREAM=1 to enable."},
+            status_code=400,
+        )
+
+    stream = get_policy_stream()
+    limit = int(request.query_params.get("limit", "100"))
+    principal = request.query_params.get("principal")
+    action = request.query_params.get("action")
+    decision = request.query_params.get("decision")
+    entries = stream.recent(limit=limit, principal=principal, action=action, decision=decision)
+    return JSONResponse(format_stream_response(entries))
+
+
+async def iam_policy_stream_clear(request: Request) -> JSONResponse:
+    """Clear the IAM policy stream."""
+    from robotocore.services.iam.policy_stream import get_policy_stream
+
+    count = get_policy_stream().clear()
+    return JSONResponse({"status": "cleared", "count": count})
+
+
+async def iam_policy_stream_summary(request: Request) -> JSONResponse:
+    """Return aggregate summary of IAM evaluations."""
+    from robotocore.services.iam.policy_stream import get_policy_stream
+
+    return JSONResponse(get_policy_stream().summary())
+
+
+async def iam_policy_stream_suggest(request: Request) -> JSONResponse:
+    """Generate least-privilege policy for a principal."""
+    from robotocore.services.iam.policy_stream import get_policy_stream
+
+    principal = request.query_params.get("principal", "")
+    if not principal:
+        return JSONResponse({"error": "principal query parameter is required"}, status_code=400)
+
+    policy = get_policy_stream().suggest_policy(principal)
+    return JSONResponse(policy)
+
+
+# ---------------------------------------------------------------------------
 # AWS request handler
 # ---------------------------------------------------------------------------
 
@@ -990,6 +1045,15 @@ management_routes = [
     Route("/_robotocore/plugins/{name}", plugin_detail, methods=["GET"]),
     # Diagnostics bundle
     Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
+    # IAM policy stream
+    Route("/_robotocore/iam/policy-stream", iam_policy_stream_list, methods=["GET"]),
+    Route("/_robotocore/iam/policy-stream", iam_policy_stream_clear, methods=["DELETE"]),
+    Route("/_robotocore/iam/policy-stream/summary", iam_policy_stream_summary, methods=["GET"]),
+    Route(
+        "/_robotocore/iam/policy-stream/suggest-policy",
+        iam_policy_stream_suggest,
+        methods=["GET"],
+    ),
     # TLS info
     Route("/_robotocore/tls/info", tls_info_endpoint, methods=["GET"]),
     # Console web UI
