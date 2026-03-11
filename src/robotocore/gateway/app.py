@@ -629,6 +629,44 @@ async def ses_messages_clear(request: Request) -> JSONResponse:
     return JSONResponse({"status": "cleared", "count": count})
 
 
+async def init_summary(request: Request) -> JSONResponse:
+    """Return summary of all init script stages."""
+    from robotocore.init.tracker import get_init_tracker
+
+    tracker = get_init_tracker()
+    return JSONResponse(tracker.get_summary())
+
+
+async def init_stage(request: Request) -> JSONResponse:
+    """Return detailed list of scripts for a specific stage."""
+    from robotocore.init.tracker import get_init_tracker
+
+    stage = request.path_params["stage"]
+    tracker = get_init_tracker()
+    scripts = tracker.get_scripts(stage)
+    return JSONResponse({"stage": stage, "scripts": scripts})
+
+
+async def plugins_list(request: Request) -> JSONResponse:
+    """List all discovered plugins with status info."""
+    from robotocore.extensions.plugin_status import get_plugin_status_collector
+
+    collector = get_plugin_status_collector()
+    return JSONResponse({"plugins": collector.list_plugins()})
+
+
+async def plugin_detail(request: Request) -> JSONResponse:
+    """Return detailed info for a specific plugin."""
+    from robotocore.extensions.plugin_status import get_plugin_status_collector
+
+    name = request.path_params["name"]
+    collector = get_plugin_status_collector()
+    detail = collector.get_plugin_detail(name)
+    if detail is None:
+        return JSONResponse({"error": f"Plugin '{name}' not found"}, status_code=404)
+    return JSONResponse(detail)
+
+
 async def tls_info_endpoint(request: Request) -> JSONResponse:
     """Return TLS/HTTPS configuration and certificate info."""
     if not _tls_config.enabled or _tls_cert_path is None:
@@ -944,6 +982,12 @@ management_routes = [
     # Configuration profiles
     Route("/_robotocore/config/profiles", config_profiles_list, methods=["GET"]),
     Route("/_robotocore/config/active", config_active_endpoint, methods=["GET"]),
+    # Init scripts status
+    Route("/_robotocore/init", init_summary, methods=["GET"]),
+    Route("/_robotocore/init/{stage}", init_stage, methods=["GET"]),
+    # Plugins status
+    Route("/_robotocore/plugins", plugins_list, methods=["GET"]),
+    Route("/_robotocore/plugins/{name}", plugin_detail, methods=["GET"]),
     # Diagnostics bundle
     Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
     # TLS info
