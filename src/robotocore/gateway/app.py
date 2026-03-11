@@ -627,6 +627,13 @@ async def ses_messages_clear(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+async def _diagnose_handler(request: Request) -> JSONResponse:
+    """Diagnostic bundle endpoint -- delegates to diagnostics_bundle module."""
+    from robotocore.diagnostics_bundle import diagnose_endpoint
+
+    return await diagnose_endpoint(request)
+
+
 async def dns_config_endpoint(request: Request) -> JSONResponse:
     """Return current DNS server configuration."""
     from robotocore.dns.resolver import get_config
@@ -905,6 +912,8 @@ management_routes = [
     # Configuration profiles
     Route("/_robotocore/config/profiles", config_profiles_list, methods=["GET"]),
     Route("/_robotocore/config/active", config_active_endpoint, methods=["GET"]),
+    # Diagnostics bundle
+    Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
 ]
 
 
