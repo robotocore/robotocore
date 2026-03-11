@@ -206,6 +206,29 @@ class LambdaContext:
         return int(remaining * 1000)
 
 
+def _clear_plain_modules_for_dir(code_dir: str) -> None:
+    """Remove plain-named (non _lambda_* namespaced) modules from sys.modules whose
+    __file__ lives inside code_dir.  Called before every execution to prevent
+    helper modules (e.g. 'shared') from leaking across Lambda invocations.
+    The function-scoped _lambda_* entries are intentionally left in place so that
+    hot_reload=False caching still works for the top-level handler module.
+    """
+    norm_dir = os.path.abspath(code_dir) + os.sep
+    to_remove = []
+    for name, mod in list(sys.modules.items()):
+        if name.startswith("_lambda_"):
+            continue
+        mod_file = getattr(mod, "__file__", None)
+        if mod_file:
+            try:
+                if os.path.abspath(mod_file).startswith(norm_dir):
+                    to_remove.append(name)
+            except (ValueError, TypeError):
+                pass
+    for name in to_remove:
+        sys.modules.pop(name, None)
+
+
 def _clear_modules_for_dir(code_dir: str) -> None:
     """Remove cached modules that live inside code_dir from sys.modules.
 
@@ -299,9 +322,14 @@ def execute_python_handler(
         tmpdir = _code_cache.get_or_extract(function_name, code_zip, layer_zips)
 
     try:
-        # Hot reload: clear cached modules so we get fresh imports
+        # Always clear plain-named (non-namespaced) modules from this tmpdir.
+        # Modules like "shared" are stored without a function-scoped prefix and
+        # can pollute subsequent Lambda executions in the same process (test workers).
+        # The _lambda_* namespaced entries are left intact to preserve hot_reload=False
+        # caching behaviour for the top-level handler module.
+        _clear_plain_modules_for_dir(tmpdir)
         if hot_reload and code_dir:
-            _clear_modules_for_dir(tmpdir)
+            _clear_modules_for_dir(code_dir)
 
         # Set up environment
         old_env = os.environ.copy()
