@@ -476,6 +476,54 @@ async def audit_log(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Usage analytics endpoints
+# ---------------------------------------------------------------------------
+
+
+async def usage_summary(request: Request) -> JSONResponse:
+    """Return overall usage summary."""
+    from robotocore.audit.analytics import get_usage_analytics
+
+    analytics = get_usage_analytics()
+    return JSONResponse(analytics.get_usage_summary())
+
+
+async def usage_services(request: Request) -> JSONResponse:
+    """Return per-service usage breakdown."""
+    from robotocore.audit.analytics import get_usage_analytics
+
+    analytics = get_usage_analytics()
+    return JSONResponse({"services": analytics.get_all_service_stats()})
+
+
+async def usage_service_detail(request: Request) -> JSONResponse:
+    """Return detailed stats for a specific service."""
+    from robotocore.audit.analytics import get_usage_analytics
+
+    service = request.path_params["service"]
+    analytics = get_usage_analytics()
+    stats = analytics.get_service_stats(service)
+    stats["service"] = service
+    return JSONResponse(stats)
+
+
+async def usage_errors(request: Request) -> JSONResponse:
+    """Return error breakdown."""
+    from robotocore.audit.analytics import get_usage_analytics
+
+    analytics = get_usage_analytics()
+    return JSONResponse(analytics.get_error_summary())
+
+
+async def usage_timeline(request: Request) -> JSONResponse:
+    """Return per-minute request timeline."""
+    from robotocore.audit.analytics import get_usage_analytics
+
+    analytics = get_usage_analytics()
+    return JSONResponse({"timeline": analytics.get_timeline()})
+
+
+# ---------------------------------------------------------------------------
 # SES SMTP email inspection endpoints
 # ---------------------------------------------------------------------------
 
@@ -773,6 +821,12 @@ management_routes = [
     Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),
     # Audit log
     Route("/_robotocore/audit", audit_log, methods=["GET"]),
+    # Usage analytics
+    Route("/_robotocore/usage", usage_summary, methods=["GET"]),
+    Route("/_robotocore/usage/services", usage_services, methods=["GET"]),
+    Route("/_robotocore/usage/services/{service}", usage_service_detail, methods=["GET"]),
+    Route("/_robotocore/usage/errors", usage_errors, methods=["GET"]),
+    Route("/_robotocore/usage/timeline", usage_timeline, methods=["GET"]),
     # Endpoint strategies
     Route("/_robotocore/endpoints/config", lambda r: _endpoints_config(r), methods=["GET"]),
     # SES SMTP email inspection
