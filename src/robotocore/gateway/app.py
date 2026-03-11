@@ -868,6 +868,99 @@ async def iam_policy_stream_suggest(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Cloud Pods endpoints
+# ---------------------------------------------------------------------------
+
+
+async def pods_save(request: Request) -> JSONResponse:
+    """Save a Cloud Pod -- snapshot state and push to backend."""
+    from robotocore.state.cloud_pods import CloudPodsError, get_cloud_pods_manager
+    from robotocore.state.manager import get_state_manager
+
+    body = await request.body()
+    params = json.loads(body) if body else {}
+
+    try:
+        mgr = get_cloud_pods_manager()
+        version = mgr.save_pod(
+            name=params.get("name", f"pod-{int(time.time())}"),
+            state_manager=get_state_manager(),
+            services=params.get("services"),
+        )
+        return JSONResponse({"status": "saved", "name": params.get("name"), "version": version})
+    except CloudPodsError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+async def pods_load(request: Request) -> JSONResponse:
+    """Load a Cloud Pod -- pull from backend and restore state."""
+    from robotocore.state.cloud_pods import CloudPodsError, get_cloud_pods_manager
+    from robotocore.state.manager import get_state_manager
+
+    body = await request.body()
+    params = json.loads(body) if body else {}
+
+    name = params.get("name")
+    if not name:
+        return JSONResponse({"error": "Missing 'name' parameter"}, status_code=400)
+
+    try:
+        mgr = get_cloud_pods_manager()
+        mgr.load_pod(
+            name=name,
+            state_manager=get_state_manager(),
+            version=params.get("version"),
+        )
+        return JSONResponse({"status": "loaded", "name": name})
+    except CloudPodsError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+async def pods_list(request: Request) -> JSONResponse:
+    """List all available Cloud Pods."""
+    from robotocore.state.cloud_pods import CloudPodsError, get_cloud_pods_manager
+
+    try:
+        pods = get_cloud_pods_manager().list_pods()
+        return JSONResponse({"pods": pods})
+    except CloudPodsError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+async def pods_info(request: Request) -> JSONResponse:
+    """Get info about a Cloud Pod including version history."""
+    from robotocore.state.cloud_pods import CloudPodsError, get_cloud_pods_manager
+
+    name = request.path_params["name"]
+    try:
+        info = get_cloud_pods_manager().pod_info(name)
+        return JSONResponse(
+            {
+                "name": info.name,
+                "created_at": info.created_at,
+                "size_bytes": info.size_bytes,
+                "version_count": info.version_count,
+                "services_filter": info.services_filter,
+                "versions": info.versions,
+            }
+        )
+    except CloudPodsError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+
+
+async def pods_delete(request: Request) -> JSONResponse:
+    """Delete a Cloud Pod and all its versions."""
+    from robotocore.state.cloud_pods import CloudPodsError, get_cloud_pods_manager
+
+    name = request.path_params["name"]
+    try:
+        get_cloud_pods_manager().delete_pod(name)
+        return JSONResponse({"status": "deleted", "name": name})
+    except CloudPodsError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+
+
+# ---------------------------------------------------------------------------
 # AWS request handler
 # ---------------------------------------------------------------------------
 
@@ -1121,6 +1214,12 @@ management_routes = [
         iam_policy_stream_suggest,
         methods=["GET"],
     ),
+    # Cloud Pods
+    Route("/_robotocore/pods/save", pods_save, methods=["POST"]),
+    Route("/_robotocore/pods/load", pods_load, methods=["POST"]),
+    Route("/_robotocore/pods", pods_list, methods=["GET"]),
+    Route("/_robotocore/pods/{name}", pods_info, methods=["GET"]),
+    Route("/_robotocore/pods/{name}", pods_delete, methods=["DELETE"]),
     # TLS info
     Route("/_robotocore/tls/info", tls_info_endpoint, methods=["GET"]),
     # Console web UI
