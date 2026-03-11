@@ -15,10 +15,13 @@ Environment variables:
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 import sys
+
+logger = logging.getLogger(__name__)
 
 # All AWS services supported by the Terraform AWS provider.
 # Each key is the Terraform provider endpoint name, mapping to the robotocore endpoint.
@@ -370,7 +373,7 @@ def cleanup_override_file(working_dir: str) -> None:
     try:
         os.unlink(path)
     except FileNotFoundError:
-        pass
+        logger.debug("Override file %s already removed or does not exist", path)
 
 
 def find_terraform() -> str | None:
