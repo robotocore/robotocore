@@ -712,6 +712,11 @@ def _start_background_engines():
 
     get_canary_scheduler().start()
 
+    # Start DynamoDB TTL scanner
+    from robotocore.services.dynamodb.ttl import get_ttl_scanner
+
+    get_ttl_scanner().start()
+
     # Auto-load state if configured
     if os.environ.get("ROBOTOCORE_STATE_DIR"):
         from robotocore.state.manager import get_state_manager
@@ -739,6 +744,11 @@ def _shutdown():
         manager = get_state_manager()
         if manager.state_dir:
             manager.save()
+
+    # Stop DynamoDB TTL scanner
+    from robotocore.services.dynamodb.ttl import get_ttl_scanner
+
+    get_ttl_scanner().stop()
 
     # Stop SMTP server
     from robotocore.services.ses.smtp_server import stop_smtp_server
