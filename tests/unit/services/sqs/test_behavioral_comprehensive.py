@@ -270,9 +270,13 @@ class TestRetentionScannerEdgeCases:
         msg.created = time.time() - 120
         queue.put(msg)
 
-        # Receive the message so it goes to _inflight
-        results = queue.receive(max_messages=1, visibility_timeout=300, wait_time_seconds=0)
-        assert len(results) == 1
+        # Manually move message to _inflight (receive would skip expired messages)
+        with queue.mutex:
+            try:
+                m = queue._visible.get_nowait()
+                queue._inflight[m.message_id] = m
+            except Exception:
+                pass
         assert "m1" in queue._inflight
 
         self.scanner.scan_store(self.store)
