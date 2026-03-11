@@ -98,7 +98,7 @@ class EventBridgeRuleScheduler:
                         continue
 
                     key = (store_key, bus.name, rule.name)
-                    last = self._last_fired.get(key, 0)
+                    last = self._last_fired.get(key, -float("inf"))
                     if now - last >= interval:
                         self._last_fired[key] = now
                         self._fire_rule(rule, region, account_id, store)
