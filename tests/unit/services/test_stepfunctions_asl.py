@@ -74,7 +74,7 @@ class TestPassState:
 
 
 class TestTaskState:
-    def test_unknown_resource_returns_input(self):
+    def test_unknown_resource_raises_error(self):
         executor = _make_executor(
             {
                 "Start": {
@@ -84,8 +84,9 @@ class TestTaskState:
                 },
             }
         )
-        result = executor.execute({"data": 1})
-        assert result == {"data": 1}
+        with pytest.raises(ASLExecutionError) as exc_info:
+            executor.execute({"data": 1})
+        assert exc_info.value.error == "States.TaskFailed"
 
     def test_function_arn_resource_with_missing_lambda(self):
         """When Lambda not found, raises ASLExecutionError."""
