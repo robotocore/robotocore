@@ -42,28 +42,36 @@ class TestDetectCIProvider:
             name, build_id = detect_ci_provider()
             assert name == "github_actions"
 
-    def test_gitlab_ci(self):
+    def test_gitlab_ci(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
         env = {"GITLAB_CI": "true", "CI_JOB_ID": "12345"}
         with mock.patch.dict(os.environ, env, clear=False):
             name, build_id = detect_ci_provider()
             assert name == "gitlab_ci"
             assert build_id == "12345"
 
-    def test_jenkins(self):
+    def test_jenkins(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
         env = {"JENKINS_URL": "http://ci.example.com", "BUILD_NUMBER": "42"}
         with mock.patch.dict(os.environ, env, clear=False):
             name, build_id = detect_ci_provider()
             assert name == "jenkins"
             assert build_id == "42"
 
-    def test_circleci(self):
+    def test_circleci(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
         env = {"CIRCLECI": "true", "CIRCLE_BUILD_NUM": "99"}
         with mock.patch.dict(os.environ, env, clear=False):
             name, build_id = detect_ci_provider()
             assert name == "circleci"
             assert build_id == "99"
 
-    def test_generic_ci(self):
+    def test_generic_ci(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
         with mock.patch.dict(os.environ, {"CI": "true"}, clear=False):
             name, build_id = detect_ci_provider()
             assert name == "generic_ci"
@@ -624,12 +632,12 @@ class TestDetectCIProviderEdgeCases:
             assert name == "github_actions"
             assert build_id == "42"
 
-    def test_github_actions_without_run_id(self):
-        env = {"GITHUB_ACTIONS": "true"}
-        with mock.patch.dict(os.environ, env, clear=False):
-            name, build_id = detect_ci_provider()
-            assert name == "github_actions"
-            assert build_id is None
+    def test_github_actions_without_run_id(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+        name, build_id = detect_ci_provider()
+        assert name == "github_actions"
+        assert build_id is None
 
     def test_generic_ci_has_no_build_id(self):
         # Clear all specific providers first
