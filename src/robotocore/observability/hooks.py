@@ -38,6 +38,10 @@ def run_init_hooks(stage: str) -> list[dict]:
         logger.debug("No hook directory found: %s", hook_dir)
         return []
 
+    from robotocore.init.tracker import get_init_tracker
+
+    tracker = get_init_tracker()
+
     results = []
     scripts = sorted(hook_dir.glob("*.sh"))
     if not scripts:
@@ -46,10 +50,17 @@ def run_init_hooks(stage: str) -> list[dict]:
 
     logger.info("Running %d %s hook(s) from %s", len(scripts), stage, hook_dir)
 
+    # Record all scripts as pending first
+    for script in scripts:
+        if script.is_file():
+            tracker.record_pending(script.name, stage)
+
     for script in scripts:
         if not script.is_file():
             continue
         logger.info("Running hook: %s", script.name)
+        tracker.record_start(script.name, stage)
+        start_time = __import__("time").monotonic()
         try:
             result = subprocess.run(
                 ["bash", str(script)],
@@ -57,6 +68,7 @@ def run_init_hooks(stage: str) -> list[dict]:
                 capture_output=True,
                 text=True,
             )
+            elapsed = __import__("time").monotonic() - start_time
             results.append(
                 {
                     "script": script.name,
@@ -72,9 +84,12 @@ def run_init_hooks(stage: str) -> list[dict]:
                     result.returncode,
                     result.stderr,
                 )
+                tracker.record_failure(script.name, stage, error=result.stderr, duration=elapsed)
             else:
                 logger.info("Hook %s completed successfully", script.name)
+                tracker.record_complete(script.name, stage, duration=elapsed)
         except subprocess.TimeoutExpired:
+            elapsed = __import__("time").monotonic() - start_time
             logger.error("Hook %s timed out after 30 seconds", script.name)
             results.append(
                 {
@@ -84,7 +99,11 @@ def run_init_hooks(stage: str) -> list[dict]:
                     "stderr": "Timeout after 30 seconds",
                 }
             )
+            tracker.record_failure(
+                script.name, stage, error="Timeout after 30 seconds", duration=elapsed
+            )
         except Exception as exc:
+            elapsed = __import__("time").monotonic() - start_time
             logger.error("Hook %s failed: %s", script.name, exc)
             results.append(
                 {
@@ -94,5 +113,6 @@ def run_init_hooks(stage: str) -> list[dict]:
                     "stderr": str(exc),
                 }
             )
+            tracker.record_failure(script.name, stage, error=str(exc), duration=elapsed)
 
     return results

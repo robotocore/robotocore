@@ -170,25 +170,46 @@ def discover_extensions() -> list[RobotocorePlugin]:
     plugins = []
 
     # 1. Entry points
-    plugins.extend(_discover_entry_points())
+    ep_plugins = _discover_entry_points()
+    for p in ep_plugins:
+        p._discovery_source = "entrypoint"
+    plugins.extend(ep_plugins)
 
     # 2. Environment variable
-    plugins.extend(_discover_from_env())
+    env_plugins = _discover_from_env()
+    for p in env_plugins:
+        p._discovery_source = "env_var"
+    plugins.extend(env_plugins)
 
     # 3. System directory
-    plugins.extend(_discover_from_directory("/etc/robotocore/extensions"))
+    sys_plugins = _discover_from_directory("/etc/robotocore/extensions")
+    for p in sys_plugins:
+        p._discovery_source = "directory"
+    plugins.extend(sys_plugins)
 
     # 4. User directory
     home = Path.home() / ".robotocore" / "extensions"
-    plugins.extend(_discover_from_directory(str(home)))
+    user_plugins = _discover_from_directory(str(home))
+    for p in user_plugins:
+        p._discovery_source = "directory"
+    plugins.extend(user_plugins)
 
-    # Register all discovered plugins
+    # Register all discovered plugins and track status
+    from robotocore.extensions.plugin_status import get_plugin_status_collector
+
+    collector = get_plugin_status_collector()
+
     for plugin in plugins:
+        source = getattr(plugin, "_discovery_source", "unknown")
         try:
+            start = __import__("time").monotonic()
             plugin.on_load()
             registry.register(plugin)
+            load_time = __import__("time").monotonic() - start
+            collector.record_loaded(plugin, source=source, load_time=load_time)
         except Exception:
             logger.exception(f"Failed to load plugin: {plugin}")
+            collector.record_failed(plugin, source=source, error=str(plugin))
 
     registry._loaded = True
     return registry.plugins
