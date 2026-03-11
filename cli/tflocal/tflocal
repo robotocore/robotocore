@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# tflocal — Terraform CLI wrapper that auto-configures Terraform to use robotocore endpoints.
+#
+# Usage:
+#   tflocal plan
+#   tflocal apply -auto-approve
+#   tflocal destroy
+#
+# Environment variables:
+#   ROBOTOCORE_ENDPOINT  — Full endpoint URL (default: http://localhost:4566)
+#   ROBOTOCORE_HOST      — Host only (default: localhost), ignored if ROBOTOCORE_ENDPOINT set
+#   ROBOTOCORE_PORT      — Port only (default: 4566), ignored if ROBOTOCORE_ENDPOINT set
+#   TF_COMPAT_MODE       — Set to "1" for additional compatibility fixes (e.g., s3_use_path_style)
+
+set -euo pipefail
+
+# Resolve the directory containing this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Delegate to the Python implementation
+exec python3 "${SCRIPT_DIR}/tflocal.py" "$@"
