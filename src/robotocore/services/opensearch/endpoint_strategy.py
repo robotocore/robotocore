@@ -1,7 +1,7 @@
-"""OpenSearch endpoint strategies matching LocalStack's OPENSEARCH_ENDPOINT_STRATEGY.
+"""OpenSearch endpoint strategies matching OPENSEARCH_ENDPOINT_STRATEGY.
 
 Supports 3 strategies controlled by the OPENSEARCH_ENDPOINT_STRATEGY env var:
-- domain (default): http://{domain_name}.{region}.opensearch.localhost.localstack.cloud:4566
+- domain (default): http://{domain_name}.{region}.opensearch.localhost.robotocore.cloud:4566
 - path: http://localhost:4566/opensearch/{region}/{domain_name}
 - port: Allocate a unique port per domain from range 4510-4559
 """
@@ -13,7 +13,8 @@ from enum import StrEnum
 
 GATEWAY_PORT = 4566
 GATEWAY_HOST = "localhost"
-LOCALSTACK_HOST = "localhost.localstack.cloud"
+ROBOTOCORE_HOST = "localhost.robotocore.cloud"
+LOCALSTACK_HOST_ALIAS = "localhost.localstack.cloud"
 
 # Port-strategy allocation range
 PORT_RANGE_START = 4510
@@ -86,7 +87,7 @@ def opensearch_endpoint(
     port = int(os.environ.get("GATEWAY_PORT", str(GATEWAY_PORT)))
 
     if strategy == OpenSearchEndpointStrategy.DOMAIN:
-        return f"http://{domain_name}.{region}.opensearch.{LOCALSTACK_HOST}:{port}"
+        return f"http://{domain_name}.{region}.opensearch.{ROBOTOCORE_HOST}:{port}"
     elif strategy == OpenSearchEndpointStrategy.PATH:
         return f"http://{GATEWAY_HOST}:{port}/opensearch/{region}/{domain_name}"
     elif strategy == OpenSearchEndpointStrategy.PORT:
@@ -105,10 +106,10 @@ PATH_STYLE_RE = re.compile(
     r"^/opensearch/(?P<region>[a-z0-9-]+)/(?P<domain_name>[A-Za-z0-9-]+)(?P<rest>/.*)?$"
 )
 
-# Matches Host: {domain_name}.{region}.opensearch.localhost.localstack.cloud
+# Matches Host: {domain_name}.{region}.opensearch.localhost.robotocore.cloud (or localstack.cloud)
+_HOST_ALT = r"(?:" + re.escape(ROBOTOCORE_HOST) + r"|" + re.escape(LOCALSTACK_HOST_ALIAS) + r")"
 DOMAIN_HOST_RE = re.compile(
-    r"^(?P<domain_name>[A-Za-z0-9-]+)\.(?P<region>[a-z0-9-]+)\.opensearch\."
-    + re.escape(LOCALSTACK_HOST)
+    r"^(?P<domain_name>[A-Za-z0-9-]+)\.(?P<region>[a-z0-9-]+)\.opensearch\." + _HOST_ALT
 )
 
 

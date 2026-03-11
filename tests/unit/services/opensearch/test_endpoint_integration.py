@@ -16,7 +16,7 @@ class TestCreateDomainReturnsStrategyEndpoint:
     def test_domain_strategy(self, monkeypatch):
         monkeypatch.delenv("OPENSEARCH_ENDPOINT_STRATEGY", raising=False)
         ep = opensearch_endpoint("my-domain", "us-east-1")
-        assert "my-domain.us-east-1.opensearch.localhost.localstack.cloud" in ep
+        assert "my-domain.us-east-1.opensearch.localhost.robotocore.cloud" in ep
 
     def test_path_strategy(self, monkeypatch):
         monkeypatch.setenv("OPENSEARCH_ENDPOINT_STRATEGY", "path")
