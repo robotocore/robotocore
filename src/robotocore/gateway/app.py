@@ -22,6 +22,11 @@ from robotocore.gateway.handlers import (
     populate_context_handler,
 )
 from robotocore.gateway.router import route_to_service
+from robotocore.gateway.s3_routing import (
+    get_s3_routing_config,
+    parse_s3_vhost,
+    rewrite_vhost_to_path,
+)
 from robotocore.observability.hooks import run_init_hooks
 from robotocore.observability.metrics import request_counter
 from robotocore.observability.tracing import TracingMiddleware
@@ -77,6 +82,11 @@ from robotocore.services.rekognition.provider import handle_rekognition_request
 from robotocore.services.resource_groups.provider import handle_resource_groups_request
 from robotocore.services.route53.provider import handle_route53_request
 from robotocore.services.s3.provider import handle_s3_request
+from robotocore.services.s3.website import (
+    handle_website_request,
+    is_website_request,
+    parse_website_host,
+)
 from robotocore.services.scheduler.provider import handle_scheduler_request
 from robotocore.services.secretsmanager.provider import handle_secretsmanager_request
 from robotocore.services.ses.provider import handle_ses_request
@@ -590,6 +600,11 @@ async def _endpoints_config(request: Request) -> JSONResponse:
     )
 
 
+async def s3_routing_config(request: Request) -> JSONResponse:
+    """Return current S3 routing configuration."""
+    return JSONResponse(get_s3_routing_config())
+
+
 async def ses_messages_list(request: Request) -> JSONResponse:
     """List emails received via the SMTP server."""
     from robotocore.services.ses.email_store import get_email_store
@@ -880,6 +895,8 @@ management_routes = [
     Route("/_robotocore/usage/timeline", usage_timeline, methods=["GET"]),
     # Endpoint strategies
     Route("/_robotocore/endpoints/config", lambda r: _endpoints_config(r), methods=["GET"]),
+    # S3 routing config
+    Route("/_robotocore/s3/routing", s3_routing_config, methods=["GET"]),
     # SES SMTP email inspection
     Route("/_robotocore/ses/messages", ses_messages_list, methods=["GET"]),
     Route("/_robotocore/ses/messages", ses_messages_clear, methods=["DELETE"]),
@@ -996,6 +1013,34 @@ class AWSRoutingMiddleware:
         if path.startswith("/_robotocore/"):
             await self.app(scope, receive, send)
             return
+
+        # --- S3 website hosting: check for s3-website Host header ---
+        if is_website_request(scope):
+            request = Request(scope, receive)
+            host = request.headers.get("host", "")
+            parsed = parse_website_host(host)
+            if parsed:
+                response = await handle_website_request(
+                    request,
+                    bucket_name=parsed["bucket"],
+                    region=parsed.get("region", "us-east-1"),
+                )
+                await response(scope, receive, send)
+                return
+
+        # --- S3 virtual-hosted-style: rewrite to path-style ---
+        host_header = b""
+        for key, val in scope.get("headers", []):
+            if key == b"host":
+                host_header = val
+                break
+        if host_header:
+            parsed_vhost = parse_s3_vhost(host_header.decode("latin-1"))
+            if parsed_vhost is not None:
+                new_scope = rewrite_vhost_to_path(scope)
+                if new_scope is not None:
+                    scope = new_scope
+                    path = scope.get("path", "")
 
         request = Request(scope, receive)
 
