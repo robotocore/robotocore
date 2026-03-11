@@ -154,4 +154,4 @@ class TestExportImportCrossInstance:
                 names = set(tar.getnames())
                 assert "metadata.json" in names
                 assert "moto_state.pkl" in names
-                assert "native_state.pkl" in names
+                assert "native_state.json" in names

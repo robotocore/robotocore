@@ -1,7 +1,6 @@
 """Unit tests for the state manager."""
 
 import json
-import pickle
 
 from robotocore.state.manager import StateManager
 
@@ -53,7 +52,7 @@ class TestSaveLoad:
         mgr.register_native_handler("test-svc", lambda: {"k": "v"}, lambda d: None)
         mgr.save()
         assert "metadata.json" in [f.name for f in tmp_path.iterdir()]
-        assert "native_state.pkl" in [f.name for f in tmp_path.iterdir()]
+        assert "native_state.json" in [f.name for f in tmp_path.iterdir()]
         assert "moto_state.pkl" in [f.name for f in tmp_path.iterdir()]
 
     def test_save_metadata_contents(self, tmp_path):
@@ -68,8 +67,7 @@ class TestSaveLoad:
         mgr = StateManager(state_dir=str(tmp_path))
         mgr.register_native_handler("svc1", lambda: {"x": 1}, lambda d: None)
         mgr.save()
-        with open(tmp_path / "native_state.pkl", "rb") as f:
-            state = pickle.load(f)  # noqa: S301
+        state = json.loads((tmp_path / "native_state.json").read_text())
         assert state["svc1"]["x"] == 1
 
     def test_named_snapshot(self, tmp_path):
@@ -138,8 +136,7 @@ class TestSelectiveSave:
         mgr.register_native_handler("svc1", lambda: {"a": 1}, lambda d: None)
         mgr.register_native_handler("svc2", lambda: {"b": 2}, lambda d: None)
         mgr.save(services=["svc1"])
-        with open(tmp_path / "native_state.pkl", "rb") as f:
-            state = pickle.load(f)  # noqa: S301
+        state = json.loads((tmp_path / "native_state.json").read_text())
         assert "svc1" in state
         assert "svc2" not in state
 
