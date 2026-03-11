@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from robotocore.services.cloudformation.engine import (
     CfnResource,
     CfnStack,
@@ -166,14 +168,14 @@ class TestResolveIntrinsicsGetAtt:
         assert result == "my-bucket.s3.amazonaws.com"
 
     def test_get_att_unknown_resource(self):
-        result = resolve_intrinsics(
-            {"Fn::GetAtt": ["Nonexistent", "Arn"]},
-            _RESOURCES,
-            _PARAMS,
-            _REGION,
-            _ACCOUNT,
-        )
-        assert result == ""
+        with pytest.raises(ValueError, match="undefined resource"):
+            resolve_intrinsics(
+                {"Fn::GetAtt": ["Nonexistent", "Arn"]},
+                _RESOURCES,
+                _PARAMS,
+                _REGION,
+                _ACCOUNT,
+            )
 
     def test_get_att_unknown_attribute(self):
         result = resolve_intrinsics(
@@ -233,7 +235,8 @@ class TestResolveIntrinsicsSelect:
 
     def test_select_out_of_bounds(self):
         val = {"Fn::Select": [5, ["a"]]}
-        assert resolve_intrinsics(val, _RESOURCES, _PARAMS, _REGION, _ACCOUNT) == ""
+        with pytest.raises(ValueError, match="out of bounds"):
+            resolve_intrinsics(val, _RESOURCES, _PARAMS, _REGION, _ACCOUNT)
 
 
 class TestResolveIntrinsicsSplit:

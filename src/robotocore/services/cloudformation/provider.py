@@ -79,8 +79,17 @@ async def handle_cloudformation_request(request: Request, region: str, account_i
 
 
 def _validate_parameters(template: dict, cfn_params: dict) -> None:
-    """Validate parameters against AllowedValues from the template."""
+    """Validate parameters against AllowedValues and required params from the template."""
     param_defs = template.get("Parameters", {})
+
+    # Check required parameters (no Default) are provided
+    for pname, pdef in param_defs.items():
+        if "Default" not in pdef and pname not in cfn_params:
+            raise CfnError(
+                "ValidationError",
+                f"Parameters: [{pname}] must have values",
+            )
+
     for pname, pdef in param_defs.items():
         allowed = pdef.get("AllowedValues")
         if not allowed:
@@ -202,6 +211,96 @@ def _expand_sam_transform(template: dict) -> dict:
     return template
 
 
+def _check_duplicate_exports(
+    store: CfnStore,
+    template: dict,
+    resources: dict,
+    parameters: dict,
+    region: str,
+    account_id: str,
+) -> None:
+    """Check if any exports in the template duplicate existing exports."""
+    outputs = template.get("Outputs", {})
+    for out_name, out_def in outputs.items():
+        if "Export" in out_def:
+            export_name_raw = out_def["Export"].get("Name")
+            if isinstance(export_name_raw, str):
+                export_name = export_name_raw
+            else:
+                try:
+                    export_name = str(
+                        resolve_intrinsics(
+                            export_name_raw, resources, parameters, region, account_id
+                        )
+                    )
+                except Exception:
+                    continue
+            if export_name in store.exports:
+                raise CfnError(
+                    "ValidationError",
+                    f"Export with name '{export_name}' is already exported by another stack",
+                )
+
+
+def _validate_imports(store: CfnStore, template: dict) -> None:
+    """Validate that all Fn::ImportValue references in the template exist."""
+    import json as json_mod
+
+    tpl_str = json_mod.dumps(template)
+    if "Fn::ImportValue" not in tpl_str:
+        return
+
+    def _find_imports(val):
+        """Recursively find all Fn::ImportValue references."""
+        if isinstance(val, dict):
+            if "Fn::ImportValue" in val:
+                import_name = val["Fn::ImportValue"]
+                if isinstance(import_name, str):
+                    yield import_name
+            for v in val.values():
+                yield from _find_imports(v)
+        elif isinstance(val, list):
+            for v in val:
+                yield from _find_imports(v)
+
+    for import_name in _find_imports(template.get("Resources", {})):
+        found = False
+        for ename, edata in store.exports.items():
+            if ename == import_name:
+                found = True
+                break
+        if not found:
+            raise CfnError(
+                "ValidationError",
+                f"No export named '{import_name}' found. Rollback requested by user.",
+            )
+
+
+def _check_import_references(store: CfnStore, stack_name: str) -> None:
+    """Check if any other stack imports values exported by the given stack."""
+    stack = store.get_stack(stack_name)
+    if not stack or not stack.exports:
+        return
+    export_names = set(stack.exports.keys())
+    # Check all other stacks for Fn::ImportValue references
+    for other_stack in store.list_stacks():
+        if other_stack.stack_name == stack_name:
+            continue
+        if other_stack.status == "DELETE_COMPLETE":
+            continue
+        # Check template for Fn::ImportValue usage
+        tpl_str = other_stack.template_body
+        if not tpl_str:
+            continue
+        for ename in export_names:
+            if ename in tpl_str:
+                raise CfnError(
+                    "ValidationError",
+                    f"Export '{ename}' cannot be deleted as it is in use by stack "
+                    f"'{other_stack.stack_name}'",
+                )
+
+
 def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("StackName", "")
     template_body = params.get("TemplateBody", "")
@@ -243,8 +342,24 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
     template = _expand_sam_transform(template)
     description = template.get("Description", "")
 
-    # Validate parameters against AllowedValues
+    # Validate that template has Resources section
+    if "Resources" not in template or not template.get("Resources"):
+        raise CfnError("ValidationError", "Template must contain a Resources section")
+
+    # Validate parameters against AllowedValues and required params
     _validate_parameters(template, cfn_params)
+
+    # Validate no circular dependencies
+    try:
+        build_dependency_order(template)
+    except ValueError as e:
+        raise CfnError("ValidationError", str(e))
+
+    # Check for duplicate exports
+    _check_duplicate_exports(store, template, {}, cfn_params, region, account_id)
+
+    # Pre-validate Fn::ImportValue references
+    _validate_imports(store, template)
 
     stack = CfnStack(
         stack_id=stack_id,
@@ -264,12 +379,19 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         stack.status = "CREATE_COMPLETE"
         _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "CREATE_COMPLETE")
     except Exception as e:
-        # Rollback: delete any resources that were created
+        # Rollback: delete any resources that were created, with per-resource events
         for logical_id in reversed(list(stack.resources.keys())):
+            res = stack.resources[logical_id]
+            _add_event(
+                stack, logical_id, res.resource_type, res.physical_id or "", "DELETE_IN_PROGRESS"
+            )
             try:
-                delete_resource(stack.resources[logical_id], region, account_id)
+                delete_resource(res, region, account_id)
             except Exception:
                 pass
+            _add_event(
+                stack, logical_id, res.resource_type, res.physical_id or "", "DELETE_COMPLETE"
+            )
         stack.status = "ROLLBACK_COMPLETE"
         stack.status_reason = str(e)
         _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "ROLLBACK_COMPLETE", str(e))
@@ -323,6 +445,9 @@ def _deploy_stack(
     resource_defs = template.get("Resources", {})
     order = build_dependency_order(template)
 
+    # Store mappings for Fn::FindInMap resolution
+    stack.parameters["__mappings__"] = template.get("Mappings", {})
+
     # Evaluate conditions
     conditions = evaluate_conditions(
         template, stack.resources, stack.parameters, region, account_id
@@ -332,9 +457,19 @@ def _deploy_stack(
 
     # Collect global exports for Fn::ImportValue resolution
     if store:
-        stack.parameters["__imports__"] = dict(store.exports)
+        imports = {}
+        for ename, edata in store.exports.items():
+            if isinstance(edata, dict):
+                imports[ename] = edata.get("Value", "")
+            else:
+                imports[ename] = str(edata)
+        stack.parameters["__imports__"] = imports
 
     for logical_id in order:
+        # Skip resources that already exist (in-place update)
+        if logical_id in stack.resources:
+            continue
+
         res_def = resource_defs[logical_id]
 
         # Check if resource has a Condition that evaluates to false
@@ -351,10 +486,12 @@ def _deploy_stack(
             raw_props, stack.resources, stack.parameters, region, account_id
         )
 
+        deletion_policy = res_def.get("DeletionPolicy", "Delete")
         resource = CfnResource(
             logical_id=logical_id,
             resource_type=res_type,
             properties=resolved_props,
+            deletion_policy=deletion_policy,
         )
 
         _add_event(stack, logical_id, res_type, "", "CREATE_IN_PROGRESS")
@@ -384,9 +521,12 @@ def _deploy_stack(
             export_str = str(export_name)
             stack.outputs[out_name]["ExportName"] = export_str
             stack.exports[export_str] = str(value)
-            # Also register in global store
+            # Also register in global store with stack ID
             if store:
-                store.exports[export_str] = str(value)
+                store.exports[export_str] = {
+                    "Value": str(value),
+                    "StackId": stack.stack_id,
+                }
 
 
 def _delete_stack_action(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
@@ -395,9 +535,14 @@ def _delete_stack_action(store: CfnStore, params: dict, region: str, account_id:
     if not stack:
         return {}
 
-    # Delete resources in reverse order
+    # Check if any other stacks import values from this stack
+    _check_import_references(store, name)
+
+    # Delete resources in reverse order, honoring DeletionPolicy
     for logical_id in reversed(list(stack.resources.keys())):
         resource = stack.resources[logical_id]
+        if resource.deletion_policy == "Retain":
+            continue  # Skip deletion for Retain policy
         try:
             delete_resource(resource, region, account_id)
         except Exception:
@@ -417,6 +562,10 @@ def _describe_stacks(store: CfnStore, params: dict, region: str, account_id: str
     if name:
         stack = store.get_stack(name)
         if not stack:
+            raise CfnError("ValidationError", f"Stack with id {name} does not exist")
+        # When querying by name (not ARN), DELETE_COMPLETE stacks should error
+        # AWS requires the stack ID (ARN) to describe deleted stacks
+        if stack.status == "DELETE_COMPLETE" and not name.startswith("arn:"):
             raise CfnError("ValidationError", f"Stack with id {name} does not exist")
         stacks = [stack]
     else:
@@ -458,6 +607,7 @@ def _describe_stacks(store: CfnStore, params: dict, region: str, account_id: str
             ]
         if s.tags:
             member["Tags"] = s.tags
+        member["EnableTerminationProtection"] = "false"
         members.append(member)
 
     return {"Stacks": members}
@@ -549,37 +699,100 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             "No updates are to be performed.",
         )
 
+    # Preserve previous parameters: merge old params with new ones
+    previous_params = {
+        k: v
+        for k, v in stack.parameters.items()
+        if not k.startswith("AWS::") and not k.startswith("__")
+    }
+    merged_params = {**previous_params, **cfn_params}
+
+    # Save old state for rollback
+    old_template_body = stack.template_body
+    old_parameters = dict(stack.parameters)
+    old_resources = OrderedDict(stack.resources)
+    old_outputs = dict(stack.outputs)
+    old_exports = dict(stack.exports)
+
     stack.status = "UPDATE_IN_PROGRESS"
     _add_event(stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_IN_PROGRESS")
 
     try:
-        # Delete old resources in reverse order
-        for logical_id in reversed(list(stack.resources.keys())):
-            resource = stack.resources[logical_id]
-            try:
-                delete_resource(resource, region, account_id)
-            except Exception:
-                pass
+        # Parse new template to figure out which resources changed
+        new_template = parse_template(template_body)
+        new_template = _expand_sam_transform(new_template)
+        new_resource_defs = new_template.get("Resources", {})
 
-        # Clear old state
-        stack.resources = OrderedDict()
+        old_template = parse_template(old_template_body)
+        old_template = _expand_sam_transform(old_template)
+        old_resource_defs = old_template.get("Resources", {})
+
+        # Determine which resources to keep, update, add, or remove
+        old_ids = set(old_resource_defs.keys())
+        new_ids = set(new_resource_defs.keys())
+        removed = old_ids - new_ids
+        common = old_ids & new_ids
+
+        # Delete removed resources
+        for logical_id in removed:
+            if logical_id in stack.resources:
+                try:
+                    delete_resource(stack.resources[logical_id], region, account_id)
+                except Exception:
+                    pass
+                del stack.resources[logical_id]
+
+        # For common resources, check if definition changed
+        for logical_id in common:
+            old_def = old_resource_defs[logical_id]
+            new_def = new_resource_defs[logical_id]
+            if old_def != new_def:
+                # Resource changed -- delete old and recreate
+                if logical_id in stack.resources:
+                    try:
+                        delete_resource(stack.resources[logical_id], region, account_id)
+                    except Exception:
+                        pass
+                    del stack.resources[logical_id]
+            # If unchanged, keep the existing resource (in-place)
+
+        # Clear outputs for re-evaluation
         stack.outputs = {}
 
         # Update stack fields
         stack.template_body = template_body
-        stack.parameters = cfn_params
+        stack.parameters = merged_params
         if tags:
             stack.tags = tags
 
-        # Deploy new resources
+        # Deploy (creates new/changed resources, skips existing)
         _deploy_stack(stack, region, account_id, store)
         stack.status = "UPDATE_COMPLETE"
         _add_event(stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_COMPLETE")
     except Exception as e:
-        stack.status = "UPDATE_FAILED"
+        # Rollback: restore old state
+        # Delete any newly created resources
+        for logical_id in list(stack.resources.keys()):
+            if logical_id not in old_resources:
+                try:
+                    delete_resource(stack.resources[logical_id], region, account_id)
+                except Exception:
+                    pass
+
+        stack.template_body = old_template_body
+        stack.parameters = old_parameters
+        stack.resources = old_resources
+        stack.outputs = old_outputs
+        stack.exports = old_exports
+        stack.status = "UPDATE_ROLLBACK_COMPLETE"
         stack.status_reason = str(e)
         _add_event(
-            stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_FAILED", str(e)
+            stack,
+            name,
+            "AWS::CloudFormation::Stack",
+            stack.stack_id,
+            "UPDATE_ROLLBACK_COMPLETE",
+            str(e),
         )
 
     store.put_stack(stack)
@@ -595,6 +808,9 @@ def _validate_template(store: CfnStore, params: dict, region: str, account_id: s
         template = parse_template(template_body)
     except Exception as e:
         raise CfnError("ValidationError", f"Template format error: {e}")
+
+    if "Resources" not in template or not template.get("Resources"):
+        raise CfnError("ValidationError", "Template must contain a Resources section")
 
     result: dict = {"Parameters": []}
     template_params = template.get("Parameters", {})
@@ -762,6 +978,61 @@ def _describe_change_set(store: CfnStore, params: dict, region: str, account_id:
             404,
         )
 
+    # Compute changes by comparing old and new templates
+    changes = []
+    stack = store.get_stack(cs.stack_name)
+    if cs.template_body:
+        try:
+            new_template = parse_template(cs.template_body)
+            new_resources = new_template.get("Resources", {})
+            old_resources = {}
+            if stack and stack.template_body:
+                old_template = parse_template(stack.template_body)
+                old_resources = old_template.get("Resources", {})
+
+            old_ids = set(old_resources.keys())
+            new_ids = set(new_resources.keys())
+
+            # Added resources
+            for lid in new_ids - old_ids:
+                changes.append(
+                    {
+                        "Type": "Resource",
+                        "ResourceChange": {
+                            "Action": "Add",
+                            "LogicalResourceId": lid,
+                            "ResourceType": new_resources[lid].get("Type", ""),
+                        },
+                    }
+                )
+            # Removed resources
+            for lid in old_ids - new_ids:
+                changes.append(
+                    {
+                        "Type": "Resource",
+                        "ResourceChange": {
+                            "Action": "Remove",
+                            "LogicalResourceId": lid,
+                            "ResourceType": old_resources[lid].get("Type", ""),
+                        },
+                    }
+                )
+            # Modified resources
+            for lid in old_ids & new_ids:
+                if old_resources[lid] != new_resources[lid]:
+                    changes.append(
+                        {
+                            "Type": "Resource",
+                            "ResourceChange": {
+                                "Action": "Modify",
+                                "LogicalResourceId": lid,
+                                "ResourceType": new_resources[lid].get("Type", ""),
+                            },
+                        }
+                    )
+        except Exception:
+            pass
+
     return {
         "ChangeSetId": cs.change_set_id,
         "ChangeSetName": cs.change_set_name,
@@ -769,7 +1040,7 @@ def _describe_change_set(store: CfnStore, params: dict, region: str, account_id:
         "StackName": cs.stack_name,
         "Status": cs.status,
         "StatusReason": cs.status_reason,
-        "Changes": "",
+        "Changes": changes,
     }
 
 
@@ -922,14 +1193,23 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
 
 def _list_exports(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     exports = []
-    for export_name, export_value in store.exports.items():
-        exports.append(
-            {
-                "ExportingStackId": "",
-                "Name": export_name,
-                "Value": str(export_value),
-            }
-        )
+    for export_name, export_data in store.exports.items():
+        if isinstance(export_data, dict):
+            exports.append(
+                {
+                    "ExportingStackId": export_data.get("StackId", ""),
+                    "Name": export_name,
+                    "Value": str(export_data.get("Value", "")),
+                }
+            )
+        else:
+            exports.append(
+                {
+                    "ExportingStackId": "",
+                    "Name": export_name,
+                    "Value": str(export_data),
+                }
+            )
     return {"Exports": exports}
 
 
