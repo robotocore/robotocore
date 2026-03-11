@@ -32,6 +32,13 @@ from robotocore.gateway.s3_routing import (
 from robotocore.gateway.tls import TLSConfig, get_cert_info
 from robotocore.observability.hooks import run_init_hooks
 from robotocore.observability.metrics import request_counter
+from robotocore.observability.request_context import (
+    RequestContext as ObsRequestContext,
+)
+from robotocore.observability.request_context import (
+    set_current_context,
+)
+from robotocore.observability.timeline import handle_timeline
 from robotocore.observability.tracing import TracingMiddleware
 from robotocore.providers.moto_bridge import forward_to_moto
 from robotocore.services.acm.provider import handle_acm_request
@@ -993,6 +1000,10 @@ async def handle_aws_request(request: Request) -> Response:
         account_id=account_id,
     )
 
+    # Set up per-request observability context for chaos/audit correlation
+    obs_ctx = ObsRequestContext(service=service_name)
+    set_current_context(obs_ctx)
+
     # Pre-read the body so synchronous handlers (populate_context_handler) can
     # access it via request._body for form-encoded Action parsing.
     await request.body()
@@ -1174,6 +1185,8 @@ management_routes = [
     Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),
     # Audit log
     Route("/_robotocore/audit", audit_log, methods=["GET"]),
+    # Unified timeline (chaos + audit)
+    Route("/_robotocore/timeline", handle_timeline, methods=["GET"]),
     # Usage analytics
     Route("/_robotocore/usage", usage_summary, methods=["GET"]),
     Route("/_robotocore/usage/services", usage_services, methods=["GET"]),

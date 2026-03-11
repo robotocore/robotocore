@@ -26,9 +26,12 @@ def chaos_handler(context: RequestContext) -> None:
     if rule is None:
         return
 
+    from robotocore.observability.chaos_audit_bridge import record_chaos_event
+
     # Use asyncio.sleep via asyncio.to_thread-compatible approach to avoid
     # blocking the event loop.
     if rule.latency_ms > 0:
+        record_chaos_event(rule.rule_id, "latency", {"latency_ms": rule.latency_ms})
         try:
             loop = asyncio.get_running_loop()
             # We're in an async context; schedule a non-blocking sleep
@@ -47,6 +50,11 @@ def chaos_handler(context: RequestContext) -> None:
                 "Message": rule.error_message,
                 "RequestId": request_id,
             }
+        )
+        record_chaos_event(
+            rule.rule_id,
+            "error",
+            {"status_code": rule.status_code, "error_code": rule.error_code},
         )
         context.response = Response(
             content=error_body,
