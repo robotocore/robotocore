@@ -553,7 +553,8 @@ class TestStatePersistenceMultiAccount:
 
         # Verify the saved native state only has SQS
         native_path = tmp_path / "snapshots" / "sqs-only" / "native_state.json"
-        saved = json.loads(native_path.read_text())
+        with open(native_path) as f:
+            saved = json.load(f)
         assert "sqs" in saved
         assert "sns" not in saved
 
