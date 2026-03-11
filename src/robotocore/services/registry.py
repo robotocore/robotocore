@@ -269,7 +269,12 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "panorama": ServiceInfo("panorama", ServiceStatus.MOTO_BACKED, "rest-json", "Panorama"),
     # personalize: deregistered — all Moto ops return 500
     "pinpoint": ServiceInfo("pinpoint", ServiceStatus.MOTO_BACKED, "rest-json", "Pinpoint"),
-    "pipes": ServiceInfo("pipes", ServiceStatus.MOTO_BACKED, "rest-json", "EventBridge Pipes"),
+    "pipes": ServiceInfo(
+        "pipes",
+        ServiceStatus.NATIVE,
+        "rest-json",
+        "EventBridge Pipes with source-enrichment-target pipeline",
+    ),
     "polly": ServiceInfo("polly", ServiceStatus.MOTO_BACKED, "rest-json", "Polly Text-to-Speech"),
     "quicksight": ServiceInfo("quicksight", ServiceStatus.MOTO_BACKED, "rest-json", "QuickSight"),
     "ram": ServiceInfo("ram", ServiceStatus.MOTO_BACKED, "rest-json", "Resource Access Manager"),
