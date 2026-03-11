@@ -29,6 +29,7 @@ class RequestContext:
     region: str = "us-east-1"
     protocol: str | None = None
     response: Response | None = None
+    request_id: str = ""
 
 
 HandlerFn = Callable[[RequestContext], None]

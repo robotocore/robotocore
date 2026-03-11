@@ -27,8 +27,18 @@ def parse_service_handler(context: RequestContext) -> None:
 
 
 def populate_context_handler(context: RequestContext) -> None:
-    """Extract region, account_id, and protocol from the request."""
+    """Extract region, account_id, protocol, and request_id from the request."""
+    from robotocore.observability.unified import ObservabilityHub
+
     headers = context.request.headers
+
+    # Generate or extract request ID for cross-system correlation
+    if not context.request_id:
+        context.request_id = (
+            headers.get("x-amzn-requestid", "")
+            or headers.get("x-amz-request-id", "")
+            or ObservabilityHub.generate_request_id()
+        )
 
     # Region from Authorization header or X-Amz-Credential query param (presigned URLs)
     auth = headers.get("authorization", "")
@@ -130,11 +140,15 @@ def _get_s3_bucket_cors(context: RequestContext) -> list[dict] | None:
 
 
 def audit_response_handler(context: RequestContext) -> None:
-    """Record the request in the audit log, usage analytics, and CI analytics."""
+    """Record the request in the audit log, usage analytics, CI analytics, and hub."""
     from robotocore.audit.analytics import get_usage_analytics
     from robotocore.audit.log import get_audit_log
+    from robotocore.observability.unified import get_observability_hub
 
     status = context.response.status_code if context.response else 0
+    error_str = None
+    if status >= 400:
+        error_str = f"http:{status}"
     get_audit_log().record(
         service=context.service_name,
         operation=context.operation,
@@ -143,7 +157,19 @@ def audit_response_handler(context: RequestContext) -> None:
         status_code=status,
         account_id=context.account_id,
         region=context.region,
+        error=error_str,
     )
+
+    # Record in the observability hub for request correlation
+    if context.request_id:
+        get_observability_hub().record_audit_event(
+            request_id=context.request_id,
+            service=context.service_name,
+            operation=context.operation,
+            status_code=status,
+            duration_ms=0.0,  # Duration tracked at gateway level
+            error=error_str,
+        )
 
     # Record in usage analytics
     # Extract access key from Authorization header

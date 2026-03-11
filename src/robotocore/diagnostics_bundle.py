@@ -48,6 +48,7 @@ ALL_SECTIONS = [
     "memory",
     "audit",
     "extensions",
+    "observability",
 ]
 
 
@@ -245,6 +246,14 @@ def _collect_extensions() -> dict:
     }
 
 
+def _collect_observability() -> dict:
+    """Observability hub summary: chaos stats, IAM denials, latency, error rates."""
+    from robotocore.observability.unified import get_observability_hub
+
+    hub = get_observability_hub()
+    return hub.get_diagnostics_summary()
+
+
 # Section name -> collector function
 _COLLECTORS = {
     "system": _collect_system,
@@ -256,6 +265,7 @@ _COLLECTORS = {
     "memory": _collect_memory,
     "audit": _collect_audit,
     "extensions": _collect_extensions,
+    "observability": _collect_observability,
 }
 
 

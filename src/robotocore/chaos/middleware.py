@@ -1,7 +1,8 @@
 """Chaos engineering handler for the request pipeline.
 
 Integrates with the handler chain to inject faults before requests
-reach service providers.
+reach service providers. Records chaos events in the audit log and
+observability hub for end-to-end request tracing.
 """
 
 import asyncio
@@ -37,9 +38,22 @@ def chaos_handler(context: RequestContext) -> None:
             # No event loop running; fall back to asyncio.run for sync contexts
             asyncio.run(asyncio.sleep(rule.latency_ms / 1000.0))
 
+    # Determine what action was taken
+    action_taken = None
+    if rule.error_code and rule.latency_ms > 0:
+        action_taken = "error_injected+latency_added"
+    elif rule.error_code:
+        action_taken = "error_injected"
+    elif rule.latency_ms > 0:
+        action_taken = "latency_added"
+
+    # Record chaos event in the observability hub
+    if action_taken:
+        _record_chaos_event(context, rule, action_taken)
+
     # Apply error injection
     if rule.error_code:
-        request_id = uuid.uuid4().hex
+        request_id = context.request_id or uuid.uuid4().hex
         error_body = json.dumps(
             {
                 "__type": rule.error_code,
@@ -54,3 +68,33 @@ def chaos_handler(context: RequestContext) -> None:
             media_type="application/json",
             headers={"x-robotocore-chaos": rule.rule_id},
         )
+
+
+def _record_chaos_event(context: RequestContext, rule, action_taken: str) -> None:
+    """Record chaos fault injection in the observability hub and audit log."""
+    from robotocore.audit.log import get_audit_log
+    from robotocore.observability.unified import get_observability_hub
+
+    request_id = context.request_id or ""
+
+    # Record in observability hub
+    hub = get_observability_hub()
+    hub.record_chaos_event(
+        request_id=request_id,
+        service=context.service_name,
+        operation=context.operation,
+        rule=rule.to_dict(),
+        action_taken=action_taken,
+    )
+
+    # Record in audit log with chaos prefix on error field
+    get_audit_log().record(
+        service=context.service_name,
+        operation=context.operation,
+        method=context.request.method,
+        path=context.request.url.path,
+        status_code=rule.status_code if rule.error_code else 200,
+        account_id=context.account_id,
+        region=context.region,
+        error=f"chaos:{rule.rule_id}:{action_taken}",
+    )

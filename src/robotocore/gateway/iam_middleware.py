@@ -304,27 +304,55 @@ def _record_to_stream(
     action: str,
     resource: str,
     decision: str,
+    service: str = "",
+    operation: str | None = None,
     matched_policies: list[str] | None = None,
     matched_statement: dict | None = None,
     request_id: str = "",
     evaluation_duration_ms: float = 0.0,
 ) -> None:
-    """Record a policy evaluation to the stream if enabled."""
+    """Record a policy evaluation to the stream and observability hub."""
     from robotocore.services.iam.policy_stream import get_policy_stream, is_stream_enabled
 
-    if not is_stream_enabled():
-        return
+    if is_stream_enabled():
+        get_policy_stream().record(
+            principal=principal,
+            action=action,
+            resource=resource,
+            decision=decision,
+            matched_policies=matched_policies,
+            matched_statement=matched_statement,
+            request_id=request_id,
+            evaluation_duration_ms=evaluation_duration_ms,
+        )
 
-    get_policy_stream().record(
+    # Always record in the observability hub
+    from robotocore.observability.unified import get_observability_hub
+
+    matched_policy_str = matched_policies[0] if matched_policies else None
+    hub = get_observability_hub()
+    hub.record_iam_event(
+        request_id=request_id,
+        service=service,
+        operation=operation,
+        decision=decision,
         principal=principal,
+        matched_policy=matched_policy_str,
         action=action,
         resource=resource,
-        decision=decision,
-        matched_policies=matched_policies,
-        matched_statement=matched_statement,
-        request_id=request_id,
-        evaluation_duration_ms=evaluation_duration_ms,
     )
+
+    # Record IAM denials in the audit log
+    if decision in ("Deny", "ImplicitDeny", DENY, IMPLICIT_DENY):
+        from robotocore.audit.log import get_audit_log
+
+        get_audit_log().record(
+            service=service,
+            operation=operation,
+            status_code=403,
+            error=f"iam:{decision}:principal={principal}:policy={matched_policy_str or 'none'}",
+            region="",
+        )
 
 
 def iam_enforcement_handler(context: RequestContext) -> None:
@@ -340,6 +368,7 @@ def iam_enforcement_handler(context: RequestContext) -> None:
         return
 
     creds = extract_credentials(context.request)
+    req_id = context.request_id or context.request.headers.get("x-amzn-requestid", "")
     if creds is None:
         # No credentials - when not enforcing, record as Allow if stream is on
         if not enforce:
@@ -350,7 +379,9 @@ def iam_enforcement_handler(context: RequestContext) -> None:
                     context.service_name, context.region, context.account_id, context.request
                 ),
                 decision="Allow",
-                request_id=context.request.headers.get("x-amzn-requestid", ""),
+                service=context.service_name,
+                operation=context.operation,
+                request_id=req_id,
             )
         return
 
@@ -363,7 +394,9 @@ def iam_enforcement_handler(context: RequestContext) -> None:
                 context.service_name, context.region, context.account_id, context.request
             ),
             decision="Allow",
-            request_id=context.request.headers.get("x-amzn-requestid", ""),
+            service=context.service_name,
+            operation=context.operation,
+            request_id=req_id,
         )
         return
 
@@ -371,7 +404,7 @@ def iam_enforcement_handler(context: RequestContext) -> None:
     resource = build_resource_arn(
         context.service_name, context.region, context.account_id, context.request
     )
-    request_id = context.request.headers.get("x-amzn-requestid", "")
+    request_id = req_id
 
     import time as _time
 
@@ -387,6 +420,8 @@ def iam_enforcement_handler(context: RequestContext) -> None:
             action=action,
             resource=resource,
             decision="Deny",
+            service=context.service_name,
+            operation=context.operation,
             request_id=request_id,
             evaluation_duration_ms=duration,
         )
@@ -411,6 +446,8 @@ def iam_enforcement_handler(context: RequestContext) -> None:
         action=action,
         resource=resource,
         decision=decision,
+        service=context.service_name,
+        operation=context.operation,
         matched_policies=policy_arns,
         request_id=request_id,
         evaluation_duration_ms=duration,

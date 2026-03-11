@@ -766,6 +766,63 @@ async def _diagnose_handler(request: Request) -> JSONResponse:
     return await diagnose_endpoint(request)
 
 
+async def timeline_endpoint(request: Request) -> JSONResponse:
+    """GET /_robotocore/timeline — unified event stream with filtering.
+
+    Query params:
+        service: filter by service name
+        type: comma-separated event types (chaos, iam, audit, error)
+        request_id: get full trace for one request
+        min_duration: filter to slow requests (ms)
+        limit: max entries (default 100)
+    """
+    from robotocore.observability.unified import get_observability_hub
+
+    hub = get_observability_hub()
+    params = request.query_params
+
+    # If request_id is given, return the full trace
+    req_id = params.get("request_id")
+    if req_id:
+        trace = hub.get_request_trace(req_id)
+        if trace:
+            timeline = hub.get_timeline(request_id=req_id, limit=1000)
+            return JSONResponse(
+                {
+                    "request_id": trace.request_id,
+                    "service": trace.service,
+                    "operation": trace.operation,
+                    "timestamp": trace.timestamp,
+                    "chaos_rule_matched": trace.chaos_rule_matched,
+                    "chaos_action_taken": trace.chaos_action_taken,
+                    "iam_decision": trace.iam_decision,
+                    "iam_matched_policy": trace.iam_matched_policy,
+                    "iam_principal": trace.iam_principal,
+                    "audit_entry": trace.audit_entry,
+                    "response_status": trace.response_status,
+                    "duration_ms": trace.duration_ms,
+                    "events": timeline,
+                }
+            )
+        return JSONResponse({"error": "Request not found"}, status_code=404)
+
+    # Build filters
+    service = params.get("service")
+    type_param = params.get("type")
+    event_types = [t.strip() for t in type_param.split(",")] if type_param else None
+    min_duration_str = params.get("min_duration")
+    min_duration = float(min_duration_str) if min_duration_str else None
+    limit = int(params.get("limit", "100"))
+
+    timeline = hub.get_timeline(
+        limit=limit,
+        service=service,
+        event_types=event_types,
+        min_duration=min_duration,
+    )
+    return JSONResponse({"entries": timeline, "count": len(timeline)})
+
+
 async def dns_config_endpoint(request: Request) -> JSONResponse:
     """Return current DNS server configuration."""
     from robotocore.dns.resolver import get_config
@@ -1205,6 +1262,8 @@ management_routes = [
     Route("/_robotocore/plugins/{name}", plugin_detail, methods=["GET"]),
     # Diagnostics bundle
     Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
+    # Unified observability timeline
+    Route("/_robotocore/timeline", timeline_endpoint, methods=["GET"]),
     # IAM policy stream
     Route("/_robotocore/iam/policy-stream", iam_policy_stream_list, methods=["GET"]),
     Route("/_robotocore/iam/policy-stream", iam_policy_stream_clear, methods=["DELETE"]),
