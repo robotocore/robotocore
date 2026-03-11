@@ -62,6 +62,7 @@ from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
+from robotocore.services.pipes.provider import handle_pipes_request
 from robotocore.services.rds.data_provider import handle_rdsdata_request
 from robotocore.services.rds.provider import handle_rds_request
 from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
@@ -120,6 +121,7 @@ NATIVE_PROVIDERS = {
     "es": handle_es_request,
     "iam": handle_iam_request,
     "opensearch": handle_opensearch_request,
+    "pipes": handle_pipes_request,
     "rekognition": handle_rekognition_request,
     "resource-groups": handle_resource_groups_request,
     "route53": handle_route53_request,
