@@ -741,7 +741,7 @@ boto==<span class="str">2.38.0</span>
   <section class="slide slide-amber" id="s11">
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Day 2 · The Wrong Answer</div>
-      <h2 class="anim-2">We Tried Telling Agents to Do Better</h2>
+      <h2 class="anim-2">I Tried Telling Agents to Do Better</h2>
       <div class="two-col anim-3" style="margin-top:32px;max-width:900px;align-items:start;">
         <div class="card card-accent">
           <div style="font-size:1.1rem;font-weight:700;margin-bottom:16px;color:#E07B00;">What we tried</div>
