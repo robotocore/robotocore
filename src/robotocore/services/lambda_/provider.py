@@ -1148,20 +1148,43 @@ async def _invoke(
     tracker.acquire(function_key)
     try:
         if code_dir or code_zip:
-            executor = get_executor_for_runtime(runtime)
-            result, error_type, logs = executor.execute(
-                code_zip=code_zip or b"",
-                handler=handler,
-                event=event,
-                function_name=func_name,
-                timeout=timeout,
-                memory_size=memory_size,
-                env_vars=env_vars,
-                region=region,
-                account_id=account_id,
-                code_dir=code_dir,
-                hot_reload=use_hot_reload,
-            )
+            from robotocore.services.lambda_.docker_executor import get_executor_mode
+
+            if get_executor_mode() == "docker":
+                from robotocore.services.lambda_.docker_executor import (
+                    get_docker_executor,
+                )
+
+                docker_exec = get_docker_executor()
+                result, error_type, logs = docker_exec.execute(
+                    code_zip=code_zip or b"",
+                    handler=handler,
+                    event=event,
+                    function_name=func_name,
+                    runtime=runtime,
+                    timeout=timeout,
+                    memory_size=memory_size,
+                    env_vars=env_vars,
+                    region=region,
+                    account_id=account_id,
+                    code_dir=code_dir,
+                    hot_reload=use_hot_reload,
+                )
+            else:
+                executor = get_executor_for_runtime(runtime)
+                result, error_type, logs = executor.execute(
+                    code_zip=code_zip or b"",
+                    handler=handler,
+                    event=event,
+                    function_name=func_name,
+                    timeout=timeout,
+                    memory_size=memory_size,
+                    env_vars=env_vars,
+                    region=region,
+                    account_id=account_id,
+                    code_dir=code_dir,
+                    hot_reload=use_hot_reload,
+                )
         else:
             # No code — return a simple success (like Moto's simple mode)
             result, error_type, logs = "Simple Lambda happy path OK", None, ""
@@ -1239,18 +1262,39 @@ async def _invoke_with_response_stream(
 
     result = None
     if code_zip:
-        executor = get_executor_for_runtime(runtime)
-        result, error_type, logs = executor.execute(
-            code_zip=code_zip,
-            handler=handler_name,
-            event=event,
-            function_name=func_name,
-            timeout=timeout,
-            memory_size=memory_size,
-            env_vars=env_vars,
-            region=region,
-            account_id=account_id,
-        )
+        from robotocore.services.lambda_.docker_executor import get_executor_mode
+
+        if get_executor_mode() == "docker":
+            from robotocore.services.lambda_.docker_executor import (
+                get_docker_executor,
+            )
+
+            docker_exec = get_docker_executor()
+            result, error_type, logs = docker_exec.execute(
+                code_zip=code_zip,
+                handler=handler_name,
+                event=event,
+                function_name=func_name,
+                runtime=runtime,
+                timeout=timeout,
+                memory_size=memory_size,
+                env_vars=env_vars,
+                region=region,
+                account_id=account_id,
+            )
+        else:
+            executor = get_executor_for_runtime(runtime)
+            result, error_type, logs = executor.execute(
+                code_zip=code_zip,
+                handler=handler_name,
+                event=event,
+                function_name=func_name,
+                timeout=timeout,
+                memory_size=memory_size,
+                env_vars=env_vars,
+                region=region,
+                account_id=account_id,
+            )
 
     if result is None:
         payload = b"null"
