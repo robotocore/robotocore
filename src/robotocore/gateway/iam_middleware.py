@@ -298,14 +298,42 @@ def _build_access_denied_response(
         )
 
 
+def _record_to_stream(
+    *,
+    principal: str,
+    action: str,
+    resource: str,
+    decision: str,
+    matched_policies: list[str] | None = None,
+    matched_statement: dict | None = None,
+    request_id: str = "",
+    evaluation_duration_ms: float = 0.0,
+) -> None:
+    """Record a policy evaluation to the stream if enabled."""
+    from robotocore.services.iam.policy_stream import get_policy_stream, is_stream_enabled
+
+    if not is_stream_enabled():
+        return
+
+    get_policy_stream().record(
+        principal=principal,
+        action=action,
+        resource=resource,
+        decision=decision,
+        matched_policies=matched_policies,
+        matched_statement=matched_statement,
+        request_id=request_id,
+        evaluation_duration_ms=evaluation_duration_ms,
+    )
+
+
 def iam_enforcement_handler(context: RequestContext) -> None:
     """Gateway handler that enforces IAM policies on requests.
 
     Opt-in via ENFORCE_IAM=1 environment variable.
     Skips IAM and STS service requests to avoid bootstrap deadlocks.
     """
-    if os.environ.get("ENFORCE_IAM", "0") != "1":
-        return
+    enforce = os.environ.get("ENFORCE_IAM", "0") == "1"
 
     # Skip IAM/STS to avoid deadlock during credential bootstrap
     if context.service_name in ("iam", "sts"):
@@ -313,18 +341,42 @@ def iam_enforcement_handler(context: RequestContext) -> None:
 
     creds = extract_credentials(context.request)
     if creds is None:
-        # No credentials - allow (anonymous access or unsigned)
+        # No credentials - when not enforcing, record as Allow if stream is on
+        if not enforce:
+            _record_to_stream(
+                principal="anonymous",
+                action=build_iam_action(context.service_name, context.operation),
+                resource=build_resource_arn(
+                    context.service_name, context.region, context.account_id, context.request
+                ),
+                decision="Allow",
+                request_id=context.request.headers.get("x-amzn-requestid", ""),
+            )
         return
 
     action = build_iam_action(context.service_name, context.operation)
     resource = build_resource_arn(
         context.service_name, context.region, context.account_id, context.request
     )
+    request_id = context.request.headers.get("x-amzn-requestid", "")
+
+    import time as _time
+
+    t0 = _time.monotonic()
 
     policies = _gather_policies(creds["access_key_id"], context.account_id, context.region)
 
     if not policies:
         # No policies found - implicit deny
+        duration = (_time.monotonic() - t0) * 1000
+        _record_to_stream(
+            principal=creds["access_key_id"],
+            action=action,
+            resource=resource,
+            decision="Deny",
+            request_id=request_id,
+            evaluation_duration_ms=duration,
+        )
         context.response = _build_access_denied_response(action, context.protocol)
         return
 
@@ -337,6 +389,19 @@ def iam_enforcement_handler(context: RequestContext) -> None:
     }
 
     result = evaluate_policy(policies, action, resource, context_values)
+    duration = (_time.monotonic() - t0) * 1000
+
+    decision = "Allow" if result not in (DENY, IMPLICIT_DENY) else "Deny"
+    policy_arns = [f"inline-policy-{i}" for i in range(len(policies))]
+    _record_to_stream(
+        principal=creds["access_key_id"],
+        action=action,
+        resource=resource,
+        decision=decision,
+        matched_policies=policy_arns,
+        request_id=request_id,
+        evaluation_duration_ms=duration,
+    )
 
     if result in (DENY, IMPLICIT_DENY):
         context.response = _build_access_denied_response(action, context.protocol)
