@@ -195,6 +195,11 @@ def _send_message(
     md5_body = _md5(body_text)
     delay = int(params.get("DelaySeconds", "0"))
 
+    # Track metrics
+    from robotocore.services.sqs.metrics import increment_sent
+
+    increment_sent(queue.name, len(body_text.encode("utf-8")))
+
     msg = SqsMessage(
         message_id=message_id,
         body=body_text,
@@ -256,6 +261,17 @@ def _receive_message(
         else:
             valid.append((msg, receipt))
 
+    # Track metrics
+    from robotocore.services.sqs.metrics import (
+        increment_empty_receives,
+        increment_received,
+    )
+
+    if valid:
+        increment_received(queue.name, len(valid))
+    else:
+        increment_empty_receives(queue.name)
+
     messages = []
     for msg, receipt in valid:
         m = {
@@ -290,6 +306,10 @@ def _delete_message(
     queue = _resolve_queue(store, params, request)
     receipt = params.get("ReceiptHandle", "")
     queue.delete_message(receipt)
+
+    from robotocore.services.sqs.metrics import increment_deleted
+
+    increment_deleted(queue.name)
     return {}
 
 
@@ -358,10 +378,13 @@ def _send_message_batch(
         )
         i += 1
 
+    from robotocore.services.sqs.metrics import increment_sent
+
     for entry in entries:
         msg_id = _new_id()
         body_text = entry.get("MessageBody", "")
         md5_body = _md5(body_text)
+        increment_sent(queue.name, len(body_text.encode("utf-8")))
         msg = SqsMessage(
             message_id=msg_id,
             body=body_text,

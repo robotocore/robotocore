@@ -711,6 +711,9 @@ def _start_background_engines():
     from robotocore.services.synthetics.scheduler import get_canary_scheduler
 
     get_canary_scheduler().start()
+    from robotocore.services.sqs.metrics import get_sqs_metrics_publisher
+
+    get_sqs_metrics_publisher().start()
 
     # Auto-load state if configured
     if os.environ.get("ROBOTOCORE_STATE_DIR"):
