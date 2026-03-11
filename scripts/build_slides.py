@@ -448,35 +448,7 @@ blockquote {{
     </div>
   </section>
 
-  <!-- Slide 3: What it means -->
-  <section class="slide slide-blue" id="s3">
-    <div class="full-width center">
-      <div class="eyebrow anim-1" style="color:#2E86D4;">The Breaking Point</div>
-      <h2 class="anim-2">What "Account Required" Really Means</h2>
-      <div class="three-col anim-3" style="margin-top:36px;">
-        <div class="card card-accent">
-          <div style="font-size:2.5rem;margin-bottom:12px;">🔐</div>
-          <h3>Auth Tokens Required</h3>
-          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Every dev machine, every CI job needs a LocalStack account and token. Offline? Blocked.</p>
-        </div>
-        <div class="card card-blue">
-          <div style="font-size:2.5rem;margin-bottom:12px;">🚧</div>
-          <h3>Enterprise Features Paywalled</h3>
-          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Multi-account, chaos engineering, state snapshots — now Pro-only. The tools you need cost money.</p>
-        </div>
-        <div class="card card-teal">
-          <div style="font-size:2.5rem;margin-bottom:12px;">📉</div>
-          <h3>Community Edition Stagnates</h3>
-          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Free tier gets "experimental" label. Investment shifts to paid. Community left behind.</p>
-        </div>
-      </div>
-      <p class="anim-4" style="margin-top:28px;opacity:0.65;font-size:1rem;">
-        We needed an alternative. A real one. Free forever, no strings.
-      </p>
-    </div>
-  </section>
-
-  <!-- Slide 4: Moto history -->
+  <!-- Slide 3: Moto history -->
   <section class="slide slide-blue" id="s4">
     <div class="full-width">
       <div class="center">
