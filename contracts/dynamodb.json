@@ -1,0 +1,63 @@
+{
+  "service": "dynamodb",
+  "generated_at": "2026-03-11T20:55:05.150338+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "dynamodb",
+      "operation": "ListTables",
+      "status_code": 200,
+      "response_keys": [
+        "LastEvaluatedTableName",
+        "TableNames"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.131315+00:00",
+      "protocol": "json",
+      "key_types": {
+        "TableNames": "list",
+        "LastEvaluatedTableName": "string"
+      }
+    },
+    {
+      "service": "dynamodb",
+      "operation": "DescribeTable",
+      "status_code": 200,
+      "response_keys": [
+        "Table"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.150282+00:00",
+      "protocol": "json",
+      "key_types": {
+        "Table": "structure"
+      }
+    }
+  ]
+}
