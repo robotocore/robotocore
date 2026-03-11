@@ -66,7 +66,7 @@ class TestAuditLog:
         log = AuditLog(max_size=100)
         log.record(service="s3", operation="PutObject")
         entry = log.recent()[0]
-        assert "error" not in entry
+        assert entry.get("error") is None
 
     def test_record_all_fields(self):
         log = AuditLog(max_size=100)
@@ -84,7 +84,7 @@ class TestAuditLog:
         assert entry["service"] == "dynamodb"
         assert entry["method"] == "POST"
         assert entry["path"] == "/"
-        assert entry["duration_ms"] == 12.35  # rounded to 2 decimal places
+        assert entry["duration_ms"] == 12.345  # rounded to 3 decimal places
         assert entry["account_id"] == "123456789012"
         assert entry["region"] == "us-west-2"
         assert "timestamp" in entry

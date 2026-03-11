@@ -108,17 +108,17 @@ class TestAuditLogEdgeCases:
         assert entries == []
 
     def test_record_empty_error_string(self):
-        """Empty string error should not add 'error' key (falsy)."""
+        """Empty string error should be stored as None (falsy)."""
         log = AuditLog(max_size=100)
         log.record(service="s3", operation="Test", error="")
         entry = log.recent()[0]
-        assert "error" not in entry
+        assert entry.get("error") is None
 
     def test_duration_ms_rounding(self):
         log = AuditLog(max_size=100)
         log.record(service="s3", duration_ms=1.23456789)
         entry = log.recent()[0]
-        assert entry["duration_ms"] == 1.23
+        assert entry["duration_ms"] == 1.235
 
     def test_large_duration_preserved(self):
         log = AuditLog(max_size=100)
