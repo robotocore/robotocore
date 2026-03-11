@@ -6,10 +6,13 @@ These features match real AWS SQS behavior that Moto does not enforce:
 - Messages older than MessageRetentionPeriod are automatically removed
 """
 
+import logging
 import os
 import threading
 import time
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from robotocore.services.sqs.models import SqsStore
@@ -145,4 +148,7 @@ class RetentionScanner:
                 try:
                     self.scan_store(store)
                 except Exception:
-                    pass
+                    logger.warning(
+                        "Failed to scan store for expired messages",
+                        exc_info=True,
+                    )
