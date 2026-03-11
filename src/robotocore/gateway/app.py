@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from robotocore import __version__
+from robotocore.console.app import get_console_routes
 from robotocore.dashboard.app import dashboard_endpoint
 from robotocore.gateway.handler_chain import HandlerChain, RequestContext
 from robotocore.gateway.handlers import (
@@ -914,6 +915,8 @@ management_routes = [
     Route("/_robotocore/config/active", config_active_endpoint, methods=["GET"]),
     # Diagnostics bundle
     Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
+    # Console web UI
+    *get_console_routes(),
 ]
 
 
