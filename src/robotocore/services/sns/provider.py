@@ -191,6 +191,24 @@ def _get_topic_attributes(
         computed["ContentBasedDeduplication"] = topic.attributes.get(
             "ContentBasedDeduplication", "false"
         )
+    # Always include EffectiveDeliveryPolicy with default retry policy (matches AWS)
+    if "EffectiveDeliveryPolicy" not in attrs:
+        computed["EffectiveDeliveryPolicy"] = json.dumps(
+            {
+                "http": {
+                    "defaultHealthyRetryPolicy": {
+                        "minDelayTarget": 20,
+                        "maxDelayTarget": 20,
+                        "numRetries": 3,
+                        "numMaxDelayRetries": 0,
+                        "numNoDelayRetries": 0,
+                        "numMinDelayRetries": 0,
+                        "backoffFunction": "linear",
+                    },
+                    "disableSubscriptionOverrides": False,
+                }
+            }
+        )
     attrs.update(computed)
     return {"Attributes": attrs}
 
@@ -416,17 +434,43 @@ def _publish(store: SnsStore, params: dict, region: str, account_id: str, reques
                 "InvalidParameter",
                 "The MessageGroupId parameter is required for FIFO topics.",
             )
+        if not message_dedup_id and not topic.content_based_dedup:
+            raise SnsError(
+                "InvalidParameter",
+                "The topic should either have ContentBasedDeduplication enabled "
+                "or MessageDeduplicationId provided explicitly.",
+            )
         is_dup, _ = topic.check_dedup(message, message_dedup_id, message_group_id)
         if is_dup:
             return {"MessageId": message_id}
+
+    # Handle MessageStructure=json: per-protocol message selection
+    message_structure = params.get("MessageStructure")
+    per_protocol_messages = None
+    if message_structure == "json":
+        try:
+            per_protocol_messages = json.loads(message)
+        except (json.JSONDecodeError, TypeError):
+            raise SnsError(
+                "InvalidParameter",
+                "Invalid parameter: Message Structure - JSON message body failed to parse",
+            )
 
     # Deliver to subscribers
     for sub in topic.subscriptions:
         if not sub.confirmed:
             continue
-        if not sub.matches_filter(message_attributes):
+        if not sub.matches_filter(message_attributes, message_body=message):
             continue
-        _deliver_to_subscriber(sub, message, subject, message_attributes, message_id, arn, region)
+        # Select per-protocol message if MessageStructure=json
+        delivery_message = message
+        if per_protocol_messages:
+            delivery_message = per_protocol_messages.get(
+                sub.protocol, per_protocol_messages.get("default", message)
+            )
+        _deliver_to_subscriber(
+            sub, delivery_message, subject, message_attributes, message_id, arn, region
+        )
 
     result = {"MessageId": message_id}
     if topic.is_fifo and message_group_id:
@@ -461,6 +505,19 @@ def _publish_batch(
             entry["MessageDeduplicationId"] = dedup_id
         i += 1
         entries.append(entry)
+
+    # Also check for pre-parsed entries (JSON protocol)
+    if not entries and "PublishBatchRequestEntries" in params:
+        pre = params["PublishBatchRequestEntries"]
+        if isinstance(pre, list):
+            entries = pre
+
+    # Validate non-empty
+    if not entries:
+        raise SnsError(
+            "EmptyBatchRequest",
+            "The batch request doesn't contain any entries.",
+        )
 
     # Validate max 10 entries
     if len(entries) > 10:

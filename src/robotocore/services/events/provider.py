@@ -113,6 +113,23 @@ def _put_rule(store: EventsStore, params: dict, region: str, account_id: str) ->
     state = params.get("State", "ENABLED")
     description = params.get("Description", "")
 
+    # Validate: cannot have both EventPattern and ScheduleExpression
+    if event_pattern and schedule:
+        raise EventsError(
+            "ValidationException",
+            "Specifying both EventPattern and ScheduleExpression is not allowed.",
+        )
+
+    # Validate event pattern structure: top-level values must be lists or dicts
+    if event_pattern:
+        for key, val in event_pattern.items():
+            if not isinstance(val, (list, dict)):
+                raise EventsError(
+                    "InvalidEventPatternException",
+                    "Event pattern is not valid. "
+                    "Reason: Value of each key must be an array or an object.",
+                )
+
     rule = store.put_rule(
         name,
         bus_name,
@@ -132,6 +149,12 @@ def _delete_rule(store: EventsStore, params: dict, region: str, account_id: str)
     # Get rule ARN before deletion so we can clean up tags
     rule = store.get_rule(name, bus_name)
     if rule:
+        # AWS rejects deletion of rules that still have targets
+        if rule.targets:
+            raise EventsError(
+                "ValidationException",
+                "Rule can't be deleted since it has targets.",
+            )
         store.clean_up_tags(rule.arn)
     store.delete_rule(name, bus_name)
     return {}
@@ -201,6 +224,45 @@ def _put_targets(store: EventsStore, params: dict, region: str, account_id: str)
     rule_name = params.get("Rule", "")
     bus_name = params.get("EventBusName", "default")
     targets = params.get("Targets", [])
+
+    # Enforce 5-target-per-rule limit
+    rule = store.get_rule(rule_name, bus_name)
+    max_targets = 5
+    if rule:
+        current_count = len(rule.targets)
+        # Count how many new targets (not updates of existing ones)
+        new_ids = {t.get("Id", "") for t in targets}
+        existing_ids = set(rule.targets.keys())
+        net_new = len(new_ids - existing_ids)
+        if current_count + net_new > max_targets:
+            # Report failures for targets that would exceed the limit
+            failed = []
+            allowed = max_targets - current_count
+            allowed_targets = []
+            for t in targets:
+                tid = t.get("Id", "")
+                if tid in existing_ids:
+                    # Update existing target -- always allowed
+                    allowed_targets.append(t)
+                elif allowed > 0:
+                    allowed_targets.append(t)
+                    allowed -= 1
+                else:
+                    failed.append(
+                        {
+                            "TargetId": tid,
+                            "ErrorCode": "LimitExceededException",
+                            "ErrorMessage": (
+                                "The requested resource exceeds the maximum number allowed."
+                            ),
+                        }
+                    )
+            store.put_targets(rule_name, bus_name, allowed_targets)
+            return {
+                "FailedEntryCount": len(failed),
+                "FailedEntries": failed,
+            }
+
     failed = store.put_targets(rule_name, bus_name, targets)
     return {
         "FailedEntryCount": len(failed),
@@ -243,6 +305,7 @@ def _put_events(store: EventsStore, params: dict, region: str, account_id: str) 
     """Core operation: match events to rules, invoke targets."""
     entries = params.get("Entries", [])
     results = []
+    failed_count = 0
 
     for entry in entries:
         event = {
@@ -276,11 +339,18 @@ def _put_events(store: EventsStore, params: dict, region: str, account_id: str) 
             for rule in bus.rules.values():
                 if rule.matches_event(event):
                     _dispatch_to_targets(rule, event, region, account_id, store)
-
-        results.append({"EventId": event["id"]})
+            results.append({"EventId": event["id"]})
+        else:
+            failed_count += 1
+            results.append(
+                {
+                    "ErrorCode": "ResourceNotFoundException",
+                    "ErrorMessage": f"Event bus '{bus_name}' does not exist.",
+                }
+            )
 
     return {
-        "FailedEntryCount": 0,
+        "FailedEntryCount": failed_count,
         "Entries": results,
     }
 
@@ -301,6 +371,11 @@ def publish_event_to_bus(
 
 def _create_event_bus(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
+    if store.get_bus(name):
+        raise EventsError(
+            "ResourceAlreadyExistsException",
+            f"Event bus {name} already exists.",
+        )
     bus = store.create_event_bus(name, region, account_id)
     return {"EventBusArn": bus.arn}
 
@@ -534,7 +609,15 @@ def _apply_input_transformer(transformer: dict, event: dict) -> str:
     # Resolve each JSONPath
     resolved: dict[str, str] = {}
     for key, path in paths_map.items():
-        resolved[key] = _resolve_jsonpath(path, event)
+        val = _resolve_jsonpath(path, event)
+        # For missing paths, use empty string (not "null") in non-JSON templates
+        if val == "null":
+            val = ""
+        resolved[key] = val
+
+    # Handle built-in <aws.events.event> placeholder
+    if "<aws.events.event>" in template:
+        template = template.replace("<aws.events.event>", json.dumps(event))
 
     # Check if template is a JSON template
     is_json_template = False
@@ -1217,25 +1300,14 @@ def _test_event_pattern(store: EventsStore, params: dict, region: str, account_i
 
 
 def _matches_pattern(pattern: dict, event: dict) -> bool:
-    """Check if an event matches an EventBridge event pattern."""
-    for key, expected in pattern.items():
-        value = event.get(key)
-        if isinstance(expected, list):
-            # List means "any of these values"
-            if isinstance(value, list):
-                if not any(v in expected for v in value):
-                    return False
-            elif value not in expected:
-                return False
-        elif isinstance(expected, dict):
-            if not isinstance(value, dict):
-                return False
-            if not _matches_pattern(expected, value):
-                return False
-        else:
-            if value != expected:
-                return False
-    return True
+    """Check if an event matches an EventBridge event pattern.
+
+    Delegates to the full-featured _match_pattern in models.py to support
+    prefix, suffix, numeric, exists, and anything-but filters.
+    """
+    from robotocore.services.events.models import _match_pattern
+
+    return _match_pattern(pattern, event)
 
 
 def _error(code: str, message: str, status: int) -> Response:
