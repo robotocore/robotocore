@@ -2,19 +2,18 @@
 
 import pytest
 
-from robotocore.services.iam.policy_stream import get_policy_stream
+import robotocore.services.iam.policy_stream as policy_stream_mod
+from robotocore.services.iam.policy_stream import format_stream_response, get_policy_stream
 
 
 @pytest.fixture(autouse=True)
 def _reset_singleton(monkeypatch):
     """Reset the global stream singleton before each test."""
-    import robotocore.services.iam.policy_stream as mod
-
-    old = mod._stream
-    mod._stream = None
+    old = policy_stream_mod._stream
+    policy_stream_mod._stream = None
     monkeypatch.setenv("IAM_POLICY_STREAM", "1")
     yield
-    mod._stream = old
+    policy_stream_mod._stream = old
 
 
 def _make_entry(**overrides):
@@ -96,10 +95,6 @@ class TestManagementEndpointJSON:
     """Test that the management endpoint handlers produce correct JSON structures."""
 
     def test_stream_endpoint_json_structure(self):
-        from robotocore.services.iam.policy_stream import (
-            format_stream_response,
-        )
-
         stream = get_policy_stream()
         stream.record(**_make_entry())
         result = format_stream_response(stream.recent(limit=100))
