@@ -249,8 +249,8 @@ def _clear_modules_for_dir(code_dir: str) -> None:
                 norm_file = os.path.abspath(mod_file)
                 if norm_file.startswith(norm_dir):
                     to_remove.append(name)
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as exc:
+                logger.debug("Could not resolve module path for %s: %s", name, exc)
     # Also clear function-scoped module cache keys (_lambda_* entries)
     for name in list(sys.modules.keys()):
         if name.startswith("_lambda_"):
@@ -260,8 +260,8 @@ def _clear_modules_for_dir(code_dir: str) -> None:
                 try:
                     if os.path.abspath(mod_file).startswith(norm_dir):
                         to_remove.append(name)
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as exc:
+                    logger.debug("Could not resolve module path for %s: %s", name, exc)
     for name in to_remove:
         sys.modules.pop(name, None)
 
