@@ -322,7 +322,7 @@ class TestAccountIdExtractionEdgeCases:
         assert _extract_account_id(req) == "000111222333"
 
     def test_sigv4_with_13_digit_account(self):
-        """13-digit value should still be extracted (regex matches any digit sequence)."""
+        """13-digit value should fall back to default (regex matches exactly 12 digits)."""
         from robotocore.gateway.app import _extract_account_id
 
         req = _mock_request(
@@ -335,8 +335,9 @@ class TestAccountIdExtractionEdgeCases:
             },
             query_params={},
         )
-        # The regex r"Credential=(\d+)/" matches any digits before the slash
-        assert _extract_account_id(req) == "1234567890123"
+        # The regex r"Credential=(\d{12})/" only matches exactly 12 digits,
+        # so a 13-digit credential falls back to the default account
+        assert _extract_account_id(req) == DEFAULT_ACCOUNT
 
     def test_presigned_url_x_amz_credential(self):
         """Account extracted correctly from X-Amz-Credential query param."""
