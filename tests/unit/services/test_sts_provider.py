@@ -24,18 +24,14 @@ class TestSTSProvider:
     def test_get_access_key_info(self):
         body = b"Action=GetAccessKeyInfo&AccessKeyId=AKIAIOSFODNN7EXAMPLE"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 200
         assert b"<Account>123456789012</Account>" in response.body
 
     def test_get_access_key_info_different_account(self):
         body = b"Action=GetAccessKeyInfo&AccessKeyId=AKIAIOSFODNN7EXAMPLE"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "999888777666")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "999888777666"))
         assert b"<Account>999888777666</Account>" in response.body
 
     @patch("robotocore.services.sts.provider.forward_to_moto_with_body")
@@ -43,9 +39,7 @@ class TestSTSProvider:
         mock_forward.return_value = MagicMock(status_code=200)
         body = b"Action=GetCallerIdentity"
         request = _make_request(body)
-        asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         mock_forward.assert_called_once_with(request, "sts", body, account_id="123456789012")
 
     @patch("robotocore.services.sts.provider.forward_to_moto_with_body")
@@ -53,9 +47,7 @@ class TestSTSProvider:
         mock_forward.return_value = MagicMock(status_code=200)
         body = b"Action=AssumeRole&RoleArn=arn:aws:iam::123456789012:role/test&RoleSessionName=s"
         request = _make_request(body)
-        asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         mock_forward.assert_called_once()
 
     def test_assume_role_packed_policy_too_large(self):
@@ -79,9 +71,7 @@ class TestSTSProvider:
             b"&Policy=" + large_policy.encode()
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"PackedPolicyTooLarge" in response.body
 
@@ -94,9 +84,7 @@ class TestSTSProvider:
             b"&SAMLAssertion=not-real-saml"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 200
         assert b"<Credentials>" in response.body
         assert b"<AccessKeyId>" in response.body
@@ -105,9 +93,7 @@ class TestSTSProvider:
         """DecodeAuthorizationMessage returns the encoded message as-is."""
         body = b"Action=DecodeAuthorizationMessage&EncodedMessage=test-encoded-msg"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 200
         assert b"<DecodedMessage>test-encoded-msg</DecodedMessage>" in response.body
 
@@ -120,9 +106,7 @@ class TestSTSProvider:
             mock_forward.return_value = MagicMock(status_code=200)
             body = b""
             request = _make_request(body)
-            asyncio.get_event_loop().run_until_complete(
-                handle_sts_request(request, "us-east-1", "123456789012")
-            )
+            asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
             mock_forward.assert_called_once()
 
 
@@ -138,9 +122,7 @@ class TestSTSParameterValidation:
         """GetAccessKeyInfo without AccessKeyId should return an error."""
         body = b"Action=GetAccessKeyInfo"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"AccessKeyId" in response.body
 
@@ -152,9 +134,7 @@ class TestSTSParameterValidation:
             b"&SAMLAssertion=not-real-saml"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"RoleArn" in response.body
 
@@ -166,9 +146,7 @@ class TestSTSParameterValidation:
             b"&SAMLAssertion=not-real-saml"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"PrincipalArn" in response.body
 
@@ -180,9 +158,7 @@ class TestSTSParameterValidation:
             b"&PrincipalArn=arn:aws:iam::123456789012:saml-provider/MyIdP"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"SAMLAssertion" in response.body
 
@@ -190,9 +166,7 @@ class TestSTSParameterValidation:
         """DecodeAuthorizationMessage without EncodedMessage should return an error."""
         body = b"Action=DecodeAuthorizationMessage"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"EncodedMessage" in response.body
 
@@ -215,9 +189,7 @@ class TestSTSDurationValidation:
             b"&DurationSeconds=notanumber"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
         assert b"DurationSeconds" in response.body or b"ValidationError" in response.body
 
@@ -231,9 +203,7 @@ class TestSTSDurationValidation:
             b"&DurationSeconds=100"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
 
     def test_assume_role_with_saml_duration_too_high(self):
@@ -246,9 +216,7 @@ class TestSTSDurationValidation:
             b"&DurationSeconds=99999"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 400
 
 
@@ -264,12 +232,8 @@ class TestSTSRequestIdUniqueness:
         body = b"Action=GetAccessKeyInfo&AccessKeyId=AKIAIOSFODNN7EXAMPLE"
         req1 = _make_request(body)
         req2 = _make_request(body)
-        resp1 = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(req1, "us-east-1", "123456789012")
-        )
-        resp2 = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(req2, "us-east-1", "123456789012")
-        )
+        resp1 = asyncio.run(handle_sts_request(req1, "us-east-1", "123456789012"))
+        resp2 = asyncio.run(handle_sts_request(req2, "us-east-1", "123456789012"))
         # Extract RequestId from both responses
         id_pattern = re.compile(rb"<RequestId>([^<]+)</RequestId>")
         id1 = id_pattern.search(resp1.body)
@@ -281,9 +245,7 @@ class TestSTSRequestIdUniqueness:
         """RequestId should be a valid UUID format."""
         body = b"Action=GetAccessKeyInfo&AccessKeyId=AKIAIOSFODNN7EXAMPLE"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         id_pattern = re.compile(
             rb"<RequestId>([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
             rb"</RequestId>"
@@ -309,9 +271,7 @@ class TestSTSCredentialFormat:
             b"&SAMLAssertion=not-real-saml"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         key_match = re.search(rb"<AccessKeyId>(ASIA[A-Z0-9]+)</AccessKeyId>", response.body)
         assert key_match, "AccessKeyId must start with ASIA"
         key = key_match.group(1)
@@ -326,9 +286,7 @@ class TestSTSCredentialFormat:
             b"&SAMLAssertion=not-real-saml"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "999888777666")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "999888777666"))
         assert b"arn:aws:sts::999888777666:assumed-role/MyRole/" in response.body
 
     def test_saml_session_token_minimum_length(self):
@@ -340,9 +298,7 @@ class TestSTSCredentialFormat:
             b"&SAMLAssertion=not-real-saml"
         )
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_sts_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_sts_request(request, "us-east-1", "123456789012"))
         token_match = re.search(rb"<SessionToken>([^<]+)</SessionToken>", response.body)
         assert token_match
         token = token_match.group(1)

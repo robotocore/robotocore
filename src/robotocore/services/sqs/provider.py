@@ -241,7 +241,13 @@ def _receive_message(
     store: SqsStore, params: dict, region: str, account_id: str, request: Request
 ) -> dict:
     queue = _resolve_queue(store, params, request)
-    max_msgs = min(int(params.get("MaxNumberOfMessages", "1")), 10)
+    max_msgs = int(params.get("MaxNumberOfMessages", "1"))
+    if max_msgs < 1 or max_msgs > 10:
+        raise SqsError(
+            "InvalidParameterValue",
+            f"Value {max_msgs} for parameter MaxNumberOfMessages is invalid. "
+            "Reason: Must be between 1 and 10, if provided.",
+        )
     vis_timeout = params.get("VisibilityTimeout")
     if vis_timeout is not None:
         vis_timeout = int(vis_timeout)
@@ -378,6 +384,24 @@ def _send_message_batch(
         )
         i += 1
 
+    # Validate batch size <= 10
+    if len(entries) > 10:
+        raise SqsError(
+            "TooManyEntriesInBatchRequest",
+            "Maximum number of entries per request are 10. You have sent 11.",
+        )
+
+    # Validate no duplicate IDs
+    seen_ids = set()
+    for entry in entries:
+        entry_id = entry.get("Id", "")
+        if entry_id in seen_ids:
+            raise SqsError(
+                "BatchEntryIdsNotDistinct",
+                f"Id {entry_id} repeated.",
+            )
+        seen_ids.add(entry_id)
+
     from robotocore.services.sqs.metrics import increment_sent
 
     for entry in entries:
@@ -426,11 +450,22 @@ def _delete_message_batch(
         )
         i += 1
 
+    failed = []
     for entry in entries:
-        queue.delete_message(entry.get("ReceiptHandle", ""))
-        successful.append({"Id": entry.get("Id", "")})
+        ok = queue.delete_message(entry.get("ReceiptHandle", ""))
+        if ok:
+            successful.append({"Id": entry.get("Id", "")})
+        else:
+            failed.append(
+                {
+                    "Id": entry.get("Id", ""),
+                    "Code": "ReceiptHandleIsInvalid",
+                    "Message": "The input receipt handle is invalid.",
+                    "SenderFault": True,
+                }
+            )
 
-    return {"Successful": successful, "Failed": []}
+    return {"Successful": successful, "Failed": failed}
 
 
 def _change_message_visibility_batch(

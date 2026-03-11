@@ -67,7 +67,7 @@ class TestLambdaContext:
         ctx = LambdaContext(function_name="my-fn")
         assert ctx.function_name == "my-fn"
         assert ctx.function_version == "$LATEST"
-        assert ctx.memory_limit_in_mb == 128
+        assert ctx.memory_limit_in_mb == "128"
         assert ctx.aws_request_id  # non-empty UUID
 
     def test_get_remaining_time_positive(self):
@@ -88,7 +88,7 @@ class TestLambdaContext:
             log_group_name="/aws/lambda/fn",
         )
         assert ctx.function_version == "42"
-        assert ctx.memory_limit_in_mb == 512
+        assert ctx.memory_limit_in_mb == "512"
         assert ctx.invoked_function_arn == "arn:test"
         assert ctx.log_group_name == "/aws/lambda/fn"
 

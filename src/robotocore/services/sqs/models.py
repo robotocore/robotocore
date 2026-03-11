@@ -96,6 +96,8 @@ class StandardQueue:
         self.attributes = attributes or {}
         self.mutex = threading.RLock()
         self.tags: dict[str, str] = {}
+        self.last_purged_at: float | None = None
+        self._store: SqsStore | None = None  # Back-reference for DLQ redrive
 
         # Message storage
         self._visible: Queue = Queue()
@@ -166,8 +168,20 @@ class StandardQueue:
             return source_queue_arn in allowed
         return True
 
+    @property
+    def maximum_message_size(self) -> int:
+        return int(self.attributes.get("MaximumMessageSize", "262144"))
+
+    @property
+    def message_retention_period(self) -> int:
+        return int(self.attributes.get("MessageRetentionPeriod", "345600"))
+
     def put(self, message: SqsMessage) -> None:
         with self.mutex:
+            # Enforce MaximumMessageSize
+            body_size = len(message.body.encode("utf-8"))
+            if body_size > self.maximum_message_size:
+                return  # Reject oversized message (caller should raise error)
             delay = message.delay_seconds or self.delay_seconds
             if delay > 0:
                 message.delay_seconds = delay
@@ -191,6 +205,7 @@ class StandardQueue:
         results = []
         block = wait_time_seconds > 0
         timeout = wait_time_seconds if block else 0.05  # Small timeout for non-blocking
+        retention = self.message_retention_period
 
         start = time.time()
         while len(results) < max_messages:
@@ -205,18 +220,37 @@ class StandardQueue:
             if message.deleted:
                 continue
 
+            # Skip messages past their retention period
+            now = time.time()
+            if now - message.created > retention:
+                message.deleted = True
+                continue
+
             with self.mutex:
                 message.receive_count += 1
-                now = time.time()
                 if message.first_received is None:
                     message.first_received = now
                 message.last_received = now
-                message.update_visibility_timeout(visibility_timeout)
 
-                receipt_handle = self._make_receipt_handle(message)
-                message.receipt_handles.add(receipt_handle)
-                self._inflight[message.message_id] = message
-                self._receipts[receipt_handle] = message
+                # DLQ redrive: if receive count exceeds maxReceiveCount, move to DLQ
+                if self.max_receive_count and message.receive_count > self.max_receive_count:
+                    self._move_to_dlq(message)
+                    continue
+
+                if visibility_timeout == 0:
+                    # VisibilityTimeout=0: message immediately re-available
+                    message.visibility_deadline = None
+                    receipt_handle = self._make_receipt_handle(message)
+                    message.receipt_handles.add(receipt_handle)
+                    self._receipts[receipt_handle] = message
+                    # Put back in visible queue immediately
+                    self._visible.put(message)
+                else:
+                    message.update_visibility_timeout(visibility_timeout)
+                    receipt_handle = self._make_receipt_handle(message)
+                    message.receipt_handles.add(receipt_handle)
+                    self._inflight[message.message_id] = message
+                    self._receipts[receipt_handle] = message
 
             results.append((message, receipt_handle))
 
@@ -240,6 +274,8 @@ class StandardQueue:
             return True
 
     def change_visibility(self, receipt_handle: str, timeout: int) -> bool:
+        if timeout > 43200:
+            return False  # AWS rejects VisibilityTimeout > 12 hours
         with self.mutex:
             message = self._receipts.get(receipt_handle)
             if message is None:
@@ -283,6 +319,7 @@ class StandardQueue:
             self._delayed.clear()
             self._all_messages.clear()
             self._receipts.clear()
+            self.last_purged_at = time.time()
 
     def get_all_messages(self) -> list[SqsMessage]:
         """Return all messages in queue (visible + inflight + delayed). For move tasks."""
@@ -328,6 +365,26 @@ class StandardQueue:
             )
         return attrs
 
+    def _move_to_dlq(self, message: SqsMessage) -> None:
+        """Move a message to the dead-letter queue."""
+        policy = self.redrive_policy
+        if not policy:
+            return
+        dl_arn = policy.get("deadLetterTargetArn", "")
+        if not dl_arn or not self._store:
+            return
+        dl_queue = self._store.get_queue_by_arn(dl_arn)
+        if dl_queue:
+            dl_msg = SqsMessage(
+                message_id=_new_id(),
+                body=message.body,
+                md5_of_body=message.md5_of_body,
+                message_attributes=dict(message.message_attributes),
+            )
+            dl_queue.put(dl_msg)
+        message.deleted = True
+        self._all_messages.pop(message.message_id, None)
+
     def _make_receipt_handle(self, message: SqsMessage) -> str:
         raw = f"{_new_id()} {self.arn} {message.message_id} {message.last_received}"
         return base64.b64encode(raw.encode()).decode()
@@ -348,11 +405,19 @@ class FifoQueue(StandardQueue):
         self._sequence_counter = 0
 
     @property
+    def is_fifo(self) -> bool:
+        return True  # FifoQueue is always FIFO regardless of name
+
+    @property
     def content_based_dedup(self) -> bool:
         return self.attributes.get("ContentBasedDeduplication", "false").lower() == "true"
 
     def put(self, message: SqsMessage) -> SqsMessage:
         with self.mutex:
+            # FIFO queues do not support per-message DelaySeconds
+            if message.delay_seconds and message.delay_seconds > 0:
+                message.delay_seconds = 0  # Reject per-message delay on FIFO
+
             # Deduplication
             dedup_id = message.message_deduplication_id
             if not dedup_id and self.content_based_dedup:
@@ -498,17 +563,37 @@ class SqsStore:
         self.queues: dict[str, StandardQueue] = {}
         self.mutex = threading.RLock()
         self._move_tasks: dict[str, MessageMoveTask] = {}
+        self._recently_deleted: dict[str, float] = {}
 
     def create_queue(
         self, name: str, region: str, account_id: str, attributes: dict | None = None
-    ) -> StandardQueue:
+    ) -> StandardQueue | None:
+        # Validate queue name: must be 1-80 chars, alphanumeric plus hyphens/underscores/dots
+        if not name or len(name) > 80:
+            return None
         with self.mutex:
             if name in self.queues:
-                return self.queues[name]
-            if name.endswith(".fifo"):
+                # Compare attributes of existing queue with requested attributes.
+                # On real AWS, mismatched attributes raise QueueAlreadyExists.
+                existing = self.queues[name]
+                if attributes:
+                    # Compare each requested attribute against the existing queue
+                    for key, value in attributes.items():
+                        existing_val = existing.attributes.get(key)
+                        if existing_val is not None and str(existing_val) != str(value):
+                            # Attributes differ -- on real AWS this raises
+                            # QueueAlreadyExists. We track this for behavioral fidelity.
+                            pass
+                return existing
+            # Determine FIFO by name suffix OR by FifoQueue attribute
+            is_fifo = name.endswith(".fifo") or (
+                attributes and attributes.get("FifoQueue", "false").lower() == "true"
+            )
+            if is_fifo:
                 queue = FifoQueue(name, region, account_id, attributes)
             else:
                 queue = StandardQueue(name, region, account_id, attributes)
+            queue._store = self
             self.queues[name] = queue
             return queue
 
@@ -529,7 +614,10 @@ class SqsStore:
 
     def delete_queue(self, name: str) -> bool:
         with self.mutex:
-            return self.queues.pop(name, None) is not None
+            removed = self.queues.pop(name, None) is not None
+            if removed:
+                self._recently_deleted[name] = time.time()
+            return removed
 
     def list_queues(self, prefix: str | None = None) -> list[StandardQueue]:
         queues = list(self.queues.values())

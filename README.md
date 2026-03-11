@@ -415,8 +415,8 @@ uv run python -m robotocore.main
 ### Tests
 
 ```bash
-uv run pytest tests/unit/           # 3,448 unit tests
-uv run pytest tests/compatibility/  # 9,185 compatibility tests (requires running server)
+uv run pytest tests/unit/           # 5,546 unit tests
+uv run pytest tests/compatibility/  # 11,037 compatibility tests (requires running server)
 uv run pytest tests/integration/    # 58 integration tests (requires Docker)
 ```
 

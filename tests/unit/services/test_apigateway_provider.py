@@ -22,9 +22,7 @@ class TestAPIGatewayProvider:
     def test_non_delete_model_forwards_to_moto(self, mock_forward):
         mock_forward.return_value = MagicMock(status_code=200)
         request = _make_request("GET", "/restapis/abc123/resources")
-        asyncio.get_event_loop().run_until_complete(
-            handle_apigateway_request(request, "us-east-1", "123456789012")
-        )
+        asyncio.run(handle_apigateway_request(request, "us-east-1", "123456789012"))
         mock_forward.assert_called_once_with(request, "apigateway", account_id="123456789012")
 
     @patch("moto.backends.get_backend")
@@ -36,9 +34,7 @@ class TestAPIGatewayProvider:
         mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
 
         request = _make_request("DELETE", "/restapis/abc123/models/MyModel")
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_apigateway_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_apigateway_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 202
         assert "MyModel" not in mock_rest_api.models
 
@@ -51,9 +47,7 @@ class TestAPIGatewayProvider:
         mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
 
         request = _make_request("DELETE", "/restapis/abc123/models/Missing")
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_apigateway_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_apigateway_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 404
 
     @patch("moto.backends.get_backend")
@@ -63,16 +57,12 @@ class TestAPIGatewayProvider:
         mock_get_backend.return_value = {"123456789012": {"us-east-1": mock_backend}}
 
         request = _make_request("DELETE", "/restapis/bad123/models/MyModel")
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_apigateway_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_apigateway_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 404
 
     @patch("robotocore.services.apigateway.provider.forward_to_moto")
     def test_delete_non_model_path_forwards_to_moto(self, mock_forward):
         mock_forward.return_value = MagicMock(status_code=200)
         request = _make_request("DELETE", "/restapis/abc123/stages/test")
-        asyncio.get_event_loop().run_until_complete(
-            handle_apigateway_request(request, "us-east-1", "123456789012")
-        )
+        asyncio.run(handle_apigateway_request(request, "us-east-1", "123456789012"))
         mock_forward.assert_called_once()

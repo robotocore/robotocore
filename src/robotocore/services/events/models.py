@@ -397,6 +397,14 @@ def _match_pattern(pattern: dict, event: dict) -> bool:
     - Exists matching: {"exists": true/false}
     """
     for key, pattern_value in pattern.items():
+        # Handle $or compound patterns
+        if key == "$or":
+            if not isinstance(pattern_value, list):
+                return False
+            if not any(_match_pattern(sub_pattern, event) for sub_pattern in pattern_value):
+                return False
+            continue
+
         event_value = event.get(key)
 
         if isinstance(pattern_value, dict):

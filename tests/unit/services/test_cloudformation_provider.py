@@ -53,7 +53,11 @@ def _make_request(body=b"", headers=None, query_string=b""):
 _SIMPLE_TEMPLATE = json.dumps(
     {
         "AWSTemplateFormatVersion": "2010-09-09",
-        "Resources": {},
+        "Resources": {
+            "NullResource": {
+                "Type": "AWS::CloudFormation::WaitConditionHandle",
+            }
+        },
     }
 )
 
@@ -68,7 +72,11 @@ _TEMPLATE_WITH_PARAMS = json.dumps(
                 "Description": "Environment name",
             }
         },
-        "Resources": {},
+        "Resources": {
+            "NullResource": {
+                "Type": "AWS::CloudFormation::WaitConditionHandle",
+            }
+        },
     }
 )
 
@@ -372,7 +380,11 @@ _TEMPLATE_WITH_DESC = json.dumps(
     {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Description": "A test stack",
-        "Resources": {},
+        "Resources": {
+            "NullResource": {
+                "Type": "AWS::CloudFormation::WaitConditionHandle",
+            }
+        },
     }
 )
 

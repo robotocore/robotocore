@@ -235,9 +235,9 @@ def _resolve_origin(config: CORSConfig, request_origin: str | None) -> str | Non
     if "*" in config.allowed_origins:
         return "*"
 
-    # No origin in request → use wildcard if allowed, else first origin
+    # No origin in request → not a CORS request, return no CORS headers
     if not request_origin:
-        return config.allowed_origins[0] if config.allowed_origins else "*"
+        return None
 
     # Check if the request origin matches any allowed origin
     for allowed in config.allowed_origins:

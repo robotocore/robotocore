@@ -55,24 +55,100 @@ def main() -> None:
     data["commit"] = args.commit or _git_sha()
     parity_path.write_text(json.dumps(data, indent=2))
 
-    # 3. Copy story page (static, no injection needed)
-    shutil.copy2(DOCS / "index.html", out / "index.html")
-    print(f"  → {out / 'index.html'} (story)", flush=True)
+    # 3. Compute fresh stats from parity data
+    summary = data.get("summary", {})
+    total_tests = _count_tests(ROOT)
+    native_count = summary.get("native_services", 0)
+    impl_count = summary.get("total_implemented", 0)
+    total_ops = summary.get("total_aws_operations", 0)
+    impl_pct = round(summary.get("impl_pct", 0))
+    prompt_count = _count_prompts(ROOT)
 
-    # 4. Inject parity data into coverage dashboard
+    # 4. Copy story page with fresh stats injected
+    story = (DOCS / "index.html").read_text()
+    story = _inject_stats(story, total_tests, native_count, impl_pct, prompt_count)
+    (out / "index.html").write_text(story)
+    print(f"  → {out / 'index.html'} (story, stats injected)", flush=True)
+
+    # 5. Inject parity data into coverage dashboard
     template = (DOCS / "coverage.html").read_text()
     injected = template.replace("DATA_PLACEHOLDER", json.dumps(data), 1)
     (out / "coverage.html").write_text(injected)
     print(f"  → {out / 'coverage.html'} (coverage dashboard)", flush=True)
 
-    # 5. Copy static assets
+    # 6. Copy static assets, injecting stats into SVGs
     for asset in ["banner.svg", "coverage.svg", "logo.png"]:
         src = DOCS / asset
         if src.exists():
-            shutil.copy2(src, out / asset)
+            if asset.endswith(".svg"):
+                svg = src.read_text()
+                svg = _inject_svg_stats(svg, total_tests, impl_count, total_ops, impl_pct)
+                (out / asset).write_text(svg)
+            else:
+                shutil.copy2(src, out / asset)
             print(f"  → {out / asset}", flush=True)
 
     print(f"\nSite built in {out}/  ({len(list(out.iterdir()))} files)")
+
+
+def _count_tests(root: Path) -> int:
+    """Count test functions across all test files."""
+    import re
+
+    count = 0
+    for test_dir in ["tests/unit", "tests/compatibility", "tests/integration"]:
+        for f in (root / test_dir).rglob("test_*.py"):
+            count += len(re.findall(r"^\s+def test_", f.read_text(), re.MULTILINE))
+    return count
+
+
+def _count_prompts(root: Path) -> int:
+    """Count prompt log files."""
+    prompts_dir = root / "prompts"
+    if prompts_dir.exists():
+        return len([f for f in prompts_dir.glob("*.md") if f.name != "PROMPTLOG.md"])
+    return 0
+
+
+def _inject_stats(
+    html: str, total_tests: int, native_count: int, impl_pct: int, prompt_count: int
+) -> str:
+    """Replace hardcoded stats in story page HTML with fresh values."""
+    import re
+
+    # Match stat-card patterns: <div class="stat-card-num">NUMBER</div>
+    # Update specific labels
+    def _replace_stat(label: str, value: str) -> str:
+        pattern = (
+            r'(<div class="stat-card-num">)[^<]*(</div>'
+            r'<div class="stat-card-label">' + re.escape(label) + r")"
+        )
+        return re.sub(pattern, rf"\g<1>{value}\2", html)
+
+    html = _replace_stat("Tests", f"{total_tests:,}")
+    html = _replace_stat("Native providers", str(native_count))
+    html = _replace_stat("Operations implemented", f"{impl_pct}%")
+    html = _replace_stat("Prompt sessions logged", str(prompt_count))
+    return html
+
+
+def _inject_svg_stats(
+    svg: str, total_tests: int, impl_count: int, total_ops: int, impl_pct: int
+) -> str:
+    """Replace hardcoded stats in SVG badges with fresh values."""
+    import re
+
+    # banner.svg: "NN,NNN+ tests"
+    svg = re.sub(r"[\d,]+\+ tests", f"{total_tests:,}+ tests", svg)
+    # coverage.svg header: "NN% of N,NNN operations"
+    svg = re.sub(r"\d+% of [\d,]+ operations", f"{impl_pct}% of {total_ops:,} operations", svg)
+    # coverage.svg subheader: "147 services  ·  N,NNN implemented  ·  N,NNN tests"
+    svg = re.sub(
+        r"(147 services\s+·\s+)[\d,]+( implemented\s+·\s+)[\d,]+( tests)",
+        rf"\g<1>{impl_count:,}\g<2>{total_tests:,}\3",
+        svg,
+    )
+    return svg
 
 
 def _git_sha() -> str:

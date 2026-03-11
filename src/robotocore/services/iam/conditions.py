@@ -9,8 +9,22 @@ from __future__ import annotations
 
 import fnmatch
 import ipaddress
+import re
 from datetime import UTC, datetime
 from typing import Any
+
+# Regex for policy variables like ${aws:username} or ${s3:prefix}
+_VARIABLE_RE = re.compile(r"\$\{([^}]+)\}")
+
+
+def _substitute_condition_variables(value: str, context: dict[str, Any]) -> str:
+    """Replace policy variables like ${aws:username} with context values in condition values."""
+
+    def _replace(match: re.Match) -> str:
+        var_name = match.group(1)
+        return str(context.get(var_name, match.group(0)))
+
+    return _VARIABLE_RE.sub(_replace, value)
 
 
 def _to_str(value: Any) -> str:
@@ -247,7 +261,9 @@ def _evaluate_single_operator(
 
     # Any policy value matching counts as success (OR within a key's values)
     for pv in policy_values:
-        if op_fn(ctx_val, pv):
+        # Substitute policy variables in condition values
+        resolved_pv = _substitute_condition_variables(str(pv), context_values)
+        if op_fn(ctx_val, resolved_pv):
             return True
     return False
 

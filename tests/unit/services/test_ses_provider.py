@@ -92,9 +92,7 @@ class TestSESProvider:
         mock_forward.return_value = MagicMock(status_code=200)
         body = b"Action=VerifyEmailIdentity&EmailAddress=test@example.com"
         request = _make_request(body)
-        asyncio.get_event_loop().run_until_complete(
-            handle_ses_request(request, "us-east-1", "123456789012")
-        )
+        asyncio.run(handle_ses_request(request, "us-east-1", "123456789012"))
         mock_forward.assert_called_once()
 
     # -----------------------------------------------------------------------
@@ -118,9 +116,7 @@ class TestSESProvider:
         mock_backend_fn.return_value = MagicMock()
         body = b"Action=SetIdentityDkimEnabled&Identity=example.com&DkimEnabled=true"
         request = _make_request(body)
-        response = asyncio.get_event_loop().run_until_complete(
-            handle_ses_request(request, "us-east-1", "123456789012")
-        )
+        response = asyncio.run(handle_ses_request(request, "us-east-1", "123456789012"))
         assert response.status_code == 200
         # The response body should NOT contain literal '{}'
         content = response.body.decode() if hasattr(response, "body") else ""

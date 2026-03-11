@@ -117,6 +117,11 @@ def _create_state_machine(params: dict, region: str, account_id: str) -> dict:
         parsed_def = definition
 
     with _exec_lock:
+        if arn in _state_machines:
+            raise SfnError(
+                "StateMachineAlreadyExists",
+                f"State Machine Already Exists: '{arn}'",
+            )
         _state_machines[arn] = {
             "name": name,
             "arn": arn,
@@ -238,6 +243,12 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
     abort_event = threading.Event()
 
     with _exec_lock:
+        # Check for duplicate execution name on STANDARD workflows
+        if exec_arn in _executions and sm.get("type", "STANDARD") == "STANDARD":
+            raise SfnError(
+                "ExecutionAlreadyExists",
+                f"Execution already exists: '{exec_arn}'",
+            )
         _executions[exec_arn] = exec_info
         _abort_events[exec_arn] = abort_event
 

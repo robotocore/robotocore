@@ -129,12 +129,22 @@ def _fire_stream_hooks(
                 if "PutRequest" in req:
                     item = req["PutRequest"].get("Item", {})
                     keys = _extract_keys_from_item(table_name, item, region, account_id)
+                    # Check if item already exists to determine INSERT vs MODIFY
+                    event_name = "INSERT"
+                    old_image = None
+                    try:
+                        existing = _get_existing_item(table_name, keys, region, account_id)
+                        if existing:
+                            event_name = "MODIFY"
+                            old_image = existing
+                    except Exception:
+                        pass
                     notify_table_change(
                         table_name=table_name,
-                        event_name="INSERT",
+                        event_name=event_name,
                         keys=keys,
                         new_image=item,
-                        old_image=None,
+                        old_image=old_image,
                         region=region,
                         account_id=account_id,
                     )
@@ -183,12 +193,23 @@ def _fire_stream_hooks(
                 update = item["Update"]
                 table_name = update.get("TableName", "")
                 keys = update.get("Key", {})
+                # Try to get current item image for stream consumers
+                new_image = None
+                old_image = None
+                try:
+                    existing = _get_existing_item(table_name, keys, region, account_id)
+                    if existing:
+                        # After the update, the item has been modified
+                        new_image = existing  # Best effort: current state after update
+                        old_image = existing  # Approximate: we don't have pre-update state
+                except Exception:
+                    pass
                 notify_table_change(
                     table_name=table_name,
                     event_name="MODIFY",
                     keys=keys,
-                    new_image=None,
-                    old_image=None,
+                    new_image=new_image,
+                    old_image=old_image,
                     region=region,
                     account_id=account_id,
                 )
@@ -270,6 +291,22 @@ def _replicate_mutation(target: str, body_bytes: bytes, region: str, account_id:
                     account_id=account_id,
                     global_tables=_global_tables,
                 )
+
+
+def _get_existing_item(table_name: str, keys: dict, region: str, account_id: str) -> dict | None:
+    """Try to get an existing item from Moto's backend by key."""
+    try:
+        from moto.backends import get_backend
+        from moto.core import DEFAULT_ACCOUNT_ID
+
+        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
+        backend = get_backend("dynamodb")[acct][region]
+        result = backend.get_item(table_name, keys)
+        if result and hasattr(result, "to_json"):
+            return result.to_json().get("Attributes", result.to_json())
+    except Exception:
+        pass
+    return None
 
 
 def _extract_keys_from_item(table_name: str, item: dict, region: str, account_id: str) -> dict:
@@ -379,6 +416,9 @@ def _list_global_tables(params: dict, region: str, account_id: str) -> dict:
                 found = True
         account_tables = filtered
 
+    # Check if there are more results before slicing
+    total_count = len(account_tables)
+
     # Apply limit
     account_tables = account_tables[:limit]
 
@@ -390,7 +430,7 @@ def _list_global_tables(params: dict, region: str, account_id: str) -> dict:
     }
 
     # Add pagination token if there are more results
-    if len(account_tables) == limit and limit < len(account_tables):
+    if len(account_tables) == limit and total_count > limit:
         result["LastEvaluatedGlobalTableName"] = account_tables[-1]["GlobalTableName"]
 
     return result

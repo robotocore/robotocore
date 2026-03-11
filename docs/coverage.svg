@@ -12,7 +12,7 @@
 <rect width="640" height="277" rx="14" fill="#f9f6ea"/>
 <text x="24" y="28" font-family="monospace,Consolas,'Courier New'" font-size="12" fill="#7d6a50" font-weight="bold" letter-spacing="1">AWS SERVICE COVERAGE</text>
 <text x="616" y="28" font-family="monospace,Consolas" font-size="12" fill="#c47e3a" font-weight="bold" text-anchor="end">84% of 9,277 operations</text>
-<text x="24" y="43" font-family="monospace" font-size="9.5" fill="#a89870">147 services  ·  7,826 implemented  ·  10,908 tests</text>
+<text x="24" y="43" font-family="monospace" font-size="9.5" fill="#a89870">147 services  ·  7,832 implemented  ·  16,641 tests</text>
 <circle cx="70" cy="65" r="7" fill="#7b8a6a" opacity="0"><animate attributeName="opacity" values="0;0;0.65" dur="0.4s" begin="0.00s" fill="freeze"/><animate attributeName="r" values="0;0;9.8;7" dur="0.35s" begin="0.00s" fill="freeze"/><title>account: 20%</title></circle>
 <circle cx="95" cy="65" r="9.5" fill="none" stroke="#c47e3a" stroke-width="0.7" opacity="0"><animate attributeName="opacity" values="0;0;0.45" dur="0.5s" begin="0.04s" fill="freeze"/></circle>
 <circle cx="95" cy="65" r="7" fill="#c47e3a" opacity="0" filter="url(#soft)"><animate attributeName="opacity" values="0;0;0.85" dur="0.4s" begin="0.04s" fill="freeze"/><animate attributeName="r" values="0;0;9.8;7" dur="0.35s" begin="0.04s" fill="freeze"/><title>acm: 81%</title></circle>

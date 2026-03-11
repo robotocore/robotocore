@@ -1,5 +1,6 @@
 """Fault injection rule definitions and matching engine."""
 
+import fnmatch
 import random
 import re
 import threading
@@ -23,9 +24,10 @@ class FaultRule:
         latency_ms: int = 0,
         probability: float = 1.0,
         enabled: bool = True,
+        ttl_seconds: float | None = None,
     ):
         self.rule_id = rule_id or uuid.uuid4().hex[:12]
-        self.service = service  # None = match all
+        self.service = service  # None = match all, supports glob patterns (e.g. "s3*", "*")
         self.operation = operation  # None = match all, supports regex
         self.region = region  # None = match all
         self.error_code = error_code  # e.g. "ThrottlingException"
@@ -38,6 +40,7 @@ class FaultRule:
         self.latency_ms = latency_ms
         self.probability = max(0.0, min(1.0, probability))
         self.enabled = enabled
+        self.ttl_seconds = ttl_seconds
         self.created_at = time.time()
         self.match_count = 0
         try:
@@ -45,11 +48,26 @@ class FaultRule:
         except re.error as exc:
             raise ValueError(f"Invalid regex in operation filter: {operation!r}: {exc}") from exc
 
+    def is_expired(self) -> bool:
+        """Check if this rule has expired based on its TTL."""
+        if self.ttl_seconds is None:
+            return False
+        return time.time() - self.created_at > self.ttl_seconds
+
+    def _service_matches(self, service: str) -> bool:
+        """Check if the given service matches this rule's service filter using glob patterns."""
+        if not self.service:
+            return True
+        # Use fnmatch for glob-style matching (supports *, ?, [])
+        return fnmatch.fnmatch(service, self.service)
+
     def matches(self, service: str, operation: str | None, region: str) -> bool:
         """Check if this rule matches the given request."""
         if not self.enabled:
             return False
-        if self.service and self.service != service:
+        if self.is_expired():
+            return False
+        if not self._service_matches(service):
             return False
         if self.region and self.region != region:
             return False
@@ -75,6 +93,7 @@ class FaultRule:
             "latency_ms": self.latency_ms,
             "probability": self.probability,
             "enabled": self.enabled,
+            "ttl_seconds": self.ttl_seconds,
             "created_at": self.created_at,
             "match_count": self.match_count,
         }
@@ -92,6 +111,7 @@ class FaultRule:
             latency_ms=data.get("latency_ms", 0),
             probability=data.get("probability", 1.0),
             enabled=data.get("enabled", True),
+            ttl_seconds=data.get("ttl_seconds"),
         )
         if "created_at" in data:
             rule.created_at = data["created_at"]

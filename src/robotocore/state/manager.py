@@ -13,6 +13,7 @@ Configuration via environment variables:
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
@@ -22,12 +23,158 @@ import tarfile
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from robotocore.state.hooks import StateHookRegistry
 
 logger = logging.getLogger(__name__)
+
+# Supported metadata versions
+_SUPPORTED_VERSIONS = {"1.0"}
+
+# Type tags for JSON round-trip fidelity
+_TAG_TUPLE = "__tuple__"
+_TAG_SET = "__set__"
+_TAG_BYTES = "__bytes__"
+_TAG_INT_KEY_DICT = "__int_key_dict__"
+
+
+class _TypePreservingEncoder(json.JSONEncoder):
+    """JSON encoder that tags non-JSON-native types for faithful round-trip."""
+
+    def default(self, o: Any) -> Any:
+        if isinstance(o, bytes):
+            return {_TAG_BYTES: base64.b64encode(o).decode("ascii")}
+        if isinstance(o, set):
+            return {_TAG_SET: sorted(self._encode_value(v) for v in o)}
+        if isinstance(o, tuple):
+            return {_TAG_TUPLE: [self._encode_value(v) for v in o]}
+        return super().default(o)
+
+    def _encode_value(self, v: Any) -> Any:
+        """Recursively encode a value, handling special types."""
+        if isinstance(v, bytes):
+            return {_TAG_BYTES: base64.b64encode(v).decode("ascii")}
+        if isinstance(v, set):
+            return {_TAG_SET: sorted(self._encode_value(x) for x in v)}
+        if isinstance(v, tuple):
+            return {_TAG_TUPLE: [self._encode_value(x) for x in v]}
+        if isinstance(v, dict):
+            return self._encode_dict(v)
+        if isinstance(v, list):
+            return [self._encode_value(x) for x in v]
+        return v
+
+    def _encode_dict(self, d: dict) -> dict:
+        """Encode a dict, handling integer keys."""
+        has_int_keys = any(isinstance(k, int) for k in d)
+        if has_int_keys:
+            return {_TAG_INT_KEY_DICT: [[k, self._encode_value(v)] for k, v in d.items()]}
+        return {str(k): self._encode_value(v) for k, v in d.items()}
+
+    def encode(self, o: Any) -> str:
+        if isinstance(o, dict):
+            o = self._encode_dict(o)
+        elif isinstance(o, (tuple, set, bytes)):
+            o = self._encode_value(o)
+        return super().encode(o)
+
+
+def _type_preserving_decode(obj: Any) -> Any:
+    """Object hook for JSON decoder that restores tagged types."""
+    if isinstance(obj, dict):
+        if _TAG_TUPLE in obj:
+            return tuple(_type_preserving_decode(v) for v in obj[_TAG_TUPLE])
+        if _TAG_SET in obj:
+            return {_type_preserving_decode(v) for v in obj[_TAG_SET]}
+        if _TAG_BYTES in obj:
+            return base64.b64decode(obj[_TAG_BYTES])
+        if _TAG_INT_KEY_DICT in obj:
+            return {k: _type_preserving_decode(v) for k, v in obj[_TAG_INT_KEY_DICT]}
+        return {k: _type_preserving_decode(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_type_preserving_decode(v) for v in obj]
+    return obj
+
+
+def _dumps_native(state: dict) -> str:
+    """Serialize native state to JSON with type preservation."""
+    return _TypePreservingEncoder(indent=2).encode(state)
+
+
+def _loads_native(text: str) -> dict:
+    """Deserialize native state from JSON with type restoration."""
+    raw = json.loads(text)
+    return _type_preserving_decode(raw)
+
+
+class _DisallowedClassError(pickle.UnpicklingError):
+    """Raised when a pickle contains a disallowed class (security violation)."""
+
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    """Unpickler that rejects dangerous classes.
+
+    Only allows modules that are part of moto, builtins, and standard
+    collection types. Rejects arbitrary code execution via __reduce__.
+    """
+
+    _ALLOWED_MODULE_PREFIXES = (
+        "moto.",
+        "builtins",
+        "collections",
+        "datetime",
+        "decimal",
+        "copy_reg",
+        "copyreg",
+        "_codecs",
+    )
+
+    # Dangerous callables that should never appear in pickles
+    _BLOCKED_NAMES = frozenset(
+        {
+            "eval",
+            "exec",
+            "compile",
+            "execfile",
+            "input",
+            "__import__",
+            "getattr",
+            "setattr",
+            "delattr",
+            "globals",
+            "locals",
+            "vars",
+            "open",
+            "breakpoint",
+        }
+    )
+
+    def find_class(self, module: str, name: str) -> type:
+        if not any(module.startswith(prefix) for prefix in self._ALLOWED_MODULE_PREFIXES):
+            raise _DisallowedClassError(f"Disallowed class in pickle: {module}.{name}")
+        if name in self._BLOCKED_NAMES:
+            raise _DisallowedClassError(f"Disallowed callable in pickle: {module}.{name}")
+        return super().find_class(module, name)
+
+
+def _safe_tar_extract(tar: tarfile.TarFile, dest: str) -> None:
+    """Extract tar archive members after validating against path traversal."""
+    dest_path = Path(dest).resolve()
+    for member in tar.getmembers():
+        member_path = (dest_path / member.name).resolve()
+        if not member_path.is_relative_to(dest_path):
+            raise ValueError(f"Path traversal detected in tar member: {member.name!r}")
+    tar.extractall(dest)  # noqa: S202
+
+
+def _validate_snapshot_name(name: str) -> None:
+    """Validate a snapshot name, rejecting empty strings and path separators."""
+    if not name:
+        raise ValueError("Snapshot name must not be empty")
+    if "/" in name or "\\" in name:
+        raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
 
 
 class StateManager:
@@ -77,77 +224,87 @@ class StateManager:
         """
         from robotocore.state.hooks import HookType
 
-        if name:
-            base = Path(path) if path else self.state_dir
-            if not base:
+        if name is not None:
+            _validate_snapshot_name(name)
+
+        with self._save_lock:
+            if name:
+                base = Path(path) if path else self.state_dir
+                if not base:
+                    raise ValueError("No state directory configured")
+                save_dir = base / "snapshots" / name
+                # Prevent path traversal
+                if not save_dir.resolve().is_relative_to((base / "snapshots").resolve()):
+                    raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
+            else:
+                save_dir = Path(path) if path else self.state_dir
+            if not save_dir:
                 raise ValueError("No state directory configured")
-            save_dir = base / "snapshots" / name
-            # Prevent path traversal
-            if not save_dir.resolve().is_relative_to((base / "snapshots").resolve()):
-                raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
-        else:
-            save_dir = Path(path) if path else self.state_dir
-        if not save_dir:
-            raise ValueError("No state directory configured")
 
-        # Fire before-save hook (may abort by raising)
-        hook_ctx = {
-            "services": services,
-            "snapshot_name": name,
-            "snapshot_path": str(save_dir),
-        }
-        self._hooks.fire(HookType.BEFORE_SAVE, hook_ctx)
+            # Fire before-save hook (may abort by raising)
+            hook_ctx = {
+                "services": services,
+                "snapshot_name": name,
+                "snapshot_path": str(save_dir),
+            }
+            self._hooks.fire(HookType.BEFORE_SAVE, hook_ctx)
 
-        save_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = time.strftime("%Y%m%dT%H%M%S")
+            save_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y%m%dT%H%M%S")
 
-        # Save Moto backend state
-        moto_path = save_dir / "moto_state.pkl"
-        self._save_moto_state(moto_path, services=services)
+            # Save Moto backend state
+            moto_path = save_dir / "moto_state.pkl"
+            self._save_moto_state(moto_path, services=services)
 
-        # Save native provider state
-        native_path = save_dir / "native_state.json"
-        self._save_native_state(native_path, services=services)
+            # Save native provider state
+            native_path = save_dir / "native_state.json"
+            self._save_native_state(native_path, services=services)
 
-        # Save metadata
-        meta = {
-            "version": "1.0",
-            "timestamp": timestamp,
-            "saved_at": time.time(),
-            "moto_services": self._list_moto_services(services),
-            "native_services": (
-                [s for s in self._native_handlers if s in services]
-                if services
-                else list(self._native_handlers.keys())
-            ),
-            "name": name,
-            "compressed": compress,
-        }
-        meta_path = save_dir / "metadata.json"
-        meta_path.write_text(json.dumps(meta, indent=2))
+            # Save metadata
+            meta = {
+                "version": "1.0",
+                "timestamp": timestamp,
+                "saved_at": time.time(),
+                "moto_services": self._list_moto_services(services),
+                "native_services": (
+                    [s for s in self._native_handlers if s in services]
+                    if services
+                    else list(self._native_handlers.keys())
+                ),
+                "name": name,
+                "compressed": compress,
+            }
+            meta_path = save_dir / "metadata.json"
+            meta_path.write_text(json.dumps(meta, indent=2))
 
-        if compress:
-            archive_path = save_dir.with_suffix(".tar.gz")
-            with tarfile.open(archive_path, "w:gz") as tar:
-                for file_path in save_dir.iterdir():
-                    tar.add(file_path, arcname=file_path.name)
-            # Clean up the uncompressed directory
-            import shutil
+            if compress:
+                archive_path = save_dir.with_suffix(".tar.gz")
+                with tarfile.open(archive_path, "w:gz") as tar:
+                    for file_path in save_dir.iterdir():
+                        tar.add(file_path, arcname=file_path.name)
+                # Clean up the uncompressed directory
+                import shutil
 
-            shutil.rmtree(save_dir)
+                shutil.rmtree(save_dir)
+                self._last_save_time = time.monotonic()
+                logger.info("State saved (compressed) to %s", archive_path)
+                result_path = str(archive_path)
+                hook_ctx["snapshot_path"] = result_path
+                self._hooks.fire(HookType.AFTER_SAVE, hook_ctx)
+                return result_path
+
+            # If saving uncompressed, clean up any stale .tar.gz with the same name
+            if name:
+                stale_archive = save_dir.with_suffix(".tar.gz")
+                if stale_archive.exists():
+                    stale_archive.unlink()
+
             self._last_save_time = time.monotonic()
-            logger.info("State saved (compressed) to %s", archive_path)
-            result_path = str(archive_path)
+            logger.info("State saved to %s", save_dir)
+            result_path = str(save_dir)
             hook_ctx["snapshot_path"] = result_path
             self._hooks.fire(HookType.AFTER_SAVE, hook_ctx)
             return result_path
-
-        self._last_save_time = time.monotonic()
-        logger.info("State saved to %s", save_dir)
-        result_path = str(save_dir)
-        hook_ctx["snapshot_path"] = result_path
-        self._hooks.fire(HookType.AFTER_SAVE, hook_ctx)
-        return result_path
 
     def save_debounced(self) -> bool:
         """Save state with debouncing -- at most once per debounce_interval.
@@ -158,12 +315,12 @@ class StateManager:
         if now - self._last_save_time < self._debounce_interval:
             return False
 
-        with self._save_lock:
-            # Double-check after acquiring lock
-            if time.monotonic() - self._last_save_time < self._debounce_interval:
-                return False
-            self.save()
-            return True
+        # save() already acquires _save_lock, so just call it directly
+        # Double-check after potential wait
+        if time.monotonic() - self._last_save_time < self._debounce_interval:
+            return False
+        self.save()
+        return True
 
     def list_snapshots(self) -> list[dict]:
         """List all named snapshots (both directory and compressed formats)."""
@@ -178,7 +335,13 @@ class StateManager:
             if entry.is_dir():
                 meta_path = entry / "metadata.json"
                 if meta_path.exists():
-                    meta = json.loads(meta_path.read_text())
+                    try:
+                        meta = json.loads(meta_path.read_text())
+                    except (json.JSONDecodeError, OSError):
+                        logger.warning("Corrupted metadata.json in snapshot %s", entry.name)
+                        snapshots.append({"name": entry.name, "compressed": False})
+                        seen_names.add(entry.name)
+                        continue
                     snapshots.append(
                         {
                             "name": entry.name,
@@ -266,41 +429,74 @@ class StateManager:
         }
         self._hooks.fire(HookType.BEFORE_LOAD, hook_ctx)
 
-        meta = json.loads(meta_path.read_text())
+        try:
+            meta = json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Corrupted metadata.json in %s", load_dir)
+            return False
+
+        # Validate metadata version
+        version = meta.get("version")
+        if version not in _SUPPORTED_VERSIONS:
+            raise ValueError(
+                f"Unsupported snapshot version {version!r} (supported: {_SUPPORTED_VERSIONS})"
+            )
+
         logger.info(
             "Loading state from %s (saved at %s)",
             load_dir,
             meta.get("timestamp", "unknown"),
         )
 
+        had_failure = False
+
         # Load Moto backend state
         moto_path = load_dir / "moto_state.pkl"
         if moto_path.exists():
-            self._load_moto_state(moto_path, services=services)
+            if not self._load_moto_state(moto_path, services=services):
+                had_failure = True
 
         # Load native provider state
         native_path = load_dir / "native_state.json"
         if native_path.exists():
-            self._load_native_state(native_path, services=services)
+            if not self._load_native_state(native_path, services=services):
+                had_failure = True
+
+        if had_failure:
+            logger.warning("State load completed with errors")
+            return False
 
         logger.info("State loaded successfully")
         self._hooks.fire(HookType.AFTER_LOAD, hook_ctx)
         return True
 
     def reset(self, services: list[str] | None = None) -> None:
-        """Reset all state to empty."""
+        """Reset state to empty. If services is provided, only reset those services."""
         from robotocore.state.hooks import HookType
 
         hook_ctx: dict = {"services": services}
         self._hooks.fire(HookType.BEFORE_RESET, hook_ctx)
 
-        self._reset_moto_state()
-        for service, (_, load_fn) in self._native_handlers.items():
-            try:
-                load_fn({})
-            except Exception:
-                logger.debug("Failed to reset native state for %s", service, exc_info=True)
-        logger.info("All state reset")
+        if services:
+            # Selective reset: only reset specified services
+            self._reset_moto_state(services=services)
+            for service, (_, load_fn) in self._native_handlers.items():
+                if service not in services:
+                    continue
+                try:
+                    load_fn({})
+                except Exception:
+                    logger.debug("Failed to reset native state for %s", service, exc_info=True)
+            logger.info("State reset for services: %s", services)
+        else:
+            # Full reset
+            self._reset_moto_state()
+            for service, (_, load_fn) in self._native_handlers.items():
+                try:
+                    load_fn({})
+                except Exception:
+                    logger.debug("Failed to reset native state for %s", service, exc_info=True)
+            logger.info("All state reset")
 
         self._hooks.fire(HookType.AFTER_RESET, hook_ctx)
 
@@ -388,7 +584,7 @@ class StateManager:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-                tar.extractall(tmpdir)  # noqa: S202
+                _safe_tar_extract(tar, tmpdir)
 
             tmp_path = Path(tmpdir)
             meta_path = tmp_path / "metadata.json"
@@ -449,14 +645,28 @@ class StateManager:
         # No timestamps — just return last alphabetically
         return snapshots[-1]["name"]
 
-    def _load_compressed(self, archive_path: Path, services: list[str] | None = None) -> bool:
+    def _load_compressed(
+        self,
+        archive_path: Path,
+        services: list[str] | None = None,
+    ) -> bool:
         """Load state from a compressed tar.gz archive."""
         import tempfile
 
+        from robotocore.state.hooks import HookType
+
+        hook_ctx = {
+            "services": services,
+            "snapshot_name": archive_path.stem.removesuffix(".tar"),
+            "snapshot_path": str(archive_path),
+        }
+
         try:
+            self._hooks.fire(HookType.BEFORE_LOAD, hook_ctx)
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 with tarfile.open(archive_path, "r:gz") as tar:
-                    tar.extractall(tmpdir)  # noqa: S202
+                    _safe_tar_extract(tar, tmpdir)
 
                 tmp_path = Path(tmpdir)
                 meta_path = tmp_path / "metadata.json"
@@ -465,22 +675,42 @@ class StateManager:
                     return False
 
                 meta = json.loads(meta_path.read_text())
+
+                # Validate version
+                version = meta.get("version")
+                if version not in _SUPPORTED_VERSIONS:
+                    raise ValueError(
+                        f"Unsupported snapshot version {version!r} "
+                        f"(supported: {_SUPPORTED_VERSIONS})"
+                    )
+
                 logger.info(
                     "Loading compressed state from %s (saved at %s)",
                     archive_path,
                     meta.get("timestamp", "unknown"),
                 )
 
+                had_failure = False
+
                 moto_path = tmp_path / "moto_state.pkl"
                 if moto_path.exists():
-                    self._load_moto_state(moto_path, services=services)
+                    if not self._load_moto_state(moto_path, services=services):
+                        had_failure = True
 
                 native_path = tmp_path / "native_state.json"
                 if native_path.exists():
-                    self._load_native_state(native_path, services=services)
+                    if not self._load_native_state(native_path, services=services):
+                        had_failure = True
+
+            if had_failure:
+                logger.warning("Compressed state load completed with errors")
+                return False
 
             logger.info("Compressed state loaded successfully from %s", archive_path)
+            self._hooks.fire(HookType.AFTER_LOAD, hook_ctx)
             return True
+        except ValueError:
+            raise
         except Exception:
             logger.warning("Failed to load compressed state from %s", archive_path, exc_info=True)
             return False
@@ -538,14 +768,23 @@ class StateManager:
 
         except Exception:
             logger.warning("Failed to save Moto state", exc_info=True)
+            # Remove corrupt/partial pickle so load doesn't choke on it
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
-    def _load_moto_state(self, path: Path, services: list[str] | None = None) -> None:
-        """Restore Moto backends from pickle."""
+    def _load_moto_state(self, path: Path, services: list[str] | None = None) -> bool:
+        """Restore Moto backends from pickle. Returns True on success.
+
+        Raises pickle.UnpicklingError if the pickle contains disallowed classes
+        (security violation). Other errors return False.
+        """
         try:
             from moto.backends import get_backend
 
             with open(path, "rb") as f:
-                state = pickle.load(f)  # noqa: S301
+                state = _RestrictedUnpickler(f).load()
 
             for service_name, service_state in state.items():
                 if services and service_name not in services:
@@ -562,12 +801,29 @@ class StateManager:
                         exc_info=True,
                     )
 
+            return True
+        except _DisallowedClassError:
+            # Security violations must propagate -- don't silently swallow them
+            raise
         except Exception:
             logger.warning("Failed to load Moto state", exc_info=True)
+            return False
 
     def _save_native_state(self, path: Path, services: list[str] | None = None) -> None:
-        """Save native provider state as JSON."""
-        state = {}
+        """Save native provider state as type-preserving JSON.
+
+        When saving selectively, merges with existing saved state so that
+        previously saved services are not destroyed.
+        """
+        # Load existing state to merge with (for selective saves)
+        existing_state: dict = {}
+        if services and path.exists():
+            try:
+                existing_state = _loads_native(path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        state = dict(existing_state)
         for service, (save_fn, _) in self._native_handlers.items():
             if services and service not in services:
                 continue
@@ -580,11 +836,16 @@ class StateManager:
                     exc_info=True,
                 )
 
-        path.write_text(json.dumps(state, indent=2, default=str))
+        path.write_text(_dumps_native(state))
 
-    def _load_native_state(self, path: Path, services: list[str] | None = None) -> None:
-        """Load native provider state from JSON."""
-        state = json.loads(path.read_text())
+    def _load_native_state(self, path: Path, services: list[str] | None = None) -> bool:
+        """Load native provider state from JSON. Returns True on success."""
+        try:
+            state = _loads_native(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Failed to load native state from %s", path)
+            return False
+
         for service, (_, load_fn) in self._native_handlers.items():
             if services and service not in services:
                 continue
@@ -597,25 +858,31 @@ class StateManager:
                         service,
                         exc_info=True,
                     )
+        return True
 
-    def _reset_moto_state(self) -> None:
-        """Reset all Moto backends."""
+    def _reset_moto_state(self, services: list[str] | None = None) -> None:
+        """Reset Moto backends. If services is provided, only reset those."""
         try:
-            import moto.core.models as moto_models
+            if not services:
+                import moto.core.models as moto_models
 
-            if hasattr(moto_models, "base_decorator"):
-                moto_models.base_decorator.reset()
-            else:
-                from moto.backends import get_backend
+                if hasattr(moto_models, "base_decorator"):
+                    moto_models.base_decorator.reset()
+                    return
 
-                for service_name in self._list_moto_services():
-                    try:
-                        backend_dict = get_backend(service_name)
-                        for account_id in list(backend_dict.keys()):
-                            for region in list(backend_dict[account_id].keys()):
-                                backend_dict[account_id][region].reset()
-                    except Exception:
-                        pass
+            from moto.backends import get_backend
+
+            target_services = (
+                self._list_moto_services(services) if services else self._list_moto_services()
+            )
+            for service_name in target_services:
+                try:
+                    backend_dict = get_backend(service_name)
+                    for account_id in list(backend_dict.keys()):
+                        for region in list(backend_dict[account_id].keys()):
+                            backend_dict[account_id][region].reset()
+                except Exception:
+                    pass
         except Exception:
             logger.debug("Failed to reset Moto state", exc_info=True)
 

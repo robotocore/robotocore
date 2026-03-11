@@ -93,10 +93,10 @@ class ASLExecutor:
         self.mock_test_case = mock_test_case
         self._current_state_name: str = ""  # Set during state execution for mock lookup
 
-    def execute(self, input_data: dict | None = None) -> dict:
+    def execute(self, input_data: Any = None) -> Any:
         """Execute the state machine and return the output."""
         current_state = self.start_at
-        data = copy.deepcopy(input_data or {})
+        data = copy.deepcopy(input_data) if input_data is not None else {}
         steps = 0
 
         # Record execution started
@@ -127,22 +127,25 @@ class ASLExecutor:
                 )
 
             self._current_state_name = current_state
+            error_caught = False
             try:
                 data, next_state = self._execute_state(current_state, state_def, data)
             except ASLExecutionError as e:
-                # Check for Catch on ASLExecutionError too
+                # Check for Retry/Catch on ASLExecutionError too
                 next_state, data = self._handle_error(state_def, data, e.error, e.cause)
                 if next_state is None:
                     if self.history:
                         self.history.execution_failed(e.error, e.cause, last_event_id)
                     raise
+                error_caught = True
             except Exception as e:
-                # Check for Catch
+                # Check for Retry/Catch
                 next_state, data = self._handle_error(state_def, data, type(e).__name__, str(e))
                 if next_state is None:
                     if self.history:
                         self.history.execution_failed(type(e).__name__, str(e), last_event_id)
                     raise ASLExecutionError(type(e).__name__, str(e))
+                error_caught = True
 
             # Record state exited
             if self.history:
@@ -150,10 +153,12 @@ class ASLExecutor:
                     current_state, state_type, json.dumps(data), last_event_id
                 )
 
-            if state_def.get("End", False) or state_type in ("Succeed", "Fail"):
-                if self.history:
-                    self.history.execution_succeeded(json.dumps(data), last_event_id)
-                return data
+            # If error was caught and redirected to another state, skip End check
+            if not error_caught:
+                if state_def.get("End", False) or state_type in ("Succeed", "Fail"):
+                    if self.history:
+                        self.history.execution_succeeded(json.dumps(data), last_event_id)
+                    return data
 
             if next_state is None:
                 # No Next field and not End — execution complete
@@ -167,6 +172,25 @@ class ASLExecutor:
             self.history.execution_timed_out(last_event_id)
         raise ASLExecutionError("States.Runtime", "Maximum execution steps exceeded")
 
+    def _build_context(self, state_name: str) -> dict:
+        """Build the Context Object ($$ references)."""
+        execution_arn = self.history.execution_arn if self.history else ""
+        return {
+            "Execution": {
+                "Id": execution_arn,
+                "Name": execution_arn.rsplit(":", 1)[-1] if execution_arn else "",
+                "StartTime": "",
+            },
+            "State": {
+                "Name": state_name,
+                "EnteredTime": "",
+            },
+            "StateMachine": {
+                "Id": "",
+                "Name": "",
+            },
+        }
+
     def _execute_state(self, name: str, state_def: dict, data: dict) -> tuple[Any, str | None]:
         """Execute a single state, return (output, next_state_name)."""
         state_type = state_def.get("Type", "")
@@ -176,7 +200,10 @@ class ASLExecutor:
 
         # Apply Parameters (with intrinsic function support)
         if "Parameters" in state_def:
-            effective_input = _resolve_parameters(state_def["Parameters"], effective_input)
+            context = self._build_context(name)
+            effective_input = _resolve_parameters(
+                state_def["Parameters"], effective_input, context=context
+            )
 
         # Execute based on type
         if state_type == "Pass":
@@ -189,11 +216,22 @@ class ASLExecutor:
             self._execute_wait(state_def, effective_input)
             result = effective_input
         elif state_type == "Succeed":
-            return effective_input, None
+            output = _apply_path(effective_input, state_def.get("OutputPath", "$"))
+            return output, None
         elif state_type == "Fail":
-            error = state_def.get("Error", "States.Fail")
-            cause = state_def.get("Cause", "")
-            # Resolve if they reference input
+            # Support dynamic ErrorPath/CausePath (resolve from input)
+            if "ErrorPath" in state_def:
+                error = _resolve_path(effective_input, state_def["ErrorPath"])
+                if not isinstance(error, str):
+                    error = str(error) if error is not None else "States.Fail"
+            else:
+                error = state_def.get("Error", "States.Fail")
+            if "CausePath" in state_def:
+                cause = _resolve_path(effective_input, state_def["CausePath"])
+                if not isinstance(cause, str):
+                    cause = str(cause) if cause is not None else ""
+            else:
+                cause = state_def.get("Cause", "")
             raise ASLExecutionError(error, cause)
         elif state_type == "Parallel":
             result = self._execute_parallel(state_def, effective_input)
@@ -206,8 +244,9 @@ class ASLExecutor:
         if "ResultSelector" in state_def:
             result = _resolve_parameters(state_def["ResultSelector"], result)
 
-        # Apply ResultPath
-        output = _apply_result_path(data, result, state_def.get("ResultPath", "$"))
+        # Apply ResultPath — when InputPath is null, use effective_input as base
+        result_base = effective_input if state_def.get("InputPath") is None else data
+        output = _apply_result_path(result_base, result, state_def.get("ResultPath", "$"))
 
         # Apply OutputPath
         output = _apply_path(output, state_def.get("OutputPath", "$"))
@@ -312,15 +351,19 @@ class ASLExecutor:
                 return self._invoke_step_functions(input_data)
             else:
                 logger.warning(f"Unknown SDK integration: {service}:{action}")
-                return input_data
+                raise ASLExecutionError(
+                    "States.TaskFailed",
+                    f"Unknown SDK integration: {service}:{action}",
+                )
 
-        logger.warning(f"Unknown Task resource: {resource}, returning input")
-        return input_data
+        logger.warning(f"Unknown Task resource: {resource}")
+        raise ASLExecutionError("States.TaskFailed", f"Unknown Task resource: {resource}")
 
     def _execute_callback_task(self, resource: str, input_data: Any, state_def: dict) -> Any:
         """Execute a task using the callback pattern with task tokens."""
         task_token = str(uuid.uuid4())
         timeout = state_def.get("TimeoutSeconds", 60)
+        heartbeat_seconds = state_def.get("HeartbeatSeconds")
 
         # Create token entry
         token_info: dict[str, Any] = {
@@ -346,8 +389,25 @@ class ASLExecutor:
         except Exception:
             pass  # For callback, we don't fail on dispatch errors
 
-        # Wait for callback
-        got_signal = token_info["event"].wait(timeout=min(timeout, 30))
+        # Wait for callback with heartbeat checking
+        if heartbeat_seconds and heartbeat_seconds > 0:
+            effective_timeout = min(heartbeat_seconds, timeout)
+            deadline = time.time() + min(timeout, 30)
+            while time.time() < deadline:
+                got_signal = token_info["event"].wait(timeout=min(effective_timeout, 1))
+                if got_signal:
+                    break
+                # Check if heartbeat has been received recently
+                elapsed_since_heartbeat = time.time() - token_info["last_heartbeat"]
+                if elapsed_since_heartbeat > heartbeat_seconds:
+                    with _token_lock:
+                        _task_tokens.pop(task_token, None)
+                    raise ASLExecutionError(
+                        "States.HeartbeatTimeout",
+                        "Heartbeat timeout exceeded",
+                    )
+        else:
+            got_signal = token_info["event"].wait(timeout=min(timeout, 30))
 
         with _token_lock:
             _task_tokens.pop(task_token, None)
@@ -384,19 +444,36 @@ class ASLExecutor:
             pass  # Don't block for timestamp waits
         elif "SecondsPath" in state_def:
             seconds = _resolve_path(input_data, state_def["SecondsPath"])
+            if seconds is None:
+                raise ASLExecutionError(
+                    "States.Runtime",
+                    f"SecondsPath '{state_def['SecondsPath']}' resolved to null",
+                )
             if isinstance(seconds, (int, float)):
                 time.sleep(min(seconds, 1))
 
     def _execute_parallel(self, state_def: dict, input_data: Any) -> list:
-        """Execute parallel branches."""
+        """Execute parallel branches concurrently using threads."""
+        from concurrent.futures import ThreadPoolExecutor
+
         branches = state_def.get("Branches", [])
-        results = []
-        for branch in branches:
+
+        def run_branch(branch: dict) -> Any:
             executor = ASLExecutor(
-                branch, self.region, self.account_id, mock_test_case=self.mock_test_case
+                branch,
+                self.region,
+                self.account_id,
+                execution_arn=self.history.execution_arn if self.history else "",
+                mock_test_case=self.mock_test_case,
             )
-            result = executor.execute(copy.deepcopy(input_data))
-            results.append(result)
+            executor.history = self.history  # Share parent history
+            return executor.execute(copy.deepcopy(input_data))
+
+        with ThreadPoolExecutor(max_workers=len(branches)) as pool:
+            futures = [pool.submit(run_branch, branch) for branch in branches]
+            results = []
+            for f in futures:
+                results.append(f.result())
         return results
 
     def _execute_map(self, state_def: dict, input_data: Any) -> list:
@@ -414,11 +491,15 @@ class ASLExecutor:
 
         results = []
         for idx, item in enumerate(items):
-            exec_input = item
             executor = ASLExecutor(
-                iterator, self.region, self.account_id, mock_test_case=self.mock_test_case
+                iterator,
+                self.region,
+                self.account_id,
+                execution_arn=self.history.execution_arn if self.history else "",
+                mock_test_case=self.mock_test_case,
             )
-            result = executor.execute(exec_input)
+            executor.history = self.history  # Share parent history
+            result = executor.execute(item)
             results.append(result)
         return results
 
@@ -435,7 +516,14 @@ class ASLExecutor:
             try:
                 semaphore.acquire()
                 try:
-                    executor = ASLExecutor(iterator, self.region, self.account_id)
+                    executor = ASLExecutor(
+                        iterator,
+                        self.region,
+                        self.account_id,
+                        execution_arn=self.history.execution_arn if self.history else "",
+                        mock_test_case=self.mock_test_case,
+                    )
+                    executor.history = self.history
                     result = executor.execute(item)
                     with lock:
                         results[idx] = result
@@ -666,7 +754,39 @@ class ASLExecutor:
     def _handle_error(
         self, state_def: dict, data: Any, error: str, cause: str
     ) -> tuple[str | None, Any]:
-        """Handle errors with Catch blocks."""
+        """Handle errors with Retry and Catch blocks."""
+        # Check Retry first
+        retriers = state_def.get("Retry", [])
+        if retriers:
+            state_name = self._current_state_name
+            retry_key = id(state_def)  # Use state_def identity as key
+            if not hasattr(self, "_retry_counts"):
+                self._retry_counts: dict[int, int] = {}
+
+            for retrier in retriers:
+                error_equals = retrier.get("ErrorEquals", [])
+                if "States.ALL" in error_equals or error in error_equals:
+                    max_attempts = retrier.get("MaxAttempts", 3)
+                    interval = retrier.get("IntervalSeconds", 1)
+                    backoff = retrier.get("BackoffRate", 2.0)
+
+                    count = self._retry_counts.get(retry_key, 0)
+                    if count < max_attempts:
+                        self._retry_counts[retry_key] = count + 1
+                        # Wait with backoff (capped for tests)
+                        wait_time = interval * (backoff**count)
+                        time.sleep(min(wait_time, 0.1))
+                        # Re-execute the state
+                        try:
+                            return self._execute_state(state_name, state_def, data)
+                        except ASLExecutionError as e:
+                            return self._handle_error(state_def, data, e.error, e.cause)
+                        except Exception as e:
+                            return self._handle_error(state_def, data, type(e).__name__, str(e))
+                    # Retries exhausted, fall through to Catch
+                    break
+
+        # Then check Catch
         catchers = state_def.get("Catch", [])
         for catch in catchers:
             error_equals = catch.get("ErrorEquals", [])
@@ -779,6 +899,21 @@ def _resolve_path(data: Any, path: str) -> Any:
     for part in parts:
         if not part:
             continue
+        # Handle array wildcard: key[*]
+        match_wildcard = re.match(r"(\w+)\[\*\]", part)
+        if match_wildcard:
+            key = match_wildcard.group(1)
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+                if not isinstance(current, list):
+                    return None
+                # Continue resolving remaining parts against each element
+                remaining = ".".join(parts[parts.index(part) + 1 :])
+                if remaining:
+                    return [_resolve_path(item, "$." + remaining) for item in current]
+                return current
+            else:
+                return None
         # Handle array index
         match = re.match(r"(\w+)\[(\d+)\]", part)
         if match:
@@ -822,7 +957,7 @@ def _apply_result_path(original: Any, result: Any, result_path: str | None) -> A
     return output
 
 
-def _resolve_parameters(params: dict, input_data: Any) -> Any:
+def _resolve_parameters(params: dict, input_data: Any, context: dict | None = None) -> Any:
     """Resolve Parameters template, replacing $.path and intrinsic references."""
     result = {}
     for key, value in params.items():
@@ -833,6 +968,12 @@ def _resolve_parameters(params: dict, input_data: Any) -> Any:
                 if value.startswith("States."):
                     # Intrinsic function call
                     result[real_key] = evaluate_intrinsic(value, input_data)
+                elif value.startswith("$$"):
+                    # Context Object reference
+                    if context:
+                        result[real_key] = _resolve_path(context, "$" + value[2:])
+                    else:
+                        result[real_key] = None
                 elif value.startswith("$"):
                     result[real_key] = _resolve_path(input_data, value)
                 else:
@@ -898,5 +1039,41 @@ def _evaluate_choice_rule(rule: dict, data: Any) -> bool:
         return isinstance(value, (int, float)) == rule["IsNumeric"]
     if "IsBoolean" in rule:
         return isinstance(value, bool) == rule["IsBoolean"]
+    if "IsTimestamp" in rule:
+        is_ts = _is_iso_timestamp(value) if isinstance(value, str) else False
+        return is_ts == rule["IsTimestamp"]
+    if "StringLessThanEquals" in rule:
+        return isinstance(value, str) and value <= rule["StringLessThanEquals"]
+    if "StringGreaterThanEquals" in rule:
+        return isinstance(value, str) and value >= rule["StringGreaterThanEquals"]
+    if "TimestampEquals" in rule:
+        return isinstance(value, str) and value == rule["TimestampEquals"]
+    if "TimestampGreaterThan" in rule:
+        return isinstance(value, str) and value > rule["TimestampGreaterThan"]
+    if "TimestampGreaterThanEquals" in rule:
+        return isinstance(value, str) and value >= rule["TimestampGreaterThanEquals"]
+    if "TimestampLessThan" in rule:
+        return isinstance(value, str) and value < rule["TimestampLessThan"]
+    if "TimestampLessThanEquals" in rule:
+        return isinstance(value, str) and value <= rule["TimestampLessThanEquals"]
+    if "NumericEqualsPath" in rule:
+        compare_val = _resolve_path(data, rule["NumericEqualsPath"])
+        return value == compare_val
+    if "NumericGreaterThanPath" in rule:
+        compare_val = _resolve_path(data, rule["NumericGreaterThanPath"])
+        both_numeric = isinstance(value, (int, float)) and isinstance(compare_val, (int, float))
+        return both_numeric and value > compare_val
+    if "NumericLessThanPath" in rule:
+        compare_val = _resolve_path(data, rule["NumericLessThanPath"])
+        both_numeric = isinstance(value, (int, float)) and isinstance(compare_val, (int, float))
+        return both_numeric and value < compare_val
 
     return False
+
+
+def _is_iso_timestamp(value: str) -> bool:
+    """Check if a string is a valid ISO 8601 timestamp."""
+    import re as _re
+
+    pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
+    return bool(_re.match(pattern, value))
