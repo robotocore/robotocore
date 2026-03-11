@@ -1,0 +1,119 @@
+name: "Setup Robotocore"
+description: "Start a Robotocore AWS emulator container for integration testing"
+inputs:
+  image-tag:
+    description: "Docker image tag to use"
+    required: false
+    default: "latest"
+  configuration:
+    description: "Environment variables to pass to the container (newline-separated KEY=VALUE)"
+    required: false
+    default: ""
+  wait:
+    description: "Wait for Robotocore to be ready before continuing"
+    required: false
+    default: "true"
+  wait-timeout:
+    description: "Seconds to wait for readiness"
+    required: false
+    default: "30"
+  services:
+    description: "Comma-separated list of AWS services to enable (maps to SERVICES env var)"
+    required: false
+    default: ""
+  persistence:
+    description: "Enable state persistence"
+    required: false
+    default: "false"
+  iam-enforcement:
+    description: "Enable IAM policy enforcement"
+    required: false
+    default: "false"
+outputs:
+  endpoint:
+    description: "The Robotocore endpoint URL"
+    value: "http://localhost:4566"
+  container-id:
+    description: "The Docker container ID"
+    value: ${{ steps.start.outputs.container-id }}
+runs:
+  using: "composite"
+  steps:
+    - name: Pull Robotocore image
+      shell: bash
+      run: |
+        IMAGE="ghcr.io/robotocore/robotocore:${{ inputs.image-tag }}"
+        echo "Pulling $IMAGE"
+        docker pull "$IMAGE"
+
+    - name: Start Robotocore container
+      id: start
+      shell: bash
+      run: |
+        IMAGE="ghcr.io/robotocore/robotocore:${{ inputs.image-tag }}"
+
+        # Build env flags from well-known inputs
+        ENV_FLAGS=""
+        if [ -n "${{ inputs.services }}" ]; then
+          ENV_FLAGS="$ENV_FLAGS -e SERVICES=${{ inputs.services }}"
+        fi
+        if [ "${{ inputs.persistence }}" = "true" ]; then
+          ENV_FLAGS="$ENV_FLAGS -e PERSISTENCE=1"
+        fi
+        if [ "${{ inputs.iam-enforcement }}" = "true" ]; then
+          ENV_FLAGS="$ENV_FLAGS -e ENFORCE_IAM=1"
+        fi
+
+        # Parse newline-separated configuration into -e flags
+        CONFIGURATION="${{ inputs.configuration }}"
+        if [ -n "$CONFIGURATION" ]; then
+          while IFS= read -r line; do
+            line="$(echo "$line" | xargs)"
+            if [ -n "$line" ]; then
+              ENV_FLAGS="$ENV_FLAGS -e $line"
+            fi
+          done <<< "$CONFIGURATION"
+        fi
+
+        CONTAINER_ID=$(docker run -d \
+          -p 4566:4566 \
+          $ENV_FLAGS \
+          "$IMAGE")
+
+        echo "container-id=$CONTAINER_ID" >> "$GITHUB_OUTPUT"
+        echo "Started Robotocore container: $CONTAINER_ID"
+
+    - name: Wait for Robotocore to be ready
+      shell: bash
+      run: |
+        if [ "${{ inputs.wait }}" != "true" ]; then
+          echo "Skipping readiness wait (wait=${{ inputs.wait }})"
+          exit 0
+        fi
+
+        TIMEOUT=${{ inputs.wait-timeout }}
+        ENDPOINT="http://localhost:4566/_robotocore/health"
+        echo "Waiting up to ${TIMEOUT}s for Robotocore at $ENDPOINT"
+
+        elapsed=0
+        while [ $elapsed -lt $TIMEOUT ]; do
+          if curl -sf "$ENDPOINT" > /dev/null 2>&1; then
+            echo "Robotocore is ready (${elapsed}s)"
+            exit 0
+          fi
+          sleep 1
+          elapsed=$((elapsed + 1))
+        done
+
+        echo "ERROR: Robotocore did not become ready within ${TIMEOUT}s"
+        echo "Container logs:"
+        docker logs "${{ steps.start.outputs.container-id }}" 2>&1 | tail -50
+        exit 1
+
+    - name: Configure AWS environment
+      shell: bash
+      run: |
+        echo "AWS_ENDPOINT_URL=http://localhost:4566" >> "$GITHUB_ENV"
+        echo "AWS_ACCESS_KEY_ID=test" >> "$GITHUB_ENV"
+        echo "AWS_SECRET_ACCESS_KEY=test" >> "$GITHUB_ENV"
+        echo "AWS_DEFAULT_REGION=us-east-1" >> "$GITHUB_ENV"
