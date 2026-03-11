@@ -736,72 +736,8 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 11: The feedback loop breakthrough -->
-  <section class="slide slide-blue" id="s11">
-    <div style="text-align:center;max-width:1000px;width:100%">
-      <div class="eyebrow anim-1" style="color:var(--blue2)">The Breakthrough</div>
-      <h2 class="anim-2">The Problem Wasn't the Agents</h2>
-      <div class="two-col anim-3" style="margin-top:36px;align-items:start;gap:56px">
-        <div>
-          <div style="background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.2);border-radius:12px;padding:20px 24px;margin-bottom:20px">
-            <div style="font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--amber);margin-bottom:10px">What I tried first</div>
-            <p style="font-size:1rem;line-height:1.7;color:var(--muted)">
-              Wrote longer prompts. Added more rules. Told agents to "write better tests."
-              Added examples of good tests. Added examples of bad tests.
-            </p>
-            <p style="font-size:1rem;line-height:1.7;margin-top:10px;color:var(--muted)">
-              Two hours of agents. Zero commits. 523 lines of valid code sitting
-              on disk, blocked by a verification pipeline that nothing could pass.
-            </p>
-          </div>
-          <div style="background:rgba(0,123,138,0.08);border:1px solid rgba(0,123,138,0.2);border-radius:12px;padding:20px 24px">
-            <div style="font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:10px">The actual problem</div>
-            <p style="font-size:1rem;line-height:1.7;color:var(--dark)">
-              Agents had <strong>no signal</strong>. No way to know if what they wrote was any good.
-              They'd write a test, it would "pass" (client-side validation, never touching the server),
-              and they had no tool that would tell them it was worthless.
-            </p>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:0.8rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);margin-bottom:16px">The fix: give agents a measuring stick</div>
-          <div style="display:flex;flex-direction:column;gap:14px">
-            <div style="display:flex;gap:14px;align-items:flex-start">
-              <div style="width:32px;height:32px;border-radius:50%;background:rgba(30,111,191,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">1</div>
-              <div>
-                <div style="font-weight:700;font-size:0.95rem;color:var(--blue)">probe_service.py</div>
-                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Run the operation against the server first. Know it works before writing the test.</div>
-              </div>
-            </div>
-            <div style="display:flex;gap:14px;align-items:flex-start">
-              <div style="width:32px;height:32px;border-radius:50%;background:rgba(107,63,160,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">2</div>
-              <div>
-                <div style="font-weight:700;font-size:0.95rem;color:var(--purple)">Run the test immediately</div>
-                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Every test run RIGHT after it's written. Fail → rewrite or delete. Never batch and hope.</div>
-              </div>
-            </div>
-            <div style="display:flex;gap:14px;align-items:flex-start">
-              <div style="width:32px;height:32px;border-radius:50%;background:rgba(0,123,138,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">3</div>
-              <div>
-                <div style="font-weight:700;font-size:0.95rem;color:var(--teal)">validate_test_quality.py</div>
-                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">A script that measures server-contact rate. Agents can run it themselves and see the score.</div>
-              </div>
-            </div>
-            <div style="display:flex;gap:14px;align-items:flex-start">
-              <div style="width:32px;height:32px;border-radius:50%;background:rgba(224,123,0,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">✓</div>
-              <div>
-                <div style="font-weight:700;font-size:0.95rem;color:var(--amber)">4% → 99.5% contact rate</div>
-                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Not from better prompts. From building the tool that makes "did this work?" a question agents can answer themselves.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Slide 12: Quality fix -->
-  <section class="slide slide-data" id="s12">
+  <!-- Slide 11: Quality fix -->
+  <section class="slide slide-data" id="s11">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">The Fix</div>
@@ -847,7 +783,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 12: Growth chart -->
-  <section class="slide slide-data" id="s13">
+  <section class="slide slide-data" id="s12">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">96 Hours of Progress</div>
@@ -860,7 +796,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 13: Tier 1 -->
-  <section class="slide slide-purple" id="s14">
+  <section class="slide slide-purple" id="s13">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#6B3FA0;">Day 3 · March 9 · Enterprise</div>
@@ -871,7 +807,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 14: Native providers -->
-  <section class="slide slide-blue" id="s15">
+  <section class="slide slide-blue" id="s14">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">Technical Deep Dive</div>
@@ -905,7 +841,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 15: Tier 2-4 -->
-  <section class="slide slide-blue" id="s16">
+  <section class="slide slide-blue" id="s15">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#007B8A;">Day 4 · March 10</div>
@@ -919,7 +855,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 16: Numbers -->
-  <section class="slide slide-hero" id="s17">
+  <section class="slide slide-hero" id="s16">
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Final Numbers</div>
       <h2 class="anim-2">A Complete AWS Emulator</h2>
@@ -946,7 +882,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 17: Comparison -->
-  <section class="slide slide-blue" id="s18">
+  <section class="slide slide-blue" id="s17">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#007B8A;">Comparison</div>
@@ -981,7 +917,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 18: Beyond AWS -->
-  <section class="slide slide-data" id="s19">
+  <section class="slide slide-data" id="s18">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">Observability &amp; Operations</div>
@@ -1023,7 +959,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 19: 96-hour timeline -->
-  <section class="slide slide-hero" id="s20">
+  <section class="slide slide-hero" id="s19">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#E07B00;">The Full Story</div>
@@ -1034,7 +970,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 20: Built with Claude Code -->
-  <section class="slide slide-blue" id="s21">
+  <section class="slide slide-blue" id="s20">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">Meta</div>
@@ -1072,7 +1008,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 21: Get Started -->
-  <section class="slide slide-hero" id="s22">
+  <section class="slide slide-hero" id="s21">
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Open Source · MIT License</div>
       <h1 class="anim-2">Free.<br><span class="grad-amber">Forever.</span></h1>
@@ -1099,8 +1035,8 @@ boto==<span class="str">2.38.0</span>
 
 </div>
 
-<div id="progress" style="width:4.55%;"></div>
-<div id="slide-counter">1 / 22</div>
+<div id="progress" style="width:4.76%;"></div>
+<div id="slide-counter">1 / 21</div>
 <div id="kb-hint">← → SPACE to navigate</div>
 
 <script>
@@ -1415,12 +1351,12 @@ function initTimeline() {{
 function onSlideEnter(n) {{
   if (n === 3)  initMotoChart();
   if (n === 8)  initServiceCloud();
-  if (n === 12) initGrowthChart();
-  if (n === 13) initTier1Cards();
-  if (n === 14) initProvidersGrid();
-  if (n === 15) {{ initTier24Chart(); initTier24Details(); }}
-  if (n === 16) initBigStats();
-  if (n === 19) initTimeline();
+  if (n === 11) initGrowthChart();
+  if (n === 12) initTier1Cards();
+  if (n === 13) initProvidersGrid();
+  if (n === 14) {{ initTier24Chart(); initTier24Details(); }}
+  if (n === 15) initBigStats();
+  if (n === 18) initTimeline();
 }}
 
 // Init slide 0
