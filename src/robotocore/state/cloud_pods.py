@@ -243,7 +243,7 @@ class CloudPodsManager:
                     meta = json.loads(meta_file.read())
                     services_filter = meta.get("services_filter")
             except KeyError:
-                pass
+                logger.debug("No metadata.json in pod archive %r", name)
 
         return PodInfo(
             name=name,
