@@ -7,6 +7,7 @@ providing start/stop/status/logs management endpoints.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from typing import Any
@@ -17,6 +18,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
+
+logger = logging.getLogger(__name__)
 
 ROBOTOCORE_IMAGE = os.environ.get("ROBOTOCORE_IMAGE", "robotocore/robotocore:latest")
 ROBOTOCORE_CONTAINER = os.environ.get("ROBOTOCORE_CONTAINER", "robotocore")
@@ -76,7 +79,7 @@ async def start_endpoint(request: Request) -> JSONResponse:
     try:
         body = await request.json()
     except Exception:
-        pass
+        logger.debug("No JSON body in start request, using default config")
 
     # Build environment variable flags
     env_flags: list[str] = []
