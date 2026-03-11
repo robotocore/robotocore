@@ -1,9 +1,11 @@
 """S3 virtual-hosted-style routing.
 
 Parses Host headers to detect S3 virtual-hosted-style requests:
-- ``mybucket.s3.localhost.localstack.cloud`` -> bucket=mybucket
+- ``mybucket.s3.localhost.robotocore.cloud`` -> bucket=mybucket
 - ``mybucket.s3.us-east-1.amazonaws.com`` -> bucket=mybucket, region=us-east-1
 - ``mybucket.s3.amazonaws.com`` -> bucket=mybucket
+
+Also accepts ``mybucket.s3.localhost.localstack.cloud`` as a backwards-compatible alias.
 
 Rewrites the ASGI scope so that downstream handlers see a path-style request.
 """
@@ -12,10 +14,13 @@ import os
 import re
 
 # Default hostname bases for S3 virtual-hosted-style requests
-DEFAULT_S3_HOSTNAME = "s3.localhost.localstack.cloud"
+DEFAULT_S3_HOSTNAME = "s3.localhost.robotocore.cloud"
+
+# Backwards-compatible alias for localstack.cloud hostnames
+S3_LOCALSTACK_HOSTNAME = "s3.localhost.localstack.cloud"
 
 # Patterns for virtual-hosted-style S3 requests
-# mybucket.s3.localhost.localstack.cloud
+# mybucket.s3.localhost.robotocore.cloud
 # mybucket.s3.us-east-1.amazonaws.com
 # mybucket.s3.amazonaws.com
 _VHOST_RE = re.compile(
@@ -27,6 +32,12 @@ _VHOST_RE = re.compile(
 # Simple pattern for configurable hostname: <bucket>.s3.<hostname_base>
 _VHOST_CUSTOM_RE: re.Pattern | None = None
 _VHOST_CUSTOM_BASE: str = ""
+
+# Pre-compiled pattern for the localstack.cloud backwards-compatible alias
+_VHOST_LOCALSTACK_RE = re.compile(
+    r"^(?P<bucket>[a-zA-Z0-9][a-zA-Z0-9.\-]{1,61}[a-zA-Z0-9])"
+    rf"\.{re.escape(S3_LOCALSTACK_HOSTNAME)}(?::\d+)?$"
+)
 
 
 def _get_s3_hostname() -> str:
@@ -63,6 +74,11 @@ def parse_s3_vhost(host: str) -> dict | None:
     # Check custom hostname pattern first (most specific)
     custom_re, base = _get_custom_pattern()
     m = custom_re.match(host)
+    if m:
+        return {"bucket": m.group("bucket")}
+
+    # Check localstack.cloud backwards-compatible alias
+    m = _VHOST_LOCALSTACK_RE.match(host)
     if m:
         return {"bucket": m.group("bucket")}
 

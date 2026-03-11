@@ -1,8 +1,10 @@
 """S3 static website hosting.
 
 Handles requests to S3 website endpoints:
-- ``mybucket.s3-website.localhost.localstack.cloud``
+- ``mybucket.s3-website.localhost.robotocore.cloud``
 - ``mybucket.s3-website-us-east-1.amazonaws.com``
+
+Also accepts ``mybucket.s3-website.localhost.localstack.cloud`` as a backwards-compatible alias.
 
 Serves index documents, error documents, and handles redirect rules
 from the bucket's website configuration stored in Moto.
@@ -19,7 +21,7 @@ from starlette.responses import Response
 from robotocore.gateway.s3_routing import DEFAULT_S3_HOSTNAME
 
 # Website host patterns
-# mybucket.s3-website.localhost.localstack.cloud
+# mybucket.s3-website.localhost.robotocore.cloud
 # mybucket.s3-website-us-east-1.amazonaws.com
 # mybucket.s3-website.us-east-1.amazonaws.com
 _WEBSITE_HOST_RE = re.compile(
