@@ -110,7 +110,9 @@ class StandardQueue:
 
     @property
     def url(self) -> str:
-        return f"http://localhost:4566/{self.account_id}/{self.name}"
+        from robotocore.services.sqs.endpoint_strategy import sqs_queue_url
+
+        return sqs_queue_url(self.name, self.region, self.account_id)
 
     @property
     def is_fifo(self) -> bool:
