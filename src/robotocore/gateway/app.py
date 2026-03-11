@@ -532,6 +532,31 @@ async def dns_config_endpoint(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Configuration profile endpoints
+# ---------------------------------------------------------------------------
+
+
+async def config_profiles_list(request: Request) -> JSONResponse:
+    """List available configuration profiles."""
+    from robotocore.config.profiles import list_available_profiles
+
+    profiles = list_available_profiles()
+    return JSONResponse({"profiles": profiles})
+
+
+async def config_active_endpoint(request: Request) -> JSONResponse:
+    """Show active profiles and resolved configuration values."""
+    from robotocore.config.profiles import get_active_profiles, get_resolved_config
+
+    return JSONResponse(
+        {
+            "active_profiles": get_active_profiles(),
+            "resolved_config": get_resolved_config(),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # AWS request handler
 # ---------------------------------------------------------------------------
 
@@ -739,6 +764,9 @@ management_routes = [
     Route("/_robotocore/ses/messages", ses_messages_clear, methods=["DELETE"]),
     # DNS server
     Route("/_robotocore/dns/config", dns_config_endpoint, methods=["GET"]),
+    # Configuration profiles
+    Route("/_robotocore/config/profiles", config_profiles_list, methods=["GET"]),
+    Route("/_robotocore/config/active", config_active_endpoint, methods=["GET"]),
 ]
 
 
