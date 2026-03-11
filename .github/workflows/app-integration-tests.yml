@@ -26,12 +26,23 @@ jobs:
       - run: uv sync --extra dev
       - name: Start robotocore
         run: |
-          ROBOTOCORE_PORT=4566 uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          for i in $(seq 1 30); do
+          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
+            uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          SERVER_PID=$!
+          for i in $(seq 1 60); do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "Server process exited early"
+              cat .robotocore.log 2>/dev/null || true
+              exit 1
+            fi
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
           done
-          curl -f http://localhost:4566/_robotocore/health
+          curl -f http://localhost:4566/_robotocore/health || {
+            echo "=== Server logs ==="
+            cat .robotocore.log 2>/dev/null || true
+            exit 1
+          }
       - name: Run app integration tests
         env:
           AWS_ENDPOINT_URL: http://localhost:4566
