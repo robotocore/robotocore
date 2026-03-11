@@ -9,11 +9,15 @@ Configuration via environment variables:
     ROBOTOCORE_PERSIST=1                        Enable auto-save on shutdown
     PERSISTENCE=1                               Enable auto-save after mutations
     ROBOTOCORE_RESTORE_SNAPSHOT=<name|latest>    Auto-restore snapshot on startup
+    SNAPSHOT_SAVE_STRATEGY=<strategy>            on_shutdown|on_request|scheduled|manual
+    SNAPSHOT_LOAD_STRATEGY=<strategy>            Load strategy (on_startup|on_request|manual)
+    SNAPSHOT_FLUSH_INTERVAL=<seconds>            Interval for scheduled saves (default 15)
 """
 
 from __future__ import annotations
 
 import base64
+import enum
 import io
 import json
 import logging
@@ -27,6 +31,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from robotocore.state.hooks import StateHookRegistry
+
+from robotocore.state.change_tracker import ChangeTracker
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +183,51 @@ def _validate_snapshot_name(name: str) -> None:
         raise ValueError(f"Invalid snapshot name (path traversal): {name!r}")
 
 
+class SnapshotSaveStrategy(enum.Enum):
+    """When to automatically save state."""
+
+    ON_SHUTDOWN = "on_shutdown"
+    ON_REQUEST = "on_request"
+    SCHEDULED = "scheduled"
+    MANUAL = "manual"
+
+
+class SnapshotLoadStrategy(enum.Enum):
+    """When to automatically load state."""
+
+    ON_STARTUP = "on_startup"
+    ON_REQUEST = "on_request"
+    MANUAL = "manual"
+
+
+class InvalidStrategyError(ValueError):
+    """Raised when an invalid strategy name is given."""
+
+    pass
+
+
+def _parse_save_strategy(value: str) -> SnapshotSaveStrategy:
+    """Parse a save strategy from an env var string."""
+    try:
+        return SnapshotSaveStrategy(value)
+    except ValueError:
+        valid = ", ".join(s.value for s in SnapshotSaveStrategy)
+        raise InvalidStrategyError(
+            f"Invalid SNAPSHOT_SAVE_STRATEGY: {value!r}. Valid values: {valid}"
+        )
+
+
+def _parse_load_strategy(value: str) -> SnapshotLoadStrategy:
+    """Parse a load strategy from an env var string."""
+    try:
+        return SnapshotLoadStrategy(value)
+    except ValueError:
+        valid = ", ".join(s.value for s in SnapshotLoadStrategy)
+        raise InvalidStrategyError(
+            f"Invalid SNAPSHOT_LOAD_STRATEGY: {value!r}. Valid values: {valid}"
+        )
+
+
 class StateManager:
     """Manages save/restore of emulator state."""
 
@@ -198,6 +249,117 @@ class StateManager:
 
             self._hooks = state_hooks
 
+        # Change tracking
+        self.change_tracker = ChangeTracker()
+
+        # Lazy-load tracking for on_request load strategy
+        self._lazy_loaded = False
+
+        # Parse strategies from env
+        save_str = os.environ.get("SNAPSHOT_SAVE_STRATEGY")
+        if save_str:
+            self.save_strategy = _parse_save_strategy(save_str)
+        else:
+            self.save_strategy = SnapshotSaveStrategy.ON_SHUTDOWN
+
+        load_str = os.environ.get("SNAPSHOT_LOAD_STRATEGY")
+        if load_str:
+            self.load_strategy = _parse_load_strategy(load_str)
+        else:
+            self.load_strategy = SnapshotLoadStrategy.ON_STARTUP
+
+        # Flush interval for scheduled strategy
+        self.flush_interval: float = float(os.environ.get("SNAPSHOT_FLUSH_INTERVAL", "15"))
+
+        # Scheduled saver thread
+        self._scheduler_stop = threading.Event()
+        self._scheduler_thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------
+    # Strategy hooks -- called by the gateway
+    # ------------------------------------------------------------------
+
+    def on_mutating_request(self) -> None:
+        """Called after a mutating AWS request completes.
+
+        Triggers a save if the save strategy is ON_REQUEST (debounced).
+        """
+        if self.save_strategy != SnapshotSaveStrategy.ON_REQUEST:
+            return
+        if not self.change_tracker.is_dirty:
+            return
+        self.save_debounced()
+
+    def on_first_request(self) -> None:
+        """Called on the first incoming request.
+
+        Triggers a lazy load if the load strategy is ON_REQUEST.
+        """
+        if self.load_strategy != SnapshotLoadStrategy.ON_REQUEST:
+            return
+        if self._lazy_loaded:
+            return
+        self._lazy_loaded = True
+        self.load()
+
+    def on_shutdown(self) -> None:
+        """Called when the server is shutting down.
+
+        Saves state if the save strategy is ON_SHUTDOWN.
+        """
+        self.stop_scheduled_saver()
+        if self.save_strategy != SnapshotSaveStrategy.ON_SHUTDOWN:
+            return
+        if self.state_dir:
+            self.save()
+
+    # ------------------------------------------------------------------
+    # Scheduled saver
+    # ------------------------------------------------------------------
+
+    def start_scheduled_saver(self) -> None:
+        """Start the background thread for scheduled saves."""
+        if self._scheduler_thread is not None:
+            return
+        self._scheduler_stop.clear()
+        self._scheduler_thread = threading.Thread(
+            target=self._scheduled_saver_loop,
+            daemon=True,
+            name="snapshot-scheduler",
+        )
+        self._scheduler_thread.start()
+        logger.info("Scheduled snapshot saver started (interval=%.1fs)", self.flush_interval)
+
+    def stop_scheduled_saver(self) -> None:
+        """Stop the background scheduled saver thread."""
+        if self._scheduler_thread is None:
+            return
+        self._scheduler_stop.set()
+        self._scheduler_thread.join(timeout=5.0)
+        self._scheduler_thread = None
+        logger.info("Scheduled snapshot saver stopped")
+
+    def _scheduled_saver_loop(self) -> None:
+        """Background loop that saves state on interval when dirty."""
+        while not self._scheduler_stop.wait(timeout=self.flush_interval):
+            self._do_scheduled_save()
+
+    def _do_scheduled_save(self) -> None:
+        """Single scheduled save tick: save only if dirty."""
+        if not self.change_tracker.is_dirty:
+            return
+        if not self.state_dir:
+            return
+        try:
+            self.save()
+            self.change_tracker.mark_clean()
+        except Exception:
+            logger.warning("Scheduled save failed", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Core save/load
+    # ------------------------------------------------------------------
+
     def register_native_handler(
         self,
         service: str,
@@ -218,7 +380,7 @@ class StateManager:
 
         Args:
             path: Directory to save to (defaults to state_dir).
-            name: Named snapshot — saves under state_dir/snapshots/{name}/.
+            name: Named snapshot -- saves under state_dir/snapshots/{name}/.
             services: If provided, only save these services.
             compress: If True, create a .tar.gz archive instead of a directory.
         """
@@ -300,6 +462,7 @@ class StateManager:
                     stale_archive.unlink()
 
             self._last_save_time = time.monotonic()
+            self.change_tracker.mark_clean()
             logger.info("State saved to %s", save_dir)
             result_path = str(save_dir)
             hook_ctx["snapshot_path"] = result_path
@@ -381,7 +544,7 @@ class StateManager:
 
         Args:
             path: Directory to load from (defaults to state_dir).
-            name: Named snapshot — loads from state_dir/snapshots/{name}/.
+            name: Named snapshot -- loads from state_dir/snapshots/{name}/.
                   Use "latest" to load the most recently saved snapshot.
             services: If provided, only load these services.
         """
@@ -392,7 +555,7 @@ class StateManager:
             if not base:
                 return False
 
-            # Handle "latest" — find the most recently saved snapshot
+            # Handle "latest" -- find the most recently saved snapshot
             if name == "latest":
                 resolved_name = self._find_latest_snapshot()
                 if not resolved_name:
@@ -552,7 +715,7 @@ class StateManager:
 
             raise ValueError(f"Snapshot '{name}' not found")
 
-        # No name — save current state to a temp dir and compress it
+        # No name -- save current state to a temp dir and compress it
         with tempfile.TemporaryDirectory() as tmpdir:
             self.save(path=tmpdir)
             return self._compress_directory(Path(tmpdir))
@@ -642,7 +805,7 @@ class StateManager:
         if snapshots_with_time:
             snapshots_with_time.sort(key=lambda s: s["saved_at"], reverse=True)
             return snapshots_with_time[0]["name"]
-        # No timestamps — just return last alphabetically
+        # No timestamps -- just return last alphabetically
         return snapshots[-1]["name"]
 
     def _load_compressed(
