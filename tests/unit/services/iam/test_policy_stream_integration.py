@@ -2,7 +2,7 @@
 
 import pytest
 
-import robotocore.services.iam.policy_stream as policy_stream_mod
+from robotocore.services.iam import policy_stream as policy_stream_mod
 from robotocore.services.iam.policy_stream import format_stream_response, get_policy_stream
 
 
