@@ -101,7 +101,8 @@ def cors_response_handler(context: RequestContext) -> None:
 
 
 def audit_response_handler(context: RequestContext) -> None:
-    """Record the request in the audit log."""
+    """Record the request in the audit log and usage analytics."""
+    from robotocore.audit.analytics import get_usage_analytics
     from robotocore.audit.log import get_audit_log
 
     status = context.response.status_code if context.response else 0
@@ -113,6 +114,22 @@ def audit_response_handler(context: RequestContext) -> None:
         status_code=status,
         account_id=context.account_id,
         region=context.region,
+    )
+
+    # Record in usage analytics
+    # Extract access key from Authorization header
+    auth = context.request.headers.get("authorization", "")
+    access_key = None
+    if "Credential=" in auth:
+        cred_part = auth.split("Credential=")[1].split("/")[0]
+        if cred_part:
+            access_key = cred_part
+
+    get_usage_analytics().record_request(
+        service=context.service_name,
+        operation=context.operation,
+        status_code=status,
+        access_key_id=access_key,
     )
 
 
