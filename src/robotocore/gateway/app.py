@@ -1247,6 +1247,12 @@ def _start_background_engines():
     from robotocore.services.sqs.metrics import get_sqs_metrics_publisher
 
     get_sqs_metrics_publisher().start()
+    from robotocore.services.events.rule_scheduler import get_rule_scheduler
+
+    get_rule_scheduler().start()
+    from robotocore.services.scheduler.provider import get_schedule_executor
+
+    get_schedule_executor().start()
 
     # Start DynamoDB TTL scanner
     from robotocore.services.dynamodb.ttl import get_ttl_scanner
