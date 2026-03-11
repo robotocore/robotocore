@@ -330,6 +330,7 @@ blockquote {{
   background: #0D1521; color: #B8D4F0; border-radius: 12px; padding: 20px 24px;
   font-family: "SF Mono","Fira Code",monospace; font-size: clamp(0.7rem,1.2vw,0.95rem);
   line-height: 1.7; overflow: auto; border: 1px solid rgba(0,0,0,0.08); text-align: left;
+  white-space: pre;
 }}
 .code-block .kw {{ color: #7EC8E3; }}
 .code-block .str {{ color: #FBBF60; }}
@@ -591,7 +592,7 @@ boto==<span class="str">2.38.0</span>
         <div class="eyebrow anim-1">Architecture</div>
         <h2 class="anim-2">Designed in One Session</h2>
       </div>
-      <div class="two-col anim-3" style="margin-top:28px;align-items:start;">
+      <div class="two-col anim-3" style="margin-top:28px;align-items:start;grid-template-columns:1.2fr 1fr;">
         <div class="code-block" style="font-size:0.72rem;line-height:1.8;">
 <span class="cm">┌─────────────────────────────────┐</span>
 <span class="cm">│       Docker Container          │</span>
