@@ -21,6 +21,11 @@ from robotocore.services.stepfunctions.asl import (
     send_task_heartbeat,
     send_task_success,
 )
+from robotocore.services.stepfunctions.mock_config import (
+    extract_test_case_from_name,
+    get_mock_config,
+    get_test_case,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,30 @@ _abort_events: dict[str, threading.Event] = {}  # exec_arn -> abort signal
 _exec_lock = threading.Lock()
 
 
+def _resolve_mock_test_case(
+    sm_name: str, execution_name: str, header_test_case: str | None = None
+) -> dict | None:
+    """Resolve the mock test case for an execution.
+
+    Test case selection priority:
+    1. X-SFN-Mock-Config header value
+    2. '#TestCase' suffix in execution name
+    3. None (no mock)
+    """
+    config = get_mock_config()
+    if config is None:
+        return None
+
+    test_case_name = header_test_case
+    if test_case_name is None:
+        _, test_case_name = extract_test_case_from_name(execution_name)
+
+    if test_case_name is None:
+        return None
+
+    return get_test_case(config, sm_name, test_case_name)
+
+
 async def handle_stepfunctions_request(request: Request, region: str, account_id: str) -> Response:
     """Handle Step Functions API request (JSON protocol via X-Amz-Target)."""
     body = await request.body()
@@ -43,6 +72,11 @@ async def handle_stepfunctions_request(request: Request, region: str, account_id
     operation = target.split(".")[-1] if "." in target else target
 
     params = json.loads(body) if body else {}
+
+    # Pass mock config header for StartExecution / StartSyncExecution
+    mock_header = request.headers.get("x-sfn-mock-config")
+    if mock_header and operation in ("StartExecution", "StartSyncExecution"):
+        params["_mockTestCase"] = mock_header
 
     handler = _ACTION_MAP.get(operation)
     if handler is None:
@@ -169,13 +203,19 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
     sm_arn = params.get("stateMachineArn", "")
     name = params.get("name", str(uuid.uuid4()))
     input_str = params.get("input", "{}")
+    mock_header = params.pop("_mockTestCase", None)
 
     with _exec_lock:
         sm = _state_machines.get(sm_arn)
     if not sm:
         raise SfnError("StateMachineDoesNotExist", f"State machine not found: {sm_arn}")
 
-    exec_arn = f"{sm_arn.replace(':stateMachine:', ':execution:')}:{name}"
+    # Strip test case suffix from execution name for the ARN
+    clean_name, _ = extract_test_case_from_name(name)
+    exec_arn = f"{sm_arn.replace(':stateMachine:', ':execution:')}:{clean_name}"
+
+    # Resolve mock test case
+    mock_test_case = _resolve_mock_test_case(sm["name"], name, mock_header)
 
     input_data = json.loads(input_str) if isinstance(input_str, str) else input_str
     start_time = time.time()
@@ -184,7 +224,7 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
     exec_info = {
         "executionArn": exec_arn,
         "stateMachineArn": sm_arn,
-        "name": name,
+        "name": clean_name,
         "status": "RUNNING",
         "startDate": start_time,
         "stopDate": None,
@@ -205,7 +245,7 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
     definition = sm["definition"]
     thread = threading.Thread(
         target=_run_execution_background,
-        args=(exec_arn, definition, input_data, region, account_id, abort_event),
+        args=(exec_arn, definition, input_data, region, account_id, abort_event, mock_test_case),
         daemon=True,
         name=f"sfn-exec-{name}",
     )
@@ -228,9 +268,12 @@ def _run_execution_background(
     region: str,
     account_id: str,
     abort_event: threading.Event,
+    mock_test_case: dict | None = None,
 ) -> None:
     """Execute a state machine in a background thread, updating status on completion."""
-    executor = ASLExecutor(definition, region, account_id, execution_arn=exec_arn)
+    executor = ASLExecutor(
+        definition, region, account_id, execution_arn=exec_arn, mock_test_case=mock_test_case
+    )
 
     try:
         output = executor.execute(input_data)
@@ -276,6 +319,7 @@ def _start_sync_execution(params: dict, region: str, account_id: str) -> dict:
     sm_arn = params.get("stateMachineArn", "")
     name = params.get("name", str(uuid.uuid4()))
     input_str = params.get("input", "{}")
+    mock_header = params.pop("_mockTestCase", None)
 
     with _exec_lock:
         sm = _state_machines.get(sm_arn)
@@ -288,10 +332,18 @@ def _start_sync_execution(params: dict, region: str, account_id: str) -> dict:
             "StartSyncExecution is only supported for EXPRESS state machines",
         )
 
-    exec_arn = f"{sm_arn.replace(':stateMachine:', ':express:')}:{name}"
+    clean_name, _ = extract_test_case_from_name(name)
+    exec_arn = f"{sm_arn.replace(':stateMachine:', ':express:')}:{clean_name}"
     input_data = json.loads(input_str) if isinstance(input_str, str) else input_str
 
-    executor = ASLExecutor(sm["definition"], region, account_id, execution_arn=exec_arn)
+    mock_test_case = _resolve_mock_test_case(sm["name"], name, mock_header)
+    executor = ASLExecutor(
+        sm["definition"],
+        region,
+        account_id,
+        execution_arn=exec_arn,
+        mock_test_case=mock_test_case,
+    )
     start_time = time.time()
 
     try:

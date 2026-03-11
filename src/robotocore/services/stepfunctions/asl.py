@@ -81,6 +81,7 @@ class ASLExecutor:
         region: str = "us-east-1",
         account_id: str = "123456789012",
         execution_arn: str = "",
+        mock_test_case: dict | None = None,
     ):
         self.definition = definition
         self.region = region
@@ -89,6 +90,8 @@ class ASLExecutor:
         self.start_at = definition.get("StartAt", "")
         self.max_steps = 1000  # Safety limit
         self.history = ExecutionHistory(execution_arn) if execution_arn else None
+        self.mock_test_case = mock_test_case
+        self._current_state_name: str = ""  # Set during state execution for mock lookup
 
     def execute(self, input_data: dict | None = None) -> dict:
         """Execute the state machine and return the output."""
@@ -123,6 +126,7 @@ class ASLExecutor:
                     current_state, state_type, json.dumps(data), last_event_id
                 )
 
+            self._current_state_name = current_state
             try:
                 data, next_state = self._execute_state(current_state, state_def, data)
             except ASLExecutionError as e:
@@ -216,7 +220,11 @@ class ASLExecutor:
         return input_data
 
     def _execute_task(self, state_def: dict, input_data: Any) -> Any:
-        """Execute a Task state — invoke an AWS service."""
+        """Execute a Task state — invoke an AWS service.
+
+        If a mock_test_case is set and contains a mock for the current state name,
+        the mock result is used instead of dispatching to the real service.
+        """
         resource = state_def.get("Resource", "")
 
         # Check for callback pattern (.waitForTaskCallback)
@@ -230,6 +238,22 @@ class ASLExecutor:
                 resource, json.dumps(input_data) if not isinstance(input_data, str) else input_data
             )
             self.history.task_started(resource)
+
+        # Check mock config for this state (state name is resolved from caller context)
+        mock_result = self._resolve_mock_for_current_state(state_def)
+        if mock_result is not None:
+            if mock_result.is_throw:
+                error = mock_result.throw_error or "MockError"
+                cause = mock_result.throw_cause or ""
+                if self.history:
+                    self.history.task_failed(resource, error, cause)
+                raise ASLExecutionError(error, cause)
+            result = mock_result.return_value
+            if self.history:
+                self.history.task_succeeded(
+                    resource, json.dumps(result) if not isinstance(result, str) else result
+                )
+            return result
 
         if is_callback:
             return self._execute_callback_task(resource, input_data, state_def)
@@ -249,6 +273,19 @@ class ASLExecutor:
             )
 
         return result
+
+    def _resolve_mock_for_current_state(self, state_def: dict) -> Any:
+        """Check if the current state has a mock definition.
+
+        Returns a MockStateResult if a mock is defined, or None if the state
+        should execute normally.
+        """
+        if self.mock_test_case is None:
+            return None
+
+        from robotocore.services.stepfunctions.mock_config import resolve_mock_state
+
+        return resolve_mock_state(self.mock_test_case, self._current_state_name)
 
     def _dispatch_task(self, resource: str, input_data: Any) -> Any:
         """Route task to the appropriate service integration."""
@@ -355,7 +392,9 @@ class ASLExecutor:
         branches = state_def.get("Branches", [])
         results = []
         for branch in branches:
-            executor = ASLExecutor(branch, self.region, self.account_id)
+            executor = ASLExecutor(
+                branch, self.region, self.account_id, mock_test_case=self.mock_test_case
+            )
             result = executor.execute(copy.deepcopy(input_data))
             results.append(result)
         return results
@@ -376,7 +415,9 @@ class ASLExecutor:
         results = []
         for idx, item in enumerate(items):
             exec_input = item
-            executor = ASLExecutor(iterator, self.region, self.account_id)
+            executor = ASLExecutor(
+                iterator, self.region, self.account_id, mock_test_case=self.mock_test_case
+            )
             result = executor.execute(exec_input)
             results.append(result)
         return results
