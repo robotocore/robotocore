@@ -51,7 +51,7 @@ class TestTracingMiddleware:
             # Both headers should have the same value
             assert result.headers["X-Amz-Request-Id"] == result.headers["X-Robotocore-Request-Id"]
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
 
     def test_sets_request_state(self):
         middleware = TracingMiddleware(app=MagicMock())
@@ -83,7 +83,7 @@ class TestTracingMiddleware:
             assert hasattr(request.state, "start_time")
             assert isinstance(request.state.request_id, str)
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
 
     def test_calls_log_request_and_log_response(self):
         middleware = TracingMiddleware(app=MagicMock())
@@ -114,4 +114,4 @@ class TestTracingMiddleware:
             assert call_kwargs.kwargs["status_code"] == 200
             assert call_kwargs.kwargs["body_size"] == 42
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
