@@ -1,4 +1,8 @@
-"""Semantic integration tests for the diagnostic bundle endpoint."""
+"""Semantic integration tests for the diagnostic bundle endpoint.
+
+These tests verify cross-section behavior and end-to-end data accuracy
+by calling the endpoint and validating the response against known state.
+"""
 
 import os
 import time
@@ -8,7 +12,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from robotocore.diagnostics_bundle import diagnose_endpoint
+from robotocore.diagnostics_bundle import ALL_SECTIONS, diagnose_endpoint
 
 
 def _make_client():
@@ -24,17 +28,7 @@ class TestEndToEnd:
             resp = client.get("/diagnose")
         assert resp.status_code == 200
         data = resp.json()
-        expected_keys = {
-            "system",
-            "server",
-            "config",
-            "services",
-            "state",
-            "background_engines",
-            "memory",
-            "audit",
-            "extensions",
-        }
+        expected_keys = set(ALL_SECTIONS)
         assert expected_keys == set(data.keys())
 
     def test_pid_matches_current_process(self):
@@ -54,7 +48,6 @@ class TestEndToEnd:
             resp2 = client.get("/diagnose?section=server")
         t1 = resp1.json()["server"]["uptime_seconds"]
         t2 = resp2.json()["server"]["uptime_seconds"]
-        # Uptime should be non-negative
         assert t1 >= 0
         assert t2 >= 0
 
@@ -70,7 +63,6 @@ class TestEndToEnd:
             resp = client.get("/diagnose?section=config")
         data = resp.json()
         config = data["config"]
-        # Must be masked
         assert config["ROBOTOCORE_SECRET_KEY"] == "***MASKED***"
         assert config["ROBOTOCORE_API_TOKEN"] == "***MASKED***"
         # The actual secret values must not appear anywhere in the response body
@@ -98,3 +90,40 @@ class TestEndToEnd:
             resp = client.get("/diagnose?section=memory")
         data = resp.json()
         assert data["memory"]["rss_bytes"] > 0
+
+    def test_config_section_shows_only_relevant_vars(self):
+        """Verify random env vars don't leak into the config section."""
+        client = _make_client()
+        env = {
+            "DEBUG": "1",
+            "PATH": "/usr/bin",
+            "HOME": "/home/test",
+            "ROBOTOCORE_CUSTOM": "yes",
+        }
+        with patch.dict(os.environ, env):
+            resp = client.get("/diagnose?section=config")
+        data = resp.json()
+        assert "ROBOTOCORE_CUSTOM" in data["config"]
+        assert "PATH" not in data["config"]
+        assert "HOME" not in data["config"]
+
+    def test_multiple_calls_return_consistent_static_data(self):
+        """Static fields like python_version should not change between calls."""
+        client = _make_client()
+        with patch.dict(os.environ, {"DEBUG": "1"}):
+            resp1 = client.get("/diagnose?section=system")
+            resp2 = client.get("/diagnose?section=system")
+        d1 = resp1.json()["system"]
+        d2 = resp2.json()["system"]
+        assert d1["python_version"] == d2["python_version"]
+        assert d1["platform"] == d2["platform"]
+        assert d1["architecture"] == d2["architecture"]
+        assert d1["pid"] == d2["pid"]
+
+    def test_services_total_equals_sum_of_categories(self):
+        """total_count must equal native + moto + disabled."""
+        client = _make_client()
+        with patch.dict(os.environ, {"DEBUG": "1"}):
+            resp = client.get("/diagnose?section=services")
+        svc = resp.json()["services"]
+        assert svc["total_count"] == svc["native_count"] + svc["moto_count"] + svc["disabled_count"]
