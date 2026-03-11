@@ -253,6 +253,8 @@ class TestCodeCacheMemoryManagement:
         dirs = []
         for i in range(60):
             d = cache.get_or_extract(f"evict-fn-{i}", make_zip({"h.py": f"x={i}\n"}))
+            # Release ref so eviction can clean up the directory
+            cache.release_ref(d)
             dirs.append(d)
 
         assert len(cache) == 50
@@ -272,10 +274,12 @@ class TestCodeCacheMemoryManagement:
         cache = CodeCache(max_size=5)
         code0 = make_zip({"handler.py": "def handler(e,c): return 'zero'\n"})
         dir0 = cache.get_or_extract("evict-re-0", code0)
+        cache.release_ref(dir0)
 
         # Fill cache to evict func 0
         for i in range(1, 6):
-            cache.get_or_extract(f"evict-re-{i}", make_zip({"h.py": f"x={i}\n"}))
+            d = cache.get_or_extract(f"evict-re-{i}", make_zip({"h.py": f"x={i}\n"}))
+            cache.release_ref(d)
 
         cache.cleanup_evicted()
         assert not os.path.isdir(dir0)

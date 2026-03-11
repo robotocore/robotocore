@@ -73,6 +73,8 @@ class TestCodeCache:
         dirs = []
         for i in range(4):
             d = cache.get_or_extract(f"func{i}", _make_zip(f"x = {i}"))
+            # Release ref so eviction can clean up the directory
+            cache.release_ref(d)
             dirs.append(d)
         # First entry should have been evicted
         assert len(cache) == 3
@@ -202,6 +204,8 @@ class TestCodeCache:
         dirs = []
         for i in range(60):
             d = cache.get_or_extract(f"f{i}", _make_zip(f"v = {i}"))
+            # Release ref so eviction can clean up the directory
+            cache.release_ref(d)
             dirs.append(d)
 
         assert len(cache) == 50
