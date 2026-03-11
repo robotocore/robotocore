@@ -53,6 +53,15 @@ class TestGenerateSelfSignedCert:
         for expected in DEFAULT_SANS:
             assert expected in dns_names, f"Missing SAN: {expected}"
 
+        # robotocore.cloud is the primary SAN, localstack.cloud is backward-compat alias
+        assert "*.localhost.robotocore.cloud" in dns_names
+        assert "*.localhost.localstack.cloud" in dns_names
+        robotocore_idx = dns_names.index("*.localhost.robotocore.cloud")
+        localstack_idx = dns_names.index("*.localhost.localstack.cloud")
+        assert robotocore_idx < localstack_idx, (
+            "robotocore.cloud SAN must come before localstack.cloud"
+        )
+
     def test_cert_custom_sans(self, tmp_path: Path) -> None:
         cert_path = tmp_path / "server.crt"
         key_path = tmp_path / "server.key"
@@ -230,4 +239,6 @@ class TestGetCertInfo:
         assert info["not_valid_after"] is not None
         assert "localhost" in info["sans"]
         assert "*.amazonaws.com" in info["sans"]
+        assert "*.localhost.robotocore.cloud" in info["sans"]
+        assert "*.localhost.localstack.cloud" in info["sans"]
         assert len(info["serial_number"]) > 0
