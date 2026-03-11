@@ -145,7 +145,7 @@ NATIVE_PROVIDERS = {
 DEFAULT_ACCOUNT_ID = "123456789012"
 
 # Regex to extract account ID from SigV4 Credential
-_CREDENTIAL_RE = re.compile(r"Credential=(\d+)/")
+_CREDENTIAL_RE = re.compile(r"Credential=(\d{12})/")
 
 # Track server start time for uptime
 _server_start_time: float = 0.0

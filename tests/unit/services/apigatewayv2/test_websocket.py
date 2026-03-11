@@ -2,8 +2,6 @@
 
 import asyncio
 
-import pytest
-
 from robotocore.services.apigatewayv2.provider import (
     create_connection,
     delete_connection,
@@ -60,16 +58,14 @@ class TestSendQueue:
         _send_queues[("api1", "conn1")] = q
         assert get_send_queue("api1", "conn1") is q
 
-    @pytest.mark.asyncio
-    async def test_push_to_connection_no_queue(self):
-        result = await push_to_connection("api1", "conn-missing", b"hello")
+    def test_push_to_connection_no_queue(self):
+        result = asyncio.run(push_to_connection("api1", "conn-missing", b"hello"))
         assert result is False
 
-    @pytest.mark.asyncio
-    async def test_push_to_connection_with_queue(self):
+    def test_push_to_connection_with_queue(self):
         q: asyncio.Queue = asyncio.Queue()
         _send_queues[("api1", "conn1")] = q
-        result = await push_to_connection("api1", "conn1", b"hello")
+        result = asyncio.run(push_to_connection("api1", "conn1", b"hello"))
         assert result is True
         assert q.get_nowait() == b"hello"
 
@@ -136,8 +132,7 @@ class TestHandleWebsocket:
     def teardown_method(self):
         reset()
 
-    @pytest.mark.asyncio
-    async def test_rejects_unknown_path(self):
+    def test_rejects_unknown_path(self):
         """Non ws-exec paths should be closed with code 4000."""
         sent: list[dict] = []
 
@@ -147,11 +142,10 @@ class TestHandleWebsocket:
         async def send(msg):
             sent.append(msg)
 
-        await handle_websocket(_make_scope("/bad-path"), receive, send)
+        asyncio.run(handle_websocket(_make_scope("/bad-path"), receive, send))
         assert any(m.get("type") == "websocket.close" and m.get("code") == 4000 for m in sent)
 
-    @pytest.mark.asyncio
-    async def test_rejects_nonexistent_api(self):
+    def test_rejects_nonexistent_api(self):
         """An api_id that doesn't exist should be rejected."""
         sent: list[dict] = []
 
@@ -161,11 +155,10 @@ class TestHandleWebsocket:
         async def send(msg):
             sent.append(msg)
 
-        await handle_websocket(_make_scope("/ws-exec/noapi/prod"), receive, send)
+        asyncio.run(handle_websocket(_make_scope("/ws-exec/noapi/prod"), receive, send))
         assert any(m.get("type") == "websocket.close" and m.get("code") == 4000 for m in sent)
 
-    @pytest.mark.asyncio
-    async def test_rejects_http_api(self):
+    def test_rejects_http_api(self):
         """An HTTP (not WEBSOCKET) API should be rejected."""
         apis = get_api_store("us-east-1")
         apis["http-api"] = {
@@ -182,13 +175,12 @@ class TestHandleWebsocket:
         async def send(msg):
             sent.append(msg)
 
-        await handle_websocket(_make_scope("/ws-exec/http-api/prod"), receive, send)
+        asyncio.run(handle_websocket(_make_scope("/ws-exec/http-api/prod"), receive, send))
         assert any(m.get("type") == "websocket.close" and m.get("code") == 4000 for m in sent)
         # cleanup
         del apis["http-api"]
 
-    @pytest.mark.asyncio
-    async def test_connect_message_disconnect_lifecycle(self):
+    def test_connect_message_disconnect_lifecycle(self):
         """Full lifecycle: connect, send message, disconnect."""
         # Register a WEBSOCKET API (no routes, so $connect returns 200 by default)
         apis = get_api_store("us-east-1")
@@ -212,7 +204,7 @@ class TestHandleWebsocket:
         async def send(msg):
             sent.append(msg)
 
-        await handle_websocket(_make_scope("/ws-exec/ws-test/$default"), receive, send)
+        asyncio.run(handle_websocket(_make_scope("/ws-exec/ws-test/$default"), receive, send))
 
         # Should have accepted the websocket
         assert sent[0] == {"type": "websocket.accept"}
@@ -223,8 +215,7 @@ class TestHandleWebsocket:
         # cleanup
         del apis["ws-test"]
 
-    @pytest.mark.asyncio
-    async def test_server_push_during_connection(self):
+    def test_server_push_during_connection(self):
         """Verify that push_to_connection delivers messages through the WebSocket."""
         apis = get_api_store("us-east-1")
         apis["ws-push"] = {
@@ -248,26 +239,29 @@ class TestHandleWebsocket:
         async def send(msg):
             sent.append(msg)
 
-        async def run_ws():
-            await handle_websocket(_make_scope("/ws-exec/ws-push/$default"), receive, send)
+        async def run_test():
+            async def run_ws():
+                await handle_websocket(_make_scope("/ws-exec/ws-push/$default"), receive, send)
 
-        ws_task = asyncio.create_task(run_ws())
+            ws_task = asyncio.create_task(run_ws())
 
-        # Wait for the connection to be established
-        await asyncio.wait_for(connected.wait(), timeout=2.0)
+            # Wait for the connection to be established
+            await asyncio.wait_for(connected.wait(), timeout=2.0)
 
-        # Find the connection_id
-        matching = [k for k in _send_queues if k[0] == "ws-push"]
-        assert len(matching) == 1, f"Expected 1 connection, got {matching}"
-        api_id, conn_id = matching[0]
+            # Find the connection_id
+            matching = [k for k in _send_queues if k[0] == "ws-push"]
+            assert len(matching) == 1, f"Expected 1 connection, got {matching}"
+            api_id, conn_id = matching[0]
 
-        # Push a message
-        ok = await push_to_connection(api_id, conn_id, "hello from server")
-        assert ok is True
+            # Push a message
+            ok = await push_to_connection(api_id, conn_id, "hello from server")
+            assert ok is True
 
-        # Allow the websocket to disconnect
-        can_disconnect.set()
-        await asyncio.wait_for(ws_task, timeout=2.0)
+            # Allow the websocket to disconnect
+            can_disconnect.set()
+            await asyncio.wait_for(ws_task, timeout=2.0)
+
+        asyncio.run(run_test())
 
         # Verify the push message was sent
         text_msgs = [m for m in sent if m.get("type") == "websocket.send"]
@@ -277,8 +271,7 @@ class TestHandleWebsocket:
         # cleanup
         del apis["ws-push"]
 
-    @pytest.mark.asyncio
-    async def test_reset_clears_queues(self):
+    def test_reset_clears_queues(self):
         """reset() should clear all send queues."""
         _send_queues[("a", "b")] = asyncio.Queue()
         reset()

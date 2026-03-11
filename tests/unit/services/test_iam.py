@@ -1706,9 +1706,7 @@ class TestIAMProviderErrorPaths:
             mock_forward.return_value = MagicMock(status_code=200, body=b"<ok/>")
             body = b"Action=GetUser&UserName=testuser"
             request = _make_iam_request(body)
-            asyncio.get_event_loop().run_until_complete(
-                handle_iam_request(request, "us-east-1", "123456789012")
-            )
+            asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
             mock_forward.assert_called_once_with(request, "iam", account_id="123456789012")
 
     def test_moto_nosuchentity_passthrough(self):
@@ -1728,9 +1726,7 @@ class TestIAMProviderErrorPaths:
             )
             body = b"Action=GetUser&UserName=nonexistent"
             request = _make_iam_request(body)
-            resp = asyncio.get_event_loop().run_until_complete(
-                handle_iam_request(request, "us-east-1", "123456789012")
-            )
+            resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code == 404
         assert b"NoSuchEntity" in resp.body
 
@@ -1751,9 +1747,7 @@ class TestIAMProviderErrorPaths:
             )
             body = b"Action=CreateUser&UserName=testuser"
             request = _make_iam_request(body)
-            resp = asyncio.get_event_loop().run_until_complete(
-                handle_iam_request(request, "us-east-1", "123456789012")
-            )
+            resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code == 409
         assert b"EntityAlreadyExists" in resp.body
 
@@ -1761,9 +1755,7 @@ class TestIAMProviderErrorPaths:
         """SimulateCustomPolicy with no action names returns empty results."""
         body = b"Action=SimulateCustomPolicy&PolicyInputList.member.1=%7B%7D"
         request = _make_iam_request(body)
-        resp = asyncio.get_event_loop().run_until_complete(
-            handle_iam_request(request, "us-east-1", "123456789012")
-        )
+        resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code == 200
         assert b"<EvaluationResults>" in resp.body
         # No ActionNames.member.N params → no <member> evaluation results
@@ -1773,9 +1765,7 @@ class TestIAMProviderErrorPaths:
         """ChangePassword is a no-op that always returns 200."""
         body = b"Action=ChangePassword&OldPassword=old&NewPassword=new"
         request = _make_iam_request(body)
-        resp = asyncio.get_event_loop().run_until_complete(
-            handle_iam_request(request, "us-east-1", "123456789012")
-        )
+        resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code == 200
         assert b"ChangePasswordResponse" in resp.body
 
@@ -1801,9 +1791,7 @@ class TestIAMProviderNoSuchEntityHandling:
             b"&PermissionsBoundary=arn:aws:iam::123456789012:policy/SomeBoundary"
         )
         request = _make_iam_request(body)
-        resp = asyncio.get_event_loop().run_until_complete(
-            handle_iam_request(request, "us-east-1", "123456789012")
-        )
+        resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
         assert b"NoSuchEntity" in resp.body
 
@@ -1811,9 +1799,7 @@ class TestIAMProviderNoSuchEntityHandling:
         """DeleteUserPermissionsBoundary on a nonexistent user must return NoSuchEntity, not 500."""
         body = b"Action=DeleteUserPermissionsBoundary&UserName=no-such-user"
         request = _make_iam_request(body)
-        resp = asyncio.get_event_loop().run_until_complete(
-            handle_iam_request(request, "us-east-1", "123456789012")
-        )
+        resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
         assert b"NoSuchEntity" in resp.body
 
@@ -1824,9 +1810,7 @@ class TestIAMProviderNoSuchEntityHandling:
             b"&PermissionsBoundary=arn:aws:iam::123456789012:policy/SomeBoundary"
         )
         request = _make_iam_request(body)
-        resp = asyncio.get_event_loop().run_until_complete(
-            handle_iam_request(request, "us-east-1", "123456789012")
-        )
+        resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         # Empty username: Moto raises NoSuchEntity for empty string lookup
         assert resp.status_code in (400, 404), f"Expected 400 or 404, got {resp.status_code}"
 
@@ -1834,9 +1818,7 @@ class TestIAMProviderNoSuchEntityHandling:
         """DeleteUserPermissionsBoundary with empty UserName must return error, not crash."""
         body = b"Action=DeleteUserPermissionsBoundary"
         request = _make_iam_request(body)
-        resp = asyncio.get_event_loop().run_until_complete(
-            handle_iam_request(request, "us-east-1", "123456789012")
-        )
+        resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         assert resp.status_code in (400, 404), f"Expected 400 or 404, got {resp.status_code}"
 
 
@@ -1861,9 +1843,7 @@ class TestIAMProviderPermissionsBoundaryInjection:
             )
             body = b"Action=GetUser&UserName=ghost"
             request = _make_iam_request(body)
-            resp = asyncio.get_event_loop().run_until_complete(
-                handle_iam_request(request, "us-east-1", "123456789012")
-            )
+            resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         # The boundary injection code should NOT modify error responses
         assert resp.status_code == 404
         assert b"NoSuchEntity" in resp.body
@@ -1885,9 +1865,7 @@ class TestIAMProviderPermissionsBoundaryInjection:
             )
             body = b"Action=GetUser&UserName=someone"
             request = _make_iam_request(body)
-            resp = asyncio.get_event_loop().run_until_complete(
-                handle_iam_request(request, "us-east-1", "123456789012")
-            )
+            resp = asyncio.run(handle_iam_request(request, "us-east-1", "123456789012"))
         # 500 from Moto should pass through unchanged
         assert resp.status_code == 500
         assert b"ServiceFailure" in resp.body

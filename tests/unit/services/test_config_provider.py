@@ -116,9 +116,7 @@ class TestConfigProvider:
             body={"ConfigurationRecorderName": "default"},
             target="StarlingDoveService.DescribeConfigurationRecorders",
         )
-        asyncio.get_event_loop().run_until_complete(
-            handle_config_request(request, "us-east-1", "123456789012")
-        )
+        asyncio.run(handle_config_request(request, "us-east-1", "123456789012"))
         mock_forward.assert_called_once()
 
 
