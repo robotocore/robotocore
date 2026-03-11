@@ -1,0 +1,66 @@
+# Example workflow showing how to use the setup-robotocore action.
+# This workflow is a reference — it does not run automatically.
+name: Example - Robotocore Integration Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Robotocore
+        id: robotocore
+        uses: ./.github/actions/setup-robotocore
+        with:
+          services: "s3,sqs,dynamodb,lambda"
+          wait-timeout: "60"
+
+      - name: Verify Robotocore is running
+        run: |
+          curl -sf http://localhost:4566/_robotocore/health
+          echo "Robotocore endpoint: ${{ steps.robotocore.outputs.endpoint }}"
+          echo "Container ID: ${{ steps.robotocore.outputs.container-id }}"
+
+      - name: Run S3 smoke test
+        run: |
+          aws s3 mb s3://test-bucket
+          echo "hello" | aws s3 cp - s3://test-bucket/hello.txt
+          aws s3 cp s3://test-bucket/hello.txt -
+          aws s3 rb s3://test-bucket --force
+
+      - name: Run SQS smoke test
+        run: |
+          QUEUE_URL=$(aws sqs create-queue --queue-name test-queue --query 'QueueUrl' --output text)
+          aws sqs send-message --queue-url "$QUEUE_URL" --message-body "hello"
+          aws sqs receive-message --queue-url "$QUEUE_URL"
+          aws sqs delete-queue --queue-url "$QUEUE_URL"
+
+      - name: Cleanup
+        if: always()
+        run: .github/actions/setup-robotocore/cleanup.sh ${{ steps.robotocore.outputs.container-id }}
+
+  test-with-options:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Robotocore with IAM enforcement
+        id: robotocore
+        uses: ./.github/actions/setup-robotocore
+        with:
+          iam-enforcement: "true"
+          persistence: "true"
+          configuration: |
+            DEBUG=1
+            AUDIT_LOG_SIZE=500
+
+      - name: Run tests
+        run: |
+          curl -sf http://localhost:4566/_robotocore/health | python3 -m json.tool
+
+      - name: Cleanup
+        if: always()
+        run: .github/actions/setup-robotocore/cleanup.sh ${{ steps.robotocore.outputs.container-id }}
