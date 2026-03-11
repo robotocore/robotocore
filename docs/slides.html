@@ -165,16 +165,29 @@ blockquote {
 <body>
 <div id="deck">
 
-  <!-- Slide 1: LocalStack blog post -->
-  <section class="slide slide-amber active" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
-    <div style="width:60%;max-width:700px;padding-top:60px;">
+  <!-- Slide 1: Hero -->
+  <section class="slide slide-hero active" id="s1">
+    <canvas id="hero-canvas"></canvas>
+    <div class="center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
+      <div class="logo-word anim-2">robotocore</div>
+      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
+      <div style="margin-top:32px;" class="anim-4">
+        <span class="days-badge glow">⏱ 4 days · 147 services · 18,201 tests · 0 failures</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 2: LocalStack blog post -->
+  <section class="slide slide-amber" id="s2">
+    <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
-      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
-      <blockquote class="anim-3" style="margin-top:32px;">
+      <h2 class="anim-2">LocalStack Changes the Rules</h2>
+      <blockquote class="anim-3" style="margin-top:32px;text-align:left;">
         "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
         <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
       </blockquote>
-      <blockquote class="anim-4">
+      <blockquote class="anim-4" style="text-align:left;">
         "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
         development and exploration."
       </blockquote>
@@ -184,20 +197,35 @@ blockquote {
     </div>
   </section>
 
-  <!-- Slide 2: Hero -->
-  <section class="slide slide-hero" id="s2">
-    <canvas id="hero-canvas"></canvas>
-    <div class="center" style="position:relative;z-index:1;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
-      <div class="logo-word anim-2">robotocore</div>
-      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
-      <div style="margin-top:32px;" class="anim-4">
-        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
+  <!-- Slide 3: What it means -->
+  <section class="slide slide-blue" id="s3">
+    <div class="full-width center">
+      <div class="eyebrow anim-1" style="color:#2E86D4;">The Breaking Point</div>
+      <h2 class="anim-2">What "Account Required" Really Means</h2>
+      <div class="three-col anim-3" style="margin-top:36px;">
+        <div class="card card-accent">
+          <div style="font-size:2.5rem;margin-bottom:12px;">🔐</div>
+          <h3>Auth Tokens Required</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Every dev machine, every CI job needs a LocalStack account and token. Offline? Blocked.</p>
+        </div>
+        <div class="card card-blue">
+          <div style="font-size:2.5rem;margin-bottom:12px;">🚧</div>
+          <h3>Enterprise Features Paywalled</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Multi-account, chaos engineering, state snapshots — now Pro-only. The tools you need cost money.</p>
+        </div>
+        <div class="card card-teal">
+          <div style="font-size:2.5rem;margin-bottom:12px;">📉</div>
+          <h3>Community Edition Stagnates</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Free tier gets "experimental" label. Investment shifts to paid. Community left behind.</p>
+        </div>
       </div>
+      <p class="anim-4" style="margin-top:28px;opacity:0.65;font-size:1rem;">
+        We needed an alternative. A real one. Free forever, no strings.
+      </p>
     </div>
   </section>
 
-  <!-- Slide 3: Moto history -->
+  <!-- Slide 4: Moto history -->
   <section class="slide slide-blue" id="s4">
     <div class="full-width">
       <div class="center">
@@ -290,6 +318,7 @@ boto==<span class="str">2.38.0</span>
 
   <!-- Slide 6: The Decision -->
   <section class="slide slide-hero" id="s6">
+    <canvas id="decision-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.2;"></canvas>
     <div class="center" style="position:relative;z-index:1;">
       <div class="eyebrow anim-1" style="color:#E07B00;">Day Zero · March 6, 2026 · 3:56 AM</div>
       <h1 class="anim-2">What if we<br><span class="grad-amber">owned the stack?</span></h1>
@@ -457,28 +486,129 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 11: Quality fix -->
-  <section class="slide slide-data" id="s11">
+  <!-- Slide 11: The first fix failed -->
+  <section class="slide slide-amber" id="s11">
+    <div class="full-width center">
+      <div class="eyebrow anim-1" style="color:#E07B00;">Day 2 · The Wrong Answer</div>
+      <h2 class="anim-2">We Tried Telling Agents to Do Better</h2>
+      <div class="two-col anim-3" style="margin-top:32px;max-width:900px;align-items:start;">
+        <div class="card card-accent">
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:16px;color:#E07B00;">What we tried</div>
+          <div class="prompt-card" style="margin-bottom:12px;">
+            <div class="prompt-meta">Attempt 1</div>
+            "Make sure every test actually contacts the server."
+          </div>
+          <div class="prompt-card" style="margin-bottom:12px;">
+            <div class="prompt-meta">Attempt 2</div>
+            "Don't catch ParamValidationError — that's client-side validation."
+          </div>
+          <div class="prompt-card">
+            <div class="prompt-meta">Attempt 3</div>
+            "Follow these three test patterns only: Create→use→cleanup, Fake-ID→assert-exception, List→assert-key."
+          </div>
+        </div>
+        <div class="card card-blue" style="display:flex;flex-direction:column;gap:16px;">
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:4px;color:#1E6FBF;">What happened</div>
+          <div style="padding:16px;background:rgba(224,123,0,0.06);border-radius:10px;border:1px solid rgba(224,123,0,0.2);">
+            <div style="font-size:2rem;font-weight:900;color:#E07B00;margin-bottom:4px;">~60%</div>
+            <div style="font-size:0.85rem;opacity:0.7;">of newly generated tests<br>still never contacted the server</div>
+          </div>
+          <p style="font-size:0.9rem;opacity:0.7;line-height:1.6;">
+            Agents are stateless. Every new session forgets the instructions. Careful prompting doesn't compound — it evaporates.
+          </p>
+          <p style="font-size:0.95rem;font-weight:600;color:#1E6FBF;">
+            The fix wasn't a better prompt.<br>It was a better system.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 12: The feedback loop breakthrough -->
+  <section class="slide slide-blue" id="s12">
+    <div style="text-align:center;max-width:1000px;width:100%">
+      <div class="eyebrow anim-1" style="color:var(--blue2)">The Breakthrough</div>
+      <h2 class="anim-2">The Problem Wasn't the Agents</h2>
+      <div class="two-col anim-3" style="margin-top:36px;align-items:start;gap:56px">
+        <div>
+          <div style="background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.2);border-radius:12px;padding:20px 24px;margin-bottom:20px">
+            <div style="font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--amber);margin-bottom:10px">What I tried first</div>
+            <p style="font-size:1rem;line-height:1.7;color:var(--muted)">
+              Wrote longer prompts. Added more rules. Told agents to "write better tests."
+              Added examples of good tests. Added examples of bad tests.
+            </p>
+            <p style="font-size:1rem;line-height:1.7;margin-top:10px;color:var(--muted)">
+              Two hours of agents. Zero commits. 523 lines of valid code sitting
+              on disk, blocked by a verification pipeline that nothing could pass.
+            </p>
+          </div>
+          <div style="background:rgba(0,123,138,0.08);border:1px solid rgba(0,123,138,0.2);border-radius:12px;padding:20px 24px">
+            <div style="font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:10px">The actual problem</div>
+            <p style="font-size:1rem;line-height:1.7;color:var(--dark)">
+              Agents had <strong>no signal</strong>. No way to know if what they wrote was any good.
+              They'd write a test, it would "pass" (client-side validation, never touching the server),
+              and they had no tool that would tell them it was worthless.
+            </p>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);margin-bottom:16px">The fix: give agents a measuring stick</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(30,111,191,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">1</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--blue)">probe_service.py</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Run the operation against the server first. Know it works before writing the test.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(107,63,160,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">2</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--purple)">Run the test immediately</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Every test run RIGHT after it's written. Fail → rewrite or delete. Never batch and hope.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(0,123,138,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">3</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--teal)">validate_test_quality.py</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">A script that measures server-contact rate. Agents can run it themselves and see the score.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(224,123,0,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">✓</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--amber)">4% → 99.5% contact rate</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Not from better prompts. From building the tool that makes "did this work?" a question agents can answer themselves.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 12: Quality fix -->
+  <section class="slide slide-data" id="s13">
     <div class="full-width">
       <div class="center">
-        <div class="eyebrow anim-1">The Fix</div>
-        <h2 class="anim-2">Quality-First Test Engineering</h2>
+        <div class="eyebrow anim-1">The Real Fix</div>
+        <h2 class="anim-2">Build Agents a Feedback Loop</h2>
       </div>
       <div class="three-col anim-3" style="margin-top:32px;">
         <div class="card card-blue">
-          <div style="font-size:2rem;margin-bottom:12px;">🚦</div>
-          <h3>CI Gate</h3>
+          <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
+          <h3>Immediate Feedback</h3>
           <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">validate_test_quality.py</code>
-            blocks merge if &gt;5% of tests don't contact the server.
+            Every test runs right after being written. Pass → keep it. Fail → fix it or delete it. No batching, no hoping it works later.
           </p>
         </div>
         <div class="card card-accent">
-          <div style="font-size:2rem;margin-bottom:12px;">📐</div>
-          <h3>Three Valid Patterns Only</h3>
+          <div style="font-size:2rem;margin-bottom:12px;">🚦</div>
+          <h3>CI Enforces the Rules</h3>
           <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            Create→use→cleanup · Fake-ID→assert-exception · List→assert-key.
-            Every test must assert on a response field.
+            <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">validate_test_quality.py</code>
+            blocks merge if &gt;5% of tests don't contact the server. The gate is automated — not a reminder.
           </p>
         </div>
         <div class="card card-teal">
@@ -486,25 +616,24 @@ boto==<span class="str">2.38.0</span>
           <h3>Probe Before Test</h3>
           <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
             Run <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">probe_service.py</code>
-            first. Only write tests for operations that actually work. Fix gaps first.
+            first. Only write tests for operations that actually work. Fix gaps first, then test.
           </p>
         </div>
       </div>
-      <div class="anim-4" style="display:flex;gap:24px;justify-content:center;margin-top:32px;">
-        <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#E07B00;">16,641</div>
-          <div class="mini-stat-label">Final test count</div>
-        </div>
-        <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#007B8A;">99.5%</div>
-          <div class="mini-stat-label">Server contact rate</div>
+      <div class="three-col anim-4" style="margin-top:16px;">
+        <div class="card card-accent">
+          <div style="font-size:2rem;margin-bottom:12px;">📐</div>
+          <h3>Three Patterns That Work</h3>
+          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
+            Make a resource, use it, clean up. Or ask for a fake ID and assert on the error. Or just list things and check a field exists. Every test must actually assert something.
+          </p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Slide 12: Growth chart -->
-  <section class="slide slide-data" id="s12">
+  <section class="slide slide-data" id="s14">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">96 Hours of Progress</div>
@@ -517,7 +646,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 13: Tier 1 -->
-  <section class="slide slide-purple" id="s13">
+  <section class="slide slide-purple" id="s15">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#6B3FA0;">Day 3 · March 9 · Enterprise</div>
@@ -528,7 +657,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 14: Native providers -->
-  <section class="slide slide-blue" id="s14">
+  <section class="slide slide-blue" id="s16">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">Technical Deep Dive</div>
@@ -562,7 +691,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 15: Tier 2-4 -->
-  <section class="slide slide-blue" id="s15">
+  <section class="slide slide-blue" id="s17">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#007B8A;">Day 4 · March 10</div>
@@ -575,8 +704,40 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 16: Numbers -->
-  <section class="slide slide-hero" id="s16">
+  <!-- Slide 18: Human hours comparison -->
+  <section class="slide slide-amber" id="s18">
+    <canvas id="hours-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.15;"></canvas>
+    <div class="full-width center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">The Claude Code Multiplier</div>
+      <h2 class="anim-2">What Would This Have Taken?</h2>
+      <div class="three-col anim-3" style="margin-top:32px;max-width:1000px;">
+        <div class="card card-blue" style="text-align:center;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">Without Claude Code</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#1E6FBF;line-height:1;">~3–5</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">years</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 engineer, full-time.<br>5,000–8,000 dev-hours.</div>
+        </div>
+        <div class="card card-purple" style="text-align:center;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">With a team of 5</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#6B3FA0;line-height:1;">~6</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">months</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">Sprint planning, code review,<br>merge conflicts, coordination.</div>
+        </div>
+        <div class="card card-accent" style="text-align:center;border-top-color:#007B8A;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">What actually happened</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#007B8A;line-height:1;">96</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">hours</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 human. 89 sessions.<br>832 commits. 18,201 tests.</div>
+        </div>
+      </div>
+      <p class="anim-4" style="margin-top:28px;font-size:1rem;opacity:0.65;max-width:600px;">
+        The multiplier isn't just speed. It's the ability to hold the whole system in mind while executing every detail simultaneously.
+      </p>
+    </div>
+  </section>
+
+  <!-- Slide 19: Numbers -->
+  <section class="slide slide-hero" id="s19">
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Final Numbers</div>
       <h2 class="anim-2">A Complete AWS Emulator</h2>
@@ -591,7 +752,7 @@ boto==<span class="str">2.38.0</span>
           <div class="mini-stat-label">source files</div>
         </div>
         <div class="mini-stat-box">
-          <div class="mini-stat-num">~700</div>
+          <div class="mini-stat-num">832</div>
           <div class="mini-stat-label">commits</div>
         </div>
         <div class="mini-stat-box">
@@ -603,7 +764,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 17: Comparison -->
-  <section class="slide slide-blue" id="s17">
+  <section class="slide slide-blue" id="s20">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#007B8A;">Comparison</div>
@@ -638,7 +799,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 18: Beyond AWS -->
-  <section class="slide slide-data" id="s18">
+  <section class="slide slide-data" id="s21">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">Observability &amp; Operations</div>
@@ -680,7 +841,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 19: 96-hour timeline -->
-  <section class="slide slide-hero" id="s19">
+  <section class="slide slide-hero" id="s22">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#E07B00;">The Full Story</div>
@@ -691,7 +852,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 20: Built with Claude Code -->
-  <section class="slide slide-blue" id="s20">
+  <section class="slide slide-blue" id="s23">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">Meta</div>
@@ -710,18 +871,21 @@ boto==<span class="str">2.38.0</span>
             slide deck HTML file for the Robotocore story."
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:16px;">
-          <div class="card-light card-blue" style="text-align:center;">
-            <div style="font-size:2.5rem;font-weight:900;color:#1E6FBF;">89</div>
-            <div style="font-size:0.85rem;opacity:0.65;margin-top:6px;">Claude Code sessions</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;gap:12px;">
+            <div class="card-light card-blue" style="text-align:center;flex:1;padding:16px;">
+              <div style="font-size:2rem;font-weight:900;color:#1E6FBF;">89</div>
+              <div style="font-size:0.75rem;opacity:0.65;margin-top:4px;">Claude Code sessions</div>
+            </div>
+            <div class="card-light card-accent" style="text-align:center;flex:1;padding:16px;">
+              <div style="font-size:2rem;font-weight:900;color:#E07B00;">100s</div>
+              <div style="font-size:0.75rem;opacity:0.65;margin-top:4px;">subagents spawned</div>
+            </div>
           </div>
-          <div class="card-light card-accent" style="text-align:center;">
-            <div style="font-size:2.5rem;font-weight:900;color:#E07B00;">100s</div>
-            <div style="font-size:0.85rem;opacity:0.65;margin-top:6px;">subagents spawned</div>
-          </div>
-          <div class="card-light card-teal" style="text-align:center;">
-            <div style="font-size:2.5rem;font-weight:900;color:#007B8A;">All of them</div>
-            <div style="font-size:0.85rem;opacity:0.65;margin-top:6px;">human decisions</div>
+          <div class="card" style="text-align:center;padding:28px;border-top:4px solid #007B8A;background:rgba(0,123,138,0.04);">
+            <div style="font-size:clamp(2.5rem,5vw,4rem);font-weight:900;background:linear-gradient(135deg,#007B8A,#1E6FBF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1.1;">All of them</div>
+            <div style="font-size:1rem;opacity:0.65;margin-top:8px;font-weight:500;">human decisions</div>
+            <div style="font-size:0.82rem;opacity:0.5;margin-top:8px;line-height:1.5;">Every architecture choice, every priority call,<br>every "yes this is good enough" — made by a human.</div>
           </div>
         </div>
       </div>
@@ -729,18 +893,21 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 21: Get Started -->
-  <section class="slide slide-hero" id="s21">
+  <section class="slide slide-hero" id="s24">
+    <canvas id="free-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.2;"></canvas>
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Open Source · MIT License</div>
       <h1 class="anim-2">Free.<br><span class="grad-amber">Forever.</span></h1>
       <div class="two-col anim-3" style="margin-top:28px;max-width:900px;">
-        <div class="code-block" style="font-size:0.85rem;">
+        <div class="code-block" style="font-size:0.82rem;white-space:pre-wrap;overflow-wrap:break-word;">
 <span class="cm"># One command to start</span>
-<span class="kw">docker</span> run <span class="str">-p 4566:4566</span>   ghcr.io/robotocore/robotocore:<span class="str">latest</span>
+<span class="kw">docker</span> run -p <span class="str">4566:4566</span>
+  ghcr.io/robotocore/robotocore:<span class="str">latest</span>
         </div>
-        <div class="code-block" style="font-size:0.85rem;">
+        <div class="code-block" style="font-size:0.82rem;white-space:pre-wrap;overflow-wrap:break-word;">
 <span class="cm"># Drop-in replacement</span>
-<span class="kw">aws</span> s3 ls   <span class="str">--endpoint-url</span> http://localhost:4566
+<span class="kw">aws</span> s3 ls
+  --endpoint-url <span class="str">http://localhost:4566</span>
         </div>
       </div>
       <div class="anim-4" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px;">
@@ -754,18 +921,18 @@ boto==<span class="str">2.38.0</span>
 
 </div>
 
-<div id="progress" style="width:4.76%;"></div>
-<div id="slide-counter">1 / 21</div>
+<div id="progress" style="width:4.17%;"></div>
+<div id="slide-counter">1 / 24</div>
 <div id="kb-hint">← → SPACE to navigate</div>
 
 <script>
 const MOTO_DATA    = [{"year": 2013, "label": "Moto born", "detail": "EC2, S3, DynamoDB stubs", "commits": 50}, {"year": 2014, "label": "SQS, SNS, IAM", "detail": "Core AWS services added", "commits": 800}, {"year": 2015, "label": "Community grows", "detail": "Lambda, Kinesis, RDS", "commits": 2100}, {"year": 2016, "label": "LocalStack adopts Moto", "detail": "moto_server used as backend", "commits": 3400}, {"year": 2018, "label": "50+ services", "detail": "Major adoption across industry", "commits": 5200}, {"year": 2020, "label": "100+ services", "detail": "Mainstream AWS testing tool", "commits": 7100}, {"year": 2023, "label": "195 services", "detail": "Near-complete AWS coverage", "commits": 9800}, {"year": 2026, "label": "Robotocore forks", "detail": "10,678 commits, still growing", "commits": 10678}];
-const MILESTONES   = [{"label": "Day 0", "date": "2026-03-06", "tests": 0, "services": 0}, {"label": "First tests", "date": "2026-03-06", "tests": 124, "services": 12}, {"label": "Batch services", "date": "2026-03-07", "tests": 1799, "services": 109}, {"label": "Compat blast", "date": "2026-03-07", "tests": 2080, "services": 131}, {"label": "Quality gate", "date": "2026-03-08", "tests": 2874, "services": 138}, {"label": "Enterprise", "date": "2026-03-09", "tests": 6383, "services": 143}, {"label": "Hardening", "date": "2026-03-09", "tests": 11036, "services": 145}, {"label": "Tier 2-4", "date": "2026-03-10", "tests": 14538, "services": 147}];
-const SESSIONS     = [{"date": "2026-03-06", "time": "03:56", "slug": "Oject Inception", "summary": "Write a CLAUDE.md and a set of skills necessary to start on your job: Creating an MIT-licensed wrapper around Moto that has 100% feature parity with Localstack. This is called 'robotocore' and it will", "filename": "20260306-035638-project-inception.md"}, {"date": "2026-03-06", "time": "04:20", "slug": "An Milestones", "summary": "Create a set of milestones for implementing robotocore where the last one is '100% feature parity with localstack, with proof'.", "filename": "20260306-042034-plan-milestones.md"}, {"date": "2026-03-06", "time": "04:35", "slug": "Plement Plan", "summary": "[Pasted: 12-milestone plan covering M1 (Moto Dispatch fix), M2 (Handler Chain), M3 (Tier A Services \u2014 S3, SQS, DynamoDB, IAM, STS, CloudFormation, CloudWatch), M4 (Docker/CI), M5 (Native SQS with visi", "filename": "20260306-043550-implement-plan.md"}, {"date": "2026-03-06", "time": "04:36", "slug": "Plement Milestones 1 Through 11", "summary": "Implemented milestones 1\u201311 in a single extended session, using subagents for research and parallel implementation. Key decisions:", "filename": "20260306-043600-implement-milestones-1-through-11.md"}, {"date": "2026-03-06", "time": "18:54", "slug": "Bug Ci Build Tools", "summary": "debug ci and continue. Don't just stare at and fix code, write advanced cli tools to allow you to automatically analyze and produce improvements.", "filename": "20260306-185432-debug-ci-build-tools.md"}, {"date": "2026-03-06", "time": "19:27", "slug": "Eck Ci Iterate", "summary": "Eck Ci Iterate", "filename": "20260306-192749-check-ci-iterate.md"}, {"date": "2026-03-06", "time": "19:29", "slug": "Date Skills Worktrees Subagents", "summary": "Update your skills and rules to use git worktrees when working in parallel, to build cli tooling to help you out with complicated changes, and to use subagents in powerful but simple ways.", "filename": "20260306-192930-update-skills-worktrees-subagents.md"}, {"date": "2026-03-06", "time": "19:36", "slug": "Lestone 8 Gap", "summary": "What's the gap to get the rest of milestone 8? I don't want the JVM running, let's do something we can send upstream to Moto if we need.", "filename": "20260306-193631-milestone-8-gap.md"}, {"date": "2026-03-06", "time": "19:39", "slug": "X Kinesis Bug Upstream", "summary": "Fix the critical kinesis bug in Moto, send it upstream in a PR, and then update the version of moto we're using to reference that branch. Make sure there are failing tests that exercise this bug and t", "filename": "20260306-193945-fix-kinesis-bug-upstream.md"}, {"date": "2026-03-06", "time": "21:13", "slug": "Ip Moto Pr Move To M9", "summary": "Assume that Moto PR won't get merged today. Commit, keep things clean, and move toward M9.", "filename": "20260306-211347-skip-moto-pr-move-to-m9.md"}, {"date": "2026-03-06", "time": "21:38", "slug": "Entify Ci Gaps Subagents", "summary": "Identify CI gaps - unit tests, functional tests, and integration tests - and fix them all using multiple subagents.", "filename": "20260306-213812-identify-ci-gaps-subagents.md"}, {"date": "2026-03-06", "time": "21:53", "slug": "Mmit And Push", "summary": "Make excellent git commits for everything and push.", "filename": "20260306-215325-commit-and-push.md"}, {"date": "2026-03-06", "time": "21:56", "slug": "An Enterprise Parity", "summary": "Make an updated, exhaustively detailed plan for how we will reach our goal: A single docker image that is a drop-in replacement for Enterprise Localstack with all of the extra features. Include plans ", "filename": "20260306-215615-plan-enterprise-parity.md"}, {"date": "2026-03-06", "time": "22:20", "slug": "Plement Ga Plan", "summary": "[Pasted: 13-milestone GA plan. M0 (Automation Tooling), M1 (S3 Deep Fidelity \u2014 presigned URLs, multipart, CORS, versioning), M2 (Lambda Completeness \u2014 versions/aliases, URLs, destinations, layers), M3", "filename": "20260306-222018-implement-ga-plan.md"}, {"date": "2026-03-06", "time": "22:21", "slug": "Plement Ga Milestones", "summary": "Implemented all 13 GA milestones in a single extended session. Organized as parallel subagent work fanning out by module.", "filename": "20260306-222100-implement-ga-milestones.md"}, {"date": "2026-03-06", "time": "23:47", "slug": "Mmit And Push", "summary": "Commit into appropriate pieces and push.", "filename": "20260306-234709-commit-and-push.md"}, {"date": "2026-03-06", "time": "23:49", "slug": "Write Commits With Milestones", "summary": "Rewrite all of our commits thus far with those named milestones and force push.", "filename": "20260306-234953-rewrite-commits-with-milestones.md"}, {"date": "2026-03-07", "time": "00:23", "slug": "Nearize Prove Correctness", "summary": "We'll do all of this, so linearize it by which ones help us reach the rest. Do it all and have a way to prove the correctness and completeness of your work to me.", "filename": "20260307-002309-linearize-prove-correctness.md"}, {"date": "2026-03-07", "time": "01:08", "slug": "Shed Continue", "summary": "Shed Continue", "filename": "20260307-010844-pushed-continue.md"}, {"date": "2026-03-07", "time": "01:35", "slug": "Nt Stop Until Done", "summary": "Continue, and the next time you stop - don't stop. Continue until we're done.", "filename": "20260307-013513-dont-stop-until-done.md"}, {"date": "2026-03-07", "time": "01:36", "slug": "Tonomous Test Expansion", "summary": "Autonomous work phase: expanding compatibility test coverage from ~1100 to 1800 tests and eliminating all xfails. Ran 5+ parallel subagents, each targeting different service groups:", "filename": "20260307-013600-autonomous-test-expansion.md"}, {"date": "2026-03-07", "time": "06:04", "slug": "Tup Docker Release", "summary": "I created a DockerHub repository to publish this to. Let's set up GHA to release this as a GitHub-hosted and a DockerHub-hosted OCI.", "filename": "20260307-060443-setup-docker-release.md"}, {"date": "2026-03-07", "time": "06:32", "slug": "Ip Pypi Github Dockerhub", "summary": "I set dockerhub username and token. Let's skip pypi.", "filename": "20260307-063211-skip-pypi-github-dockerhub.md"}, {"date": "2026-03-07", "time": "07:33", "slug": "Brand Digital Twin", "summary": "In a git worktree, make the following improvements: Update the README to be super accessible to both humans and LLM agents. Update the SVG to be even cuter and replace the tagline in the SVG, the READ", "filename": "20260307-073324-rebrand-digital-twin.md"}, {"date": "2026-03-07", "time": "07:37", "slug": "Op Localstack Scoping", "summary": "The SVG in the README still has the old copy. Also, once we've surpassed the features of localstack's community edition let's drop that phrase when we say this is a drop-in replacement.", "filename": "20260307-073737-drop-localstack-scoping.md"}, {"date": "2026-03-07", "time": "07:39", "slug": "Wercase Multi Account", "summary": "Further clarify in the readme how to use robotocore. Also, always lowercase the full name because it's a play on 'botocore'.", "filename": "20260307-073955-lowercase-multi-account.md"}, {"date": "2026-03-07", "time": "07:43", "slug": "Ents Md For Llms", "summary": "Think about how an LLM agent might find or make use of this project. They'd want to see an explicit reference in the README to the latest docker image that they can use.", "filename": "20260307-074314-agents-md-for-llms.md"}, {"date": "2026-03-07", "time": "09:04", "slug": "View Agents Md", "summary": "Examine AGENTS.md and see if that would be enough for you to know what to do with this tool or how to prompt your user to use it. Any improvements we can make?", "filename": "20260307-090431-review-agents-md.md"}, {"date": "2026-03-07", "time": "09:15", "slug": "X Remaining Xfails", "summary": "Autonomous work: fixing all 28 remaining xfails by creating 10 new native providers that intercept operations Moto doesn't implement or has bugs in. Key fixes:", "filename": "20260307-091500-fix-remaining-xfails.md"}, {"date": "2026-03-07", "time": "09:15", "slug": "Pth Vs Breadth", "summary": "What's a better approach to ultimately hitting our goal? Does depth help us with breadth or vice versa?", "filename": "20260307-091544-depth-vs-breadth.md"}, {"date": "2026-03-07", "time": "09:20", "slug": "Near Is The Plan", "summary": "We're not in a huge hurry, would it be easier to track context with those subagents or with us just working through it linearly?", "filename": "20260307-092033-linear-is-the-plan.md"}, {"date": "2026-03-07", "time": "09:22", "slug": "View Merge", "summary": "View Merge", "filename": "20260307-092201-review-merge.md"}, {"date": "2026-03-07", "time": "19:14", "slug": "D Prompt Logs", "summary": "We are now going to pause our development to amend every commit. Check out the file at /Users/jackdanger/www/jackdanger.com/static/promptlog.md and introduce that skill here.", "filename": "20260307-191417-add-prompt-logs.md"}, {"date": "2026-03-07", "time": "19:15", "slug": "Rcular Dependency Question", "summary": "How do we get around the circular dependency of putting the commit sha in the prompt that made the commit?", "filename": "20260307-191500-circular-dependency-question.md"}, {"date": "2026-03-07", "time": "19:16", "slug": "Omptlog Spec Improvements", "summary": "Improvements made to the promptlog spec () based on first real-world use:", "filename": "20260307-191600-promptlog-spec-improvements.md"}, {"date": "2026-03-07", "time": "20:15", "slug": "Tch Register 158 Services", "summary": "Execute this gap analysis plan to reach LocalStack Enterprise parity:\n1. Build  to auto-generate registry + router entries for all Moto backends\n2.", "filename": "20260307-201500-batch-register-158-services.md"}, {"date": "2026-03-07", "time": "20:16", "slug": "Sistant Batch Registration", "summary": "Batch registration approach: Built a script that reads botocore  metadata (protocol, targetPrefix, signingName) and cross-references with Moto backend directories. The script handles all the edge case", "filename": "20260307-201600-assistant-batch-registration.md"}, {"date": "2026-03-07", "time": "20:20", "slug": "Man Dev Workflow", "summary": "Improve how we use all of the cores on this machine for testing. And improve how we manage the lifecycle of running the code to test/develop against.", "filename": "20260307-202000-human-dev-workflow.md"}, {"date": "2026-03-07", "time": "20:25", "slug": "Man Continue And Promptlog", "summary": "Look at what's pushing you toward stopping and checking. Make sure we're committing as we go and using the prompt log pattern from .", "filename": "20260307-202500-human-continue-and-promptlog.md"}, {"date": "2026-03-07", "time": "20:45", "slug": "Sistant Compat Tests Batch A", "summary": "Probed all high-impact Moto-backed services against live server, then fanned out 22 parallel agents to write compat tests. Each agent ran tests against the live server and only included passing operat", "filename": "20260307-204500-assistant-compat-tests-batch-a.md"}, {"date": "2026-03-07", "time": "21:00", "slug": "Sistant Compat Tests Batch Bc", "summary": "Probed 27 medium/long-tail services, then fanned out 16 parallel agents. All services responded well.", "filename": "20260307-210000-assistant-compat-tests-batch-bc.md"}, {"date": "2026-03-07", "time": "22:00", "slug": "Man Cleanup Gap Analysis", "summary": "Implement the cleanup & gap analysis plan:\n1. Delete 4 obsolete scripts (parity_report.py, discover_services.py, generate_coverage.py, run_aws_tests.py)\n2.", "filename": "20260307-220000-human-cleanup-gap-analysis.md"}, {"date": "2026-03-07", "time": "22:01", "slug": "Sistant Cleanup Docs Refresh", "summary": "Sistant Cleanup Docs Refresh", "filename": "20260307-220100-assistant-cleanup-docs-refresh.md"}, {"date": "2026-03-07", "time": "22:05", "slug": "Sistant Smoke Test Expansion", "summary": "Extended  from 30 to 94 passing probe tests.", "filename": "20260307-220500-assistant-smoke-test-expansion.md"}, {"date": "2026-03-07", "time": "22:15", "slug": "Sistant Compat Test Expansion T1T2T3", "summary": "Used 37 parallel agents to probe and write compat tests across Tier 1, 2, and 3 services.", "filename": "20260307-221500-assistant-compat-test-expansion-t1t2t3.md"}, {"date": "2026-03-07", "time": "00:00", "slug": " Spec Discoverability", "summary": "Look at recent additions to our ./prompts/ dir. Do they communicate the intent of the promptlog skill?", "filename": "20260307-promptlog-spec-discoverability.md"}, {"date": "2026-03-08", "time": "00:50", "slug": "Rrectness Remediation", "summary": "Implement the correctness remediation plan: fix 6 confirmed bugs, audit wire\nformats, deepen test coverage for all 38 native providers, build automated\nparity verification, verify region isolation, an", "filename": "20260308-005000-correctness-remediation.md"}, {"date": "2026-03-08", "time": "01:00", "slug": "Rrectness Remediation Phase3", "summary": "Continue the correctness remediation plan: complete Phase 3A (error-path tests\nfor remaining native providers) and Phase 3B (cross-service integration tests).", "filename": "20260308-010000-correctness-remediation-phase3.md"}, {"date": "2026-03-08", "time": "02:00", "slug": "Ernight Automation", "summary": "Design and launch an overnight automation loop that expands compat test coverage\nacross all 147 AWS services. You're in charge \u2014 do what it takes to make this work.", "filename": "20260308-020000-overnight-automation.md"}, {"date": "2026-03-08", "time": "04:00", "slug": "N Resource Handler Fixes", "summary": "Continue fixing CFN resource handler bugs surfaced by IaC tests. Previous session created ~245 IaC tests and found 27 server bugs.", "filename": "20260308-040000-cfn-resource-handler-fixes.md"}, {"date": "2026-03-08", "time": "06:00", "slug": "Tegorical Review Appsync Tags", "summary": "Find one part of our product that you believe the overnight script implemented\nextremely well and review it. For every problem found, design a system-wide\ncategorical set of unit tests for it that can", "filename": "20260308-060000-categorical-review-appsync-tags.md"}, {"date": "2026-03-08", "time": "07:00", "slug": "Tegorical Review 20 Providers", "summary": "Pick 20 other parts of our product that you believe the overnight script\nimplemented extremely well. Launch an agent for each to review it (using Opus).", "filename": "20260308-070000-categorical-review-20-providers.md"}, {"date": "2026-03-08", "time": "08:00", "slug": "Rge 20 Agent Worktrees", "summary": "(Continued from categorical review.) Merge all 20 agent worktree branches into main.", "filename": "20260308-080000-merge-20-agent-worktrees.md"}, {"date": "2026-03-08", "time": "09:00", "slug": "St Quality And Moto Git", "summary": "Select a few of our unit tests and review whether they're good tests.", "filename": "20260308-090000-test-quality-and-moto-git.md"}, {"date": "2026-03-08", "time": "19:30", "slug": "Ernight V2 Pipeline", "summary": "Implement 4 new scripts for overnight v2 verification-first test expansion:\nprioritize_services.py, overnight_verify.py, overnight_progress.py, overnight_v2.sh. Target 50% coverage from 31.4%.", "filename": "20260308-193000-overnight-v2-pipeline.md"}, {"date": "2026-03-08", "time": "21:00", "slug": "Rallel Coverage Push", "summary": "Implement a 2-hour autonomous coverage push. Current coverage: 2,936/9,165 (32.0%).", "filename": "20260308-210000-parallel-coverage-push.md"}, {"date": "2026-03-08", "time": "22:00", "slug": "Calstack Parity And App Tests", "summary": "Given the current state of this project, what use cases of LocalStack can be replaced with it right now? And how can we prove that?", "filename": "20260308-220000-localstack-parity-and-app-tests.md"}, {"date": "2026-03-08", "time": "23:00", "slug": "P Test Review And Merge", "summary": "Phase 1: Implement IoT Sensor Data Pipeline integration test suite (18 tests, 7 AWS services: Kinesis, S3, DynamoDB+GSI, SSM, SecretsManager, CloudWatch, CloudWatch Logs). Detailed plan provided.", "filename": "20260308-230000-app-test-review-and-merge.md"}, {"date": "2026-03-08", "time": "23:00", "slug": "Ose Remaining Gap Plan", "summary": "Once this is all done, make a similar plan but for closing the rest of the gap.", "filename": "20260308-230000-close-remaining-gap-plan.md"}, {"date": "2026-03-09", "time": "00:00", "slug": "Ve4 And Wave5 Push", "summary": "Continue without me. Go even further than 2 hours but ensure we're making forward progress.", "filename": "20260309-000000-wave4-and-wave5-push.md"}, {"date": "2026-03-09", "time": "01:00", "slug": "Er Analysis And Debranding", "summary": "Make sure we have a gap analysis against LocalStack's higher tier offerings. It should all be quite legible.", "filename": "20260309-010000-tier-analysis-and-debranding.md"}, {"date": "2026-03-09", "time": "02:00", "slug": " Fix S3Tables Apigw", "summary": "Fix this definitively and completely, send anything appropriate upstream to our fork of moto:\nhttps://github.com/robotocore/robotocore/actions/runs/22833694565/job/66226140380", "filename": "20260309-020000-ci-fix-s3tables-apigw.md"}, {"date": "2026-03-09", "time": "02:00", "slug": "To Implementation Wave1", "summary": "Continue from previous context. Coverage at 37.0% (3,401/9,196).", "filename": "20260309-020000-moto-implementation-wave1.md"}, {"date": "2026-03-09", "time": "03:00", "slug": "Ve2 Merge And Wave3 Tests", "summary": "Continue from previous context. Wave 2 Moto implementation agents (GuardDuty, Redshift,\nSecurityHub, SESv2, Backup) had left uncommitted changes in vendor/moto.", "filename": "20260309-030000-wave2-merge-and-wave3-tests.md"}, {"date": "2026-03-09", "time": "04:00", "slug": "Verage Push Moto Implementations", "summary": "Continue autonomous coverage expansion work per the plan. Enumerate operations, spawn agents, write excellent tests, implement missing Moto ops, use git worktrees and PR flow.", "filename": "20260309-040000-coverage-push-moto-implementations.md"}, {"date": "2026-03-09", "time": "06:00", "slug": "Rge Moto Branches Test Wave", "summary": "Continue autonomous coverage expansion work per the plan. Enumerate operations, spawn agents, write excellent tests, implement missing Moto ops, use git worktrees and PR flow.", "filename": "20260309-060000-merge-moto-branches-test-wave.md"}, {"date": "2026-03-09", "time": "06:30", "slug": "C Test Completion", "summary": "Continue fixing IaC test failures. Previous session got CFN to 58/59, SAM/Serverless/Pulumi passing, CDK/TF still failing (need external tools).", "filename": "20260309-063000-iac-test-completion.md"}, {"date": "2026-03-09", "time": "07:00", "slug": "Ve3 Test Expansion", "summary": "Continue autonomous coverage expansion work per the plan. Enumerate operations, spawn agents, write excellent tests, implement missing Moto ops, use git worktrees and PR flow.", "filename": "20260309-070000-wave3-test-expansion.md"}, {"date": "2026-03-09", "time": "07:10", "slug": "N Advanced Engine Tests", "summary": "Add CFN advanced engine tests: stack updates, parameters, cross-stack refs, rollback, conditions, intrinsic functions, nested stacks.", "filename": "20260309-071000-cfn-advanced-engine-tests.md"}, {"date": "2026-03-09", "time": "09:00", "slug": "Ernight Expansion", "summary": "I'm going to bed. Work on this all night without stopping.", "filename": "20260309-090000-overnight-expansion.md"}, {"date": "2026-03-09", "time": "10:00", "slug": "Ernight Expansion P5", "summary": "Continue overnight autonomous coverage expansion.", "filename": "20260309-100000-overnight-expansion-p5.md"}, {"date": "2026-03-09", "time": "12:00", "slug": "Ernight Expansion P6", "summary": "Continue overnight autonomous coverage expansion.", "filename": "20260309-120000-overnight-expansion-p6.md"}, {"date": "2026-03-09", "time": "13:00", "slug": "Ernight Expansion P7", "summary": "Continue overnight autonomous coverage expansion.", "filename": "20260309-130000-overnight-expansion-p7.md"}, {"date": "2026-03-09", "time": "22:00", "slug": "Er1 Enterprise Features", "summary": "Reviewed current state of the project (14,538 tests, 147 services, 0 failures). Examined existing plans \u2014 both were completed.", "filename": "20260309-220000-tier1-enterprise-features.md"}, {"date": "2026-03-09", "time": "23:30", "slug": "Er1 Hardening", "summary": "Review the 4 Tier 1 enterprise features just implemented (multi-account, database\nengines, Lambda hot reload, EKS mock k8s). Fix all bugs, refactor poor structure,\nget to comprehensive test coverage i", "filename": "20260309-233000-tier1-hardening.md"}, {"date": "2026-03-10", "time": "00:00", "slug": "Behavioral", "summary": "Implemented three AWS-matching behavioral features for the native SQS provider:", "filename": "20260310-0000-sqs-behavioral.md"}, {"date": "2026-03-10", "time": "00:30", "slug": "Er1 E2E Tests", "summary": "Write the long tail of missing test coverage for the 4 Tier 1 enterprise features. Anticipate any way a user might use these APIs and test that the highest-level logic\nis sound and complete.", "filename": "20260310-003000-tier1-e2e-tests.md"}, {"date": "2026-03-10", "time": "06:00", "slug": " Fixes Pages Docs", "summary": "Fix CI failures. Then: fix the banner SVG's lower bar cutting through \"a digital\ntwin of AWS\".", "filename": "20260310-060000-ci-fixes-pages-docs.md"}, {"date": "2026-03-10", "time": "06:39", "slug": " Eventbridge Replication", "summary": "Implement the following plan in full:\n- Add  to events provider for cross-service routing\n- Expand S3 notifications to support EventBridge delivery and additional event types (Copy, DeleteMarkerCreate", "filename": "20260310-063938-s3-eventbridge-replication.md"}, {"date": "2026-03-10", "time": "07:00", "slug": " Eventbridge Test Coverage", "summary": "Review the current implementation and expand test coverage to 100% for all new/changed\nfiles from the S3 EventBridge/replication session. Add unit tests for every untested branch:\n-  src_key None case", "filename": "20260310-070000-s3-eventbridge-test-coverage.md"}, {"date": "2026-03-10", "time": "07:00", "slug": "Er234 Features", "summary": "Implement all remaining enterprise features across Tiers 2-4: IoT rule engine,\nCognito hosted UI, X-Ray service map, CloudWatch Synthetics, CW alarms to Auto\nScaling, EventBridge DLQ tests, state snap", "filename": "20260310-070000-tier234-features.md"}, {"date": "2026-03-10", "time": "08:00", "slug": "Ime Config", "summary": "Implement runtime configuration updates for robotocore. Allow POST to\n to change settings live without restarting.", "filename": "20260310-0800-runtime-config.md"}, {"date": "2026-03-10", "time": "08:00", "slug": " Semantic Coverage", "summary": "Check CI on PR #24, fix any failures, then expand test coverage to 100% of semantic use cases. Semantic cases: fire_event with only EventBridge, with both EB+SQS, _deliver_to_eventbridge\ndetail.reason", "filename": "20260310-080000-s3-semantic-coverage.md"}, {"date": "2026-03-10", "time": "09:00", "slug": " Plugins Status", "summary": "Implement status endpoints for init scripts and plugins in robotocore. Add\n and  for init script tracking,\nand  and  for plugin status.", "filename": "20260310-0900-init-plugins-status.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Ocal", "summary": "Implement  -- an AWS CDK CLI wrapper that auto-configures CDK to use\nrobotocore endpoints. Create both bash and Python versions at .", "filename": "20260310-1200-cdklocal.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Ular Cors", "summary": "Implement granular CORS controls for robotocore matching LocalStack's configurable CORS system. Environment variables for DISABLE_CORS_HEADERS, DISABLE_CORS_CHECKS, DISABLE_CUSTOM_CORS_S3, DISABLE_CUS", "filename": "20260310-1200-granular-cors.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Irtual Hosted", "summary": "Implement S3 virtual-hosted-style routing and static website hosting for robotocore. Requirements include parsing Host headers like  and , rewriting to path-style internally, serving index/error docum", "filename": "20260310-1200-s3-virtual-hosted.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Mock Config", "summary": "Mock Config", "filename": "20260310-1200-sfn-mock-config.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "E Analytics", "summary": "Implement usage analytics and Stack Insights for robotocore -- API usage\nstatistics, error rates, and usage patterns. Track per-service and per-operation\nstats, time series, error breakdown, client pa", "filename": "20260310-1200-usage-analytics.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Igwv2 Websocket", "summary": "Implement API Gateway V2 WebSocket transport in robotocore. Currently WebSocket APIs can be created/configured but no actual WebSocket transport exists.", "filename": "20260310-120000-apigwv2-websocket.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "N Execute Changeset", "summary": "Implement CloudFormation ExecuteChangeSet functionality. Currently  returns  -- change sets are created but never applied.", "filename": "20260310-120000-cfn-execute-changeset.md"}, {"date": "2026-03-10", "time": "12:00", "slug": " Analytics", "summary": "Implement CI analytics for robotocore -- track test reliability and service usage across CI builds. Requirements include CI session tracking, per-session analytics, cross-session analysis, reliability", "filename": "20260310-120000-ci-analytics.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Nfig Profiles", "summary": "Implement configuration profiles for robotocore -- load settings from named\nprofile files at ~/.robotocore/<name>.env. Support CONFIG_PROFILE env var\n(comma-separated), variable expansion, default.env", "filename": "20260310-120000-config-profiles.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Cker Lambda", "summary": "Implement Docker-based Lambda execution for robotocore, so Lambda functions run in real Docker containers with actual runtimes instead of in-process Python only. Support warm container pool, custom im", "filename": "20260310-120000-docker-lambda.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Entbridge Pipes", "summary": "Implement EventBridge Pipes for robotocore -- the Source->Enrichment->Target\npipeline feature. Full CRUD API, background polling, SQS/Kinesis/DynamoDB\nStreams sources, Lambda enrichment, six target ty", "filename": "20260310-120000-eventbridge-pipes.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Rvice Loading", "summary": "Rvice Loading", "filename": "20260310-120000-service-loading.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "S Smtp Server", "summary": "Implement an SES SMTP server in robotocore. Currently SES API works but there's no actual SMTP server for sending emails.", "filename": "20260310-120000-ses-smtp-server.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "S Metrics", "summary": "Implement SQS CloudWatch metrics reporting for robotocore. Automatically publish\nqueue metrics (visible/inflight/delayed counts, message age, send/receive/delete\ncounters, empty receives, message size", "filename": "20260310-120000-sqs-metrics.md"}, {"date": "2026-03-10", "time": "15:00", "slug": "Ges Story Debranding", "summary": "Fix that our README (and maybe our code) shows  and\n. In the README this should show  though\nthe code should also recognize  for drop-in compatibility.", "filename": "20260310-150000-pages-story-debranding.md"}, {"date": "2026-03-10", "time": "15:00", "slug": " Eventbridge Replication Pr Merges", "summary": "Implement the following plan: S3 Event System \u2014 EventBridge Destination, Additional Event Types,\nReplication Engine. [Full plan provided covering 7 files and 5 implementation steps.]", "filename": "20260310-150000-s3-eventbridge-replication-pr-merges.md"}, {"date": "2026-03-10", "time": "15:39", "slug": "N Async Execution", "summary": "Implement StepFunctions async execution in robotocore. Currently StartExecution blocks synchronously; there's no background execution for Standard workflows.", "filename": "20260310-153916-sfn-async-execution.md"}, {"date": "2026-03-10", "time": "16:00", "slug": "X Lambda Executor Module Pollution", "summary": "PR #32 (prompt log) \u2014 all CI green, automerge pending. PR #23 () \u2014  failing with the same two tests:\n-  \u2192 \n-  \u2192", "filename": "20260310-160000-fix-lambda-executor-module-pollution.md"}, {"date": "2026-03-10", "time": "16:00", "slug": "X Rdsdata Flaky", "summary": "The  test in  was failing in CI because it called  against a non-existent RDS cluster. In parallel test execution, there's no guarantee another test creates the cluster first.", "filename": "20260310-160000-fix-rdsdata-flaky.md"}, {"date": "2026-03-10", "time": "17:00", "slug": "S Server", "summary": "Implement a built-in DNS server for robotocore that resolves  hostnames to the local container, eliminating the need for  in AWS SDKs. Use dnslib, support configurable patterns, upstream forwarding, a", "filename": "20260310-170000-dns-server.md"}, {"date": "2026-03-10", "time": "17:00", "slug": "Namodb Ttl", "summary": "Implement DynamoDB TTL (Time-to-Live) automatic item removal for robotocore. Background daemon thread that scans tables for expired TTL items.", "filename": "20260310-170000-dynamodb-ttl.md"}, {"date": "2026-03-10", "time": "18:00", "slug": "Mbda Limits", "summary": "Implement Lambda concurrency limits and container lifecycle controls for robotocore. Track concurrent executions per function and globally, validate code/payload sizes, support reserved and provisione", "filename": "20260310-180000-lambda-limits.md"}, {"date": "2026-03-10", "time": "20:00", "slug": "Agnostics Bundle", "summary": "Implement a comprehensive diagnostic endpoint for robotocore that returns a full system diagnostic bundle at GET /_robotocore/diagnose. Bundle includes system, server, config, services, state, backgro", "filename": "20260310-200000-diagnostics-bundle.md"}, {"date": "2026-03-10", "time": "20:00", "slug": "Local", "summary": "Implement  \u2014 a Terraform CLI wrapper that auto-configures Terraform to use robotocore endpoints. Requirements: bash and Python versions, auto-generate provider override files with all service endpoint", "filename": "20260310-200000-tflocal.md"}, {"date": "2026-03-10", "time": "20:00", "slug": "B Dashboard", "summary": "Implement a web dashboard for robotocore -- an interactive HTML/JS resource browser, chaos engineering UI, and audit viewer served from a management endpoint at /_robotocore/dashboard.", "filename": "20260310-200000-web-dashboard.md"}, {"date": "2026-03-11", "time": "03:39", "slug": "Mbda Module Cleanup", "summary": "Fix PR #39 (branch: fix/lambda-executor-module-pollution) \u2014 CI \"compat: cross-service integrations\" check is failing.", "filename": "20260311-033900-lambda-module-cleanup.md"}, {"date": "2026-03-11", "time": "04:00", "slug": "Er Extension", "summary": "Implement a Docker Desktop extension for robotocore -- a UI panel in Docker Desktop for managing local instances. Write tests first, then implement the extension structure (Dockerfile, compose, metada", "filename": "20260311-0400-docker-extension.md"}, {"date": "2026-03-11", "time": "05:15", "slug": "Tps Tls", "summary": "Implement HTTPS/TLS termination for robotocore so it can serve on port 443 with SSL certificates, matching LocalStack Pro's capability. Auto-generate self-signed certs, support custom certs via env va", "filename": "20260311-051551-https-tls.md"}, {"date": "2026-03-11", "time": "05:19", "slug": "Dpoint Strategies", "summary": "Implement configurable endpoint strategies for SQS and OpenSearch in robotocore,\nmatching LocalStack's URL format options. SQS supports standard/domain/path/dynamic\nvia SQS_ENDPOINT_STRATEGY env var; ", "filename": "20260311-051905-endpoint-strategies.md"}, {"date": "2026-03-11", "time": "05:37", "slug": "Ate Hooks", "summary": "Implement per-service state lifecycle hooks for robotocore's state management. Hooks for before/after save, load, and reset.", "filename": "20260311-053716-state-hooks.md"}, {"date": "2026-03-11", "time": "05:38", "slug": "Apshot Strategies", "summary": "Implement configurable snapshot save/load strategies for robotocore's state\nmanagement. Support SNAPSHOT_SAVE_STRATEGY (on_shutdown, on_request, scheduled,\nmanual) and SNAPSHOT_LOAD_STRATEGY (on_start", "filename": "20260311-053803-snapshot-strategies.md"}, {"date": "2026-03-11", "time": "05:46", "slug": "St Coverage Gaps", "summary": "Find test coverage gaps in robotocore's existing infrastructure features and fill them. Focus on: gateway app, router, state manager, chaos, audit log, resource browser,\nextensions, observability, IAM", "filename": "20260311-054600-test-coverage-gaps.md"}, {"date": "2026-03-11", "time": "05:49", "slug": "Ub Action", "summary": "Implemented a reusable GitHub Actions composite action that lets CI pipelines start a Robotocore container with one step.", "filename": "20260311-0549-github-action.md"}, {"date": "2026-03-11", "time": "05:49", "slug": "Milocal", "summary": "Implement  \u2014 a Pulumi CLI wrapper that auto-configures Pulumi to use robotocore endpoints. Create both bash and Python versions in .", "filename": "20260311-0549-pulumilocal.md"}, {"date": "2026-03-11", "time": "06:00", "slug": "M Policy Stream", "summary": "Implement IAM Policy Stream for robotocore -- a real-time log of IAM policy\nevaluations showing which policies were checked and whether access was\ngranted/denied. Includes ring buffer storage, managem", "filename": "20260311-060000-iam-policy-stream.md"}, {"date": "2026-03-11", "time": "06:26", "slug": "Ide Deck", "summary": "Build and iterate on the slide deck generated by . Run\nwith  to capture Playwright screenshots, visually evaluate each slide,\nfix any contrast/readability issues, run unit tests, commit, and open a PR", "filename": "20260311-062630-slide-deck.md"}, {"date": "2026-03-11", "time": "06:30", "slug": "Oud Pods", "summary": "Implement Cloud Pods -- versioned, remotely-shareable state snapshots for\nrobotocore, stored in an S3-compatible backend. Push/pull state snapshots,\nversioning with timestamps, management API endpoint", "filename": "20260311-063000-cloud-pods.md"}, {"date": "2026-03-11", "time": "07:00", "slug": "Oud Pods Unit Tests", "summary": "Add comprehensive unit tests for PR #53 (Cloud Pods: versioned, remotely-shareable\nstate snapshots). Tests must actually test behavior, not just catch exceptions.", "filename": "20260311-070000-cloud-pods-unit-tests.md"}, {"date": "2026-03-11", "time": "07:00", "slug": "To Coverage Update", "summary": "Update moto dependency to include 64 new operations across 12 services implemented in the jackdanger/moto fork. Update stats and pages build.", "filename": "20260311-070000-moto-coverage-update.md"}, {"date": "2026-03-11", "time": "08:00", "slug": "De Quality Fixes", "summary": "De Quality Fixes", "filename": "20260311-080000-code-quality-fixes.md"}, {"date": "2026-03-11", "time": "08:00", "slug": "Nsole Unit Tests", "summary": "Add comprehensive unit tests for PR #91 (branch: feat/aws-console-ui) -- AWS Console web UI. Focus on the Python backend: route handling, API proxy, static file serving, auth, error cases.", "filename": "20260311-080000-console-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": " Analytics Unit Tests", "summary": "Add comprehensive unit tests for PR #70 (branch: feat/ci-analytics) covering CI analytics for test reliability tracking. Tests must actually test behavior, not just catch exceptions.", "filename": "20260311-120000-ci-analytics-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "Agnostics Bundle Tests", "summary": "Add comprehensive unit tests for PR #57 (feat/diagnostics-bundle) covering\nbundle generation, data collection, endpoint behavior, and error cases.", "filename": "20260311-120000-diagnostics-bundle-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "S Unit Tests", "summary": "Add comprehensive unit tests for PR #76 \u2014 Built-in DNS server resolving\n*.amazonaws.com locally. Cover DNS resolution, wildcard matching, upstream\nfallback, config, error cases.", "filename": "20260311-120000-dns-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "Cker Lambda Unit Tests", "summary": "Add comprehensive unit tests for PR #75 (Docker-based Lambda executor with warm container pool). Tests must mock Docker client, not require Docker running.", "filename": "20260311-120000-docker-lambda-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "Dpoint Strategy Unit Tests", "summary": "Add comprehensive unit tests for PR #81 (branch: worktree-agent-af72d904) -- Configurable endpoint strategies for SQS and OpenSearch. Tests must cover endpoint strategy selection, URL generation, URL ", "filename": "20260311-120000-endpoint-strategy-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "It Plugins Unit Tests", "summary": "Add comprehensive unit tests for PR #59 (branch: feat/init-plugins-status) -- Init script and plugin status endpoints.", "filename": "20260311-120000-init-plugins-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": " Vhost Routing Tests", "summary": "Add comprehensive unit tests for PR #44 (branch: feat/s3-virtual-hosted-routing) -- S3 virtual-hosted-style routing and static website hosting. Cover virtual-hosted routing, path-style fallback, stati", "filename": "20260311-120000-s3-vhost-routing-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "S Smtp Unit Tests", "summary": "Add comprehensive unit tests for the SES SMTP server feature (PR #78). Cover SMTP handler,\nemail store, identity validation, management API, and error cases.", "filename": "20260311-120000-ses-smtp-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "Apshot Strategy Unit Tests", "summary": "Add comprehensive unit tests for PR #56 (feat/snapshot-strategies) covering\ndifferent strategy types, strategy selection, config, and error cases. Every\ntest must assert on behavior, not just catch ex", "filename": "20260311-120000-snapshot-strategy-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "S Behavioral Unit Tests", "summary": "Add comprehensive unit tests for PR #45 (SQS behavioral fidelity: PurgeInProgress, QueueDeletedRecently, retention). Cover PurgeInProgress cooldown, QueueDeletedRecently error, message retention, visi", "filename": "20260311-120000-sqs-behavioral-unit-tests.md"}, {"date": "2026-03-11", "time": "12:00", "slug": "S Unit Tests", "summary": "Add comprehensive unit tests for PR #40 (HTTPS/TLS termination with self-signed cert generation). Cover cert generation, TLS config, cert validation, error cases, SSL context creation, and the TLS inf", "filename": "20260311-120000-tls-unit-tests.md"}, {"date": "2026-03-11", "time": "12:01", "slug": "Teway Edge Cases", "summary": "Fix CI failures on Wave 1 PR #82: add missing prompt log entry.", "filename": "20260311-120100-gateway-edge-cases.md"}, {"date": "2026-03-11", "time": "12:02", "slug": "Ate Management Fixes", "summary": "Fix CI failures on Wave 1 PR #83: add prompt log and fix test failures.", "filename": "20260311-120200-state-management-fixes.md"}, {"date": "2026-03-11", "time": "12:03", "slug": "Fra Review Fixes", "summary": "Fix CI failures on Wave 1 PR #84: add prompt log and fix unit test failures in gateway and infra shards.", "filename": "20260311-120300-infra-review-fixes.md"}, {"date": "2026-03-11", "time": "12:04", "slug": "Ssaging Review Fixes", "summary": "Fix CI failures on Wave 1 PR #85: fix unit:services test failures.", "filename": "20260311-120400-messaging-review-fixes.md"}, {"date": "2026-03-11", "time": "12:05", "slug": "Mbda Executor Edge Cases", "summary": "Fix CI failures on Wave 1 PR #86: add missing prompt log entry.", "filename": "20260311-120500-lambda-executor-edge-cases.md"}, {"date": "2026-03-11", "time": "12:06", "slug": "Epfunctions Failing Tests", "summary": "Fix CI failures on Wave 1 PR #87: add missing prompt log entry.", "filename": "20260311-120600-stepfunctions-failing-tests.md"}, {"date": "2026-03-11", "time": "12:07", "slug": "Namodb Sqs Fidelity", "summary": "Fix CI failures on Wave 1 PR #88: add missing prompt log entry.", "filename": "20260311-120700-dynamodb-sqs-fidelity.md"}, {"date": "2026-03-11", "time": "12:08", "slug": "N Review Fixes", "summary": "Fix CI failures on Wave 1 PR #89: add prompt log and fix unit:services test failures.", "filename": "20260311-120800-cfn-review-fixes.md"}, {"date": "2026-03-11", "time": "15:52", "slug": "N Async Unit Tests", "summary": "Add comprehensive unit tests for PR #77 (branch: worktree-agent-a3045cbb) \u2014 Async execution for StepFunctions Standard workflows. Cover: async execution lifecycle, status transitions, task tokens, sto", "filename": "20260311-155228-sfn-async-unit-tests.md"}, {"date": "2026-03-11", "time": "21:20", "slug": "Alytics Env", "summary": "Alytics Env", "filename": "20260311-fix-ci-analytics-env.md"}];
+const MILESTONES   = [{"label": "Day 0", "date": "2026-03-06", "tests": 0, "services": 0}, {"label": "First tests", "date": "2026-03-06", "tests": 124, "services": 12}, {"label": "Batch services", "date": "2026-03-07", "tests": 1799, "services": 109}, {"label": "Compat blast", "date": "2026-03-07", "tests": 2080, "services": 131}, {"label": "Quality gate", "date": "2026-03-08", "tests": 2874, "services": 138}, {"label": "Enterprise", "date": "2026-03-09", "tests": 6383, "services": 143}, {"label": "Hardening", "date": "2026-03-09", "tests": 11036, "services": 145}, {"label": "Tier 2-4", "date": "2026-03-10", "tests": 18201, "services": 147}];
+const SESSIONS     = [{"date": "2026-03-06", "time": "03:56", "slug": "Oject Inception", "summary": "Write a CLAUDE.md and a set of skills necessary to start on your job: Creating an MIT-licensed wrapper around Moto that has 100% feature parity with Localstack. This is called 'robotocore' and it will", "filename": "20260306-035638-project-inception.md"}, {"date": "2026-03-06", "time": "04:20", "slug": "An Milestones", "summary": "Create a set of milestones for implementing robotocore where the last one is '100% feature parity with localstack, with proof'.", "filename": "20260306-042034-plan-milestones.md"}, {"date": "2026-03-06", "time": "04:35", "slug": "Plement Plan", "summary": "[Pasted: 12-milestone plan covering M1 (Moto Dispatch fix), M2 (Handler Chain), M3 (Tier A Services \u2014 S3, SQS, DynamoDB, IAM, STS, CloudFormation, CloudWatch), M4 (Docker/CI), M5 (Native SQS with visi", "filename": "20260306-043550-implement-plan.md"}, {"date": "2026-03-06", "time": "04:36", "slug": "Plement Milestones 1 Through 11", "summary": "Implemented milestones 1\u201311 in a single extended session, using subagents for research and parallel implementation. Key decisions:", "filename": "20260306-043600-implement-milestones-1-through-11.md"}, {"date": "2026-03-06", "time": "18:54", "slug": "Bug Ci Build Tools", "summary": "debug ci and continue. Don't just stare at and fix code, write advanced cli tools to allow you to automatically analyze and produce improvements.", "filename": "20260306-185432-debug-ci-build-tools.md"}, {"date": "2026-03-06", "time": "19:27", "slug": "Eck Ci Iterate", "summary": "Eck Ci Iterate", "filename": "20260306-192749-check-ci-iterate.md"}, {"date": "2026-03-06", "time": "19:29", "slug": "Date Skills Worktrees Subagents", "summary": "Update your skills and rules to use git worktrees when working in parallel, to build cli tooling to help you out with complicated changes, and to use subagents in powerful but simple ways.", "filename": "20260306-192930-update-skills-worktrees-subagents.md"}, {"date": "2026-03-06", "time": "19:36", "slug": "Lestone 8 Gap", "summary": "What's the gap to get the rest of milestone 8? I don't want the JVM running, let's do something we can send upstream to Moto if we need.", "filename": "20260306-193631-milestone-8-gap.md"}, {"date": "2026-03-06", "time": "19:39", "slug": "X Kinesis Bug Upstream", "summary": "Fix the critical kinesis bug in Moto, send it upstream in a PR, and then update the version of moto we're using to reference that branch. Make sure there are failing tests that exercise this bug and t", "filename": "20260306-193945-fix-kinesis-bug-upstream.md"}, {"date": "2026-03-06", "time": "21:13", "slug": "Ip Moto Pr Move To M9", "summary": "Assume that Moto PR won't get merged today. Commit, keep things clean, and move toward M9.", "filename": "20260306-211347-skip-moto-pr-move-to-m9.md"}, {"date": "2026-03-06", "time": "21:38", "slug": "Entify Ci Gaps Subagents", "summary": "Identify CI gaps - unit tests, functional tests, and integration tests - and fix them all using multiple subagents.", "filename": "20260306-213812-identify-ci-gaps-subagents.md"}, {"date": "2026-03-06", "time": "21:53", "slug": "Mmit And Push", "summary": "Make excellent git commits for everything and push.", "filename": "20260306-215325-commit-and-push.md"}, {"date": "2026-03-06", "time": "21:56", "slug": "An Enterprise Parity", "summary": "Make an updated, exhaustively detailed plan for how we will reach our goal: A single docker image that is a drop-in replacement for Enterprise Localstack with all of the extra features. Include plans ", "filename": "20260306-215615-plan-enterprise-parity.md"}, {"date": "2026-03-06", "time": "22:20", "slug": "Plement Ga Plan", "summary": "[Pasted: 13-milestone GA plan. M0 (Automation Tooling), M1 (S3 Deep Fidelity \u2014 presigned URLs, multipart, CORS, versioning), M2 (Lambda Completeness \u2014 versions/aliases, URLs, destinations, layers), M3", "filename": "20260306-222018-implement-ga-plan.md"}, {"date": "2026-03-06", "time": "22:21", "slug": "Plement Ga Milestones", "summary": "Implemented all 13 GA milestones in a single extended session. Organized as parallel subagent work fanning out by module.", "filename": "20260306-222100-implement-ga-milestones.md"}, {"date": "2026-03-06", "time": "23:47", "slug": "Mmit And Push", "summary": "Commit into appropriate pieces and push.", "filename": "20260306-234709-commit-and-push.md"}, {"date": "2026-03-06", "time": "23:49", "slug": "Write Commits With Milestones", "summary": "Rewrite all of our commits thus far with those named milestones and force push.", "filename": "20260306-234953-rewrite-commits-with-milestones.md"}, {"date": "2026-03-07", "time": "00:23", "slug": "Nearize Prove Correctness", "summary": "We'll do all of this, so linearize it by which ones help us reach the rest. Do it all and have a way to prove the correctness and completeness of your work to me.", "filename": "20260307-002309-linearize-prove-correctness.md"}, {"date": "2026-03-07", "time": "01:08", "slug": "Shed Continue", "summary": "Shed Continue", "filename": "20260307-010844-pushed-continue.md"}, {"date": "2026-03-07", "time": "01:35", "slug": "Nt Stop Until Done", "summary": "Continue, and the next time you stop - don't stop. Continue until we're done.", "filename": "20260307-013513-dont-stop-until-done.md"}, {"date": "2026-03-07", "time": "01:36", "slug": "Tonomous Test Expansion", "summary": "Autonomous work phase: expanding compatibility test coverage from ~1100 to 1800 tests and eliminating all xfails. Ran 5+ parallel subagents, each targeting different service groups:", "filename": "20260307-013600-autonomous-test-expansion.md"}, {"date": "2026-03-07", "time": "06:04", "slug": "Tup Docker Release", "summary": "I created a DockerHub repository to publish this to. Let's set up GHA to release this as a GitHub-hosted and a DockerHub-hosted OCI.", "filename": "20260307-060443-setup-docker-release.md"}, {"date": "2026-03-07", "time": "06:32", "slug": "Ip Pypi Github Dockerhub", "summary": "I set dockerhub username and token. Let's skip pypi.", "filename": "20260307-063211-skip-pypi-github-dockerhub.md"}, {"date": "2026-03-07", "time": "07:33", "slug": "Brand Digital Twin", "summary": "In a git worktree, make the following improvements: Update the README to be super accessible to both humans and LLM agents. Update the SVG to be even cuter and replace the tagline in the SVG, the READ", "filename": "20260307-073324-rebrand-digital-twin.md"}, {"date": "2026-03-07", "time": "07:37", "slug": "Op Localstack Scoping", "summary": "The SVG in the README still has the old copy. Also, once we've surpassed the features of localstack's community edition let's drop that phrase when we say this is a drop-in replacement.", "filename": "20260307-073737-drop-localstack-scoping.md"}, {"date": "2026-03-07", "time": "07:39", "slug": "Wercase Multi Account", "summary": "Further clarify in the readme how to use robotocore. Also, always lowercase the full name because it's a play on 'botocore'.", "filename": "20260307-073955-lowercase-multi-account.md"}, {"date": "2026-03-07", "time": "07:43", "slug": "Ents Md For Llms", "summary": "Think about how an LLM agent might find or make use of this project. They'd want to see an explicit reference in the README to the latest docker image that they can use.", "filename": "20260307-074314-agents-md-for-llms.md"}, {"date": "2026-03-07", "time": "09:04", "slug": "View Agents Md", "summary": "Examine AGENTS.md and see if that would be enough for you to know what to do with this tool or how to prompt your user to use it. Any improvements we can make?", "filename": "20260307-090431-review-agents-md.md"}, {"date": "2026-03-07", "time": "09:15", "slug": "X Remaining Xfails", "summary": "Autonomous work: fixing all 28 remaining xfails by creating 10 new native providers that intercept operations Moto doesn't implement or has bugs in. Key fixes:", "filename": "20260307-091500-fix-remaining-xfails.md"}, {"date": "2026-03-07", "time": "09:15", "slug": "Pth Vs Breadth", "summary": "What's a better approach to ultimately hitting our goal? Does depth help us with breadth or vice versa?", "filename": "20260307-091544-depth-vs-breadth.md"}, {"date": "2026-03-07", "time": "09:20", "slug": "Near Is The Plan", "summary": "We're not in a huge hurry, would it be easier to track context with those subagents or with us just working through it linearly?", "filename": "20260307-092033-linear-is-the-plan.md"}, {"date": "2026-03-07", "time": "09:22", "slug": "View Merge", "summary": "View Merge", "filename": "20260307-092201-review-merge.md"}, {"date": "2026-03-07", "time": "19:14", "slug": "D Prompt Logs", "summary": "We are now going to pause our development to amend every commit. Check out the file at /Users/jackdanger/www/jackdanger.com/static/promptlog.md and introduce that skill here.", "filename": "20260307-191417-add-prompt-logs.md"}, {"date": "2026-03-07", "time": "19:15", "slug": "Rcular Dependency Question", "summary": "How do we get around the circular dependency of putting the commit sha in the prompt that made the commit?", "filename": "20260307-191500-circular-dependency-question.md"}, {"date": "2026-03-07", "time": "19:16", "slug": "Omptlog Spec Improvements", "summary": "Improvements made to the promptlog spec () based on first real-world use:", "filename": "20260307-191600-promptlog-spec-improvements.md"}, {"date": "2026-03-07", "time": "20:15", "slug": "Tch Register 158 Services", "summary": "Execute this gap analysis plan to reach LocalStack Enterprise parity:\n1. Build  to auto-generate registry + router entries for all Moto backends\n2.", "filename": "20260307-201500-batch-register-158-services.md"}, {"date": "2026-03-07", "time": "20:16", "slug": "Sistant Batch Registration", "summary": "Batch registration approach: Built a script that reads botocore  metadata (protocol, targetPrefix, signingName) and cross-references with Moto backend directories. The script handles all the edge case", "filename": "20260307-201600-assistant-batch-registration.md"}, {"date": "2026-03-07", "time": "20:20", "slug": "Man Dev Workflow", "summary": "Improve how we use all of the cores on this machine for testing. And improve how we manage the lifecycle of running the code to test/develop against.", "filename": "20260307-202000-human-dev-workflow.md"}, {"date": "2026-03-07", "time": "20:25", "slug": "Man Continue And Promptlog", "summary": "Look at what's pushing you toward stopping and checking. Make sure we're committing as we go and using the prompt log pattern from .", "filename": "20260307-202500-human-continue-and-promptlog.md"}, {"date": "2026-03-07", "time": "20:45", "slug": "Sistant Compat Tests Batch A", "summary": "Probed all high-impact Moto-backed services against live server, then fanned out 22 parallel agents to write compat tests. Each agent ran tests against the live server and only included passing operat", "filename": "20260307-204500-assistant-compat-tests-batch-a.md"}, {"date": "2026-03-07", "time": "21:00", "slug": "Sistant Compat Tests Batch Bc", "summary": "Probed 27 medium/long-tail services, then fanned out 16 parallel agents. All services responded well.", "filename": "20260307-210000-assistant-compat-tests-batch-bc.md"}, {"date": "2026-03-07", "time": "22:00", "slug": "Man Cleanup Gap Analysis", "summary": "Implement the cleanup & gap analysis plan:\n1. Delete 4 obsolete scripts (parity_report.py, discover_services.py, generate_coverage.py, run_aws_tests.py)\n2.", "filename": "20260307-220000-human-cleanup-gap-analysis.md"}, {"date": "2026-03-07", "time": "22:01", "slug": "Sistant Cleanup Docs Refresh", "summary": "Sistant Cleanup Docs Refresh", "filename": "20260307-220100-assistant-cleanup-docs-refresh.md"}, {"date": "2026-03-07", "time": "22:05", "slug": "Sistant Smoke Test Expansion", "summary": "Extended  from 30 to 94 passing probe tests.", "filename": "20260307-220500-assistant-smoke-test-expansion.md"}, {"date": "2026-03-07", "time": "22:15", "slug": "Sistant Compat Test Expansion T1T2T3", "summary": "Used 37 parallel agents to probe and write compat tests across Tier 1, 2, and 3 services.", "filename": "20260307-221500-assistant-compat-test-expansion-t1t2t3.md"}, {"date": "2026-03-07", "time": "00:00", "slug": " Spec Discoverability", "summary": "Look at recent additions to our ./prompts/ dir. Do they communicate the intent of the promptlog skill?", "filename": "20260307-promptlog-spec-discoverability.md"}, {"date": "2026-03-08", "time": "00:50", "slug": "Rrectness Remediation", "summary": "Implement the correctness remediation plan: fix 6 confirmed bugs, audit wire\nformats, deepen test coverage for all 38 native providers, build automated\nparity verification, verify region isolation, an", "filename": "20260308-005000-correctness-remediation.md"}, {"date": "2026-03-08", "time": "01:00", "slug": "Rrectness Remediation Phase3", "summary": "Continue the correctness remediation plan: complete Phase 3A (error-path tests\nfor remaining native providers) and Phase 3B (cross-service integration tests).", "filename": "20260308-010000-correctness-remediation-phase3.md"}, {"date": "2026-03-08", "time": "02:00", "slug": "Ernight Automation", "summary": "Design and launch an overnight automation loop that expands compat test coverage\nacross all 147 AWS services. You're in charge \u2014 do what it takes to make this work.", "filename": "20260308-020000-overnight-automation.md"}, {"date": "2026-03-08", "time": "04:00", "slug": "N Resource Handler Fixes", "summary": "Continue fixing CFN resource handler bugs surfaced by IaC tests. Previous session created ~245 IaC tests and found 27 server bugs.", "filename": "20260308-040000-cfn-resource-handler-fixes.md"}, {"date": "2026-03-08", "time": "06:00", "slug": "Tegorical Review Appsync Tags", "summary": "Find one part of our product that you believe the overnight script implemented\nextremely well and review it. For every problem found, design a system-wide\ncategorical set of unit tests for it that can", "filename": "20260308-060000-categorical-review-appsync-tags.md"}, {"date": "2026-03-08", "time": "07:00", "slug": "Tegorical Review 20 Providers", "summary": "Pick 20 other parts of our product that you believe the overnight script\nimplemented extremely well. Launch an agent for each to review it (using Opus).", "filename": "20260308-070000-categorical-review-20-providers.md"}, {"date": "2026-03-08", "time": "08:00", "slug": "Rge 20 Agent Worktrees", "summary": "(Continued from categorical review.) Merge all 20 agent worktree branches into main.", "filename": "20260308-080000-merge-20-agent-worktrees.md"}, {"date": "2026-03-08", "time": "09:00", "slug": "St Quality And Moto Git", "summary": "Select a few of our unit tests and review whether they're good tests.", "filename": "20260308-090000-test-quality-and-moto-git.md"}, {"date": "2026-03-08", "time": "19:30", "slug": "Ernight V2 Pipeline", "summary": "Implement 4 new scripts for overnight v2 verification-first test expansion:\nprioritize_services.py, overnight_verify.py, overnight_progress.py, overnight_v2.sh. Target 50% coverage from 31.4%.", "filename": "20260308-193000-overnight-v2-pipeline.md"}, {"date": "2026-03-08", "time": "21:00", "slug": "Rallel Coverage Push", "summary": "Implement a 2-hour autonomous coverage push. Current coverage: 2,936/9,165 (32.0%).", "filename": "20260308-210000-parallel-coverage-push.md"}, {"date": "2026-03-08", "time": "22:00", "slug": "Calstack Parity And App Tests", "summary": "Given the current state of this project, what use cases of LocalStack can be replaced with it right now? And how can we prove that?", "filename": "20260308-220000-localstack-parity-and-app-tests.md"}, {"date": "2026-03-08", "time": "23:00", "slug": "P Test Review And Merge", "summary": "Phase 1: Implement IoT Sensor Data Pipeline integration test suite (18 tests, 7 AWS services: Kinesis, S3, DynamoDB+GSI, SSM, SecretsManager, CloudWatch, CloudWatch Logs). Detailed plan provided.", "filename": "20260308-230000-app-test-review-and-merge.md"}, {"date": "2026-03-08", "time": "23:00", "slug": "Ose Remaining Gap Plan", "summary": "Once this is all done, make a similar plan but for closing the rest of the gap.", "filename": "20260308-230000-close-remaining-gap-plan.md"}, {"date": "2026-03-09", "time": "00:00", "slug": "Ve4 And Wave5 Push", "summary": "Continue without me. Go even further than 2 hours but ensure we're making forward progress.", "filename": "20260309-000000-wave4-and-wave5-push.md"}, {"date": "2026-03-09", "time": "01:00", "slug": "Er Analysis And Debranding", "summary": "Make sure we have a gap analysis against LocalStack's higher tier offerings. It should all be quite legible.", "filename": "20260309-010000-tier-analysis-and-debranding.md"}, {"date": "2026-03-09", "time": "02:00", "slug": " Fix S3Tables Apigw", "summary": "Fix this definitively and completely, send anything appropriate upstream to our fork of moto:\nhttps://github.com/robotocore/robotocore/actions/runs/22833694565/job/66226140380", "filename": "20260309-020000-ci-fix-s3tables-apigw.md"}, {"date": "2026-03-09", "time": "02:00", "slug": "To Implementation Wave1", "summary": "Continue from previous context. Coverage at 37.0% (3,401/9,196).", "filename": "20260309-020000-moto-implementation-wave1.md"}, {"date": "2026-03-09", "time": "03:00", "slug": "Ve2 Merge And Wave3 Tests", "summary": "Continue from previous context. Wave 2 Moto implementation agents (GuardDuty, Redshift,\nSecurityHub, SESv2, Backup) had left uncommitted changes in vendor/moto.", "filename": "20260309-030000-wave2-merge-and-wave3-tests.md"}, {"date": "2026-03-09", "time": "04:00", "slug": "Verage Push Moto Implementations", "summary": "Continue autonomous coverage expansion work per the plan. Enumerate operations, spawn agents, write excellent tests, implement missing Moto ops, use git worktrees and PR flow.", "filename": "20260309-040000-coverage-push-moto-implementations.md"}, {"date": "2026-03-09", "time": "06:00", "slug": "Rge Moto Branches Test Wave", "summary": "Continue autonomous coverage expansion work per the plan. Enumerate operations, spawn agents, write excellent tests, implement missing Moto ops, use git worktrees and PR flow.", "filename": "20260309-060000-merge-moto-branches-test-wave.md"}, {"date": "2026-03-09", "time": "06:30", "slug": "C Test Completion", "summary": "Continue fixing IaC test failures. Previous session got CFN to 58/59, SAM/Serverless/Pulumi passing, CDK/TF still failing (need external tools).", "filename": "20260309-063000-iac-test-completion.md"}, {"date": "2026-03-09", "time": "07:00", "slug": "Ve3 Test Expansion", "summary": "Continue autonomous coverage expansion work per the plan. Enumerate operations, spawn agents, write excellent tests, implement missing Moto ops, use git worktrees and PR flow.", "filename": "20260309-070000-wave3-test-expansion.md"}, {"date": "2026-03-09", "time": "07:10", "slug": "N Advanced Engine Tests", "summary": "Add CFN advanced engine tests: stack updates, parameters, cross-stack refs, rollback, conditions, intrinsic functions, nested stacks.", "filename": "20260309-071000-cfn-advanced-engine-tests.md"}, {"date": "2026-03-09", "time": "09:00", "slug": "Ernight Expansion", "summary": "I'm going to bed. Work on this all night without stopping.", "filename": "20260309-090000-overnight-expansion.md"}, {"date": "2026-03-09", "time": "10:00", "slug": "Ernight Expansion P5", "summary": "Continue overnight autonomous coverage expansion.", "filename": "20260309-100000-overnight-expansion-p5.md"}, {"date": "2026-03-09", "time": "12:00", "slug": "Ernight Expansion P6", "summary": "Continue overnight autonomous coverage expansion.", "filename": "20260309-120000-overnight-expansion-p6.md"}, {"date": "2026-03-09", "time": "13:00", "slug": "Ernight Expansion P7", "summary": "Continue overnight autonomous coverage expansion.", "filename": "20260309-130000-overnight-expansion-p7.md"}, {"date": "2026-03-09", "time": "22:00", "slug": "Er1 Enterprise Features", "summary": "Reviewed current state of the project (14,538 tests, 147 services, 0 failures). Examined existing plans \u2014 both were completed.", "filename": "20260309-220000-tier1-enterprise-features.md"}, {"date": "2026-03-09", "time": "23:30", "slug": "Er1 Hardening", "summary": "Review the 4 Tier 1 enterprise features just implemented (multi-account, database\nengines, Lambda hot reload, EKS mock k8s). Fix all bugs, refactor poor structure,\nget to comprehensive test coverage i", "filename": "20260309-233000-tier1-hardening.md"}, {"date": "2026-03-10", "time": "00:30", "slug": "Er1 E2E Tests", "summary": "Write the long tail of missing test coverage for the 4 Tier 1 enterprise features. Anticipate any way a user might use these APIs and test that the highest-level logic\nis sound and complete.", "filename": "20260310-003000-tier1-e2e-tests.md"}, {"date": "2026-03-10", "time": "06:00", "slug": " Fixes Pages Docs", "summary": "Fix CI failures. Then: fix the banner SVG's lower bar cutting through \"a digital\ntwin of AWS\".", "filename": "20260310-060000-ci-fixes-pages-docs.md"}, {"date": "2026-03-10", "time": "06:39", "slug": " Eventbridge Replication", "summary": "Implement the following plan in full:\n- Add  to events provider for cross-service routing\n- Expand S3 notifications to support EventBridge delivery and additional event types (Copy, DeleteMarkerCreate", "filename": "20260310-063938-s3-eventbridge-replication.md"}, {"date": "2026-03-10", "time": "07:00", "slug": " Eventbridge Test Coverage", "summary": "Review the current implementation and expand test coverage to 100% for all new/changed\nfiles from the S3 EventBridge/replication session. Add unit tests for every untested branch:\n-  src_key None case", "filename": "20260310-070000-s3-eventbridge-test-coverage.md"}, {"date": "2026-03-10", "time": "07:00", "slug": "Er234 Features", "summary": "Implement all remaining enterprise features across Tiers 2-4: IoT rule engine,\nCognito hosted UI, X-Ray service map, CloudWatch Synthetics, CW alarms to Auto\nScaling, EventBridge DLQ tests, state snap", "filename": "20260310-070000-tier234-features.md"}, {"date": "2026-03-10", "time": "08:00", "slug": "Ime Config", "summary": "Implement runtime configuration updates for robotocore. Allow POST to\n to change settings live without restarting.", "filename": "20260310-0800-runtime-config.md"}, {"date": "2026-03-10", "time": "08:00", "slug": " Semantic Coverage", "summary": "Check CI on PR #24, fix any failures, then expand test coverage to 100% of semantic use cases. Semantic cases: fire_event with only EventBridge, with both EB+SQS, _deliver_to_eventbridge\ndetail.reason", "filename": "20260310-080000-s3-semantic-coverage.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Ocal", "summary": "Implement  -- an AWS CDK CLI wrapper that auto-configures CDK to use\nrobotocore endpoints. Create both bash and Python versions at .", "filename": "20260310-1200-cdklocal.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Ular Cors", "summary": "Implement granular CORS controls for robotocore matching LocalStack's configurable CORS system. Environment variables for DISABLE_CORS_HEADERS, DISABLE_CORS_CHECKS, DISABLE_CUSTOM_CORS_S3, DISABLE_CUS", "filename": "20260310-1200-granular-cors.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Mock Config", "summary": "Mock Config", "filename": "20260310-1200-sfn-mock-config.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "E Analytics", "summary": "Implement usage analytics and Stack Insights for robotocore -- API usage\nstatistics, error rates, and usage patterns. Track per-service and per-operation\nstats, time series, error breakdown, client pa", "filename": "20260310-1200-usage-analytics.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Igwv2 Websocket", "summary": "Implement API Gateway V2 WebSocket transport in robotocore. Currently WebSocket APIs can be created/configured but no actual WebSocket transport exists.", "filename": "20260310-120000-apigwv2-websocket.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "N Execute Changeset", "summary": "Implement CloudFormation ExecuteChangeSet functionality. Currently  returns  -- change sets are created but never applied.", "filename": "20260310-120000-cfn-execute-changeset.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Nfig Profiles", "summary": "Implement configuration profiles for robotocore -- load settings from named\nprofile files at ~/.robotocore/<name>.env. Support CONFIG_PROFILE env var\n(comma-separated), variable expansion, default.env", "filename": "20260310-120000-config-profiles.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Cker Lambda", "summary": "Implement Docker-based Lambda execution for robotocore, so Lambda functions run in real Docker containers with actual runtimes instead of in-process Python only. Support warm container pool, custom im", "filename": "20260310-120000-docker-lambda.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Entbridge Pipes", "summary": "Implement EventBridge Pipes for robotocore -- the Source->Enrichment->Target\npipeline feature. Full CRUD API, background polling, SQS/Kinesis/DynamoDB\nStreams sources, Lambda enrichment, six target ty", "filename": "20260310-120000-eventbridge-pipes.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "Rvice Loading", "summary": "Rvice Loading", "filename": "20260310-120000-service-loading.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "S Smtp Server", "summary": "Implement an SES SMTP server in robotocore. Currently SES API works but there's no actual SMTP server for sending emails.", "filename": "20260310-120000-ses-smtp-server.md"}, {"date": "2026-03-10", "time": "12:00", "slug": "S Metrics", "summary": "Implement SQS CloudWatch metrics reporting for robotocore. Automatically publish\nqueue metrics (visible/inflight/delayed counts, message age, send/receive/delete\ncounters, empty receives, message size", "filename": "20260310-120000-sqs-metrics.md"}, {"date": "2026-03-10", "time": "15:00", "slug": "Ges Story Debranding", "summary": "Fix that our README (and maybe our code) shows  and\n. In the README this should show  though\nthe code should also recognize  for drop-in compatibility.", "filename": "20260310-150000-pages-story-debranding.md"}, {"date": "2026-03-10", "time": "15:00", "slug": " Eventbridge Replication Pr Merges", "summary": "Implement the following plan: S3 Event System \u2014 EventBridge Destination, Additional Event Types,\nReplication Engine. [Full plan provided covering 7 files and 5 implementation steps.]", "filename": "20260310-150000-s3-eventbridge-replication-pr-merges.md"}, {"date": "2026-03-10", "time": "15:39", "slug": "N Async Execution", "summary": "Implement StepFunctions async execution in robotocore. Currently StartExecution blocks synchronously; there's no background execution for Standard workflows.", "filename": "20260310-153916-sfn-async-execution.md"}, {"date": "2026-03-10", "time": "16:00", "slug": "X Rdsdata Flaky", "summary": "The  test in  was failing in CI because it called  against a non-existent RDS cluster. In parallel test execution, there's no guarantee another test creates the cluster first.", "filename": "20260310-160000-fix-rdsdata-flaky.md"}, {"date": "2026-03-10", "time": "17:00", "slug": "S Server", "summary": "Implement a built-in DNS server for robotocore that resolves  hostnames to the local container, eliminating the need for  in AWS SDKs. Use dnslib, support configurable patterns, upstream forwarding, a", "filename": "20260310-170000-dns-server.md"}, {"date": "2026-03-10", "time": "17:00", "slug": "Namodb Ttl", "summary": "Implement DynamoDB TTL (Time-to-Live) automatic item removal for robotocore. Background daemon thread that scans tables for expired TTL items.", "filename": "20260310-170000-dynamodb-ttl.md"}, {"date": "2026-03-10", "time": "18:00", "slug": "Mbda Limits", "summary": "Implement Lambda concurrency limits and container lifecycle controls for robotocore. Track concurrent executions per function and globally, validate code/payload sizes, support reserved and provisione", "filename": "20260310-180000-lambda-limits.md"}, {"date": "2026-03-10", "time": "20:00", "slug": "Local", "summary": "Implement  \u2014 a Terraform CLI wrapper that auto-configures Terraform to use robotocore endpoints. Requirements: bash and Python versions, auto-generate provider override files with all service endpoint", "filename": "20260310-200000-tflocal.md"}, {"date": "2026-03-10", "time": "20:00", "slug": "B Dashboard", "summary": "Implement a web dashboard for robotocore -- an interactive HTML/JS resource browser, chaos engineering UI, and audit viewer served from a management endpoint at /_robotocore/dashboard.", "filename": "20260310-200000-web-dashboard.md"}, {"date": "2026-03-11", "time": "04:00", "slug": "Er Extension", "summary": "Implement a Docker Desktop extension for robotocore -- a UI panel in Docker Desktop for managing local instances. Write tests first, then implement the extension structure (Dockerfile, compose, metada", "filename": "20260311-0400-docker-extension.md"}, {"date": "2026-03-11", "time": "05:19", "slug": "Dpoint Strategies", "summary": "Implement configurable endpoint strategies for SQS and OpenSearch in robotocore,\nmatching LocalStack's URL format options. SQS supports standard/domain/path/dynamic\nvia SQS_ENDPOINT_STRATEGY env var; ", "filename": "20260311-051905-endpoint-strategies.md"}, {"date": "2026-03-11", "time": "05:37", "slug": "Ate Hooks", "summary": "Implement per-service state lifecycle hooks for robotocore's state management. Hooks for before/after save, load, and reset.", "filename": "20260311-053716-state-hooks.md"}, {"date": "2026-03-11", "time": "05:46", "slug": "St Coverage Gaps", "summary": "Find test coverage gaps in robotocore's existing infrastructure features and fill them. Focus on: gateway app, router, state manager, chaos, audit log, resource browser,\nextensions, observability, IAM", "filename": "20260311-054600-test-coverage-gaps.md"}, {"date": "2026-03-11", "time": "05:49", "slug": "Ub Action", "summary": "Implemented a reusable GitHub Actions composite action that lets CI pipelines start a Robotocore container with one step.", "filename": "20260311-0549-github-action.md"}, {"date": "2026-03-11", "time": "05:49", "slug": "Milocal", "summary": "Implement  \u2014 a Pulumi CLI wrapper that auto-configures Pulumi to use robotocore endpoints. Create both bash and Python versions in .", "filename": "20260311-0549-pulumilocal.md"}, {"date": "2026-03-11", "time": "06:26", "slug": "Ide Deck", "summary": "Build and iterate on the slide deck generated by . Run\nwith  to capture Playwright screenshots, visually evaluate each slide,\nfix any contrast/readability issues, run unit tests, commit, and open a PR", "filename": "20260311-062630-slide-deck.md"}, {"date": "2026-03-11", "time": "07:00", "slug": "To Coverage Update", "summary": "Update moto dependency to include 64 new operations across 12 services implemented in the jackdanger/moto fork. Update stats and pages build.", "filename": "20260311-070000-moto-coverage-update.md"}];
 const PROVIDERS    = ["acm", "apigateway", "apigatewayv2", "appsync", "batch", "cloudformation", "cloudwatch", "cognito-idp", "config", "dynamodb", "dynamodbstreams", "ec2", "ecr", "ecs", "es", "events", "firehose", "iam", "kinesis", "lambda", "logs", "opensearch", "rekognition", "resource-groups", "resourcegroupstaggingapi", "route53", "s3", "scheduler", "secretsmanager", "ses", "sesv2", "sns", "sqs", "ssm", "stepfunctions", "sts", "support", "xray"];
 const TIER1        = [{"name": "Multi-Account Isolation", "icon": "\ud83c\udfe2", "detail": "Account-keyed stores across all providers", "bugs": 8, "tests": 71}, {"name": "Real Database Engines", "icon": "\ud83d\uddc4\ufe0f", "detail": "RDS with SQLite, ElastiCache with Redis-compat", "bugs": 8, "tests": 125}, {"name": "Lambda Hot Reload", "icon": "\u26a1", "detail": "Code caching, FS mounts, sys.modules isolation", "bugs": 7, "tests": 70}, {"name": "EKS Mock Kubernetes", "icon": "\u2638\ufe0f", "detail": "Full Starlette k8s API server, pods/services/deployments", "bugs": 12, "tests": 94}];
 const TIER24       = [{"name": "IoT Rule Engine", "tests": 82, "detail": "SQL parser, 9 action types"}, {"name": "Cognito Hosted UI", "tests": 53, "detail": "OAuth2/OIDC endpoints"}, {"name": "X-Ray Service Map", "tests": 56, "detail": "Trace correlation, anomaly detection"}, {"name": "CloudWatch Synthetics", "tests": 40, "detail": "Canary execution & scheduling"}, {"name": "CW Alarms \u2192 ASG", "tests": 29, "detail": "Scaling policy dispatch"}, {"name": "DDB Global Tables", "tests": 63, "detail": "State snapshots + replication"}];
-const TIMELINE_COMMITS = [{"date": "2026-03-05", "count": 16}, {"date": "2026-03-06", "count": 54}, {"date": "2026-03-07", "count": 142}, {"date": "2026-03-08", "count": 284}, {"date": "2026-03-09", "count": 237}, {"date": "2026-03-10", "count": 80}, {"date": "2026-03-11", "count": 45}];
+const TIMELINE_COMMITS = [{"date": "2026-03-05", "count": 16}, {"date": "2026-03-06", "count": 54}, {"date": "2026-03-07", "count": 142}, {"date": "2026-03-08", "count": 284}, {"date": "2026-03-09", "count": 237}, {"date": "2026-03-10", "count": 75}, {"date": "2026-03-11", "count": 4}];
 
 // --- Slide Engine ---
 const slides = Array.from(document.querySelectorAll('.slide'));
@@ -853,6 +1020,50 @@ document.addEventListener('keydown', e => {
   }
   frame();
 })();
+
+// --- Reusable particle canvas factory ---
+function initParticleCanvas(canvasId, count, speed, connectDist, opacity) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || canvas._initialized) return;
+  canvas._initialized = true;
+  const ctx = canvas.getContext('2d');
+  const colors = ['#1E6FBF','#E07B00','#6B3FA0','#007B8A','#2E86D4','#C9920B'];
+  let W, H, particles;
+  function resize() { W = canvas.width = canvas.offsetWidth; H = canvas.height = canvas.offsetHeight; }
+  window.addEventListener('resize', resize);
+  resize();
+  particles = Array.from({length: count}, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    vx: (Math.random() - 0.5) * speed, vy: (Math.random() - 0.5) * speed,
+    r: Math.random() * 3 + 1.5,
+    color: colors[Math.floor(Math.random() * colors.length)]
+  }));
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1;
+      if (p.y < 0 || p.y > H) p.vy *= -1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color; ctx.fill();
+    });
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < connectDist) {
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(30,111,191,${(1 - dist/connectDist) * opacity})`;
+          ctx.lineWidth = 1;
+          ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
 
 // --- Chart.js defaults ---
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -974,7 +1185,7 @@ function initBigStats() {
   const el = document.getElementById('big-stats');
   const stats = [
     { num: '147', label: 'AWS Services' },
-    { num: '16,641', label: 'Tests' },
+    { num: '18,201', label: 'Tests' },
     { num: '0', label: 'Failures' },
     { num: '38', label: 'Native Providers' },
   ];
@@ -1069,13 +1280,16 @@ function initTimeline() {
 // --- Slide enter dispatch ---
 function onSlideEnter(n) {
   if (n === 3)  initMotoChart();
+  if (n === 5)  initParticleCanvas('decision-canvas', 60, 0.5, 100, 0.25);
   if (n === 8)  initServiceCloud();
-  if (n === 11) initGrowthChart();
-  if (n === 12) initTier1Cards();
-  if (n === 13) initProvidersGrid();
-  if (n === 14) { initTier24Chart(); initTier24Details(); }
-  if (n === 15) initBigStats();
-  if (n === 18) initTimeline();
+  if (n === 13) initGrowthChart();
+  if (n === 14) initTier1Cards();
+  if (n === 15) initProvidersGrid();
+  if (n === 16) { initTier24Chart(); initTier24Details(); }
+  if (n === 17) initParticleCanvas('hours-canvas', 50, 0.4, 90, 0.2);
+  if (n === 18) initBigStats();
+  if (n === 21) initTimeline();
+  if (n === N - 1) initParticleCanvas('free-canvas', 60, 0.5, 110, 0.25);
 }
 
 // Init slide 0

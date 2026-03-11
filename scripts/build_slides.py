@@ -97,7 +97,7 @@ def get_test_milestones() -> list[dict]:
         {"label": "Quality gate", "date": "2026-03-08", "tests": 2874, "services": 138},
         {"label": "Enterprise", "date": "2026-03-09", "tests": 6383, "services": 143},
         {"label": "Hardening", "date": "2026-03-09", "tests": 11036, "services": 145},
-        {"label": "Tier 2-4", "date": "2026-03-10", "tests": 14538, "services": 147},
+        {"label": "Tier 2-4", "date": "2026-03-10", "tests": 18201, "services": 147},
     ]
 
 
@@ -416,16 +416,29 @@ blockquote {{
 <body>
 <div id="deck">
 
-  <!-- Slide 1: LocalStack blog post -->
-  <section class="slide slide-amber active" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
-    <div style="width:60%;max-width:700px;padding-top:60px;">
+  <!-- Slide 1: Hero -->
+  <section class="slide slide-hero active" id="s1">
+    <canvas id="hero-canvas"></canvas>
+    <div class="center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
+      <div class="logo-word anim-2">robotocore</div>
+      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
+      <div style="margin-top:32px;" class="anim-4">
+        <span class="days-badge glow">⏱ 4 days · 147 services · 18,201 tests · 0 failures</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 2: LocalStack blog post -->
+  <section class="slide slide-amber" id="s2">
+    <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
-      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
-      <blockquote class="anim-3" style="margin-top:32px;">
+      <h2 class="anim-2">LocalStack Changes the Rules</h2>
+      <blockquote class="anim-3" style="margin-top:32px;text-align:left;">
         "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
         <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
       </blockquote>
-      <blockquote class="anim-4">
+      <blockquote class="anim-4" style="text-align:left;">
         "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
         development and exploration."
       </blockquote>
@@ -435,20 +448,35 @@ blockquote {{
     </div>
   </section>
 
-  <!-- Slide 2: Hero -->
-  <section class="slide slide-hero" id="s2">
-    <canvas id="hero-canvas"></canvas>
-    <div class="center" style="position:relative;z-index:1;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
-      <div class="logo-word anim-2">robotocore</div>
-      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
-      <div style="margin-top:32px;" class="anim-4">
-        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
+  <!-- Slide 3: What it means -->
+  <section class="slide slide-blue" id="s3">
+    <div class="full-width center">
+      <div class="eyebrow anim-1" style="color:#2E86D4;">The Breaking Point</div>
+      <h2 class="anim-2">What "Account Required" Really Means</h2>
+      <div class="three-col anim-3" style="margin-top:36px;">
+        <div class="card card-accent">
+          <div style="font-size:2.5rem;margin-bottom:12px;">🔐</div>
+          <h3>Auth Tokens Required</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Every dev machine, every CI job needs a LocalStack account and token. Offline? Blocked.</p>
+        </div>
+        <div class="card card-blue">
+          <div style="font-size:2.5rem;margin-bottom:12px;">🚧</div>
+          <h3>Enterprise Features Paywalled</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Multi-account, chaos engineering, state snapshots — now Pro-only. The tools you need cost money.</p>
+        </div>
+        <div class="card card-teal">
+          <div style="font-size:2.5rem;margin-bottom:12px;">📉</div>
+          <h3>Community Edition Stagnates</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Free tier gets "experimental" label. Investment shifts to paid. Community left behind.</p>
+        </div>
       </div>
+      <p class="anim-4" style="margin-top:28px;opacity:0.65;font-size:1rem;">
+        We needed an alternative. A real one. Free forever, no strings.
+      </p>
     </div>
   </section>
 
-  <!-- Slide 3: Moto history -->
+  <!-- Slide 4: Moto history -->
   <section class="slide slide-blue" id="s4">
     <div class="full-width">
       <div class="center">
@@ -541,6 +569,7 @@ boto==<span class="str">2.38.0</span>
 
   <!-- Slide 6: The Decision -->
   <section class="slide slide-hero" id="s6">
+    <canvas id="decision-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.2;"></canvas>
     <div class="center" style="position:relative;z-index:1;">
       <div class="eyebrow anim-1" style="color:#E07B00;">Day Zero · March 6, 2026 · 3:56 AM</div>
       <h1 class="anim-2">What if we<br><span class="grad-amber">owned the stack?</span></h1>
@@ -708,28 +737,129 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 11: Quality fix -->
-  <section class="slide slide-data" id="s11">
+  <!-- Slide 11: The first fix failed -->
+  <section class="slide slide-amber" id="s11">
+    <div class="full-width center">
+      <div class="eyebrow anim-1" style="color:#E07B00;">Day 2 · The Wrong Answer</div>
+      <h2 class="anim-2">We Tried Telling Agents to Do Better</h2>
+      <div class="two-col anim-3" style="margin-top:32px;max-width:900px;align-items:start;">
+        <div class="card card-accent">
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:16px;color:#E07B00;">What we tried</div>
+          <div class="prompt-card" style="margin-bottom:12px;">
+            <div class="prompt-meta">Attempt 1</div>
+            "Make sure every test actually contacts the server."
+          </div>
+          <div class="prompt-card" style="margin-bottom:12px;">
+            <div class="prompt-meta">Attempt 2</div>
+            "Don't catch ParamValidationError — that's client-side validation."
+          </div>
+          <div class="prompt-card">
+            <div class="prompt-meta">Attempt 3</div>
+            "Follow these three test patterns only: Create→use→cleanup, Fake-ID→assert-exception, List→assert-key."
+          </div>
+        </div>
+        <div class="card card-blue" style="display:flex;flex-direction:column;gap:16px;">
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:4px;color:#1E6FBF;">What happened</div>
+          <div style="padding:16px;background:rgba(224,123,0,0.06);border-radius:10px;border:1px solid rgba(224,123,0,0.2);">
+            <div style="font-size:2rem;font-weight:900;color:#E07B00;margin-bottom:4px;">~60%</div>
+            <div style="font-size:0.85rem;opacity:0.7;">of newly generated tests<br>still never contacted the server</div>
+          </div>
+          <p style="font-size:0.9rem;opacity:0.7;line-height:1.6;">
+            Agents are stateless. Every new session forgets the instructions. Careful prompting doesn't compound — it evaporates.
+          </p>
+          <p style="font-size:0.95rem;font-weight:600;color:#1E6FBF;">
+            The fix wasn't a better prompt.<br>It was a better system.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 12: The feedback loop breakthrough -->
+  <section class="slide slide-blue" id="s12">
+    <div style="text-align:center;max-width:1000px;width:100%">
+      <div class="eyebrow anim-1" style="color:var(--blue2)">The Breakthrough</div>
+      <h2 class="anim-2">The Problem Wasn't the Agents</h2>
+      <div class="two-col anim-3" style="margin-top:36px;align-items:start;gap:56px">
+        <div>
+          <div style="background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.2);border-radius:12px;padding:20px 24px;margin-bottom:20px">
+            <div style="font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--amber);margin-bottom:10px">What I tried first</div>
+            <p style="font-size:1rem;line-height:1.7;color:var(--muted)">
+              Wrote longer prompts. Added more rules. Told agents to "write better tests."
+              Added examples of good tests. Added examples of bad tests.
+            </p>
+            <p style="font-size:1rem;line-height:1.7;margin-top:10px;color:var(--muted)">
+              Two hours of agents. Zero commits. 523 lines of valid code sitting
+              on disk, blocked by a verification pipeline that nothing could pass.
+            </p>
+          </div>
+          <div style="background:rgba(0,123,138,0.08);border:1px solid rgba(0,123,138,0.2);border-radius:12px;padding:20px 24px">
+            <div style="font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:10px">The actual problem</div>
+            <p style="font-size:1rem;line-height:1.7;color:var(--dark)">
+              Agents had <strong>no signal</strong>. No way to know if what they wrote was any good.
+              They'd write a test, it would "pass" (client-side validation, never touching the server),
+              and they had no tool that would tell them it was worthless.
+            </p>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);margin-bottom:16px">The fix: give agents a measuring stick</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(30,111,191,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">1</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--blue)">probe_service.py</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Run the operation against the server first. Know it works before writing the test.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(107,63,160,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">2</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--purple)">Run the test immediately</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Every test run RIGHT after it's written. Fail → rewrite or delete. Never batch and hope.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(0,123,138,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">3</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--teal)">validate_test_quality.py</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">A script that measures server-contact rate. Agents can run it themselves and see the score.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(224,123,0,0.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">✓</div>
+              <div>
+                <div style="font-weight:700;font-size:0.95rem;color:var(--amber)">4% → 99.5% contact rate</div>
+                <div style="font-size:0.85rem;opacity:0.65;margin-top:2px;line-height:1.5">Not from better prompts. From building the tool that makes "did this work?" a question agents can answer themselves.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 12: Quality fix -->
+  <section class="slide slide-data" id="s13">
     <div class="full-width">
       <div class="center">
-        <div class="eyebrow anim-1">The Fix</div>
-        <h2 class="anim-2">Quality-First Test Engineering</h2>
+        <div class="eyebrow anim-1">The Real Fix</div>
+        <h2 class="anim-2">Build Agents a Feedback Loop</h2>
       </div>
       <div class="three-col anim-3" style="margin-top:32px;">
         <div class="card card-blue">
-          <div style="font-size:2rem;margin-bottom:12px;">🚦</div>
-          <h3>CI Gate</h3>
+          <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
+          <h3>Immediate Feedback</h3>
           <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">validate_test_quality.py</code>
-            blocks merge if &gt;5% of tests don't contact the server.
+            Every test runs right after being written. Pass → keep it. Fail → fix it or delete it. No batching, no hoping it works later.
           </p>
         </div>
         <div class="card card-accent">
-          <div style="font-size:2rem;margin-bottom:12px;">📐</div>
-          <h3>Three Valid Patterns Only</h3>
+          <div style="font-size:2rem;margin-bottom:12px;">🚦</div>
+          <h3>CI Enforces the Rules</h3>
           <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            Create→use→cleanup · Fake-ID→assert-exception · List→assert-key.
-            Every test must assert on a response field.
+            <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">validate_test_quality.py</code>
+            blocks merge if &gt;5% of tests don't contact the server. The gate is automated — not a reminder.
           </p>
         </div>
         <div class="card card-teal">
@@ -737,25 +867,24 @@ boto==<span class="str">2.38.0</span>
           <h3>Probe Before Test</h3>
           <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
             Run <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">probe_service.py</code>
-            first. Only write tests for operations that actually work. Fix gaps first.
+            first. Only write tests for operations that actually work. Fix gaps first, then test.
           </p>
         </div>
       </div>
-      <div class="anim-4" style="display:flex;gap:24px;justify-content:center;margin-top:32px;">
-        <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#E07B00;">16,641</div>
-          <div class="mini-stat-label">Final test count</div>
-        </div>
-        <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#007B8A;">99.5%</div>
-          <div class="mini-stat-label">Server contact rate</div>
+      <div class="three-col anim-4" style="margin-top:16px;">
+        <div class="card card-accent">
+          <div style="font-size:2rem;margin-bottom:12px;">📐</div>
+          <h3>Three Patterns That Work</h3>
+          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
+            Make a resource, use it, clean up. Or ask for a fake ID and assert on the error. Or just list things and check a field exists. Every test must actually assert something.
+          </p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Slide 12: Growth chart -->
-  <section class="slide slide-data" id="s12">
+  <section class="slide slide-data" id="s14">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">96 Hours of Progress</div>
@@ -768,7 +897,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 13: Tier 1 -->
-  <section class="slide slide-purple" id="s13">
+  <section class="slide slide-purple" id="s15">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#6B3FA0;">Day 3 · March 9 · Enterprise</div>
@@ -779,7 +908,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 14: Native providers -->
-  <section class="slide slide-blue" id="s14">
+  <section class="slide slide-blue" id="s16">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">Technical Deep Dive</div>
@@ -813,7 +942,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 15: Tier 2-4 -->
-  <section class="slide slide-blue" id="s15">
+  <section class="slide slide-blue" id="s17">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#007B8A;">Day 4 · March 10</div>
@@ -826,8 +955,40 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 16: Numbers -->
-  <section class="slide slide-hero" id="s16">
+  <!-- Slide 18: Human hours comparison -->
+  <section class="slide slide-amber" id="s18">
+    <canvas id="hours-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.15;"></canvas>
+    <div class="full-width center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">The Claude Code Multiplier</div>
+      <h2 class="anim-2">What Would This Have Taken?</h2>
+      <div class="three-col anim-3" style="margin-top:32px;max-width:1000px;">
+        <div class="card card-blue" style="text-align:center;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">Without Claude Code</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#1E6FBF;line-height:1;">~3–5</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">years</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 engineer, full-time.<br>5,000–8,000 dev-hours.</div>
+        </div>
+        <div class="card card-purple" style="text-align:center;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">With a team of 5</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#6B3FA0;line-height:1;">~6</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">months</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">Sprint planning, code review,<br>merge conflicts, coordination.</div>
+        </div>
+        <div class="card card-accent" style="text-align:center;border-top-color:#007B8A;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">What actually happened</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#007B8A;line-height:1;">96</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">hours</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 human. 89 sessions.<br>832 commits. 18,201 tests.</div>
+        </div>
+      </div>
+      <p class="anim-4" style="margin-top:28px;font-size:1rem;opacity:0.65;max-width:600px;">
+        The multiplier isn't just speed. It's the ability to hold the whole system in mind while executing every detail simultaneously.
+      </p>
+    </div>
+  </section>
+
+  <!-- Slide 19: Numbers -->
+  <section class="slide slide-hero" id="s19">
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Final Numbers</div>
       <h2 class="anim-2">A Complete AWS Emulator</h2>
@@ -842,7 +1003,7 @@ boto==<span class="str">2.38.0</span>
           <div class="mini-stat-label">source files</div>
         </div>
         <div class="mini-stat-box">
-          <div class="mini-stat-num">~700</div>
+          <div class="mini-stat-num">832</div>
           <div class="mini-stat-label">commits</div>
         </div>
         <div class="mini-stat-box">
@@ -854,7 +1015,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 17: Comparison -->
-  <section class="slide slide-blue" id="s17">
+  <section class="slide slide-blue" id="s20">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#007B8A;">Comparison</div>
@@ -889,7 +1050,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 18: Beyond AWS -->
-  <section class="slide slide-data" id="s18">
+  <section class="slide slide-data" id="s21">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1">Observability &amp; Operations</div>
@@ -931,7 +1092,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 19: 96-hour timeline -->
-  <section class="slide slide-hero" id="s19">
+  <section class="slide slide-hero" id="s22">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#E07B00;">The Full Story</div>
@@ -942,7 +1103,7 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 20: Built with Claude Code -->
-  <section class="slide slide-blue" id="s20">
+  <section class="slide slide-blue" id="s23">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">Meta</div>
@@ -961,18 +1122,21 @@ boto==<span class="str">2.38.0</span>
             slide deck HTML file for the Robotocore story."
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:16px;">
-          <div class="card-light card-blue" style="text-align:center;">
-            <div style="font-size:2.5rem;font-weight:900;color:#1E6FBF;">89</div>
-            <div style="font-size:0.85rem;opacity:0.65;margin-top:6px;">Claude Code sessions</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;gap:12px;">
+            <div class="card-light card-blue" style="text-align:center;flex:1;padding:16px;">
+              <div style="font-size:2rem;font-weight:900;color:#1E6FBF;">89</div>
+              <div style="font-size:0.75rem;opacity:0.65;margin-top:4px;">Claude Code sessions</div>
+            </div>
+            <div class="card-light card-accent" style="text-align:center;flex:1;padding:16px;">
+              <div style="font-size:2rem;font-weight:900;color:#E07B00;">100s</div>
+              <div style="font-size:0.75rem;opacity:0.65;margin-top:4px;">subagents spawned</div>
+            </div>
           </div>
-          <div class="card-light card-accent" style="text-align:center;">
-            <div style="font-size:2.5rem;font-weight:900;color:#E07B00;">100s</div>
-            <div style="font-size:0.85rem;opacity:0.65;margin-top:6px;">subagents spawned</div>
-          </div>
-          <div class="card-light card-teal" style="text-align:center;">
-            <div style="font-size:2.5rem;font-weight:900;color:#007B8A;">All of them</div>
-            <div style="font-size:0.85rem;opacity:0.65;margin-top:6px;">human decisions</div>
+          <div class="card" style="text-align:center;padding:28px;border-top:4px solid #007B8A;background:rgba(0,123,138,0.04);">
+            <div style="font-size:clamp(2.5rem,5vw,4rem);font-weight:900;background:linear-gradient(135deg,#007B8A,#1E6FBF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1.1;">All of them</div>
+            <div style="font-size:1rem;opacity:0.65;margin-top:8px;font-weight:500;">human decisions</div>
+            <div style="font-size:0.82rem;opacity:0.5;margin-top:8px;line-height:1.5;">Every architecture choice, every priority call,<br>every "yes this is good enough" — made by a human.</div>
           </div>
         </div>
       </div>
@@ -980,20 +1144,21 @@ boto==<span class="str">2.38.0</span>
   </section>
 
   <!-- Slide 21: Get Started -->
-  <section class="slide slide-hero" id="s21">
+  <section class="slide slide-hero" id="s24">
+    <canvas id="free-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.2;"></canvas>
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">Open Source · MIT License</div>
       <h1 class="anim-2">Free.<br><span class="grad-amber">Forever.</span></h1>
       <div class="two-col anim-3" style="margin-top:28px;max-width:900px;">
-        <div class="code-block" style="font-size:0.85rem;">
+        <div class="code-block" style="font-size:0.82rem;white-space:pre-wrap;overflow-wrap:break-word;">
 <span class="cm"># One command to start</span>
-<span class="kw">docker</span> run <span class="str">-p 4566:4566</span> \
+<span class="kw">docker</span> run -p <span class="str">4566:4566</span>
   ghcr.io/robotocore/robotocore:<span class="str">latest</span>
         </div>
-        <div class="code-block" style="font-size:0.85rem;">
+        <div class="code-block" style="font-size:0.82rem;white-space:pre-wrap;overflow-wrap:break-word;">
 <span class="cm"># Drop-in replacement</span>
-<span class="kw">aws</span> s3 ls \
-  <span class="str">--endpoint-url</span> http://localhost:4566
+<span class="kw">aws</span> s3 ls
+  --endpoint-url <span class="str">http://localhost:4566</span>
         </div>
       </div>
       <div class="anim-4" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px;">
@@ -1007,8 +1172,8 @@ boto==<span class="str">2.38.0</span>
 
 </div>
 
-<div id="progress" style="width:4.76%;"></div>
-<div id="slide-counter">1 / 21</div>
+<div id="progress" style="width:4.17%;"></div>
+<div id="slide-counter">1 / 24</div>
 <div id="kb-hint">← → SPACE to navigate</div>
 
 <script>
@@ -1106,6 +1271,50 @@ document.addEventListener('keydown', e => {{
   }}
   frame();
 }})();
+
+// --- Reusable particle canvas factory ---
+function initParticleCanvas(canvasId, count, speed, connectDist, opacity) {{
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || canvas._initialized) return;
+  canvas._initialized = true;
+  const ctx = canvas.getContext('2d');
+  const colors = ['#1E6FBF','#E07B00','#6B3FA0','#007B8A','#2E86D4','#C9920B'];
+  let W, H, particles;
+  function resize() {{ W = canvas.width = canvas.offsetWidth; H = canvas.height = canvas.offsetHeight; }}
+  window.addEventListener('resize', resize);
+  resize();
+  particles = Array.from({{length: count}}, () => ({{
+    x: Math.random() * W, y: Math.random() * H,
+    vx: (Math.random() - 0.5) * speed, vy: (Math.random() - 0.5) * speed,
+    r: Math.random() * 3 + 1.5,
+    color: colors[Math.floor(Math.random() * colors.length)]
+  }}));
+  function frame() {{
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => {{
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1;
+      if (p.y < 0 || p.y > H) p.vy *= -1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color; ctx.fill();
+    }});
+    for (let i = 0; i < particles.length; i++) {{
+      for (let j = i + 1; j < particles.length; j++) {{
+        const dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < connectDist) {{
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(30,111,191,${{(1 - dist/connectDist) * opacity}})`;
+          ctx.lineWidth = 1;
+          ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.stroke();
+        }}
+      }}
+    }}
+    requestAnimationFrame(frame);
+  }}
+  frame();
+}}
 
 // --- Chart.js defaults ---
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -1227,7 +1436,7 @@ function initBigStats() {{
   const el = document.getElementById('big-stats');
   const stats = [
     {{ num: '147', label: 'AWS Services' }},
-    {{ num: '16,641', label: 'Tests' }},
+    {{ num: '18,201', label: 'Tests' }},
     {{ num: '0', label: 'Failures' }},
     {{ num: '38', label: 'Native Providers' }},
   ];
@@ -1322,13 +1531,16 @@ function initTimeline() {{
 // --- Slide enter dispatch ---
 function onSlideEnter(n) {{
   if (n === 3)  initMotoChart();
+  if (n === 5)  initParticleCanvas('decision-canvas', 60, 0.5, 100, 0.25);
   if (n === 8)  initServiceCloud();
-  if (n === 11) initGrowthChart();
-  if (n === 12) initTier1Cards();
-  if (n === 13) initProvidersGrid();
-  if (n === 14) {{ initTier24Chart(); initTier24Details(); }}
-  if (n === 15) initBigStats();
-  if (n === 18) initTimeline();
+  if (n === 13) initGrowthChart();
+  if (n === 14) initTier1Cards();
+  if (n === 15) initProvidersGrid();
+  if (n === 16) {{ initTier24Chart(); initTier24Details(); }}
+  if (n === 17) initParticleCanvas('hours-canvas', 50, 0.4, 90, 0.2);
+  if (n === 18) initBigStats();
+  if (n === 21) initTimeline();
+  if (n === N - 1) initParticleCanvas('free-canvas', 60, 0.5, 110, 0.25);
 }}
 
 // Init slide 0
