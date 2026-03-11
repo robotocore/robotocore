@@ -2,18 +2,16 @@
 
 import json
 
-from robotocore.init.tracker import get_init_tracker
+import robotocore.init.tracker as tracker_mod
 
 
 class TestInitTrackerIntegration:
     def setup_method(self):
         """Reset global tracker for each test."""
-        import robotocore.init.tracker as mod
-
-        mod._tracker = None
+        tracker_mod._tracker = None
 
     def test_execute_scripts_then_get_init_summary(self):
-        tracker = get_init_tracker()
+        tracker = tracker_mod.get_init_tracker()
         tracker.record_start("01-setup.sh", "boot")
         tracker.record_complete("01-setup.sh", "boot", duration=0.5)
         tracker.record_start("02-db.sh", "boot")
@@ -29,7 +27,7 @@ class TestInitTrackerIntegration:
         assert summary["stages"]["ready"]["completed"] == 1
 
     def test_get_init_stage_ready_scripts(self):
-        tracker = get_init_tracker()
+        tracker = tracker_mod.get_init_tracker()
         tracker.record_start("warmup.sh", "ready")
         tracker.record_complete("warmup.sh", "ready", duration=0.3)
         tracker.record_start("notify.sh", "ready")
@@ -42,7 +40,7 @@ class TestInitTrackerIntegration:
 
     def test_management_endpoint_json_structure(self):
         """Verify the JSON structure matches what the endpoint should return."""
-        tracker = get_init_tracker()
+        tracker = tracker_mod.get_init_tracker()
         tracker.record_start("a.sh", "boot")
         tracker.record_complete("a.sh", "boot", duration=0.1)
 

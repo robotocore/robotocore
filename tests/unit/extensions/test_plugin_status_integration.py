@@ -2,8 +2,8 @@
 
 import json
 
+import robotocore.extensions.plugin_status as plugin_status_mod
 from robotocore.extensions.base import RobotocorePlugin
-from robotocore.extensions.plugin_status import get_plugin_status_collector
 
 
 class _SamplePlugin(RobotocorePlugin):
@@ -20,12 +20,10 @@ class _SamplePlugin(RobotocorePlugin):
 
 class TestPluginStatusIntegration:
     def setup_method(self):
-        import robotocore.extensions.plugin_status as mod
-
-        mod._collector = None
+        plugin_status_mod._collector = None
 
     def test_register_plugin_then_list(self):
-        collector = get_plugin_status_collector()
+        collector = plugin_status_mod.get_plugin_status_collector()
         plugin = _SamplePlugin()
         collector.record_loaded(plugin, source="entrypoint", load_time=0.02)
 
@@ -37,7 +35,7 @@ class TestPluginStatusIntegration:
         assert plugins[0]["state"] == "active"
 
     def test_management_endpoint_json_structure(self):
-        collector = get_plugin_status_collector()
+        collector = plugin_status_mod.get_plugin_status_collector()
         plugin = _SamplePlugin()
         collector.record_loaded(plugin, source="directory", load_time=0.05)
 
