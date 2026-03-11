@@ -10,6 +10,7 @@ Usage:
     GET /_robotocore/diagnose?section=config,services  — specific sections only
 """
 
+import logging
 import os
 import platform
 import resource
@@ -21,6 +22,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from robotocore import __version__
+
+logger = logging.getLogger(__name__)
 
 # Known env var prefixes/names to include in config section
 _CONFIG_PREFIXES = ("ROBOTOCORE_", "LAMBDA_", "SQS_", "DYNAMODB_", "DNS_", "SMTP_", "SNAPSHOT_")
@@ -196,7 +199,7 @@ def _collect_memory() -> dict:
                     rss_bytes = int(line.split()[1]) * 1024
                     break
     except (FileNotFoundError, PermissionError):
-        pass
+        logger.debug("Could not read /proc/self/status for RSS; falling back to resource.getrusage")
 
     # VMS from /proc or fallback
     vms_bytes = 0
