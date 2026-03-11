@@ -28,6 +28,8 @@ def _matches_filter_value(rule, actual_value: str) -> bool:
     if isinstance(rule, dict):
         if "prefix" in rule:
             return actual_value.startswith(rule["prefix"])
+        if "suffix" in rule:
+            return actual_value.endswith(rule["suffix"])
         if "numeric" in rule:
             return _check_numeric(rule["numeric"], actual_value)
         if "exists" in rule:
@@ -130,6 +132,41 @@ def _matches_filter_policy(filter_policy: dict, message_attributes: dict) -> boo
     return True
 
 
+def _matches_filter_policy_on_body(filter_policy: dict, body: dict) -> bool:
+    """Evaluate a filter policy against the message body (when FilterPolicyScope=MessageBody).
+
+    The body is a plain dict, not message attributes with DataType/StringValue wrappers.
+    Each key in the policy must match the corresponding key in the body.
+    """
+    for key, rules in filter_policy.items():
+        if not isinstance(rules, list):
+            rules = [rules]
+
+        has_exists_false = any(isinstance(r, dict) and r.get("exists") is False for r in rules)
+
+        if key not in body:
+            if has_exists_false:
+                continue
+            return False
+
+        value = body[key]
+        # Convert body value to string for matching (consistent with filter value matching)
+        str_value = str(value) if not isinstance(value, str) else value
+
+        matched = False
+        for rule in rules:
+            if isinstance(rule, dict) and rule.get("exists") is False:
+                continue
+            if _matches_filter_value(rule, str_value):
+                matched = True
+                break
+
+        if not matched:
+            return False
+
+    return True
+
+
 @dataclass
 class SnsSubscription:
     subscription_arn: str
@@ -143,9 +180,19 @@ class SnsSubscription:
     filter_policy_scope: str = "MessageAttributes"
     attributes: dict = field(default_factory=dict)
 
-    def matches_filter(self, message_attributes: dict) -> bool:
+    def matches_filter(self, message_attributes: dict, message_body: str | None = None) -> bool:
         if not self.filter_policy:
             return True
+        if self.filter_policy_scope == "MessageBody":
+            # Apply filter to parsed message body instead of message attributes
+            if message_body is None:
+                # When scope is MessageBody but no body provided, skip attribute filtering
+                return True
+            try:
+                body_dict = json.loads(message_body)
+            except (json.JSONDecodeError, TypeError):
+                return False
+            return _matches_filter_policy_on_body(self.filter_policy, body_dict)
         return _matches_filter_policy(self.filter_policy, message_attributes)
 
 
@@ -235,7 +282,11 @@ class SnsStore:
         arn = f"arn:aws:sns:{region}:{account_id}:{name}"
         with self.mutex:
             if arn in self.topics:
-                return self.topics[arn]
+                # If attributes are provided and differ, update them (AWS behavior)
+                existing = self.topics[arn]
+                if attributes:
+                    existing.attributes.update(attributes)
+                return existing
             topic = SnsTopic(
                 arn=arn,
                 name=name,

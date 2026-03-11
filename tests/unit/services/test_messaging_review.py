@@ -255,7 +255,7 @@ class TestSnsMessageStructure:
         topic = sns_store.create_topic("test-topic", "us-east-1", "123456789012")
 
         # Create an SQS queue
-        sqs_store.create_queue("test-queue")
+        sqs_store.create_queue("test-queue", "us-east-1", "123456789012")
 
         # Subscribe with SQS protocol
         sub = sns_store.subscribe(
@@ -292,8 +292,9 @@ class TestSnsMessageStructure:
         queue = sqs_store.get_queue("test-queue")
         msg = queue.receive(max_messages=1)
         assert len(msg) == 1
+        # receive() returns list of (SqsMessage, receipt_handle) tuples
         # With raw delivery, the body should be the protocol-specific message
-        assert msg[0].body == "sqs-specific message"
+        assert msg[0][0].body == "sqs-specific message"
 
 
 # =============================================================================
@@ -312,7 +313,7 @@ class TestSnsRawMessageDelivery:
         sqs_store = SqsStore()
 
         topic = sns_store.create_topic("test-topic", "us-east-1", "123456789012")
-        sqs_store.create_queue("raw-queue")
+        sqs_store.create_queue("raw-queue", "us-east-1", "123456789012")
 
         sub = sns_store.subscribe(
             topic.arn,
@@ -338,8 +339,9 @@ class TestSnsRawMessageDelivery:
         queue = sqs_store.get_queue("raw-queue")
         msgs = queue.receive(max_messages=1)
         assert len(msgs) == 1
+        # receive() returns list of (SqsMessage, receipt_handle) tuples
         # Raw delivery: body should be exactly the original message
-        assert msgs[0].body == original_message
+        assert msgs[0][0].body == original_message
 
 
 # =============================================================================
