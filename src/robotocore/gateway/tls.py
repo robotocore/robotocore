@@ -28,11 +28,12 @@ DEFAULT_HTTPS_PORT = 443
 CERT_VALIDITY_DAYS = 365
 RSA_KEY_SIZE = 2048
 
-# SANs for self-signed cert
+# SANs for self-signed cert (robotocore.cloud is primary, localstack.cloud kept for backward compat)
 DEFAULT_SANS = [
     "localhost",
     "*.localhost",
     "*.amazonaws.com",
+    "*.localhost.robotocore.cloud",
     "*.localhost.localstack.cloud",
 ]
 

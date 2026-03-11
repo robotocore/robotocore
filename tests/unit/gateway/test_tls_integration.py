@@ -66,6 +66,8 @@ class TestTLSInfoEndpoint:
         assert data["enabled"] is True
         assert "Robotocore Local CA" in data["certificate"]["subject"]
         assert "localhost" in data["certificate"]["sans"]
+        assert "*.localhost.robotocore.cloud" in data["certificate"]["sans"]
+        assert "*.localhost.localstack.cloud" in data["certificate"]["sans"]
         assert data["custom_certificate"] is False
 
     def test_tls_info_disabled(self) -> None:
