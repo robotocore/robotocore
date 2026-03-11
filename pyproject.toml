@@ -33,6 +33,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-multipart>=0.0.6",
     "aiosmtpd>=1.4",
+    "dnslib>=0.9",
 ]
 
 [project.optional-dependencies]

@@ -18,6 +18,11 @@ def main() -> None:
     run_init_hooks("boot")
     print_banner(host=host, port=port)
 
+    # Start built-in DNS server (resolves *.amazonaws.com locally)
+    from robotocore.dns.server import start_dns_server
+
+    start_dns_server()
+
     uvicorn.run(
         "robotocore.gateway.app:app",
         host=host,
