@@ -253,10 +253,14 @@ class TestCodeCacheMemoryManagement:
         dirs = []
         for i in range(60):
             d = cache.get_or_extract(f"evict-fn-{i}", make_zip({"h.py": f"x={i}\n"}))
+            # Release ref so eviction can clean up the directory
+            cache.release_ref(d)
             dirs.append(d)
 
         assert len(cache) == 50
-        # First 10 should be evicted (dirs removed)
+        # First 10 should be evicted from cache (dirs deferred for cleanup)
+        # Explicitly clean up evicted dirs
+        cache.cleanup_evicted()
         for d in dirs[:10]:
             assert not os.path.isdir(d)
         # Rest should be present
@@ -270,11 +274,14 @@ class TestCodeCacheMemoryManagement:
         cache = CodeCache(max_size=5)
         code0 = make_zip({"handler.py": "def handler(e,c): return 'zero'\n"})
         dir0 = cache.get_or_extract("evict-re-0", code0)
+        cache.release_ref(dir0)
 
         # Fill cache to evict func 0
         for i in range(1, 6):
-            cache.get_or_extract(f"evict-re-{i}", make_zip({"h.py": f"x={i}\n"}))
+            d = cache.get_or_extract(f"evict-re-{i}", make_zip({"h.py": f"x={i}\n"}))
+            cache.release_ref(d)
 
+        cache.cleanup_evicted()
         assert not os.path.isdir(dir0)
 
         # Re-extract func 0 -- should work
@@ -929,7 +936,7 @@ class TestLambdaContext:
         )
         assert ctx.function_name == "my-fn"
         assert ctx.function_version == "$LATEST"
-        assert ctx.memory_limit_in_mb == 256
+        assert ctx.memory_limit_in_mb == "256"
         assert len(ctx.aws_request_id) > 0
 
     def test_context_passed_to_handler(self):
@@ -951,7 +958,7 @@ class TestLambdaContext:
         )
         assert err is None
         assert result["fn"] == "ctx-fn"
-        assert result["mem"] == 512
+        assert result["mem"] == "512"
         get_code_cache().invalidate("ctx-fn")
 
 

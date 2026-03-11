@@ -1,4 +1,4 @@
-"""Lambda function executor — runs Python Lambda code in-process.
+"""Lambda function executor --- runs Python Lambda code in-process.
 
 For Python runtimes, executes the handler function directly without Docker.
 For other runtimes, falls back to Moto's Docker-based execution.
@@ -7,6 +7,7 @@ Includes a CodeCache that avoids re-extracting zips on every invocation.
 """
 
 import base64
+import ctypes
 import hashlib
 import importlib.util
 import io
@@ -24,6 +25,133 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+# Locks for thread-safe access to global mutable state
+_env_lock = threading.Lock()
+_path_lock = threading.Lock()
+
+# Thread-local storage for per-invocation environment variables
+_thread_local = threading.local()
+
+
+class _ThreadLocalEnviron:
+    """A proxy around os.environ that supports per-thread overrides.
+
+    When a thread has set a thread-local environment (via _thread_local.env),
+    all reads go to that thread-local dict. Otherwise, reads fall through to
+    the real os.environ.
+    """
+
+    def __init__(self, real_environ: os._Environ) -> None:
+        # Store in object __dict__ directly to avoid __setattr__ issues
+        object.__setattr__(self, "_real", real_environ)
+
+    def _get_local(self) -> dict | None:
+        return getattr(_thread_local, "env", None)
+
+    def __getitem__(self, key: str) -> str:
+        local = self._get_local()
+        if local is not None:
+            return local[key]
+        return self._real[key]
+
+    def __setitem__(self, key: str, value: str) -> None:
+        local = self._get_local()
+        if local is not None:
+            local[key] = value
+        else:
+            self._real[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        local = self._get_local()
+        if local is not None:
+            del local[key]
+        else:
+            del self._real[key]
+
+    def __contains__(self, key: object) -> bool:
+        local = self._get_local()
+        if local is not None:
+            return key in local
+        return key in self._real
+
+    def __iter__(self):
+        local = self._get_local()
+        if local is not None:
+            return iter(local)
+        return iter(self._real)
+
+    def __len__(self) -> int:
+        local = self._get_local()
+        if local is not None:
+            return len(local)
+        return len(self._real)
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        local = self._get_local()
+        if local is not None:
+            return local.get(key, default)
+        return self._real.get(key, default)
+
+    def keys(self):
+        local = self._get_local()
+        if local is not None:
+            return local.keys()
+        return self._real.keys()
+
+    def values(self):
+        local = self._get_local()
+        if local is not None:
+            return local.values()
+        return self._real.values()
+
+    def items(self):
+        local = self._get_local()
+        if local is not None:
+            return local.items()
+        return self._real.items()
+
+    def copy(self) -> dict:
+        local = self._get_local()
+        if local is not None:
+            return dict(local)
+        return dict(self._real)
+
+    def update(self, *args, **kwargs) -> None:
+        local = self._get_local()
+        if local is not None:
+            local.update(*args, **kwargs)
+        else:
+            self._real.update(*args, **kwargs)
+
+    def clear(self) -> None:
+        local = self._get_local()
+        if local is not None:
+            local.clear()
+        else:
+            self._real.clear()
+
+    def pop(self, key: str, *args):
+        local = self._get_local()
+        if local is not None:
+            return local.pop(key, *args)
+        return self._real.pop(key, *args)
+
+    def __repr__(self) -> str:
+        local = self._get_local()
+        if local is not None:
+            return f"_ThreadLocalEnviron(thread-local, {len(local)} vars)"
+        return repr(self._real)
+
+
+def _install_thread_local_environ() -> None:
+    """Install the thread-local environ proxy if not already installed."""
+    if not isinstance(os.environ, _ThreadLocalEnviron):
+        os.environ = _ThreadLocalEnviron(os.environ)  # type: ignore[assignment]
+
+
+# Install on module load
+_install_thread_local_environ()
 
 
 def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
@@ -75,13 +203,54 @@ class CodeCache:
 
     Maps (function_name, code_sha256) to an extracted temp directory.
     Uses LRU eviction when the cache exceeds max_size entries.
-    Thread-safe.
+    Thread-safe. Entries with active references are not evicted.
     """
 
     def __init__(self, max_size: int = 50) -> None:
         self._max_size = max_size
         self._cache: OrderedDict[tuple[str, str], str] = OrderedDict()
         self._lock = threading.Lock()
+        # Reference counts: how many threads are currently using each path
+        self._refcounts: dict[str, int] = {}
+        # Directories deferred from cleanup because they were in use during eviction
+        self._pending_cleanup: set[str] = set()
+
+    def acquire_ref(self, path: str) -> None:
+        """Increment the reference count for a cache directory."""
+        with self._lock:
+            self._refcounts[path] = self._refcounts.get(path, 0) + 1
+
+    def release_ref(self, path: str) -> None:
+        """Decrement the reference count for a cache directory."""
+        to_cleanup = []
+        with self._lock:
+            count = self._refcounts.get(path, 0)
+            if count <= 1:
+                self._refcounts.pop(path, None)
+                # If this path was pending cleanup and now has no refs, clean it up
+                if path in self._pending_cleanup:
+                    self._pending_cleanup.discard(path)
+                    to_cleanup.append(path)
+            else:
+                self._refcounts[path] = count - 1
+        # Delete outside the lock to avoid blocking
+        for p in to_cleanup:
+            shutil.rmtree(p, ignore_errors=True)
+
+    def cleanup_evicted(self) -> None:
+        """Clean up evicted directories that are no longer referenced.
+
+        Directories deferred during eviction (because they had active refs)
+        are deleted here once their refcount drops to zero.
+        """
+        to_cleanup = []
+        with self._lock:
+            for path in list(self._pending_cleanup):
+                if self._refcounts.get(path, 0) == 0:
+                    self._pending_cleanup.discard(path)
+                    to_cleanup.append(path)
+        for p in to_cleanup:
+            shutil.rmtree(p, ignore_errors=True)
 
     def get_or_extract(
         self,
@@ -91,7 +260,7 @@ class CodeCache:
     ) -> str:
         """Return a cached tmpdir for the given code, or extract a new one.
 
-        The returned directory must NOT be deleted by the caller — the cache
+        The returned directory must NOT be deleted by the caller --- the cache
         manages its lifecycle.
 
         Extraction happens outside the lock to avoid blocking concurrent cache
@@ -106,11 +275,12 @@ class CodeCache:
                 self._cache.move_to_end(key)
                 path = self._cache[key]
                 if os.path.isdir(path):
+                    self._refcounts[path] = self._refcounts.get(path, 0) + 1
                     return path
-                # Dir was deleted externally — remove stale entry
+                # Dir was deleted externally --- remove stale entry
                 del self._cache[key]
 
-        # Extract outside the lock — I/O can be slow for large zips
+        # Extract outside the lock --- I/O can be slow for large zips
         tmpdir = tempfile.mkdtemp(prefix="lambda_cache_")
         try:
             if layer_zips:
@@ -135,25 +305,38 @@ class CodeCache:
                 if os.path.isdir(existing):
                     shutil.rmtree(tmpdir, ignore_errors=True)
                     self._cache.move_to_end(key)
+                    self._refcounts[existing] = self._refcounts.get(existing, 0) + 1
                     return existing
                 del self._cache[key]
 
             self._cache[key] = tmpdir
+            self._refcounts[tmpdir] = self._refcounts.get(tmpdir, 0) + 1
 
-            # Evict LRU entries if over capacity
+            # Evict LRU entries if over capacity, but don't delete directories
+            # that may still be in use by other threads. Evicted directories are
+            # moved to _pending_cleanup and deleted later when safe.
             while len(self._cache) > self._max_size:
                 evicted_key, evicted_path = self._cache.popitem(last=False)
                 logger.debug("CodeCache: evicting %s", evicted_key)
-                shutil.rmtree(evicted_path, ignore_errors=True)
+                if self._refcounts.get(evicted_path, 0) == 0:
+                    shutil.rmtree(evicted_path, ignore_errors=True)
+                else:
+                    # Directory is in use; defer cleanup
+                    self._pending_cleanup.add(evicted_path)
 
             return tmpdir
 
     def invalidate(self, function_name: str) -> None:
-        """Remove all cached entries for a function and clean up their tmpdirs."""
+        """Remove all cached entries for a function and clean up their tmpdirs.
+
+        Force-cleans directories regardless of refcount (invalidation is explicit).
+        """
         with self._lock:
             keys_to_remove = [k for k in self._cache if k[0] == function_name]
             for key in keys_to_remove:
                 path = self._cache.pop(key)
+                self._refcounts.pop(path, None)
+                self._pending_cleanup.discard(path)
                 shutil.rmtree(path, ignore_errors=True)
         # Also clear function-scoped module cache in sys.modules
         prefix = f"_lambda_{function_name}."
@@ -162,11 +345,19 @@ class CodeCache:
                 sys.modules.pop(name, None)
 
     def invalidate_all(self) -> None:
-        """Remove all cached entries and clean up all tmpdirs."""
+        """Remove all cached entries and clean up all tmpdirs.
+
+        Force-cleans directories regardless of refcount (invalidation is explicit).
+        """
         with self._lock:
             for path in self._cache.values():
                 shutil.rmtree(path, ignore_errors=True)
             self._cache.clear()
+            self._refcounts.clear()
+            # Also clean up any pending cleanup dirs
+            for path in self._pending_cleanup:
+                shutil.rmtree(path, ignore_errors=True)
+            self._pending_cleanup.clear()
         # Also clear all function-scoped module cache entries
         for name in list(sys.modules.keys()):
             if name.startswith("_lambda_"):
@@ -192,13 +383,17 @@ class LambdaContext:
 
     function_name: str
     function_version: str = "$LATEST"
-    memory_limit_in_mb: int = 128
+    memory_limit_in_mb: int | str = 128
     invoked_function_arn: str = ""
     aws_request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     log_group_name: str = ""
     log_stream_name: str = ""
     _timeout: int = 3
     _start_time: float = field(default_factory=time.time)
+
+    def __post_init__(self) -> None:
+        # AWS Lambda Python runtime returns memory_limit_in_mb as a string
+        self.memory_limit_in_mb = str(self.memory_limit_in_mb)
 
     def get_remaining_time_in_millis(self) -> int:
         elapsed = time.time() - self._start_time
@@ -281,6 +476,25 @@ def _clear_modules_for_dir(code_dir: str) -> None:
     importlib.invalidate_caches()
 
 
+def _format_stacktrace(tb_string: str) -> list[str]:
+    """Format a traceback string into AWS Lambda stackTrace format.
+
+    AWS Lambda's stackTrace field omits the 'Traceback (most recent call last):'
+    header and the final exception line. It contains only the frame entries.
+    """
+    lines = tb_string.strip().split("\n")
+    result = []
+    for line in lines:
+        # Skip the "Traceback (most recent call last):" header
+        if line.startswith("Traceback"):
+            continue
+        # Skip the final exception line (e.g. "ValueError: test error")
+        # These lines are not indented and contain the exception info
+        # Frame entries from traceback are indented with spaces
+        result.append(line)
+    return result
+
+
 def execute_python_handler(
     code_zip: bytes,
     handler: str,
@@ -321,6 +535,7 @@ def execute_python_handler(
         # Use code cache instead of extracting every time
         tmpdir = _code_cache.get_or_extract(function_name, code_zip, layer_zips)
 
+    # get_or_extract auto-acquires a ref; we release it in the finally block
     try:
         # Always clear plain-named (non-namespaced) modules from this tmpdir.
         # Modules like "shared" are stored without a function-scoped prefix and
@@ -331,30 +546,44 @@ def execute_python_handler(
         if hot_reload and code_dir:
             _clear_modules_for_dir(code_dir)
 
-        # Set up environment
-        old_env = os.environ.copy()
-        old_path = sys.path[:]
+        # Build per-invocation environment snapshot
+        # Start from the real environ, then overlay Lambda-specific vars
+        real_env = os.environ._real if isinstance(os.environ, _ThreadLocalEnviron) else os.environ
+        invocation_env = dict(real_env)
         if env_vars:
-            os.environ.update(env_vars)
-        os.environ["AWS_LAMBDA_FUNCTION_NAME"] = function_name
-        os.environ["AWS_REGION"] = region
-        os.environ["AWS_DEFAULT_REGION"] = region
-        os.environ["AWS_ACCOUNT_ID"] = account_id
-        sys.path.insert(0, tmpdir)
-        # AWS Lambda layers put Python code in python/ subdirectory
-        python_subdir = os.path.join(tmpdir, "python")
-        if os.path.isdir(python_subdir):
-            sys.path.insert(1, python_subdir)
+            invocation_env.update(env_vars)
+        invocation_env["AWS_LAMBDA_FUNCTION_NAME"] = function_name
+        invocation_env["AWS_REGION"] = region
+        invocation_env["AWS_DEFAULT_REGION"] = region
+        invocation_env["AWS_ACCOUNT_ID"] = account_id
+
+        # Set up sys.path with lock for thread safety.
+        # Track exactly which entries we add so we can remove them later
+        # without corrupting other threads' additions.
+        added_paths = []
+        with _path_lock:
+            sys.path.insert(0, tmpdir)
+            added_paths.append(tmpdir)
+            # AWS Lambda layers put Python code in python/ subdirectory
+            python_subdir = os.path.join(tmpdir, "python")
+            if os.path.isdir(python_subdir):
+                sys.path.insert(1, python_subdir)
+                added_paths.append(python_subdir)
 
         # Build context
         context = LambdaContext(
             function_name=function_name,
             memory_limit_in_mb=memory_size,
-            invoked_function_arn=f"arn:aws:lambda:{region}:{account_id}:function:{function_name}",
+            invoked_function_arn=(f"arn:aws:lambda:{region}:{account_id}:function:{function_name}"),
             log_group_name=f"/aws/lambda/{function_name}",
-            log_stream_name=f"{time.strftime('%Y/%m/%d')}/[$LATEST]{uuid.uuid4().hex[:32]}",
+            log_stream_name=(f"{time.strftime('%Y/%m/%d')}/[$LATEST]{uuid.uuid4().hex[:32]}"),
             _timeout=timeout,
         )
+
+        request_id = context.aws_request_id
+
+        # Add START log line like real AWS Lambda
+        logs_output.write(f"START RequestId: {request_id} Version: $LATEST\n")
 
         # Load the module
         module_file = os.path.join(tmpdir, module_path.replace(".", "/") + ".py")
@@ -395,23 +624,108 @@ def execute_python_handler(
                     f"Handler function '{func_name}' not found in {module_path}",
                 )
 
-            result = handler_func(event, context)
-            return result, None, logs_output.getvalue()
+            # Execute handler with timeout enforcement and env var isolation
+            handler_result = [None]
+            handler_error = [None]
+
+            def _run_handler():
+                # Set thread-local environment so os.environ reads in
+                # this thread see invocation-specific values
+                _thread_local.env = dict(invocation_env)
+                try:
+                    handler_result[0] = handler_func(event, context)
+                except Exception as exc:
+                    handler_error[0] = exc
+                finally:
+                    _thread_local.env = None
+
+            worker = threading.Thread(target=_run_handler, daemon=True)
+            worker.start()
+            worker.join(timeout=timeout)
+
+            if worker.is_alive():
+                # Timeout: try to kill the thread
+                try:
+                    tid = worker.ident
+                    if tid is not None:
+                        ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                            ctypes.c_ulong(tid), ctypes.py_object(SystemExit)
+                        )
+                except Exception:
+                    pass
+                # Add END/REPORT log lines
+                elapsed_ms = timeout * 1000
+                logs_output.write(f"END RequestId: {request_id}\n")
+                logs_output.write(
+                    f"REPORT RequestId: {request_id}"
+                    f"\tDuration: {elapsed_ms:.2f} ms"
+                    f"\tBilled Duration: {elapsed_ms} ms"
+                    f"\tMemory Size: {memory_size} MB"
+                    f"\tMax Memory Used: {memory_size} MB\n"
+                )
+                ts = time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                error_msg = f"{ts} {request_id} Task timed out after {timeout:.2f} seconds"
+                error_result = {
+                    "errorMessage": error_msg,
+                    "errorType": "Task.TimedOut",
+                }
+                return error_result, "Task.TimedOut", logs_output.getvalue()
+
+            if handler_error[0] is not None:
+                e = handler_error[0]
+                tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+                logs_output.write(tb)
+                # Add END/REPORT log lines
+                elapsed_s = time.time() - context._start_time
+                elapsed_ms = elapsed_s * 1000
+                logs_output.write(f"END RequestId: {request_id}\n")
+                logs_output.write(
+                    f"REPORT RequestId: {request_id}"
+                    f"\tDuration: {elapsed_ms:.2f} ms"
+                    f"\tBilled Duration: {int(elapsed_ms) + 1} ms"
+                    f"\tMemory Size: {memory_size} MB"
+                    f"\tMax Memory Used: {memory_size} MB\n"
+                )
+                error_result = {
+                    "errorMessage": str(e),
+                    "errorType": type(e).__name__,
+                    "stackTrace": _format_stacktrace(tb),
+                }
+                return error_result, "Handled", logs_output.getvalue()
+
+            # Success: add END/REPORT log lines
+            elapsed_s = time.time() - context._start_time
+            elapsed_ms = elapsed_s * 1000
+            logs_output.write(f"END RequestId: {request_id}\n")
+            logs_output.write(
+                f"REPORT RequestId: {request_id}"
+                f"\tDuration: {elapsed_ms:.2f} ms"
+                f"\tBilled Duration: {int(elapsed_ms) + 1} ms"
+                f"\tMemory Size: {memory_size} MB"
+                f"\tMax Memory Used: {memory_size} MB\n"
+            )
+            return handler_result[0], None, logs_output.getvalue()
         except Exception as e:
+            # Catch module-level errors (SyntaxError, ImportError, etc.)
             tb = traceback.format_exc()
             logs_output.write(tb)
             error_result = {
                 "errorMessage": str(e),
                 "errorType": type(e).__name__,
-                "stackTrace": tb.strip().split("\n"),
+                "stackTrace": _format_stacktrace(tb),
             }
             return error_result, "Handled", logs_output.getvalue()
         finally:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
     finally:
-        # Restore environment
-        os.environ.clear()
-        os.environ.update(old_env)
-        sys.path[:] = old_path
-        # Do NOT clean up tmpdir when using cache or mount dir — managed externally
+        # Remove only the paths we added (thread-safe: doesn't affect other threads)
+        with _path_lock:
+            for p in added_paths:
+                try:
+                    sys.path.remove(p)
+                except ValueError:
+                    pass
+        # Release the cache reference
+        _code_cache.release_ref(tmpdir)
+        # Do NOT clean up tmpdir when using cache or mount dir --- managed externally
