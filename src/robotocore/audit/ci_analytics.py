@@ -235,8 +235,8 @@ def compute_aggregate_summary(state_dir: Path) -> dict:
 # Singleton management
 # ---------------------------------------------------------------------------
 
-_analytics: CIAnalytics | None = None
-_analytics_checked: bool = False
+_UNCHECKED = object()  # sentinel: CI detection has not run yet
+_analytics: CIAnalytics | None | object = _UNCHECKED
 
 
 def get_ci_analytics(force_enable: bool = False) -> CIAnalytics | None:
@@ -244,21 +244,21 @@ def get_ci_analytics(force_enable: bool = False) -> CIAnalytics | None:
 
     Returns None if not in a CI environment and force_enable is False.
     """
-    global _analytics, _analytics_checked
+    global _analytics
 
-    if _analytics is not None:
+    if isinstance(_analytics, CIAnalytics):
         return _analytics
 
-    if _analytics_checked and not force_enable:
+    if _analytics is None and not force_enable:
+        # Already checked; not in a CI environment.
         return None
-
-    _analytics_checked = True
 
     # Session ID from explicit env var
     session_id = os.environ.get("ROBOTOCORE_CI_SESSION", "").strip()
     ci_provider, build_id = detect_ci_provider()
 
     if not session_id and not ci_provider and not force_enable:
+        _analytics = None
         return None
 
     if not session_id:
@@ -276,6 +276,5 @@ def get_ci_analytics(force_enable: bool = False) -> CIAnalytics | None:
 
 def reset_ci_analytics() -> None:
     """Reset the singleton (for testing)."""
-    global _analytics, _analytics_checked
-    _analytics = None
-    _analytics_checked = False
+    global _analytics
+    _analytics = _UNCHECKED
