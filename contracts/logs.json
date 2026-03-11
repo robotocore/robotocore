@@ -1,0 +1,36 @@
+{
+  "service": "logs",
+  "generated_at": "2026-03-11T20:55:05.267957+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "logs",
+      "operation": "DescribeLogGroups",
+      "status_code": 200,
+      "response_keys": [
+        "logGroups",
+        "nextToken"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.267931+00:00",
+      "protocol": "json",
+      "key_types": {
+        "logGroups": "list",
+        "nextToken": "string"
+      }
+    }
+  ]
+}

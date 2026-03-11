@@ -1,0 +1,71 @@
+{
+  "service": "lambda",
+  "generated_at": "2026-03-11T20:55:05.248407+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "lambda",
+      "operation": "ListFunctions",
+      "status_code": 200,
+      "response_keys": [
+        "Functions",
+        "NextMarker"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.230190+00:00",
+      "protocol": "rest-json",
+      "key_types": {
+        "NextMarker": "string",
+        "Functions": "list"
+      }
+    },
+    {
+      "service": "lambda",
+      "operation": "GetFunction",
+      "status_code": 200,
+      "response_keys": [
+        "Code",
+        "Concurrency",
+        "Configuration",
+        "Tags",
+        "TagsError"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.248361+00:00",
+      "protocol": "rest-json",
+      "key_types": {
+        "Configuration": "structure",
+        "Code": "structure",
+        "Tags": "structure",
+        "TagsError": "structure",
+        "Concurrency": "structure"
+      }
+    }
+  ]
+}

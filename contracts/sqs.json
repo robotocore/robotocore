@@ -1,0 +1,90 @@
+{
+  "service": "sqs",
+  "generated_at": "2026-03-11T20:55:05.428136+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "sqs",
+      "operation": "ListQueues",
+      "status_code": 200,
+      "response_keys": [
+        "NextToken",
+        "QueueUrls"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.392709+00:00",
+      "protocol": "json",
+      "key_types": {
+        "QueueUrls": "list",
+        "NextToken": "string"
+      }
+    },
+    {
+      "service": "sqs",
+      "operation": "GetQueueUrl",
+      "status_code": 200,
+      "response_keys": [
+        "QueueUrl"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.410504+00:00",
+      "protocol": "json",
+      "key_types": {
+        "QueueUrl": "string"
+      }
+    },
+    {
+      "service": "sqs",
+      "operation": "GetQueueAttributes",
+      "status_code": 200,
+      "response_keys": [
+        "Attributes"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.428109+00:00",
+      "protocol": "json",
+      "key_types": {
+        "Attributes": "structure"
+      }
+    }
+  ]
+}
