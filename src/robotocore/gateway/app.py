@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from robotocore import __version__
+from robotocore.dashboard.app import dashboard_endpoint
 from robotocore.gateway.handler_chain import HandlerChain, RequestContext
 from robotocore.gateway.handlers import (
     audit_response_handler,
@@ -849,6 +850,7 @@ async def handle_connections_api(
 # ---------------------------------------------------------------------------
 
 management_routes = [
+    Route("/_robotocore/dashboard", dashboard_endpoint, methods=["GET"]),
     Route("/_robotocore/health", health, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
