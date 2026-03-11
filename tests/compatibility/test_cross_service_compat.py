@@ -631,8 +631,12 @@ class TestStepFunctionsToLambda:
         )
         exec_arn = exec_resp["executionArn"]
 
-        # Describe execution to check result
-        result = sfn.describe_execution(executionArn=exec_arn)
+        # Poll for execution completion (background thread may need a moment)
+        for _ in range(20):
+            result = sfn.describe_execution(executionArn=exec_arn)
+            if result["status"] != "RUNNING":
+                break
+            time.sleep(0.5)
         assert result["status"] == "SUCCEEDED"
         output = json.loads(result["output"])
         assert output["processed"] is True
