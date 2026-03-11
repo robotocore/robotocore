@@ -1,5 +1,7 @@
 """Unit tests for S3 virtual-hosted-style routing."""
 
+import sys
+
 from robotocore.gateway.s3_routing import (
     get_s3_routing_config,
     is_s3_vhost_request,
@@ -73,17 +75,16 @@ class TestParseS3Vhost:
     def test_custom_s3_hostname_env(self, monkeypatch):
         """S3_HOSTNAME env var changes the base hostname."""
         monkeypatch.setenv("S3_HOSTNAME", "s3.custom.local")
-        # Reset cached pattern
-        import robotocore.gateway.s3_routing as mod
-
-        mod._VHOST_CUSTOM_RE = None
+        # Reset cached pattern so the new env var is picked up
+        mod = sys.modules["robotocore.gateway.s3_routing"]
+        mod._VHOST_CUSTOM_CACHE = None
 
         result = parse_s3_vhost("testbucket.s3.custom.local")
         assert result is not None
         assert result["bucket"] == "testbucket"
 
         # Clean up cached pattern for other tests
-        mod._VHOST_CUSTOM_RE = None
+        mod._VHOST_CUSTOM_CACHE = None
 
     def test_dualstack_hostname(self):
         """mybucket.s3.dualstack.us-east-1.amazonaws.com"""

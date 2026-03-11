@@ -29,9 +29,8 @@ _VHOST_RE = re.compile(
     r"\.(?P<rest>.+?)(?::\d+)?$"
 )
 
-# Simple pattern for configurable hostname: <bucket>.s3.<hostname_base>
-_VHOST_CUSTOM_RE: re.Pattern | None = None
-_VHOST_CUSTOM_BASE: str = ""
+# Cached (pattern, hostname_base) tuple for configurable hostname: <bucket>.s3.<hostname_base>
+_VHOST_CUSTOM_CACHE: tuple[re.Pattern, str] | None = None
 
 # Pre-compiled pattern for the localstack.cloud backwards-compatible alias
 _VHOST_LOCALSTACK_RE = re.compile(
@@ -47,16 +46,16 @@ def _get_s3_hostname() -> str:
 
 def _get_custom_pattern() -> tuple[re.Pattern, str]:
     """Build and cache the regex for the custom hostname."""
-    global _VHOST_CUSTOM_RE, _VHOST_CUSTOM_BASE
+    global _VHOST_CUSTOM_CACHE
     base = _get_s3_hostname()
-    if _VHOST_CUSTOM_RE is None or _VHOST_CUSTOM_BASE != base:
+    if _VHOST_CUSTOM_CACHE is None or _VHOST_CUSTOM_CACHE[1] != base:
         escaped = re.escape(base)
-        _VHOST_CUSTOM_RE = re.compile(
+        pattern = re.compile(
             r"^(?P<bucket>[a-zA-Z0-9][a-zA-Z0-9.\-]{1,61}[a-zA-Z0-9])"
             rf"\.{escaped}(?::\d+)?$"
         )
-        _VHOST_CUSTOM_BASE = base
-    return _VHOST_CUSTOM_RE, base
+        _VHOST_CUSTOM_CACHE = (pattern, base)
+    return _VHOST_CUSTOM_CACHE
 
 
 def parse_s3_vhost(host: str) -> dict | None:
