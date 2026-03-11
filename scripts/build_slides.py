@@ -417,15 +417,15 @@ blockquote {{
 <div id="deck">
 
   <!-- Slide 1: LocalStack blog post -->
-  <section class="slide slide-amber active" id="s1">
-    <div class="full-width center">
+  <section class="slide slide-amber active" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
+    <div style="width:60%;max-width:700px;padding-top:60px;">
       <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
-      <h2 class="anim-2">LocalStack Changes the Rules</h2>
-      <blockquote class="anim-3" style="margin-top:32px;text-align:left;">
+      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
+      <blockquote class="anim-3" style="margin-top:32px;">
         "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
         <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
       </blockquote>
-      <blockquote class="anim-4" style="text-align:left;">
+      <blockquote class="anim-4">
         "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
         development and exploration."
       </blockquote>
