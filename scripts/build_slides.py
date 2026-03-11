@@ -416,21 +416,8 @@ blockquote {{
 <body>
 <div id="deck">
 
-  <!-- Slide 1: Hero -->
-  <section class="slide slide-hero active" id="s1">
-    <canvas id="hero-canvas"></canvas>
-    <div class="center" style="position:relative;z-index:1;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
-      <div class="logo-word anim-2">robotocore</div>
-      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
-      <div style="margin-top:32px;" class="anim-4">
-        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- Slide 2: LocalStack blog post -->
-  <section class="slide slide-amber" id="s2">
+  <!-- Slide 1: LocalStack blog post -->
+  <section class="slide slide-amber active" id="s1">
     <div class="full-width center">
       <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
       <h2 class="anim-2">LocalStack Changes the Rules</h2>
@@ -445,6 +432,19 @@ blockquote {{
       <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
         — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
       </p>
+    </div>
+  </section>
+
+  <!-- Slide 2: Hero -->
+  <section class="slide slide-hero" id="s2">
+    <canvas id="hero-canvas"></canvas>
+    <div class="center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
+      <div class="logo-word anim-2">robotocore</div>
+      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
+      <div style="margin-top:32px;" class="anim-4">
+        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
+      </div>
     </div>
   </section>
 
