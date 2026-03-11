@@ -111,4 +111,5 @@ warn_unused_configs = true
 [dependency-groups]
 dev = [
     "freezegun>=1.5.5",
+    "pytest-playwright>=0.7.2",
 ]

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robotocore Console</title>
+<link rel="stylesheet" href="/_robotocore/console/static/style.css">
+</head>
+<body>
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <span class="logo-icon">R</span>
+        <span class="logo-text">robotocore</span>
+      </div>
+      <div class="account-info">
+        <div class="account-label">Account</div>
+        <div class="account-id" id="account-id">123456789012</div>
+      </div>
+      <div class="region-selector">
+        <label for="region-select">Region</label>
+        <select id="region-select">
+          <option value="us-east-1" selected>US East (N. Virginia)</option>
+          <option value="us-east-2">US East (Ohio)</option>
+          <option value="us-west-1">US West (N. California)</option>
+          <option value="us-west-2">US West (Oregon)</option>
+          <option value="eu-west-1">EU (Ireland)</option>
+          <option value="eu-central-1">EU (Frankfurt)</option>
+          <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+          <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+        </select>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">Overview</div>
+      <a href="#dashboard" class="nav-item active" data-page="dashboard">
+        <span class="nav-icon">&#9634;</span>
+        Dashboard
+      </a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">Services</div>
+      <a href="#s3" class="nav-item" data-page="s3">
+        <span class="nav-icon">&#9707;</span>
+        S3
+      </a>
+      <a href="#dynamodb" class="nav-item" data-page="dynamodb">
+        <span class="nav-icon">&#9783;</span>
+        DynamoDB
+      </a>
+      <a href="#sqs" class="nav-item" data-page="sqs">
+        <span class="nav-icon">&#9993;</span>
+        SQS
+      </a>
+      <a href="#lambda" class="nav-item" data-page="lambda">
+        <span class="nav-icon">&#955;</span>
+        Lambda
+      </a>
+      <a href="#cloudwatch" class="nav-item" data-page="cloudwatch">
+        <span class="nav-icon">&#9729;</span>
+        CloudWatch Logs
+      </a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">Management</div>
+      <a href="/_robotocore/dashboard" class="nav-item nav-external">
+        <span class="nav-icon">&#9881;</span>
+        System Dashboard
+      </a>
+    </div>
+  </nav>
+
+  <main id="main-content">
+    <header id="page-header">
+      <div class="header-left">
+        <h1 id="page-title">Dashboard</h1>
+        <div class="breadcrumb" id="breadcrumb"></div>
+      </div>
+      <div class="header-right">
+        <div class="header-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Connecting...</span>
+        </div>
+      </div>
+    </header>
+
+    <div id="page-content">
+      <!-- Pages are rendered dynamically by app.js -->
+    </div>
+  </main>
+
+  <!-- Toast notification container -->
+  <div id="toast-container"></div>
+
+  <!-- Modal overlay -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h3 id="modal-title"></h3>
+        <button class="modal-close" onclick="window.AppUI.closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <script src="/_robotocore/console/static/app.js"></script>
+  <script src="/_robotocore/console/static/services/s3.js"></script>
+  <script src="/_robotocore/console/static/services/dynamodb.js"></script>
+  <script src="/_robotocore/console/static/services/sqs.js"></script>
+  <script src="/_robotocore/console/static/services/lambda.js"></script>
+  <script src="/_robotocore/console/static/services/cloudwatch.js"></script>
+</body>
+</html>
