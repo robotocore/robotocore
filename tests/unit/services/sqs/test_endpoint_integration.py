@@ -55,7 +55,7 @@ class TestGetQueueUrlReturnsStrategyUrl:
         store.create_queue("test-q", "us-east-1", "123456789012")
         queue = store.get_queue("test-q")
         assert queue is not None
-        assert "sqs.us-east-1.localhost.localstack.cloud" in queue.url
+        assert "sqs.us-east-1.localhost.robotocore.cloud" in queue.url
 
     def test_get_queue_url_path(self, monkeypatch):
         monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "path")
@@ -77,7 +77,7 @@ class TestListQueuesReturnsStrategyUrls:
         queues = store.list_queues()
         assert len(queues) == 2
         for q in queues:
-            assert "sqs.us-east-1.localhost.localstack.cloud" in q.url
+            assert "sqs.us-east-1.localhost.robotocore.cloud" in q.url
 
     def test_list_queues_path(self, monkeypatch):
         monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "path")

@@ -261,13 +261,18 @@ def route_to_service(request: Request) -> str | None:
     host = request.headers.get("host", "")
     if ".s3." in host or host.startswith("s3.") or host.startswith("s3-"):
         return "s3"
-    # SQS endpoint strategy host patterns
-    if ".queue.localhost.localstack.cloud" in host or (
-        host.startswith("sqs.") and ".localhost.localstack.cloud" in host
+    # SQS endpoint strategy host patterns (robotocore.cloud primary, localstack.cloud alias)
+    if (
+        ".queue.localhost.robotocore.cloud" in host
+        or (host.startswith("sqs.") and ".localhost.robotocore.cloud" in host)
+        or ".queue.localhost.localstack.cloud" in host
+        or (host.startswith("sqs.") and ".localhost.localstack.cloud" in host)
     ):
         return "sqs"
-    # OpenSearch endpoint strategy host patterns
-    if ".opensearch.localhost.localstack.cloud" in host:
+    # OpenSearch endpoint strategy host patterns (robotocore.cloud primary, localstack.cloud alias)
+    if ".opensearch.localhost.robotocore.cloud" in host or (
+        ".opensearch.localhost.localstack.cloud" in host
+    ):
         return "opensearch"
 
     # 6. Query string action parameter (used by EC2, SQS, SNS, etc.)

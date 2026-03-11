@@ -31,7 +31,7 @@ class TestSqsDomainStyleRouting:
     def test_standard_host_routes_to_sqs(self):
         result = parse_sqs_url(
             "/123456789012/my-queue",
-            "sqs.us-east-1.localhost.localstack.cloud:4566",
+            "sqs.us-east-1.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -40,7 +40,7 @@ class TestSqsDomainStyleRouting:
     def test_domain_host_routes_to_sqs(self):
         result = parse_sqs_url(
             "/123456789012/my-queue",
-            "us-east-1.queue.localhost.localstack.cloud:4566",
+            "us-east-1.queue.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -68,7 +68,7 @@ class TestOpenSearchDomainStyleRouting:
     def test_domain_host_routes_to_opensearch(self):
         result = parse_opensearch_url(
             "/",
-            "my-domain.us-east-1.opensearch.localhost.localstack.cloud:4566",
+            "my-domain.us-east-1.opensearch.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -83,9 +83,30 @@ class TestDynamicStrategyAcceptsAllFormats:
         assert result is not None
 
     def test_accepts_standard_host(self):
-        result = parse_sqs_url("/123/my-q", "sqs.us-east-1.localhost.localstack.cloud:4566")
+        result = parse_sqs_url("/123/my-q", "sqs.us-east-1.localhost.robotocore.cloud:4566")
         assert result is not None
 
     def test_accepts_domain_host(self):
+        result = parse_sqs_url("/123/my-q", "us-east-1.queue.localhost.robotocore.cloud:4566")
+        assert result is not None
+
+
+class TestLocalstackCloudAlias:
+    """localstack.cloud hostnames must be accepted as backward-compat aliases."""
+
+    def test_sqs_standard_host_localstack_alias(self):
+        result = parse_sqs_url("/123/my-q", "sqs.us-east-1.localhost.localstack.cloud:4566")
+        assert result is not None
+        assert result["region"] == "us-east-1"
+
+    def test_sqs_domain_host_localstack_alias(self):
         result = parse_sqs_url("/123/my-q", "us-east-1.queue.localhost.localstack.cloud:4566")
         assert result is not None
+        assert result["region"] == "us-east-1"
+
+    def test_opensearch_domain_host_localstack_alias(self):
+        result = parse_opensearch_url(
+            "/", "my-domain.us-east-1.opensearch.localhost.localstack.cloud:4566"
+        )
+        assert result is not None
+        assert result["domain_name"] == "my-domain"

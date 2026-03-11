@@ -1,8 +1,8 @@
-"""SQS endpoint URL strategies matching LocalStack's SQS_ENDPOINT_STRATEGY.
+"""SQS endpoint URL strategies matching SQS_ENDPOINT_STRATEGY.
 
 Supports 4 strategies controlled by the SQS_ENDPOINT_STRATEGY env var:
-- standard (default): http://sqs.{region}.localhost.localstack.cloud:4566/{account_id}/{queue_name}
-- domain: http://{region}.queue.localhost.localstack.cloud:4566/{account_id}/{queue_name}
+- standard (default): http://sqs.{region}.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
+- domain: http://{region}.queue.localhost.robotocore.cloud:4566/{account_id}/{queue_name}
 - path: http://localhost:4566/queue/{region}/{account_id}/{queue_name}
 - dynamic: Returns path-style URLs but accepts all formats for incoming requests
 """
@@ -14,7 +14,8 @@ from enum import StrEnum
 # Default gateway port
 GATEWAY_PORT = 4566
 GATEWAY_HOST = "localhost"
-LOCALSTACK_HOST = "localhost.localstack.cloud"
+ROBOTOCORE_HOST = "localhost.robotocore.cloud"
+LOCALSTACK_HOST_ALIAS = "localhost.localstack.cloud"
 
 
 class SqsEndpointStrategy(StrEnum):
@@ -46,9 +47,9 @@ def sqs_queue_url(
     port = int(os.environ.get("GATEWAY_PORT", str(GATEWAY_PORT)))
 
     if strategy == SqsEndpointStrategy.STANDARD:
-        return f"http://sqs.{region}.{LOCALSTACK_HOST}:{port}/{account_id}/{queue_name}"
+        return f"http://sqs.{region}.{ROBOTOCORE_HOST}:{port}/{account_id}/{queue_name}"
     elif strategy == SqsEndpointStrategy.DOMAIN:
-        return f"http://{region}.queue.{LOCALSTACK_HOST}:{port}/{account_id}/{queue_name}"
+        return f"http://{region}.queue.{ROBOTOCORE_HOST}:{port}/{account_id}/{queue_name}"
     elif strategy in (SqsEndpointStrategy.PATH, SqsEndpointStrategy.DYNAMIC):
         return f"http://{GATEWAY_HOST}:{port}/queue/{region}/{account_id}/{queue_name}"
     # Fallback (should not be reached)
@@ -64,11 +65,12 @@ PATH_STYLE_RE = re.compile(
     r"^/queue/(?P<region>[a-z0-9-]+)/(?P<account_id>\d+)/(?P<queue_name>[A-Za-z0-9_.-]+)$"
 )
 
-# Matches Host: sqs.{region}.localhost.localstack.cloud
-STANDARD_HOST_RE = re.compile(r"^sqs\.(?P<region>[a-z0-9-]+)\." + re.escape(LOCALSTACK_HOST))
+# Matches Host: sqs.{region}.localhost.robotocore.cloud (or localstack.cloud alias)
+_HOST_ALT = r"(?:" + re.escape(ROBOTOCORE_HOST) + r"|" + re.escape(LOCALSTACK_HOST_ALIAS) + r")"
+STANDARD_HOST_RE = re.compile(r"^sqs\.(?P<region>[a-z0-9-]+)\." + _HOST_ALT)
 
-# Matches Host: {region}.queue.localhost.localstack.cloud
-DOMAIN_HOST_RE = re.compile(r"^(?P<region>[a-z0-9-]+)\.queue\." + re.escape(LOCALSTACK_HOST))
+# Matches Host: {region}.queue.localhost.robotocore.cloud (or localstack.cloud alias)
+DOMAIN_HOST_RE = re.compile(r"^(?P<region>[a-z0-9-]+)\.queue\." + _HOST_ALT)
 
 
 def parse_sqs_url(path: str, host: str) -> dict | None:
@@ -81,7 +83,7 @@ def parse_sqs_url(path: str, host: str) -> dict | None:
     if m:
         return m.groupdict()
 
-    # 2. Standard host: sqs.{region}.localhost.localstack.cloud + /{account_id}/{queue_name}
+    # 2. Standard host: sqs.{region}.localhost.robotocore.cloud + /{account_id}/{queue_name}
     m = STANDARD_HOST_RE.match(host)
     if m:
         parts = path.strip("/").split("/")
@@ -92,7 +94,7 @@ def parse_sqs_url(path: str, host: str) -> dict | None:
                 "queue_name": parts[1],
             }
 
-    # 3. Domain host: {region}.queue.localhost.localstack.cloud + /{account_id}/{queue_name}
+    # 3. Domain host: {region}.queue.localhost.robotocore.cloud + /{account_id}/{queue_name}
     m = DOMAIN_HOST_RE.match(host)
     if m:
         parts = path.strip("/").split("/")
