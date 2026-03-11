@@ -354,6 +354,19 @@ def iam_enforcement_handler(context: RequestContext) -> None:
             )
         return
 
+    if not enforce:
+        # Not enforcing IAM - record to stream if enabled and return
+        _record_to_stream(
+            principal=creds["access_key_id"],
+            action=build_iam_action(context.service_name, context.operation),
+            resource=build_resource_arn(
+                context.service_name, context.region, context.account_id, context.request
+            ),
+            decision="Allow",
+            request_id=context.request.headers.get("x-amzn-requestid", ""),
+        )
+        return
+
     action = build_iam_action(context.service_name, context.operation)
     resource = build_resource_arn(
         context.service_name, context.region, context.account_id, context.request
