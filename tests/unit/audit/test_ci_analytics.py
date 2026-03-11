@@ -639,7 +639,9 @@ class TestDetectCIProviderEdgeCases:
         assert name == "github_actions"
         assert build_id is None
 
-    def test_generic_ci_has_no_build_id(self):
+    def test_generic_ci_has_no_build_id(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
         # Clear all specific providers first
         env = {
             "CI": "true",

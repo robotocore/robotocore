@@ -1,0 +1,69 @@
+{
+  "service": "iam",
+  "generated_at": "2026-03-11T20:55:05.210824+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "iam",
+      "operation": "ListUsers",
+      "status_code": 200,
+      "response_keys": [
+        "IsTruncated",
+        "Marker",
+        "Users"
+      ],
+      "header_keys": [
+        "content-type"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.191225+00:00",
+      "protocol": "query",
+      "key_types": {
+        "Users": "list",
+        "IsTruncated": "boolean",
+        "Marker": "string"
+      }
+    },
+    {
+      "service": "iam",
+      "operation": "ListRoles",
+      "status_code": 200,
+      "response_keys": [
+        "IsTruncated",
+        "Marker",
+        "Roles"
+      ],
+      "header_keys": [
+        "content-type"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.210786+00:00",
+      "protocol": "query",
+      "key_types": {
+        "Roles": "list",
+        "IsTruncated": "boolean",
+        "Marker": "string"
+      }
+    }
+  ]
+}

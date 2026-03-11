@@ -1,0 +1,93 @@
+{
+  "service": "s3",
+  "generated_at": "2026-03-11T20:55:05.337601+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "s3",
+      "operation": "ListBuckets",
+      "status_code": 200,
+      "response_keys": [
+        "Buckets",
+        "ContinuationToken",
+        "Owner",
+        "Prefix"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amz-request-id"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.294697+00:00",
+      "protocol": "rest-xml",
+      "key_types": {
+        "Buckets": "list",
+        "Owner": "structure",
+        "ContinuationToken": "string",
+        "Prefix": "string"
+      }
+    },
+    {
+      "service": "s3",
+      "operation": "GetBucketLocation",
+      "status_code": 200,
+      "response_keys": [
+        "LocationConstraint"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amz-request-id"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.316023+00:00",
+      "protocol": "rest-xml",
+      "key_types": {
+        "LocationConstraint": "string"
+      }
+    },
+    {
+      "service": "s3",
+      "operation": "HeadBucket",
+      "status_code": 200,
+      "response_keys": [],
+      "header_keys": [
+        "content-type",
+        "x-amz-request-id"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.337567+00:00",
+      "protocol": "rest-xml",
+      "key_types": {}
+    }
+  ]
+}
