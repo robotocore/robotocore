@@ -10,13 +10,10 @@ import pytest
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
-# Unique suffix per test session to avoid QueueDeletedRecently collisions
-_SESSION_ID = uuid.uuid4().hex[:6]
-
 
 def _qname(base: str) -> str:
-    """Generate a unique queue name for this test session."""
-    return f"{base}-{_SESSION_ID}"
+    """Generate a unique queue name per invocation to avoid QueueDeletedRecently collisions."""
+    return f"{base}-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture
@@ -32,7 +29,7 @@ def sqs():
 
 @pytest.fixture
 def queue_url(sqs):
-    name = _qname("test-compat")
+    name = f"test-compat-{uuid.uuid4().hex[:8]}"
     response = sqs.create_queue(QueueName=name)
     url = response["QueueUrl"]
     yield url
@@ -41,7 +38,7 @@ def queue_url(sqs):
 
 @pytest.fixture
 def fifo_queue_url(sqs):
-    name = _qname("test-compat-fifo") + ".fifo"
+    name = f"test-compat-{uuid.uuid4().hex[:8]}.fifo"
     response = sqs.create_queue(
         QueueName=name,
         Attributes={
@@ -1232,9 +1229,10 @@ class TestSQSQueueAttributesExtended:
             sqs.delete_queue(QueueUrl=url)
 
     def test_get_queue_url(self, sqs):
-        url = sqs.create_queue(QueueName=_qname("geturl-q"))["QueueUrl"]
+        name = _qname("geturl-q")
+        url = sqs.create_queue(QueueName=name)["QueueUrl"]
         try:
-            resp = sqs.get_queue_url(QueueName=_qname("geturl-q"))
+            resp = sqs.get_queue_url(QueueName=name)
             assert resp["QueueUrl"] == url
         finally:
             sqs.delete_queue(QueueUrl=url)
