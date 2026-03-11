@@ -193,6 +193,7 @@ class TestFaultRule:
             "latency_ms",
             "probability",
             "enabled",
+            "ttl_seconds",
             "created_at",
             "match_count",
         }

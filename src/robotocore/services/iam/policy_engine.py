@@ -35,7 +35,7 @@ def _substitute_variables(value: str, context: dict[str, Any]) -> str:
     return _VARIABLE_RE.sub(_replace, value)
 
 
-def _iam_match(value: str, pattern: str) -> bool:
+def _iam_match(value: str, pattern: str, *, case_sensitive: bool = False) -> bool:
     """Match using IAM wildcard rules (only * is supported, not ? or [])."""
     regex_parts = []
     for part in re.split(r"(\*)", pattern):
@@ -44,18 +44,19 @@ def _iam_match(value: str, pattern: str) -> bool:
         else:
             regex_parts.append(re.escape(part))
     regex = "^" + "".join(regex_parts) + "$"
-    return bool(re.match(regex, value, re.IGNORECASE))
+    flags = 0 if case_sensitive else re.IGNORECASE
+    return bool(re.match(regex, value, flags))
 
 
 def _action_matches(action: str, pattern: str) -> bool:
     """Check if an action matches a pattern (case-insensitive, only * wildcard)."""
-    return _iam_match(action, pattern)
+    return _iam_match(action, pattern, case_sensitive=False)
 
 
 def _resource_matches(resource: str, pattern: str, context: dict[str, Any]) -> bool:
-    """Check if a resource ARN matches a pattern (only * wildcard, with variable substitution)."""
+    """Check if a resource ARN matches a pattern (case-sensitive, with variable substitution)."""
     resolved_pattern = _substitute_variables(pattern, context)
-    return _iam_match(resource, resolved_pattern)
+    return _iam_match(resource, resolved_pattern, case_sensitive=True)
 
 
 def _statement_matches_action(statement: dict, action: str) -> bool:
@@ -218,6 +219,12 @@ def _principal_matches(statement: dict, principal: str) -> bool:
             for v in values:
                 if v == "*" or _iam_match(principal, v):
                     return True
+                # Support bare account number: "123456789012" matches any
+                # principal ARN from that account
+                if v.isdigit() and len(v) == 12:
+                    # Check if the principal's account matches
+                    if f":{v}:" in principal:
+                        return True
     return False
 
 

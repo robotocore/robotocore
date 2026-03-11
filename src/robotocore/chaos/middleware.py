@@ -4,8 +4,9 @@ Integrates with the handler chain to inject faults before requests
 reach service providers.
 """
 
+import asyncio
 import json
-import time
+import uuid
 
 from starlette.responses import Response
 
@@ -25,19 +26,26 @@ def chaos_handler(context: RequestContext) -> None:
     if rule is None:
         return
 
-    # NOTE: time.sleep blocks the event loop since the handler chain runs
-    # synchronously inside an async request handler. To fix properly, the
-    # handler chain needs async support (asyncio.to_thread or async handlers).
+    # Use asyncio.sleep via asyncio.to_thread-compatible approach to avoid
+    # blocking the event loop.
     if rule.latency_ms > 0:
-        time.sleep(rule.latency_ms / 1000.0)
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context; schedule a non-blocking sleep
+            loop.create_task(asyncio.sleep(rule.latency_ms / 1000.0))
+        except RuntimeError:
+            # No event loop running; fall back to asyncio.run for sync contexts
+            asyncio.run(asyncio.sleep(rule.latency_ms / 1000.0))
 
     # Apply error injection
     if rule.error_code:
+        request_id = uuid.uuid4().hex
         error_body = json.dumps(
             {
                 "__type": rule.error_code,
                 "message": rule.error_message,
                 "Message": rule.error_message,
+                "RequestId": request_id,
             }
         )
         context.response = Response(

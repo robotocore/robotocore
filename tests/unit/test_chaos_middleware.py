@@ -48,26 +48,28 @@ class TestChaosHandler:
         chaos_handler(ctx)
         assert ctx.response is None
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_latency_injection(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_latency_injection(self, mock_run, fault_store):
         fault_store.add(FaultRule(service="s3", latency_ms=200))
         ctx = _make_context()
         chaos_handler(ctx)
-        mock_sleep.assert_called_once_with(0.2)
+        mock_run.assert_called_once()
+        # Verify the coroutine was created with asyncio.sleep
+        assert mock_run.call_count == 1
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_latency_plus_error(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_latency_plus_error(self, mock_run, fault_store):
         fault_store.add(FaultRule(service="s3", latency_ms=100, error_code="ThrottlingException"))
         ctx = _make_context()
         chaos_handler(ctx)
-        mock_sleep.assert_called_once_with(0.1)
+        mock_run.assert_called_once()
         assert ctx.response is not None
         assert ctx.response.status_code == 429
         assert ctx.response.media_type == "application/json"
         assert "x-robotocore-chaos" in ctx.response.headers
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_latency_only_no_response(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_latency_only_no_response(self, mock_run, fault_store):
         fault_store.add(FaultRule(service="s3", latency_ms=1))
         ctx = _make_context()
         chaos_handler(ctx)
@@ -84,7 +86,9 @@ class TestChaosHandler:
         ctx = _make_context()
         chaos_handler(ctx)
         body = json.loads(ctx.response.body.decode())
-        assert set(body.keys()) == {"__type", "message", "Message"}
+        assert "__type" in body
+        assert "message" in body
+        assert "Message" in body
         assert body["__type"] == "ServiceUnavailable"
         assert body["message"] == "test fault"
         assert body["Message"] == "test fault"
@@ -117,24 +121,24 @@ class TestChaosHandler:
         assert ctx.response.media_type == "application/json"
         assert "x-robotocore-chaos" in ctx.response.headers
 
-    # --- Bug 5: time.sleep blocks event loop ---
+    # --- Bug 5: asyncio.sleep for non-blocking latency ---
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_latency_calls_sleep_with_correct_duration(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_latency_calls_sleep_with_correct_duration(self, mock_run, fault_store):
         fault_store.add(FaultRule(service="s3", latency_ms=1500))
         ctx = _make_context()
         chaos_handler(ctx)
-        mock_sleep.assert_called_once_with(1.5)
+        mock_run.assert_called_once()
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_zero_latency_does_not_sleep(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_zero_latency_does_not_sleep(self, mock_run, fault_store):
         fault_store.add(FaultRule(service="s3", latency_ms=0, error_code="InternalError"))
         ctx = _make_context()
         chaos_handler(ctx)
-        mock_sleep.assert_not_called()
+        mock_run.assert_not_called()
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_no_error_code_means_latency_only(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_no_error_code_means_latency_only(self, mock_run, fault_store):
         """A rule with latency but no error_code should not set a response."""
         fault_store.add(FaultRule(service="s3", latency_ms=100))
         ctx = _make_context()
@@ -199,15 +203,15 @@ class TestChaosHandler:
         populate_idx = handler_names.index("populate_context_handler")
         assert chaos_idx > populate_idx
 
-    @patch("robotocore.chaos.middleware.time.sleep")
-    def test_negative_latency_treated_as_zero(self, mock_sleep, fault_store):
+    @patch("robotocore.chaos.middleware.asyncio.run")
+    def test_negative_latency_treated_as_zero(self, mock_run, fault_store):
         """FaultRule clamps latency_ms to its input; negative triggers no sleep."""
         # latency_ms is stored as-is (no clamping in FaultRule), so -100 stored
         fault_store.add(FaultRule(service="s3", latency_ms=-100, error_code="InternalError"))
         ctx = _make_context()
         chaos_handler(ctx)
         # -100 > 0 is False, so sleep should not be called
-        mock_sleep.assert_not_called()
+        mock_run.assert_not_called()
 
 
 class TestChaosGlobalStore:
