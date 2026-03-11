@@ -590,6 +590,68 @@ async def usage_timeline(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# CI analytics endpoints
+# ---------------------------------------------------------------------------
+
+
+def _ci_analytics_state_dir():
+    """Resolve the CI analytics state directory."""
+    from pathlib import Path
+
+    base = os.environ.get("ROBOTOCORE_STATE_DIR", "")
+    if base:
+        return Path(base) / "ci_analytics"
+    return None
+
+
+async def ci_sessions_list(request: Request) -> JSONResponse:
+    """List recent CI sessions."""
+    from robotocore.audit.ci_analytics import list_sessions
+
+    state_dir = _ci_analytics_state_dir()
+    if not state_dir:
+        return JSONResponse({"sessions": [], "error": "ROBOTOCORE_STATE_DIR not set"})
+    sessions = list_sessions(state_dir)
+    return JSONResponse({"sessions": sessions, "count": len(sessions)})
+
+
+async def ci_session_detail(request: Request) -> JSONResponse:
+    """Get CI session detail by ID."""
+    from robotocore.audit.ci_analytics import get_session_detail
+
+    session_id = request.path_params["session_id"]
+    state_dir = _ci_analytics_state_dir()
+    if not state_dir:
+        return JSONResponse({"error": "ROBOTOCORE_STATE_DIR not set"}, status_code=400)
+    detail = get_session_detail(state_dir, session_id)
+    if detail is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return JSONResponse(detail)
+
+
+async def ci_summary(request: Request) -> JSONResponse:
+    """Aggregate CI analytics summary."""
+    from robotocore.audit.ci_analytics import compute_aggregate_summary
+
+    state_dir = _ci_analytics_state_dir()
+    if not state_dir:
+        return JSONResponse({"error": "ROBOTOCORE_STATE_DIR not set"}, status_code=400)
+    summary = compute_aggregate_summary(state_dir)
+    return JSONResponse(summary)
+
+
+async def ci_sessions_clear(request: Request) -> JSONResponse:
+    """Clear all CI session history."""
+    from robotocore.audit.ci_analytics import clear_sessions
+
+    state_dir = _ci_analytics_state_dir()
+    if not state_dir:
+        return JSONResponse({"error": "ROBOTOCORE_STATE_DIR not set"}, status_code=400)
+    count = clear_sessions(state_dir)
+    return JSONResponse({"status": "cleared", "count": count})
+
+
+# ---------------------------------------------------------------------------
 # SES SMTP email inspection endpoints
 # ---------------------------------------------------------------------------
 
@@ -1025,6 +1087,11 @@ management_routes = [
     Route("/_robotocore/usage/services/{service}", usage_service_detail, methods=["GET"]),
     Route("/_robotocore/usage/errors", usage_errors, methods=["GET"]),
     Route("/_robotocore/usage/timeline", usage_timeline, methods=["GET"]),
+    # CI analytics
+    Route("/_robotocore/ci/sessions", ci_sessions_list, methods=["GET"]),
+    Route("/_robotocore/ci/sessions", ci_sessions_clear, methods=["DELETE"]),
+    Route("/_robotocore/ci/sessions/{session_id}", ci_session_detail, methods=["GET"]),
+    Route("/_robotocore/ci/summary", ci_summary, methods=["GET"]),
     # Endpoint strategies
     Route("/_robotocore/endpoints/config", lambda r: _endpoints_config(r), methods=["GET"]),
     # S3 routing config
@@ -1107,7 +1174,17 @@ def _start_background_engines():
 
 
 def _shutdown():
-    """Shutdown hook -- auto-save state if configured."""
+    """Shutdown hook -- auto-save state and CI analytics if configured."""
+    # Save CI analytics session
+    from robotocore.audit.ci_analytics import get_ci_analytics
+
+    analytics = get_ci_analytics()
+    if analytics is not None:
+        analytics.end_session()
+        state_dir = _ci_analytics_state_dir()
+        if state_dir:
+            analytics.save_session(state_dir)
+
     if os.environ.get("ROBOTOCORE_PERSIST", "0") == "1":
         from robotocore.state.manager import get_state_manager
 
