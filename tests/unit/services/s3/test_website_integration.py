@@ -240,7 +240,7 @@ class TestVirtualHostedRouting:
             "method": "GET",
             "path": "/hello.txt",
             "query_string": b"",
-            "headers": [(b"host", b"vhost-test.s3.localhost.localstack.cloud")],
+            "headers": [(b"host", b"vhost-test.s3.localhost.robotocore.cloud")],
         }
 
         result = rewrite_vhost_to_path(scope)
@@ -254,7 +254,7 @@ class TestVirtualHostedRouting:
             "method": "PUT",
             "path": "/new-object.txt",
             "query_string": b"",
-            "headers": [(b"host", b"upload-bucket.s3.localhost.localstack.cloud")],
+            "headers": [(b"host", b"upload-bucket.s3.localhost.robotocore.cloud")],
         }
 
         result = rewrite_vhost_to_path(scope)
@@ -268,7 +268,7 @@ class TestVirtualHostedRouting:
             "method": "GET",
             "path": "/",
             "query_string": b"list-type=2&prefix=data/",
-            "headers": [(b"host", b"mybucket.s3.localhost.localstack.cloud")],
+            "headers": [(b"host", b"mybucket.s3.localhost.robotocore.cloud")],
         }
 
         result = rewrite_vhost_to_path(scope)

@@ -12,8 +12,14 @@ from robotocore.services.s3.website import (
 class TestParseWebsiteHost:
     """Tests for website host header parsing."""
 
-    def test_custom_website_hostname(self):
-        """mybucket.s3-website.localhost.localstack.cloud"""
+    def test_default_website_hostname(self):
+        """mybucket.s3-website.localhost.robotocore.cloud"""
+        result = parse_website_host("mybucket.s3-website.localhost.robotocore.cloud")
+        assert result is not None
+        assert result["bucket"] == "mybucket"
+
+    def test_localstack_website_hostname_alias(self):
+        """mybucket.s3-website.localhost.localstack.cloud is accepted as compat alias."""
         result = parse_website_host("mybucket.s3-website.localhost.localstack.cloud")
         assert result is not None
         assert result["bucket"] == "mybucket"
@@ -47,6 +53,12 @@ class TestParseWebsiteHost:
         assert parse_website_host("") is None
 
     def test_host_with_port(self):
+        result = parse_website_host("mybucket.s3-website.localhost.robotocore.cloud:4566")
+        assert result is not None
+        assert result["bucket"] == "mybucket"
+
+    def test_localstack_host_with_port(self):
+        """Port should be ignored for localstack.cloud compat alias."""
         result = parse_website_host("mybucket.s3-website.localhost.localstack.cloud:4566")
         assert result is not None
         assert result["bucket"] == "mybucket"
@@ -58,6 +70,14 @@ class TestIsWebsiteRequest:
     def test_detects_website_request(self):
         scope = {
             "type": "http",
+            "headers": [(b"host", b"mybucket.s3-website.localhost.robotocore.cloud")],
+        }
+        assert is_website_request(scope) is True
+
+    def test_detects_localstack_alias_website_request(self):
+        """localstack.cloud alias is also detected as a website request."""
+        scope = {
+            "type": "http",
             "headers": [(b"host", b"mybucket.s3-website.localhost.localstack.cloud")],
         }
         assert is_website_request(scope) is True
@@ -65,14 +85,14 @@ class TestIsWebsiteRequest:
     def test_rejects_non_website(self):
         scope = {
             "type": "http",
-            "headers": [(b"host", b"mybucket.s3.localhost.localstack.cloud")],
+            "headers": [(b"host", b"mybucket.s3.localhost.robotocore.cloud")],
         }
         assert is_website_request(scope) is False
 
     def test_rejects_non_http(self):
         scope = {
             "type": "websocket",
-            "headers": [(b"host", b"mybucket.s3-website.localhost.localstack.cloud")],
+            "headers": [(b"host", b"mybucket.s3-website.localhost.robotocore.cloud")],
         }
         assert is_website_request(scope) is False
 
