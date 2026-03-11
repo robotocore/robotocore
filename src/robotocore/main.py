@@ -10,6 +10,11 @@ from robotocore.observability.logging import setup_logging
 
 
 def main() -> None:
+    # Load configuration profiles before reading any other config
+    from robotocore.config import load_config
+
+    load_config()
+
     host = os.environ.get("ROBOTOCORE_HOST", "127.0.0.1")
     port = int(os.environ.get("ROBOTOCORE_PORT", "4566"))
     debug = os.environ.get("ROBOTOCORE_DEBUG", "0") == "1"
