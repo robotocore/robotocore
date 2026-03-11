@@ -963,22 +963,22 @@ boto==<span class="str">2.38.0</span>
       <h2 class="anim-2">What Would This Have Taken?</h2>
       <div class="three-col anim-3" style="margin-top:32px;max-width:1000px;">
         <div class="card card-blue" style="text-align:center;">
-          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">Without Claude Code</div>
-          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#1E6FBF;line-height:1;">~3–5</div>
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">LocalStack</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#1E6FBF;line-height:1;">10</div>
           <div style="font-size:1rem;opacity:0.7;margin-top:4px;">years</div>
-          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 engineer, full-time.<br>5,000–8,000 dev-hours.</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">Founded 2016. Full-time team.<br>Raised $25M. Still paywalling.</div>
         </div>
         <div class="card card-purple" style="text-align:center;">
-          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">With a team of 5</div>
-          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#6B3FA0;line-height:1;">~6</div>
-          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">months</div>
-          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">Sprint planning, code review,<br>merge conflicts, coordination.</div>
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">A well-staffed open source effort</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#6B3FA0;line-height:1;">2–3</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">years</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">5 engineers. Full-time.<br>Still building. Still not done.</div>
         </div>
         <div class="card card-accent" style="text-align:center;border-top-color:#007B8A;">
-          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">What actually happened</div>
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">Robotocore</div>
           <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#007B8A;line-height:1;">96</div>
           <div style="font-size:1rem;opacity:0.7;margin-top:4px;">hours</div>
-          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 human. 89 sessions.<br>832 commits. 18,201 tests.</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 human. Claude Code.<br>MIT licensed. Done.</div>
         </div>
       </div>
       <p class="anim-4" style="margin-top:28px;font-size:1rem;opacity:0.65;max-width:600px;">
