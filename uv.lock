@@ -438,6 +438,15 @@ wheels = [
 ]
 
 [[package]]
+name = "dnslib"
+version = "0.9.26"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/71/269f74ef9bc8ca453af2e1768d4f4c8e7ef5f894d058d27fd1b69c754d7f/dnslib-0.9.26.tar.gz", hash = "sha256:be56857534390b2fbd02935270019bacc5e6b411d156cb3921ac55a7fb51f1a8", size = 82901, upload-time = "2025-03-03T09:17:32.606Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/93/167364f10194e374119b211e475ed8763d7591ae4f7001b304282dde5825/dnslib-0.9.26-py3-none-any.whl", hash = "sha256:e68719e633d761747c7e91bd241019ef5a2b61a63f56025939e144c841a70e0d", size = 64161, upload-time = "2025-03-03T09:17:31.47Z" },
+]
+
+[[package]]
 name = "docker"
 version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1482,6 +1491,7 @@ dependencies = [
     { name = "aiosmtpd" },
     { name = "boto3" },
     { name = "botocore" },
+    { name = "dnslib" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "moto", extra = ["all"] },
@@ -1516,6 +1526,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.34" },
     { name = "botocore", specifier = ">=1.34" },
     { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.5" },
+    { name = "dnslib", specifier = ">=0.9" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "moto", extras = ["all"], git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes" },

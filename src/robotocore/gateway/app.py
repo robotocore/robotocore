@@ -491,6 +491,32 @@ async def ses_messages_clear(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# DNS server management endpoint
+# ---------------------------------------------------------------------------
+
+
+async def dns_config_endpoint(request: Request) -> JSONResponse:
+    """Return current DNS server configuration."""
+    from robotocore.dns.resolver import get_config
+
+    config = get_config()
+    return JSONResponse(
+        {
+            "dns": {
+                "disabled": config["disabled"],
+                "address": config["address"],
+                "port": config["port"],
+                "resolve_ip": config["resolve_ip"],
+                "upstream_server": config["upstream_server"] or "(system default)",
+                "local_patterns": config["local_patterns"],
+                "upstream_patterns": config["upstream_patterns"],
+                "ttl": config["ttl"],
+            }
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # AWS request handler
 # ---------------------------------------------------------------------------
 
@@ -694,6 +720,8 @@ management_routes = [
     # SES SMTP email inspection
     Route("/_robotocore/ses/messages", ses_messages_list, methods=["GET"]),
     Route("/_robotocore/ses/messages", ses_messages_clear, methods=["DELETE"]),
+    # DNS server
+    Route("/_robotocore/dns/config", dns_config_endpoint, methods=["GET"]),
 ]
 
 
@@ -744,6 +772,11 @@ def _shutdown():
     from robotocore.services.ses.smtp_server import stop_smtp_server
 
     stop_smtp_server()
+
+    # Stop DNS server
+    from robotocore.dns.server import stop_dns_server
+
+    stop_dns_server()
 
     # Run shutdown hooks
     run_init_hooks("shutdown")
