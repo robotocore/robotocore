@@ -43,7 +43,7 @@ class TestStandardStrategy:
 
     def test_url_format(self):
         url = sqs_queue_url("my-queue", "us-east-1", "123456789012", SqsEndpointStrategy.STANDARD)
-        assert url == ("http://sqs.us-east-1.localhost.localstack.cloud:4566/123456789012/my-queue")
+        assert url == ("http://sqs.us-east-1.localhost.robotocore.cloud:4566/123456789012/my-queue")
 
     def test_includes_correct_region(self):
         url = sqs_queue_url("q", "eu-west-1", "111111111111", SqsEndpointStrategy.STANDARD)
@@ -77,7 +77,7 @@ class TestDomainStrategy:
     def test_url_format(self):
         url = sqs_queue_url("my-queue", "us-east-1", "123456789012", SqsEndpointStrategy.DOMAIN)
         assert url == (
-            "http://us-east-1.queue.localhost.localstack.cloud:4566/123456789012/my-queue"
+            "http://us-east-1.queue.localhost.robotocore.cloud:4566/123456789012/my-queue"
         )
 
     def test_includes_correct_region(self):
@@ -163,7 +163,7 @@ class TestParseSqsUrl:
     def test_standard_host_parsing(self):
         result = parse_sqs_url(
             "/123456789012/my-queue",
-            "sqs.us-east-1.localhost.localstack.cloud:4566",
+            "sqs.us-east-1.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -173,7 +173,7 @@ class TestParseSqsUrl:
     def test_domain_host_parsing(self):
         result = parse_sqs_url(
             "/123456789012/my-queue",
-            "us-east-1.queue.localhost.localstack.cloud:4566",
+            "us-east-1.queue.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -193,14 +193,14 @@ class TestParseSqsUrl:
         """Host matches but path has insufficient segments for account_id/queue_name."""
         result = parse_sqs_url(
             "/only-one-segment",
-            "sqs.us-east-1.localhost.localstack.cloud:4566",
+            "sqs.us-east-1.localhost.robotocore.cloud:4566",
         )
         assert result is None
 
     def test_domain_host_with_only_one_path_segment_returns_none(self):
         result = parse_sqs_url(
             "/only-one-segment",
-            "us-east-1.queue.localhost.localstack.cloud:4566",
+            "us-east-1.queue.localhost.robotocore.cloud:4566",
         )
         assert result is None
 
@@ -219,7 +219,7 @@ class TestParseSqsUrl:
         assert result is None
 
     def test_standard_host_root_path_returns_none(self):
-        result = parse_sqs_url("/", "sqs.us-east-1.localhost.localstack.cloud:4566")
+        result = parse_sqs_url("/", "sqs.us-east-1.localhost.robotocore.cloud:4566")
         assert result is None
 
 
@@ -287,7 +287,7 @@ class TestSqsStrategyFromEnvForUrlGeneration:
         monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "domain")
         monkeypatch.delenv("GATEWAY_PORT", raising=False)
         url = sqs_queue_url("q", "us-east-1", "123")
-        assert ".queue.localhost.localstack.cloud" in url
+        assert ".queue.localhost.robotocore.cloud" in url
 
 
 class TestSqsRoundTrip:

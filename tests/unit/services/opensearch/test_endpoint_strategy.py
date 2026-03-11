@@ -212,7 +212,7 @@ class TestOpenSearchStrategyFromEnvForEndpointGen:
         monkeypatch.delenv("OPENSEARCH_ENDPOINT_STRATEGY", raising=False)
         monkeypatch.delenv("GATEWAY_PORT", raising=False)
         ep = opensearch_endpoint("d", "us-east-1")
-        assert ".opensearch.localhost.localstack.cloud" in ep
+        assert ".opensearch.localhost.robotocore.cloud" in ep
 
     def test_reads_path_from_env(self, monkeypatch):
         monkeypatch.setenv("OPENSEARCH_ENDPOINT_STRATEGY", "path")
