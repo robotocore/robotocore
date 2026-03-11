@@ -14,6 +14,13 @@ from collections.abc import Callable
 from starlette.requests import Request
 from starlette.responses import Response
 
+from robotocore.services.sqs.behavioral import (
+    PurgeQueueInProgressError,
+    PurgeTracker,
+    QueueDeletedRecentlyError,
+    QueueDeletedTracker,
+    RetentionScanner,
+)
 from robotocore.services.sqs.models import SqsMessage, SqsStore, StandardQueue
 
 DEFAULT_ACCOUNT_ID = "123456789012"
@@ -22,6 +29,11 @@ _stores: dict[tuple[str, str], SqsStore] = {}
 _store_lock = threading.Lock()
 _worker_started = False
 _worker_lock = threading.Lock()
+
+# Behavioral fidelity singletons
+_purge_tracker = PurgeTracker()
+_delete_tracker = QueueDeletedTracker()
+_retention_scanner = RetentionScanner()
 
 
 def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> SqsStore:
@@ -40,6 +52,7 @@ def _ensure_worker():
         _worker_started = True
         t = threading.Thread(target=_background_worker, daemon=True)
         t.start()
+        _retention_scanner.start(_stores)
 
 
 def _background_worker():
@@ -106,6 +119,20 @@ async def handle_sqs_request(request: Request, region: str, account_id: str) -> 
             return _xml_response(action + "Response", result)
     except SqsError as e:
         return _error(e.code, e.message, e.status, use_json)
+    except PurgeQueueInProgressError:
+        return _error(
+            "AWS.SimpleQueueService.PurgeQueueInProgress",
+            "Only one PurgeQueue operation on the same queue is allowed every 60 seconds.",
+            403,
+            use_json,
+        )
+    except QueueDeletedRecentlyError as e:
+        return _error(
+            "AWS.SimpleQueueService.QueueDeletedRecently",
+            str(e),
+            400,
+            use_json,
+        )
     except Exception as e:
         return _error("InternalError", str(e), 500, use_json)
 
@@ -141,6 +168,7 @@ def _create_queue(
     store: SqsStore, params: dict, region: str, account_id: str, request: Request
 ) -> dict:
     name = params.get("QueueName", "")
+    _delete_tracker.check_create(name)
     attributes = params.get("Attributes", {})
     tags = params.get("Tags", params.get("tags", {}))
     # Query protocol: Attribute.N.Name/Value
@@ -165,6 +193,8 @@ def _delete_queue(
             "The specified queue does not exist.",
         )
     store.delete_queue(queue.name)
+    _delete_tracker.record_deletion(queue.name)
+    _purge_tracker.remove(queue.name)
     return {}
 
 
@@ -343,6 +373,7 @@ def _purge_queue(
     store: SqsStore, params: dict, region: str, account_id: str, request: Request
 ) -> dict:
     queue = _resolve_queue(store, params, request)
+    _purge_tracker.check_and_record(queue.name)
     queue.purge()
     return {}
 
