@@ -100,21 +100,41 @@ def _invoke_lambda_sync(
     env_vars = getattr(fn, "environment_vars", {}) or {}
     layer_zips = get_layer_zips(fn, account_id, region)
 
-    from robotocore.services.lambda_.runtimes import get_executor_for_runtime
+    from robotocore.services.lambda_.docker_executor import get_executor_mode
 
-    executor = get_executor_for_runtime(runtime)
-    result, error_type, logs = executor.execute(
-        code_zip=code_zip,
-        handler=handler,
-        event=payload,
-        function_name=function_name,
-        timeout=timeout,
-        memory_size=memory_size,
-        env_vars=env_vars,
-        region=region,
-        account_id=account_id,
-        layer_zips=layer_zips if layer_zips else None,
-    )
+    if get_executor_mode() == "docker":
+        from robotocore.services.lambda_.docker_executor import get_docker_executor
+
+        docker_exec = get_docker_executor()
+        result, error_type, logs = docker_exec.execute(
+            code_zip=code_zip,
+            handler=handler,
+            event=payload,
+            function_name=function_name,
+            runtime=runtime,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+            layer_zips=layer_zips if layer_zips else None,
+        )
+    else:
+        from robotocore.services.lambda_.runtimes import get_executor_for_runtime
+
+        executor = get_executor_for_runtime(runtime)
+        result, error_type, logs = executor.execute(
+            code_zip=code_zip,
+            handler=handler,
+            event=payload,
+            function_name=function_name,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+            layer_zips=layer_zips if layer_zips else None,
+        )
 
     if callback:
         try:
