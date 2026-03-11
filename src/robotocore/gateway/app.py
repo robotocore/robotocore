@@ -316,6 +316,13 @@ async def reset_state(request: Request) -> JSONResponse:
     return JSONResponse({"status": "reset"})
 
 
+async def list_state_hooks(request: Request) -> JSONResponse:
+    """List all registered state lifecycle hooks."""
+    from robotocore.state.hooks import state_hooks
+
+    return JSONResponse({"hooks": state_hooks.list_hooks()})
+
+
 async def export_state(request: Request) -> Response:
     """Export emulator state.
 
@@ -753,6 +760,7 @@ management_routes = [
     Route("/_robotocore/state/load", load_state, methods=["POST"]),
     Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
     Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
+    Route("/_robotocore/state/hooks", list_state_hooks, methods=["GET"]),
     Route("/_robotocore/state/export", export_state, methods=["GET"]),
     Route("/_robotocore/state/import", import_state, methods=["POST"]),
     # Chaos engineering
