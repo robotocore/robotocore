@@ -17,6 +17,21 @@ from robotocore.services.lambda_.hot_reload import (
     is_hot_reload_enabled,
     is_hot_reload_for_function,
 )
+from robotocore.services.lambda_.limits import (
+    InvalidParameterValueException as LimitsInvalidParam,
+)
+from robotocore.services.lambda_.limits import (
+    RequestTooLargeException,
+    TooManyRequestsException,
+    get_code_size_unzipped_limit,
+    get_code_size_zipped_limit,
+    get_concurrency_tracker,
+    get_concurrent_executions_limit,
+    get_total_code_size_limit,
+    validate_code_size_zipped,
+    validate_envvar_size,
+    validate_payload_size,
+)
 from robotocore.services.lambda_.runtimes import get_executor_for_runtime
 
 logger = logging.getLogger(__name__)
@@ -115,6 +130,14 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         error_type = type(e).__name__
         error_msg = str(e)
 
+        # Map limits exceptions to AWS error codes
+        if isinstance(e, TooManyRequestsException):
+            return _error("TooManyRequestsException", str(e), 429)
+        if isinstance(e, RequestTooLargeException):
+            return _error("RequestTooLargeException", str(e), 413)
+        if isinstance(e, LimitsInvalidParam):
+            return _error("InvalidParameterValueException", str(e), 400)
+
         # Map Moto exceptions to AWS error codes
         if "ResourceNotFoundException" in error_type or "UnknownFunction" in error_type:
             return _error("ResourceNotFoundException", error_msg, 404)
@@ -152,6 +175,19 @@ async def _handle_functions(
     # POST /functions — CreateFunction
     if len(parts) == 1 and method == "POST":
         spec = json.loads(body) if body else {}
+        # Validate env var size
+        env_vars = (spec.get("Environment") or {}).get("Variables") or {}
+        if env_vars:
+            validate_envvar_size(env_vars)
+        # Validate code size
+        code = spec.get("Code") or {}
+        zip_file = code.get("ZipFile")
+        if zip_file:
+            import base64 as b64mod
+
+            raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
+            validate_code_size_zipped(len(raw))
+            get_concurrency_tracker().add_code_size(len(raw))
         fn = backend.create_function(spec)
         return _json(201, _fn_config(fn))
 
@@ -211,6 +247,14 @@ async def _handle_functions(
         if sub == "code":
             if method == "PUT":
                 spec = json.loads(body) if body else {}
+                # Validate code size
+                zip_file = spec.get("ZipFile")
+                if zip_file:
+                    import base64 as b64mod
+
+                    raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
+                    validate_code_size_zipped(len(raw))
+                    get_concurrency_tracker().add_code_size(len(raw))
                 qualifier = request.query_params.get("Qualifier")
                 result = backend.update_function_code(func_name, qualifier, spec)
                 # Invalidate code cache so next invocation picks up new code
@@ -816,15 +860,16 @@ def _handle_account_settings(region: str, account_id: str) -> Response:
         if fn.reserved_concurrency is not None:
             total_concurrency += int(fn.reserved_concurrency)
 
+    account_limit = get_concurrent_executions_limit()
     return _json(
         200,
         {
             "AccountLimit": {
-                "TotalCodeSize": 80530636800,
-                "CodeSizeUnzipped": 262144000,
-                "CodeSizeZipped": 52428800,
-                "ConcurrentExecutions": 1000,
-                "UnreservedConcurrentExecutions": max(0, 1000 - total_concurrency),
+                "TotalCodeSize": get_total_code_size_limit(),
+                "CodeSizeUnzipped": get_code_size_unzipped_limit(),
+                "CodeSizeZipped": get_code_size_zipped_limit(),
+                "ConcurrentExecutions": account_limit,
+                "UnreservedConcurrentExecutions": max(0, account_limit - total_concurrency),
             },
             "AccountUsage": {
                 "TotalCodeSize": total_code_size,
@@ -1063,6 +1108,10 @@ async def _invoke(
     invocation_type = request.headers.get("x-amz-invocation-type", "RequestResponse")
     log_type = request.headers.get("x-amz-log-type", "None")
 
+    # Validate payload size
+    is_async = invocation_type == "Event"
+    validate_payload_size(len(body) if body else 0, is_async=is_async)
+
     event = json.loads(body) if body else {}
 
     runtime = getattr(fn, "run_time", "") or ""
@@ -1093,24 +1142,31 @@ async def _invoke(
 
     result, error_type, logs = None, None, ""
 
-    if code_dir or code_zip:
-        executor = get_executor_for_runtime(runtime)
-        result, error_type, logs = executor.execute(
-            code_zip=code_zip or b"",
-            handler=handler,
-            event=event,
-            function_name=func_name,
-            timeout=timeout,
-            memory_size=memory_size,
-            env_vars=env_vars,
-            region=region,
-            account_id=account_id,
-            code_dir=code_dir,
-            hot_reload=use_hot_reload,
-        )
-    else:
-        # No code — return a simple success (like Moto's simple mode)
-        result, error_type, logs = "Simple Lambda happy path OK", None, ""
+    # Acquire concurrency slot
+    function_key = f"{account_id}:{region}:{func_name}"
+    tracker = get_concurrency_tracker()
+    tracker.acquire(function_key)
+    try:
+        if code_dir or code_zip:
+            executor = get_executor_for_runtime(runtime)
+            result, error_type, logs = executor.execute(
+                code_zip=code_zip or b"",
+                handler=handler,
+                event=event,
+                function_name=func_name,
+                timeout=timeout,
+                memory_size=memory_size,
+                env_vars=env_vars,
+                region=region,
+                account_id=account_id,
+                code_dir=code_dir,
+                hot_reload=use_hot_reload,
+            )
+        else:
+            # No code — return a simple success (like Moto's simple mode)
+            result, error_type, logs = "Simple Lambda happy path OK", None, ""
+    finally:
+        tracker.release(function_key)
 
     # Handle async invocation with destinations and DLQ
     if invocation_type == "Event":
