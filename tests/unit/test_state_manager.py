@@ -2,6 +2,7 @@
 
 import json
 import os
+import pickle
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,7 +18,7 @@ class TestStateManager:
 
         assert (tmp_path / "metadata.json").exists()
         assert (tmp_path / "moto_state.pkl").exists()
-        assert (tmp_path / "native_state.json").exists()
+        assert (tmp_path / "native_state.pkl").exists()
 
         meta = json.loads((tmp_path / "metadata.json").read_text())
         assert meta["version"] == "1.0"
@@ -173,12 +174,13 @@ class TestSaveDetails:
         assert "sqs" in meta["native_services"]
         assert "sns" in meta["native_services"]
 
-    def test_native_state_json_written(self, tmp_path):
+    def test_native_state_pkl_written(self, tmp_path):
         mgr = StateManager(state_dir=str(tmp_path))
         mgr.register_native_handler("test_svc", lambda: {"key": "val"}, lambda d: None)
         mgr.save()
 
-        native = json.loads((tmp_path / "native_state.json").read_text())
+        with open(tmp_path / "native_state.pkl", "rb") as f:
+            native = pickle.load(f)  # noqa: S301
         assert native["test_svc"] == {"key": "val"}
 
     def test_save_with_explicit_path_overrides_state_dir(self, tmp_path):

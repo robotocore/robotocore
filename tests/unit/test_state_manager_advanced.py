@@ -29,7 +29,7 @@ class TestCompressedSave:
         with tarfile.open(result, "r:gz") as tar:
             names = tar.getnames()
         assert "metadata.json" in names
-        assert "native_state.json" in names
+        assert "native_state.pkl" in names
         assert "moto_state.pkl" in names
 
     def test_load_compressed_snapshot(self, tmp_path):

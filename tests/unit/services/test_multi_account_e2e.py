@@ -11,7 +11,7 @@ Covers scenarios a real user would hit:
 - Default account backward compatibility
 """
 
-import json
+import pickle
 import threading
 from unittest.mock import MagicMock
 
@@ -551,8 +551,9 @@ class TestStatePersistenceMultiAccount:
         manager.save(name="sqs-only", services=["sqs"])
 
         # Verify the saved native state only has SQS
-        native_path = tmp_path / "snapshots" / "sqs-only" / "native_state.json"
-        saved = json.loads(native_path.read_text())
+        native_path = tmp_path / "snapshots" / "sqs-only" / "native_state.pkl"
+        with open(native_path, "rb") as f:
+            saved = pickle.load(f)  # noqa: S301
         assert "sqs" in saved
         assert "sns" not in saved
 

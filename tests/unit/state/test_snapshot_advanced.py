@@ -1,6 +1,7 @@
 """Advanced tests for state snapshot manager."""
 
 import json
+import pickle
 import tarfile
 import tempfile
 from pathlib import Path
@@ -124,7 +125,7 @@ class TestImportCorruptedArchive:
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = _make_manager(tmpdir)
             with patch("robotocore.state.manager.StateManager._load_moto_state"):
-                with patch("robotocore.state.manager.StateManager._load_native_state"):
+                with patch("robotocore.state.manager.StateManager._load_native_state_pkl"):
                     name = mgr.import_snapshot_bytes(
                         data, name="empty-snap", load_after_import=False
                     )
@@ -177,8 +178,9 @@ class TestSelectiveServiceSave:
             with patch("robotocore.state.manager.StateManager._save_moto_state"):
                 mgr.save(name="selective", services=["s3"])
 
-            native_path = Path(tmpdir) / "snapshots" / "selective" / "native_state.json"
-            native_data = json.loads(native_path.read_text())
+            native_path = Path(tmpdir) / "snapshots" / "selective" / "native_state.pkl"
+            with open(native_path, "rb") as f:
+                native_data = pickle.load(f)  # noqa: S301
             assert "s3" in native_data
             assert "sqs" not in native_data
 
