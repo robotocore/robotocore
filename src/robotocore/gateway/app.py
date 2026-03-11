@@ -479,6 +479,24 @@ async def audit_log(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Endpoint strategy configuration
+# ---------------------------------------------------------------------------
+
+
+async def _endpoints_config(request: Request) -> JSONResponse:
+    """Return current endpoint strategy configuration."""
+    from robotocore.services.opensearch.endpoint_strategy import get_opensearch_endpoint_strategy
+    from robotocore.services.sqs.endpoint_strategy import get_sqs_endpoint_strategy
+
+    return JSONResponse(
+        {
+            "sqs_endpoint_strategy": get_sqs_endpoint_strategy().value,
+            "opensearch_endpoint_strategy": get_opensearch_endpoint_strategy().value,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # SES SMTP email inspection endpoints
 # ---------------------------------------------------------------------------
 
@@ -706,6 +724,8 @@ management_routes = [
     Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),
     # Audit log
     Route("/_robotocore/audit", audit_log, methods=["GET"]),
+    # Endpoint strategies
+    Route("/_robotocore/endpoints/config", lambda r: _endpoints_config(r), methods=["GET"]),
     # S3 routing config
     Route("/_robotocore/s3/routing", s3_routing_config, methods=["GET"]),
     # SES SMTP email inspection
