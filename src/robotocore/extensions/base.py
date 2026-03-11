@@ -94,6 +94,28 @@ class RobotocorePlugin:
         """
         return {}
 
+    # ------------------------------------------------------------------
+    # State lifecycle hooks (optional)
+    # ------------------------------------------------------------------
+
+    def on_before_state_save(self, context: dict) -> None:
+        """Called before state is saved. Raise to abort the save."""
+
+    def on_after_state_save(self, context: dict) -> None:
+        """Called after state is saved successfully."""
+
+    def on_before_state_load(self, context: dict) -> None:
+        """Called before state is loaded. Raise to abort the load."""
+
+    def on_after_state_load(self, context: dict) -> None:
+        """Called after state is loaded successfully."""
+
+    def on_before_state_reset(self, context: dict) -> None:
+        """Called before state is reset. Raise to abort the reset."""
+
+    def on_after_state_reset(self, context: dict) -> None:
+        """Called after state is reset successfully."""
+
     def get_custom_routes(self) -> list[tuple[str, str, callable]]:
         """Return custom HTTP routes to register.
 
