@@ -1,0 +1,8 @@
+services:
+  robotocore-extension:
+    image: robotocore/docker-desktop-extension:latest
+    volumes:
+      - robotocore-data:/tmp/robotocore/state
+
+volumes:
+  robotocore-data:
