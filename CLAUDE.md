@@ -169,11 +169,11 @@ make status                            # Check if server is running
 
 ## Service Coverage (147 services registered)
 
-147 AWS services are implemented. 38 have native providers with enhanced fidelity; 109 are Moto-backed. 11 broken services were deregistered (Moto ops all return 500).
+147 AWS services are implemented. 46 have native providers with enhanced fidelity; 101 are Moto-backed. 11 broken services were deregistered (Moto ops all return 500).
 
-**Native providers** (38): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
+**Native providers** (46): acm, apigateway, apigatewayv2, appsync, batch, cloudformation, cloudwatch, cognito-idp, config, dynamodb, dynamodbstreams, ec2, ecr, ecs, es, events, firehose, iam, kinesis, lambda, logs, opensearch, pipes, rekognition, resource-groups, resourcegroupstaggingapi, route53, s3, scheduler, secretsmanager, ses, sesv2, sns, sqs, ssm, stepfunctions, sts, support, xray
 
-**Test coverage**: 6,383+ tests (2,874 unit + 3,451 compat + 58 integration), 0 failures, 0 xfails. **147/147 registered services have compat tests (100% coverage).**
+**Test coverage**: 16,641+ tests (5,546 unit + 11,037 compat + 58 integration), 0 failures, 0 xfails. **147/147 registered services have compat tests (100% coverage).**
 
 ## Adding a New Moto-Backed Service (Checklist)
 

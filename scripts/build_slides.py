@@ -424,7 +424,7 @@ blockquote {{
       <div class="logo-word anim-2">robotocore</div>
       <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
       <div style="margin-top:32px;" class="anim-4">
-        <span class="days-badge glow">⏱ 4 days · 147 services · 14,538 tests · 0 failures</span>
+        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
       </div>
     </div>
   </section>
@@ -771,7 +771,7 @@ boto==<span class="str">2.38.0</span>
       </div>
       <div class="anim-4" style="display:flex;gap:24px;justify-content:center;margin-top:32px;">
         <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#E07B00;">14,538</div>
+          <div class="mini-stat-num" style="color:#E07B00;">16,641</div>
           <div class="mini-stat-label">Final test count</div>
         </div>
         <div class="mini-stat-box">
@@ -1255,7 +1255,7 @@ function initBigStats() {{
   const el = document.getElementById('big-stats');
   const stats = [
     {{ num: '147', label: 'AWS Services' }},
-    {{ num: '14,538', label: 'Tests' }},
+    {{ num: '16,641', label: 'Tests' }},
     {{ num: '0', label: 'Failures' }},
     {{ num: '38', label: 'Native Providers' }},
   ];
