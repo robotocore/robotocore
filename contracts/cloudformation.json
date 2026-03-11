@@ -1,0 +1,65 @@
+{
+  "service": "cloudformation",
+  "generated_at": "2026-03-11T20:55:05.111773+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "cloudformation",
+      "operation": "ListStacks",
+      "status_code": 200,
+      "response_keys": [
+        "NextToken",
+        "StackSummaries"
+      ],
+      "header_keys": [
+        "content-type"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.090280+00:00",
+      "protocol": "query",
+      "key_types": {
+        "StackSummaries": "list",
+        "NextToken": "string"
+      }
+    },
+    {
+      "service": "cloudformation",
+      "operation": "DescribeStacks",
+      "status_code": 200,
+      "response_keys": [
+        "NextToken",
+        "Stacks"
+      ],
+      "header_keys": [
+        "content-type"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str",
+        "Type": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.111717+00:00",
+      "protocol": "query",
+      "key_types": {
+        "Stacks": "list",
+        "NextToken": "string"
+      }
+    }
+  ]
+}

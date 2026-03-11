@@ -1,0 +1,36 @@
+{
+  "service": "events",
+  "generated_at": "2026-03-11T20:55:05.172169+00:00",
+  "source": "botocore",
+  "operations": [
+    {
+      "service": "events",
+      "operation": "ListRules",
+      "status_code": 200,
+      "response_keys": [
+        "NextToken",
+        "Rules"
+      ],
+      "header_keys": [
+        "content-type",
+        "x-amzn-requestid"
+      ],
+      "error_format": {
+        "Code": "str",
+        "Message": "str"
+      },
+      "metadata_keys": [
+        "HTTPHeaders",
+        "HTTPStatusCode",
+        "RequestId",
+        "RetryAttempts"
+      ],
+      "timestamp": "2026-03-11T20:55:05.172143+00:00",
+      "protocol": "json",
+      "key_types": {
+        "Rules": "list",
+        "NextToken": "string"
+      }
+    }
+  ]
+}
