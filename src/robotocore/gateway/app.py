@@ -234,19 +234,67 @@ async def services_endpoint(request: Request) -> JSONResponse:
 
 
 async def config_endpoint(request: Request) -> JSONResponse:
-    """Return current Robotocore configuration."""
+    """Return current Robotocore configuration (GET) or update it (POST)."""
+    from robotocore.config.runtime import get_runtime_config
+
+    rt = get_runtime_config()
+
+    if request.method == "POST":
+        if not rt.updates_enabled:
+            return JSONResponse(
+                {"error": "Runtime config updates are disabled. Set ENABLE_CONFIG_UPDATES=1."},
+                status_code=403,
+            )
+        body = await request.body()
+        if not body:
+            return JSONResponse({"error": "No settings provided"}, status_code=400)
+        try:
+            updates = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+        if not isinstance(updates, dict):
+            return JSONResponse({"error": "Expected JSON object"}, status_code=400)
+
+        results: dict[str, str] = {}
+        for key, value in updates.items():
+            try:
+                rt.set(key, str(value))
+                results[key] = str(value)
+            except ValueError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+
+        return JSONResponse({"status": "updated", "updated": results})
+
+    # GET — return config with detailed settings
     native_count = sum(1 for s in SERVICE_REGISTRY.values() if s.status == ServiceStatus.NATIVE)
+    log_level = rt.get("LOG_LEVEL", "INFO")
+    debug_val = rt.get("DEBUG", "0")
     return JSONResponse(
         {
-            "enforce_iam": False,
+            "enforce_iam": rt.get("ENFORCE_IAM", "0") == "1",
             "persistence": os.environ.get("PERSISTENCE", "0") == "1",
-            "log_level": os.environ.get("LOG_LEVEL", "INFO").upper(),
-            "debug": os.environ.get("DEBUG", "0") == "1",
+            "log_level": (log_level or "INFO").upper(),
+            "debug": debug_val == "1",
             "region": os.environ.get("DEFAULT_REGION", "us-east-1"),
             "services_count": len(SERVICE_REGISTRY),
             "native_providers": native_count,
+            "updates_enabled": rt.updates_enabled,
+            "settings": rt.list_all(),
         }
     )
+
+
+async def config_delete_endpoint(request: Request) -> JSONResponse:
+    """Reset a runtime config override back to its original value."""
+    from robotocore.config.runtime import get_runtime_config
+
+    rt = get_runtime_config()
+    key = request.path_params["key"]
+    old = rt.delete(key)
+    if old is None:
+        return JSONResponse({"error": f"No runtime override for {key}"}, status_code=404)
+    return JSONResponse({"status": "reset", "key": key, "previous_value": old})
 
 
 async def save_state(request: Request) -> JSONResponse:
@@ -803,7 +851,8 @@ async def handle_connections_api(
 management_routes = [
     Route("/_robotocore/health", health, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
-    Route("/_robotocore/config", config_endpoint, methods=["GET"]),
+    Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
+    Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
     Route("/_robotocore/state/load", load_state, methods=["POST"]),
     Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
