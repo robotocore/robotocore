@@ -324,9 +324,9 @@ class TestHeadRequestInForwardWithBody:
     the content-length header that HEAD responses must include.
     """
 
-    @pytest.mark.asyncio
-    async def test_forward_to_moto_with_body_preserves_content_length_for_head(self):
+    def test_forward_to_moto_with_body_preserves_content_length_for_head(self):
         """HEAD responses must keep content-length and have empty body."""
+        import asyncio
         from unittest.mock import MagicMock, patch
 
         from robotocore.providers.moto_bridge import forward_to_moto_with_body
@@ -359,7 +359,7 @@ class TestHeadRequestInForwardWithBody:
                 return_value=MagicMock(),
             ),
         ):
-            response = await forward_to_moto_with_body(mock_request, "s3", b"")
+            response = asyncio.run(forward_to_moto_with_body(mock_request, "s3", b""))
 
         # HEAD response MUST have empty body
         assert response.body == b"", f"HEAD response body should be empty but got {response.body!r}"
