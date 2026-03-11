@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -21,6 +22,7 @@ from robotocore.gateway.handlers import (
     populate_context_handler,
 )
 from robotocore.gateway.router import route_to_service
+from robotocore.gateway.tls import TLSConfig, get_cert_info
 from robotocore.observability.hooks import run_init_hooks
 from robotocore.observability.metrics import request_counter
 from robotocore.observability.tracing import TracingMiddleware
@@ -82,6 +84,10 @@ from robotocore.services.support.provider import handle_support_request
 from robotocore.services.synthetics.provider import handle_synthetics_request
 from robotocore.services.tagging.provider import handle_tagging_request
 from robotocore.services.xray.provider import handle_xray_request
+
+# Module-level TLS state (set during startup in main.py or tests)
+_tls_config: TLSConfig = TLSConfig(enabled=False)
+_tls_cert_path: Path | None = None
 
 # Services with native providers (bypass Moto)
 NATIVE_PROVIDERS = {
@@ -490,6 +496,31 @@ async def ses_messages_clear(request: Request) -> JSONResponse:
     return JSONResponse({"status": "cleared", "count": count})
 
 
+async def tls_info_endpoint(request: Request) -> JSONResponse:
+    """Return TLS/HTTPS configuration and certificate info."""
+    if not _tls_config.enabled or _tls_cert_path is None:
+        return JSONResponse(
+            {
+                "enabled": False,
+                "certificate": None,
+                "custom_certificate": False,
+                "https_port": _tls_config.https_port,
+            }
+        )
+
+    cert_info = get_cert_info(_tls_cert_path)
+    is_custom = _tls_config.custom_cert_path is not None
+
+    return JSONResponse(
+        {
+            "enabled": True,
+            "certificate": cert_info,
+            "custom_certificate": is_custom,
+            "https_port": _tls_config.https_port,
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # AWS request handler
 # ---------------------------------------------------------------------------
@@ -694,6 +725,8 @@ management_routes = [
     # SES SMTP email inspection
     Route("/_robotocore/ses/messages", ses_messages_list, methods=["GET"]),
     Route("/_robotocore/ses/messages", ses_messages_clear, methods=["DELETE"]),
+    # TLS info
+    Route("/_robotocore/tls/info", tls_info_endpoint, methods=["GET"]),
 ]
 
 
