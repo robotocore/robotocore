@@ -44,8 +44,10 @@ def _apply_setting(key: str, value: str) -> None:
             from robotocore.audit.log import get_audit_log
 
             get_audit_log().resize(int(value))
-        except (ImportError, ValueError):
-            pass
+        except ImportError:
+            logger.debug("Could not import audit log module; skipping AUDIT_LOG_SIZE update")
+        except ValueError:
+            logger.warning("Invalid AUDIT_LOG_SIZE value %r; must be an integer", value)
 
 
 class RuntimeConfig:
