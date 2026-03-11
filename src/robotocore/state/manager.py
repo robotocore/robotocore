@@ -11,6 +11,8 @@ Configuration via environment variables:
     ROBOTOCORE_RESTORE_SNAPSHOT=<name|latest>    Auto-restore snapshot on startup
 """
 
+from __future__ import annotations
+
 import io
 import json
 import logging
@@ -20,6 +22,10 @@ import tarfile
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from robotocore.state.hooks import StateHookRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +33,23 @@ logger = logging.getLogger(__name__)
 class StateManager:
     """Manages save/restore of emulator state."""
 
-    def __init__(self, state_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        state_dir: str | None = None,
+        hook_registry: StateHookRegistry | None = None,
+    ) -> None:
         self.state_dir = Path(state_dir) if state_dir else None
         self._native_handlers: dict[str, tuple] = {}
         self._last_save_time: float = 0.0
         self._save_lock = threading.Lock()
         self._debounce_interval: float = 1.0  # seconds
+
+        if hook_registry is not None:
+            self._hooks = hook_registry
+        else:
+            from robotocore.state.hooks import state_hooks
+
+            self._hooks = state_hooks
 
     def register_native_handler(
         self,
@@ -58,6 +75,8 @@ class StateManager:
             services: If provided, only save these services.
             compress: If True, create a .tar.gz archive instead of a directory.
         """
+        from robotocore.state.hooks import HookType
+
         if name:
             base = Path(path) if path else self.state_dir
             if not base:
@@ -70,6 +89,14 @@ class StateManager:
             save_dir = Path(path) if path else self.state_dir
         if not save_dir:
             raise ValueError("No state directory configured")
+
+        # Fire before-save hook (may abort by raising)
+        hook_ctx = {
+            "services": services,
+            "snapshot_name": name,
+            "snapshot_path": str(save_dir),
+        }
+        self._hooks.fire(HookType.BEFORE_SAVE, hook_ctx)
 
         save_dir.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y%m%dT%H%M%S")
@@ -110,11 +137,17 @@ class StateManager:
             shutil.rmtree(save_dir)
             self._last_save_time = time.monotonic()
             logger.info("State saved (compressed) to %s", archive_path)
-            return str(archive_path)
+            result_path = str(archive_path)
+            hook_ctx["snapshot_path"] = result_path
+            self._hooks.fire(HookType.AFTER_SAVE, hook_ctx)
+            return result_path
 
         self._last_save_time = time.monotonic()
         logger.info("State saved to %s", save_dir)
-        return str(save_dir)
+        result_path = str(save_dir)
+        hook_ctx["snapshot_path"] = result_path
+        self._hooks.fire(HookType.AFTER_SAVE, hook_ctx)
+        return result_path
 
     def save_debounced(self) -> bool:
         """Save state with debouncing -- at most once per debounce_interval.
@@ -189,6 +222,8 @@ class StateManager:
                   Use "latest" to load the most recently saved snapshot.
             services: If provided, only load these services.
         """
+        from robotocore.state.hooks import HookType
+
         if name:
             base = Path(path) if path else self.state_dir
             if not base:
@@ -223,6 +258,14 @@ class StateManager:
             logger.warning("No metadata.json in %s -- skipping load", load_dir)
             return False
 
+        # Fire before-load hook (may abort by raising)
+        hook_ctx = {
+            "services": services,
+            "snapshot_name": name,
+            "snapshot_path": str(load_dir),
+        }
+        self._hooks.fire(HookType.BEFORE_LOAD, hook_ctx)
+
         meta = json.loads(meta_path.read_text())
         logger.info(
             "Loading state from %s (saved at %s)",
@@ -241,10 +284,16 @@ class StateManager:
             self._load_native_state(native_path, services=services)
 
         logger.info("State loaded successfully")
+        self._hooks.fire(HookType.AFTER_LOAD, hook_ctx)
         return True
 
-    def reset(self) -> None:
+    def reset(self, services: list[str] | None = None) -> None:
         """Reset all state to empty."""
+        from robotocore.state.hooks import HookType
+
+        hook_ctx: dict = {"services": services}
+        self._hooks.fire(HookType.BEFORE_RESET, hook_ctx)
+
         self._reset_moto_state()
         for service, (_, load_fn) in self._native_handlers.items():
             try:
@@ -252,6 +301,8 @@ class StateManager:
             except Exception:
                 logger.debug("Failed to reset native state for %s", service, exc_info=True)
         logger.info("All state reset")
+
+        self._hooks.fire(HookType.AFTER_RESET, hook_ctx)
 
     def export_json(self) -> dict:
         """Export native provider state as a JSON-serializable dict."""
