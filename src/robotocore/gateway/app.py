@@ -389,6 +389,14 @@ async def list_state_hooks(request: Request) -> JSONResponse:
     return JSONResponse({"hooks": state_hooks.list_hooks()})
 
 
+async def state_consistency_status(request: Request) -> JSONResponse:
+    """Return current state consistency status."""
+    from robotocore.state.consistency import get_consistent_state_manager
+
+    csm = get_consistent_state_manager()
+    return JSONResponse(csm.status_dict())
+
+
 async def export_state(request: Request) -> Response:
     """Export emulator state.
 
@@ -1162,6 +1170,7 @@ management_routes = [
     Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
     Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
     Route("/_robotocore/state/hooks", list_state_hooks, methods=["GET"]),
+    Route("/_robotocore/state/consistency", state_consistency_status, methods=["GET"]),
     Route("/_robotocore/state/export", export_state, methods=["GET"]),
     Route("/_robotocore/state/import", import_state, methods=["POST"]),
     # Chaos engineering
