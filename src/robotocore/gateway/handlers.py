@@ -130,7 +130,7 @@ def _get_s3_bucket_cors(context: RequestContext) -> list[dict] | None:
 
 
 def audit_response_handler(context: RequestContext) -> None:
-    """Record the request in the audit log and usage analytics."""
+    """Record the request in the audit log, usage analytics, and CI analytics."""
     from robotocore.audit.analytics import get_usage_analytics
     from robotocore.audit.log import get_audit_log
 
@@ -160,6 +160,17 @@ def audit_response_handler(context: RequestContext) -> None:
         status_code=status,
         access_key_id=access_key,
     )
+
+    # Record in CI analytics if active
+    from robotocore.audit.ci_analytics import get_ci_analytics
+
+    analytics = get_ci_analytics()
+    if analytics is not None:
+        analytics.record_request(
+            service=context.service_name,
+            operation=context.operation,
+            success=status < 400,
+        )
 
 
 def logging_response_handler(context: RequestContext) -> None:
