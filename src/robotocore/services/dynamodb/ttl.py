@@ -176,7 +176,12 @@ def _remove_expired_items(
 
 
 def _is_item_expired(item, ttl_attr: str, now: int) -> bool:
-    """Check if an item's TTL attribute indicates it has expired."""
+    """Check if an item's TTL attribute indicates it has expired.
+
+    AWS ignores TTL values more than 5 years in the past -- such values are
+    treated as non-TTL data (e.g., small integers used as IDs) and the item
+    is NOT expired.
+    """
     if not hasattr(item, "attrs"):
         return False
 
@@ -191,6 +196,11 @@ def _is_item_expired(item, ttl_attr: str, now: int) -> bool:
     try:
         ttl_value = int(float(str(attr.value)))
     except (ValueError, TypeError):
+        return False
+
+    # AWS ignores TTL values more than 5 years in the past
+    five_years_seconds = 5 * 365 * 24 * 3600
+    if now - ttl_value > five_years_seconds:
         return False
 
     return ttl_value <= now
