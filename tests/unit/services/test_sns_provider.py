@@ -321,9 +321,8 @@ class TestSNSPublishBatch:
         store.create_topic("empty-topic", "us-east-1", "123456789012")
         params = {"TopicArn": "arn:aws:sns:us-east-1:123456789012:empty-topic"}
         req = MagicMock()
-        result = _publish_batch(store, params, "us-east-1", "123456789012", req)
-        assert result["Successful"] == []
-        assert result["Failed"] == []
+        with pytest.raises(SnsError, match="EmptyBatchRequest"):
+            _publish_batch(store, params, "us-east-1", "123456789012", req)
 
     def test_publish_batch_nonexistent_topic(self):
         store = SnsStore()
