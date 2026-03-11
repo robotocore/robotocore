@@ -262,7 +262,7 @@ def _receive_message(
     # DLQ redrive
     valid = []
     for msg, receipt in results:
-        if queue.max_receive_count and msg.receive_count >= queue.max_receive_count:
+        if queue.max_receive_count and msg.receive_count > queue.max_receive_count:
             _move_to_dlq(store, queue, msg)
         else:
             valid.append((msg, receipt))

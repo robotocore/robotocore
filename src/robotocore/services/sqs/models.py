@@ -232,8 +232,8 @@ class StandardQueue:
                     message.first_received = now
                 message.last_received = now
 
-                # DLQ redrive: if receive count >= maxReceiveCount, move to DLQ
-                if self.max_receive_count and message.receive_count >= self.max_receive_count:
+                # DLQ redrive: if receive count exceeds maxReceiveCount, move to DLQ
+                if self.max_receive_count and message.receive_count > self.max_receive_count:
                     self._move_to_dlq(message)
                     continue
 
