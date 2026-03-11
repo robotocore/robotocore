@@ -34,6 +34,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "aiosmtpd>=1.4",
     "dnslib>=0.9",
+    "docker>=7.0",
 ]
 
 [project.optional-dependencies]
