@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# cdklocal — AWS CDK CLI wrapper that auto-configures CDK for robotocore.
+#
+# Usage:
+#   cdklocal deploy --all
+#   cdklocal bootstrap
+#   cdklocal synth
+#
+# Environment variables:
+#   ROBOTOCORE_ENDPOINT  Full endpoint URL (overrides host/port)
+#   ROBOTOCORE_HOST      Robotocore host (default: localhost)
+#   ROBOTOCORE_PORT      Robotocore port (default: 4566)
+
+set -euo pipefail
+
+# Check that cdk is available
+if ! command -v cdk &>/dev/null; then
+    echo "Error: 'cdk' command not found. Install AWS CDK CLI:" >&2
+    echo "  npm install -g aws-cdk" >&2
+    echo "See: https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html" >&2
+    exit 1
+fi
+
+# Build endpoint URL
+# Priority: ROBOTOCORE_ENDPOINT > ROBOTOCORE_HOST:ROBOTOCORE_PORT > localhost:4566
+if [[ -z "${ROBOTOCORE_ENDPOINT:-}" ]]; then
+    _HOST="${ROBOTOCORE_HOST:-localhost}"
+    _PORT="${ROBOTOCORE_PORT:-4566}"
+    _ENDPOINT="http://${_HOST}:${_PORT}"
+else
+    _ENDPOINT="${ROBOTOCORE_ENDPOINT}"
+fi
+
+# Set endpoint (don't override if user already set AWS_ENDPOINT_URL)
+export AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-$_ENDPOINT}"
+
+# Set credentials (don't override if user already set them)
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
+
+# Set CDK defaults (don't override if user already set them)
+export CDK_DEFAULT_ACCOUNT="${CDK_DEFAULT_ACCOUNT:-000000000000}"
+export CDK_DEFAULT_REGION="${CDK_DEFAULT_REGION:-us-east-1}"
+
+# Detect bootstrap command
+_IS_BOOTSTRAP=false
+for arg in "$@"; do
+    if [[ "$arg" == "bootstrap" ]]; then
+        _IS_BOOTSTRAP=true
+        break
+    fi
+done
+
+# Bootstrap-specific configuration
+_EXTRA_ARGS=()
+if [[ "$_IS_BOOTSTRAP" == "true" ]]; then
+    export CDK_NEW_BOOTSTRAP="${CDK_NEW_BOOTSTRAP:-1}"
+
+    # Add --cloudformation-execution-policies if not already specified
+    _HAS_CFN_POLICIES=false
+    for arg in "$@"; do
+        if [[ "$arg" == "--cloudformation-execution-policies" ]]; then
+            _HAS_CFN_POLICIES=true
+            break
+        fi
+    done
+    if [[ "$_HAS_CFN_POLICIES" == "false" ]]; then
+        _EXTRA_ARGS+=("--cloudformation-execution-policies" "arn:aws:iam::aws:policy/AdministratorAccess")
+    fi
+fi
+
+exec cdk "$@" "${_EXTRA_ARGS[@]}"
