@@ -55,8 +55,9 @@ class TestRecordRequest:
         assert stats["error_count"] == 2
 
     def test_per_minute_time_series_bucketing(self, analytics):
-        # Use a timestamp aligned to the start of a minute to avoid boundary issues
-        now = (int(time.time()) // 60) * 60 + 10  # 10 seconds into a minute
+        # Align to 10 seconds into a minute to avoid boundary flakiness
+        now = time.time()
+        now = now - (now % 60) + 10
         _rr(analytics, operation="GetObject", timestamp=now)
         _rr(analytics, operation="PutObject", timestamp=now + 1)
         timeline = analytics.get_timeline()

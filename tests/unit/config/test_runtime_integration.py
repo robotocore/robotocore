@@ -11,21 +11,6 @@ import pytest
 from starlette.testclient import TestClient
 
 
-def _disable_app_lifecycle(app):
-    """Temporarily disable on_startup/on_shutdown hooks that bind ports."""
-    saved_startup = list(app.router.on_startup)
-    saved_shutdown = list(app.router.on_shutdown)
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
-    return saved_startup, saved_shutdown
-
-
-def _restore_app_lifecycle(app, saved_startup, saved_shutdown):
-    """Restore on_startup/on_shutdown hooks."""
-    app.router.on_startup.extend(saved_startup)
-    app.router.on_shutdown.extend(saved_shutdown)
-
-
 @pytest.fixture
 def client_enabled():
     """Create a test client with config updates enabled."""
@@ -38,12 +23,11 @@ def client_enabled():
         try:
             from robotocore.gateway.app import app
 
-            saved_startup, saved_shutdown = _disable_app_lifecycle(app)
-            try:
-                with TestClient(app, raise_server_exceptions=False) as client:
-                    yield client
-            finally:
-                _restore_app_lifecycle(app, saved_startup, saved_shutdown)
+            # Clear startup/shutdown hooks to prevent SMTP port binding in tests
+            app.router.on_startup.clear()
+            app.router.on_shutdown.clear()
+            with TestClient(app, raise_server_exceptions=False) as client:
+                yield client
         finally:
             rt_mod._runtime_config = old
 
@@ -60,12 +44,11 @@ def client_disabled():
         try:
             from robotocore.gateway.app import app
 
-            saved_startup, saved_shutdown = _disable_app_lifecycle(app)
-            try:
-                with TestClient(app, raise_server_exceptions=False) as client:
-                    yield client
-            finally:
-                _restore_app_lifecycle(app, saved_startup, saved_shutdown)
+            # Clear startup/shutdown hooks to prevent SMTP port binding in tests
+            app.router.on_startup.clear()
+            app.router.on_shutdown.clear()
+            with TestClient(app, raise_server_exceptions=False) as client:
+                yield client
         finally:
             rt_mod._runtime_config = old
 

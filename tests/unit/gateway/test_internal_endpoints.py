@@ -180,6 +180,7 @@ class TestChaosEndpoints:
                 "enabled",
                 "created_at",
                 "match_count",
+                "ttl_seconds",
             }
             assert set(our_rule.keys()) == expected_keys
         finally:
