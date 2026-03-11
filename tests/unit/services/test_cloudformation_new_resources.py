@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from robotocore.services.cloudformation.engine import (
     CfnResource,
     resolve_intrinsics,
@@ -1688,8 +1690,8 @@ class TestFnImportValue:
 
     def test_import_value_not_found(self):
         val = {"Fn::ImportValue": "Unknown"}
-        result = resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID)
-        assert result == "Unknown"
+        with pytest.raises(ValueError, match="No export named"):
+            resolve_intrinsics(val, _RESOURCES, _PARAMS, REGION, ACCOUNT_ID)
 
 
 # ===========================================================================
