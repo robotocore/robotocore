@@ -189,22 +189,140 @@ class TestParseSqsUrl:
         assert result is not None
         assert result["queue_name"] == "my-queue.fifo"
 
-    def test_standard_host_localstack_alias(self):
-        """localstack.cloud must be accepted as a backward-compat alias."""
+    def test_standard_host_with_only_one_path_segment_returns_none(self):
+        """Host matches but path has insufficient segments for account_id/queue_name."""
         result = parse_sqs_url(
-            "/123456789012/my-queue",
-            "sqs.us-east-1.localhost.localstack.cloud:4566",
+            "/only-one-segment",
+            "sqs.us-east-1.localhost.robotocore.cloud:4566",
         )
-        assert result is not None
-        assert result["region"] == "us-east-1"
-        assert result["queue_name"] == "my-queue"
+        assert result is None
 
-    def test_domain_host_localstack_alias(self):
-        """localstack.cloud must be accepted as a backward-compat alias."""
+    def test_domain_host_with_only_one_path_segment_returns_none(self):
         result = parse_sqs_url(
-            "/123456789012/my-queue",
-            "us-east-1.queue.localhost.localstack.cloud:4566",
+            "/only-one-segment",
+            "us-east-1.queue.localhost.robotocore.cloud:4566",
         )
+        assert result is None
+
+    def test_path_style_missing_queue_name_returns_none(self):
+        """Path-style regex requires all three segments."""
+        result = parse_sqs_url("/queue/us-east-1/123456789012", "localhost:4566")
+        assert result is None
+
+    def test_path_style_underscore_in_queue_name(self):
+        result = parse_sqs_url("/queue/us-east-1/123/my_queue_name", "localhost:4566")
+        assert result is not None
+        assert result["queue_name"] == "my_queue_name"
+
+    def test_empty_path_returns_none(self):
+        result = parse_sqs_url("/", "localhost:4566")
+        assert result is None
+
+    def test_standard_host_root_path_returns_none(self):
+        result = parse_sqs_url("/", "sqs.us-east-1.localhost.robotocore.cloud:4566")
+        assert result is None
+
+
+class TestSqsStrategyEnvVarEdgeCases:
+    """Test edge cases in strategy env var handling."""
+
+    def test_uppercase_strategy_is_accepted(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "STANDARD")
+        assert get_sqs_endpoint_strategy() == SqsEndpointStrategy.STANDARD
+
+    def test_mixed_case_strategy_is_accepted(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "Domain")
+        assert get_sqs_endpoint_strategy() == SqsEndpointStrategy.DOMAIN
+
+    def test_whitespace_padded_strategy_is_accepted(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "  path  ")
+        assert get_sqs_endpoint_strategy() == SqsEndpointStrategy.PATH
+
+    def test_empty_string_falls_back_to_standard(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "")
+        assert get_sqs_endpoint_strategy() == SqsEndpointStrategy.STANDARD
+
+
+class TestSqsCustomGatewayPort:
+    """Test that GATEWAY_PORT env var affects URL generation."""
+
+    def test_standard_strategy_uses_custom_port(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PORT", "5555")
+        url = sqs_queue_url("q", "us-east-1", "123", SqsEndpointStrategy.STANDARD)
+        parsed = urlparse(url)
+        assert parsed.port == 5555
+
+    def test_path_strategy_uses_custom_port(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PORT", "9999")
+        url = sqs_queue_url("q", "us-east-1", "123", SqsEndpointStrategy.PATH)
+        assert ":9999/" in url
+
+    def test_domain_strategy_uses_custom_port(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PORT", "8080")
+        url = sqs_queue_url("q", "us-east-1", "123", SqsEndpointStrategy.DOMAIN)
+        assert ":8080/" in url
+
+    def test_dynamic_strategy_uses_custom_port(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PORT", "7777")
+        url = sqs_queue_url("q", "us-east-1", "123", SqsEndpointStrategy.DYNAMIC)
+        assert ":7777/" in url
+
+
+class TestSqsStrategyFromEnvForUrlGeneration:
+    """Test that sqs_queue_url reads from env when no explicit strategy."""
+
+    def test_reads_standard_from_env(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "standard")
+        monkeypatch.delenv("GATEWAY_PORT", raising=False)
+        url = sqs_queue_url("q", "us-east-1", "123")
+        assert "sqs.us-east-1." in url
+
+    def test_reads_path_from_env(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "path")
+        monkeypatch.delenv("GATEWAY_PORT", raising=False)
+        url = sqs_queue_url("q", "us-east-1", "123")
+        assert "/queue/us-east-1/" in url
+
+    def test_reads_domain_from_env(self, monkeypatch):
+        monkeypatch.setenv("SQS_ENDPOINT_STRATEGY", "domain")
+        monkeypatch.delenv("GATEWAY_PORT", raising=False)
+        url = sqs_queue_url("q", "us-east-1", "123")
+        assert ".queue.localhost.robotocore.cloud" in url
+
+
+class TestSqsRoundTrip:
+    """Test that generated URLs can be parsed back correctly."""
+
+    def test_standard_url_roundtrip(self):
+        url = sqs_queue_url("my-q", "us-east-1", "123456789012", SqsEndpointStrategy.STANDARD)
+        parsed = urlparse(url)
+        result = parse_sqs_url(parsed.path, parsed.netloc)
         assert result is not None
         assert result["region"] == "us-east-1"
-        assert result["queue_name"] == "my-queue"
+        assert result["account_id"] == "123456789012"
+        assert result["queue_name"] == "my-q"
+
+    def test_domain_url_roundtrip(self):
+        url = sqs_queue_url("my-q", "eu-west-1", "111222333444", SqsEndpointStrategy.DOMAIN)
+        parsed = urlparse(url)
+        result = parse_sqs_url(parsed.path, parsed.netloc)
+        assert result is not None
+        assert result["region"] == "eu-west-1"
+        assert result["account_id"] == "111222333444"
+        assert result["queue_name"] == "my-q"
+
+    def test_path_url_roundtrip(self):
+        url = sqs_queue_url("my-q", "ap-northeast-1", "999888777666", SqsEndpointStrategy.PATH)
+        parsed = urlparse(url)
+        result = parse_sqs_url(parsed.path, parsed.netloc)
+        assert result is not None
+        assert result["region"] == "ap-northeast-1"
+        assert result["account_id"] == "999888777666"
+        assert result["queue_name"] == "my-q"
+
+    def test_fifo_roundtrip_path(self):
+        url = sqs_queue_url("orders.fifo", "us-east-1", "123", SqsEndpointStrategy.PATH)
+        parsed = urlparse(url)
+        result = parse_sqs_url(parsed.path, parsed.netloc)
+        assert result is not None
+        assert result["queue_name"] == "orders.fifo"
