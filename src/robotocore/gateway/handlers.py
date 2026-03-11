@@ -71,23 +71,14 @@ def populate_context_handler(context: RequestContext) -> None:
 
 def cors_handler(context: RequestContext) -> None:
     """Handle CORS preflight and set CORS headers on OPTIONS requests."""
+    from robotocore.gateway.cors import build_preflight_response, get_cors_config
+
     if context.request.method == "OPTIONS":
-        context.response = Response(
-            status_code=200,
-            headers=_cors_headers(),
-        )
-
-
-def _cors_headers() -> dict[str, str]:
-    return {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers": (
-            "Authorization, Content-Type, X-Amz-Target, X-Amz-Date, "
-            "X-Amz-Security-Token, X-Amz-Content-Sha256"
-        ),
-        "Access-Control-Max-Age": "86400",
-    }
+        config = get_cors_config()
+        request_origin = context.request.headers.get("origin")
+        preflight = build_preflight_response(config, request_origin)
+        if preflight is not None:
+            context.response = preflight
 
 
 # -- Response Handlers --
@@ -95,9 +86,47 @@ def _cors_headers() -> dict[str, str]:
 
 def cors_response_handler(context: RequestContext) -> None:
     """Add CORS headers to all responses."""
-    if context.response is not None:
-        for key, value in _cors_headers().items():
-            context.response.headers.setdefault(key, value)
+    from robotocore.gateway.cors import (
+        build_cors_headers,
+        build_s3_cors_headers,
+        get_cors_config,
+    )
+
+    if context.response is None:
+        return
+
+    config = get_cors_config()
+    if config.disable_cors_headers:
+        return
+
+    request_origin = context.request.headers.get("origin")
+
+    # S3 bucket-specific CORS: apply bucket CORS rules if available
+    if context.service_name == "s3" and not config.disable_custom_cors_s3 and request_origin:
+        bucket_cors = _get_s3_bucket_cors(context)
+        if bucket_cors is not None:
+            request_method = context.request.headers.get("access-control-request-method")
+            s3_headers = build_s3_cors_headers(bucket_cors, request_origin, request_method)
+            for key, value in s3_headers.items():
+                context.response.headers.setdefault(key, value)
+            return
+
+    # Default CORS headers
+    cors_headers = build_cors_headers(config, request_origin)
+    for key, value in cors_headers.items():
+        context.response.headers.setdefault(key, value)
+
+
+def _get_s3_bucket_cors(context: RequestContext) -> list[dict] | None:
+    """Extract bucket name from the request and return its CORS config, if any."""
+    from robotocore.services.s3.provider import get_bucket_cors
+
+    path = context.request.url.path
+    # Path-style: /bucket-name/...
+    parts = path.strip("/").split("/")
+    if parts and parts[0]:
+        return get_bucket_cors(parts[0])
+    return None
 
 
 def audit_response_handler(context: RequestContext) -> None:
