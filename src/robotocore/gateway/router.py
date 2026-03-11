@@ -120,6 +120,9 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/v1/cancel"), "batch"),
     (re.compile(r"^/v1/tags"), "batch"),
     (re.compile(r"^/v1/untag"), "batch"),
+    # Endpoint strategy path-style routes
+    (re.compile(r"^/queue/[a-z0-9-]+/\d+/"), "sqs"),
+    (re.compile(r"^/opensearch/[a-z0-9-]+/[A-Za-z0-9-]+"), "opensearch"),
 ]
 
 # Service name extracted from credential scope in Authorization header
@@ -257,6 +260,14 @@ def route_to_service(request: Request) -> str | None:
     host = request.headers.get("host", "")
     if ".s3." in host or host.startswith("s3.") or host.startswith("s3-"):
         return "s3"
+    # SQS endpoint strategy host patterns
+    if ".queue.localhost.localstack.cloud" in host or (
+        host.startswith("sqs.") and ".localhost.localstack.cloud" in host
+    ):
+        return "sqs"
+    # OpenSearch endpoint strategy host patterns
+    if ".opensearch.localhost.localstack.cloud" in host:
+        return "opensearch"
 
     # 6. Query string action parameter (used by EC2, SQS, SNS, etc.)
     action = request.query_params.get("Action")
