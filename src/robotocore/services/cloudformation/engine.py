@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 
 import yaml
 
+_NO_VALUE = object()  # Sentinel for AWS::NoValue property removal
+
 
 @dataclass
 class CfnResource:
@@ -18,6 +20,7 @@ class CfnResource:
     physical_id: str | None = None
     attributes: dict = field(default_factory=dict)
     status: str = "CREATE_IN_PROGRESS"
+    deletion_policy: str = "Delete"
 
 
 @dataclass
@@ -148,6 +151,12 @@ def resolve_intrinsics(
             return parameters.get("AWS::StackId", "")
         if ref == "AWS::NoValue":
             return None
+        if ref == "AWS::URLSuffix":
+            return "amazonaws.com"
+        if ref == "AWS::Partition":
+            return "aws"
+        if ref == "AWS::NotificationARNs":
+            return []
         if ref in parameters:
             return parameters[ref]
         if ref in resources and resources[ref].physical_id:
@@ -163,8 +172,17 @@ def resolve_intrinsics(
         logical_id = parts[0]
         attr_name = ".".join(parts[1:]) if len(parts) > 1 else ""
         res = resources.get(logical_id)
-        if res and attr_name in res.attributes:
+        if not res:
+            raise ValueError(
+                f"Template error: instance of Fn::GetAtt references "
+                f"undefined resource '{logical_id}'"
+            )
+        if attr_name in res.attributes:
             return res.attributes[attr_name]
+        # For nested stacks, check Outputs.* pattern
+        if res.resource_type == "AWS::CloudFormation::Stack" and attr_name.startswith("Outputs."):
+            output_key = attr_name[len("Outputs.") :]
+            return res.attributes.get(output_key, f"{logical_id}-{output_key}")
         return ""
 
     if "Fn::Join" in value:
@@ -186,27 +204,60 @@ def resolve_intrinsics(
             template_str = sub_val
             resolved_vars = {}
 
+        # Handle $$ escape for literal $
+        template_str = template_str.replace("$$", "\x00DOLLAR\x00")
+
+        # Handle ${!VarName} escape for literal ${VarName}
+        def _escape_literal(m):
+            return f"\x00LITERAL_START\x00{m.group(1)}\x00LITERAL_END\x00"
+
+        template_str = re.sub(r"\$\{!([^}]+)\}", _escape_literal, template_str)
+
+        # Pseudo-parameter map for Fn::Sub
+        _pseudo_sub = {
+            "AWS::Region": region,
+            "AWS::AccountId": account_id,
+            "AWS::StackName": parameters.get("AWS::StackName", "stack"),
+            "AWS::StackId": parameters.get("AWS::StackId", ""),
+            "AWS::URLSuffix": "amazonaws.com",
+            "AWS::Partition": "aws",
+            "AWS::NotificationARNs": "",
+        }
+
         def replace_var(m):
             var = m.group(1)
             if var in resolved_vars:
                 return str(resolved_vars[var])
+            if var in _pseudo_sub:
+                return str(_pseudo_sub[var])
             if "." in var:
                 parts = var.split(".", 1)
                 res = resources.get(parts[0])
                 if res and parts[1] in res.attributes:
                     return str(res.attributes[parts[1]])
-            ref_result = resolve_intrinsics({"Ref": var}, resources, parameters, region, account_id)
-            return str(ref_result)
+            if var in parameters:
+                return str(parameters[var])
+            if var in resources and resources[var].physical_id:
+                return str(resources[var].physical_id)
+            # Unresolvable variable -- raise error
+            raise ValueError(f"Template error: variable '{var}' in Fn::Sub cannot be resolved")
 
-        return re.sub(r"\$\{([^}]+)\}", replace_var, template_str)
+        result = re.sub(r"\$\{([^}]+)\}", replace_var, template_str)
+        # Restore escaped sequences
+        result = result.replace("\x00LITERAL_START\x00", "${").replace("\x00LITERAL_END\x00", "}")
+        result = result.replace("\x00DOLLAR\x00", "$")
+        return result
 
     if "Fn::Select" in value:
         index, options = value["Fn::Select"]
         resolved = resolve_intrinsics(options, resources, parameters, region, account_id)
         idx = int(index)
-        if isinstance(resolved, list) and idx < len(resolved):
-            return resolved[idx]
-        return ""
+        if not isinstance(resolved, list) or idx >= len(resolved) or idx < 0:
+            raise ValueError(
+                f"Template error: Fn::Select index {idx} is out of bounds "
+                f"for list of length {len(resolved) if isinstance(resolved, list) else 0}"
+            )
+        return resolved[idx]
 
     if "Fn::Split" in value:
         delimiter, source = value["Fn::Split"]
@@ -242,13 +293,40 @@ def resolve_intrinsics(
     if "Fn::GetAZs" in value:
         return [f"{region}a", f"{region}b", f"{region}c"]
 
+    if "Fn::FindInMap" in value:
+        args = value["Fn::FindInMap"]
+        map_name = resolve_intrinsics(args[0], resources, parameters, region, account_id)
+        first_key = resolve_intrinsics(args[1], resources, parameters, region, account_id)
+        second_key = resolve_intrinsics(args[2], resources, parameters, region, account_id)
+        # Look up mappings from parameters (stored by _deploy_stack)
+        mappings = parameters.get("__mappings__", {})
+        mapping = mappings.get(str(map_name), {})
+        first = mapping.get(str(first_key), {})
+        result = first.get(str(second_key))
+        if result is None:
+            raise ValueError(
+                f"Template error: Mapping '{map_name}' key '{first_key}.{second_key}' not found"
+            )
+        return result
+
+    if "Fn::Base64" in value:
+        import base64 as b64mod
+
+        input_val = resolve_intrinsics(
+            value["Fn::Base64"], resources, parameters, region, account_id
+        )
+        return b64mod.b64encode(str(input_val).encode()).decode()
+
     if "Fn::ImportValue" in value:
         import_name = resolve_intrinsics(
             value["Fn::ImportValue"], resources, parameters, region, account_id
         )
         # Check __imports__ map in parameters
         imports = parameters.get("__imports__", {})
-        return imports.get(str(import_name), str(import_name))
+        import_str = str(import_name)
+        if import_str not in imports:
+            raise ValueError(f"No export named '{import_str}' found. Rollback requested by user.")
+        return imports[import_str]
 
     if "Fn::Cidr" in value:
         args = value["Fn::Cidr"]
@@ -273,6 +351,12 @@ def resolve_intrinsics(
         }
         return {"Fn::Transform": {**transform, "Parameters": resolved_params}}
 
+    if "Condition" in value and len(value) == 1:
+        # {"Condition": "CondName"} — reference to another condition
+        cond_name = value["Condition"]
+        conds = parameters.get("__conditions__", {})
+        return bool(conds.get(cond_name, False))
+
     if "Fn::And" in value:
         conditions = value["Fn::And"]
         return all(
@@ -285,21 +369,31 @@ def resolve_intrinsics(
             resolve_intrinsics(c, resources, parameters, region, account_id) for c in conditions
         )
 
-    # Recursively resolve all values in the dict
-    return {
-        k: resolve_intrinsics(v, resources, parameters, region, account_id)
-        for k, v in value.items()
-    }
+    # Recursively resolve all values in the dict, removing keys set to AWS::NoValue (None)
+    result = {}
+    for k, v in value.items():
+        resolved = resolve_intrinsics(v, resources, parameters, region, account_id)
+        if resolved is not None:
+            result[k] = resolved
+        # If resolved is None (from Ref: AWS::NoValue), omit the key entirely
+    return result
 
 
 def evaluate_conditions(
     template: dict, resources: dict, parameters: dict, region: str, account_id: str
 ) -> dict[str, bool]:
-    """Evaluate all Conditions in a template, returning {name: bool}."""
+    """Evaluate all Conditions in a template, returning {name: bool}.
+
+    Conditions are evaluated in order, and already-evaluated conditions are
+    available for reference via {"Condition": "Name"} syntax.
+    """
     conditions = template.get("Conditions", {})
-    result = {}
+    result: dict[str, bool] = {}
+    # Make a copy of parameters so we can inject __conditions__ incrementally
+    eval_params = dict(parameters)
+    eval_params["__conditions__"] = result
     for name, expr in conditions.items():
-        val = resolve_intrinsics(expr, resources, parameters, region, account_id)
+        val = resolve_intrinsics(expr, resources, eval_params, region, account_id)
         result[name] = bool(val)
     return result
 
@@ -348,10 +442,10 @@ def build_dependency_order(template: dict) -> list[str]:
                 if not deps[lid] and lid not in visited:
                     queue.append(lid)
 
-    # Add any remaining (circular deps)
-    for lid in resources:
-        if lid not in visited:
-            result.append(lid)
+    # Detect circular dependencies
+    if len(result) < len(resources):
+        remaining = [lid for lid in resources if lid not in visited]
+        raise ValueError(f"Circular dependency detected among resources: {', '.join(remaining)}")
 
     return result
 

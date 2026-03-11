@@ -958,10 +958,9 @@ class TestFnSubEdgeCases:
         parameters = {}
         value = {"Fn::Sub": "value is ${TotallyMissing}"}
         # BUG: Currently returns "value is TotallyMissing" silently
-        result = resolve_intrinsics(value, resources, parameters, REGION, ACCOUNT)
-        assert result != "value is TotallyMissing", (
-            "Fn::Sub should error on unresolvable ${VarName}, not return the var name"
-        )
+        # AWS raises an error for unresolvable variables in Fn::Sub
+        with pytest.raises(ValueError, match="TotallyMissing"):
+            resolve_intrinsics(value, resources, parameters, REGION, ACCOUNT)
 
     def test_fn_sub_with_literal_dollar_sign(self):
         """Fn::Sub should support $$ as a literal $ sign (standard escape).
