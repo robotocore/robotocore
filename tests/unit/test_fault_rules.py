@@ -306,12 +306,14 @@ class TestFaultRuleStore:
         store = FaultRuleStore()
         rule = FaultRule(rule_id="r1", service="s3")
         store.add(rule)
-        assert store.remove("r1") is True
+        removed = store.remove("r1")
+        assert removed is True
         assert len(store.list_rules()) == 0
 
     def test_remove_nonexistent(self):
         store = FaultRuleStore()
-        assert store.remove("nonexistent") is False
+        removed = store.remove("nonexistent")
+        assert removed is False
 
     def test_clear(self):
         store = FaultRuleStore()
