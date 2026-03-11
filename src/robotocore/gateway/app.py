@@ -61,6 +61,12 @@ from robotocore.services.iot.data_provider import handle_iot_data_request
 from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
+from robotocore.services.loader import (
+    get_effective_provider,
+    get_service_info_with_status,
+    init_loader,
+    is_service_allowed,
+)
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
 from robotocore.services.pipes.provider import handle_pipes_request
 from robotocore.services.rds.data_provider import handle_rdsdata_request
@@ -220,18 +226,10 @@ async def health(request: Request) -> JSONResponse:
 
 
 async def services_endpoint(request: Request) -> JSONResponse:
-    """List all registered services with their status and protocol."""
+    """List all registered services with their status, protocol, and enabled state."""
     services = []
-    for name, info in sorted(SERVICE_REGISTRY.items()):
-        stype = "native" if info.status == ServiceStatus.NATIVE else "moto"
-        services.append(
-            {
-                "name": name,
-                "status": stype,
-                "protocol": info.protocol,
-                "description": info.description,
-            }
-        )
+    for name in sorted(SERVICE_REGISTRY.keys()):
+        services.append(get_service_info_with_status(name))
     return JSONResponse({"services": services})
 
 
@@ -570,6 +568,16 @@ async def handle_aws_request(request: Request) -> Response:
             status_code=400,
         )
 
+    # Check if service is allowed by SERVICES env var filter
+    if not is_service_allowed(service_name):
+        return JSONResponse(
+            {
+                "error": f"Service {service_name} is not enabled. "
+                "Set SERVICES env var to include it."
+            },
+            status_code=501,
+        )
+
     # Multi-account support: extract account ID from request
     account_id = _extract_account_id(request)
 
@@ -592,10 +600,10 @@ async def handle_aws_request(request: Request) -> Response:
     # Track request count
     request_counter.increment(service_name)
 
-    # Use native provider if available, otherwise forward to Moto
-    native_handler = NATIVE_PROVIDERS.get(service_name)
-    if native_handler:
-        response = await native_handler(request, context.region, context.account_id)
+    # Use effective provider (respects PROVIDER_OVERRIDE_* env vars)
+    effective_handler = get_effective_provider(service_name, NATIVE_PROVIDERS)
+    if effective_handler:
+        response = await effective_handler(request, context.region, context.account_id)
     else:
         response = await forward_to_moto(request, service_name, account_id=account_id)
 
@@ -774,6 +782,9 @@ def _start_background_engines():
     """Start background engines for cross-service integrations."""
     global _server_start_time
     _server_start_time = time.monotonic()
+
+    # Initialize service loader (SERVICES filter, provider overrides, eager loading)
+    init_loader()
 
     from robotocore.services.lambda_.event_source import get_engine
 
