@@ -189,19 +189,34 @@ def route_to_service(request: Request) -> str | None:
     target = request.headers.get("x-amz-target", "")
     if target:
         # Target format is "ServiceName.Operation" or "ServiceName_Version.Operation"
-        prefix = target.split(".")[0]
-        operation = target.split(".")[-1] if "." in target else ""
-        # Strip version suffix (e.g., "DynamoDB_20120810" -> "DynamoDB")
-        base_prefix = prefix.split("_")[0]
+        # A valid target MUST contain a dot with a non-empty operation after it.
+        if "." not in target:
+            # Malformed: no dot separator means no operation name
+            pass
+        else:
+            # Split on the last dot to get prefix and operation
+            last_dot = target.rfind(".")
+            operation = target[last_dot + 1 :]
+            if not operation:
+                # Malformed: trailing dot with empty operation
+                pass
+            else:
+                # Everything before the last dot is the prefix
+                # For simple targets: "DynamoDB_20120810.GetItem" -> prefix="DynamoDB_20120810"
+                # For dotted targets: "com.amazonaws...CloudTrail_20131101.LookupEvents"
+                #   -> prefix="com.amazonaws...CloudTrail_20131101"
+                prefix = target[:last_dot]
+                # Strip version suffix (e.g., "DynamoDB_20120810" -> "DynamoDB")
+                base_prefix = prefix.split("_")[0]
 
-        # Timestream query and write share the same target prefix — disambiguate by op
-        if prefix == "Timestream_20181101" and operation in _TIMESTREAM_QUERY_OPS:
-            return "timestreamquery"
+                # Timestream query and write share the same target prefix — disambiguate by op
+                if prefix == "Timestream_20181101" and operation in _TIMESTREAM_QUERY_OPS:
+                    return "timestreamquery"
 
-        if prefix in TARGET_PREFIX_MAP:
-            return TARGET_PREFIX_MAP[prefix]
-        if base_prefix in TARGET_PREFIX_MAP:
-            return TARGET_PREFIX_MAP[base_prefix]
+                if prefix in TARGET_PREFIX_MAP:
+                    return TARGET_PREFIX_MAP[prefix]
+                if base_prefix in TARGET_PREFIX_MAP:
+                    return TARGET_PREFIX_MAP[base_prefix]
 
     # 2. Check URL path patterns (before auth, since some services share signing names)
     path = request.url.path
@@ -249,12 +264,20 @@ def route_to_service(request: Request) -> str | None:
         parts = credential.split("/")
         if len(parts) >= 4:
             service = parts[3]
+            if not service:
+                return None
             return SERVICE_NAME_ALIASES.get(service, service)
 
     # 4b. Check for SigV2 presigned URLs (AWSAccessKeyId + Signature)
     if request.query_params.get("AWSAccessKeyId") and request.query_params.get("Signature"):
         # SigV2 presigned URLs don't encode the service name.
         # Infer from path — S3 is the only service that commonly uses SigV2 presigned URLs.
+        return "s3"
+
+    # 4c. Check for SigV2 Authorization header (AWS AKID:signature)
+    if auth.startswith("AWS ") and ":" in auth and "AWS4-HMAC-SHA256" not in auth:
+        # SigV2 header-based auth doesn't encode the service name.
+        # S3 is the only service that commonly uses SigV2 auth headers.
         return "s3"
 
     # 5. Check Host header
