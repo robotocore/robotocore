@@ -768,6 +768,11 @@ class StateManager:
 
         except Exception:
             logger.warning("Failed to save Moto state", exc_info=True)
+            # Remove corrupt/partial pickle so load doesn't choke on it
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _load_moto_state(self, path: Path, services: list[str] | None = None) -> bool:
         """Restore Moto backends from pickle. Returns True on success.
