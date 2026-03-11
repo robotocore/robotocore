@@ -43,7 +43,7 @@ class TestStandardStrategy:
 
     def test_url_format(self):
         url = sqs_queue_url("my-queue", "us-east-1", "123456789012", SqsEndpointStrategy.STANDARD)
-        assert url == ("http://sqs.us-east-1.localhost.localstack.cloud:4566/123456789012/my-queue")
+        assert url == ("http://sqs.us-east-1.localhost.robotocore.cloud:4566/123456789012/my-queue")
 
     def test_includes_correct_region(self):
         url = sqs_queue_url("q", "eu-west-1", "111111111111", SqsEndpointStrategy.STANDARD)
@@ -77,7 +77,7 @@ class TestDomainStrategy:
     def test_url_format(self):
         url = sqs_queue_url("my-queue", "us-east-1", "123456789012", SqsEndpointStrategy.DOMAIN)
         assert url == (
-            "http://us-east-1.queue.localhost.localstack.cloud:4566/123456789012/my-queue"
+            "http://us-east-1.queue.localhost.robotocore.cloud:4566/123456789012/my-queue"
         )
 
     def test_includes_correct_region(self):
@@ -163,7 +163,7 @@ class TestParseSqsUrl:
     def test_standard_host_parsing(self):
         result = parse_sqs_url(
             "/123456789012/my-queue",
-            "sqs.us-east-1.localhost.localstack.cloud:4566",
+            "sqs.us-east-1.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -173,7 +173,7 @@ class TestParseSqsUrl:
     def test_domain_host_parsing(self):
         result = parse_sqs_url(
             "/123456789012/my-queue",
-            "us-east-1.queue.localhost.localstack.cloud:4566",
+            "us-east-1.queue.localhost.robotocore.cloud:4566",
         )
         assert result is not None
         assert result["region"] == "us-east-1"
@@ -188,3 +188,23 @@ class TestParseSqsUrl:
         result = parse_sqs_url("/queue/us-east-1/123/my-queue.fifo", "localhost:4566")
         assert result is not None
         assert result["queue_name"] == "my-queue.fifo"
+
+    def test_standard_host_localstack_alias(self):
+        """localstack.cloud must be accepted as a backward-compat alias."""
+        result = parse_sqs_url(
+            "/123456789012/my-queue",
+            "sqs.us-east-1.localhost.localstack.cloud:4566",
+        )
+        assert result is not None
+        assert result["region"] == "us-east-1"
+        assert result["queue_name"] == "my-queue"
+
+    def test_domain_host_localstack_alias(self):
+        """localstack.cloud must be accepted as a backward-compat alias."""
+        result = parse_sqs_url(
+            "/123456789012/my-queue",
+            "us-east-1.queue.localhost.localstack.cloud:4566",
+        )
+        assert result is not None
+        assert result["region"] == "us-east-1"
+        assert result["queue_name"] == "my-queue"

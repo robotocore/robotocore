@@ -40,7 +40,7 @@ class TestDomainStrategy:
 
     def test_endpoint_format(self):
         ep = opensearch_endpoint("my-domain", "us-east-1", OpenSearchEndpointStrategy.DOMAIN)
-        assert ep == ("http://my-domain.us-east-1.opensearch.localhost.localstack.cloud:4566")
+        assert ep == ("http://my-domain.us-east-1.opensearch.localhost.robotocore.cloud:4566")
 
     def test_includes_correct_region(self):
         ep = opensearch_endpoint("d", "eu-west-1", OpenSearchEndpointStrategy.DOMAIN)
@@ -107,6 +107,16 @@ class TestParseOpenSearchUrl:
         assert result["domain_name"] == "my-domain"
 
     def test_domain_host_parsing(self):
+        result = parse_opensearch_url(
+            "/",
+            "my-domain.us-east-1.opensearch.localhost.robotocore.cloud:4566",
+        )
+        assert result is not None
+        assert result["region"] == "us-east-1"
+        assert result["domain_name"] == "my-domain"
+
+    def test_domain_host_localstack_alias(self):
+        """localstack.cloud must be accepted as a backward-compat alias."""
         result = parse_opensearch_url(
             "/",
             "my-domain.us-east-1.opensearch.localhost.localstack.cloud:4566",
