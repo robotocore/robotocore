@@ -16,31 +16,54 @@ logger = logging.getLogger(__name__)
 def _start_https_server(host: str, debug: bool) -> threading.Thread | None:
     """Optionally start a second uvicorn instance serving HTTPS.
 
+    Supports two configuration modes:
+
+    1. New-style env vars (preferred):
+       - ROBOTOCORE_TLS=1           — auto-generate self-signed cert
+       - ROBOTOCORE_TLS_CERT/KEY    — explicit cert/key paths
+       - ROBOTOCORE_TLS_PORT        — HTTPS port (default 4567)
+
+    2. Legacy env vars (gateway.tls):
+       - HTTPS_DISABLED=1           — disable HTTPS
+       - CUSTOM_SSL_CERT_PATH/KEY   — explicit cert/key paths
+       - ROBOTOCORE_HTTPS_PORT      — HTTPS port (default 443)
+
+    New-style takes priority when any ROBOTOCORE_TLS* var is set.
+
     Returns the thread if started, or None if TLS is disabled.
     """
-    from robotocore.gateway.tls import TLSConfig, ensure_certificate
+    from robotocore.tls import get_tls_config
 
-    config = TLSConfig.from_env()
-    if not config.enabled:
-        logger.info("HTTPS disabled (HTTPS_DISABLED=1)")
-        return None
+    tls_cert, tls_key, tls_port = get_tls_config()
 
-    # Publish TLS config to app module so the /_robotocore/tls/info endpoint works
-    import robotocore.gateway.app as app_module
+    # If the new-style env vars didn't yield a config, fall back to legacy
+    if tls_cert is None:
+        from robotocore.gateway.tls import TLSConfig, ensure_certificate
 
-    app_module._tls_config = config
+        config = TLSConfig.from_env()
+        if not config.enabled:
+            logger.info("HTTPS disabled")
+            return None
 
-    cert_path, key_path = ensure_certificate(config)
-    app_module._tls_cert_path = cert_path
+        # Publish TLS config to app module so the /_robotocore/tls/info endpoint works
+        import robotocore.gateway.app as app_module
 
-    logger.info("Starting HTTPS server on %s:%d", host, config.https_port)
+        app_module._tls_config = config
+
+        cert_path, key_path = ensure_certificate(config)
+        app_module._tls_cert_path = cert_path
+        tls_cert = str(cert_path)
+        tls_key = str(key_path)
+        tls_port = config.https_port
+
+    logger.info("Starting HTTPS server on %s:%d", host, tls_port)
 
     uv_config = uvicorn.Config(
         "robotocore.gateway.app:app",
         host=host,
-        port=config.https_port,
-        ssl_certfile=str(cert_path),
-        ssl_keyfile=str(key_path),
+        port=tls_port,
+        ssl_certfile=tls_cert,
+        ssl_keyfile=tls_key,
         log_level="debug" if debug else "info",
     )
     server = uvicorn.Server(uv_config)
