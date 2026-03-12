@@ -84,17 +84,24 @@ class ConcurrencyTracker:
         # function_key -> reserved concurrency (set via PutFunctionConcurrency)
         self._reserved: dict[str, int] = {}
 
-        # function_key -> provisioned concurrency
+        # function_key -> provisioned concurrency capacity
         self._provisioned: dict[str, int] = {}
+
+        # function_key -> current provisioned concurrency in use
+        self._provisioned_in_use: dict[str, int] = {}
 
         # account-level total code size tracking
         self._total_code_size: int = 0
 
     # -- concurrent execution tracking --
 
-    def acquire(self, function_key: str) -> None:
-        """Increment concurrent execution count. Raises TooManyRequestsException
-        if the account-level limit or function reserved limit is reached."""
+    def acquire(self, function_key: str, qualifier: str = "$LATEST") -> bool:
+        """Increment concurrent execution count. Returns True if the invocation
+        was routed through provisioned concurrency, False if on-demand.
+
+        Raises TooManyRequestsException if the account-level limit or function
+        reserved limit is reached.
+        """
         with self._lock:
             account_limit = get_concurrent_executions_limit()
 
@@ -104,11 +111,30 @@ class ConcurrencyTracker:
                     f"Rate Exceeded. Account concurrent execution limit {account_limit} reached."
                 )
 
+            # Check if provisioned concurrency is available for this function+qualifier
+            prov_key = f"{function_key}:{qualifier}"
+            provisioned_capacity = self._provisioned.get(prov_key)
+            used_provisioned = False
+
+            if provisioned_capacity is not None and provisioned_capacity > 0:
+                prov_in_use = self._provisioned_in_use.get(prov_key, 0)
+                if prov_in_use < provisioned_capacity:
+                    # Route through provisioned pool
+                    self._provisioned_in_use[prov_key] = prov_in_use + 1
+                    used_provisioned = True
+                # If provisioned is full, fall through to on-demand pool
+
             # Check per-function reserved concurrency
             reserved = self._reserved.get(function_key)
             if reserved is not None:
                 current = self._function_counts.get(function_key, 0)
                 if current >= reserved:
+                    # If we already allocated provisioned, undo it
+                    if used_provisioned:
+                        self._provisioned_in_use[prov_key] = (
+                            self._provisioned_in_use.get(prov_key, 1) - 1
+                        )
+                        used_provisioned = False
                     raise TooManyRequestsException(
                         f"Rate Exceeded. Function {function_key} reserved concurrency "
                         f"limit {reserved} reached."
@@ -123,20 +149,33 @@ class ConcurrencyTracker:
                     if key not in self._reserved
                 )
                 if unreserved_in_use >= unreserved_limit:
+                    # If we already allocated provisioned, undo it
+                    if used_provisioned:
+                        self._provisioned_in_use[prov_key] = (
+                            self._provisioned_in_use.get(prov_key, 1) - 1
+                        )
+                        used_provisioned = False
                     raise TooManyRequestsException(
                         "Rate Exceeded. No unreserved concurrency available."
                     )
 
             self._function_counts[function_key] = self._function_counts.get(function_key, 0) + 1
             self._global_count += 1
+            return used_provisioned
 
-    def release(self, function_key: str) -> None:
+    def release(self, function_key: str, qualifier: str = "$LATEST") -> None:
         """Decrement concurrent execution count."""
         with self._lock:
             current = self._function_counts.get(function_key, 0)
             if current > 0:
                 self._function_counts[function_key] = current - 1
                 self._global_count = max(0, self._global_count - 1)
+
+            # Also release provisioned slot if one is in use
+            prov_key = f"{function_key}:{qualifier}"
+            prov_in_use = self._provisioned_in_use.get(prov_key, 0)
+            if prov_in_use > 0:
+                self._provisioned_in_use[prov_key] = prov_in_use - 1
 
     def get_function_count(self, function_key: str) -> int:
         with self._lock:
@@ -192,6 +231,21 @@ class ConcurrencyTracker:
     def delete_provisioned(self, function_key: str) -> None:
         with self._lock:
             self._provisioned.pop(function_key, None)
+            self._provisioned_in_use.pop(function_key, None)
+
+    def get_provisioned_in_use(self, function_key: str) -> int:
+        """Return number of provisioned concurrency slots currently in use."""
+        with self._lock:
+            return self._provisioned_in_use.get(function_key, 0)
+
+    def get_provisioned_utilization(self, function_key: str) -> float:
+        """Return provisioned concurrency utilization as a fraction (0.0 - 1.0)."""
+        with self._lock:
+            capacity = self._provisioned.get(function_key, 0)
+            if capacity == 0:
+                return 0.0
+            in_use = self._provisioned_in_use.get(function_key, 0)
+            return min(1.0, in_use / capacity)
 
     # -- account code size tracking --
 
@@ -221,6 +275,7 @@ class ConcurrencyTracker:
             self._global_count = 0
             self._reserved.clear()
             self._provisioned.clear()
+            self._provisioned_in_use.clear()
             self._total_code_size = 0
 
 

@@ -769,6 +769,13 @@ def _put_provisioned_concurrency(
     }
     with _provisioned_lock:
         _provisioned_concurrency[key] = config
+
+    # Register with concurrency tracker so invocations route through provisioned pool
+    function_key = f"{account_id}:{region}:{func_name}"
+    prov_key = f"{function_key}:{qualifier}"
+    tracker = get_concurrency_tracker()
+    tracker.set_provisioned(prov_key, count)
+
     return config
 
 
@@ -777,7 +784,20 @@ def _get_provisioned_concurrency(
 ) -> dict | None:
     key = (account_id, region, func_name, qualifier)
     with _provisioned_lock:
-        return _provisioned_concurrency.get(key)
+        config = _provisioned_concurrency.get(key)
+        if config is None:
+            return None
+        # Enrich with live utilization data from the tracker
+        config = dict(config)  # copy to avoid mutating the store
+        function_key = f"{account_id}:{region}:{func_name}"
+        prov_key = f"{function_key}:{qualifier}"
+        tracker = get_concurrency_tracker()
+        utilization = tracker.get_provisioned_utilization(prov_key)
+        in_use = tracker.get_provisioned_in_use(prov_key)
+        allocated = config.get("AllocatedProvisionedConcurrentExecutions", 0)
+        config["ProvisionedConcurrencyUtilization"] = round(utilization, 4)
+        config["AvailableProvisionedConcurrentExecutions"] = max(0, allocated - in_use)
+        return config
 
 
 def _delete_provisioned_concurrency(
@@ -787,6 +807,11 @@ def _delete_provisioned_concurrency(
     with _provisioned_lock:
         if key in _provisioned_concurrency:
             del _provisioned_concurrency[key]
+            # Deregister from concurrency tracker
+            function_key = f"{account_id}:{region}:{func_name}"
+            prov_key = f"{function_key}:{qualifier}"
+            tracker = get_concurrency_tracker()
+            tracker.delete_provisioned(prov_key)
             return True
         return False
 
@@ -1190,10 +1215,13 @@ async def _invoke(
     # Track recursion depth for this invocation
     increment_depth(account_id, region, func_name)
 
-    # Acquire concurrency slot
+    # Determine qualifier for provisioned concurrency routing
+    qualifier = request.query_params.get("Qualifier", "$LATEST")
+
+    # Acquire concurrency slot — returns True if provisioned concurrency was used
     function_key = f"{account_id}:{region}:{func_name}"
     tracker = get_concurrency_tracker()
-    tracker.acquire(function_key)
+    used_provisioned = tracker.acquire(function_key, qualifier)
     try:
         if code_dir or code_zip:
             from robotocore.services.lambda_.docker_executor import get_executor_mode
@@ -1248,7 +1276,7 @@ async def _invoke(
             # No code — return a simple success (like Moto's simple mode)
             result, error_type, logs = "Simple Lambda happy path OK", None, ""
     finally:
-        tracker.release(function_key)
+        tracker.release(function_key, qualifier)
         decrement_depth(account_id, region, func_name)
 
     # Handle async invocation with destinations and DLQ
@@ -1260,10 +1288,16 @@ async def _invoke(
             daemon=True,
         ).start()
 
+    # Resolve executed version: use qualifier if it's a numeric version, else $LATEST
+    executed_version = qualifier if qualifier.isdigit() else "$LATEST"
+
     headers = {
         "x-amz-request-id": str(uuid.uuid4()),
-        "x-amz-executed-version": "$LATEST",
+        "x-amz-executed-version": executed_version,
     }
+
+    if used_provisioned:
+        headers["x-amz-log-type"] = "ProvisionedConcurrencyInvocation"
 
     if error_type:
         headers["x-amz-function-error"] = error_type
@@ -1363,9 +1397,12 @@ async def _invoke_with_response_stream(
     else:
         payload = str(result).encode()
 
+    qualifier = request.query_params.get("Qualifier", "$LATEST")
+    executed_version = qualifier if qualifier.isdigit() else "$LATEST"
+
     headers = {
         "x-amz-request-id": str(uuid.uuid4()),
-        "x-amz-executed-version": "$LATEST",
+        "x-amz-executed-version": executed_version,
         "content-type": "application/json",
     }
     return Response(
