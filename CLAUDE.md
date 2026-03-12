@@ -155,6 +155,8 @@ make status                            # Check if server is running
 - Imports: stdlib → third-party → local, separated by blank lines
 - Service provider methods match AWS API operation names exactly (PascalCase)
 - Test files mirror source structure: `src/robotocore/gateway/router.py` → `tests/unit/gateway/test_router.py`
+- **Never write `except ...: pass`**. Always either (a) log with `logger.debug("context: %s", exc)`, (b) add an explanatory comment, or (c) handle meaningfully. For best-effort cleanup, use `logging.debug`. CodeQL flags empty except blocks and CI will fail.
+- In tests, use `pytest.raises(SomeException)` instead of try/except/pass to assert expected errors.
 
 ## Reference Materials
 
