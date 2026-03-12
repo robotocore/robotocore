@@ -196,6 +196,20 @@ Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Au
 
 ---
 
+## Migrating from other emulators
+
+robotocore replaces these open-source AWS emulators — each link has a step-by-step migration guide:
+
+- **[LocalStack Community Edition](LOCALSTACK.md)** — same port (4566), drop-in replacement. No auth token required, ever.
+- **[moto standalone server](src/robotocore/services/README.md)** — same Moto backends with behavioral fidelity, snapshots, chaos engineering
+- **[kinesalite](src/robotocore/services/kinesis/README.md)** — all 17 ops plus Enhanced Fan-Out, encryption, UpdateShardCount
+- **[dynalite](src/robotocore/services/dynamodb/README.md)** / **[DynamoDB Local](src/robotocore/services/dynamodb/README.md)** — transactions, streams, PartiQL, no JVM
+- **[ElasticMQ](src/robotocore/services/sqs/README.md)** — real visibility timeouts, DLQ, FIFO, plus 146 other services
+- **[goaws](src/robotocore/services/sqs/README.md)** — SQS + [SNS](src/robotocore/services/sns/README.md) with message filtering, Lambda targets, FIFO topics
+- **[s3rver](src/robotocore/services/s3/README.md)** / **[Adobe S3Mock](src/robotocore/services/s3/README.md)** — versioning, multipart, lifecycle, presigned URLs
+
+---
+
 ## Accounts & Regions
 
 robotocore supports **multiple AWS accounts** and **all regions** simultaneously, with complete state isolation between them.
