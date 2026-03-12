@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a slide deck HTML file for Robotocore — 18 slides, light color scheme.
+"""Build a slide deck HTML file for Robotocore — 19 slides, light color scheme.
 
 Outputs to docs/slides.html. Run with --check to validate with Playwright screenshots.
 
@@ -917,11 +917,43 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
+  <!-- Slide 19: What Would This Have Taken? -->
+  <section class="slide slide-amber" id="s19">
+    <canvas id="hours-canvas" style="position:absolute;inset:0;pointer-events:none;opacity:0.15;"></canvas>
+    <div class="full-width center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">The Claude Code Multiplier</div>
+      <h2 class="anim-2">What Would This Have Taken?</h2>
+      <div class="three-col anim-3" style="margin-top:32px;max-width:1000px;">
+        <div class="card card-blue" style="text-align:center;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">LocalStack</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#1E6FBF;line-height:1;">10</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">years</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">Founded 2016. Full-time team.<br>Raised $25M. Still paywalling.</div>
+        </div>
+        <div class="card card-purple" style="text-align:center;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">A well-staffed open source effort</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#6B3FA0;line-height:1;">2–3</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">years</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">5 engineers. Full-time.<br>Still building. Still not done.</div>
+        </div>
+        <div class="card card-accent" style="text-align:center;border-top-color:#007B8A;">
+          <div style="font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.55;margin-bottom:12px;">Robotocore</div>
+          <div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:#007B8A;line-height:1;">96</div>
+          <div style="font-size:1rem;opacity:0.7;margin-top:4px;">hours</div>
+          <div style="font-size:0.8rem;opacity:0.55;margin-top:12px;line-height:1.5;">1 human. Claude Code.<br>MIT licensed. Done.</div>
+        </div>
+      </div>
+      <p class="anim-4" style="margin-top:28px;font-size:1rem;opacity:0.65;max-width:600px;">
+        The multiplier isn't just speed. It's the ability to hold the whole system in mind while executing every detail simultaneously.
+      </p>
+    </div>
+  </section>
+
 
 </div>
 
-<div id="progress" style="width:5.56%;"></div>
-<div id="slide-counter">1 / 18</div>
+<div id="progress" style="width:5.26%;"></div>
+<div id="slide-counter">1 / 19</div>
 <div id="kb-hint">← → SPACE to navigate</div>
 
 <script>
