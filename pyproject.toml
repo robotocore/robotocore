@@ -51,7 +51,7 @@ dev = [
 ]
 
 [project.scripts]
-robotocore = "robotocore.main:main"
+robotocore = "robotocore.cli:main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

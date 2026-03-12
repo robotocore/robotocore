@@ -78,6 +78,7 @@ from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.loader import (
+    get_allowed_services,
     get_effective_provider,
     get_service_info_with_status,
     init_loader,
@@ -230,9 +231,12 @@ async def health(request: Request) -> JSONResponse:
     """Enhanced health endpoint with per-service status and request counts."""
     uptime = time.monotonic() - _server_start_time if _server_start_time else 0
 
+    allowed = get_allowed_services()
     counts = request_counter.get_all()
     services_status = {}
     for name, info in sorted(SERVICE_REGISTRY.items()):
+        if allowed is not None and name not in allowed:
+            continue
         stype = "native" if info.status == ServiceStatus.NATIVE else "moto"
         services_status[name] = {
             "status": "running",
@@ -240,14 +244,20 @@ async def health(request: Request) -> JSONResponse:
             "requests": counts.get(name, 0),
         }
 
-    return JSONResponse(
-        {
-            "status": "running",
-            "version": __version__,
-            "uptime_seconds": round(uptime, 1),
-            "services": services_status,
-        }
-    )
+    services_env = os.environ.get("SERVICES", "").strip()
+    services_filter = services_env if services_env else "all"
+
+    result: dict[str, object] = {
+        "status": "running",
+        "version": __version__,
+        "uptime_seconds": round(uptime, 1),
+        "services_filter": services_filter,
+        "services": services_status,
+    }
+    if allowed is not None:
+        result["enabled_services"] = sorted(allowed)
+
+    return JSONResponse(result)
 
 
 async def services_endpoint(request: Request) -> JSONResponse:
@@ -323,7 +333,7 @@ async def config_delete_endpoint(request: Request) -> JSONResponse:
 
 
 async def save_state(request: Request) -> JSONResponse:
-    """Save emulator state to disk (Cloud Pods-like feature)."""
+    """Save emulator state. When a name is provided, creates a versioned in-memory snapshot."""
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
@@ -332,6 +342,26 @@ async def save_state(request: Request) -> JSONResponse:
         params = json.loads(body)
 
     manager = get_state_manager()
+    name = params.get("name")
+
+    # If a name is provided, use versioned in-memory snapshots
+    if name:
+        try:
+            result = manager.save_versioned(
+                name=name,
+                services=params.get("services"),
+            )
+            return JSONResponse(
+                {
+                    "status": "saved",
+                    "name": result["name"],
+                    "version": result["version"],
+                }
+            )
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    # No name: fall back to disk-based save
     path = params.get("path") or manager.state_dir
     if not path:
         return JSONResponse(
@@ -341,14 +371,13 @@ async def save_state(request: Request) -> JSONResponse:
 
     saved_path = manager.save(
         path=path,
-        name=params.get("name"),
         services=params.get("services"),
     )
     return JSONResponse({"status": "saved", "path": saved_path})
 
 
 async def load_state(request: Request) -> JSONResponse:
-    """Load emulator state from disk."""
+    """Load emulator state. When a name is provided, loads from versioned in-memory snapshots."""
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
@@ -357,6 +386,29 @@ async def load_state(request: Request) -> JSONResponse:
         params = json.loads(body)
 
     manager = get_state_manager()
+    name = params.get("name")
+
+    # If a name is provided, try versioned in-memory snapshots first
+    if name:
+        version = params.get("version")
+        try:
+            result = manager.load_versioned(
+                name=name,
+                version=version,
+                services=params.get("services"),
+            )
+            return JSONResponse(
+                {
+                    "status": "loaded",
+                    "name": result["name"],
+                    "version": result["version"],
+                }
+            )
+        except ValueError:
+            # Fall through to disk-based load if not found in memory
+            pass
+
+    # Fall back to disk-based load
     path = params.get("path") or manager.state_dir
     if not path:
         return JSONResponse(
@@ -366,19 +418,73 @@ async def load_state(request: Request) -> JSONResponse:
 
     success = manager.load(
         path=path,
-        name=params.get("name"),
+        name=name,
         services=params.get("services"),
     )
     return JSONResponse({"status": "loaded" if success else "no_state_found", "path": str(path)})
 
 
 async def list_snapshots(request: Request) -> JSONResponse:
-    """List all named state snapshots."""
+    """List all named state snapshots (disk-based)."""
     from robotocore.state.manager import get_state_manager
 
     manager = get_state_manager()
     snapshots = manager.list_snapshots()
     return JSONResponse({"snapshots": snapshots})
+
+
+async def list_versioned_snapshots(request: Request) -> JSONResponse:
+    """List all versioned in-memory snapshots with metadata."""
+    from robotocore.state.manager import get_state_manager
+
+    manager = get_state_manager()
+    snapshots = manager.list_versioned()
+    return JSONResponse({"snapshots": snapshots})
+
+
+async def delete_versioned_snapshot(request: Request) -> JSONResponse:
+    """Delete a versioned snapshot or a specific version.
+
+    Body: {"name": "x"} to delete all versions, or {"name": "x", "version": 3}.
+    """
+    from robotocore.state.manager import get_state_manager
+
+    body = await request.body()
+    if not body:
+        return JSONResponse({"error": "Request body required"}, status_code=400)
+
+    params = json.loads(body)
+    name = params.get("name")
+    if not name:
+        return JSONResponse({"error": "Missing 'name' parameter"}, status_code=400)
+
+    version = params.get("version")
+    manager = get_state_manager()
+
+    try:
+        result = manager.delete_versioned(name=name, version=version)
+        return JSONResponse({"status": "deleted", **result})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+
+
+async def snapshot_versions(request: Request) -> JSONResponse:
+    """Return version history for a specific snapshot.
+
+    Query param: name=<snapshot-name>
+    """
+    from robotocore.state.manager import get_state_manager
+
+    name = request.query_params.get("name")
+    if not name:
+        return JSONResponse({"error": "Missing 'name' query parameter"}, status_code=400)
+
+    manager = get_state_manager()
+    try:
+        versions = manager.versions_for_snapshot(name)
+        return JSONResponse({"name": name, "versions": versions})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
 
 
 async def reset_state(request: Request) -> JSONResponse:
@@ -1179,6 +1285,9 @@ management_routes = [
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
     Route("/_robotocore/state/load", load_state, methods=["POST"]),
     Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
+    Route("/_robotocore/state/list", list_versioned_snapshots, methods=["GET"]),
+    Route("/_robotocore/state/delete", delete_versioned_snapshot, methods=["DELETE"]),
+    Route("/_robotocore/state/versions", snapshot_versions, methods=["GET"]),
     Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
     Route("/_robotocore/state/hooks", list_state_hooks, methods=["GET"]),
     Route("/_robotocore/state/consistency", state_consistency_status, methods=["GET"]),
