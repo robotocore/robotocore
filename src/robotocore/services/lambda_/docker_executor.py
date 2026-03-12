@@ -355,7 +355,7 @@ class DockerLambdaExecutor:
                     if isinstance(error_obj, dict) and "errorMessage" in error_obj:
                         return error_obj, "Handled", logs
                 except json.JSONDecodeError:
-                    pass
+                    pass  # stdout isn't JSON; fall through to generic error
             return (
                 {
                     "errorMessage": stdout or "Function execution failed",
@@ -385,7 +385,7 @@ class DockerLambdaExecutor:
                 timeout=10,
             )
         except Exception:
-            pass
+            pass  # Best-effort cleanup; container may already be gone
 
     def _execute_local_fallback(
         self,

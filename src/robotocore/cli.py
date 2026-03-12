@@ -179,7 +179,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
         print(f"Failed to get logs for container '{name}'.", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        pass
+        pass  # User pressed Ctrl+C to stop following logs
     return 0
 
 
@@ -219,7 +219,7 @@ def cmd_wait(args: argparse.Namespace) -> int:
                 print("Robotocore is ready.")
                 return 0
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-            pass
+            pass  # Server not ready yet, retry after sleep
         time.sleep(1)
 
     print(f"Timed out after {timeout}s waiting for robotocore to become healthy.", file=sys.stderr)
