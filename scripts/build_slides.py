@@ -416,8 +416,27 @@ blockquote {{
 <body>
 <div id="deck">
 
-  <!-- Slide 1: Hero -->
-  <section class="slide slide-hero active" id="s1">
+  <!-- Slide 1: LocalStack blog post -->
+  <section class="slide slide-amber active" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
+    <div style="width:60%;max-width:700px;padding-top:60px;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
+      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
+      <blockquote class="anim-3" style="margin-top:32px;">
+        "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
+        <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
+      </blockquote>
+      <blockquote class="anim-4">
+        "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
+        development and exploration."
+      </blockquote>
+      <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
+        — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
+      </p>
+    </div>
+  </section>
+
+  <!-- Slide 2: Hero -->
+  <section class="slide slide-hero" id="s2">
     <canvas id="hero-canvas"></canvas>
     <div class="center" style="position:relative;z-index:1;">
       <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
@@ -429,54 +448,7 @@ blockquote {{
     </div>
   </section>
 
-  <!-- Slide 2: LocalStack blog post -->
-  <section class="slide slide-amber" id="s2">
-    <div class="full-width center">
-      <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
-      <h2 class="anim-2">LocalStack Changes the Rules</h2>
-      <blockquote class="anim-3" style="margin-top:32px;text-align:left;">
-        "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
-        <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
-      </blockquote>
-      <blockquote class="anim-4" style="text-align:left;">
-        "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
-        development and exploration."
-      </blockquote>
-      <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
-        — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
-      </p>
-    </div>
-  </section>
-
-  <!-- Slide 3: What it means -->
-  <section class="slide slide-blue" id="s3">
-    <div class="full-width center">
-      <div class="eyebrow anim-1" style="color:#2E86D4;">The Breaking Point</div>
-      <h2 class="anim-2">What "Account Required" Really Means</h2>
-      <div class="three-col anim-3" style="margin-top:36px;">
-        <div class="card card-accent">
-          <div style="font-size:2.5rem;margin-bottom:12px;">🔐</div>
-          <h3>Auth Tokens Required</h3>
-          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Every dev machine, every CI job needs a LocalStack account and token. Offline? Blocked.</p>
-        </div>
-        <div class="card card-blue">
-          <div style="font-size:2.5rem;margin-bottom:12px;">🚧</div>
-          <h3>Enterprise Features Paywalled</h3>
-          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Multi-account, chaos engineering, state snapshots — now Pro-only. The tools you need cost money.</p>
-        </div>
-        <div class="card card-teal">
-          <div style="font-size:2.5rem;margin-bottom:12px;">📉</div>
-          <h3>Community Edition Stagnates</h3>
-          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Free tier gets "experimental" label. Investment shifts to paid. Community left behind.</p>
-        </div>
-      </div>
-      <p class="anim-4" style="margin-top:28px;opacity:0.65;font-size:1rem;">
-        We needed an alternative. A real one. Free forever, no strings.
-      </p>
-    </div>
-  </section>
-
-  <!-- Slide 4: Moto history -->
+  <!-- Slide 3: Moto history -->
   <section class="slide slide-blue" id="s4">
     <div class="full-width">
       <div class="center">
