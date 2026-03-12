@@ -139,9 +139,22 @@ class _RestrictedUnpickler(pickle.Unpickler):
         "_codecs",
         "re",
         "robotocore.state.manager",
+        # Standard library types that Moto backends store on model objects
+        "ipaddress",  # EC2/VPC: IPv4Address, IPv4Network, IPv6Network
+        "enum",  # Various status enums
+        "uuid",  # Resource identifiers
+        "pathlib",  # Path objects in some backends
+        "json",  # JSONDecodeError etc.
+        "zoneinfo",  # Timezone-aware datetimes
+        "functools",  # partial, cached_property
+        "abc",  # ABCMeta
+        "typing",  # Type annotations stored as values
     )
 
-    # Dangerous callables that should never appear in pickles
+    # Dangerous callables that should never appear in pickles.
+    # Note: getattr/setattr/delattr are used legitimately by pickle to
+    # reconstruct objects (e.g. Moto's EC2 backend uses __reduce__ with
+    # getattr), so they are NOT blocked here.
     _BLOCKED_NAMES = frozenset(
         {
             "eval",
@@ -150,9 +163,6 @@ class _RestrictedUnpickler(pickle.Unpickler):
             "execfile",
             "input",
             "__import__",
-            "getattr",
-            "setattr",
-            "delattr",
             "globals",
             "locals",
             "vars",
