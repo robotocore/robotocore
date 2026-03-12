@@ -32,13 +32,6 @@ from robotocore.gateway.s3_routing import (
 from robotocore.gateway.tls import TLSConfig, get_cert_info
 from robotocore.observability.hooks import run_init_hooks
 from robotocore.observability.metrics import request_counter
-from robotocore.observability.request_context import (
-    RequestContext as ObsRequestContext,
-)
-from robotocore.observability.request_context import (
-    set_current_context,
-)
-from robotocore.observability.timeline import handle_timeline
 from robotocore.observability.tracing import TracingMiddleware
 from robotocore.providers.moto_bridge import forward_to_moto
 from robotocore.services.acm.provider import handle_acm_request
@@ -78,10 +71,8 @@ from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.loader import (
-    get_allowed_services,
     get_effective_provider,
     get_service_info_with_status,
-    init_loader,
     is_service_allowed,
 )
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
@@ -231,12 +222,9 @@ async def health(request: Request) -> JSONResponse:
     """Enhanced health endpoint with per-service status and request counts."""
     uptime = time.monotonic() - _server_start_time if _server_start_time else 0
 
-    allowed = get_allowed_services()
     counts = request_counter.get_all()
     services_status = {}
     for name, info in sorted(SERVICE_REGISTRY.items()):
-        if allowed is not None and name not in allowed:
-            continue
         stype = "native" if info.status == ServiceStatus.NATIVE else "moto"
         services_status[name] = {
             "status": "running",
@@ -244,20 +232,14 @@ async def health(request: Request) -> JSONResponse:
             "requests": counts.get(name, 0),
         }
 
-    services_env = os.environ.get("SERVICES", "").strip()
-    services_filter = services_env if services_env else "all"
-
-    result: dict[str, object] = {
-        "status": "running",
-        "version": __version__,
-        "uptime_seconds": round(uptime, 1),
-        "services_filter": services_filter,
-        "services": services_status,
-    }
-    if allowed is not None:
-        result["enabled_services"] = sorted(allowed)
-
-    return JSONResponse(result)
+    return JSONResponse(
+        {
+            "status": "running",
+            "version": __version__,
+            "uptime_seconds": round(uptime, 1),
+            "services": services_status,
+        }
+    )
 
 
 async def services_endpoint(request: Request) -> JSONResponse:
@@ -333,7 +315,7 @@ async def config_delete_endpoint(request: Request) -> JSONResponse:
 
 
 async def save_state(request: Request) -> JSONResponse:
-    """Save emulator state. When a name is provided, creates a versioned in-memory snapshot."""
+    """Save emulator state to disk (Cloud Pods-like feature)."""
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
@@ -342,26 +324,6 @@ async def save_state(request: Request) -> JSONResponse:
         params = json.loads(body)
 
     manager = get_state_manager()
-    name = params.get("name")
-
-    # If a name is provided, use versioned in-memory snapshots
-    if name:
-        try:
-            result = manager.save_versioned(
-                name=name,
-                services=params.get("services"),
-            )
-            return JSONResponse(
-                {
-                    "status": "saved",
-                    "name": result["name"],
-                    "version": result["version"],
-                }
-            )
-        except ValueError as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
-
-    # No name: fall back to disk-based save
     path = params.get("path") or manager.state_dir
     if not path:
         return JSONResponse(
@@ -371,13 +333,14 @@ async def save_state(request: Request) -> JSONResponse:
 
     saved_path = manager.save(
         path=path,
+        name=params.get("name"),
         services=params.get("services"),
     )
     return JSONResponse({"status": "saved", "path": saved_path})
 
 
 async def load_state(request: Request) -> JSONResponse:
-    """Load emulator state. When a name is provided, loads from versioned in-memory snapshots."""
+    """Load emulator state from disk."""
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
@@ -386,29 +349,6 @@ async def load_state(request: Request) -> JSONResponse:
         params = json.loads(body)
 
     manager = get_state_manager()
-    name = params.get("name")
-
-    # If a name is provided, try versioned in-memory snapshots first
-    if name:
-        version = params.get("version")
-        try:
-            result = manager.load_versioned(
-                name=name,
-                version=version,
-                services=params.get("services"),
-            )
-            return JSONResponse(
-                {
-                    "status": "loaded",
-                    "name": result["name"],
-                    "version": result["version"],
-                }
-            )
-        except ValueError:
-            # Fall through to disk-based load if not found in memory
-            pass
-
-    # Fall back to disk-based load
     path = params.get("path") or manager.state_dir
     if not path:
         return JSONResponse(
@@ -418,73 +358,19 @@ async def load_state(request: Request) -> JSONResponse:
 
     success = manager.load(
         path=path,
-        name=name,
+        name=params.get("name"),
         services=params.get("services"),
     )
     return JSONResponse({"status": "loaded" if success else "no_state_found", "path": str(path)})
 
 
 async def list_snapshots(request: Request) -> JSONResponse:
-    """List all named state snapshots (disk-based)."""
+    """List all named state snapshots."""
     from robotocore.state.manager import get_state_manager
 
     manager = get_state_manager()
     snapshots = manager.list_snapshots()
     return JSONResponse({"snapshots": snapshots})
-
-
-async def list_versioned_snapshots(request: Request) -> JSONResponse:
-    """List all versioned in-memory snapshots with metadata."""
-    from robotocore.state.manager import get_state_manager
-
-    manager = get_state_manager()
-    snapshots = manager.list_versioned()
-    return JSONResponse({"snapshots": snapshots})
-
-
-async def delete_versioned_snapshot(request: Request) -> JSONResponse:
-    """Delete a versioned snapshot or a specific version.
-
-    Body: {"name": "x"} to delete all versions, or {"name": "x", "version": 3}.
-    """
-    from robotocore.state.manager import get_state_manager
-
-    body = await request.body()
-    if not body:
-        return JSONResponse({"error": "Request body required"}, status_code=400)
-
-    params = json.loads(body)
-    name = params.get("name")
-    if not name:
-        return JSONResponse({"error": "Missing 'name' parameter"}, status_code=400)
-
-    version = params.get("version")
-    manager = get_state_manager()
-
-    try:
-        result = manager.delete_versioned(name=name, version=version)
-        return JSONResponse({"status": "deleted", **result})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=404)
-
-
-async def snapshot_versions(request: Request) -> JSONResponse:
-    """Return version history for a specific snapshot.
-
-    Query param: name=<snapshot-name>
-    """
-    from robotocore.state.manager import get_state_manager
-
-    name = request.query_params.get("name")
-    if not name:
-        return JSONResponse({"error": "Missing 'name' query parameter"}, status_code=400)
-
-    manager = get_state_manager()
-    try:
-        versions = manager.versions_for_snapshot(name)
-        return JSONResponse({"name": name, "versions": versions})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=404)
 
 
 async def reset_state(request: Request) -> JSONResponse:
@@ -500,14 +386,6 @@ async def list_state_hooks(request: Request) -> JSONResponse:
     from robotocore.state.hooks import state_hooks
 
     return JSONResponse({"hooks": state_hooks.list_hooks()})
-
-
-async def state_consistency_status(request: Request) -> JSONResponse:
-    """Return current state consistency status."""
-    from robotocore.state.consistency import get_consistent_state_manager
-
-    csm = get_consistent_state_manager()
-    return JSONResponse(csm.status_dict())
 
 
 async def export_state(request: Request) -> Response:
@@ -831,70 +709,23 @@ async def init_stage(request: Request) -> JSONResponse:
 
 
 async def plugins_list(request: Request) -> JSONResponse:
-    """List all discovered plugins with version, capabilities, and dependency info."""
-    from robotocore.extensions.api_version import CURRENT_API_VERSION
+    """List all discovered plugins with status info."""
     from robotocore.extensions.plugin_status import get_plugin_status_collector
-    from robotocore.extensions.registry import get_extension_registry
 
     collector = get_plugin_status_collector()
-    registry = get_extension_registry()
-    return JSONResponse(
-        {
-            "api_version": CURRENT_API_VERSION,
-            "plugins": collector.list_plugins(),
-            "dependency_graph": registry.get_dependency_graph(),
-        }
-    )
+    return JSONResponse({"plugins": collector.list_plugins()})
 
 
 async def plugin_detail(request: Request) -> JSONResponse:
     """Return detailed info for a specific plugin."""
     from robotocore.extensions.plugin_status import get_plugin_status_collector
-    from robotocore.extensions.registry import get_extension_registry
 
     name = request.path_params["name"]
     collector = get_plugin_status_collector()
     detail = collector.get_plugin_detail(name)
     if detail is None:
         return JSONResponse({"error": f"Plugin '{name}' not found"}, status_code=404)
-
-    # Enrich with registry info (capabilities, api_compat, dependencies)
-    registry = get_extension_registry()
-    for p in registry.plugins:
-        if p.name == name:
-            detail["api_version"] = p.api_version
-            detail["capabilities"] = sorted(p.get_capabilities())
-            detail["dependencies"] = getattr(p, "dependencies", [])
-            compat = registry._compat_results.get(name)
-            if compat:
-                detail["api_compat"] = {
-                    "compatible": compat.compatible,
-                    "warnings": compat.warnings,
-                    "errors": compat.errors,
-                }
-            config_schema = p.get_config_schema()
-            if config_schema:
-                detail["config_schema"] = config_schema
-            break
-
     return JSONResponse(detail)
-
-
-async def plugins_migrations(request: Request) -> JSONResponse:
-    """Show migration guidance for deprecated plugin API versions."""
-    from robotocore.extensions.api_version import (
-        CURRENT_API_VERSION,
-        SUPPORTED_VERSIONS,
-        PluginAPIVersion,
-    )
-
-    return JSONResponse(
-        {
-            "current_api_version": CURRENT_API_VERSION,
-            "supported_versions": sorted(SUPPORTED_VERSIONS),
-            "migrations": PluginAPIVersion.get_migration_guide(),
-        }
-    )
 
 
 async def tls_info_endpoint(request: Request) -> JSONResponse:
@@ -1161,10 +992,6 @@ async def handle_aws_request(request: Request) -> Response:
         account_id=account_id,
     )
 
-    # Set up per-request observability context for chaos/audit correlation
-    obs_ctx = ObsRequestContext(service=service_name)
-    set_current_context(obs_ctx)
-
     # Pre-read the body so synchronous handlers (populate_context_handler) can
     # access it via request._body for form-encoded Action parsing.
     await request.body()
@@ -1319,6 +1146,13 @@ async def handle_connections_api(
         )
 
 
+async def _boot_status_endpoint(request: Request) -> JSONResponse:
+    """Return boot orchestrator component health status."""
+    from robotocore.boot.orchestrator import get_orchestrator
+
+    return JSONResponse(get_orchestrator().get_status())
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -1332,12 +1166,8 @@ management_routes = [
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
     Route("/_robotocore/state/load", load_state, methods=["POST"]),
     Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
-    Route("/_robotocore/state/list", list_versioned_snapshots, methods=["GET"]),
-    Route("/_robotocore/state/delete", delete_versioned_snapshot, methods=["DELETE"]),
-    Route("/_robotocore/state/versions", snapshot_versions, methods=["GET"]),
     Route("/_robotocore/state/reset", reset_state, methods=["POST"]),
     Route("/_robotocore/state/hooks", list_state_hooks, methods=["GET"]),
-    Route("/_robotocore/state/consistency", state_consistency_status, methods=["GET"]),
     Route("/_robotocore/state/export", export_state, methods=["GET"]),
     Route("/_robotocore/state/import", import_state, methods=["POST"]),
     # Chaos engineering
@@ -1350,8 +1180,6 @@ management_routes = [
     Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),
     # Audit log
     Route("/_robotocore/audit", audit_log, methods=["GET"]),
-    # Unified timeline (chaos + audit)
-    Route("/_robotocore/timeline", handle_timeline, methods=["GET"]),
     # Usage analytics
     Route("/_robotocore/usage", usage_summary, methods=["GET"]),
     Route("/_robotocore/usage/services", usage_services, methods=["GET"]),
@@ -1380,7 +1208,6 @@ management_routes = [
     Route("/_robotocore/init/{stage}", init_stage, methods=["GET"]),
     # Plugins status
     Route("/_robotocore/plugins", plugins_list, methods=["GET"]),
-    Route("/_robotocore/plugins/migrations", plugins_migrations, methods=["GET"]),
     Route("/_robotocore/plugins/{name}", plugin_detail, methods=["GET"]),
     # Diagnostics bundle
     Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
@@ -1401,64 +1228,41 @@ management_routes = [
     Route("/_robotocore/pods/{name}", pods_delete, methods=["DELETE"]),
     # TLS info
     Route("/_robotocore/tls/info", tls_info_endpoint, methods=["GET"]),
+    # Boot status
+    Route("/_robotocore/boot/status", _boot_status_endpoint, methods=["GET"]),
     # Console web UI
     *get_console_routes(),
 ]
 
 
-def _start_background_engines():
-    """Start background engines for cross-service integrations."""
+async def _start_background_engines():
+    """Start background engines for cross-service integrations.
+
+    Uses the BootOrchestrator for dependency-aware startup with health checks.
+    """
     global _server_start_time
     _server_start_time = time.monotonic()
 
-    # Initialize service loader (SERVICES filter, provider overrides, eager loading)
-    init_loader()
+    from robotocore.boot.components import register_all_components
+    from robotocore.boot.orchestrator import get_orchestrator
 
-    from robotocore.services.lambda_.event_source import get_engine
+    register_all_components()
+    orch = get_orchestrator()
+    result = await orch.boot()
 
-    get_engine().start()
-    from robotocore.services.cloudwatch.alarm_scheduler import get_alarm_scheduler
+    if not result.success:
+        import logging
 
-    get_alarm_scheduler().start()
-    from robotocore.services.synthetics.scheduler import get_canary_scheduler
-
-    get_canary_scheduler().start()
-    from robotocore.services.sqs.metrics import get_sqs_metrics_publisher
-
-    get_sqs_metrics_publisher().start()
-    from robotocore.services.events.rule_scheduler import get_rule_scheduler
-
-    get_rule_scheduler().start()
-    from robotocore.services.scheduler.provider import get_schedule_executor
-
-    get_schedule_executor().start()
-
-    # Start DynamoDB TTL scanner
-    from robotocore.services.dynamodb.ttl import get_ttl_scanner
-
-    get_ttl_scanner().start()
-
-    # Auto-load state if configured
-    if os.environ.get("ROBOTOCORE_STATE_DIR"):
-        from robotocore.state.manager import get_state_manager
-
-        manager = get_state_manager()
-        # Try auto-restore from ROBOTOCORE_RESTORE_SNAPSHOT first
-        if not manager.restore_on_startup():
-            # Fall back to loading default state
-            manager.load()
-
-    # Start SMTP server
-    from robotocore.services.ses.smtp_server import start_smtp_server
-
-    start_smtp_server()
-
-    # Run ready hooks
-    run_init_hooks("ready")
+        logging.getLogger(__name__).error(
+            "Boot failed: %s (failed=%s, skipped=%s)",
+            result.total_duration_ms,
+            result.failed,
+            result.skipped,
+        )
 
 
-def _shutdown():
-    """Shutdown hook -- auto-save state and CI analytics if configured."""
+async def _shutdown():
+    """Shutdown hook -- auto-save state, stop orchestrated components, CI analytics."""
     # Save CI analytics session
     from robotocore.audit.ci_analytics import get_ci_analytics
 
@@ -1469,27 +1273,10 @@ def _shutdown():
         if state_dir:
             analytics.save_session(state_dir)
 
-    if os.environ.get("ROBOTOCORE_PERSIST", "0") == "1":
-        from robotocore.state.manager import get_state_manager
+    # Shutdown all orchestrated components in reverse dependency order
+    from robotocore.boot.orchestrator import get_orchestrator
 
-        manager = get_state_manager()
-        if manager.state_dir:
-            manager.save()
-
-    # Stop DynamoDB TTL scanner
-    from robotocore.services.dynamodb.ttl import get_ttl_scanner
-
-    get_ttl_scanner().stop()
-
-    # Stop SMTP server
-    from robotocore.services.ses.smtp_server import stop_smtp_server
-
-    stop_smtp_server()
-
-    # Stop DNS server
-    from robotocore.dns.server import stop_dns_server
-
-    stop_dns_server()
+    await get_orchestrator().shutdown()
 
     # Run shutdown hooks
     run_init_hooks("shutdown")
