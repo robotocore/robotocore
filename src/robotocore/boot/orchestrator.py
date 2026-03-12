@@ -242,7 +242,9 @@ class BootOrchestrator:
         fails, subsequent components that depend on it are skipped.
         """
         if self._booted:
-            raise RuntimeError("BootOrchestrator.boot() has already been called")
+            logger.debug("BootOrchestrator.boot() already called, returning previous result")
+            assert self._boot_result is not None
+            return self._boot_result
 
         boot_start = time.monotonic()
         failed_components: set[str] = set()
@@ -327,8 +329,13 @@ class BootOrchestrator:
         return result
 
     async def shutdown(self) -> None:
-        """Stop all started components in reverse dependency order."""
+        """Stop all started components in reverse dependency order.
+
+        After shutdown, boot() can be called again (supports server restarts
+        in integration tests).
+        """
         if not self._booted:
+            logger.debug("BootOrchestrator.shutdown() called but not booted, nothing to do")
             return
 
         try:

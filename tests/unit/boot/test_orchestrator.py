@@ -226,12 +226,13 @@ class TestBoot:
         assert result.total_duration_ms >= 0
         assert orch._status["a"].boot_duration_ms is not None
 
-    async def test_boot_only_once(self):
+    async def test_boot_idempotent(self):
         orch = BootOrchestrator()
         orch.register(_make_component("a"))
-        await orch.boot()
-        with pytest.raises(RuntimeError, match="already been called"):
-            await orch.boot()
+        result1 = await orch.boot()
+        result2 = await orch.boot()
+        assert result2 is result1
+        assert result2.success is True
 
     async def test_boot_circular_dependency_returns_failure(self):
         orch = BootOrchestrator()
