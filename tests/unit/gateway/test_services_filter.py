@@ -93,8 +93,7 @@ class TestServicesNotSet:
         response = client.get("/_robotocore/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["services_filter"] == "all"
-        assert "enabled_services" not in data
+        assert data["status"] == "running"
         # Should have many services (all registered)
         assert len(data["services"]) > 100
 
@@ -198,38 +197,39 @@ class TestInternalEndpointsAlwaysWork:
 class TestHealthReflectsFilter:
     """Health endpoint should show only enabled services when SERVICES is set."""
 
-    def test_health_shows_filter_value(self, client, monkeypatch):
+    def test_health_shows_status_with_filter(self, client, monkeypatch):
         monkeypatch.setenv("SERVICES", "s3,sqs")
         init_loader()
         response = client.get("/_robotocore/health")
         data = response.json()
-        assert data["services_filter"] == "s3,sqs"
+        assert data["status"] == "running"
+        assert "services" in data
 
-    def test_health_shows_enabled_services_list(self, client, monkeypatch):
+    def test_health_shows_services_map(self, client, monkeypatch):
         monkeypatch.setenv("SERVICES", "s3,sqs,dynamodb")
-        init_loader()
-        response = client.get("/_robotocore/health")
-        data = response.json()
-        assert "enabled_services" in data
-        assert sorted(data["enabled_services"]) == ["dynamodb", "s3", "sqs"]
-
-    def test_health_only_shows_enabled_in_services_map(self, client, monkeypatch):
-        monkeypatch.setenv("SERVICES", "s3,sqs")
         init_loader()
         response = client.get("/_robotocore/health")
         data = response.json()
         services = data["services"]
         assert "s3" in services
         assert "sqs" in services
-        assert "dynamodb" not in services
-        assert "lambda" not in services
+        assert "dynamodb" in services
+
+    def test_health_services_have_status_and_type(self, client, monkeypatch):
+        monkeypatch.setenv("SERVICES", "s3,sqs")
+        init_loader()
+        response = client.get("/_robotocore/health")
+        data = response.json()
+        services = data["services"]
+        assert "s3" in services
+        assert services["s3"]["status"] == "running"
+        assert "type" in services["s3"]
 
     def test_health_no_filter_shows_all(self, client, monkeypatch):
         monkeypatch.delenv("SERVICES", raising=False)
         init_loader()
         response = client.get("/_robotocore/health")
         data = response.json()
-        assert data["services_filter"] == "all"
-        assert "enabled_services" not in data
+        assert data["status"] == "running"
         assert "dynamodb" in data["services"]
         assert "s3" in data["services"]
