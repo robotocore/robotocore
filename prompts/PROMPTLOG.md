@@ -133,9 +133,35 @@ When something is ambiguous — a colleague's name, an internal project codename
 
 When in doubt, redact.
 
+## Multi-branch sessions
+
+When a single conversation spawns multiple PRs (e.g., parallel worktree agents), use the same `session` ID across all prompt files with `sequence` numbers to chain them:
+
+```
+prompts/20260312-003433-robotocore-cli.md       # session: "migration-parity", sequence: 1
+prompts/20260312-003433-awsroboto.md             # session: "migration-parity", sequence: 2
+prompts/20260312-003433-versioned-snapshots.md   # session: "migration-parity", sequence: 3
+```
+
+Each file lives on its own feature branch. Sequence 1 should contain the full conversation chain (the human prompts that led to this work). Later sequences can reference it with `[Continuation of session — see sequence 1 for full chain]` to avoid duplicating the conversation history.
+
+**Why this matters**: When 7 PRs land from one conversation, a reviewer needs to understand that they were part of a coordinated effort, not 7 unrelated changes. The shared session ID and sequence numbers make this traceable.
+
+## Worktree agents and prompt logs
+
+When using `isolation: "worktree"` agents, the agent cannot create prompt log files (they don't commit). The orchestrating conversation must create and push prompt logs to each worktree branch after the agent completes.
+
+**Pattern**:
+1. Agent completes work in worktree (code + tests, no prompt log)
+2. Orchestrator commits and pushes the agent's changes
+3. Orchestrator creates the prompt log file capturing the agent's task and key decisions
+4. Orchestrator commits and pushes the prompt log as a follow-up commit
+
+This is why `SKIP_PROMPT_LOG=1` exists — the first commit (code) bypasses the hook, and the second commit (prompt log) satisfies it. CI will re-run on the prompt log push and pass.
+
 ## Committing
 
-Add `prompts/` to the same commit as the code changes. If a session produces multiple commits, each one includes only the prompts that led to it.
+Add `prompts/` to the same commit as the code changes. If a session produces multiple commits, each one includes only the prompts that led to it. If you are working in a worktree agent context where the code was committed separately, a follow-up commit with just the prompt log file is acceptable.
 
 Create `prompts/` on first use. Don't add it to `.gitignore` unless the user asks.
 
@@ -149,3 +175,15 @@ This applies to autonomous cleanup passes too. If an agent is asked to "tidy the
 - Redacting newly-discovered secrets or PII (with a note in the file explaining what was redacted and why)
 
 Everything else is append-only.
+
+## Pre-commit hook
+
+The pre-commit hook enforces that commits touching `src/` or `tests/` include a `prompts/` file. To bypass for legitimate cases (e.g., worktree agent code commits that will get a prompt log in a follow-up):
+
+```bash
+SKIP_PROMPT_LOG=1 git commit -m "..."
+```
+
+The CI `Prompt log check` job also enforces this. A follow-up commit adding the prompt log file will make the check pass on the next push.
+
+**Do not routinely skip the hook.** It exists because prompt logs are easy to forget during autonomous work. The two-commit pattern (code then prompt log) is the intended workflow for worktree agents — not a workaround.
