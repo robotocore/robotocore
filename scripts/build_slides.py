@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a slide deck HTML file for Robotocore — 21 slides, light color scheme.
+"""Build a slide deck HTML file for Robotocore — 18 slides, light color scheme.
 
 Outputs to docs/slides.html. Run with --check to validate with Playwright screenshots.
 
@@ -416,40 +416,8 @@ blockquote {{
 <body>
 <div id="deck">
 
-  <!-- Slide 1: LocalStack blog post -->
-  <section class="slide slide-amber active" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
-    <div style="width:60%;max-width:700px;padding-top:60px;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
-      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
-      <blockquote class="anim-3" style="margin-top:32px;">
-        "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
-        <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
-      </blockquote>
-      <blockquote class="anim-4">
-        "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
-        development and exploration."
-      </blockquote>
-      <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
-        — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
-      </p>
-    </div>
-  </section>
-
-  <!-- Slide 2: Hero -->
-  <section class="slide slide-hero" id="s2">
-    <canvas id="hero-canvas"></canvas>
-    <div class="center" style="position:relative;z-index:1;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
-      <div class="logo-word anim-2">robotocore</div>
-      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
-      <div style="margin-top:32px;" class="anim-4">
-        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- Slide 3: Moto history -->
-  <section class="slide slide-blue" id="s4">
+  <!-- Slide 0: Moto history -->
+  <section class="slide slide-blue active" id="s4">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">The Foundation</div>
@@ -475,7 +443,7 @@ blockquote {{
     </div>
   </section>
 
-  <!-- Slide 5: LocalStack Was Always Moto -->
+  <!-- Slide 1: LocalStack Was Always Moto -->
   <section class="slide slide-blue" id="s5">
     <div class="full-width">
       <div class="center">
@@ -539,7 +507,26 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 6: The Decision -->
+  <!-- Slide 2: LocalStack blog post -->
+  <section class="slide slide-amber" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
+    <div style="width:60%;max-width:700px;padding-top:60px;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
+      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
+      <blockquote class="anim-3" style="margin-top:32px;">
+        "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
+        <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
+      </blockquote>
+      <blockquote class="anim-4">
+        "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
+        development and exploration."
+      </blockquote>
+      <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
+        — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
+      </p>
+    </div>
+  </section>
+
+  <!-- Slide 3: The Decision -->
   <section class="slide slide-hero" id="s6">
     <div class="center" style="position:relative;z-index:1;">
       <div class="eyebrow anim-1" style="color:#E07B00;">Day Zero · March 6, 2026 · 3:56 AM</div>
@@ -557,7 +544,20 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 7: Architecture -->
+  <!-- Slide 4: Hero -->
+  <section class="slide slide-hero" id="s2">
+    <canvas id="hero-canvas"></canvas>
+    <div class="center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
+      <div class="logo-word anim-2">robotocore</div>
+      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
+      <div style="margin-top:32px;" class="anim-4">
+        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 5: Architecture -->
   <section class="slide slide-data" id="s7">
     <div class="full-width">
       <div class="center">
@@ -708,53 +708,68 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 11: Quality fix -->
-  <section class="slide slide-data" id="s11">
-    <div class="full-width">
-      <div class="center">
-        <div class="eyebrow anim-1">The Fix</div>
-        <h2 class="anim-2">Quality-First Test Engineering</h2>
-      </div>
-      <div class="three-col anim-3" style="margin-top:32px;">
-        <div class="card card-blue">
-          <div style="font-size:2rem;margin-bottom:12px;">🚦</div>
-          <h3>CI Gate</h3>
-          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">validate_test_quality.py</code>
-            blocks merge if &gt;5% of tests don't contact the server.
-          </p>
-        </div>
+  <!-- Slide 9: I Tried Telling Agents to Do Better -->
+  <section class="slide slide-amber" id="s10">
+    <div class="full-width center">
+      <div class="eyebrow anim-1" style="color:#E07B00;">Day 2 · The Wrong Answer</div>
+      <h2 class="anim-2">I Tried Telling Agents to Do Better</h2>
+      <div class="two-col anim-3" style="margin-top:32px;max-width:900px;align-items:start;">
         <div class="card card-accent">
-          <div style="font-size:2rem;margin-bottom:12px;">📐</div>
-          <h3>Three Valid Patterns Only</h3>
-          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            Create→use→cleanup · Fake-ID→assert-exception · List→assert-key.
-            Every test must assert on a response field.
-          </p>
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:16px;color:#E07B00;">What I tried</div>
+          <div class="prompt-card" style="margin-bottom:12px;">
+            <div class="prompt-meta">Attempt 1</div>
+            "Make sure every test actually contacts the server."
+          </div>
+          <div class="prompt-card" style="margin-bottom:12px;">
+            <div class="prompt-meta">Attempt 2</div>
+            "Don't catch ParamValidationError — that's client-side validation."
+          </div>
+          <div class="prompt-card">
+            <div class="prompt-meta">Attempt 3</div>
+            "Follow these three test patterns only: create a resource, use it, clean up."
+          </div>
         </div>
-        <div class="card card-teal">
-          <div style="font-size:2rem;margin-bottom:12px;">🔬</div>
-          <h3>Probe Before Test</h3>
-          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">
-            Run <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">probe_service.py</code>
-            first. Only write tests for operations that actually work. Fix gaps first.
-          </p>
-        </div>
-      </div>
-      <div class="anim-4" style="display:flex;gap:24px;justify-content:center;margin-top:32px;">
-        <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#E07B00;">16,641</div>
-          <div class="mini-stat-label">Final test count</div>
-        </div>
-        <div class="mini-stat-box">
-          <div class="mini-stat-num" style="color:#007B8A;">99.5%</div>
-          <div class="mini-stat-label">Server contact rate</div>
+        <div class="card card-blue" style="display:flex;flex-direction:column;gap:16px;">
+          <div style="font-size:1.1rem;font-weight:700;color:#1E6FBF;">What happened</div>
+          <div style="padding:16px;background:rgba(224,123,0,0.06);border-radius:10px;border:1px solid rgba(224,123,0,0.2);">
+            <div style="font-size:2rem;font-weight:900;color:#E07B00;margin-bottom:4px;">~60%</div>
+            <div style="font-size:0.85rem;opacity:0.7;">of newly generated tests<br>still never contacted the server</div>
+          </div>
+          <p style="font-size:0.9rem;opacity:0.7;line-height:1.6;">Agents are stateless. Every new session forgets the instructions. Careful prompting doesn't compound — it evaporates.</p>
+          <p style="font-size:0.95rem;font-weight:600;color:#1E6FBF;">The fix wasn't a better prompt.<br>It was a better system.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Slide 12: Growth chart -->
+  <!-- Slide 10: Build Agents a Feedback Loop -->
+  <section class="slide slide-data" id="s11">
+    <div class="full-width">
+      <div class="center">
+        <div class="eyebrow anim-1">The Real Fix</div>
+        <h2 class="anim-2">Build Agents a Feedback Loop</h2>
+      </div>
+      <div class="three-col anim-3" style="margin-top:32px;">
+        <div class="card card-blue">
+          <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
+          <h3>Immediate Feedback</h3>
+          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">Every test runs right after being written. Pass → keep it. Fail → fix it or delete it.</p>
+        </div>
+        <div class="card card-accent">
+          <div style="font-size:2rem;margin-bottom:12px;">🚦</div>
+          <h3>CI Enforces the Rules</h3>
+          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;"><code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">validate_test_quality.py</code> blocks merge if >5% of tests don't contact the server. The gate is automated — not a reminder.</p>
+        </div>
+        <div class="card card-teal">
+          <div style="font-size:2rem;margin-bottom:12px;">🔬</div>
+          <h3>Probe Before Test</h3>
+          <p style="font-size:0.85rem;opacity:0.65;margin-top:8px;">Run <code style="background:#E8EDF8;padding:2px 6px;border-radius:4px;">probe_service.py</code> first. Only write tests for operations that actually work.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 11: Growth chart -->
   <section class="slide slide-data" id="s12">
     <div class="full-width">
       <div class="center">
@@ -853,84 +868,7 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 17: Comparison -->
-  <section class="slide slide-blue" id="s17">
-    <div class="full-width">
-      <div class="center">
-        <div class="eyebrow anim-1" style="color:#007B8A;">Comparison</div>
-        <h2 class="anim-2">Robotocore vs. LocalStack</h2>
-      </div>
-      <div class="anim-3" style="margin-top:24px;overflow:auto;max-height:420px;">
-        <table class="compare-table">
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th>LocalStack Free</th>
-              <th>LocalStack Pro</th>
-              <th>Robotocore</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>147 AWS services</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>No account required</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
-            <tr><td>No telemetry</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
-            <tr><td>MIT license</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
-            <tr><td>Multi-account isolation</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>State snapshots</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>Chaos engineering</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>Real Lambda execution</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>EKS mock Kubernetes</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>Audit log</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
-            <tr><td>Resource browser</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <!-- Slide 18: Beyond AWS -->
-  <section class="slide slide-data" id="s18">
-    <div class="full-width">
-      <div class="center">
-        <div class="eyebrow anim-1">Observability &amp; Operations</div>
-        <h2 class="anim-2">Beyond Just AWS Emulation</h2>
-      </div>
-      <div class="three-col anim-3" style="margin-top:28px;">
-        <div class="card-light card-accent">
-          <div style="font-size:1.8rem;margin-bottom:10px;">💥</div>
-          <h3>Chaos Engineering</h3>
-          <p style="font-size:0.82rem;opacity:0.65;margin-top:6px;">Inject ThrottlingExceptions, latency, network errors. Per-service, per-operation rules.</p>
-        </div>
-        <div class="card-light card-blue">
-          <div style="font-size:1.8rem;margin-bottom:10px;">📸</div>
-          <h3>State Snapshots</h3>
-          <p style="font-size:0.82rem;opacity:0.65;margin-top:6px;">Save and restore named snapshots. Selective by service. Instant test fixture setup.</p>
-        </div>
-        <div class="card-light card-teal">
-          <div style="font-size:1.8rem;margin-bottom:10px;">📋</div>
-          <h3>Audit Log</h3>
-          <p style="font-size:0.82rem;opacity:0.65;margin-top:6px;">Ring-buffer of all API calls. Query by service, account, operation. Configurable size.</p>
-        </div>
-        <div class="card-light card-purple">
-          <div style="font-size:1.8rem;margin-bottom:10px;">🗺️</div>
-          <h3>Resource Browser</h3>
-          <p style="font-size:0.82rem;opacity:0.65;margin-top:6px;">Cross-service view of all resources. See what you've created at a glance.</p>
-        </div>
-        <div class="card-light card-accent">
-          <div style="font-size:1.8rem;margin-bottom:10px;">🔐</div>
-          <h3>IAM Enforcement</h3>
-          <p style="font-size:0.82rem;opacity:0.65;margin-top:6px;">Full policy evaluation engine. Opt-in via ENFORCE_IAM=1. Test authz locally.</p>
-        </div>
-        <div class="card-light card-blue">
-          <div style="font-size:1.8rem;margin-bottom:10px;">⚙️</div>
-          <h3>CI-Ready</h3>
-          <p style="font-size:0.82rem;opacity:0.65;margin-top:6px;">Single docker run. No auth, no tokens, no network calls. Works offline.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Slide 19: 96-hour timeline -->
+  <!-- Slide 16: 96-hour timeline -->
   <section class="slide slide-hero" id="s19">
     <div class="full-width">
       <div class="center">
@@ -979,36 +917,11 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 21: Get Started -->
-  <section class="slide slide-hero" id="s21">
-    <div class="full-width center">
-      <div class="eyebrow anim-1" style="color:#E07B00;">Open Source · MIT License</div>
-      <h1 class="anim-2">Free.<br><span class="grad-amber">Forever.</span></h1>
-      <div class="two-col anim-3" style="margin-top:28px;max-width:900px;">
-        <div class="code-block" style="font-size:0.85rem;">
-<span class="cm"># One command to start</span>
-<span class="kw">docker</span> run <span class="str">-p 4566:4566</span> \
-  ghcr.io/robotocore/robotocore:<span class="str">latest</span>
-        </div>
-        <div class="code-block" style="font-size:0.85rem;">
-<span class="cm"># Drop-in replacement</span>
-<span class="kw">aws</span> s3 ls \
-  <span class="str">--endpoint-url</span> http://localhost:4566
-        </div>
-      </div>
-      <div class="anim-4" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px;">
-        <span class="badge badge-blue">No registration</span>
-        <span class="badge badge-amber">No telemetry</span>
-        <span class="badge badge-purple">No paid tiers</span>
-        <span class="badge badge-teal">github.com/robotocore/robotocore</span>
-      </div>
-    </div>
-  </section>
 
 </div>
 
-<div id="progress" style="width:4.76%;"></div>
-<div id="slide-counter">1 / 21</div>
+<div id="progress" style="width:5.56%;"></div>
+<div id="slide-counter">1 / 18</div>
 <div id="kb-hint">← → SPACE to navigate</div>
 
 <script>
@@ -1321,14 +1234,14 @@ function initTimeline() {{
 
 // --- Slide enter dispatch ---
 function onSlideEnter(n) {{
-  if (n === 3)  initMotoChart();
-  if (n === 8)  initServiceCloud();
+  if (n === 0)  initMotoChart();
+  if (n === 7)  initServiceCloud();
   if (n === 11) initGrowthChart();
   if (n === 12) initTier1Cards();
   if (n === 13) initProvidersGrid();
   if (n === 14) {{ initTier24Chart(); initTier24Details(); }}
   if (n === 15) initBigStats();
-  if (n === 18) initTimeline();
+  if (n === 16) initTimeline();
 }}
 
 // Init slide 0
