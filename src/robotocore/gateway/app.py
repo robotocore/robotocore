@@ -337,7 +337,10 @@ async def save_state(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    saved_path = manager.save(
+    import asyncio
+
+    saved_path = await asyncio.to_thread(
+        manager.save,
         path=path,
         name=params.get("name"),
         services=params.get("services"),
@@ -362,7 +365,10 @@ async def load_state(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    success = manager.load(
+    import asyncio
+
+    success = await asyncio.to_thread(
+        manager.load,
         path=path,
         name=params.get("name"),
         services=params.get("services"),
@@ -408,9 +414,11 @@ async def export_state(request: Request) -> Response:
     fmt = request.query_params.get("format", "json")
     snap_name = request.query_params.get("name")
 
+    import asyncio
+
     if fmt == "snapshot":
         try:
-            data = manager.export_snapshot_bytes(name=snap_name)
+            data = await asyncio.to_thread(manager.export_snapshot_bytes, name=snap_name)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         filename = f"{snap_name or 'state'}.tar.gz"
@@ -421,7 +429,7 @@ async def export_state(request: Request) -> Response:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    data = manager.export_json()
+    data = await asyncio.to_thread(manager.export_json)
     return JSONResponse(data)
 
 
@@ -443,17 +451,21 @@ async def import_state(request: Request) -> JSONResponse:
     manager = get_state_manager()
     content_type = request.headers.get("content-type", "")
 
+    import asyncio
+
     if "gzip" in content_type or "octet-stream" in content_type:
         snap_name = request.query_params.get("name")
         try:
-            imported_name = manager.import_snapshot_bytes(data=body, name=snap_name)
+            imported_name = await asyncio.to_thread(
+                manager.import_snapshot_bytes, data=body, name=snap_name
+            )
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         return JSONResponse({"status": "imported", "name": imported_name})
 
     # Default: JSON import
     data = json.loads(body)
-    manager.import_json(data)
+    await asyncio.to_thread(manager.import_json, data)
     return JSONResponse({"status": "imported"})
 
 
