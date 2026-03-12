@@ -894,9 +894,9 @@ class TestDLQ:
             account_id="123",
         )
 
-        mock_queue.send_message.assert_called_once()
-        sent_body = mock_queue.send_message.call_args[1]["body"]
-        data = json.loads(sent_body)
+        mock_queue.put.assert_called_once()
+        msg = mock_queue.put.call_args[0][0]
+        data = json.loads(msg.body)
         assert data["errorMessage"] == "Handled"
         assert data["requestPayload"] == {"key": "value"}
 
