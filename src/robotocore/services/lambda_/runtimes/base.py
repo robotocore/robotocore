@@ -87,7 +87,11 @@ def run_subprocess(
             env=env,
         )
     except subprocess.TimeoutExpired:
-        return None, "Task.TimedOut", f"Function timed out after {timeout}s"
+        error_result = {
+            "errorMessage": f"Task timed out after {timeout}.00 seconds",
+            "errorType": "Task.TimedOut",
+        }
+        return error_result, "Task.TimedOut", f"Function timed out after {timeout}s"
     except FileNotFoundError as e:
         return None, "Runtime.InvalidRuntime", f"Runtime not found: {e}"
 
