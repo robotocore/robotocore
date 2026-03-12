@@ -38,14 +38,31 @@ def chaos_handler(context: RequestContext) -> None:
     # Apply error injection
     if rule.error_code:
         request_id = uuid.uuid4().hex
-        error_body = json.dumps(
-            {
-                "__type": rule.error_code,
-                "message": rule.error_message,
-                "Message": rule.error_message,
-                "RequestId": request_id,
-            }
-        )
+
+        if context.protocol in ("rest-xml", "query", "ec2"):
+            # XML-protocol services expect XML error responses
+            error_body = (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                "<ErrorResponse><Error>"
+                f"<Code>{rule.error_code}</Code>"
+                f"<Message>{rule.error_message}</Message>"
+                "</Error>"
+                f"<RequestId>{request_id}</RequestId>"
+                "</ErrorResponse>"
+            )
+            media_type = "application/xml"
+        else:
+            # JSON-protocol services
+            error_body = json.dumps(
+                {
+                    "__type": rule.error_code,
+                    "message": rule.error_message,
+                    "Message": rule.error_message,
+                    "RequestId": request_id,
+                }
+            )
+            media_type = "application/json"
+
         record_chaos_event(
             rule.rule_id,
             "error",
@@ -54,6 +71,6 @@ def chaos_handler(context: RequestContext) -> None:
         context.response = Response(
             content=error_body,
             status_code=rule.status_code,
-            media_type="application/json",
+            media_type=media_type,
             headers={"x-robotocore-chaos": rule.rule_id},
         )
