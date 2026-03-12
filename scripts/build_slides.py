@@ -416,21 +416,55 @@ blockquote {{
 <body>
 <div id="deck">
 
-  <!-- Slide 1: Hero -->
-  <section class="slide slide-hero active" id="s1">
-    <canvas id="hero-canvas"></canvas>
-    <div class="center" style="position:relative;z-index:1;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
-      <div class="logo-word anim-2">robotocore</div>
-      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
-      <div style="margin-top:32px;" class="anim-4">
-        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
-      </div>
+  <!-- Slide 1: LocalStack blog post -->
+  <section class="slide slide-amber active" id="s1" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
+    <div style="width:60%;max-width:700px;padding-top:60px;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
+      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
+      <blockquote class="anim-3" style="margin-top:32px;">
+        "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
+        <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
+      </blockquote>
+      <blockquote class="anim-4">
+        "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
+        development and exploration."
+      </blockquote>
+      <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
+        — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
+      </p>
     </div>
   </section>
 
-  <!-- Slide 2: Moto history -->
+  <!-- Slide 2: Breaking Point -->
   <section class="slide slide-blue" id="s2">
+    <div class="full-width center">
+      <div class="eyebrow anim-1" style="color:#2E86D4;">The Breaking Point</div>
+      <h2 class="anim-2">What "Account Required" Really Means</h2>
+      <div class="three-col anim-3" style="margin-top:36px;">
+        <div class="card card-accent">
+          <div style="font-size:2.5rem;margin-bottom:12px;">🔐</div>
+          <h3>Auth Tokens Required</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Every dev machine, every CI job needs a LocalStack account and token. Offline? Blocked.</p>
+        </div>
+        <div class="card card-blue">
+          <div style="font-size:2.5rem;margin-bottom:12px;">🚧</div>
+          <h3>Enterprise Features Paywalled</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Multi-account, chaos engineering, state snapshots — now Pro-only. The tools you need cost money.</p>
+        </div>
+        <div class="card card-teal">
+          <div style="font-size:2.5rem;margin-bottom:12px;">📉</div>
+          <h3>Community Edition Stagnates</h3>
+          <p style="margin-top:8px;opacity:0.65;font-size:0.9rem;">Free tier gets "experimental" label. Investment shifts to paid. Community left behind.</p>
+        </div>
+      </div>
+      <p class="anim-4" style="margin-top:28px;opacity:0.65;font-size:1rem;">
+        The tool millions rely on, now paywalled. We needed an alternative.
+      </p>
+    </div>
+  </section>
+
+  <!-- Slide 3: Moto history -->
+  <section class="slide slide-blue" id="s3">
     <div class="full-width">
       <div class="center">
         <div class="eyebrow anim-1" style="color:#2E86D4;">The Foundation</div>
@@ -456,7 +490,7 @@ blockquote {{
     </div>
   </section>
 
-  <!-- Slide 3: LocalStack Was Always Moto -->
+  <!-- Slide 4: LocalStack Was Always Moto -->
   <section class="slide slide-blue" id="s3">
     <div class="full-width">
       <div class="center">
@@ -520,22 +554,16 @@ boto==<span class="str">2.38.0</span>
     </div>
   </section>
 
-  <!-- Slide 4: LocalStack blog post -->
-  <section class="slide slide-amber" id="s4" style="justify-content:flex-start;align-items:flex-start;padding-left:80px;">
-    <div style="width:60%;max-width:700px;padding-top:60px;">
-      <div class="eyebrow anim-1" style="color:#E07B00;">The Catalyst</div>
-      <h2 class="anim-2" style="margin-top:12px;">LocalStack Changes the Rules</h2>
-      <blockquote class="anim-3" style="margin-top:32px;">
-        "Beginning in March 2026, LocalStack for AWS will be delivered as a single, unified version.
-        <strong>Users will need to create an account to run LocalStack for AWS.</strong>"
-      </blockquote>
-      <blockquote class="anim-4">
-        "Our free plan will continue to provide a dynamic environment for <em>experimental</em>
-        development and exploration."
-      </blockquote>
-      <p class="anim-5" style="font-size:0.85rem;opacity:0.5;margin-top:16px;">
-        — blog.localstack.cloud · "The Road Ahead for LocalStack" · March 2026
-      </p>
+  <!-- Slide 5: Hero -->
+  <section class="slide slide-hero" id="s5">
+    <canvas id="hero-canvas"></canvas>
+    <div class="center" style="position:relative;z-index:1;">
+      <div class="eyebrow anim-1" style="color:#E07B00;">An Open-Source Story</div>
+      <div class="logo-word anim-2">robotocore</div>
+      <h2 class="anim-3" style="font-weight:300;margin-top:12px;opacity:0.75;">A complete AWS emulator.<br>Built in 96 hours.</h2>
+      <div style="margin-top:32px;" class="anim-4">
+        <span class="days-badge glow">⏱ 4 days · 147 services · 16,641 tests · 0 failures</span>
+      </div>
     </div>
   </section>
 
@@ -1320,19 +1348,19 @@ function initTimeline() {{
 }}
 
 // --- Slide enter dispatch ---
-// 0=LocalStack, 1=Hero, 2=Moto, 3=LocalStackWasMoto, 4=Decision,
-// 5=Architecture, 6=Tooling, 7=Services, 8=96%Problem, 9=QualityFix,
-// 10=GrowthChart, 11=Tier1, 12=NativeProviders, 13=Tier24,
-// 14=FinalNumbers, 15=Comparison, 16=BeyondAWS, 17=Timeline, 18=BuiltWith, 19=FreeFurever
+// 0=LocalStack, 1=BreakingPoint, 2=Moto, 3=LocalStackWasMoto, 4=Hero,
+// 5=Decision, 6=Architecture, 7=Tooling, 8=Services, 9=96%Problem,
+// 10=QualityFix, 11=GrowthChart, 12=Tier1, 13=NativeProviders, 14=Tier24,
+// 15=FinalNumbers, 16=Comparison, 17=BeyondAWS, 18=Timeline, 19=BuiltWith, 20=FreeFurever
 function onSlideEnter(n) {{
-  if (n === 1)  initMotoChart();
-  if (n === 7)  initServiceCloud();
-  if (n === 10) initGrowthChart();
-  if (n === 11) initTier1Cards();
-  if (n === 12) initProvidersGrid();
-  if (n === 13) {{ initTier24Chart(); initTier24Details(); }}
-  if (n === 14) initBigStats();
-  if (n === 17) initTimeline();
+  if (n === 2)  initMotoChart();
+  if (n === 8)  initServiceCloud();
+  if (n === 11) initGrowthChart();
+  if (n === 12) initTier1Cards();
+  if (n === 13) initProvidersGrid();
+  if (n === 14) {{ initTier24Chart(); initTier24Details(); }}
+  if (n === 15) initBigStats();
+  if (n === 18) initTimeline();
 }}
 
 // Init slide 0
