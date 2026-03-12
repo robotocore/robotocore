@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from typing import Any
 from urllib.parse import unquote
@@ -333,7 +332,9 @@ def iam_enforcement_handler(context: RequestContext) -> None:
     Opt-in via ENFORCE_IAM=1 environment variable.
     Skips IAM and STS service requests to avoid bootstrap deadlocks.
     """
-    enforce = os.environ.get("ENFORCE_IAM", "0") == "1"
+    from robotocore.config.runtime import get_runtime_config
+
+    enforce = get_runtime_config().get("ENFORCE_IAM", "0") == "1"
 
     # Skip IAM/STS to avoid deadlock during credential bootstrap
     if context.service_name in ("iam", "sts"):
