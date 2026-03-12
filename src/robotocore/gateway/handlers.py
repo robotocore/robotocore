@@ -68,6 +68,123 @@ def populate_context_handler(context: RequestContext) -> None:
         if action:
             context.operation = action
 
+    # Fallback: detect operation from HTTP method + path for REST services
+    if not context.operation and context.service_name:
+        context.operation = _detect_rest_operation(
+            context.service_name,
+            context.request.method,
+            str(context.request.url.path),
+            dict(context.request.query_params),
+        )
+
+
+def _detect_rest_operation(
+    service: str,
+    method: str,
+    path: str,
+    query_params: dict[str, str],
+) -> str | None:
+    """Detect operation name from HTTP method and URL path for REST services.
+
+    Currently covers common S3 operations. Other REST services return None
+    (graceful degradation).
+    """
+    if service != "s3":
+        return None
+
+    # Parse S3 path: /bucket or /bucket/key...
+    parts = path.strip("/").split("/", 1)
+    bucket = parts[0] if parts and parts[0] else None
+    key = parts[1] if len(parts) > 1 else None
+
+    # Sub-resource query params that map to specific operations
+    s3_query_ops: dict[str, dict[str, str]] = {
+        "acl": {"GET": "GetBucketAcl", "PUT": "PutBucketAcl"},
+        "versioning": {"GET": "GetBucketVersioning", "PUT": "PutBucketVersioning"},
+        "tagging": {
+            "GET": "GetBucketTagging",
+            "PUT": "PutBucketTagging",
+            "DELETE": "DeleteBucketTagging",
+        },
+        "lifecycle": {
+            "GET": "GetBucketLifecycleConfiguration",
+            "PUT": "PutBucketLifecycleConfiguration",
+            "DELETE": "DeleteBucketLifecycle",
+        },
+        "cors": {
+            "GET": "GetBucketCors",
+            "PUT": "PutBucketCors",
+            "DELETE": "DeleteBucketCors",
+        },
+        "policy": {
+            "GET": "GetBucketPolicy",
+            "PUT": "PutBucketPolicy",
+            "DELETE": "DeleteBucketPolicy",
+        },
+        "encryption": {
+            "GET": "GetBucketEncryption",
+            "PUT": "PutBucketEncryption",
+            "DELETE": "DeleteBucketEncryption",
+        },
+        "location": {"GET": "GetBucketLocation"},
+        "logging": {"GET": "GetBucketLogging", "PUT": "PutBucketLogging"},
+        "notification": {
+            "GET": "GetBucketNotificationConfiguration",
+            "PUT": "PutBucketNotificationConfiguration",
+        },
+        "replication": {
+            "GET": "GetBucketReplication",
+            "PUT": "PutBucketReplication",
+            "DELETE": "DeleteBucketReplication",
+        },
+        "website": {
+            "GET": "GetBucketWebsite",
+            "PUT": "PutBucketWebsite",
+            "DELETE": "DeleteBucketWebsite",
+        },
+        "delete": {"POST": "DeleteObjects"},
+        "uploads": {"GET": "ListMultipartUploads"},
+    }
+
+    # Check sub-resource query params first
+    for param, ops in s3_query_ops.items():
+        if param in query_params:
+            return ops.get(method)
+
+    if not bucket:
+        # Root path — ListBuckets
+        if method == "GET":
+            return "ListBuckets"
+        return None
+
+    if key:
+        # Object-level operations
+        if method == "PUT":
+            return "PutObject"
+        if method == "GET":
+            return "GetObject"
+        if method == "DELETE":
+            return "DeleteObject"
+        if method == "HEAD":
+            return "HeadObject"
+        if method == "POST":
+            return "PutObject"  # POST upload
+        return None
+
+    # Bucket-level operations (no key)
+    if method == "GET":
+        if query_params.get("list-type") == "2":
+            return "ListObjectsV2"
+        return "ListObjects"
+    if method == "PUT":
+        return "CreateBucket"
+    if method == "DELETE":
+        return "DeleteBucket"
+    if method == "HEAD":
+        return "HeadBucket"
+
+    return None
+
 
 def cors_handler(context: RequestContext) -> None:
     """Handle CORS preflight and set CORS headers on OPTIONS requests."""
