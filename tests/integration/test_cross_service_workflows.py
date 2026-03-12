@@ -1079,4 +1079,4 @@ def _suppress():
     try:
         yield
     except Exception:
-        pass
+        pass  # Intentional: cleanup should never fail the test
