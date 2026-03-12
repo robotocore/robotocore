@@ -23,6 +23,12 @@ from robotocore.gateway.handlers import (
     logging_response_handler,
     populate_context_handler,
 )
+from robotocore.gateway.lambda_url import (
+    _extract_url_id_from_path,
+    _parse_function_url_host,
+    handle_function_url_request,
+    is_function_url_request,
+)
 from robotocore.gateway.router import route_to_service
 from robotocore.gateway.s3_routing import (
     get_s3_routing_config,
@@ -1325,6 +1331,26 @@ class AWSRoutingMiddleware:
                     request,
                     bucket_name=parsed["bucket"],
                     region=parsed.get("region", "us-east-1"),
+                )
+                await response(scope, receive, send)
+                return
+
+        # --- Lambda Function URLs: /lambda-url/{url-id}/... or Host header ---
+        if is_function_url_request(scope):
+            request = Request(scope, receive)
+            # Try path-based routing first
+            if path.startswith("/lambda-url/"):
+                url_id, remaining_path = _extract_url_id_from_path(path)
+            else:
+                # Host-header based routing
+                host = request.headers.get("host", "")
+                url_id = _parse_function_url_host(host)
+                remaining_path = path or "/"
+            if url_id:
+                response = await handle_function_url_request(
+                    request,
+                    url_id=url_id,
+                    path=remaining_path,
                 )
                 await response(scope, receive, send)
                 return
