@@ -169,11 +169,12 @@ def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
         backend = get_backend("lambda")[acct][region]
 
         for layer_ref in layers:
-            layer_arn = (
-                layer_ref
-                if isinstance(layer_ref, str)
-                else getattr(layer_ref, "arn", str(layer_ref))
-            )
+            if isinstance(layer_ref, str):
+                layer_arn = layer_ref
+            elif isinstance(layer_ref, dict):
+                layer_arn = layer_ref.get("Arn", "")
+            else:
+                layer_arn = getattr(layer_ref, "arn", str(layer_ref))
             try:
                 # Parse layer ARN: arn:aws:lambda:region:account:layer:name:version
                 parts = layer_arn.split(":")
@@ -181,10 +182,13 @@ def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
                     layer_name = parts[6]
                     version = int(parts[7])
                     layer_ver = backend.get_layer_version(layer_name, version)
-                    if layer_ver and hasattr(layer_ver, "code"):
-                        code = layer_ver.code
-                        if isinstance(code, dict) and "ZipFile" in code:
-                            zip_data = code["ZipFile"]
+                    if layer_ver:
+                        # Try content dict first (Moto stores layer code in .content)
+                        content = getattr(layer_ver, "content", None) or getattr(
+                            layer_ver, "code", None
+                        )
+                        if isinstance(content, dict) and "ZipFile" in content:
+                            zip_data = content["ZipFile"]
                             if isinstance(zip_data, str):
                                 zip_data = base64.b64decode(zip_data)
                             layer_zips.append(zip_data)
@@ -524,7 +528,12 @@ def execute_python_handler(
     # Parse handler: "module.function" or "dir/module.function"
     parts = handler.rsplit(".", 1)
     if len(parts) != 2:
-        return None, "Runtime.HandlerNotFound", f"Bad handler format: {handler}"
+        msg = f"Bad handler format: {handler}"
+        return (
+            {"errorMessage": msg, "errorType": "Runtime.HandlerNotFound"},
+            "Runtime.HandlerNotFound",
+            msg,
+        )
     module_path, func_name = parts
 
     # Determine working directory
@@ -595,7 +604,12 @@ def execute_python_handler(
             module_file = os.path.join(tmpdir, module_path + ".py")
 
         if not os.path.exists(module_file):
-            return None, "Runtime.ImportModuleError", f"Cannot find module: {module_path}"
+            msg = f"Cannot find module: {module_path}"
+            return (
+                {"errorMessage": msg, "errorType": "Runtime.ImportModuleError"},
+                "Runtime.ImportModuleError",
+                msg,
+            )
 
         # Use a function-scoped key so different Lambda functions don't collide
         modules_key = f"_lambda_{function_name}.{module_path}"
@@ -618,10 +632,11 @@ def execute_python_handler(
                 sys.modules[modules_key] = module
             handler_func = getattr(module, func_name, None)
             if handler_func is None:
+                msg = f"Handler function '{func_name}' not found in {module_path}"
                 return (
-                    None,
+                    {"errorMessage": msg, "errorType": "Runtime.HandlerNotFound"},
                     "Runtime.HandlerNotFound",
-                    f"Handler function '{func_name}' not found in {module_path}",
+                    msg,
                 )
 
             # Execute handler with timeout enforcement and env var isolation
