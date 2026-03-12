@@ -138,9 +138,23 @@ class _RestrictedUnpickler(pickle.Unpickler):
         "copyreg",
         "_codecs",
         "re",
+        "robotocore.state.manager",
+        # Standard library types that Moto backends store on model objects
+        "ipaddress",  # EC2/VPC: IPv4Address, IPv4Network, IPv6Network
+        "enum",  # Various status enums
+        "uuid",  # Resource identifiers
+        "pathlib",  # Path objects in some backends
+        "json",  # JSONDecodeError etc.
+        "zoneinfo",  # Timezone-aware datetimes
+        "functools",  # partial, cached_property
+        "abc",  # ABCMeta
+        "typing",  # Type annotations stored as values
     )
 
-    # Dangerous callables that should never appear in pickles
+    # Dangerous callables that should never appear in pickles.
+    # Note: getattr/setattr/delattr are used legitimately by pickle to
+    # reconstruct objects (e.g. Moto's EC2 backend uses __reduce__ with
+    # getattr), so they are NOT blocked here.
     _BLOCKED_NAMES = frozenset(
         {
             "eval",
@@ -149,9 +163,6 @@ class _RestrictedUnpickler(pickle.Unpickler):
             "execfile",
             "input",
             "__import__",
-            "getattr",
-            "setattr",
-            "delattr",
             "globals",
             "locals",
             "vars",
@@ -166,6 +177,138 @@ class _RestrictedUnpickler(pickle.Unpickler):
         if name in self._BLOCKED_NAMES:
             raise _DisallowedClassError(f"Disallowed callable in pickle: {module}.{name}")
         return super().find_class(module, name)
+
+
+# ---------------------------------------------------------------------------
+# Thread-safe pickling: strip/restore threading primitives that Moto stores
+# on backend objects (Lock, RLock, Condition, Event, Semaphore, etc.)
+# ---------------------------------------------------------------------------
+
+
+# Sentinel class stored in the pickle stream in place of unpicklable threading objs
+class _ThreadingSentinel:
+    """Placeholder for a threading primitive stripped during pickling."""
+
+    __slots__ = ("type_name",)
+
+    def __init__(self, type_name: str) -> None:
+        self.type_name = type_name
+
+    def __repr__(self) -> str:
+        return f"_ThreadingSentinel({self.type_name!r})"
+
+
+# Map from sentinel type_name -> factory to recreate the object on load
+_THREADING_FACTORIES: dict[str, Any] = {
+    "Lock": threading.Lock,
+    "RLock": threading.RLock,
+    "Condition": threading.Condition,
+    "Event": threading.Event,
+    "Semaphore": threading.Semaphore,
+    "BoundedSemaphore": threading.BoundedSemaphore,
+    "Barrier": threading.Barrier,
+}
+
+# Types we need to intercept (resolved once at import time)
+_LOCK_TYPE = type(threading.Lock())
+_RLOCK_TYPE = type(threading.RLock())
+_THREADING_TYPES: tuple[type, ...] = (
+    _LOCK_TYPE,
+    _RLOCK_TYPE,
+    threading.Condition,
+    threading.Event,
+    threading.Semaphore,
+    threading.BoundedSemaphore,
+    threading.Barrier,
+)
+
+# Map from actual type -> sentinel type_name
+_TYPE_TO_NAME: dict[type, str] = {
+    _LOCK_TYPE: "Lock",
+    _RLOCK_TYPE: "RLock",
+    threading.Condition: "Condition",
+    threading.Event: "Event",
+    threading.Semaphore: "Semaphore",
+    threading.BoundedSemaphore: "BoundedSemaphore",
+    threading.Barrier: "Barrier",
+}
+
+
+class _ThreadSafePickler(pickle.Pickler):
+    """Pickler that replaces threading primitives with serializable sentinels.
+
+    Moto backend objects (SQS queues, ECR registries, StepFunctions executions)
+    store Lock/RLock/Condition objects that cannot be pickled. This pickler
+    intercepts them via the ``reducer_override`` hook and emits a
+    ``_ThreadingSentinel`` placeholder instead.
+    """
+
+    def reducer_override(self, obj: Any) -> Any:
+        if isinstance(obj, _THREADING_TYPES):
+            type_name = _TYPE_TO_NAME.get(type(obj), "Lock")
+            return (  # noqa: E501 – pickle __reduce__ tuple
+                _ThreadingSentinel,
+                (type_name,),
+            )
+        # Returning NotImplemented tells pickle to use the default mechanism
+        return NotImplemented
+
+
+def _safe_pickle_dumps(obj: Any) -> bytes:
+    """Pickle *obj*, replacing unpicklable threading primitives with sentinels."""
+    buf = io.BytesIO()
+    _ThreadSafePickler(buf, protocol=pickle.HIGHEST_PROTOCOL).dump(obj)
+    return buf.getvalue()
+
+
+def _restore_threading_objects(obj: Any, _seen: set[int] | None = None) -> Any:
+    """Walk a deserialized object graph and replace sentinels with real locks.
+
+    Modifies containers in-place (dicts, lists, object __dict__) and returns
+    *obj* for convenience.
+    """
+    if _seen is None:
+        _seen = set()
+    obj_id = id(obj)
+    if obj_id in _seen:
+        return obj
+    _seen.add(obj_id)
+
+    if isinstance(obj, _ThreadingSentinel):
+        factory = _THREADING_FACTORIES.get(obj.type_name, threading.Lock)
+        return factory()
+
+    if isinstance(obj, dict):
+        for key in list(obj.keys()):
+            val = obj[key]
+            if isinstance(val, _ThreadingSentinel):
+                factory = _THREADING_FACTORIES.get(val.type_name, threading.Lock)
+                obj[key] = factory()
+            else:
+                _restore_threading_objects(val, _seen)
+        return obj
+
+    if isinstance(obj, list):
+        for i, val in enumerate(obj):
+            if isinstance(val, _ThreadingSentinel):
+                factory = _THREADING_FACTORIES.get(val.type_name, threading.Lock)
+                obj[i] = factory()
+            else:
+                _restore_threading_objects(val, _seen)
+        return obj
+
+    # Walk instance __dict__ for arbitrary objects
+    if hasattr(obj, "__dict__"):
+        d = obj.__dict__
+        for key in list(d.keys()):
+            val = d[key]
+            if isinstance(val, _ThreadingSentinel):
+                factory = _THREADING_FACTORIES.get(val.type_name, threading.Lock)
+                d[key] = factory()
+            else:
+                _restore_threading_objects(val, _seen)
+
+    return obj
 
 
 def _safe_tar_extract(tar: tarfile.TarFile, dest: str) -> None:
@@ -925,8 +1068,8 @@ class StateManager:
                             backend = backend_dict[account_id][region]
                             account_state[region] = backend
                         service_state[account_id] = account_state
-                    # Verify this service is picklable before including it
-                    pickle.dumps(service_state, protocol=pickle.HIGHEST_PROTOCOL)
+                    # Verify this service is picklable (threading objects handled)
+                    _safe_pickle_dumps(service_state)
                     state[service_name] = service_state
                 except Exception:
                     logger.debug(
@@ -936,7 +1079,7 @@ class StateManager:
                     )
 
             with open(path, "wb") as f:
-                pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
+                _ThreadSafePickler(f, protocol=pickle.HIGHEST_PROTOCOL).dump(state)
 
         except Exception:
             logger.warning("Failed to save Moto state", exc_info=True)
@@ -957,6 +1100,9 @@ class StateManager:
 
             with open(path, "rb") as f:
                 state = _RestrictedUnpickler(f).load()
+
+            # Restore threading primitives that were replaced with sentinels
+            _restore_threading_objects(state)
 
             for service_name, service_state in state.items():
                 if services and service_name not in services:
@@ -1094,12 +1240,12 @@ class StateManager:
                             backend = backend_dict[account_id][region]
                             account_state[region] = backend
                         service_state[account_id] = account_state
-                    # Verify this service is picklable before including it
-                    pickle.dumps(service_state, protocol=pickle.HIGHEST_PROTOCOL)
+                    # Verify this service is picklable (threading objects handled)
+                    _safe_pickle_dumps(service_state)
                     moto_state[service_name] = service_state
                 except Exception:
                     logger.debug("Could not capture Moto state for %s", service_name, exc_info=True)
-            state["moto"] = pickle.dumps(moto_state, protocol=pickle.HIGHEST_PROTOCOL)
+            state["moto"] = _safe_pickle_dumps(moto_state)
         except Exception:
             logger.debug("Could not capture Moto state", exc_info=True)
             state["moto"] = b""
@@ -1126,6 +1272,8 @@ class StateManager:
                 from moto.backends import get_backend
 
                 moto_state = _RestrictedUnpickler(io.BytesIO(moto_bytes)).load()
+                # Restore threading primitives that were replaced with sentinels
+                _restore_threading_objects(moto_state)
                 for service_name, service_state in moto_state.items():
                     if services and service_name not in services:
                         continue
