@@ -4,8 +4,8 @@ Integrates with the handler chain to inject faults before requests
 reach service providers.
 """
 
-import asyncio
 import json
+import time
 import uuid
 
 from starlette.responses import Response
@@ -28,17 +28,12 @@ def chaos_handler(context: RequestContext) -> None:
 
     from robotocore.observability.chaos_audit_bridge import record_chaos_event
 
-    # Use asyncio.sleep via asyncio.to_thread-compatible approach to avoid
-    # blocking the event loop.
+    # Use time.sleep() — the handler chain runs synchronously inside
+    # asyncio.to_thread(), so this blocks only the current request thread
+    # without blocking the event loop.
     if rule.latency_ms > 0:
         record_chaos_event(rule.rule_id, "latency", {"latency_ms": rule.latency_ms})
-        try:
-            loop = asyncio.get_running_loop()
-            # We're in an async context; schedule a non-blocking sleep
-            loop.create_task(asyncio.sleep(rule.latency_ms / 1000.0))
-        except RuntimeError:
-            # No event loop running; fall back to asyncio.run for sync contexts
-            asyncio.run(asyncio.sleep(rule.latency_ms / 1000.0))
+        time.sleep(rule.latency_ms / 1000.0)
 
     # Apply error injection
     if rule.error_code:
