@@ -203,6 +203,26 @@ button.danger:hover { background: #ff6e6a; }
 .tree-children.open { display: block; }
 .hidden { display: none; }
 .loading { color: var(--text-secondary); font-style: italic; }
+td, .tree-toggle, .tree-children div { font-family: "SF Mono", Menlo, Consolas, monospace; }
+.health-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.health-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.health-dot.running { background: var(--success); }
+.health-dot.degraded { background: var(--warning); }
+.health-dot.down { background: var(--danger); }
+.health-item .svc-name { font-weight: 600; }
+.health-item .svc-type { color: var(--text-secondary); font-size: 11px; }
+.health-item .svc-reqs { margin-left: auto; color: var(--text-secondary); font-size: 12px; }
 @media (max-width: 768px) {
   nav { width: 180px; }
   main { margin-left: 180px; padding: 16px; }
@@ -215,8 +235,10 @@ button.danger:hover { background: #ff6e6a; }
   <div class="logo">Robotocore</div>
   <a href="#overview" class="active" data-section="overview">Overview</a>
   <a href="#resources" data-section="resources">Resources</a>
-  <a href="#chaos" data-section="chaos">Chaos Rules</a>
   <a href="#audit" data-section="audit">Audit Log</a>
+  <a href="#state" data-section="state">State / Snapshots</a>
+  <a href="#health" data-section="health">Health</a>
+  <a href="#chaos" data-section="chaos">Chaos Rules</a>
   <a href="#config" data-section="config">Configuration</a>
   <a href="#services" data-section="services">Services</a>
 </nav>
@@ -330,6 +352,37 @@ button.danger:hover { background: #ff6e6a; }
     </table>
   </section>
 
+  <section id="state" class="hidden">
+    <h2>State / Snapshots</h2>
+    <div style="margin-bottom: 16px;">
+      <div class="form-row">
+        <label>Name</label>
+        <input type="text" id="state-name" placeholder="Snapshot name">
+        <button onclick="saveSnapshot()">Save Snapshot</button>
+        <button class="danger" onclick="resetState()">Reset All State</button>
+      </div>
+    </div>
+    <table id="state-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Created</th>
+          <th>Services</th>
+          <th>Size</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="state-body">
+        <tr><td colspan="5" class="loading">Loading...</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="health" class="hidden">
+    <h2>Service Health</h2>
+    <div id="health-grid" class="cards loading">Loading health data...</div>
+  </section>
+
   <section id="config" class="hidden">
     <h2>Configuration</h2>
     <table id="config-table">
@@ -419,6 +472,8 @@ button.danger:hover { background: #ff6e6a; }
     else if (name === "resources") loadResources();
     else if (name === "chaos") loadChaosRules();
     else if (name === "audit") loadAudit();
+    else if (name === "state") loadSnapshots();
+    else if (name === "health") loadHealth();
     else if (name === "config") loadConfig();
     else if (name === "services") loadServices();
   }
@@ -621,6 +676,114 @@ button.danger:hover { background: #ff6e6a; }
     });
     renderAudit(filtered);
   };
+
+  // ----- State / Snapshots -----
+  function loadSnapshots() {
+    fetch("/_robotocore/state/snapshots")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var body = document.getElementById("state-body");
+        var snaps = data.snapshots || [];
+        if (snaps.length === 0) {
+          body.innerHTML = '<tr><td colspan="5" ' +
+            'style="color:var(--text-secondary)">' +
+            'No snapshots saved</td></tr>';
+          return;
+        }
+        body.innerHTML = "";
+        snaps.forEach(function(snap) {
+          var tr = document.createElement("tr");
+          var name = snap.name || snap.path || "--";
+          var created = snap.created || snap.timestamp || "--";
+          if (typeof created === "number") created = new Date(created * 1000).toLocaleString();
+          var services = snap.services ? snap.services.join(", ") : "all";
+          var size = snap.size || snap.size_bytes || "--";
+          if (typeof size === "number") size = (size / 1024).toFixed(1) + " KB";
+          tr.innerHTML =
+            "<td>" + esc(name) + "</td>" +
+            "<td>" + esc(created) + "</td>" +
+            "<td>" + esc(services) + "</td>" +
+            "<td>" + esc(size) + "</td>" +
+            '<td><button onclick="loadSnapshot(\'' + esc(name) +
+            '\')">Load</button> ' +
+            '<button class="danger" onclick="deleteSnapshot(\'' + esc(name) +
+            '\')">Delete</button></td>';
+          body.appendChild(tr);
+        });
+      })
+      .catch(function() {
+        document.getElementById("state-body").innerHTML =
+          '<tr><td colspan="5">Failed to load</td></tr>';
+      });
+  }
+
+  window.saveSnapshot = function() {
+    var name = document.getElementById("state-name").value;
+    if (!name) { alert("Enter a snapshot name"); return; }
+    fetch("/_robotocore/state/save", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: name})
+    }).then(function() {
+      document.getElementById("state-name").value = "";
+      loadSnapshots();
+    });
+  };
+
+  window.loadSnapshot = function(name) {
+    fetch("/_robotocore/state/load", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: name})
+    }).then(function() { loadSnapshots(); });
+  };
+
+  window.deleteSnapshot = function(name) {
+    if (!confirm("Delete snapshot '" + name + "'?")) return;
+    fetch("/_robotocore/state/reset", { method: "POST" })
+      .then(function() { loadSnapshots(); });
+  };
+
+  window.resetState = function() {
+    if (!confirm("Reset ALL emulator state? This cannot be undone.")) return;
+    fetch("/_robotocore/state/reset", { method: "POST" })
+      .then(function() { loadSnapshots(); });
+  };
+
+  // ----- Health -----
+  function loadHealth() {
+    var container = document.getElementById("health-grid");
+    container.innerHTML = '<span class="loading">Loading health data...</span>';
+    fetch("/_robotocore/health")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var services = data.services || {};
+        var names = Object.keys(services).sort();
+        container.innerHTML = "";
+        container.className = "cards";
+        if (names.length === 0) {
+          container.textContent = "No services found.";
+          return;
+        }
+        names.forEach(function(name) {
+          var svc = services[name];
+          var status = svc.status || "unknown";
+          var dotClass = status === "running" ? "running"
+            : status === "degraded" ? "degraded" : "down";
+          var item = document.createElement("div");
+          item.className = "health-item";
+          item.innerHTML =
+            '<span class="health-dot ' + dotClass + '"></span>' +
+            '<span class="svc-name">' + esc(name) + '</span>' +
+            '<span class="svc-type">' + esc(svc.type || "") + '</span>' +
+            '<span class="svc-reqs">' + (svc.requests || 0) + ' reqs</span>';
+          container.appendChild(item);
+        });
+      })
+      .catch(function() {
+        container.innerHTML = "Failed to load health data.";
+      });
+  }
 
   // ----- Config -----
   function loadConfig() {
