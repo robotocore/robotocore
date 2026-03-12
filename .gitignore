@@ -24,3 +24,4 @@ gap_untested_ops.json
 probe_stderr.log
 .robotocore-ports/
 logs/
+.claude/worktrees/
