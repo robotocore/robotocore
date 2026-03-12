@@ -5,9 +5,11 @@ Schedules can target Lambda, SQS, SNS, and other AWS services.
 """
 
 import json
+import logging
 import re
 import threading
 import time
+from datetime import UTC, datetime
 from urllib.parse import unquote
 
 from starlette.requests import Request
@@ -361,3 +363,196 @@ def _json_response(data: dict, status: int = 200) -> Response:
 def _error(code: str, message: str, status: int) -> Response:
     body = json.dumps({"__type": code, "Message": message})
     return Response(content=body, status_code=status, media_type="application/json")
+
+
+# ---------------------------------------------------------------------------
+# Schedule Executor — background thread that fires scheduled targets
+# ---------------------------------------------------------------------------
+
+_executor_logger = logging.getLogger(__name__ + ".executor")
+
+# Singleton executor
+_executor: "ScheduleExecutor | None" = None
+_executor_lock = threading.Lock()
+
+
+def get_schedule_executor() -> "ScheduleExecutor":
+    """Return the global ScheduleExecutor singleton."""
+    global _executor
+    with _executor_lock:
+        if _executor is None:
+            _executor = ScheduleExecutor()
+        return _executor
+
+
+class ScheduleExecutor:
+    """Background thread that fires EventBridge Scheduler schedules on their configured
+    cron/rate expressions."""
+
+    CHECK_INTERVAL = 5
+
+    def __init__(self) -> None:
+        self._running = False
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+        # Track last-fired time per schedule: (account_id, region, name) -> monotonic ts
+        self._last_fired: dict[tuple[str, str, str], float] = {}
+
+    def start(self) -> None:
+        with self._lock:
+            if self._running:
+                return
+            self._running = True
+            self._thread = threading.Thread(
+                target=self._run_loop, daemon=True, name="scheduler-executor"
+            )
+            self._thread.start()
+            _executor_logger.info(
+                "EventBridge Scheduler executor started (interval=%ds)",
+                self.CHECK_INTERVAL,
+            )
+
+    def stop(self) -> None:
+        with self._lock:
+            self._running = False
+
+    def is_running(self) -> bool:
+        with self._lock:
+            return self._running
+
+    def _run_loop(self) -> None:
+        while self._running:
+            try:
+                self._check_all_schedules()
+            except Exception:
+                _executor_logger.exception("Error in scheduler executor loop")
+            time.sleep(self.CHECK_INTERVAL)
+
+    def _check_all_schedules(self) -> None:
+        """Iterate all schedules across all accounts/regions."""
+        from robotocore.services.synthetics.scheduler import (
+            parse_cron_minutes,
+            parse_rate_seconds,
+        )
+
+        now = time.monotonic()
+
+        with _lock:
+            all_keys = list(_schedules.keys())
+
+        for sched_key in all_keys:
+            account_id, region = sched_key
+            with _lock:
+                schedules = dict(_schedules.get(sched_key, {}))
+
+            for name, schedule in schedules.items():
+                if schedule.get("State") != "ENABLED":
+                    continue
+
+                expr = schedule.get("ScheduleExpression", "")
+                if not expr:
+                    continue
+
+                interval = parse_rate_seconds(expr) or parse_cron_minutes(expr)
+                if interval is None:
+                    continue
+
+                target = schedule.get("Target", {})
+                if not target:
+                    continue
+
+                fire_key = (account_id, region, name)
+                last = self._last_fired.get(fire_key, 0)
+                if now - last >= interval:
+                    self._last_fired[fire_key] = now
+                    self._fire_schedule(schedule, target, account_id, region)
+
+    def _fire_schedule(self, schedule: dict, target: dict, account_id: str, region: str) -> None:
+        """Dispatch a schedule's target."""
+        target_arn = target.get("Arn", "")
+        input_payload = target.get("Input")
+
+        if not input_payload:
+            # Build a standard scheduled event payload
+            input_payload = json.dumps(
+                {
+                    "version": "0",
+                    "id": str(__import__("uuid").uuid4()),
+                    "source": "aws.scheduler",
+                    "account": account_id,
+                    "time": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "region": region,
+                    "resources": [schedule.get("Arn", "")],
+                    "detail-type": "Scheduled Event",
+                    "detail": {},
+                }
+            )
+
+        try:
+            if ":lambda:" in target_arn:
+                self._invoke_lambda(target_arn, input_payload, account_id, region)
+            elif ":sqs:" in target_arn:
+                self._send_sqs(target_arn, input_payload, account_id, region)
+            elif ":sns:" in target_arn:
+                self._publish_sns(target_arn, input_payload, account_id, region)
+            else:
+                _executor_logger.info(
+                    "Simulated schedule dispatch to %s (unsupported target type)",
+                    target_arn,
+                )
+        except Exception:
+            _executor_logger.exception(
+                "Error dispatching schedule %s to %s",
+                schedule.get("Name", ""),
+                target_arn,
+            )
+
+    @staticmethod
+    def _invoke_lambda(target_arn: str, payload: str, account_id: str, region: str) -> None:
+        from robotocore.services.lambda_.invoke import invoke_lambda_async
+
+        invoke_lambda_async(target_arn, payload.encode(), account_id, region)
+        _executor_logger.debug("Scheduler -> Lambda: %s", target_arn)
+
+    @staticmethod
+    def _send_sqs(target_arn: str, payload: str, account_id: str, region: str) -> None:
+        from moto.backends import get_backend
+
+        # Parse queue name from ARN: arn:aws:sqs:REGION:ACCOUNT:QUEUE_NAME
+        parts = target_arn.split(":")
+        if len(parts) < 6:
+            _executor_logger.warning("Cannot parse SQS ARN: %s", target_arn)
+            return
+        sqs_region = parts[3]
+        sqs_account = parts[4]
+        queue_name = parts[5]
+
+        try:
+            sqs_backend = get_backend("sqs")[sqs_account][sqs_region]
+        except (KeyError, TypeError):
+            _executor_logger.warning("SQS backend not found for %s/%s", sqs_account, sqs_region)
+            return
+
+        queue_url = f"https://sqs.{sqs_region}.amazonaws.com/{sqs_account}/{queue_name}"
+        sqs_backend.send_message(queue_url, payload)
+        _executor_logger.debug("Scheduler -> SQS: %s", target_arn)
+
+    @staticmethod
+    def _publish_sns(target_arn: str, payload: str, account_id: str, region: str) -> None:
+        from moto.backends import get_backend
+
+        parts = target_arn.split(":")
+        if len(parts) < 6:
+            _executor_logger.warning("Cannot parse SNS ARN: %s", target_arn)
+            return
+        sns_region = parts[3]
+        sns_account = parts[4]
+
+        try:
+            sns_backend = get_backend("sns")[sns_account][sns_region]
+        except (KeyError, TypeError):
+            _executor_logger.warning("SNS backend not found for %s/%s", sns_account, sns_region)
+            return
+
+        sns_backend.publish(message=payload, arn=target_arn, subject="Scheduled Event")
+        _executor_logger.debug("Scheduler -> SNS: %s", target_arn)
