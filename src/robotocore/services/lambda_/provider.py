@@ -1234,14 +1234,12 @@ async def _invoke(
 
     # Handle async invocation with destinations and DLQ
     if invocation_type == "Event":
-        _dispatch_async_result(
-            func_name=func_name,
-            event=event,
-            result=result,
-            error_type=error_type,
-            region=region,
-            account_id=account_id,
-        )
+        # Dispatch async results in background — don't block the 202 response
+        threading.Thread(
+            target=_dispatch_async_result,
+            args=(func_name, event, result, error_type, region, account_id, time.time()),
+            daemon=True,
+        ).start()
 
     headers = {
         "x-amz-request-id": str(uuid.uuid4()),
@@ -1445,13 +1443,17 @@ def _dispatch_async_result(
     error_type: str | None,
     region: str,
     account_id: str,
-    _retry_attempt: int = 0,
+    _invocation_time: float | None = None,
 ) -> None:
     """After async invocation, dispatch to destinations and/or DLQ.
 
     AWS retries failed async invocations up to MaximumRetryAttempts (default 2)
-    before sending to the DLQ or OnFailure destination.
+    with exponential backoff before sending to the DLQ or OnFailure destination.
+    Uses an iterative loop instead of recursion to avoid stack overflow.
     """
+    if _invocation_time is None:
+        _invocation_time = time.time()
+
     func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
 
     # Try to get event invoke config from Moto
@@ -1461,16 +1463,18 @@ def _dispatch_async_result(
     except Exception:
         invoke_config = None
 
-    is_success = error_type is None
-
-    # Get max retry attempts (AWS default is 2)
+    # Get max retry attempts and max event age (AWS defaults)
     max_retries = 2
+    max_age = 21600  # 6 hours
     if invoke_config:
         configured = invoke_config.get("MaximumRetryAttempts", -1)
         if configured >= 0:
             max_retries = configured
+        max_age = invoke_config.get("MaximumEventAgeInSeconds", 21600)
 
-    # On success: dispatch to OnSuccess destination
+    is_success = error_type is None
+
+    # On initial success: dispatch to OnSuccess destination
     if is_success:
         if invoke_config:
             dest_config = invoke_config.get("DestinationConfig", {})
@@ -1490,37 +1494,62 @@ def _dispatch_async_result(
                 )
         return
 
-    # On failure: retry if attempts remain
-    if _retry_attempt < max_retries:
+    # Retry loop for failures (iterative, not recursive)
+    retry_attempt = 0
+    while retry_attempt < max_retries:
+        # Check MaximumEventAgeInSeconds before retrying
+        if time.time() - _invocation_time > max_age:
+            logger.info(
+                "Event age exceeded MaximumEventAgeInSeconds, skipping retries for %s",
+                func_name,
+            )
+            break
+
+        # Exponential backoff: 1s, 2s, 4s, ... capped at 30s
+        backoff_seconds = min(2**retry_attempt, 30)
+        time.sleep(backoff_seconds)
+
         logger.info(
             "Retrying async invocation of %s (attempt %d/%d)",
             func_name,
-            _retry_attempt + 1,
+            retry_attempt + 1,
             max_retries,
         )
-        try:
-            retry_result, retry_error_type, _retry_logs = _execute_function(
-                func_name=func_name,
-                event=event,
-                region=region,
-                account_id=account_id,
-            )
-            # Recurse with incremented attempt
-            _dispatch_async_result(
-                func_name=func_name,
-                event=event,
-                result=retry_result,
-                error_type=retry_error_type,
-                region=region,
-                account_id=account_id,
-                _retry_attempt=_retry_attempt + 1,
-            )
-            return
-        except Exception:
-            logger.exception("Retry %d failed for %s", _retry_attempt + 1, func_name)
-            # Fall through to DLQ / OnFailure
 
-    # Retries exhausted — dispatch to OnFailure destination
+        try:
+            result, error_type, _ = _execute_function(
+                func_name=func_name,
+                event=event,
+                region=region,
+                account_id=account_id,
+            )
+            is_success = error_type is None
+        except Exception:
+            logger.exception("Retry %d failed for %s", retry_attempt + 1, func_name)
+
+        retry_attempt += 1
+
+        # If retry succeeded, dispatch to OnSuccess and return
+        if is_success:
+            if invoke_config:
+                dest_config = invoke_config.get("DestinationConfig", {})
+                if dest_config.get("OnSuccess", {}).get("Destination"):
+                    dest_arn = dest_config["OnSuccess"]["Destination"]
+                    from robotocore.services.lambda_.destinations import dispatch_destination
+
+                    dispatch_destination(
+                        destination_arn=dest_arn,
+                        function_arn=func_arn,
+                        payload=event,
+                        is_success=True,
+                        result=result,
+                        error=None,
+                        region=region,
+                        account_id=account_id,
+                    )
+            return
+
+    # Retries exhausted (or skipped due to event age) — dispatch to OnFailure destination
     if invoke_config:
         dest_config = invoke_config.get("DestinationConfig", {})
         if dest_config.get("OnFailure", {}).get("Destination"):
