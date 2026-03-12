@@ -78,6 +78,7 @@ from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.loader import (
+    get_allowed_services,
     get_effective_provider,
     get_service_info_with_status,
     init_loader,
@@ -230,9 +231,12 @@ async def health(request: Request) -> JSONResponse:
     """Enhanced health endpoint with per-service status and request counts."""
     uptime = time.monotonic() - _server_start_time if _server_start_time else 0
 
+    allowed = get_allowed_services()
     counts = request_counter.get_all()
     services_status = {}
     for name, info in sorted(SERVICE_REGISTRY.items()):
+        if allowed is not None and name not in allowed:
+            continue
         stype = "native" if info.status == ServiceStatus.NATIVE else "moto"
         services_status[name] = {
             "status": "running",
@@ -240,14 +244,20 @@ async def health(request: Request) -> JSONResponse:
             "requests": counts.get(name, 0),
         }
 
-    return JSONResponse(
-        {
-            "status": "running",
-            "version": __version__,
-            "uptime_seconds": round(uptime, 1),
-            "services": services_status,
-        }
-    )
+    services_env = os.environ.get("SERVICES", "").strip()
+    services_filter = services_env if services_env else "all"
+
+    result: dict[str, object] = {
+        "status": "running",
+        "version": __version__,
+        "uptime_seconds": round(uptime, 1),
+        "services_filter": services_filter,
+        "services": services_status,
+    }
+    if allowed is not None:
+        result["enabled_services"] = sorted(allowed)
+
+    return JSONResponse(result)
 
 
 async def services_endpoint(request: Request) -> JSONResponse:
