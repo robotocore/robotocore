@@ -678,7 +678,9 @@ class TestCmdStateList:
         rc = _run(["state", "list"])
         assert rc == 0
         mock_api.assert_called_once_with(
-            f"http://localhost:{DEFAULT_PORT}/_robotocore/state/snapshots"
+            f"http://localhost:{DEFAULT_PORT}/_robotocore/state/snapshots",
+            method="GET",
+            data=None,
         )
 
 
@@ -691,6 +693,7 @@ class TestCmdStateReset:
         mock_api.assert_called_once_with(
             f"http://localhost:{DEFAULT_PORT}/_robotocore/state/reset",
             method="POST",
+            data=None,
         )
 
 
@@ -796,12 +799,12 @@ class TestCmdChaos:
         mock_api.return_value = {
             "rules": [
                 {
-                    "id": "r1",
+                    "rule_id": "r1",
                     "service": "s3",
-                    "error": "ThrottlingException",
+                    "error_code": "ThrottlingException",
                     "status_code": 429,
                     "operation": "*",
-                    "rate": 1.0,
+                    "probability": 1.0,
                     "latency_ms": 0,
                 }
             ]
@@ -822,7 +825,7 @@ class TestCmdChaos:
 
     @mock.patch("robotocore.cli._api_request")
     def test_chaos_add(self, mock_api):
-        mock_api.return_value = {"id": "r1"}
+        mock_api.return_value = {"rule_id": "r1"}
         rc = _run(
             [
                 "chaos",
@@ -839,12 +842,12 @@ class TestCmdChaos:
         mock_api.assert_called_once_with(
             f"http://localhost:{DEFAULT_PORT}/_robotocore/chaos/rules",
             method="POST",
-            data={"service": "s3", "error": "ThrottlingException", "status_code": 429},
+            data={"service": "s3", "error_code": "ThrottlingException", "status_code": 429},
         )
 
     @mock.patch("robotocore.cli._api_request")
     def test_chaos_add_with_options(self, mock_api):
-        mock_api.return_value = {"id": "r2"}
+        mock_api.return_value = {"rule_id": "r2"}
         rc = _run(
             [
                 "chaos",
@@ -866,12 +869,12 @@ class TestCmdChaos:
         assert rc == 0
         call_data = mock_api.call_args[1]["data"]
         assert call_data["operation"] == "SendMessage"
-        assert call_data["rate"] == 0.3
+        assert call_data["probability"] == 0.3
         assert call_data["latency_ms"] == 200
 
     @mock.patch("robotocore.cli._api_request")
     def test_chaos_remove(self, mock_api):
-        mock_api.return_value = {"status": "removed"}
+        mock_api.return_value = {"status": "deleted", "rule_id": "r1"}
         rc = _run(["chaos", "remove", "r1"])
         assert rc == 0
         mock_api.assert_called_once_with(
@@ -958,7 +961,9 @@ class TestCmdUsage:
 
     @mock.patch("robotocore.cli._api_request")
     def test_usage_services(self, mock_api, capsys):
-        mock_api.return_value = {"services": [{"service": "s3", "calls": 50, "errors": 2}]}
+        mock_api.return_value = {
+            "services": [{"service": "s3", "request_count": 50, "error_count": 2}]
+        }
         rc = _run(["usage", "services"])
         assert rc == 0
         out = capsys.readouterr().out
@@ -979,7 +984,14 @@ class TestCmdPods:
     @mock.patch("robotocore.cli._api_request")
     def test_pods_list(self, mock_api, capsys):
         mock_api.return_value = {
-            "pods": [{"name": "my-pod", "created": "2026-03-12", "size": 1024, "services": 5}]
+            "pods": [
+                {
+                    "name": "my-pod",
+                    "created_at": "2026-03-12",
+                    "size_bytes": 1024,
+                    "version_count": 5,
+                }
+            ]
         }
         rc = _run(["pods", "list"])
         assert rc == 0
