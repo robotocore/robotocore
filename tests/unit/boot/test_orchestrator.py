@@ -508,11 +508,11 @@ class TestShutdown:
 
 
 class TestRegistration:
-    def test_duplicate_name_raises(self):
+    def test_duplicate_name_is_idempotent(self):
         orch = BootOrchestrator()
         orch.register(_make_component("a"))
-        with pytest.raises(ValueError, match="already registered"):
-            orch.register(_make_component("a"))
+        orch.register(_make_component("a"))  # Should not raise
+        assert len(orch._components) == 1
 
     def test_register_many_components(self):
         orch = BootOrchestrator()
