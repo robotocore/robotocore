@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 
+from robotocore.extensions.api_version import CompatResult, PluginAPIVersion
 from robotocore.extensions.base import RobotocorePlugin
 
 logger = logging.getLogger(__name__)
@@ -21,9 +22,19 @@ class ExtensionRegistry:
         self.plugins: list[RobotocorePlugin] = []
         self._service_overrides: dict[str, callable] = {}
         self._loaded = False
+        # Track version compatibility results per plugin name
+        self._compat_results: dict[str, CompatResult] = {}
+
+    # ------------------------------------------------------------------
+    # Registration
+    # ------------------------------------------------------------------
 
     def register(self, plugin: RobotocorePlugin) -> None:
-        """Register a plugin instance."""
+        """Register a plugin instance.
+
+        Checks API version compatibility before accepting the plugin.
+        Incompatible plugins are rejected with a warning.
+        """
         if not isinstance(plugin, RobotocorePlugin):
             raise TypeError(f"Expected RobotocorePlugin, got {type(plugin).__name__}")
         if not plugin.name:
@@ -34,6 +45,20 @@ class ExtensionRegistry:
         if existing:
             logger.warning(f"Plugin '{plugin.name}' already registered, skipping")
             return
+
+        # API version compatibility check
+        compat = PluginAPIVersion.check_compatibility(plugin.api_version)
+        self._compat_results[plugin.name] = compat
+
+        if not compat.compatible:
+            logger.warning(
+                f"Plugin '{plugin.name}' has incompatible API version "
+                f"'{plugin.api_version}': {compat.errors}"
+            )
+            return
+
+        for warning in compat.warnings:
+            logger.warning(f"Plugin '{plugin.name}': {warning}")
 
         self.plugins.append(plugin)
         self.plugins.sort(key=lambda p: p.priority)
@@ -56,6 +81,7 @@ class ExtensionRegistry:
                 for service in plugin.get_service_overrides():
                     self._service_overrides.pop(service, None)
                 self.plugins.pop(i)
+                self._compat_results.pop(name, None)
                 logger.info(f"Unregistered extension: {name}")
                 return True
         return False
@@ -63,6 +89,10 @@ class ExtensionRegistry:
     def get_service_override(self, service_name: str) -> callable | None:
         """Get a service handler override, if any plugin provides one."""
         return self._service_overrides.get(service_name)
+
+    # ------------------------------------------------------------------
+    # Lifecycle hooks
+    # ------------------------------------------------------------------
 
     def on_startup(self) -> None:
         """Call on_startup for all plugins."""
@@ -127,18 +157,100 @@ class ExtensionRegistry:
                 logger.exception(f"Error getting routes from {plugin.name}")
         return routes
 
+    # ------------------------------------------------------------------
+    # Capability queries
+    # ------------------------------------------------------------------
+
+    def plugins_with_capability(self, capability: str) -> list[RobotocorePlugin]:
+        """Return all plugins that declare *capability*."""
+        return [p for p in self.plugins if capability in p.get_capabilities()]
+
+    # ------------------------------------------------------------------
+    # Dependency resolution
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def resolve_load_order(
+        plugins: list[RobotocorePlugin],
+    ) -> tuple[list[RobotocorePlugin], list[tuple[str, str]]]:
+        """Sort *plugins* so that dependencies are loaded first.
+
+        Returns ``(ordered_plugins, warnings)`` where *warnings* is a list of
+        ``(plugin_name, message)`` tuples for missing dependencies or cycles.
+        Plugins with unsatisfied dependencies are included at the end with a
+        warning (not silently dropped).
+        """
+        by_name: dict[str, RobotocorePlugin] = {}
+        for p in plugins:
+            name = p.name or type(p).__name__
+            by_name[name] = p
+
+        warnings: list[tuple[str, str]] = []
+        ordered: list[str] = []
+        visited: set[str] = set()
+        in_stack: set[str] = set()  # for cycle detection
+
+        def visit(name: str) -> None:
+            if name in visited:
+                return
+            if name in in_stack:
+                warnings.append((name, f"Circular dependency detected involving '{name}'"))
+                return
+            in_stack.add(name)
+
+            plugin = by_name.get(name)
+            if plugin is None:
+                return
+
+            deps = getattr(plugin, "dependencies", [])
+            for dep in deps:
+                if dep not in by_name:
+                    warnings.append((name, f"Missing dependency '{dep}' for plugin '{name}'"))
+                else:
+                    visit(dep)
+
+            in_stack.discard(name)
+            if name not in visited:
+                visited.add(name)
+                ordered.append(name)
+
+        for name in by_name:
+            visit(name)
+
+        result = [by_name[n] for n in ordered if n in by_name]
+        return result, warnings
+
+    # ------------------------------------------------------------------
+    # Info / status
+    # ------------------------------------------------------------------
+
     def list_plugins(self) -> list[dict]:
         """Return info about all loaded plugins."""
-        return [
-            {
+        result = []
+        for p in self.plugins:
+            info: dict = {
                 "name": p.name,
                 "version": p.version,
+                "api_version": p.api_version,
                 "description": p.description,
                 "priority": p.priority,
+                "capabilities": sorted(p.get_capabilities()),
+                "dependencies": getattr(p, "dependencies", []),
                 "service_overrides": list(p.get_service_overrides().keys()),
             }
-            for p in self.plugins
-        ]
+            compat = self._compat_results.get(p.name)
+            if compat:
+                info["api_compat"] = {
+                    "compatible": compat.compatible,
+                    "warnings": compat.warnings,
+                    "errors": compat.errors,
+                }
+            result.append(info)
+        return result
+
+    def get_dependency_graph(self) -> dict[str, list[str]]:
+        """Return a mapping of plugin name -> list of dependency names."""
+        return {p.name: getattr(p, "dependencies", []) for p in self.plugins}
 
 
 def get_extension_registry() -> ExtensionRegistry:
@@ -194,12 +306,17 @@ def discover_extensions() -> list[RobotocorePlugin]:
         p._discovery_source = "directory"
     plugins.extend(user_plugins)
 
+    # Resolve dependency order
+    ordered, dep_warnings = ExtensionRegistry.resolve_load_order(plugins)
+    for plugin_name, msg in dep_warnings:
+        logger.warning(f"Dependency issue for '{plugin_name}': {msg}")
+
     # Register all discovered plugins and track status
     from robotocore.extensions.plugin_status import get_plugin_status_collector
 
     collector = get_plugin_status_collector()
 
-    for plugin in plugins:
+    for plugin in ordered:
         source = getattr(plugin, "_discovery_source", "unknown")
         try:
             start = __import__("time").monotonic()

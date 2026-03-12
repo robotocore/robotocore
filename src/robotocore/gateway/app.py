@@ -831,23 +831,70 @@ async def init_stage(request: Request) -> JSONResponse:
 
 
 async def plugins_list(request: Request) -> JSONResponse:
-    """List all discovered plugins with status info."""
+    """List all discovered plugins with version, capabilities, and dependency info."""
+    from robotocore.extensions.api_version import CURRENT_API_VERSION
     from robotocore.extensions.plugin_status import get_plugin_status_collector
+    from robotocore.extensions.registry import get_extension_registry
 
     collector = get_plugin_status_collector()
-    return JSONResponse({"plugins": collector.list_plugins()})
+    registry = get_extension_registry()
+    return JSONResponse(
+        {
+            "api_version": CURRENT_API_VERSION,
+            "plugins": collector.list_plugins(),
+            "dependency_graph": registry.get_dependency_graph(),
+        }
+    )
 
 
 async def plugin_detail(request: Request) -> JSONResponse:
     """Return detailed info for a specific plugin."""
     from robotocore.extensions.plugin_status import get_plugin_status_collector
+    from robotocore.extensions.registry import get_extension_registry
 
     name = request.path_params["name"]
     collector = get_plugin_status_collector()
     detail = collector.get_plugin_detail(name)
     if detail is None:
         return JSONResponse({"error": f"Plugin '{name}' not found"}, status_code=404)
+
+    # Enrich with registry info (capabilities, api_compat, dependencies)
+    registry = get_extension_registry()
+    for p in registry.plugins:
+        if p.name == name:
+            detail["api_version"] = p.api_version
+            detail["capabilities"] = sorted(p.get_capabilities())
+            detail["dependencies"] = getattr(p, "dependencies", [])
+            compat = registry._compat_results.get(name)
+            if compat:
+                detail["api_compat"] = {
+                    "compatible": compat.compatible,
+                    "warnings": compat.warnings,
+                    "errors": compat.errors,
+                }
+            config_schema = p.get_config_schema()
+            if config_schema:
+                detail["config_schema"] = config_schema
+            break
+
     return JSONResponse(detail)
+
+
+async def plugins_migrations(request: Request) -> JSONResponse:
+    """Show migration guidance for deprecated plugin API versions."""
+    from robotocore.extensions.api_version import (
+        CURRENT_API_VERSION,
+        SUPPORTED_VERSIONS,
+        PluginAPIVersion,
+    )
+
+    return JSONResponse(
+        {
+            "current_api_version": CURRENT_API_VERSION,
+            "supported_versions": sorted(SUPPORTED_VERSIONS),
+            "migrations": PluginAPIVersion.get_migration_guide(),
+        }
+    )
 
 
 async def tls_info_endpoint(request: Request) -> JSONResponse:
@@ -1333,6 +1380,7 @@ management_routes = [
     Route("/_robotocore/init/{stage}", init_stage, methods=["GET"]),
     # Plugins status
     Route("/_robotocore/plugins", plugins_list, methods=["GET"]),
+    Route("/_robotocore/plugins/migrations", plugins_migrations, methods=["GET"]),
     Route("/_robotocore/plugins/{name}", plugin_detail, methods=["GET"]),
     # Diagnostics bundle
     Route("/_robotocore/diagnose", _diagnose_handler, methods=["GET"]),
