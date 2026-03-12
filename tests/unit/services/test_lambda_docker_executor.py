@@ -484,7 +484,7 @@ class TestDockerLambdaExecutor:
 
             with patch.object(executor, "_execute_local_fallback") as mock_fallback:
                 mock_fallback.return_value = ({"fallback": True}, None, "")
-                result, error_type, logs = executor.execute(
+                executor.execute(
                     code_zip=b"fake-zip",
                     handler="handler.main",
                     event={},
