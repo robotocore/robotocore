@@ -291,10 +291,16 @@ class CodeCache:
                 for layer_zip in layer_zips:
                     try:
                         with zipfile.ZipFile(io.BytesIO(layer_zip)) as zf:
+                            for name in zf.namelist():
+                                if name.startswith("/") or ".." in name.split("/"):
+                                    raise ValueError(f"Unsafe path in ZIP archive: {name}")
                             zf.extractall(tmpdir)
                     except (zipfile.BadZipFile, OSError):
                         logger.warning("CodeCache: failed to extract layer zip")
             with zipfile.ZipFile(io.BytesIO(code_zip)) as zf:
+                for name in zf.namelist():
+                    if name.startswith("/") or ".." in name.split("/"):
+                        raise ValueError(f"Unsafe path in ZIP archive: {name}")
                 zf.extractall(tmpdir)
         except (zipfile.BadZipFile, OSError) as exc:
             # Clean up on extraction failure
