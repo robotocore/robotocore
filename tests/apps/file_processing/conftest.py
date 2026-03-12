@@ -7,13 +7,9 @@ Inherits shared fixtures (s3, dynamodb, unique_name, ...) from the parent
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 
 from .app import FileProcessingService
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -30,14 +26,14 @@ def file_bucket(s3, unique_name):
                 s3.delete_object(Bucket=bucket, Key=v["Key"], VersionId=v["VersionId"])
             for dm in page.get("DeleteMarkers", []):
                 s3.delete_object(Bucket=bucket, Key=dm["Key"], VersionId=dm["VersionId"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     try:
         objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
         for obj in objects:
             s3.delete_object(Bucket=bucket, Key=obj["Key"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     s3.delete_bucket(Bucket=bucket)
 
 

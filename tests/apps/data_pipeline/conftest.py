@@ -5,7 +5,6 @@ Creates all AWS resources (Kinesis stream, S3 bucket, DynamoDB table, SSM params
 Secrets Manager secret, CloudWatch log group) and tears them down after tests.
 """
 
-import logging
 import time
 import uuid
 
@@ -14,7 +13,7 @@ import pytest
 from .app import DataPipeline
 from .models import PipelineConfig, SensorReading
 
-logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.apps
 
 
 @pytest.fixture
@@ -168,27 +167,27 @@ def pipeline(
     # Cleanup
     try:
         kinesis.delete_stream(StreamName=stream_name, EnforceConsumerDeletion=True)
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     try:
         objs = s3.list_objects_v2(Bucket=bucket_name).get("Contents", [])
         for obj in objs:
             s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
         s3.delete_bucket(Bucket=bucket_name)
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     try:
         dynamodb.delete_table(TableName=table_name)
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     try:
         logs.delete_log_group(logGroupName=log_group)
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     # Clean SSM params
     try:
         resp = ssm.get_parameters_by_path(Path=prefix, Recursive=True)
         for p in resp["Parameters"]:
             ssm.delete_parameter(Name=p["Name"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass

@@ -15,7 +15,6 @@ No robotocore or moto imports.  Only boto3, stdlib, and the local models.
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
 from datetime import UTC, datetime
@@ -32,8 +31,6 @@ from .models import (
     TaskGroup,
     TaskMetrics,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class TaskScheduler:
@@ -180,8 +177,8 @@ class TaskScheduler:
                     Ids=[t["Id"] for t in targets],
                 )
             self.events.delete_rule(Name=rule_name)
-        except Exception as exc:
-            logger.debug("rule may not exist: %s", exc)
+        except Exception:
+            pass  # rule may not exist
 
         # Remove SSM params
         self._delete_task_config(task_id)
@@ -796,8 +793,8 @@ class TaskScheduler:
             resp = self.ssm.get_parameters_by_path(Path=prefix, Recursive=True)
             for p in resp.get("Parameters", []):
                 self.ssm.delete_parameter(Name=p["Name"])
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _store_output(self, task_id: str, execution_id: str, data: dict[str, Any]) -> str:
         key = f"output/{task_id}/{execution_id}/result.json"
@@ -854,8 +851,8 @@ class TaskScheduler:
         # Ensure log stream exists
         try:
             self.logs.create_log_stream(logGroupName=self.log_group, logStreamName=stream_name)
-        except Exception as exc:
-            logger.debug("already exists: %s", exc)
+        except Exception:
+            pass  # already exists
         self.logs.put_log_events(
             logGroupName=self.log_group,
             logStreamName=stream_name,

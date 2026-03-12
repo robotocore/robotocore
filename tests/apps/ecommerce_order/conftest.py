@@ -6,7 +6,6 @@ and provides a fully-configured OrderProcessor instance.
 """
 
 import json
-import logging
 import uuid
 from decimal import Decimal
 
@@ -14,8 +13,6 @@ import pytest
 
 from .app import OrderProcessor
 from .models import Order, OrderItem, ShippingAddress
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -162,8 +159,8 @@ def receipt_bucket(s3, unique_suffix):
         objects = s3.list_objects_v2(Bucket=name).get("Contents", [])
         for obj in objects:
             s3.delete_object(Bucket=name, Key=obj["Key"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
     s3.delete_bucket(Bucket=name)
 
 

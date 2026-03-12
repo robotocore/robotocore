@@ -4,7 +4,11 @@ Tests for S3 raw data storage and DynamoDB indexed storage.
 
 from datetime import UTC, datetime
 
+import pytest
+
 from .models import ProcessedRecord
+
+pytestmark = pytest.mark.apps
 
 
 class TestS3Storage:

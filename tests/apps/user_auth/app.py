@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import re
 import time
 import uuid
@@ -23,8 +22,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .models import AuthConfig, PasswordResetToken, Session, User, UserStats
-
-logger = logging.getLogger(__name__)
 
 
 class AuthServiceError(Exception):
@@ -977,8 +974,8 @@ class AuthService:
         """Create the CloudWatch Logs log group if it doesn't exist."""
         try:
             self.logs.create_log_group(logGroupName=self.audit_log_group)
-        except Exception as exc:
-            logger.debug("Already exists: %s", exc)
+        except Exception:
+            pass  # Already exists
 
     def _ensure_log_stream(self, stream_name: str) -> None:
         """Create a log stream if it doesn't exist."""
@@ -987,8 +984,8 @@ class AuthService:
                 logGroupName=self.audit_log_group,
                 logStreamName=stream_name,
             )
-        except Exception as exc:
-            logger.debug("Already exists: %s", exc)
+        except Exception:
+            pass  # Already exists
 
     def _audit(self, event_type: str, user_id: str, details: dict[str, Any]) -> None:
         """Write an audit event to CloudWatch Logs."""
@@ -1014,8 +1011,8 @@ class AuthService:
                     }
                 ],
             )
-        except Exception as exc:
-            logger.debug("Best-effort audit logging: %s", exc)
+        except Exception:
+            pass  # Best-effort audit logging
 
     def get_audit_events(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """

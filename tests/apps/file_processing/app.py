@@ -20,7 +20,6 @@ Architecture:
 from __future__ import annotations
 
 import hashlib
-import logging
 import mimetypes
 import uuid
 from datetime import UTC, datetime
@@ -34,7 +33,6 @@ from .models import (
     UploadResult,
 )
 
-logger = logging.getLogger(__name__)
 # Default content-type when we cannot detect one
 _DEFAULT_CONTENT_TYPE = "application/octet-stream"
 

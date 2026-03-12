@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import time
 import uuid
 from datetime import UTC, datetime
@@ -29,8 +28,6 @@ from .models import (
     ProcessedRecord,
     SensorReading,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class DataPipeline:
@@ -400,8 +397,8 @@ class DataPipeline:
         for param in resp["Parameters"]:
             try:
                 self.ssm.delete_parameter(Name=param["Name"])
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
     # -----------------------------------------------------------------------
     # Secrets Manager (credentials)

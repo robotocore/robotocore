@@ -12,7 +12,6 @@ Only uses boto3 -- no internal robotocore imports.
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
 from datetime import UTC, datetime
@@ -26,8 +25,6 @@ from .models import (
     PipelineConfig,
     PipelineMetrics,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class CICDPipeline:
@@ -356,15 +353,15 @@ class CICDPipeline:
         group_name = self._log_group_name(repo)
         try:
             self.logs.create_log_group(logGroupName=group_name)
-        except self.logs.exceptions.ResourceAlreadyExistsException as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except self.logs.exceptions.ResourceAlreadyExistsException:
+            pass
         try:
             self.logs.create_log_stream(
                 logGroupName=group_name,
                 logStreamName=self._log_stream_name(build_id),
             )
-        except self.logs.exceptions.ResourceAlreadyExistsException as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except self.logs.exceptions.ResourceAlreadyExistsException:
+            pass
 
     def _write_log(self, repo: str, build_id: str, level: str, message: str) -> None:
         """Write a single log event."""
@@ -639,8 +636,8 @@ class CICDPipeline:
                     start = datetime.strptime(b.started_at, "%Y-%m-%dT%H:%M:%SZ")
                     end = datetime.strptime(b.finished_at, "%Y-%m-%dT%H:%M:%SZ")
                     durations.append((end - start).total_seconds())
-                except ValueError as exc:
-                    logger.debug("Ignoring error: %s", exc)
+                except ValueError:
+                    pass
 
         avg_duration = sum(durations) / len(durations) if durations else 0.0
 
@@ -681,8 +678,8 @@ class CICDPipeline:
         """Delete the log group for a repo (best-effort)."""
         try:
             self.logs.delete_log_group(logGroupName=self._log_group_name(repo))
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def cleanup_all_artifacts(self) -> None:
         """Delete all artifacts in the bucket."""

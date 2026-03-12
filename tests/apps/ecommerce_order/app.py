@@ -14,7 +14,6 @@ This module uses only boto3 — no robotocore or moto imports.
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -28,8 +27,6 @@ from .models import (
     Receipt,
     ShippingAddress,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class OrderProcessingError(Exception):

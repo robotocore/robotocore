@@ -1,7 +1,5 @@
 """Tests for media asset management."""
 
-import pytest
-
 
 class TestUploadMedia:
     """Uploading and reading media assets."""
@@ -86,5 +84,7 @@ class TestDeleteMedia:
         asset = cms.upload_media(data=b"to-delete", filename="temp.jpg")
         cms.delete_media(asset.asset_id)
         # S3 object should be gone (or have a delete marker with versioning)
+        import pytest
+
         with pytest.raises(Exception):
             cms.get_media_data(asset)

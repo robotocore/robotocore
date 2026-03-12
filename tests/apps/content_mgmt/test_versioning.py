@@ -1,7 +1,5 @@
 """Tests for content versioning."""
 
-import pytest
-
 
 class TestVersionHistory:
     """Version snapshots are created on every edit."""
@@ -73,6 +71,8 @@ class TestRevert:
         assert reverted.version == 3  # revert creates a NEW version
 
     def test_revert_nonexistent_version_raises(self, cms, sample_article):
+        import pytest
+
         with pytest.raises(ValueError, match="Version 99 not found"):
             cms.revert_to_version(sample_article.content_id, 99, actor="admin")
 

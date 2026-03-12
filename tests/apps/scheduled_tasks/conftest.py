@@ -4,14 +4,10 @@ Fixtures for scheduled-tasks integration tests.
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 
 from .app import TaskScheduler
 from .models import TaskDefinition, TaskGroup
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -147,7 +143,7 @@ def scheduler(
     metrics_namespace,
 ):
     """Fully-wired TaskScheduler instance."""
-    sched = TaskScheduler(
+    return TaskScheduler(
         dynamodb=dynamodb,
         events=events,
         ssm=ssm,
@@ -164,28 +160,6 @@ def scheduler(
         log_group=log_group,
         metrics_namespace=metrics_namespace,
     )
-
-    yield sched
-
-    # Cleanup: delete all tasks (which removes EventBridge rules and SSM params)
-    try:
-        resp = dynamodb.scan(TableName=tasks_table)
-        for item in resp.get("Items", []):
-            task_id = item["task_id"]["S"]
-            try:
-                sched.delete_task(task_id)
-            except Exception as exc:
-                logger.debug("Cleanup error (ignored): %s", exc)
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
-
-    # Cleanup SSM params under config prefix
-    try:
-        resp = ssm.get_parameters_by_path(Path=config_prefix, Recursive=True)
-        for param in resp.get("Parameters", []):
-            ssm.delete_parameter(Name=param["Name"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
 
 
 @pytest.fixture

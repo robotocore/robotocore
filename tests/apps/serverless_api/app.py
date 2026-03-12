@@ -15,7 +15,6 @@ robotocore (localhost:4566) or real AWS.
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
 from tests.apps.conftest import make_lambda_zip
@@ -28,8 +27,6 @@ from .models import (
     TableSchema,
     WorkflowStep,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class ServerlessApp:

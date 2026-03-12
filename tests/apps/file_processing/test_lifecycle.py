@@ -7,8 +7,6 @@ storage statistics, presigned URL generation, and thumbnail tracking.
 
 from __future__ import annotations
 
-import pytest
-
 from .app import FileProcessingService
 from .models import FileStatus, UploadResult
 
@@ -67,8 +65,11 @@ class TestArchival:
         assert new_key == "archive/report.pdf"
 
         # Verify the old key is gone
-        with pytest.raises(Exception):
+        try:
             file_service.download_file("report.pdf")
+            assert False, "Expected error downloading deleted key"
+        except Exception:
+            pass
 
         # Verify the file is at the new key
         body = file_service.download_file("archive/report.pdf")

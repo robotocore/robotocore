@@ -1,13 +1,11 @@
 """Fixtures for CI/CD pipeline tests."""
 
-import logging
 import os
 
 import pytest
 
 from .app import CICDPipeline
 
-logger = logging.getLogger(__name__)
 ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:4566")
 
 
@@ -88,16 +86,8 @@ def pipeline(s3, dynamodb, ssm, sns, sqs, logs, stepfunctions, iam, boto_session
         resp = ssm.get_parameters_by_path(Path=config_prefix, Recursive=True)
         for param in resp["Parameters"]:
             ssm.delete_parameter(Name=param["Name"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
-
-    # Cleanup CloudWatch log groups created by the pipeline
-    try:
-        resp = logs.describe_log_groups(logGroupNamePrefix=log_group_prefix)
-        for lg in resp.get("logGroups", []):
-            logs.delete_log_group(logGroupName=lg["logGroupName"])
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception:
+        pass
 
 
 @pytest.fixture

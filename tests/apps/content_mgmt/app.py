@@ -17,7 +17,6 @@ will create all the AWS resources it needs.  Call ``teardown()`` to clean up.
 from __future__ import annotations
 
 import json
-import logging
 import re
 import time
 import uuid
@@ -39,8 +38,6 @@ from .models import (
     MediaAsset,
     PublishRequest,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -284,11 +281,10 @@ class ContentManagementSystem:
         if item is None:
             raise ValueError(f"Content not found: {content_id}")
 
-        old_status = item.status
-        allowed = VALID_TRANSITIONS.get(old_status, set())
+        allowed = VALID_TRANSITIONS.get(item.status, set())
         if new_status not in allowed:
             raise ValueError(
-                f"Cannot transition from {old_status} to {new_status}. Allowed: {allowed}"
+                f"Cannot transition from {item.status} to {new_status}. Allowed: {allowed}"
             )
 
         now = _now()
@@ -317,7 +313,7 @@ class ContentManagementSystem:
             f"status_{new_status.lower()}",
             content_id,
             actor,
-            f"from={old_status}",
+            f"from={item.status}",
         )
         return item
 
@@ -386,8 +382,8 @@ class ContentManagementSystem:
             return
         try:
             self.s3.delete_object(Bucket=self.media_bucket, Key=asset.key)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
         self.dynamodb.delete_item(
             TableName=self.media_table,
             Key={"asset_id": {"S": asset_id}},
@@ -480,7 +476,7 @@ class ContentManagementSystem:
 
         # Transition to PUBLISHED (may go through REVIEW first)
         if item.status == DRAFT:
-            item = self.transition(content_id, REVIEW, actor=actor)
+            self.transition(content_id, REVIEW, actor=actor)
         if item.status in (REVIEW, SCHEDULED):
             item = self.transition(content_id, PUBLISHED, actor=actor)
         elif item.status == PUBLISHED:
@@ -728,8 +724,8 @@ class ContentManagementSystem:
                     }
                 ],
             )
-        except Exception as exc:
-            logger.debug("best-effort audit: %s", exc)
+        except Exception:
+            pass  # best-effort audit
 
     def get_audit_trail(self, content_id: str | None = None) -> list[AuditEntry]:
         """Read the audit log, optionally filtering by content_id."""
@@ -759,8 +755,8 @@ class ContentManagementSystem:
                             details=data.get("details", ""),
                         )
                     )
-                except (json.JSONDecodeError, KeyError) as exc:
-                    logger.debug("Ignoring error: %s", exc)
+                except (json.JSONDecodeError, KeyError):
+                    pass
             return entries
         except Exception:
             return []
@@ -1020,48 +1016,48 @@ class ContentManagementSystem:
                 self.s3.delete_object(
                     Bucket=self.media_bucket, Key=dm["Key"], VersionId=dm["VersionId"]
                 )
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
         try:
             objs = self.s3.list_objects_v2(Bucket=self.media_bucket).get("Contents", [])
             for obj in objs:
                 self.s3.delete_object(Bucket=self.media_bucket, Key=obj["Key"])
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
         try:
             self.s3.delete_bucket(Bucket=self.media_bucket)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_content_table(self) -> None:
         try:
             self.dynamodb.delete_table(TableName=self.content_table)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_versions_table(self) -> None:
         try:
             self.dynamodb.delete_table(TableName=self.versions_table)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_media_table(self) -> None:
         try:
             self.dynamodb.delete_table(TableName=self.media_table)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_publish_queue(self) -> None:
         try:
             self.sqs.delete_queue(QueueUrl=self.publish_queue_url)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_webhook_topic(self) -> None:
         try:
             self.sns.delete_topic(TopicArn=self.webhook_topic_arn)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_audit_log(self) -> None:
         try:
@@ -1069,21 +1065,21 @@ class ContentManagementSystem:
                 logGroupName=self.audit_log_group,
                 logStreamName=self.audit_stream,
             )
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
         try:
             self.logs.delete_log_group(logGroupName=self.audit_log_group)
-        except Exception as exc:
-            logger.debug("Ignoring error: %s", exc)
+        except Exception:
+            pass
 
     def _delete_eb_rules(self) -> None:
         for rule_name in self._eb_rules:
             try:
                 self.events.remove_targets(Rule=rule_name, Ids=["publish-queue"])
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
             try:
                 self.events.delete_rule(Name=rule_name)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
         self._eb_rules.clear()

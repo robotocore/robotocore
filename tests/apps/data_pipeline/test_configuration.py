@@ -6,6 +6,8 @@ import pytest
 
 from .models import PipelineConfig
 
+pytestmark = pytest.mark.apps
+
 
 class TestSSMConfiguration:
     """SSM Parameter Store: hierarchical pipeline configuration."""

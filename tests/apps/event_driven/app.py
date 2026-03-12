@@ -18,7 +18,6 @@ Services used: EventBridge, SNS, SQS, DynamoDB
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
 from typing import Any
@@ -31,8 +30,6 @@ from .models import (
     EventTarget,
     FanOutConfig,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class EventRouter:
@@ -642,44 +639,44 @@ class EventRouter:
                         Ids=[t["Id"] for t in targets],
                     )
                 self.events.delete_rule(Name=rule.name, EventBusName=rule.bus_name)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
         # Delete buses
         for bus_name in self._buses:
             try:
                 self.events.delete_event_bus(Name=bus_name)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
         # Unsubscribe SNS subscriptions
         for sub_arn in self._subscriptions:
             try:
                 if sub_arn != "PendingConfirmation":
                     self.sns.unsubscribe(SubscriptionArn=sub_arn)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
         # Delete SNS topics
         for topic_arn in self._topics:
             try:
                 self.sns.delete_topic(TopicArn=topic_arn)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
         # Delete SQS queues
         for q_url in self._queues:
             try:
                 self.sqs.delete_queue(QueueUrl=q_url)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
         # Delete schema table
         if self._schema_table:
             try:
                 self.dynamodb.delete_table(TableName=self._schema_table)
-            except Exception as exc:
-                logger.debug("Ignoring error: %s", exc)
+            except Exception:
+                pass
 
         self._buses.clear()
         self._rules.clear()

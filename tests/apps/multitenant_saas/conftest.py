@@ -5,14 +5,10 @@ Provides a fully-wired SaaSPlatform instance with two pre-provisioned tenants
 on different plans.
 """
 
-import logging
-
 import pytest
 
 from .app import SaaSPlatform
 from .models import PLAN_CATALOGUE
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -103,20 +99,7 @@ def platform(dynamodb, s3, ssm, secretsmanager, sqs, cloudwatch, unique_name):
     for param in resp.get("Parameters", []):
         ssm.delete_parameter(Name=param["Name"])
 
-    # Cleanup secrets created by tenant provisioning (best-effort)
-    try:
-        # List all secrets under our prefix and delete them
-        paginator = secretsmanager.get_paginator("list_secrets")
-        for page in paginator.paginate(Filters=[{"Key": "name", "Values": [secret_prefix]}]):
-            for secret in page.get("SecretList", []):
-                try:
-                    secretsmanager.delete_secret(
-                        SecretId=secret["Name"], ForceDeleteWithoutRecovery=True
-                    )
-                except Exception as exc:
-                    logger.debug("Cleanup error (ignored): %s", exc)
-    except Exception as exc:
-        logger.debug("Cleanup error (ignored): %s", exc)
+    # Secrets are cleaned up by deprovision or individually in tests
 
 
 @pytest.fixture

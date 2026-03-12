@@ -4,8 +4,6 @@ Tests for tenant provisioning and deprovisioning lifecycle.
 
 import pytest
 
-from .models import TenantEntity
-
 
 class TestProvisionTenant:
     """Verify that provisioning creates all expected resources."""
@@ -75,6 +73,8 @@ class TestDeprovisionTenant:
     def test_deprovision_removes_dynamodb_entities(self, platform, tenant_a):
         """After deprovisioning, querying DynamoDB returns nothing."""
         # Add an entity first
+        from .models import TenantEntity
+
         platform.put_entity(
             TenantEntity(
                 tenant_id="tenant-a",

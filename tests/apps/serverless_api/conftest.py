@@ -5,15 +5,11 @@ Provides pre-configured ServerlessApp instances, deployed API stacks,
 and Step Functions state machines for use across test files.
 """
 
-import logging
-
 import pytest
 
 from .app import ServerlessApp
 from .handlers import HELLO_HANDLER
 from .models import ApiEndpoint, LambdaConfig, TableSchema, WorkflowStep
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture

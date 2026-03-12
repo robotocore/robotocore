@@ -2,14 +2,10 @@
 Fixtures for message queue application tests.
 """
 
-import logging
-
 import pytest
 
 from .app import MessageBroker
 from .models import QueueConfig
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
