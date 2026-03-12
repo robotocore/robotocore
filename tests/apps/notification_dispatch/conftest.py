@@ -5,10 +5,14 @@ Provides a fully-configured NotificationService plus convenience fixtures
 for channels, templates, and user preferences.
 """
 
+import logging
+
 import pytest
 
 from .app import NotificationService
 from .models import Channel, Template
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture

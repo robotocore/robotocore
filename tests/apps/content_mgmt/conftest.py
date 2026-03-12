@@ -5,9 +5,13 @@ Provides a fully-initialised ``ContentManagementSystem`` instance with all
 AWS resources created, plus convenience fixtures for pre-populated content.
 """
 
+import logging
+
 import pytest
 
 from .app import ContentManagementSystem
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture

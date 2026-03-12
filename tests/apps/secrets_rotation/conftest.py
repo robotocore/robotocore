@@ -2,9 +2,13 @@
 Fixtures for the secrets rotation application tests.
 """
 
+import logging
+
 import pytest
 
 from .app import SecretsVault
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -43,8 +47,8 @@ def vault(secretsmanager, dynamodb, unique_name):
     for full_name in v._created_secrets:
         try:
             secretsmanager.delete_secret(SecretId=full_name, ForceDeleteWithoutRecovery=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Cleanup error (ignored): %s", exc)
 
     v.delete_tables()
 

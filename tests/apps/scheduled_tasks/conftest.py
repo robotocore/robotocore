@@ -4,10 +4,14 @@ Fixtures for scheduled-tasks integration tests.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from .app import TaskScheduler
 from .models import TaskDefinition, TaskGroup
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -170,18 +174,18 @@ def scheduler(
             task_id = item["task_id"]["S"]
             try:
                 sched.delete_task(task_id)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception as exc:
+        logger.debug("Cleanup error (ignored): %s", exc)
 
     # Cleanup SSM params under config prefix
     try:
         resp = ssm.get_parameters_by_path(Path=config_prefix, Recursive=True)
         for param in resp.get("Parameters", []):
             ssm.delete_parameter(Name=param["Name"])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Cleanup error (ignored): %s", exc)
 
 
 @pytest.fixture

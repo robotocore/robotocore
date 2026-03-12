@@ -2,11 +2,14 @@
 Fixtures for the event-driven architecture test suite.
 """
 
+import logging
 import uuid
 
 import pytest
 
 from .app import EventRouter
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture

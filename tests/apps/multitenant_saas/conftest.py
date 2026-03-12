@@ -5,10 +5,14 @@ Provides a fully-wired SaaSPlatform instance with two pre-provisioned tenants
 on different plans.
 """
 
+import logging
+
 import pytest
 
 from .app import SaaSPlatform
 from .models import PLAN_CATALOGUE
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -109,10 +113,10 @@ def platform(dynamodb, s3, ssm, secretsmanager, sqs, cloudwatch, unique_name):
                     secretsmanager.delete_secret(
                         SecretId=secret["Name"], ForceDeleteWithoutRecovery=True
                     )
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except Exception as exc:
+                    logger.debug("Cleanup error (ignored): %s", exc)
+    except Exception as exc:
+        logger.debug("Cleanup error (ignored): %s", exc)
 
 
 @pytest.fixture

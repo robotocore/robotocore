@@ -6,9 +6,13 @@ SSM parameters, CloudWatch log groups) and provides a configured AuthService
 instance plus pre-registered test users.
 """
 
+import logging
+
 import pytest
 
 from .app import AuthService
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -91,8 +95,8 @@ def avatar_bucket(s3, unique_name):
         objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
         for obj in objects:
             s3.delete_object(Bucket=bucket, Key=obj["Key"])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Cleanup error (ignored): %s", exc)
     s3.delete_bucket(Bucket=bucket)
 
 
@@ -136,8 +140,8 @@ def auth_config(ssm, ssm_prefix):
     for name in params:
         try:
             ssm.delete_parameter(Name=name)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Cleanup error (ignored): %s", exc)
 
 
 @pytest.fixture
@@ -181,24 +185,24 @@ def auth(
     # Cleanup CloudWatch log group (created lazily by _ensure_log_group)
     try:
         logs.delete_log_group(logGroupName=audit_log_group)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Cleanup error (ignored): %s", exc)
 
     # Cleanup Secrets Manager secrets created by store_jwt_secret / store_oauth_credentials
     try:
         secretsmanager.delete_secret(
             SecretId=f"{secrets_prefix}/jwt", ForceDeleteWithoutRecovery=True
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Cleanup error (ignored): %s", exc)
     # Best-effort cleanup of any OAuth secrets
     for provider in ("google", "github", "facebook"):
         try:
             secretsmanager.delete_secret(
                 SecretId=f"{secrets_prefix}/oauth/{provider}", ForceDeleteWithoutRecovery=True
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Cleanup error (ignored): %s", exc)
 
 
 @pytest.fixture
